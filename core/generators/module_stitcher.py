@@ -182,13 +182,13 @@ class TargetedPublicationResult:
     """Proof-bearing result for publishing one exact module directory.
 
     ``NOT_PUBLISHED`` is returned only when the registry is proven not to
-    reference the module and the live module is proven to match its retained
-    pre-publication snapshot.
+    reference the module and the live module is proven to match the manifest
+    of the held tree taken before validation.
     ``INDETERMINATE`` means cleanup is unsafe because at least one relevant
     on-disk state could not be proven.
 
     ``backup_path`` is a compatibility-shaped, permanently ``None`` field.
-    Task1 snapshot receipts deliberately expose no mutable filesystem locator.
+    The manifest receipt deliberately exposes no mutable filesystem locator.
     """
 
     status: PublicationStatus
@@ -298,20 +298,17 @@ class _ExactModuleEntryGuard:
 
 @dataclass(frozen=True)
 class _ModuleBackupResult:
-    """Identity-bound proof of bytes captured during one locked snapshot.
+    """Identity-bound manifest receipt of the held module tree.
 
-    ``proven`` covers only the descriptor-held bytes, manifest, captured area
-    documents, and durability operations completed by the snapshot attempt.
-    It deliberately carries no pathname: a mutable namespace entry cannot
-    remain identity-bound after its descriptor closes.  Physical evidence is
-    retained best-effort under the hidden backup root, but only the future
-    recovery transaction may enumerate and turn it into a trusted locator.
+    ``proven`` covers only the manifest read through the held entry guard
+    before validation; no copy of the module is made.  It deliberately
+    carries no pathname: a mutable namespace entry cannot remain
+    identity-bound after its descriptor closes.
     """
 
     proven: bool
     reason: str = ""
     manifest: Optional[Dict[str, str]] = None
-    area_documents: Optional[Dict[str, Dict[str, Any]]] = None
 
     def __bool__(self) -> bool:
         raise TypeError(
@@ -320,31 +317,12 @@ class _ModuleBackupResult:
         )
 
 
-def _coerce_module_backup_result(result: Any) -> _ModuleBackupResult:
-    """Reject legacy path-only receipts that carry no identity-bound proof."""
-    if type(result) is _ModuleBackupResult:
-        return result
-    if isinstance(result, (str, os.PathLike)):
-        return _ModuleBackupResult(
-            proven=False,
-            reason="A path-only backup result carries no descriptor-bound proof",
-        )
-    if result is None:
-        return _ModuleBackupResult(
-            proven=False,
-            reason="Backup creation returned no result",
-        )
-    return _ModuleBackupResult(
-        proven=False,
-        reason=(
-            "Backup creation returned unsupported type "
-            f"{type(result).__name__}"
-        ),
-    )
-
-
 class _FdBackupError(Exception):
     """Controlled fail-closed result for descriptor-relative backup work."""
+
+
+class _ModuleFilesRefused(Exception):
+    """A candidate's own reset masters cannot be read for its conflict scan."""
 
 
 def _coerce_module_safety_result(result: Any) -> ModuleSafetyResult:
@@ -1146,38 +1124,6 @@ class ModuleStitcher:
         self.world_registry = deepcopy(restored)
         return True, ""
 
-    @staticmethod
-    def _directory_manifest(directory: str) -> Optional[Dict[str, str]]:
-        """Hash every directory, file, and symlink in a module tree."""
-        try:
-            if not directory or not os.path.isdir(directory):
-                return None
-            manifest: Dict[str, str] = {}
-            for root, dirs, files in os.walk(directory, followlinks=False):
-                dirs.sort()
-                files.sort()
-                relative_root = os.path.relpath(root, directory)
-                manifest[f"dir:{relative_root}"] = "directory"
-
-                for name in list(dirs) + files:
-                    path = os.path.join(root, name)
-                    relative_path = os.path.relpath(path, directory)
-                    if os.path.islink(path):
-                        manifest[f"link:{relative_path}"] = os.readlink(path)
-                        continue
-                    if os.path.isdir(path):
-                        continue
-                    if not os.path.isfile(path):
-                        return None
-                    digest = hashlib.sha256()
-                    with open(path, "rb") as handle:
-                        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                            digest.update(chunk)
-                    manifest[f"file:{relative_path}"] = digest.hexdigest()
-            return manifest
-        except Exception:
-            return None
-
     def _validate_required_publication_files(
         self, module_path: str
     ) -> Tuple[bool, str]:
@@ -1344,19 +1290,81 @@ class ModuleStitcher:
         except (OSError, ValueError) as exc:
             return None, None, f"Module identifiers could not be inspected: {exc}"
 
+    def _paired_master_location_ids(self, module_path: str) -> set:
+        """Read location ids from the candidate's paired ``_BU.json`` masters.
+
+        A master repeats its live twin's areaId, so it cannot join the scan
+        helper above. Only masters with a live twin are read: the managed
+        import's BU refresh rewrites exactly those, and boot hydration turns
+        an orphan into a live file before the refresh. A master the ID fixer
+        could not have read raises ``_ModuleFilesRefused`` so the module is
+        refused with a report rather than skipped in silence (issue #609).
+        """
+        areas_path = os.path.join(module_path, "areas")
+        location_ids = set()
+        try:
+            with os.scandir(areas_path) as entries:
+                by_name = {entry.name: entry for entry in entries}
+            for name in sorted(by_name):
+                if not name.endswith("_BU.json"):
+                    continue
+                if name[: -len("_BU.json")] + ".json" not in by_name:
+                    continue
+                entry = by_name[name]
+                if entry.is_symlink() or not entry.is_file(follow_symlinks=False):
+                    raise _ModuleFilesRefused(
+                        f"Paired master is not a regular file: areas/{name}"
+                    )
+                master = safe_json_load(entry.path)
+                if not master:
+                    continue
+                if not isinstance(master, dict):
+                    raise _ModuleFilesRefused(
+                        f"Paired master is not a JSON object: areas/{name}"
+                    )
+                locations = master.get("locations", [])
+                if isinstance(locations, (list, dict, str)) and not locations:
+                    continue
+                if not isinstance(locations, list):
+                    raise _ModuleFilesRefused(
+                        f"Paired master locations are malformed: areas/{name}"
+                    )
+                for location in locations:
+                    if not isinstance(location, dict):
+                        raise _ModuleFilesRefused(
+                            f"Paired master location is malformed: areas/{name}"
+                        )
+                    location_id = location.get("locationId")
+                    if not location_id:
+                        continue
+                    if isinstance(location_id, (list, dict)):
+                        raise _ModuleFilesRefused(
+                            f"Paired master locationId is malformed: areas/{name}"
+                        )
+                    if isinstance(location_id, str):
+                        location_ids.add(location_id)
+        except _ModuleFilesRefused:
+            raise
+        except (OSError, ValueError, UnicodeError, TypeError) as exc:
+            raise _ModuleFilesRefused(
+                f"Paired masters could not be read: {exc}"
+            ) from exc
+        return location_ids
+
     def _detect_legacy_publication_conflicts(
         self,
         module_name: str,
         module_path: str,
         registry_snapshot: Dict[str, Any],
     ) -> Tuple[Optional[bool], str, Tuple[str, ...]]:
-        """Detect whether legacy publication would require live-file rewrites.
+        """Detect whether a candidate's ids collide with registered modules.
 
         ``True`` means a managed import is required, ``False`` means registry-only
         publication can continue, and ``None`` means the read was unsafe or
         ambiguous. The third value names the registered modules whose ids
-        collide (empty unless ``True``). This helper never writes or creates
-        a mutation backup.
+        collide (empty unless ``True``). The candidate's location ids include
+        its paired ``_BU.json`` masters; a master that cannot be read raises
+        ``_ModuleFilesRefused``. This helper never writes.
         """
         candidate_areas, candidate_locations, reason = (
             self._module_identity_sets_for_conflict_scan(module_path)
@@ -1376,6 +1384,13 @@ class ModuleStitcher:
                 if isinstance(registered_area_rows[area_id], dict)
                 and isinstance(registered_area_rows[area_id].get("module"), str)
             }))
+
+        # Issue #609: a reset master's ids are the module's ids too. Counting
+        # them here sends a master-only collision to the managed import
+        # instead of passing it as conflict-free.
+        candidate_locations = candidate_locations | (
+            self._paired_master_location_ids(module_path)
+        )
 
         existing_location_ids = set()
         colliding_modules = set()
@@ -1864,15 +1879,6 @@ Create atmospheric travel narration that leads into this adventure."""
             if not close_ok:
                 raise _FdBackupError("Directory enumeration close was unproven")
 
-    @staticmethod
-    def _case_aliases(names: List[str], exact_name: str) -> List[str]:
-        exact_folded = exact_name.casefold()
-        return [
-            name
-            for name in names
-            if name.casefold() == exact_folded and name != exact_name
-        ]
-
     def _open_verified_directory_at(
         self,
         parent_descriptor: int,
@@ -2025,293 +2031,6 @@ Create atmospheric travel narration that leads into this adventure."""
             if not close_ok:
                 raise _FdBackupError("Regular source close was unproven")
 
-    def _fd_copy_regular_file(
-        self,
-        source_parent_descriptor: int,
-        destination_parent_descriptor: int,
-        name: str,
-        source_stat: os.stat_result,
-        *,
-        source_device: int,
-        source_mount_id: int,
-        destination_device: int,
-        destination_mount_id: int,
-        capture_content: bool,
-    ) -> Tuple[str, Optional[bytes]]:
-        source_path_descriptor = None
-        source_read_descriptor = None
-        destination_descriptor = None
-        close_ok = True
-        try:
-            (
-                source_path_descriptor,
-                source_read_descriptor,
-                source_identity,
-            ) = self._open_verified_regular_for_read(
-                source_parent_descriptor,
-                name,
-                source_stat,
-                expected_device=source_device,
-                expected_mount_id=source_mount_id,
-            )
-
-            destination_flags = (
-                os.O_WRONLY
-                | os.O_CREAT
-                | os.O_EXCL
-                | os.O_NOFOLLOW
-                | getattr(os, "O_CLOEXEC", 0)
-            )
-            destination_descriptor = os.open(
-                name,
-                destination_flags,
-                0o600,
-                dir_fd=destination_parent_descriptor,
-            )
-            destination_stat = os.fstat(destination_descriptor)
-            destination_identity = self._filesystem_entry_identity(
-                destination_stat
-            )
-            if (
-                destination_identity is None
-                or not stat.S_ISREG(destination_stat.st_mode)
-                or self._stat_result_is_reparse(destination_stat)
-                or destination_stat.st_dev != destination_device
-                or getattr(destination_stat, "st_nlink", 0) != 1
-                or self._descriptor_mount_id(destination_descriptor)
-                != destination_mount_id
-            ):
-                raise _FdBackupError("Destination file identity was unsafe")
-
-            digest = hashlib.sha256()
-            captured = bytearray() if capture_content else None
-            copied_size = 0
-            while True:
-                chunk = os.read(source_read_descriptor, 1024 * 1024)
-                if not isinstance(chunk, bytes):
-                    raise _FdBackupError("Source read returned an invalid value")
-                if not chunk:
-                    break
-                digest.update(chunk)
-                if captured is not None:
-                    captured.extend(chunk)
-                copied_size += len(chunk)
-                offset = 0
-                while offset < len(chunk):
-                    written = os.write(destination_descriptor, chunk[offset:])
-                    if not isinstance(written, int) or written <= 0:
-                        raise _FdBackupError(
-                            "Destination write did not make progress"
-                        )
-                    offset += written
-
-            final_source_stat = os.fstat(source_read_descriptor)
-            rebound_source_stat = os.stat(
-                name,
-                dir_fd=source_parent_descriptor,
-                follow_symlinks=False,
-            )
-            rebound_destination_stat = os.stat(
-                name,
-                dir_fd=destination_parent_descriptor,
-                follow_symlinks=False,
-            )
-            if (
-                self._filesystem_entry_identity(final_source_stat)
-                != source_identity
-                or self._filesystem_entry_identity(rebound_source_stat)
-                != source_identity
-                or self._filesystem_entry_identity(rebound_destination_stat)
-                != destination_identity
-                or copied_size != final_source_stat.st_size
-            ):
-                raise _FdBackupError("File binding changed during copy")
-            os.fsync(destination_descriptor)
-            return (
-                digest.hexdigest(),
-                bytes(captured) if captured is not None else None,
-            )
-        except _FdBackupError:
-            raise
-        except (OSError, TypeError, ValueError) as exc:
-            raise _FdBackupError("Regular file copy could not be proven") from exc
-        finally:
-            if destination_descriptor is not None:
-                descriptor_to_close = destination_descriptor
-                destination_descriptor = None
-                close_ok = self._close_backup_descriptor(descriptor_to_close)
-            if source_read_descriptor is not None:
-                descriptor_to_close = source_read_descriptor
-                source_read_descriptor = None
-                close_ok = (
-                    self._close_backup_descriptor(descriptor_to_close)
-                    and close_ok
-                )
-            if source_path_descriptor is not None:
-                descriptor_to_close = source_path_descriptor
-                source_path_descriptor = None
-                close_ok = (
-                    self._close_backup_descriptor(descriptor_to_close)
-                    and close_ok
-                )
-            if not close_ok:
-                raise _FdBackupError("File descriptor close was unproven")
-
-    def _fd_copy_directory_tree(
-        self,
-        source_descriptor: int,
-        destination_descriptor: int,
-        *,
-        relative_root: str,
-        source_device: int,
-        source_mount_id: int,
-        destination_device: int,
-        destination_mount_id: int,
-        manifest: Dict[str, str],
-        area_documents: Dict[str, Dict[str, Any]],
-    ) -> None:
-        names = self._fd_directory_names(source_descriptor)
-        folded_names = [name.casefold() for name in names]
-        if len(folded_names) != len(set(folded_names)):
-            raise _FdBackupError("Source contains case-aliased entries")
-
-        for name in names:
-            try:
-                source_stat = os.stat(
-                    name,
-                    dir_fd=source_descriptor,
-                    follow_symlinks=False,
-                )
-            except (OSError, TypeError, ValueError) as exc:
-                raise _FdBackupError("Source entry could not be classified") from exc
-            if (
-                self._filesystem_entry_identity(source_stat) is None
-                or self._stat_result_is_reparse(source_stat)
-                or source_stat.st_dev != source_device
-            ):
-                raise _FdBackupError("Source entry classification was unsafe")
-
-            relative_path = (
-                name if relative_root == "." else f"{relative_root}/{name}"
-            )
-            if stat.S_ISDIR(source_stat.st_mode):
-                source_child_descriptor = None
-                destination_child_descriptor = None
-                close_ok = True
-                try:
-                    (
-                        source_child_descriptor,
-                        source_child_identity,
-                    ) = self._open_verified_directory_at(
-                        source_descriptor,
-                        name,
-                        source_stat,
-                        expected_device=source_device,
-                        expected_mount_id=source_mount_id,
-                    )
-                    try:
-                        os.mkdir(
-                            name,
-                            0o700,
-                            dir_fd=destination_descriptor,
-                        )
-                    except (OSError, TypeError, ValueError) as exc:
-                        raise _FdBackupError(
-                            "Destination directory creation collided"
-                        ) from exc
-                    destination_stat = os.stat(
-                        name,
-                        dir_fd=destination_descriptor,
-                        follow_symlinks=False,
-                    )
-                    (
-                        destination_child_descriptor,
-                        destination_child_identity,
-                    ) = self._open_verified_directory_at(
-                        destination_descriptor,
-                        name,
-                        destination_stat,
-                        expected_device=destination_device,
-                        expected_mount_id=destination_mount_id,
-                    )
-                    manifest[f"dir:{relative_path}"] = "directory"
-                    self._fd_copy_directory_tree(
-                        source_child_descriptor,
-                        destination_child_descriptor,
-                        relative_root=relative_path,
-                        source_device=source_device,
-                        source_mount_id=source_mount_id,
-                        destination_device=destination_device,
-                        destination_mount_id=destination_mount_id,
-                        manifest=manifest,
-                        area_documents=area_documents,
-                    )
-                    if not self._fd_directory_binding_matches(
-                        source_descriptor,
-                        name,
-                        source_child_descriptor,
-                        source_child_identity,
-                        source_mount_id,
-                    ) or not self._fd_directory_binding_matches(
-                        destination_descriptor,
-                        name,
-                        destination_child_descriptor,
-                        destination_child_identity,
-                        destination_mount_id,
-                    ):
-                        raise _FdBackupError(
-                            "Directory binding changed during recursive copy"
-                        )
-                    os.fsync(destination_child_descriptor)
-                finally:
-                    if destination_child_descriptor is not None:
-                        descriptor_to_close = destination_child_descriptor
-                        destination_child_descriptor = None
-                        close_ok = self._close_backup_descriptor(
-                            descriptor_to_close
-                        )
-                    if source_child_descriptor is not None:
-                        descriptor_to_close = source_child_descriptor
-                        source_child_descriptor = None
-                        close_ok = (
-                            self._close_backup_descriptor(descriptor_to_close)
-                            and close_ok
-                        )
-                    if not close_ok:
-                        raise _FdBackupError(
-                            "Recursive directory close was unproven"
-                        )
-                continue
-
-            if not stat.S_ISREG(source_stat.st_mode):
-                raise _FdBackupError("Source contains a non-regular entry")
-            if getattr(source_stat, "st_nlink", 0) != 1:
-                raise _FdBackupError("Source hardlinks are not accepted")
-            capture_content = (
-                relative_root == "areas"
-                and name.endswith(".json")
-                and not name.endswith("_BU.json")
-            )
-            digest, raw_bytes = self._fd_copy_regular_file(
-                source_descriptor,
-                destination_descriptor,
-                name,
-                source_stat,
-                source_device=source_device,
-                source_mount_id=source_mount_id,
-                destination_device=destination_device,
-                destination_mount_id=destination_mount_id,
-                capture_content=capture_content,
-            )
-            manifest[f"file:{relative_path}"] = digest
-            if capture_content and raw_bytes is not None:
-                try:
-                    area_value = json.loads(raw_bytes.decode("utf-8"))
-                except (UnicodeDecodeError, json.JSONDecodeError):
-                    area_value = None
-                if isinstance(area_value, dict):
-                    area_documents[name] = area_value
-
     def _fd_directory_manifest(
         self,
         directory_descriptor: int,
@@ -2449,270 +2168,6 @@ Create atmospheric travel narration that leads into this adventure."""
                     raise _FdBackupError(
                         "Manifest file close was unproven"
                     )
-
-    def _create_module_backup(
-        self,
-        module_name: str,
-        *,
-        entry_guard: _ExactModuleEntryGuard,
-    ) -> _ModuleBackupResult:
-        """Create one no-follow, fd-relative, retained module snapshot."""
-        if not self._fd_relative_backup_supported():
-            return _ModuleBackupResult(
-                proven=False,
-                reason="Descriptor-relative backup capability is unavailable",
-            )
-        expected_module_path = self._target_module_path(module_name)
-        try:
-            guard_path_matches = (
-                expected_module_path is not None
-                and os.path.normcase(os.path.abspath(entry_guard.module_path))
-                == os.path.normcase(os.path.abspath(expected_module_path))
-            )
-        except (AttributeError, OSError, TypeError, ValueError):
-            guard_path_matches = False
-        if (
-            not isinstance(entry_guard, _ExactModuleEntryGuard)
-            or entry_guard.module_name != module_name
-            or not guard_path_matches
-        ):
-            return _ModuleBackupResult(
-                proven=False,
-                reason="An exact lexical module guard is required for backup",
-            )
-
-        modules_descriptor = None
-        backup_root_descriptor = None
-        backup_leaf_descriptor = None
-        modules_identity = None
-        modules_mount_id = None
-        backup_root_name = None
-        backup_leaf_name = None
-        files_backed_up = None
-        result = _ModuleBackupResult(
-            proven=False,
-            reason="Descriptor-relative backup could not be proven",
-        )
-        close_ok = True
-        try:
-            modules_stat = os.stat(self.modules_dir, follow_symlinks=False)
-            modules_identity = self._filesystem_entry_identity(modules_stat)
-            if (
-                modules_identity is None
-                or not stat.S_ISDIR(modules_stat.st_mode)
-                or self._stat_result_is_reparse(modules_stat)
-            ):
-                raise _FdBackupError("Modules directory identity was unsafe")
-            modules_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-            modules_flags |= getattr(os, "O_CLOEXEC", 0)
-            modules_descriptor = os.open(self.modules_dir, modules_flags)
-            held_modules_stat = os.fstat(modules_descriptor)
-            modules_mount_id = self._descriptor_mount_id(modules_descriptor)
-            if (
-                self._filesystem_entry_identity(held_modules_stat)
-                != modules_identity
-                or self._stat_result_is_reparse(held_modules_stat)
-                or modules_mount_id is None
-            ):
-                raise _FdBackupError("Modules directory binding was unproven")
-
-            source_stat = os.stat(
-                module_name,
-                dir_fd=modules_descriptor,
-                follow_symlinks=False,
-            )
-            held_source_stat = os.fstat(entry_guard.descriptor)
-            source_identity = self._filesystem_entry_identity(source_stat)
-            source_mount_id = self._descriptor_mount_id(entry_guard.descriptor)
-            if (
-                source_identity is None
-                or source_identity != entry_guard.identity
-                or self._filesystem_entry_identity(held_source_stat)
-                != entry_guard.identity
-                or not stat.S_ISDIR(source_stat.st_mode)
-                or self._stat_result_is_reparse(source_stat)
-                or self._stat_result_is_reparse(held_source_stat)
-                or source_stat.st_dev != held_modules_stat.st_dev
-                or source_mount_id != modules_mount_id
-            ):
-                raise _FdBackupError("Held module is not the exact modules child")
-
-            backup_root_name = ".integration_backups"
-            module_names = self._fd_directory_names(modules_descriptor)
-            if self._case_aliases(module_names, backup_root_name):
-                raise _FdBackupError("A case-aliased backup root exists")
-            try:
-                backup_root_stat = os.stat(
-                    backup_root_name,
-                    dir_fd=modules_descriptor,
-                    follow_symlinks=False,
-                )
-            except FileNotFoundError:
-                try:
-                    os.mkdir(
-                        backup_root_name,
-                        0o700,
-                        dir_fd=modules_descriptor,
-                    )
-                except FileExistsError:
-                    pass
-                os.fsync(modules_descriptor)
-                backup_root_stat = os.stat(
-                    backup_root_name,
-                    dir_fd=modules_descriptor,
-                    follow_symlinks=False,
-                )
-            backup_root_descriptor, _backup_root_identity = (
-                self._open_verified_directory_at(
-                    modules_descriptor,
-                    backup_root_name,
-                    backup_root_stat,
-                    expected_device=held_modules_stat.st_dev,
-                    expected_mount_id=modules_mount_id,
-                )
-            )
-            if self._case_aliases(
-                self._fd_directory_names(modules_descriptor),
-                backup_root_name,
-            ):
-                raise _FdBackupError("Backup root alias appeared during open")
-
-            backup_uuid = uuid4().hex
-            if (
-                not isinstance(backup_uuid, str)
-                or len(backup_uuid) != 32
-                or any(character not in "0123456789abcdef" for character in backup_uuid)
-            ):
-                raise _FdBackupError("Backup UUID generation was invalid")
-            backup_leaf_name = f"{module_name}_{backup_uuid}"
-            leaf_names = self._fd_directory_names(backup_root_descriptor)
-            if any(
-                name.casefold() == backup_leaf_name.casefold()
-                for name in leaf_names
-            ):
-                raise _FdBackupError("Backup UUID leaf already exists")
-            try:
-                os.mkdir(
-                    backup_leaf_name,
-                    0o700,
-                    dir_fd=backup_root_descriptor,
-                )
-            except (OSError, TypeError, ValueError) as exc:
-                raise _FdBackupError("Backup UUID leaf creation collided") from exc
-            backup_leaf_stat = os.stat(
-                backup_leaf_name,
-                dir_fd=backup_root_descriptor,
-                follow_symlinks=False,
-            )
-            backup_leaf_descriptor, _backup_leaf_identity = (
-                self._open_verified_directory_at(
-                    backup_root_descriptor,
-                    backup_leaf_name,
-                    backup_leaf_stat,
-                    expected_device=backup_root_stat.st_dev,
-                    expected_mount_id=modules_mount_id,
-                )
-            )
-            if self._case_aliases(
-                self._fd_directory_names(backup_root_descriptor),
-                backup_leaf_name,
-            ):
-                raise _FdBackupError("Backup leaf alias appeared during open")
-            os.fsync(backup_root_descriptor)
-
-            copied_manifest = {"dir:.": "directory"}
-            area_documents: Dict[str, Dict[str, Any]] = {}
-            self._fd_copy_directory_tree(
-                entry_guard.descriptor,
-                backup_leaf_descriptor,
-                relative_root=".",
-                source_device=held_source_stat.st_dev,
-                source_mount_id=source_mount_id,
-                destination_device=backup_leaf_stat.st_dev,
-                destination_mount_id=modules_mount_id,
-                manifest=copied_manifest,
-                area_documents=area_documents,
-            )
-            source_manifest = {"dir:.": "directory"}
-            self._fd_directory_manifest(
-                entry_guard.descriptor,
-                relative_root=".",
-                expected_device=held_source_stat.st_dev,
-                expected_mount_id=source_mount_id,
-                manifest=source_manifest,
-            )
-            destination_manifest = {"dir:.": "directory"}
-            self._fd_directory_manifest(
-                backup_leaf_descriptor,
-                relative_root=".",
-                expected_device=backup_leaf_stat.st_dev,
-                expected_mount_id=modules_mount_id,
-                manifest=destination_manifest,
-            )
-            if (
-                copied_manifest != source_manifest
-                or copied_manifest != destination_manifest
-            ):
-                raise _FdBackupError("Descriptor manifests did not match")
-            files_backed_up = sum(
-                key.startswith("file:") for key in copied_manifest
-            )
-            if files_backed_up <= 0:
-                raise _FdBackupError("Backup contained no regular files")
-
-            entry_valid, _entry_reason = (
-                self._revalidate_exact_module_entry_guard(entry_guard)
-            )
-            if not entry_valid:
-                raise _FdBackupError("Source binding changed before proof")
-            os.fsync(backup_leaf_descriptor)
-            os.fsync(backup_root_descriptor)
-            os.fsync(modules_descriptor)
-            result = _ModuleBackupResult(
-                proven=True,
-                manifest=copied_manifest,
-                area_documents=area_documents,
-            )
-        except _FdBackupError as exc:
-            result = _ModuleBackupResult(
-                proven=False,
-                reason=str(exc),
-            )
-        except (OSError, TypeError, ValueError):
-            result = _ModuleBackupResult(
-                proven=False,
-                reason="Descriptor-relative backup raised before proof",
-            )
-        finally:
-            if backup_leaf_descriptor is not None:
-                descriptor_to_close = backup_leaf_descriptor
-                backup_leaf_descriptor = None
-                close_ok = self._close_backup_descriptor(descriptor_to_close)
-            if backup_root_descriptor is not None:
-                descriptor_to_close = backup_root_descriptor
-                backup_root_descriptor = None
-                close_ok = (
-                    self._close_backup_descriptor(descriptor_to_close)
-                    and close_ok
-                )
-            if modules_descriptor is not None:
-                descriptor_to_close = modules_descriptor
-                modules_descriptor = None
-                close_ok = (
-                    self._close_backup_descriptor(descriptor_to_close)
-                    and close_ok
-                )
-            if not close_ok:
-                result = _ModuleBackupResult(
-                    proven=False,
-                    reason="Backup descriptor close was unproven",
-                )
-        if result.proven is True and files_backed_up is not None:
-            print(
-                f"    - Backed up {files_backed_up} files "
-                "(descriptor-relative snapshot receipt; no path authority)"
-            )
-        return result
 
     def _manifest_exact_module_guard(
         self,
@@ -3042,8 +2497,8 @@ Create atmospheric travel narration that leads into this adventure."""
 
         Once the held identity no longer owns the lexical path, path-based
         module rollback cannot prove it is operating on the original tree. The
-        backup is retained and the result stays indeterminate for manual or
-        later journal-backed recovery.
+        result stays indeterminate for manual or later journal-backed
+        recovery.
         """
         if registry_attempted:
             registry_ok, registry_reason = self._restore_registry_snapshot(
@@ -3081,7 +2536,7 @@ Create atmospheric travel narration that leads into this adventure."""
             prior_registry
         )
         if not registry_ok:
-            # Candidate module + backup are intentionally retained. Rolling the
+            # The candidate module is intentionally left in place. Rolling the
             # module back while registry state is unknown could make a registry
             # that actually committed point at deleted or incompatible files.
             return TargetedPublicationResult(
@@ -3309,11 +2764,9 @@ Create atmospheric travel narration that leads into this adventure."""
         if not module_data or not module_data.get("areas"):
             raise ValueError("Managed candidate could not be analyzed")
 
-        captured_areas = self._capture_area_documents_from_path(candidate_text)
         normalized = self._resolve_id_conflicts(
             module_name,
             module_data,
-            _ModuleBackupResult(True, area_documents=captured_areas),
             registry_snapshot=conflict_registry,
             module_path=candidate_text,
         )
@@ -3626,13 +3079,18 @@ Create atmospheric travel narration that leads into this adventure."""
                 registry_restoration_proven=True,
             )
 
-        conflict_state, conflict_reason, conflicting_modules = (
-            self._detect_legacy_publication_conflicts(
-                module_name,
-                module_path,
-                prior_registry,
+        files_refused = ""
+        try:
+            conflict_state, conflict_reason, conflicting_modules = (
+                self._detect_legacy_publication_conflicts(
+                    module_name,
+                    module_path,
+                    prior_registry,
+                )
             )
-        )
+        except _ModuleFilesRefused as exc:
+            conflict_state, conflict_reason, conflicting_modules = None, "", ()
+            files_refused = str(exc) or "Module reset masters could not be read"
         entry_valid, entry_reason = self._revalidate_publication_entry(
             module_name,
             module_path,
@@ -3645,6 +3103,17 @@ Create atmospheric travel narration that leads into this adventure."""
                 module_name,
                 "Exact module identity changed during conflict inspection: "
                 f"{entry_reason}",
+            )
+        if files_refused:
+            # Nothing has been written yet: the module's own files failed a
+            # check, so it is reported as not joined (issue #609).
+            return TargetedPublicationResult(
+                PublicationStatus.NOT_PUBLISHED,
+                module_name,
+                files_refused,
+                registry_absence_proven=True,
+                registry_restoration_proven=True,
+                module_restoration_proven=True,
             )
         if conflict_state is None:
             return TargetedPublicationResult(
@@ -3663,12 +3132,25 @@ Create atmospheric travel narration that leads into this adventure."""
                 conflicting_modules=conflicting_modules,
             )
 
-        backup_result = _coerce_module_backup_result(
-            self._create_module_backup(
-                module_name,
-                entry_guard=entry_guard,
+        # The receipt is one manifest of the held tree. This path never writes
+        # module files, so the failure proofs need only these hashes to tell
+        # NOT_PUBLISHED from INDETERMINATE; no copy is kept (issue #565).
+        receipt_manifest = self._manifest_exact_module_guard(entry_guard)
+        if not isinstance(receipt_manifest, dict):
+            backup_result = _ModuleBackupResult(
+                proven=False,
+                reason="Module manifest could not be proven",
             )
-        )
+        elif not any(key.startswith("file:") for key in receipt_manifest):
+            backup_result = _ModuleBackupResult(
+                proven=False,
+                reason="Backup contained no regular files",
+            )
+        else:
+            backup_result = _ModuleBackupResult(
+                proven=True,
+                manifest=receipt_manifest,
+            )
         backup_dir = backup_result
         entry_valid, entry_reason = self._revalidate_publication_entry(
             module_name,
@@ -3688,7 +3170,6 @@ Create atmospheric travel narration that leads into this adventure."""
         if (
             backup_result.proven is not True
             or not isinstance(backup_result.manifest, dict)
-            or not isinstance(backup_result.area_documents, dict)
         ):
             backup_reason = backup_result.reason or (
                 "A complete descriptor-bound snapshot receipt could not be created"
@@ -3728,111 +3209,7 @@ Create atmospheric travel narration that leads into this adventure."""
                     entry_guard=entry_guard,
                 )
 
-            # The conflict helpers may mutate area files. They read a detached
-            # snapshot so self.world_registry remains unchanged until commit.
-            entry_valid, entry_reason = self._revalidate_publication_entry(
-                module_name,
-                module_path,
-                entry_state,
-                entry_guard,
-            )
-            if not entry_valid:
-                return self._finish_entry_identity_failure(
-                    module_name,
-                    backup_dir,
-                    prior_registry,
-                    (
-                        "Exact module identity changed before mutation: "
-                        f"{entry_reason}"
-                    ),
-                    registry_attempted=False,
-                )
-            conflicts_resolved = self._resolve_id_conflicts(
-                module_name,
-                module_data,
-                backup_dir,
-                registry_snapshot=prior_registry,
-            )
-            entry_valid, entry_reason = self._revalidate_publication_entry(
-                module_name,
-                module_path,
-                entry_state,
-                entry_guard,
-            )
-            if not entry_valid:
-                return self._finish_entry_identity_failure(
-                    module_name,
-                    backup_dir,
-                    prior_registry,
-                    (
-                        "Exact module identity changed during mutation: "
-                        f"{entry_reason}"
-                    ),
-                    registry_attempted=False,
-                )
-            if conflicts_resolved:
-                print(f"  - Resolved {conflicts_resolved} ID conflicts")
-                bu_updated = self._update_bu_files_after_conflict_resolution(
-                    module_name
-                )
-                entry_valid, entry_reason = self._revalidate_publication_entry(
-                    module_name,
-                    module_path,
-                    entry_state,
-                    entry_guard,
-                )
-                if not entry_valid:
-                    return self._finish_entry_identity_failure(
-                        module_name,
-                        backup_dir,
-                        prior_registry,
-                        (
-                            "Exact module identity changed while updating "
-                            f"backup files: {entry_reason}"
-                        ),
-                        registry_attempted=False,
-                    )
-                if bu_updated:
-                    print(
-                        f"  - Updated {bu_updated} BU files with corrected location IDs"
-                    )
-                module_data = self.analyze_module(
-                    module_name, include_travel_narration=False
-                )
-                if not module_data or not module_data.get("areas"):
-                    return self._finish_prewrite_failure(
-                        module_name,
-                        backup_dir,
-                        prior_registry,
-                        "Module re-analysis failed after conflict resolution",
-                        entry_guard=entry_guard,
-                    )
-
-            valid, validation_reason = self._validate_required_publication_files(
-                module_path
-            )
-            if not valid:
-                return self._finish_prewrite_failure(
-                    module_name,
-                    backup_dir,
-                    prior_registry,
-                    validation_reason,
-                    entry_guard=entry_guard,
-                )
-
             area_ids = set(module_data.get("areas", {}))
-            unresolved_collisions = area_ids.intersection(
-                prior_registry.get("areas", {})
-            )
-            if unresolved_collisions:
-                return self._finish_prewrite_failure(
-                    module_name,
-                    backup_dir,
-                    prior_registry,
-                    "Unresolved area ID collisions: "
-                    + ", ".join(sorted(unresolved_collisions)),
-                    entry_guard=entry_guard,
-                )
 
             module_data["travelNarration"] = self._generate_travel_narration(
                 module_data
@@ -4051,9 +3428,9 @@ Create atmospheric travel narration that leads into this adventure."""
         self,
         module_name: str,
         module_data: Dict[str, Any],
-        backup_result: _ModuleBackupResult,
         registry_snapshot: Optional[Dict[str, Any]] = None,
-        module_path: Optional[str] = None,
+        *,
+        module_path: str,
     ) -> int:
         """Resolve area ID and location ID conflicts by modifying the new module"""
         try:
@@ -4066,9 +3443,6 @@ Create atmospheric travel narration that leads into this adventure."""
             # Conflict discovery needs a working copy. Mutating the live
             # registry here would violate the publication commit boundary.
             existing_areas = deepcopy(registry.get('areas', {}))
-            module_path = module_path or os.path.join(
-                self.modules_dir, module_name
-            )
             original_area_documents = self._capture_area_documents_from_path(
                 module_path
             )
@@ -4146,10 +3520,6 @@ Create atmospheric travel narration that leads into this adventure."""
                 module_path,
                 current_area_documents,
                 registry_snapshot=registry,
-                fail_closed=(
-                    os.path.abspath(module_path)
-                    != os.path.abspath(os.path.join(self.modules_dir, module_name))
-                ),
             )
             conflicts_resolved += location_conflicts
 
@@ -4344,9 +3714,8 @@ Create atmospheric travel narration that leads into this adventure."""
         self,
         module_name: str,
         module_path: str,
-        backup_area_documents: Dict[str, Dict[str, Any]],
+        pre_reprefix_area_documents: Dict[str, Dict[str, Any]],
         registry_snapshot: Optional[Dict[str, Any]] = None,
-        fail_closed: bool = False,
     ) -> int:
         """
         Ensures all location IDs in a new module are globally unique.
@@ -4355,7 +3724,8 @@ Create atmospheric travel narration that leads into this adventure."""
         Args:
             module_name: Name of the module being integrated
             module_path: Path to the module directory
-            backup_area_documents: Identity-bound original area JSON snapshots
+            pre_reprefix_area_documents: Area JSON documents read from the
+                candidate after area renames and before the location re-prefix
         """
         print(f"DEBUG: [Module Stitcher] Validating global uniqueness of location IDs for {module_name}...")
 
@@ -4474,13 +3844,8 @@ Create atmospheric travel narration that leads into this adventure."""
         # After re-prefixing, we need to update all references to the old IDs
         self._update_all_location_references(
             module_name,
-            backup_area_documents,
+            pre_reprefix_area_documents,
             module_path=module_path,
-            update_party_tracker=(
-                os.path.abspath(module_path)
-                == os.path.abspath(os.path.join(self.modules_dir, module_name))
-            ),
-            fail_closed=fail_closed,
         )
 
         return conflicts_resolved
@@ -4524,123 +3889,83 @@ Create atmospheric travel narration that leads into this adventure."""
     def _update_all_location_references(
         self,
         module_name: str,
-        backup_area_documents: Dict[str, Dict[str, Any]],
+        pre_reprefix_area_documents: Dict[str, Dict[str, Any]],
         *,
-        module_path: Optional[str] = None,
-        update_party_tracker: bool = True,
-        fail_closed: bool = False,
+        module_path: str,
     ) -> None:
         """
         Update all internal references to location IDs after re-prefixing using a safe, recursive JSON traversal.
         This function avoids blind text replacement to prevent corrupting external references like 'areaConnectivityId'.
+        Runs only on a publication candidate tree; any failure raises.
         """
-        try:
-            module_path = module_path or os.path.join(
-                self.modules_dir, module_name
+        id_mapping = {}
+
+        # Build ID mapping from the area documents read from the candidate
+        # before the location re-prefix.
+        if not pre_reprefix_area_documents:
+            raise ValueError(
+                "No original area documents are available for ID rewrite"
             )
-            id_mapping = {}
 
-            # Build ID mapping from the immutable area documents captured by
-            # the descriptor-relative backup before any mutation.
-            if not backup_area_documents:
-                if fail_closed:
-                    raise ValueError(
-                        "No original area documents are available for ID rewrite"
-                    )
-                print(f"DEBUG: [Module Stitcher] WARNING: No proven backup area data found for {module_name}, cannot build ID mapping for reference updates.")
-                return
+        current_areas_path = os.path.join(module_path, "areas")
 
-            current_areas_path = os.path.join(module_path, "areas")
+        # Compare captured original data with current re-prefixed files.
+        for filename, backup_data in sorted(pre_reprefix_area_documents.items()):
+            if filename.endswith('.json') and not filename.endswith('_BU.json'):
+                # The filename in the current dir should be the same
+                current_file = os.path.join(current_areas_path, filename)
 
-            # Compare captured original data with current re-prefixed files.
-            for filename, backup_data in sorted(backup_area_documents.items()):
-                if filename.endswith('.json') and not filename.endswith('_BU.json'):
-                    # The filename in the current dir should be the same
-                    current_file = os.path.join(current_areas_path, filename)
+                if os.path.exists(current_file):
+                    current_data = safe_json_load(current_file)
 
-                    if os.path.exists(current_file):
-                        current_data = safe_json_load(current_file)
-
-                        if backup_data and current_data:
-                            # INT-H3: map old->new locationId POSITIONALLY, not by
-                            # location name. update_area_with_prefix re-prefixes IDs
-                            # in place, preserving the locations array's order and
-                            # count, so backup[i] corresponds to current[i]. Two
-                            # locations can share a name (e.g. 'Corridor'); keying
-                            # the mapping by name silently drops one of them and
-                            # leaves its cross-file references pointing at the old ID.
-                            backup_locs = backup_data.get('locations', [])
-                            current_locs = current_data.get('locations', [])
-                            for b_loc, c_loc in zip(backup_locs, current_locs):
-                                if not isinstance(b_loc, dict) or not isinstance(c_loc, dict):
-                                    continue
-                                old_id = b_loc.get('locationId')
-                                new_id = c_loc.get('locationId')
-                                if old_id and new_id and old_id != new_id:
-                                    id_mapping[old_id] = new_id
-            
-            if not id_mapping:
-                print(f"DEBUG: [Module Stitcher] No location ID changes detected for {module_name}. Skipping reference update.")
-                return
-            
-            print(f"DEBUG: [Module Stitcher] Built ID mapping with {len(id_mapping)} entries for {module_name}. Applying updates...")
-
-            # Walk through all JSON files in the module and apply the mapping safely
-            for root, _, files in os.walk(module_path):
-                for filename in files:
-                    if filename.endswith('.json') and not filename.endswith('.bak') and not filename.endswith('_BU.json'):
-                        file_path = os.path.join(root, filename)
-                        try:
-                            data = safe_json_load(file_path)
-                            if not data:
+                    if backup_data and current_data:
+                        # INT-H3: map old->new locationId POSITIONALLY, not by
+                        # location name. update_area_with_prefix re-prefixes IDs
+                        # in place, preserving the locations array's order and
+                        # count, so backup[i] corresponds to current[i]. Two
+                        # locations can share a name (e.g. 'Corridor'); keying
+                        # the mapping by name silently drops one of them and
+                        # leaves its cross-file references pointing at the old ID.
+                        backup_locs = backup_data.get('locations', [])
+                        current_locs = current_data.get('locations', [])
+                        for b_loc, c_loc in zip(backup_locs, current_locs):
+                            if not isinstance(b_loc, dict) or not isinstance(c_loc, dict):
                                 continue
-                            
-                            # Apply the recursive update (id_mapping only contains current module IDs, so external links are safe)
-                            updated_data = self._recursively_update_ids_in_json(data, id_mapping)
-                            
-                            # Check if any changes were made before writing
-                            if data != updated_data:
-                                if safe_write_json(file_path, updated_data) is not True:
-                                    raise OSError(
-                                        f"Could not persist ID references: {file_path}"
-                                    )
-                                if safe_json_load(file_path) != updated_data:
-                                    raise OSError(
-                                        f"ID reference readback differs: {file_path}"
-                                    )
-                                print(f"DEBUG: [Module Stitcher] Updated location ID references in {os.path.relpath(file_path, module_path)}")
-                        
-                        except Exception as e:
-                            if fail_closed:
-                                raise
-                            print(f"DEBUG: [Module Stitcher] WARNING: Could not process {file_path} for ID updates: {e}")
+                            old_id = b_loc.get('locationId')
+                            new_id = c_loc.get('locationId')
+                            if old_id and new_id and old_id != new_id:
+                                id_mapping[old_id] = new_id
 
-            # CRITICAL: Update party_tracker.json if this module is currently active
-            party_tracker_path = self.party_tracker_file
-            if update_party_tracker and os.path.exists(party_tracker_path):
-                try:
-                    party_tracker = safe_json_load(party_tracker_path)
-                    if party_tracker:
-                        active_module = party_tracker.get('module', '').replace(' ', '_')
+        if not id_mapping:
+            print(f"DEBUG: [Module Stitcher] No location ID changes detected for {module_name}. Skipping reference update.")
+            return
 
-                        if active_module == module_name:
-                            world_conditions = party_tracker.get('worldConditions', {})
-                            current_location_id = world_conditions.get('currentLocationId')
+        print(f"DEBUG: [Module Stitcher] Built ID mapping with {len(id_mapping)} entries for {module_name}. Applying updates...")
 
-                            if current_location_id and current_location_id in id_mapping:
-                                new_location_id = id_mapping[current_location_id]
-                                world_conditions['currentLocationId'] = new_location_id
-                                party_tracker['worldConditions'] = world_conditions
-                                safe_write_json(party_tracker_path, party_tracker)
-                                print(f"DEBUG: [Module Stitcher] Updated party_tracker.json: {current_location_id} -> {new_location_id}")
-                except Exception as tracker_error:
-                    print(f"DEBUG: [Module Stitcher] WARNING: Could not update party_tracker.json: {tracker_error}")
+        # Walk through all JSON files in the module and apply the mapping safely
+        for root, _, files in os.walk(module_path):
+            for filename in files:
+                if filename.endswith('.json') and not filename.endswith('.bak') and not filename.endswith('_BU.json'):
+                    file_path = os.path.join(root, filename)
+                    data = safe_json_load(file_path)
+                    if not data:
+                        continue
 
-        except Exception as e:
-            if fail_closed:
-                raise
-            print(f"DEBUG: [Module Stitcher] ERROR: Failed to update location references for {module_name}: {e}")
-    
+                    # Apply the recursive update (id_mapping only contains current module IDs, so external links are safe)
+                    updated_data = self._recursively_update_ids_in_json(data, id_mapping)
+
+                    # Check if any changes were made before writing
+                    if data != updated_data:
+                        if safe_write_json(file_path, updated_data) is not True:
+                            raise OSError(
+                                f"Could not persist ID references: {file_path}"
+                            )
+                        if safe_json_load(file_path) != updated_data:
+                            raise OSError(
+                                f"ID reference readback differs: {file_path}"
+                            )
+                        print(f"DEBUG: [Module Stitcher] Updated location ID references in {os.path.relpath(file_path, module_path)}")
+
     def _validate_module_safety(
         self,
         module_name: str,
@@ -5470,16 +4795,13 @@ Respond with JSON:
         self,
         module_name: str,
         *,
-        module_path: Optional[str] = None,
+        module_path: str,
     ) -> int:
         """
         Update BU (backup) files with corrected location IDs after conflict resolution.
         This ensures BU files match the corrected files for all JSON files that have BU versions.
         """
         try:
-            module_path = module_path or os.path.join(
-                self.modules_dir, module_name
-            )
             updated_count = 0
             
             # Walk through all directories in the module

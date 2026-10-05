@@ -128,6 +128,8 @@ This does not add a provider call, change the request mode, or own a new scope.
 | Module completion | Archive, T038 summary, T039 export or conservative fallback | Campaign pending marker governs the multi-file commit |
 | Restart identity | Same-ID completion receipt, work marker, pending marker, and lifecycle epoch | Recovery resumes or rolls back the same operation |
 
+Startup integration publishes a dropped-in or stubbed module registry-only through the stitcher's legacy publication. An id conflict, including one in a paired `_BU.json` master, routes an unplayed module to the managed import (copy, atomic swap); a played one is refused unchanged. A manifest of the held tree, taken before validation, decides NOT_PUBLISHED versus INDETERMINATE after a later failure.
+
 ## Flow
 
 1. `createNewModule` validates its action and takes the module-refresh lock.
@@ -169,7 +171,7 @@ This does not add a provider call, change the request mode, or own a new scope.
 4. `core/generators/module_builder.py:2902-3028` - explicit/T030 spec authority and branch selection.
 5. `core/generators/module_builder.py:2006-2105` - final context, T088, and validation.
 6. `core/generators/module_builder.py:2496-2560` - code-owned cross-area links.
-7. `core/generators/module_stitcher.py:3118-3278` - hidden-candidate safety and registry bytes.
+7. `core/generators/module_stitcher.py:2668-2836` (`build_publication_registry_bytes`) - hidden-candidate safety and registry bytes.
 8. `utils/module_publish.py:283-392` - hidden workspace and atomic directory publication.
 9. `core/managers/campaign_manager.py:1776-1908` - intent-before-transition publication.
 10. `core/managers/campaign_manager.py:2038-2405` - prepared/ready intent lifecycle and ordered drain.
