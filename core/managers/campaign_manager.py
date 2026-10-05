@@ -3825,6 +3825,7 @@ The chronicle should feel like a tale told by firelight years later—when inhib
 
 **Critical Instruction: Enrich and Extrapolate**
 While you must remain true to the events that occurred, you have the creative freedom—nay, the sacred duty—to flesh out the intimate details that make characters real. If the conversation history doesn't explicitly state someone's nickname, but their personality suggests one, include it. If their actions imply a quirk, phobia, or desire, weave it into the narrative. Did the rogue who always scouts ahead perhaps have a fear of being trapped? Did the cleric who heals everyone hide their own pain behind gentle smiles? Did the tension between two characters suggest an attraction neither would admit?
+This freedom never extends to events: never add a meeting, conversation, fight, reward, discovery or outcome that the conversation or the plot statuses do not record.
 
 Fill in these human details with the same care a novelist would. The conversation history provides the skeleton of events—you must add the flesh, blood, and beating heart. Every hero has quirks, every companion has pet names, every relationship has inside jokes. Find them. Create them. Make them real. 
 
@@ -3881,15 +3882,17 @@ FORMATTING RULES: Use only standard ASCII characters -- no smart quotes, no em-d
         
         conversation_data = f"Complete Conversation History: {json.dumps(filtered_conversation, indent=2)}"
         
-        user_prompt = f"""Please generate a complete narrative summary of this adventure arc using the location summaries and plot file provided below:
+        user_prompt = f"""Please write the chronicle of what the party actually played in this adventure arc, from the conversation and the plot statuses provided below:
 
 STRUCTURED PLOT DATA:
+These plot points are the module's authored plan, not a record of play. A point records something that happened only through a status other than "not started" and its plotImpact; a "not started" point did not happen, and a description tells what the module offers, not what the party did.
 {plot_summary}
 
 PARTY STATUS:
 Party NPCs: {json.dumps(party_npcs, indent=2)}
 
 CONVERSATION CONTEXT:
+This conversation is the only record of play. If it holds little or no play, say the visit was brief and invent no meeting, conversation, fight, reward or outcome.
 {conversation_data}
 
 Focus on story outcomes, character development, and decisions that will matter in future adventures."""
