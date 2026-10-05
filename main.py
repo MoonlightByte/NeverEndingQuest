@@ -4958,29 +4958,89 @@ def _module_joined_line(imported):
     )
 
 
-def _module_join_refusal_line(refusal):
-    """Plain player line for a module left unjoined by colliding ids."""
-    def label(name):
-        return str(name).replace("_", " ")
+def _module_label(name):
+    return str(name).replace("_", " ")
 
-    others = [label(name) for name in refusal.get("collides_with") or []]
+
+def _module_colliders(refusal):
+    others = [_module_label(name) for name in refusal.get("collides_with") or []]
+    return " and ".join(others) or "another installed module"
+
+
+# Import refusals that mean the module was played here, or that could not be
+# told apart from played (an unreadable record counts as played).
+_MODULE_MAY_BE_PLAYED = ("tracker", "live_state", "archive", "saved_games")
+
+
+def _module_unchecked_line(refusal, collision):
+    """Plain player line for a module whose safety check gave no verdict."""
+    collides = ""
+    if collision:
+        collides = "some of its location ids are already used by %s, and " % (
+            _module_colliders(refusal),
+        )
+    return (
+        "%s is installed, but %sits checks could not be finished, so it is not "
+        "joined to this world yet. It will be tried again the next time the "
+        "game starts. You can keep playing; nothing was changed."
+        % (_module_label(refusal.get("module")), collides)
+    )
+
+
+def _module_join_refusal_line(refusal):
+    """Plain player line for a module left unjoined by colliding ids.
+
+    Chosen by the import's typed ``refused_because`` token, never by reason
+    text (issue #613).
+    """
+    module = _module_label(refusal.get("module"))
+    refused_because = refusal.get("refused_because")
+    if refused_because == "check_unavailable":
+        return _module_unchecked_line(refusal, True)
+    if refused_because == "import_failed":
+        return (
+            "%s is installed, but some of its location ids are already used by "
+            "%s, and joining it did not work, so it is not joined to this world "
+            "yet. It will be tried again the next time the game starts. You can "
+            "keep playing; nothing was changed."
+            % (module, _module_colliders(refusal))
+        )
+    if refused_because in _MODULE_MAY_BE_PLAYED:
+        return (
+            "%s is installed, but some of its location ids are already used by "
+            "%s, and it may already have been played in this world, so it is "
+            "left as it is and not joined. You can keep playing; nothing was "
+            "changed."
+            % (module, _module_colliders(refusal))
+        )
     return (
         "%s is installed, but some of its location ids are already used by "
         "%s, so it cannot be joined to this world yet. You can keep playing; "
         "nothing was changed."
-        % (
-            label(refusal.get("module")),
-            " and ".join(others) or "another installed module",
-        )
+        % (module, _module_colliders(refusal))
     )
 
 
 def _module_not_joined_line(refusal):
-    """Plain player line for an installed module publication refused."""
+    """Plain player line for an installed module publication refused.
+
+    Chosen by the publication result's typed ``cause``, never by reason text
+    (issue #613).
+    """
+    cause = refusal.get("cause")
+    if cause == "check_refused":
+        return (
+            "%s is installed, but its files did not pass the checks, so it cannot "
+            "be joined to this world yet. You can keep playing; nothing was changed."
+            % _module_label(refusal.get("module"))
+        )
+    if cause == "check_unavailable":
+        return _module_unchecked_line(refusal, False)
     return (
-        "%s is installed, but its files did not pass the checks, so it cannot "
-        "be joined to this world yet. You can keep playing; nothing was changed."
-        % str(refusal.get("module")).replace("_", " ")
+        "%s is installed, but it could not be joined to this world yet. It will "
+        "be tried again the next time the game starts. You can keep playing; "
+        "nothing was changed."
+        % _module_label(refusal.get("module"))
     )
 
 
@@ -8959,8 +9019,9 @@ def _main_game_loop(startup_authority, turn_authority):
         # Integrate module directories the registry does not hold yet (a
         # bare reconcile stub, or a module dropped into modules/). The
         # party's module goes first; a module whose ids collide with a joined
-        # one, or whose files publication refuses, stays installed and
-        # unjoined, and the player is told so.
+        # one, or that publication refuses, stays installed and unjoined, and
+        # the player is told why: the line is chosen from the typed cause or
+        # refused_because, never from reason text (issue #613).
         try:
             refresh_result = CampaignManager().refresh_modules(
                 priority_module=str(party_tracker_data.get("module") or "").replace(" ", "_") or None
