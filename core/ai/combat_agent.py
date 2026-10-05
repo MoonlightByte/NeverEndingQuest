@@ -445,6 +445,14 @@ keeping validatedIntents exactly as given and changing only the rejected
 actor's targetId or action. Never redirect earlier actors onto the legal
 target: that moves the same damage onto it and repeats the rejection.
 
+Action names are typed facts. action='dodge' is the Dodge action for any
+actor, the player included (mode='adjudicated', no targets, no effects): code
+marks the actor and attack rolls against it have disadvantage until the start
+of its next turn, so declare no effect for it. dash, disengage, hide and help
+are their own action names too. defend means only that the actor holds its
+position or cannot act; it has no mechanical effect. A `dodging` record on a
+creatures entry is set and cleared by code; never declare or remove it.
+
 The PLAYER actor must always use mode='adjudicated'; never roll automatically
 for the player. Apply only rolls/results explicitly supplied in playerInput,
 or set requiresPlayerInput={kind:'roll'|'choice', prompt:'...', die:'d20',

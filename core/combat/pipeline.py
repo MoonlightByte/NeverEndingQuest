@@ -16,9 +16,11 @@ from core.combat.resolver import (
     apply_encounter_effect_ticks,
     apply_effect_ticks,
     apply_resolution,
+    end_dodge,
     plan_effect_ticks,
     resolve_adjudicated,
     resolve_intent,
+    stage_dodge,
     validate_intent,
 )
 from core.managers.combat_state import (
@@ -295,6 +297,7 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                         }
                     ],
                 }
+                end_dodge(skipped_event, actor)
                 skipped_problems = validate_event(skipped_event)
                 if skipped_problems:
                     raise CombatIntentError(
@@ -398,6 +401,11 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             # the narrator and the log can state them.
             if isinstance(draw, dict) and draw.get("actorId") == actor_id:
                 resolution["event"].setdefault("rechargeRolls", []).append(deepcopy(draw))
+        # Item 2: the actor's own turn ends its earlier Dodge; the typed
+        # dodge action (either mode) starts a new one. defend stays empty.
+        end_dodge(resolution["event"], actor, resolution)
+        if intent.get("action") == "dodge":
+            stage_dodge(next_encounter, resolution)
 
         if controller == "human" and resolution.get("chargeRefusals"):
             # H3b: the player chose to use an item that cannot pay for it.
