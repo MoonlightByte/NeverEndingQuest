@@ -84,6 +84,7 @@ from core.managers.status_manager import (
 from utils.location_path_finder import LocationGraph
 from core.ai.conversation_utils import handle_module_conversation_segmentation
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from core.nql.journal import entry_id as journal_entry_id
 
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -419,6 +420,8 @@ def _new_current_transition_checkpoint(
         "time": world.get("time", "N/A"),
         "location": sanitize_text(origin_location_name),
         "summary": None,
+        # J2: the prose is keyed by the engine's departure entry id.
+        "id": journal_entry_id(str(module_name), operation_id, "departure"),
     }
     path_manager = ModulePathManager(str(module_name))
     action_records = []
@@ -1739,7 +1742,13 @@ def apply_current_transition_action(operation_id, action_index):
         from core.nql import game_clock
 
         game_clock.apply_staged(
-            receipt, "travel:%s:time" % record["operation_id"]
+            receipt,
+            "travel:%s:time" % record["operation_id"],
+            arrival=journal_entry_id(
+                str(checkpoint.get("module_name") or ""),
+                str(checkpoint.get("operation_id") or ""),
+                "arrival",
+            ),
         )
         record["status"] = "committed"
         deferred["cursor"] = action_index + 1

@@ -20,6 +20,9 @@
             },
             "summary": {
               "type": "string"
+            },
+            "id": {
+              "type": "string"
             }
           },
           "required": ["date", "time", "location", "summary"]
