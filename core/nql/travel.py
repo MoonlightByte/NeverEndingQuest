@@ -62,6 +62,11 @@ declared only in the switch's own requests:
   party, as in-module, and records nothing. The engine never refuses the
   switch itself.
 
+J2, the journal (core/nql/journal.py): the request that moves the party
+for a transition records its ``departure`` at the origin, before the first
+``travel party to`` (the trip, the walk's first part, or the fallback
+move). A journal fault never stops the move.
+
 Never a gate on play: an engine that is unavailable or refuses leaves the
 tracker as it is, with a warning, and the next call aligns again. With the
 engine unavailable, the route check stays NEQ's own (snapshot route and
@@ -182,10 +187,11 @@ def _stops(checkpoint: Optional[Dict[str, Any]], here: Optional[str],
 
 
 def _walk(root: str, cp: str, stops: List[str], members: List[str], live: Dict[str, Any],
-          done: set, here: str) -> str:
+          done: set, here: str, departure: Optional[Tuple[str, Optional[str]]] = None,
+          arrival: Optional[Tuple[str, Optional[str]]] = None) -> str:
     """Send the chain: "walked", "on record" (a resume), "unavailable" or
-    "refused"."""
-    from core.nql import occupants
+    "refused". The departure goes in the first part (J2)."""
+    from core.nql import journal
     n = len(members)
     # Fixed by party size only, so a resume splits the same way.
     per = max(1, (UNITS - 4 * n - 8) // (n + 2))
@@ -202,8 +208,15 @@ def _walk(root: str, cp: str, stops: List[str], members: List[str], live: Dict[s
             actions += _membership(live, members)
             membership_sent = True
         actions += _moves(live, members, stops[start], here)
-        actions += ["travel party to %s;" % travel_map.q(p) for p in hops[start:start + per]]
-        response = occupants.request("\n".join(actions), rid, root=root, actor=members[0], align=False)
+        lines = [(a, None) for a in actions]
+        if k == 0 and departure:
+            lines.append(departure)
+        lines += [("travel party to %s;" % travel_map.q(p), None) for p in hops[start:start + per]]
+        if start + per >= len(hops) and arrival:
+            lines.append(arrival)
+        response, how = journal.send(lines, rid, root=root, actor=members[0])
+        if how == "on record":
+            continue
         if response is None:
             return "unavailable"
         if not response.get("ok"):
@@ -217,18 +230,25 @@ def _walk(root: str, cp: str, stops: List[str], members: List[str], live: Dict[s
     return "walked" if sent else "on record"
 
 
-def _align(root: str, rid: str, live: Dict[str, Any], tracker: Dict[str, Any], why: str) -> str:
-    """Send the align actions under rid: "aligned", "moved", "unavailable" or "refused"."""
-    from core.nql import occupants
+def _align(root: str, rid: str, live: Dict[str, Any], tracker: Dict[str, Any], why: str,
+           departure: Optional[Tuple[str, Optional[str]]] = None,
+           arrival: Optional[Tuple[str, Optional[str]]] = None) -> str:
+    """Send the align actions under rid: "aligned", "moved", "unavailable" or
+    "refused". A transition's fallback move carries its departure, before
+    the move (J2)."""
+    from core.nql import journal
     from utils.roster_conversion import ACTOR
     here = travel_map.tracker_place(tracker)
     if here and here not in set(live.get("places") or []):
         warning("TRAVEL: the party's place %s is not declared; its position is not aligned" % here,
                 category="location_transitions")
     actions = align_actions(live, tracker)
-    if not actions:
+    lines = ([departure] if departure else []) + [(a, None) for a in actions] + ([arrival] if arrival else [])
+    if not lines:
         return "aligned"
-    response = occupants.request("\n".join(actions), rid, root=root, actor=ACTOR, align=False)
+    response, how = journal.send(lines, rid, root=root, actor=ACTOR)
+    if how == "on record" or (response is None and how == "without"):
+        return "aligned"
     if response is None:
         return "unavailable"
     if not response.get("ok"):
@@ -236,6 +256,8 @@ def _align(root: str, rid: str, live: Dict[str, Any], tracker: Dict[str, Any], w
         warning("TRAVEL: aligning the party (%s) was refused: %s" % (
             rid, fault.get("message") or response.get("error")), category="location_transitions")
         return "refused"
+    if not actions:
+        return "aligned"
     info("TRAVEL: the engine party follows the tracker (%s, %s): %s" % (why, rid, " ".join(actions)),
          category="location_transitions")
     return "moved"
@@ -407,6 +429,18 @@ def _ends(checkpoint: Dict[str, Any]) -> Tuple[str, str]:
             "loc:%s/%s" % (target_module, checkpoint.get("destination_location_id")))
 
 
+def _journal(checkpoint: Optional[Dict[str, Any]], live: Dict[str, Any],
+             here: Optional[str]) -> Tuple[Optional[Tuple[str, Optional[str]]], Optional[Tuple[str, Optional[str]]]]:
+    """J2: the transition's departure line (at its origin), and its arrival
+    line (none yet). (None, None) without a checkpoint."""
+    from core.nql import journal
+    cp = str((checkpoint or {}).get("operation_id") or "")
+    if not cp:
+        return None, None
+    module = str(checkpoint.get("module_name") or "")
+    return journal.line(journal.entry_id(module, cp, "departure"), "departure", _ends(checkpoint)[0], live), None
+
+
 def _joins(checkpoint: Optional[Dict[str, Any]]) -> Tuple[Tuple[str, str, int], ...]:
     """The join route a module switch's trip declares, or () (C12)."""
     from utils import module_joins
@@ -418,8 +452,9 @@ def _travel(root: str, checkpoint: Dict[str, Any], members: List[str], live: Dic
             done: set, here: Optional[str]) -> str:
     """Commit an engine-approved move: "traveled", "on record" (a resume),
     "diverged" (the trip, or the tracker, ended elsewhere), "refused" or
-    "unavailable"."""
-    from core.nql import occupants
+    "unavailable". The departure goes before the trip (an old retry is
+    refused at it before the trip could run again) (J2)."""
+    from core.nql import journal
     cp = str(checkpoint.get("operation_id") or "")
     rid = "travel:%s" % cp
     if rid in done:
@@ -427,10 +462,13 @@ def _travel(root: str, checkpoint: Dict[str, Any], members: List[str], live: Dic
     origin, target = _ends(checkpoint)
     if target != here:
         return "diverged"
-    actions = _membership(live, members) + _moves(live, members, origin, here)
-    actions.append("travel party to %s;" % travel_map.q(target))
-    response = occupants.request("\n".join(actions), rid, root=root, actor=members[0], align=False,
-                                 joins=_joins(checkpoint))
+    departure, arrival = _journal(checkpoint, live, here)
+    lines = [(a, None) for a in _membership(live, members) + _moves(live, members, origin, here)]
+    lines += ([departure] if departure else []) + [("travel party to %s;" % travel_map.q(target), None)]
+    lines += [arrival] if arrival else []
+    response, how = journal.send(lines, rid, root=root, actor=members[0], joins=_joins(checkpoint))
+    if how == "on record":
+        return "on record"
     if response is None:
         return "unavailable"
     if not response.get("ok"):
@@ -516,7 +554,7 @@ def realign(checkpoint: Optional[Dict[str, Any]] = None, *, root: str = ".") -> 
                 return None
             live = response.get("live_state") or live
         elif stops and members and fallback not in done:
-            outcome = _walk(root, cp, stops, members, live, done, here)
+            outcome = _walk(root, cp, stops, members, live, done, here, *_journal(checkpoint, live, here))
             if outcome == "on record":
                 # The walk applied before (a resume); anything since moved
                 # the party without walking.
@@ -534,8 +572,9 @@ def realign(checkpoint: Optional[Dict[str, Any]] = None, *, root: str = ".") -> 
         elif checkpoint is not None and not engine and "path" not in checkpoint:
             info("TRAVEL: checkpoint %s has no path; the party is moved, not walked" % cp,
                  category="location_transitions")
-        rid = fallback if fallback and fallback not in done else align_id()
-        return _align(root, rid, live, tracker, "after a move" if cp else "align")
+        if fallback and fallback not in done:
+            return _align(root, fallback, live, tracker, "after a move", *_journal(checkpoint, live, here))
+        return _align(root, align_id(), live, tracker, "after a move" if cp else "align")
     except Exception as exc:  # fail forward: the tracker already stands
         warning("TRAVEL: the engine party was not aligned (%s)" % exc, category="location_transitions")
         return None
