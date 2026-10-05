@@ -1000,6 +1000,9 @@ def stage_turn_events(encounter, turn_id, events):
         )
     pending["events"] = normalized
     pending["stage"] = "events_staged"
+    # Item 3: the code-issued roll phase ends with the staged events (they
+    # journal its faces); a later return to intent goes to the model's path.
+    pending.pop("weaponAttack", None)
     return pending
 
 

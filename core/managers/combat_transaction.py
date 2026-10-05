@@ -371,6 +371,9 @@ def _return_stale_turn_to_intent(encounter, characters):
     pending["stage"] = "intent_pending"
     pending["events"] = []
     pending["retryReason"] = "character_state_changed"
+    # Item 3: a returned turn goes back to the model's path; the typed faces
+    # already given stay in playerExchanges.
+    pending.pop("weaponAttack", None)
     pending.pop("characterPreconditions", None)
     state["phase"] = "resolving_turn"
     state.pop("pauseReason", None)
@@ -833,6 +836,62 @@ def record_pending_player_request(
             if supplied_voice_envelope is not None:
                 pending["npcVoiceIntents"] = supplied_voice_envelope
         _write_object(encounter_path, encounter, "pending player request")
+
+
+def write_weapon_attack(
+    encounter_path,
+    turn_id,
+    record,
+    player_message=None,
+    requested_die=None,
+    answer=None,
+    timeout_seconds=5.0,
+    npc_voice_intents=None,
+):
+    """Item 3: persist the code-issued roll phase, pendingTurn.weaponAttack.
+
+    One optional key, absent when no code-issued roll is open: ``record``
+    None removes it (the player's words go back to the model). ``answer`` is
+    the player's typed reply, added to the exchange chain first, and
+    ``player_message`` the next [ROLL] request beside it, so history reads as
+    a DM request does today.
+    """
+    with path_transaction_lock(
+        encounter_path,
+        suffix=".combat.lock",
+        timeout_seconds=timeout_seconds,
+    ) as acquired:
+        if acquired is None:
+            raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
+        encounter = _load_object(encounter_path, "encounter")
+        state = ensure_combat_state(encounter)
+        pending = state.get("pendingTurn")
+        if not isinstance(pending, dict) or pending.get("turnId") != turn_id:
+            raise CombatTransactionError("The pending player turn changed")
+        if pending.get("stage") != "intent_pending":
+            raise CombatTransactionError("The pending player turn is already staged")
+        exchanges = pending.get("playerExchanges")
+        if not isinstance(exchanges, list) or not exchanges:
+            exchanges = [{"playerInput": ""}]
+        exchanges = [item for item in exchanges if isinstance(item, dict)]
+        if answer is not None:
+            exchanges.append({"playerInput": _player_text(answer) or "(the game rolled)"})
+        if player_message is not None:
+            exchanges[-1]["dmRequest"] = _player_text(player_message)
+            die = str(requested_die or "").strip().lower()
+            if re.fullmatch(r"(?:\d+)?d(?:4|6|8|10|12|20|100)", die):
+                exchanges[-1]["requestedDie"] = die
+        pending["playerExchanges"] = exchanges
+        if record is None:
+            pending.pop("weaponAttack", None)
+        else:
+            pending["weaponAttack"] = deepcopy(record)
+        if normalize_npc_voice_intents(pending.get("npcVoiceIntents")) is None:
+            supplied_voice_envelope = normalize_npc_voice_intents(npc_voice_intents)
+            if supplied_voice_envelope is not None:
+                pending["npcVoiceIntents"] = supplied_voice_envelope
+        _write_object(encounter_path, encounter, "weapon attack roll phase")
+        return deepcopy(pending)
 
 
 def stage_events(
