@@ -1609,6 +1609,25 @@ def recover_pending_combat_output():
     return True
 
 
+def _open_weapon_roll_prompt(json_file_path):
+    """Item 3: the [ROLL] request of an open code-issued weapon roll phase."""
+    try:
+        state = (safe_json_load(json_file_path) or {}).get("combatState") or {}
+        record = (state.get("pendingTurn") or {}).get("weaponAttack")
+    except Exception:
+        return None
+    if (
+        isinstance(record, dict)
+        and record.get("ready") is not True
+        and isinstance(record.get("dice"), str)
+    ):
+        return "[ROLL] %s%s (Enter: the game rolls): " % (
+            record["dice"],
+            " damage total" if record.get("phase") == "damage" else "",
+        )
+    return None
+
+
 def _agentic_combat_context(encounter_data, path_manager, monster_templates):
     """Build exact character paths plus read-only sheets for intent selection."""
     character_paths = {}
@@ -4519,6 +4538,8 @@ This is narration only. Do not advance the round or apply any combat action."""
        presentation_history_input = None
        presentation_skipped_player_notice = None
        down_table_talk = None
+       weapon_roll_prompt = None
+       weapon_roll_answer = None
        if agentic_mode:
            agentic_recovery = recovery_action(encounter_data)
            # D-242-A round boundary: while the human is down, before the
@@ -4702,7 +4723,18 @@ This is narration only. Do not advance the round or apply any combat action."""
            )
        else:
            try:
-               user_input_text = input(f"{stats_display} {player_name_display}: ")
+               # Item 3: an open code-issued weapon roll asks with its own
+               # [ROLL] line; the typed answer goes to the turn as is.
+               weapon_roll_prompt = (
+                   _open_weapon_roll_prompt(json_file_path) if agentic_mode else None
+               )
+               user_input_text = input(
+                   weapon_roll_prompt or f"{stats_display} {player_name_display}: "
+               )
+               if weapon_roll_prompt:
+                   weapon_roll_answer = user_input_text
+                   if not user_input_text.strip():
+                       user_input_text = "(Enter: the game rolls)"
                print(f"DEBUG: [COMBAT_LOOP] Got player input: {user_input_text[:50]}..." if len(user_input_text) > 50 else f"DEBUG: [COMBAT_LOOP] Got player input: {user_input_text}")
                debug(f"COMBAT_LOOP: Received player input of length {len(user_input_text)}", category="combat_events")
            except EOFError:
@@ -5068,6 +5100,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                    delivery_context=delivery_context,
                    npc_voice_intents=npc_voice_intents,
                    invocation_claim=invocation_claim,
+                   weapon_roll_text=weapon_roll_answer,
                )
                if voice_stage is not None:
                    try:

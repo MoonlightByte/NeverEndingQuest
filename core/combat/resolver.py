@@ -41,6 +41,7 @@ from core.effects.model import normalize_effect, validate_effect
 from core.managers.combat_state import (
     combatant_by_id,
     is_combatant_targetable,
+    is_hostile,
     is_party_member,
     is_turn_eligible,
     normalize_status,
@@ -689,7 +690,7 @@ _ATTACKER_DISADVANTAGE = frozenset(("blinded", "poisoned", "prone", "restrained"
 _TARGET_ADVANTAGE = frozenset(("blinded", "paralyzed", "petrified", "restrained", "stunned", "unconscious"))
 
 
-def _attack_mode(attacker_conditions, target_conditions, entry_type, target_dodging=False):
+def _attack_mode(attacker_conditions, target_conditions, entry_type, target_dodging=False, declared=None):
     """("normal" | "advantage" | "disadvantage", sources). Any advantage
     with any disadvantage cancels to normal (SRD), the sources still listed."""
     advantage = []
@@ -704,6 +705,11 @@ def _attack_mode(attacker_conditions, target_conditions, entry_type, target_dodg
             (disadvantage if entry_type == "ranged" else advantage).append("target prone")
     if target_dodging:
         disadvantage.append("target dodging")
+    # Item 3: the DM's typed situational ruling on a player's code-scored swing.
+    if declared == "advantage":
+        advantage.append("DM ruling")
+    elif declared == "disadvantage":
+        disadvantage.append("DM ruling")
     if advantage and disadvantage:
         return "normal", advantage + disadvantage
     if advantage:
@@ -1063,7 +1069,7 @@ def _sheet_delta(working, hp_after, status_after, creature, had_temp):
     return delta
 
 
-def resolve_intent(encounter, characters, intent, rolls, event_id):
+def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override=None):
     """Resolve a validated attack intent into an event + deltas.
 
     Only 'attack' (and the no-op stances) resolve mechanically here;
@@ -1147,9 +1153,14 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
         )
         # #528: advantage or disadvantage takes two faces from the same
         # source (both journaled), and keeps the higher or the lower one.
-        attack_mode, mode_sources = _attack_mode(
-            attacker_conditions, target_conditions, entry.get("type"), target_dodging
-        )
+        if mode_override is not None:
+            # Item 3: a player's code-scored swing keeps the mode fixed when its
+            # roll was asked for, so the faces typed always match it.
+            attack_mode, mode_sources = mode_override
+        else:
+            attack_mode, mode_sources = _attack_mode(
+                attacker_conditions, target_conditions, entry.get("type"), target_dodging
+            )
         attack_faces = [
             _take_roll(
                 rolls,
@@ -1410,6 +1421,151 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
                         record["engine"] = False
                 event["resources"].append(record)
                 break
+    return resolution
+
+
+# Item 3: the player's plain melee weapon swing is scored by code from the
+# player's typed faces, asked for by code ([ROLL]); every other player action
+# stays with the model's adjudicated ruling. Typed fields only.
+PLAYER_DECLARED_MODES = ("advantage", "disadvantage")
+
+
+def player_weapon_attack_entry(encounter, characters, intent):
+    """The sheet entry when the intent is a plain single melee weapon swing at
+    a hostile, targetable creature; None otherwise."""
+    if not isinstance(intent, dict) or intent.get("action") != "attack":
+        return None
+    if intent.get("targets") or intent.get("effects") or intent.get("resources"):
+        return None
+    attacks = intent.get("attacks")
+    if attacks is not None and not (type(attacks) is int and attacks == 1):
+        return None
+    actor = combatant_by_id(encounter, intent.get("actorId"))
+    target = combatant_by_id(encounter, intent.get("targetId"))
+    if actor is None or target is None:
+        return None
+    if (not is_hostile(target) or not is_combatant_targetable(target)
+            or target.get("faction") == actor.get("faction")):
+        return None
+    sheet = _raw_combatant_sheet(encounter, characters, actor)
+    entry = _find_action(sheet, intent.get("ability"))
+    if not isinstance(entry, dict) or entry.get("type") != "melee" or not is_executable_attack(entry):
+        return None
+    sequence = attack_sequence(
+        sheet,
+        selected_name=entry.get("name"),
+        num_attacks=actor.get("numAttacks"),
+        sequence=actor.get("multiattackSequence"),
+    )
+    if len(sequence) != 1 or sequence[0] is not entry:
+        return None
+    return entry
+
+
+def open_player_weapon_attack(encounter, characters, intent, entry):
+    """The roll-phase record for pendingTurn.weaponAttack: the mode is fixed
+    here (conditions, Dodge and the DM's typed ruling) so the number of d20
+    faces asked for never changes mid-turn."""
+    actor = combatant_by_id(encounter, intent.get("actorId"))
+    target = combatant_by_id(encounter, intent.get("targetId"))
+    attacker_conditions = _stated_conditions(characters, encounter, actor)
+    target_conditions = _stated_conditions(characters, encounter, target)
+    declared = intent.get("attackMode")
+    mode, sources = _attack_mode(
+        attacker_conditions, target_conditions, entry.get("type"),
+        _target_dodging(target, target_conditions),
+        declared if declared in PLAYER_DECLARED_MODES else None,
+    )
+    return {
+        "actorId": actor.get("combatantId"),
+        "ability": entry.get("name"),
+        "targetId": target.get("combatantId"),
+        "targetName": target.get("name"),
+        "mode": mode,
+        "modeSources": list(sources),
+        "phase": "attack",
+        "faces": {},
+        "sources": {},
+    }
+
+
+def weapon_attack_sheet_entry(encounter, characters, record):
+    """The sheet entry the open roll phase was opened for, or None."""
+    actor = combatant_by_id(encounter, record.get("actorId"))
+    if actor is None:
+        return None
+    entry = _find_action(_raw_combatant_sheet(encounter, characters, actor), record.get("ability"))
+    return entry if isinstance(entry, dict) else None
+
+
+def player_weapon_attack_dice(record, entry):
+    """(count, sides) the open phase asks for: 1d20 (2d20 with a mode), or the
+    weapon's damage dice, doubled on a critical hit."""
+    if record.get("phase") == "attack":
+        return (2 if record.get("mode") in PLAYER_DECLARED_MODES else 1), 20
+    count, sides, _modifier = parse_dice(entry.get("damageDice"))
+    return count * (2 if record.get("critical") else 1), sides
+
+
+def player_weapon_attack_score(encounter, characters, record, entry):
+    """(hit, critical, kept, total, ac) for the attack faces on the record;
+    the same arithmetic resolve_intent applies to the swing."""
+    actor = combatant_by_id(encounter, record.get("actorId"))
+    target = combatant_by_id(encounter, record.get("targetId"))
+    sheet = _raw_combatant_sheet(encounter, characters, actor)
+    faces = list((record.get("faces") or {}).get("attack") or [])
+    mode = record.get("mode")
+    kept = max(faces) if mode == "advantage" else min(faces) if mode == "disadvantage" else faces[0]
+    total = kept + int(entry.get("attackBonus", 0) or 0) + modifier_total(sheet, "attackRolls")
+    ac = _combatant_ac(encounter, characters, target)
+    critical = kept == 20
+    return critical or (kept != 1 and total >= ac), critical, kept, total, ac
+
+
+def _split_total(total, count, sides):
+    """count die values within 1..sides summing to total (the player typed the
+    total; the arithmetic only needs the sum)."""
+    values = [1] * count
+    rest = total - count
+    for index in range(count):
+        step = min(sides - 1, rest)
+        values[index] += step
+        rest -= step
+    return values
+
+
+def resolve_player_weapon_attack(encounter, characters, intent, record, event_id):
+    """Score the player's swing from the typed faces on the completed roll
+    phase through resolve_intent (crit, natural 1, typed damage traits, the
+    event shape); the journal keeps the faces as typed."""
+    entry = weapon_attack_sheet_entry(encounter, characters, record)
+    faces = record.get("faces") or {}
+    pools = {"d20": list(faces.get("attack") or [])}
+    damage_total = faces.get("damage")
+    if type(damage_total) is int:
+        count, sides = player_weapon_attack_dice(dict(record, phase="damage"), entry)
+        pools["d%d" % sides] = _split_total(damage_total, count, sides)
+    scored = {
+        "actorId": record.get("actorId"),
+        "action": "attack",
+        "ability": record.get("ability"),
+        "targetId": record.get("targetId"),
+        "description": (intent or {}).get("description", ""),
+    }
+    resolution = resolve_intent(
+        encounter, characters, scored, DeterministicRollSource(pools), event_id,
+        mode_override=(record.get("mode"), list(record.get("modeSources") or [])),
+    )
+    event = resolution["event"]
+    event["intent"] = deepcopy(intent if isinstance(intent, dict) else scored)
+    sources = record.get("sources") or {}
+    rolls = [dict(r, source=sources.get("attack", "player")) for r in event["rolls"] if r.get("purpose") == "attack"]
+    if type(damage_total) is int and event["outcome"].get("hit"):
+        count, sides = player_weapon_attack_dice(dict(record, phase="damage"), entry)
+        rolls.append({"die": "%dd%d" % (count, sides), "value": damage_total, "purpose": "damage",
+                      "source": sources.get("damage", "player")})
+    event["rolls"] = rolls
+    event["outcome"]["scoredBy"] = "code"
     return resolution
 
 
