@@ -3947,7 +3947,7 @@ Focus on story outcomes, character development, and decisions that will matter i
             Summary: {summary_text}
             
             Extract:
-            1. Relationships formed (NPCs met, befriended, made enemies)
+            1. Relationships formed (NPCs met, befriended, made enemies): only NPCs the summary shows the party dealing with; leave out an NPC the party only saw or heard of; a status never claims a meeting, conversation or bond the summary does not show
             2. Artifacts or important items acquired
             3. Locations that could become hubs (owned property, bases)
             4. World state changes (political shifts, curses lifted, etc)
