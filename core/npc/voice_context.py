@@ -1659,6 +1659,8 @@ def run_ooc_voice_stage(
     relationship_store: Optional[RelationshipStore] = None,
 ) -> NpcVoiceBatch:
     """Run one Phase 3 T105 batch and contain every failure."""
+    if not party_tracker_data.get("partyNPCs"):
+        return NpcVoiceBatch(batch_id="", results=())
     try:
         voice_service = service or _default_service()
 
@@ -1680,6 +1682,8 @@ def run_ooc_voice_stage(
             relationship_store=relationship_store,
             packet_invalid_handler=record_packet_invalid,
         )
+        if not packets:
+            return NpcVoiceBatch(batch_id="", results=())
         from utils.capture.live_provider_call import get_live_turn_scope
 
         handle = PreparedOocVoiceHandle(
