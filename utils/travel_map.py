@@ -47,8 +47,9 @@ CROSS_AREA = 1800
 
 # {module dir: (the played area files and the declared route times,
 # [(source id, target id, ticks)], [notes])}: the links are resolved again
-# only when either differs by value. The notes (declared times that match no
-# link, or are left out) are kept with them, so every call can give them.
+# only when either differs by value. The notes kept are the declared times
+# that match no link, so every call can give them; the reader's notes on
+# left-out entries come from each call's own read.
 _ROUTES: Dict[str, Tuple[Any, List[Tuple[str, str, int]], List[str]]] = {}
 
 
@@ -108,7 +109,7 @@ def _module_links(game, module: str) -> Tuple[List[Tuple[str, str, int]], List[s
     key = json.dumps([game.played_areas.get(module) or {}, sorted(declared.items())], sort_keys=True)
     hit = _ROUTES.get(module_dir)
     if hit and hit[0] == key:
-        return hit[1], hit[2]
+        return hit[1], notes + hit[2]
     snapshot = build_active_module_snapshot(module, roster=False, module_dir=module_dir)
     nodes = snapshot.get("nodes") or {}
     invalid = set(snapshot.get("invalid_location_ids") or [])
@@ -120,10 +121,10 @@ def _module_links(game, module: str) -> Tuple[List[Tuple[str, str, int]], List[s
                 same = (nodes[source] or {}).get("area_id") == (nodes[target] or {}).get("area_id")
                 links.append((source, target, declared.get((source, target), SAME_AREA if same else CROSS_AREA)))
     linked = {(a, b) for a, b, _ in links}
-    notes += ["%s -> %s: declared route time matches no link; not used" % pair
-              for pair in sorted(set(declared) - linked)]
-    _ROUTES[module_dir] = (key, links, notes)
-    return links, notes
+    unmatched = ["%s -> %s: declared route time matches no link; not used" % pair
+                 for pair in sorted(set(declared) - linked)]
+    _ROUTES[module_dir] = (key, links, unmatched)
+    return links, notes + unmatched
 
 
 def played_visit(played: Dict[str, Any], master: Optional[Dict[str, Any]]) -> bool:
