@@ -177,6 +177,16 @@ class PublicationStatus(str, Enum):
     INDETERMINATE = "INDETERMINATE"
 
 
+class NotJoinedCause(str, Enum):
+    """Why a ``NOT_PUBLISHED`` module was refused, for the startup line."""
+
+    # A check on this module's files or content refused it. This includes
+    # local errors a check swallows (issue #639).
+    CHECK_REFUSED = "check_refused"
+    # The safety check produced no verdict (UNAVAILABLE).
+    CHECK_UNAVAILABLE = "check_unavailable"
+
+
 @dataclass(frozen=True)
 class TargetedPublicationResult:
     """Proof-bearing result for publishing one exact module directory.
@@ -200,6 +210,8 @@ class TargetedPublicationResult:
     backup_path: Optional[str] = field(default=None, init=False, repr=False)
     # IMPORT_REQUIRED only: the registered modules whose ids collide.
     conflicting_modules: Tuple[str, ...] = ()
+    # NOT_PUBLISHED only, and only where the refusing check is known.
+    cause: Optional[NotJoinedCause] = None
 
     @property
     def published(self) -> bool:
@@ -325,6 +337,10 @@ class _ModuleFilesRefused(Exception):
     """A candidate's own reset masters cannot be read for its conflict scan."""
 
 
+class _ModuleCheckUnavailable(ValueError):
+    """The safety check produced no verdict while building registry bytes."""
+
+
 def _coerce_module_safety_result(result: Any) -> ModuleSafetyResult:
     """Normalize legacy/mock booleans without accepting arbitrary truthiness.
 
@@ -398,7 +414,8 @@ class ModuleStitcher:
         # with a registered module: [{"module", "collides_with",
         # "refused_because"}], and the unplayed ones it joined by
         # renumbering a copy: [{"module", "collides_with", "renumbered"}].
-        # And the installed ones publication refused: [{"module", "reason"}].
+        # And the installed ones publication refused: [{"module", "reason",
+        # "cause"}], where cause is a NotJoinedCause value or None.
         self.import_required = []
         self.imported = []
         self.not_joined = []
@@ -2392,8 +2409,12 @@ Create atmospheric travel narration that leads into this adventure."""
         reason: str,
         *,
         entry_guard: Optional[_ExactModuleEntryGuard],
+        cause: Optional[NotJoinedCause] = None,
     ) -> TargetedPublicationResult:
-        """Prove prior registry and non-destructive module snapshot equality."""
+        """Prove prior registry and non-destructive module snapshot equality.
+
+        ``cause`` is carried only on the ``NOT_PUBLISHED`` result.
+        """
         registry_ok, registry_reason = self._registry_matches_snapshot(
             prior_registry
         )
@@ -2482,6 +2503,7 @@ Create atmospheric travel narration that leads into this adventure."""
             registry_absence_proven=True,
             registry_restoration_proven=True,
             module_restoration_proven=True,
+            cause=cause,
         )
 
     def _finish_entry_identity_failure(
@@ -2815,7 +2837,12 @@ Create atmospheric travel narration that leads into this adventure."""
             )
         )
         if not safety.allows_integration:
-            raise ValueError(
+            refusal = (
+                _ModuleCheckUnavailable
+                if safety.status is ModuleSafetyStatus.UNAVAILABLE
+                else ValueError
+            )
+            raise refusal(
                 f"Managed module safety {safety.status.value}: "
                 f"{safety.reason or 'No reason supplied'}"
             )
@@ -3114,6 +3141,7 @@ Create atmospheric travel narration that leads into this adventure."""
                 registry_absence_proven=True,
                 registry_restoration_proven=True,
                 module_restoration_proven=True,
+                cause=NotJoinedCause.CHECK_REFUSED,
             )
         if conflict_state is None:
             return TargetedPublicationResult(
@@ -3181,6 +3209,7 @@ Create atmospheric travel narration that leads into this adventure."""
                 registry_absence_proven=True,
                 registry_restoration_proven=True,
                 module_restoration_proven=True,
+                cause=NotJoinedCause.CHECK_REFUSED,
             )
 
         registry_attempted = False
@@ -3195,6 +3224,7 @@ Create atmospheric travel narration that leads into this adventure."""
                     prior_registry,
                     validation_reason,
                     entry_guard=entry_guard,
+                    cause=NotJoinedCause.CHECK_REFUSED,
                 )
 
             module_data = self.analyze_module(
@@ -3207,6 +3237,7 @@ Create atmospheric travel narration that leads into this adventure."""
                     prior_registry,
                     "Exact module could not be analyzed",
                     entry_guard=entry_guard,
+                    cause=NotJoinedCause.CHECK_REFUSED,
                 )
 
             area_ids = set(module_data.get("areas", {}))
@@ -3237,6 +3268,11 @@ Create atmospheric travel narration that leads into this adventure."""
                         f"{safety_result.reason or 'No reason supplied'}"
                     ),
                     entry_guard=entry_guard,
+                    cause=(
+                        NotJoinedCause.CHECK_UNAVAILABLE
+                        if safety_result.status is ModuleSafetyStatus.UNAVAILABLE
+                        else NotJoinedCause.CHECK_REFUSED
+                    ),
                 )
 
             candidate = self._build_registry_candidate(
@@ -4475,6 +4511,13 @@ Respond with JSON:
                     f"next scan: {settle_exc}",
                     category="module_integration",
                 )
+            if isinstance(exc, _ModuleCheckUnavailable):
+                # The safety check gave no verdict: told apart from a refusal
+                # so the startup line does not blame the module (issue #613).
+                return {
+                    "status": "failed",
+                    "refused_because": NotJoinedCause.CHECK_UNAVAILABLE.value,
+                }
             return {"status": "failed", "refused_because": "import_failed"}
 
         # The renumbered module is live; nothing below may undo that.
@@ -4609,7 +4652,11 @@ Respond with JSON:
                         # A module removed during the scan is not "installed".
                         if os.path.isdir(os.path.join(self.modules_dir, module_name)):
                             self.not_joined.append(
-                                {"module": module_name, "reason": result.reason}
+                                {
+                                    "module": module_name,
+                                    "reason": result.reason,
+                                    "cause": getattr(result.cause, "value", None),
+                                }
                             )
                     elif result.status is PublicationStatus.INDETERMINATE:
                         error(
