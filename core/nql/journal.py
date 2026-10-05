@@ -25,6 +25,8 @@ prose stays in journal.json, keyed by the entry's id.
   by id: found, the request applied before; not found, the id clashes with
   another record and the entries are left out. Decided from the typed fault,
   never from its message.
+- A document set aside by the refusal ladder carries its journal into the
+  new one (``declarations``; core/nql/occupants.py).
 """
 import json
 from typing import Any, Dict, List, Optional, Tuple
@@ -115,3 +117,26 @@ def send(lines: List[Line], request_id: str, *, root: str = ".", resend_on_recor
         return None, "without"
     return go(rest), "without"
 
+
+def declarations(live: Optional[Dict[str, Any]]) -> str:
+    """A document's journal as world-source declarations, in seq order, with
+    ``journal next`` (J1: a document that holds no journal yet takes them
+    once). "" when it holds none."""
+    held = (live or {}).get("journal")
+    if not isinstance(held, dict) or not held.get("entries"):
+        return ""
+    out: List[str] = []
+    for entry in sorted(held["entries"], key=lambda e: e["seq"]):
+        parts = ["journal %s %s seq %d" % (json.dumps(entry["id"]), entry["kind"], entry["seq"])]
+        if entry.get("place"):
+            parts.append("at %s" % json.dumps(entry["place"]))
+        if entry.get("tick") is not None:
+            parts.append("tick %d" % entry["tick"])
+        if entry.get("participants"):
+            parts.append("with " + " ".join(json.dumps(p) for p in entry["participants"]))
+        if entry.get("text") is not None:
+            parts.append("text %s" % json.dumps(entry["text"]))
+        out.append(" ".join(parts) + ";\n")
+    if held.get("next") is not None:
+        out.append("journal next %d;\n" % held["next"])
+    return "".join(out)

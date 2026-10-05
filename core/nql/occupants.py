@@ -228,6 +228,33 @@ def _carry_quests(root: str, world: str, live: Dict[str, Any], old: Optional[Dic
     return _convert_quests(root, world, live, "rebuilt after set-aside")
 
 
+def _carry_journal(root: str, world: str, live: Dict[str, Any], old: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """J2: a set-aside document's journal carries to the new one, declared
+    once with its seqs, ticks and next (a new document holds no journal, so
+    it takes them). Refused (the journal itself may be why the old document
+    was refused) or unreadable: the new document starts without it, logged;
+    the prose stays in journal.json by entry id."""
+    from core.nql import journal
+    try:
+        declared = journal.declarations(old)
+    except Exception as exc:  # a refused document may hold anything
+        warning("OCCUPANTS: the set-aside document's journal could not be read (%s); the new "
+                "document starts without it" % exc, category="location_transitions")
+        return live
+    if not declared:
+        return live
+    response = _call(world + declared, live, None, None, [])
+    if not response.get("ok"):
+        warning("OCCUPANTS: the set-aside document's journal was refused (%s); the new document "
+                "starts without it" % response.get("error"), category="location_transitions")
+        return live
+    carried = response.get("live_state") or live
+    _write(root, carried)
+    info("OCCUPANTS: %d journal entries carried from the set-aside document"
+         % len((carried.get("journal") or {}).get("entries") or []), category="location_transitions")
+    return carried
+
+
 def _set_aside(root: str) -> None:
     path = document_path(root)
     aside = "%s.refused-%d" % (path, int(time.time()))
@@ -355,6 +382,7 @@ def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
                 return None
             _write(root, live)
             live = _carry_quests(root, world, live, old)
+            live = _carry_journal(root, world, live, old)
             on_disk = live
     except apply.EngineUnavailable as exc:
         warning("OCCUPANTS: engine unavailable (%s); the roster record is not updated this turn"
