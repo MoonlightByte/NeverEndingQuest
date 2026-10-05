@@ -873,7 +873,11 @@ def world_source(game, seed_list, held=None, notes=None, joins=()):
         if wc.get("currentLocationId") in game.masters[m]:
             here = "loc:%s/%s" % (m, wc["currentLocationId"])
             break
-    lines = ["rules { transfer unequips; wear any; }", 'clock "second" at 0;']
+    # D4: the tracker's time. The engine takes it once into a new or v3
+    # document and keeps its own clock after (core/nql/game_clock.py).
+    from core.nql import game_clock
+    lines = ["rules { transfer unequips; wear any; }",
+             'clock "second" at %d;' % game_clock.declared_tick(game.tracker)]
     lines += ["location %s named %s;" % (q(p), q(n)) for p, n in places]
     lines.append("character %s named %s at %s { }" % (q(ACTOR), q("Roster conversion"), q(here or places[0][0])))
     lines += [s.declaration() for s in seed_list]

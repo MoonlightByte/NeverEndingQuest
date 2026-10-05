@@ -327,6 +327,8 @@ class SaveGameManager:
         for path in (
             "modules/encounters", "modules/.campaign.json.completion",
             "modules/conversation_history/pending_location_transition.json",
+            # D4: removed by the restore, so a failed Load can put it back.
+            "live_state.json.bak",
         ):
             record(path, recursive=True)
 
@@ -445,6 +447,7 @@ class SaveGameManager:
                 expected[path] = ('absent', None)
         for path in ('modules/effects_state.json',
                      'live_state.json',
+                     'live_state.json.bak',
                      'modules/conversation_history/combat_conversation_history.json',
                      'modules/conversation_history/startup_conversation.json',
                      'modules/conversation_history/game_interface_cache.json',
@@ -1444,6 +1447,9 @@ class SaveGameManager:
                 # A save from before the engine's location record: the record
                 # is re-created from that save's files on the next roster call.
                 "live_state.json",
+                # Never saved (*.bak). Left behind, the refusal ladder could
+                # take a document with a later clock than the restored tracker.
+                "live_state.json.bak",
                 "modules/conversation_history/combat_conversation_history.json",
                 "modules/conversation_history/startup_conversation.json",
                 "modules/conversation_history/game_interface_cache.json",
