@@ -347,6 +347,10 @@ class _FdBackupError(Exception):
     """Controlled fail-closed result for descriptor-relative backup work."""
 
 
+class _ModuleFilesRefused(Exception):
+    """A candidate's own reset masters cannot be read for its conflict scan."""
+
+
 def _coerce_module_safety_result(result: Any) -> ModuleSafetyResult:
     """Normalize legacy/mock booleans without accepting arbitrary truthiness.
 
@@ -1344,19 +1348,81 @@ class ModuleStitcher:
         except (OSError, ValueError) as exc:
             return None, None, f"Module identifiers could not be inspected: {exc}"
 
+    def _paired_master_location_ids(self, module_path: str) -> set:
+        """Read location ids from the candidate's paired ``_BU.json`` masters.
+
+        A master repeats its live twin's areaId, so it cannot join the scan
+        helper above. Only masters with a live twin are read: the managed
+        import's BU refresh rewrites exactly those, and boot hydration turns
+        an orphan into a live file before the refresh. A master the ID fixer
+        could not have read raises ``_ModuleFilesRefused`` so the module is
+        refused with a report rather than skipped in silence (issue #609).
+        """
+        areas_path = os.path.join(module_path, "areas")
+        location_ids = set()
+        try:
+            with os.scandir(areas_path) as entries:
+                by_name = {entry.name: entry for entry in entries}
+            for name in sorted(by_name):
+                if not name.endswith("_BU.json"):
+                    continue
+                if name[: -len("_BU.json")] + ".json" not in by_name:
+                    continue
+                entry = by_name[name]
+                if entry.is_symlink() or not entry.is_file(follow_symlinks=False):
+                    raise _ModuleFilesRefused(
+                        f"Paired master is not a regular file: areas/{name}"
+                    )
+                master = safe_json_load(entry.path)
+                if not master:
+                    continue
+                if not isinstance(master, dict):
+                    raise _ModuleFilesRefused(
+                        f"Paired master is not a JSON object: areas/{name}"
+                    )
+                locations = master.get("locations", [])
+                if isinstance(locations, (list, dict, str)) and not locations:
+                    continue
+                if not isinstance(locations, list):
+                    raise _ModuleFilesRefused(
+                        f"Paired master locations are malformed: areas/{name}"
+                    )
+                for location in locations:
+                    if not isinstance(location, dict):
+                        raise _ModuleFilesRefused(
+                            f"Paired master location is malformed: areas/{name}"
+                        )
+                    location_id = location.get("locationId")
+                    if not location_id:
+                        continue
+                    if isinstance(location_id, (list, dict)):
+                        raise _ModuleFilesRefused(
+                            f"Paired master locationId is malformed: areas/{name}"
+                        )
+                    if isinstance(location_id, str):
+                        location_ids.add(location_id)
+        except _ModuleFilesRefused:
+            raise
+        except (OSError, ValueError, UnicodeError, TypeError) as exc:
+            raise _ModuleFilesRefused(
+                f"Paired masters could not be read: {exc}"
+            ) from exc
+        return location_ids
+
     def _detect_legacy_publication_conflicts(
         self,
         module_name: str,
         module_path: str,
         registry_snapshot: Dict[str, Any],
     ) -> Tuple[Optional[bool], str, Tuple[str, ...]]:
-        """Detect whether legacy publication would require live-file rewrites.
+        """Detect whether a candidate's ids collide with registered modules.
 
         ``True`` means a managed import is required, ``False`` means registry-only
         publication can continue, and ``None`` means the read was unsafe or
         ambiguous. The third value names the registered modules whose ids
-        collide (empty unless ``True``). This helper never writes or creates
-        a mutation backup.
+        collide (empty unless ``True``). The candidate's location ids include
+        its paired ``_BU.json`` masters; a master that cannot be read raises
+        ``_ModuleFilesRefused``. This helper never writes.
         """
         candidate_areas, candidate_locations, reason = (
             self._module_identity_sets_for_conflict_scan(module_path)
@@ -1376,6 +1442,13 @@ class ModuleStitcher:
                 if isinstance(registered_area_rows[area_id], dict)
                 and isinstance(registered_area_rows[area_id].get("module"), str)
             }))
+
+        # Issue #609: a reset master's ids are the module's ids too. Counting
+        # them here sends a master-only collision to the managed import
+        # instead of passing it as conflict-free.
+        candidate_locations = candidate_locations | (
+            self._paired_master_location_ids(module_path)
+        )
 
         existing_location_ids = set()
         colliding_modules = set()
@@ -3626,13 +3699,18 @@ Create atmospheric travel narration that leads into this adventure."""
                 registry_restoration_proven=True,
             )
 
-        conflict_state, conflict_reason, conflicting_modules = (
-            self._detect_legacy_publication_conflicts(
-                module_name,
-                module_path,
-                prior_registry,
+        files_refused = ""
+        try:
+            conflict_state, conflict_reason, conflicting_modules = (
+                self._detect_legacy_publication_conflicts(
+                    module_name,
+                    module_path,
+                    prior_registry,
+                )
             )
-        )
+        except _ModuleFilesRefused as exc:
+            conflict_state, conflict_reason, conflicting_modules = None, "", ()
+            files_refused = str(exc) or "Module reset masters could not be read"
         entry_valid, entry_reason = self._revalidate_publication_entry(
             module_name,
             module_path,
@@ -3645,6 +3723,17 @@ Create atmospheric travel narration that leads into this adventure."""
                 module_name,
                 "Exact module identity changed during conflict inspection: "
                 f"{entry_reason}",
+            )
+        if files_refused:
+            # Nothing has been written yet: the module's own files failed a
+            # check, so it is reported as not joined (issue #609).
+            return TargetedPublicationResult(
+                PublicationStatus.NOT_PUBLISHED,
+                module_name,
+                files_refused,
+                registry_absence_proven=True,
+                registry_restoration_proven=True,
+                module_restoration_proven=True,
             )
         if conflict_state is None:
             return TargetedPublicationResult(
