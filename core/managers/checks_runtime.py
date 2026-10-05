@@ -1,6 +1,6 @@
 """rollCheck staging, the roll prompt, and the DM Note line (C2a).
 
-One DM call per player input, never an extra one: a check the DM asks for in
+A submitted roll is player input: a check the DM asks for in
 turn N is scored before the DM's turn N+1 begins, and its result line is in
 that turn's DM Note. The player's dice are typed at a numbers-only roll
 prompt (blank = the game rolls); the DM never converts words into dice.
@@ -93,29 +93,36 @@ def parse_faces(text: str, count: int) -> Optional[List[int]]:
     return faces
 
 
-def take_player_rolls(read: Callable[[str], str]) -> None:
-    """Settle every pending player check at the roll prompt, then return to the free command."""
+def take_player_rolls(read: Callable[[str], str]) -> List[str]:
+    """Persist pending checks and return their outcomes for the next narrated turn.
+
+    The caller must not ask for another command after an accepted roll.
+    Empty means no roll was submitted and ordinary input is still needed.
+    """
+    completed: List[str] = []
     while True:
-        entry = checks_state.pop_pending()
-        if entry is None:
-            return
+        pending = checks_state.pending_checks()
+        if not pending:
+            return completed
+        entry = pending[0]
         faces: Optional[List[int]] = None
-        for _attempt in range(5):
+        while faces is None:
             faces = parse_faces(read(roll_prompt_text(entry)), entry["faces"])
-            if faces is not None:
-                break
-            print(f"Type {entry['faces']} whole number{'s' if entry['faces'] == 2 else ''} between 1 and 20, or press Enter to let the game roll.")
+            if faces is None:
+                print(f"Type {entry['faces']} whole number{'s' if entry['faces'] == 2 else ''} between 1 and 20, or press Enter to let the game roll.")
         try:
             _resolved, _role, _path, sheet = _resolve_character(entry["characterName"])
             result = checks.resolve(sheet, entry["stat"], dc=entry.get("dc"), mode=entry.get("mode"), faces=faces or None)
         except Exception as exc:  # the sheet vanished or the engine is down: the DM hears why
             warning(f"CHECK: {entry['characterName']}: not resolved ({exc})", category="character_updates")
-            checks_state.add_result(f"{entry['characterName']} {checks.label(entry['stat'])}: not resolved ({exc})")
+            line = f"{entry['characterName']} {checks.label(entry['stat'])}: not resolved (rules engine unavailable)"
+            checks_state.complete_pending(entry, line)
+            completed.append(line)
             continue
         line = checks.describe(result) + (f" [{entry['reason']}]" if entry.get("reason") else "")
-        checks_state.add_result(line)
+        checks_state.complete_pending(entry, line)
         info(f"CHECK: {line}", category="character_updates")
-        print(line)
+        completed.append(line)
 
 
 LAST_NOTE = ""  # the CHECK RESULTS delivered with the current turn's DM note (the validator reviews against it)

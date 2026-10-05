@@ -1137,7 +1137,7 @@ class VoiceBatchHandle:
             ]
             if pending:
                 wait(pending, timeout=1.0, return_when=FIRST_COMPLETED)
-        if status_emit is not None:
+        if status_emit is not None and self._collected:
             try:
                 message = (
                     "Companion voices are ready; the storyteller is weaving them in..."
