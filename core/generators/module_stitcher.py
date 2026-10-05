@@ -3752,12 +3752,25 @@ Create atmospheric travel narration that leads into this adventure."""
                 conflicting_modules=conflicting_modules,
             )
 
-        backup_result = _coerce_module_backup_result(
-            self._create_module_backup(
-                module_name,
-                entry_guard=entry_guard,
+        # The receipt is one manifest of the held tree. This path never writes
+        # module files, so the failure proofs need only these hashes to tell
+        # NOT_PUBLISHED from INDETERMINATE; no copy is kept (issue #565).
+        receipt_manifest = self._manifest_exact_module_guard(entry_guard)
+        if not isinstance(receipt_manifest, dict):
+            backup_result = _ModuleBackupResult(
+                proven=False,
+                reason="Module manifest could not be proven",
             )
-        )
+        elif not any(key.startswith("file:") for key in receipt_manifest):
+            backup_result = _ModuleBackupResult(
+                proven=False,
+                reason="Backup contained no regular files",
+            )
+        else:
+            backup_result = _ModuleBackupResult(
+                proven=True,
+                manifest=receipt_manifest,
+            )
         backup_dir = backup_result
         entry_valid, entry_reason = self._revalidate_publication_entry(
             module_name,
@@ -3777,7 +3790,6 @@ Create atmospheric travel narration that leads into this adventure."""
         if (
             backup_result.proven is not True
             or not isinstance(backup_result.manifest, dict)
-            or not isinstance(backup_result.area_documents, dict)
         ):
             backup_reason = backup_result.reason or (
                 "A complete descriptor-bound snapshot receipt could not be created"
