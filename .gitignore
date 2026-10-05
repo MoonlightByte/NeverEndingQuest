@@ -58,6 +58,7 @@ party_tracker.json
 party_tracker.json.bak
 journal.json
 journal.json.bak
+journal.json.unreadable-*
 chronology.json
 modules/conversation_history/
 player_storage.json
