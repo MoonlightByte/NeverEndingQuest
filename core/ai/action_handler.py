@@ -420,6 +420,8 @@ def _new_current_transition_checkpoint(
         "time": world.get("time", "N/A"),
         "location": sanitize_text(origin_location_name),
         "summary": None,
+        # J2: the prose is keyed by the engine's departure entry id.
+        "id": journal_entry_id(str(module_name), operation_id, "departure"),
     }
     path_manager = ModulePathManager(str(module_name))
     action_records = []
