@@ -31,7 +31,12 @@ from core.combat.attacks import (
     is_executable_attack,
 )
 from core.effects.effective import effective_sheet, modifier_total
-from core.effects.lifecycle import apply_effect_ops, effect_incapacitates, sync_condition_states
+from core.effects.lifecycle import (
+    INCAPACITATING_CONDITIONS,
+    apply_effect_ops,
+    effect_incapacitates,
+    sync_condition_states,
+)
 from core.effects.model import normalize_effect, validate_effect
 from core.managers.combat_state import (
     combatant_by_id,
@@ -314,6 +319,36 @@ def recharge_at_turn_start(encounter, actor_ids, rolls):
         if not creature["recharge"]:
             creature.pop("recharge", None)
     return records
+
+
+def stage_dodge(encounter, resolution):
+    """SRD Dodge: a committed ``dodge`` action marks its actor.
+
+    The typed action is the only input; ``defend`` stays an empty outcome.
+    The event's ``dodge`` record is the journal authority (resolution_from_event
+    rebuilds the marker from it) and the creature's ``dodging`` record makes
+    attack rolls against it disadvantaged until the start of its next turn.
+    """
+    event = resolution["event"]
+    actor = combatant_by_id(encounter, event.get("actorId"))
+    if actor is None or not actor.get("combatantId"):
+        return
+    event["dodge"] = {"actorId": actor["combatantId"]}
+    resolution["creatureDeltas"].setdefault(actor["combatantId"], {})["dodging"] = {
+        "sinceEventId": event["eventId"]
+    }
+
+
+def end_dodge(event, creature, resolution=None):
+    """The Dodge ends at the start of the dodger's next turn: the actor's own
+    next event (resolved or skipped) records ``dodgeEnded``, whatever the
+    window's shape, and only that actor's marker clears. A Dodge taken in
+    the same event is staged after this and stands."""
+    if not isinstance((creature or {}).get("dodging"), dict) or not creature.get("combatantId"):
+        return
+    event["dodgeEnded"] = {"actorId": creature["combatantId"]}
+    if resolution is not None:
+        resolution["creatureDeltas"].setdefault(creature["combatantId"], {})["dodging"] = None
 
 
 def _stat_block_condition_op(encounter, event_id, actor, target, entry, conditions, rounds, index):
@@ -654,7 +689,7 @@ _ATTACKER_DISADVANTAGE = frozenset(("blinded", "poisoned", "prone", "restrained"
 _TARGET_ADVANTAGE = frozenset(("blinded", "paralyzed", "petrified", "restrained", "stunned", "unconscious"))
 
 
-def _attack_mode(attacker_conditions, target_conditions, entry_type):
+def _attack_mode(attacker_conditions, target_conditions, entry_type, target_dodging=False):
     """("normal" | "advantage" | "disadvantage", sources). Any advantage
     with any disadvantage cancels to normal (SRD), the sources still listed."""
     advantage = []
@@ -667,6 +702,8 @@ def _attack_mode(attacker_conditions, target_conditions, entry_type):
             advantage.append("target " + name)
         elif name == "prone":
             (disadvantage if entry_type == "ranged" else advantage).append("target prone")
+    if target_dodging:
+        disadvantage.append("target dodging")
     if advantage and disadvantage:
         return "normal", advantage + disadvantage
     if advantage:
@@ -674,6 +711,19 @@ def _attack_mode(attacker_conditions, target_conditions, entry_type):
     if disadvantage:
         return "disadvantage", disadvantage
     return "normal", []
+
+
+# SRD Dodge: the dodger loses the benefit while Incapacitated or at Speed 0
+# (grappled and restrained set Speed 0). Typed state only.
+_DODGE_ENDING_CONDITIONS = frozenset(INCAPACITATING_CONDITIONS + ("grappled", "restrained"))
+
+
+def _target_dodging(creature, conditions):
+    """True when the target's ``dodging`` record stands and it can benefit."""
+    creature = creature or {}
+    if not isinstance(creature.get("dodging"), dict) or creature.get("effectIncapacitated") is True:
+        return False
+    return not (set(conditions or ()) & _DODGE_ENDING_CONDITIONS)
 
 
 # Typed damage traits (#527): the target sheet's lists, compared by exact
@@ -1086,6 +1136,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
     trait_sheet = _raw_combatant_sheet(encounter, characters, target) if target is not None else {}
     attacker_conditions = _stated_conditions(characters, encounter, actor)
     target_conditions = _stated_conditions(characters, encounter, target)
+    target_dodging = _target_dodging(target, target_conditions)
     for swing_number, entry in enumerate(attack_entries, start=1):
         if target is None or hp_after <= 0:
             break
@@ -1097,7 +1148,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id):
         # #528: advantage or disadvantage takes two faces from the same
         # source (both journaled), and keeps the higher or the lower one.
         attack_mode, mode_sources = _attack_mode(
-            attacker_conditions, target_conditions, entry.get("type")
+            attacker_conditions, target_conditions, entry.get("type"), target_dodging
         )
         attack_faces = [
             _take_roll(
@@ -2443,6 +2494,14 @@ def resolution_from_event(encounter, characters, event):
             key: spent[key] for key in ("state", "min", "max", "rechargesOn") if key in spent
         }
         resolution["creatureDeltas"].setdefault(actor["combatantId"], {})["recharge"] = current
+    ended = event.get("dodgeEnded")
+    if isinstance(ended, dict) and combatant_by_id(encounter, ended.get("actorId")) is not None:
+        resolution["creatureDeltas"].setdefault(ended["actorId"], {})["dodging"] = None
+    dodge = event.get("dodge")
+    if isinstance(dodge, dict) and combatant_by_id(encounter, dodge.get("actorId")) is not None:
+        resolution["creatureDeltas"].setdefault(dodge["actorId"], {})["dodging"] = {
+            "sinceEventId": event["eventId"]
+        }
     return resolution
 
 
@@ -2670,6 +2729,12 @@ def apply_resolution(encounter, characters, resolution):
                 creature["recharge"] = deepcopy(delta["recharge"])
             else:
                 creature.pop("recharge", None)
+        if "dodging" in delta:
+            # Item 2: a record marks a Dodge; None ends it (the journal is the authority)
+            if isinstance(delta["dodging"], dict):
+                creature["dodging"] = deepcopy(delta["dodging"])
+            else:
+                creature.pop("dodging", None)
 
     for name, delta in (resolution.get("charDeltas") or {}).items():
         sheet = new_characters.get(name)
