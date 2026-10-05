@@ -6,7 +6,10 @@
 The engine keeps each journal entry as a typed record, atomic with the
 request that made it (NQL J1, docs/JOURNAL.md; live_state format v5). NEQ
 records a ``departure`` in the request that moves the party, before its
-first ``travel party to``. The engine numbers and stamps each entry; NEQ names the place (``at``) and the party, and sends no text: the
+first ``travel party to``, and an ``arrival`` in the request that brings the
+clock to the approved arrival (core/nql/game_clock.py), or after the move
+when the trip has no time of its own. The engine numbers and stamps each
+entry; NEQ names the place (``at``) and the party, and sends no text: the
 prose stays in journal.json, keyed by the entry's id.
 
 - An id is ``journal:<module>/<transition operation_id>/<kind>``. The

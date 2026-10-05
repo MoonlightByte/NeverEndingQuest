@@ -23,6 +23,10 @@ else when the engine answers.
   ahead of the document catches the engine up (an outage fallback). The
   tracker never moves backwards and nothing is refused, so no refusal can
   repeat on every call.
+- J2: a travel ``updateTime`` records the trip's ``arrival`` journal entry
+  after its ``advance time by`` (stamped at the approved arrival), or in a
+  request of its own when the clock already reached it
+  (core/nql/journal.py).
 """
 import os
 from typing import Any, Dict, Optional
@@ -122,20 +126,30 @@ def advance(seconds: int, request_id: str, *, root: str = ".") -> Optional[Dict[
     return occupants.request("advance time by %d;" % seconds, request_id, root=root, align=False)
 
 
-def advance_to(target: int, request_id: str, *, root: str = ".") -> str:
+def advance_to(target: int, request_id: str, *, root: str = ".", arrival: Optional[str] = None) -> str:
     """Bring the document's clock to `target` (an approved arrival time).
     The engine's own trip ticks already count toward it; what is left is
     sent once. Returns "advanced", "reached" (nothing left, e.g. the trip
-    took longer), "unavailable" or "refused"."""
-    from core.nql import occupants
+    took longer), "unavailable" or "refused". `arrival` is the trip's
+    arrival entry id (J2): recorded at the tracker's place after the
+    advance, or alone under "<request_id>:arrival" when nothing is left."""
+    from core.nql import journal, occupants
+    from utils import travel_map
     live = occupants._load(root)
     held = document_tick(live)
     if held is None:
         return "unavailable"
+    entry = None
+    if arrival:
+        here = travel_map.tracker_place(safe_json_load(_tracker_path(root)) or {})
+        entry = journal.line(arrival, "arrival", here, live)
     if held >= target:
         project(root, held)
+        if entry:
+            journal.send([entry], "%s:arrival" % request_id, root=root)
         return "reached"
-    response = advance(target - held, request_id, root=root)
+    lines = [("advance time by %d;" % (target - held), None)] + ([entry] if entry else [])
+    response, _ = journal.send(lines, request_id, root=root, resend_on_record=True)
     if response is None:
         return "unavailable"
     return "advanced" if response.get("ok") else "refused"
@@ -164,18 +178,20 @@ def advance_minutes(value: Any, request_id: str, *, root: str = ".") -> bool:
     return True
 
 
-def apply_staged(receipt: Dict[str, Any], request_id: str, *, root: str = ".") -> str:
+def apply_staged(receipt: Dict[str, Any], request_id: str, *, root: str = ".",
+                 arrival: Optional[str] = None) -> str:
     """A deferred travel ``updateTime``: the clock reaches the approved
     arrival (the receipt's ``after``). The engine's trip ticks already
     count toward it. Without the engine, the tracker alone moves forward to
-    it (never back) and the engine catches up later. Returns "committed"."""
+    it (never back) and the engine catches up later. `arrival` is the
+    trip's arrival journal entry id (J2, advance_to). Returns "committed"."""
     try:
         target = calendar.scalar_from_calendar(receipt["after"])
     except (KeyError, TypeError, calendar.GameTimeError):
         warning("CLOCK: the staged updateTime has no readable arrival time; no time passes",
                 category="location_transitions")
         return "committed"
-    outcome = advance_to(target, request_id, root=root)
+    outcome = advance_to(target, request_id, root=root, arrival=arrival)
     if outcome in ("unavailable", "refused"):
         warning("CLOCK: the staged updateTime %s was %s; the tracker moves to the arrival time"
                 % (request_id, outcome), category="location_transitions")

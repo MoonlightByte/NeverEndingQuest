@@ -65,7 +65,10 @@ declared only in the switch's own requests:
 J2, the journal (core/nql/journal.py): the request that moves the party
 for a transition records its ``departure`` at the origin, before the first
 ``travel party to`` (the trip, the walk's first part, or the fallback
-move). A journal fault never stops the move.
+move). Its ``arrival`` at the tracker's place goes in the request that
+brings the clock to the approved arrival (game_clock.apply_staged), or
+after the move when the transition has no deferred updateTime. A journal
+fault never stops the move.
 
 Never a gate on play: an engine that is unavailable or refuses leaves the
 tracker as it is, with a warning, and the next call aligns again. With the
@@ -190,7 +193,8 @@ def _walk(root: str, cp: str, stops: List[str], members: List[str], live: Dict[s
           done: set, here: str, departure: Optional[Tuple[str, Optional[str]]] = None,
           arrival: Optional[Tuple[str, Optional[str]]] = None) -> str:
     """Send the chain: "walked", "on record" (a resume), "unavailable" or
-    "refused". The departure goes in the first part (J2)."""
+    "refused". The departure goes in the first part, the arrival after the
+    last hop (J2)."""
     from core.nql import journal
     n = len(members)
     # Fixed by party size only, so a resume splits the same way.
@@ -234,8 +238,8 @@ def _align(root: str, rid: str, live: Dict[str, Any], tracker: Dict[str, Any], w
            departure: Optional[Tuple[str, Optional[str]]] = None,
            arrival: Optional[Tuple[str, Optional[str]]] = None) -> str:
     """Send the align actions under rid: "aligned", "moved", "unavailable" or
-    "refused". A transition's fallback move carries its departure, before
-    the move (J2)."""
+    "refused". A transition's fallback move carries its journal entries, the
+    departure before the move and the arrival after it (J2)."""
     from core.nql import journal
     from utils.roster_conversion import ACTOR
     here = travel_map.tracker_place(tracker)
@@ -431,14 +435,20 @@ def _ends(checkpoint: Dict[str, Any]) -> Tuple[str, str]:
 
 def _journal(checkpoint: Optional[Dict[str, Any]], live: Dict[str, Any],
              here: Optional[str]) -> Tuple[Optional[Tuple[str, Optional[str]]], Optional[Tuple[str, Optional[str]]]]:
-    """J2: the transition's departure line (at its origin), and its arrival
-    line (none yet). (None, None) without a checkpoint."""
+    """J2: the transition's departure line (at its origin) and, when it has
+    no deferred updateTime (whose top-up records it at the approved time),
+    its arrival line at the tracker's place. (None, None) without a
+    checkpoint."""
     from core.nql import journal
     cp = str((checkpoint or {}).get("operation_id") or "")
     if not cp:
         return None, None
     module = str(checkpoint.get("module_name") or "")
-    return journal.line(journal.entry_id(module, cp, "departure"), "departure", _ends(checkpoint)[0], live), None
+    departure = journal.line(journal.entry_id(module, cp, "departure"), "departure", _ends(checkpoint)[0], live)
+    deferred = (checkpoint.get("deferred_actions") or {}).get("actions") or []
+    if any(isinstance(a, dict) and a.get("family") == "updateTime" for a in deferred):
+        return departure, None
+    return departure, journal.line(journal.entry_id(module, cp, "arrival"), "arrival", here, live)
 
 
 def _joins(checkpoint: Optional[Dict[str, Any]]) -> Tuple[Tuple[str, str, int], ...]:
@@ -453,7 +463,8 @@ def _travel(root: str, checkpoint: Dict[str, Any], members: List[str], live: Dic
     """Commit an engine-approved move: "traveled", "on record" (a resume),
     "diverged" (the trip, or the tracker, ended elsewhere), "refused" or
     "unavailable". The departure goes before the trip (an old retry is
-    refused at it before the trip could run again) (J2)."""
+    refused at it before the trip could run again), the arrival after it
+    when the move has no time of its own (J2)."""
     from core.nql import journal
     cp = str(checkpoint.get("operation_id") or "")
     rid = "travel:%s" % cp
