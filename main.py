@@ -783,7 +783,7 @@ def _apply_welcome(lifecycle):
             history,
             approved_transition_plan=reviewed["approved_transition_plan"],
             player_input=None,
-            review_context=_dm_review_context(reviewed, history, None, party_snapshot=lifecycle.party_tracker_data),
+            review_context=_dm_review_context(reviewed, history, None, party_snapshot=lifecycle.party_tracker_data, campaign_end=False),
             detached_context=detached_context,
         )
         if _is_restore_request(process_result):
@@ -1192,7 +1192,7 @@ def _run_startup_kickoff_once(
             conversation_history,
             approved_transition_plan=reviewed["approved_transition_plan"],
             player_input=None,
-            review_context=_dm_review_context(reviewed, conversation_history, None, party_snapshot=party_tracker_data),
+            review_context=_dm_review_context(reviewed, conversation_history, None, party_snapshot=party_tracker_data, campaign_end=False),
         )
         if _is_restore_request(process_result):
             return process_result
@@ -3348,6 +3348,8 @@ def validate_ai_response(
     detached_context=None,
     module_snapshot=None,
     installed_module_references="",
+    *,
+    campaign_end,
 ):
     from core.combat.invocation import (
         InvocationSupersededError,
@@ -3850,6 +3852,24 @@ def validate_ai_response(
         ),
     }]
     character_records_context = validation_messages_to_send[-1]["content"]
+    if campaign_end:
+        # #602: the DM's note for this turn carried the campaign-end prompt,
+        # which asks for new adventures. Without this fact the grounding rules
+        # reject the hooks that prompt demands.
+        validation_messages_to_send = list(validation_messages_to_send) + [{
+            "role": "system",
+            "content": (
+                "CAMPAIGN END: the current module's main plot is complete, and the DM "
+                "was asked this turn to suggest what comes next: rumors and hooks for "
+                "NEW adventures in distant lands that do not exist yet (createNewModule "
+                "after the player commits to one specific hook), and installed modules "
+                "the party has not finished (reached by the module switch). Places, "
+                "people and events named inside such a rumor or hook are hooks, not "
+                "established facts or references; do not reject them as nonexistent "
+                "or unsupported. Actions still need existing targets and their usual "
+                "rules, and createNewModule still needs a specific commitment."
+            ),
+        }]
 
     # The semantic boundary is deliberately outside compression: the exact raw
     # player turn and exact candidate must remain the final adjacent pair.
@@ -7228,6 +7248,7 @@ def resolve_retryable_ai_result(
                     "draft against the refreshed canonical context. "
                     + str(final_result.get("error") or "")
                 ),
+                campaign_end=review_context["campaign_end"],
             )
             if reviewed["status"] != "accepted":
                 final_result = reviewed if review_authority_current(review_context) else {
@@ -7242,6 +7263,7 @@ def resolve_retryable_ai_result(
                 "srd_context": review_context["srd_context"],
                 "npc_voice_batch": review_context["npc_voice_batch"],
                 "party_snapshot": copy.deepcopy(party_tracker_data),
+                "campaign_end": review_context["campaign_end"],
             }
             if not review_authority_current(next_context):
                 final_result = {"status": "stale_discarded", "retryable": False}
@@ -9366,6 +9388,8 @@ def _main_game_loop(startup_authority, turn_authority):
             current_area_id
         )
 
+        # #602: this turn's campaign-end prompt, if any; also the validator's fact.
+        module_creation_prompt = ""
         if party_members_stats:
             world_conditions = party_tracker_data["worldConditions"]
             # Use enhanced time formatting with context
@@ -9455,7 +9479,6 @@ def _main_game_loop(startup_authority, turn_authority):
             # C3: traps and hostile occupants are told once, by the Current Location block.
 
             # Check ALL modules for plot completion before suggesting module creation
-            module_creation_prompt = ""
             # should_inject_creation_prompt is now a global variable
             try:
                 # Debug current module detection
@@ -9718,6 +9741,7 @@ def _main_game_loop(startup_authority, turn_authority):
                     module_snapshot=prepared_context["module_snapshot"],
                     installed_module_references=prepared_context["installed_module_references"],
                     atlas_stamps=prepared_context.get("atlas_stamps"),
+                    campaign_end=bool(module_creation_prompt),
                 )
                 require_current_invocation(t067_claim)
                 if live_turn_scope.is_superseded():
@@ -9801,6 +9825,7 @@ def _main_game_loop(startup_authority, turn_authority):
                         review_result, conversation_history, user_input_text,
                         turn_srd_context, npc_voice_batch,
                         party_snapshot=party_tracker_data,
+                        campaign_end=bool(module_creation_prompt),
                     ),
                 )
                 if isinstance(final_result, dict) and final_result.get("status") == "superseded_invocation":
@@ -10065,7 +10090,7 @@ def _main_game_loop(startup_authority, turn_authority):
         if not _travel_recovery_pending():
             status_ready()
 
-def _dm_review_context(reviewed, accepted_history, player_input, srd_context=None, npc_voice_batch=None, *, party_snapshot):
+def _dm_review_context(reviewed, accepted_history, player_input, srd_context=None, npc_voice_batch=None, *, party_snapshot, campaign_end):
     """Transient processor handoff, not a persisted approval or story message."""
     if "review_feedback" not in reviewed:
         # The unchanged nonmembership bypass did not run the shared reviewer.
@@ -10078,6 +10103,7 @@ def _dm_review_context(reviewed, accepted_history, player_input, srd_context=Non
         "srd_context": srd_context,
         "npc_voice_batch": npc_voice_batch,
         "party_snapshot": copy.deepcopy(party_snapshot),
+        "campaign_end": campaign_end,
     }
 
 
@@ -10096,6 +10122,7 @@ def _review_fresh_membership_candidate(
                 "approved_transition_plan": None}
     # Unparseable proposals cannot establish nonmembership. The same review
     # owner obtains a usable draft before any narration or mutation.
+    # #602: an internal follow-up proposal is not the player's campaign-end turn.
     return _review_dm_candidate(
         response, accepted_history=copy.deepcopy(accepted_history),
         player_input=player_input, party=party,
@@ -10105,6 +10132,7 @@ def _review_fresh_membership_candidate(
         path_manager=ModulePathManager(str(party.get("module", "")).replace(" ", "_")),
         location_graph=location_graph, detached_context=detached_context,
         normalization=record if normalized else None,
+        campaign_end=False,
     )
 
 
@@ -10138,7 +10166,7 @@ def _process_fresh_dm_response(
         conversation_history, invocation_claim=invocation_claim,
         player_input=player_input,
         approved_transition_plan=reviewed["approved_transition_plan"],
-        review_context=_dm_review_context(reviewed, conversation_history, player_input, party_snapshot=party_tracker_data),
+        review_context=_dm_review_context(reviewed, conversation_history, player_input, party_snapshot=party_tracker_data, campaign_end=False),
         detached_context=detached_context,
     )
 
@@ -10149,7 +10177,7 @@ def _review_dm_candidate(
     live_turn_scope, path_manager, location_graph, detached_context=None,
     normalization=None, module_snapshot=None, installed_module_references="",
     atlas_stamps=None,
-    review_feedback=None, correction_reason=None,
+    review_feedback=None, correction_reason=None, campaign_end,
 ):
     """One detached correction owner (#193 D-NPC-PARTY-2..4).
 
@@ -10782,6 +10810,7 @@ def _review_dm_candidate(
                 review_feedback=review_feedback, detached_context=detached_context,
                 module_snapshot=module_snapshot,
                 installed_module_references=installed_module_references,
+                campaign_end=campaign_end,
             )
             require_current()
             if isinstance(validation_result, tuple):
