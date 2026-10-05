@@ -3892,8 +3892,10 @@ PARTY STATUS:
 Party NPCs: {json.dumps(party_npcs, indent=2)}
 
 CONVERSATION CONTEXT:
-This conversation is the only record of play. If it holds little or no play, say the visit was brief and invent no meeting, conversation, fight, reward or outcome.
+This conversation is the only record of play. If it holds little or no play, the chronicle is short and tells only what it holds.
 {conversation_data}
+
+The chronicle tells only what the party did and perceived. Mention plot content only as far as the party perceived it in the conversation (seen, heard or told there), whatever the point's status, and in the conversation's own words: a plot description adds no detail to what the party learned. Never write what did not happen, in any form: no sentence that something was not done, not met, not found, not fought or not learned, and no list of kinds of events that did not occur (such as "no meeting, battle or reward"). Only a request or question the party perceived may be told as still open. If little was played, one sentence that the visit was brief is enough.
 
 Focus on story outcomes, character development, and decisions that will matter in future adventures."""
         
