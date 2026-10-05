@@ -3825,6 +3825,7 @@ The chronicle should feel like a tale told by firelight years later—when inhib
 
 **Critical Instruction: Enrich and Extrapolate**
 While you must remain true to the events that occurred, you have the creative freedom—nay, the sacred duty—to flesh out the intimate details that make characters real. If the conversation history doesn't explicitly state someone's nickname, but their personality suggests one, include it. If their actions imply a quirk, phobia, or desire, weave it into the narrative. Did the rogue who always scouts ahead perhaps have a fear of being trapped? Did the cleric who heals everyone hide their own pain behind gentle smiles? Did the tension between two characters suggest an attraction neither would admit?
+This freedom never extends to events: never add a meeting, conversation, fight, reward, discovery or outcome that the conversation or the plot statuses do not record.
 
 Fill in these human details with the same care a novelist would. The conversation history provides the skeleton of events—you must add the flesh, blood, and beating heart. Every hero has quirks, every companion has pet names, every relationship has inside jokes. Find them. Create them. Make them real. 
 
