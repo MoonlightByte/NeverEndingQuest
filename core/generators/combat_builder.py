@@ -7,6 +7,7 @@ import json
 import random
 import sys
 import os
+import time
 import uuid
 
 # Add the project root to the Python path so we can import from utils, core, etc.
@@ -227,6 +228,49 @@ def _get_party_level():
             category="combat_builder",
         )
         return 1
+
+
+def _dexterity_modifier(data):
+    try:
+        return (int((data.get("abilities") or {})["dexterity"]) - 10) // 2
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return 0
+
+
+def _roll_initiative(data, sheet_backed):
+    """IN: one combatant's initiative.
+
+    A character sheet (the player, an NPC or companion) is rolled by the rules
+    engine: the sheet's initiative total (Dexterity, Alert, effect modifiers)
+    and the roll mode its conditions impose. A monster stat block, or a sheet
+    the engine cannot answer for, is d20 + its modifier (fail forward, the
+    fight never waits for the engine).
+    """
+    if not sheet_backed:
+        return random.randint(1, 20) + _dexterity_modifier(data)
+    reason = "engine returned no total"
+    try:
+        from core.nql import checks
+        started = time.monotonic()
+        result = checks.resolve(data, "initiative")
+        elapsed_ms = (time.monotonic() - started) * 1000
+        if result.ok and type(result.total) is int:
+            info(
+                "IN: engine initiative: %s [%.0f ms]" % (checks.describe(result), elapsed_ms),
+                category="combat_builder",
+            )
+            return result.total
+        reason = result.reason or reason
+    except Exception as exc:  # engine wrapper faults never stop a fight
+        reason = str(exc)
+    bonus = data.get("initiative")
+    if type(bonus) is not int:
+        bonus = _dexterity_modifier(data)
+    warning(
+        "IN: %s initiative rolled without the engine (%s)" % (data.get("name"), reason),
+        category="combat_builder",
+    )
+    return random.randint(1, 20) + bonus
 
 
 def load_or_create_monster(monster_type):
@@ -465,7 +509,7 @@ def generate_encounter(encounter_data):
     player = {
         "name": player_data["name"],
         "type": "player",
-        "initiative": random.randint(1, 20),
+        "initiative": _roll_initiative(player_data, sheet_backed=True),
         "status": player_data.get("status", "alive"),
         "conditions": player_data.get("condition_affected", []),
         "actions": {"actionType": "", "target": ""},
@@ -504,7 +548,7 @@ def generate_encounter(encounter_data):
             "name": monster_name,
             "type": "enemy",
             "monsterType": formatted_monster_type,
-            "initiative": random.randint(1, 20),
+            "initiative": _roll_initiative(monster_data, sheet_backed=False),
             "status": "alive",
             "conditions": [],
             "actions": {"actionType": "", "target": ""},
@@ -553,7 +597,7 @@ def generate_encounter(encounter_data):
             "name": npc_full_name,
             "type": "npc",
             "npcType": formatted_npc_type,
-            "initiative": random.randint(1, 20),
+            "initiative": _roll_initiative(npc_data, sheet_backed=True),
             "status": npc_data.get("status", "alive"),
             "conditions": npc_data.get("condition_affected", []),
             "actions": {"actionType": "", "target": ""},
