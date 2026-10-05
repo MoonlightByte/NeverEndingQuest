@@ -92,15 +92,59 @@ LOCATION_PREFIX_MAP = {
     # Special areas can have specific prefixes
 }
 
-def get_location_prefix(area_index: int) -> str:
-    """Get the appropriate prefix for location IDs based on area index"""
+def registered_location_prefixes() -> set:
+    """Location ID prefixes already used by the modules in the world registry"""
+    from utils.encoding_utils import safe_json_load
+
+    used_prefixes = set()
+    world_registry_path = "modules/world_registry.json"
+
+    if os.path.exists(world_registry_path):
+        registry = safe_json_load(world_registry_path)
+        if registry:
+            # Check all areas in all modules for used location prefixes
+            for area_id, area_info in registry.get('areas', {}).items():
+                module_name = area_info.get('module')
+                if module_name:
+                    # Load the actual area file to get location IDs
+                    area_path = f"modules/{module_name}/areas/{area_id}.json"
+                    if os.path.exists(area_path):
+                        area_data = safe_json_load(area_path)
+                        if area_data and 'locations' in area_data:
+                            for loc in area_data['locations']:
+                                loc_id = loc.get('locationId', '')
+                                if loc_id:
+                                    # Extract prefix (letters before numbers)
+                                    match = re.match(r'^([A-Z]+)\d+', loc_id)
+                                    if match:
+                                        used_prefixes.add(match.group(1))
+    return used_prefixes
+
+
+def get_location_prefix(area_index: int, used_prefixes=frozenset(), module_name: str = "", log=None) -> str:
+    """Get the prefix for location IDs: the area index's prefix, or the next one not in used_prefixes"""
     # Use letters A-Z for first 26 areas, then AA-AZ, BA-BZ, etc.
-    if area_index < 26:
-        return chr(65 + area_index)  # A-Z
-    else:
-        first_letter = chr(65 + (area_index // 26) - 1)
-        second_letter = chr(65 + (area_index % 26))
-        return first_letter + second_letter
+    candidate_index = area_index
+    while True:
+        if candidate_index < 26:
+            prefix = chr(65 + candidate_index)  # A-Z
+        else:
+            first_letter = chr(65 + (candidate_index // 26) - 1)
+            second_letter = chr(65 + (candidate_index % 26))
+            prefix = first_letter + second_letter
+
+        if prefix not in used_prefixes:
+            if log:
+                log(f"Assigned unique location prefix '{prefix}' for area {area_index}")
+            return prefix
+
+        candidate_index += 1
+        if candidate_index > 702:  # Safety limit (26 + 26*26 = 702 possible prefixes)
+            # Fallback to module-specific prefix
+            prefix = f"M{module_name[:3].upper()}{random.randint(1,99)}"
+            if log:
+                log(f"Warning: Using fallback prefix '{prefix}' due to exhausted standard prefixes")
+            return prefix
 
 
 def _strip_response_fence(content: str) -> str:

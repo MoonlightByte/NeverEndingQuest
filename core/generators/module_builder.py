@@ -36,13 +36,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 # Import all generators - handle both direct execution and module import
 try:
     # Try relative imports first (when imported as module)
-    from .module_generator import ModuleGenerator
+    from .module_generator import ModuleGenerator, get_location_prefix, registered_location_prefixes
     from .plot_generator import PlotGenerator
     from .location_generator import LocationGenerator
     from .area_generator import AreaGenerator, AreaConfig
 except ImportError:
     # Fall back to absolute imports (when run directly)
-    from core.generators.module_generator import ModuleGenerator
+    from core.generators.module_generator import ModuleGenerator, get_location_prefix, registered_location_prefixes
     from core.generators.plot_generator import PlotGenerator
     from core.generators.location_generator import LocationGenerator
     from core.generators.area_generator import AreaGenerator, AreaConfig
@@ -434,6 +434,9 @@ class ModuleBuilder:
         self.context = ModuleContext()
         self.progress_callback = None  # For progress reporting
         self.per_area_locations = None  # For custom locations per area
+        # Location ID prefixes already given to this build's areas, so a later
+        # area never repeats an earlier one's prefix (#612).
+        self._assigned_location_prefixes = set()
         # T104's validated identity decisions (Step 7.5), held by position so
         # they survive publication id normalization; the module declaration
         # is written from them after the stitcher re-prefix.
@@ -2529,56 +2532,11 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         self.log(f"Created {backup_count} _BU.json backup files for reset functionality")
     
     def get_location_prefix(self, area_index: int) -> str:
-        """Get a globally unique prefix for location IDs by checking existing modules"""
-        from utils.encoding_utils import safe_json_load
-        import os
-        
-        # Load world registry to check existing location IDs
-        used_prefixes = set()
-        world_registry_path = "modules/world_registry.json"
-        
-        if os.path.exists(world_registry_path):
-            registry = safe_json_load(world_registry_path)
-            if registry:
-                # Check all areas in all modules for used location prefixes
-                for area_id, area_info in registry.get('areas', {}).items():
-                    module_name = area_info.get('module')
-                    if module_name:
-                        # Load the actual area file to get location IDs
-                        area_path = f"modules/{module_name}/areas/{area_id}.json"
-                        if os.path.exists(area_path):
-                            area_data = safe_json_load(area_path)
-                            if area_data and 'locations' in area_data:
-                                for loc in area_data['locations']:
-                                    loc_id = loc.get('locationId', '')
-                                    if loc_id:
-                                        # Extract prefix (letters before numbers)
-                                        import re
-                                        match = re.match(r'^([A-Z]+)\d+', loc_id)
-                                        if match:
-                                            used_prefixes.add(match.group(1))
-        
-        # Generate a unique prefix not in use
-        candidate_index = area_index
-        while True:
-            if candidate_index < 26:
-                prefix = chr(65 + candidate_index)  # A-Z
-            else:
-                first_letter = chr(65 + (candidate_index // 26) - 1)
-                second_letter = chr(65 + (candidate_index % 26))
-                prefix = first_letter + second_letter
-            
-            if prefix not in used_prefixes:
-                self.log(f"Assigned unique location prefix '{prefix}' for area {area_index}")
-                return prefix
-            
-            candidate_index += 1
-            if candidate_index > 702:  # Safety limit (26 + 26*26 = 702 possible prefixes)
-                # Fallback to module-specific prefix
-                import random
-                prefix = f"M{self.config.module_name[:3].upper()}{random.randint(1,99)}"
-                self.log(f"Warning: Using fallback prefix '{prefix}' due to exhausted standard prefixes")
-                return prefix
+        """Get a prefix for location IDs not used by a registered module or an earlier area of this build"""
+        used_prefixes = registered_location_prefixes() | self._assigned_location_prefixes
+        prefix = get_location_prefix(area_index, used_prefixes, self.config.module_name, self.log)
+        self._assigned_location_prefixes.add(prefix)
+        return prefix
     
     
     def _create_bidirectional_connection(self, area_files: Dict[str, Any], from_area: str, to_area: str) -> bool:
