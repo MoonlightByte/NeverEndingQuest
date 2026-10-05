@@ -690,7 +690,7 @@ _ATTACKER_DISADVANTAGE = frozenset(("blinded", "poisoned", "prone", "restrained"
 _TARGET_ADVANTAGE = frozenset(("blinded", "paralyzed", "petrified", "restrained", "stunned", "unconscious"))
 
 
-def _attack_mode(attacker_conditions, target_conditions, entry_type, target_dodging=False):
+def _attack_mode(attacker_conditions, target_conditions, entry_type, target_dodging=False, declared=None):
     """("normal" | "advantage" | "disadvantage", sources). Any advantage
     with any disadvantage cancels to normal (SRD), the sources still listed."""
     advantage = []
@@ -705,6 +705,11 @@ def _attack_mode(attacker_conditions, target_conditions, entry_type, target_dodg
             (disadvantage if entry_type == "ranged" else advantage).append("target prone")
     if target_dodging:
         disadvantage.append("target dodging")
+    # Item 3: the DM's typed situational ruling on a player's code-scored swing.
+    if declared == "advantage":
+        advantage.append("DM ruling")
+    elif declared == "disadvantage":
+        disadvantage.append("DM ruling")
     if advantage and disadvantage:
         return "normal", advantage + disadvantage
     if advantage:
@@ -1459,15 +1464,17 @@ def player_weapon_attack_entry(encounter, characters, intent):
 
 def open_player_weapon_attack(encounter, characters, intent, entry):
     """The roll-phase record for pendingTurn.weaponAttack: the mode is fixed
-    here (conditions and Dodge) so the number of d20
+    here (conditions, Dodge and the DM's typed ruling) so the number of d20
     faces asked for never changes mid-turn."""
     actor = combatant_by_id(encounter, intent.get("actorId"))
     target = combatant_by_id(encounter, intent.get("targetId"))
     attacker_conditions = _stated_conditions(characters, encounter, actor)
     target_conditions = _stated_conditions(characters, encounter, target)
+    declared = intent.get("attackMode")
     mode, sources = _attack_mode(
         attacker_conditions, target_conditions, entry.get("type"),
         _target_dodging(target, target_conditions),
+        declared if declared in PLAYER_DECLARED_MODES else None,
     )
     return {
         "actorId": actor.get("combatantId"),

@@ -453,6 +453,13 @@ are their own action names too. defend means only that the actor holds its
 position or cannot act; it has no mechanical effect. A `dodging` record on a
 creatures entry is set and cleared by code; never declare or remove it.
 
+A player's plain swing with one listed melee weapon at one hostile creature
+is asked for and scored by code: declare action='attack', the exact weapon
+name as ability and targetId, with targets and resources empty. Only for a
+situational edge (cover, an unseen attacker, a clever setup) add
+attackMode='advantage'|'disadvantage' with a short attackModeReason. When
+the actor makes more than one attack this turn, set attacks to that number.
+
 The PLAYER actor must always use mode='adjudicated'; never roll automatically
 for the player. Apply only rolls/results explicitly supplied in playerInput,
 or set requiresPlayerInput={kind:'roll'|'choice', prompt:'...', die:'d20',
