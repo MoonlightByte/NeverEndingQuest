@@ -1899,11 +1899,12 @@ class CampaignManager:
         """Scan and integrate modules explicitly, then sync campaign availability.
 
         ``priority_module`` (the party's module) is integrated first. The
-        result's ``import_required`` lists modules left unjoined because
-        their ids collide with a registered module and they count as
-        played; ``imported`` lists the unplayed ones joined by renumbering;
-        ``not_joined`` lists the installed ones publication refused, with
-        the reason (#586).
+        result's ``import_required`` lists modules left unjoined while their
+        ids collide with a registered module: they may have been played, or
+        the import failed or its checks could not be finished
+        (``refused_because``); ``imported`` lists the unplayed ones joined by
+        renumbering; ``not_joined`` lists the installed ones publication
+        refused, with the reason and a typed ``cause`` (#586, #613).
         """
         with module_refresh_lock() as acquired:
             if not acquired:
