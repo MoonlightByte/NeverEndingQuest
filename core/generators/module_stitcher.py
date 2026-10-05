@@ -182,13 +182,13 @@ class TargetedPublicationResult:
     """Proof-bearing result for publishing one exact module directory.
 
     ``NOT_PUBLISHED`` is returned only when the registry is proven not to
-    reference the module and the live module is proven to match its retained
-    pre-publication snapshot.
+    reference the module and the live module is proven to match the manifest
+    of the held tree taken before validation.
     ``INDETERMINATE`` means cleanup is unsafe because at least one relevant
     on-disk state could not be proven.
 
     ``backup_path`` is a compatibility-shaped, permanently ``None`` field.
-    Task1 snapshot receipts deliberately expose no mutable filesystem locator.
+    The manifest receipt deliberately exposes no mutable filesystem locator.
     """
 
     status: PublicationStatus
@@ -298,14 +298,12 @@ class _ExactModuleEntryGuard:
 
 @dataclass(frozen=True)
 class _ModuleBackupResult:
-    """Identity-bound proof of bytes captured during one locked snapshot.
+    """Identity-bound manifest receipt of the held module tree.
 
-    ``proven`` covers only the descriptor-held bytes, manifest, captured area
-    documents, and durability operations completed by the snapshot attempt.
-    It deliberately carries no pathname: a mutable namespace entry cannot
-    remain identity-bound after its descriptor closes.  Physical evidence is
-    retained best-effort under the hidden backup root, but only the future
-    recovery transaction may enumerate and turn it into a trusted locator.
+    ``proven`` covers only the manifest read through the held entry guard
+    before validation; no copy of the module is made.  It deliberately
+    carries no pathname: a mutable namespace entry cannot remain
+    identity-bound after its descriptor closes.
     """
 
     proven: bool
@@ -2499,8 +2497,8 @@ Create atmospheric travel narration that leads into this adventure."""
 
         Once the held identity no longer owns the lexical path, path-based
         module rollback cannot prove it is operating on the original tree. The
-        backup is retained and the result stays indeterminate for manual or
-        later journal-backed recovery.
+        result stays indeterminate for manual or later journal-backed
+        recovery.
         """
         if registry_attempted:
             registry_ok, registry_reason = self._restore_registry_snapshot(
@@ -2538,7 +2536,7 @@ Create atmospheric travel narration that leads into this adventure."""
             prior_registry
         )
         if not registry_ok:
-            # Candidate module + backup are intentionally retained. Rolling the
+            # The candidate module is intentionally left in place. Rolling the
             # module back while registry state is unknown could make a registry
             # that actually committed point at deleted or incompatible files.
             return TargetedPublicationResult(
@@ -3716,7 +3714,7 @@ Create atmospheric travel narration that leads into this adventure."""
         self,
         module_name: str,
         module_path: str,
-        backup_area_documents: Dict[str, Dict[str, Any]],
+        pre_reprefix_area_documents: Dict[str, Dict[str, Any]],
         registry_snapshot: Optional[Dict[str, Any]] = None,
     ) -> int:
         """
@@ -3726,7 +3724,8 @@ Create atmospheric travel narration that leads into this adventure."""
         Args:
             module_name: Name of the module being integrated
             module_path: Path to the module directory
-            backup_area_documents: Identity-bound original area JSON snapshots
+            pre_reprefix_area_documents: Area JSON documents read from the
+                candidate after area renames and before the location re-prefix
         """
         print(f"DEBUG: [Module Stitcher] Validating global uniqueness of location IDs for {module_name}...")
 
@@ -3845,7 +3844,7 @@ Create atmospheric travel narration that leads into this adventure."""
         # After re-prefixing, we need to update all references to the old IDs
         self._update_all_location_references(
             module_name,
-            backup_area_documents,
+            pre_reprefix_area_documents,
             module_path=module_path,
         )
 
@@ -3890,7 +3889,7 @@ Create atmospheric travel narration that leads into this adventure."""
     def _update_all_location_references(
         self,
         module_name: str,
-        backup_area_documents: Dict[str, Dict[str, Any]],
+        pre_reprefix_area_documents: Dict[str, Dict[str, Any]],
         *,
         module_path: str,
     ) -> None:
@@ -3901,9 +3900,9 @@ Create atmospheric travel narration that leads into this adventure."""
         """
         id_mapping = {}
 
-        # Build ID mapping from the immutable area documents captured by
-        # the descriptor-relative backup before any mutation.
-        if not backup_area_documents:
+        # Build ID mapping from the area documents read from the candidate
+        # before the location re-prefix.
+        if not pre_reprefix_area_documents:
             raise ValueError(
                 "No original area documents are available for ID rewrite"
             )
@@ -3911,7 +3910,7 @@ Create atmospheric travel narration that leads into this adventure."""
         current_areas_path = os.path.join(module_path, "areas")
 
         # Compare captured original data with current re-prefixed files.
-        for filename, backup_data in sorted(backup_area_documents.items()):
+        for filename, backup_data in sorted(pre_reprefix_area_documents.items()):
             if filename.endswith('.json') and not filename.endswith('_BU.json'):
                 # The filename in the current dir should be the same
                 current_file = os.path.join(current_areas_path, filename)
