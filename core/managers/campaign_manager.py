@@ -3881,15 +3881,17 @@ FORMATTING RULES: Use only standard ASCII characters -- no smart quotes, no em-d
         
         conversation_data = f"Complete Conversation History: {json.dumps(filtered_conversation, indent=2)}"
         
-        user_prompt = f"""Please generate a complete narrative summary of this adventure arc using the location summaries and plot file provided below:
+        user_prompt = f"""Please write the chronicle of what the party actually played in this adventure arc, from the conversation and the plot statuses provided below:
 
 STRUCTURED PLOT DATA:
+These plot points are the module's authored plan, not a record of play. A point records something that happened only through a status other than "not started" and its plotImpact; a "not started" point did not happen, and a description tells what the module offers, not what the party did.
 {plot_summary}
 
 PARTY STATUS:
 Party NPCs: {json.dumps(party_npcs, indent=2)}
 
 CONVERSATION CONTEXT:
+This conversation is the only record of play. If it holds little or no play, say the visit was brief and invent no meeting, conversation, fight, reward or outcome.
 {conversation_data}
 
 Focus on story outcomes, character development, and decisions that will matter in future adventures."""
