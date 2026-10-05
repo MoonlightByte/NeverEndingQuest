@@ -122,7 +122,8 @@ Fresh internal follow-ups use `_process_fresh_dm_response` (`main.py:9551`) outs
 - Precommit travel freshness rejection returns to the same detached correction loop,
   retaining semantic constraints and revising the latest candidate. It does not use
   the bounded generic regeneration shortcut or retain rejected narration/voice effects.
-- Temporary read contention waits outside the party lock and remains cancellable.
+- Temporary read contention waits outside the party lock and remains cancellable
+  (one exception, the chronicle read at departure staging, is under State and atomicity).
   D-303-2 permits only an unverified move to be refused for permanent unreadability:
   preserve files/position, explain truthfully without a fictional obstacle, and
   return control for another action or Load. Committed travel still resumes its
@@ -135,6 +136,12 @@ acceptance verdict. The verification pin above describes the historical baseline
 
 - Stores: `party_tracker.json`, transition checkpoint, origin area JSON, `journal.json`, main
   conversation history, and optional staged episode/chronicle/handoff records.
+- An unparseable `journal.json` found when a departure is staged is renamed to
+  `journal.json.unreadable-<stamp>-<unique>` (bytes kept, never overwritten) and the chronicle
+  starts again from the next recorded departure (#620, D-620-1); the chronicle is history, not
+  travel evidence, so the unreadable-record handback above does not apply to it. A busy
+  `journal.json` there is waited for while an in-module move holds the party lock; the wait stays
+  cancellable, because a superseding control sets its flag before it takes that lock.
 - `safe_json_dump` publishes each JSON by same-directory temp, fsync, and `os.replace`.
 - The workflow is multi-file, not one rename; the checkpoint carries preimages, phases, stable
   message IDs, deferred cursor/operation IDs, and before/after projections for convergence.
