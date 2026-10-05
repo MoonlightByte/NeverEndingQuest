@@ -24,8 +24,8 @@ from utils.capture.multi_model_capture import capture_and_fanout, register_calls
 from utils.enhanced_logger import info, warning
 from utils.file_operations import safe_write_json
 
-register_callsite("T122", "core/generators/module_declaration.py", 294)
-register_callsite("T123", "core/generators/module_declaration.py", 0)
+register_callsite("T122", "core/generators/module_declaration.py", 371)
+register_callsite("T123", "core/generators/module_declaration.py", 371)
 
 REFUSED = "module_declaration.refused.json"
 # Classifications whose occurrences are one being (as the builder's ONE_BEING).
