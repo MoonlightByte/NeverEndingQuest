@@ -155,7 +155,21 @@ class Game:
         # game yet (the build-time load before a first game) passes its own.
         self.tracker = load(os.path.join(root, "party_tracker.json")) if tracker is None else tracker
         journal = os.path.join(root, "journal.json")
-        self.journal = load(journal).get("entries", []) if os.path.exists(journal) else []
+        self.journal = []
+        if os.path.exists(journal):
+            # The chronicle is evidence only (mentions()), never a rule
+            # input: an unreadable one gives no evidence and play goes on
+            # (#605). The file is left as it is.
+            try:
+                doc = load(journal)
+                entries = doc.get("entries", []) if isinstance(doc, dict) else None
+                if not isinstance(entries, list):
+                    raise ValueError("no list of entries")
+                self.journal = entries
+            except (OSError, ValueError) as exc:
+                from utils.enhanced_logger import warning
+                warning("ROSTER: journal.json unreadable (%s); the chronicle's evidence "
+                        "is left out and play continues" % exc, category="location_transitions")
         # masters[M] and played[M] map a location ID to (area ID, location);
         # played_areas[M] keeps each played area file whole (the map's links
         # are read from them, utils/travel_map.py).
