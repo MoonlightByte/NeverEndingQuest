@@ -36,6 +36,7 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   invalid_locations: Non-existent places = IMMEDIATE FAIL
   cross_module: Can reference known NPCs from other modules in dialogue/memories
   strict: Only reject truly non-existent NPCs (not in ANY module)
+  campaign_end: when a CAMPAIGN END note is supplied, places, people and events named inside rumors or hooks for new adventures are hooks, not references; never reject them as non-existent. Action targets still need existing places, NPCs and modules
 }
 
 @TRANSITION_NOTE={
