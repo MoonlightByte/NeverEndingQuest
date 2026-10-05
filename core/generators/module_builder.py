@@ -505,8 +505,9 @@ class ModuleBuilder:
         module-relative id ("G04", never "loc:<Module>/G04"), so a later
         re-prefix that rewrites the module's ids by exact value rewrites these.
         Declares one entry per being T104 typed as one figure across areas, the
-        party start with how it was chosen, and the location-level cross-area
-        links. Nothing is read from prose. An entry that does not resolve
+        party start with how it was chosen, the location-level cross-area
+        links, and each link's time (`routes`, one T123 call; left out when the
+        call fails). Nothing is read from prose by code. An entry that does not resolve
         against the written files is left out and logged; the module then
         derives it as before. Never raises: on any failure no file is written
         and the module derives as before.
@@ -599,6 +600,12 @@ class ModuleBuilder:
                 "start": start,
                 "gateways": gateways,
             }
+            # N5: each link's time, typed by one T123 call over the final ids;
+            # none (the travel time table) when the call fails.
+            from core.generators.module_declaration import type_routes
+            routes = type_routes(out, self.config.module_name)
+            if routes:
+                declaration["routes"] = routes
             self._atomic_save_json("module_declaration.json", declaration)
             return True
         except Exception as exc:

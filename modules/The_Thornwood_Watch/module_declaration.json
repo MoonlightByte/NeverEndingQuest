@@ -132,5 +132,133 @@
       "index": 0,
       "disposition": "friendly"
     }
+  ],
+  "routes": [
+    {
+      "from": "NC01",
+      "to": "NC02",
+      "ticks": 300,
+      "both": true
+    },
+    {
+      "from": "NC01",
+      "to": "NC03",
+      "ticks": 300,
+      "both": true
+    },
+    {
+      "from": "NC01",
+      "to": "TW05",
+      "ticks": 5400,
+      "both": true
+    },
+    {
+      "from": "NC02",
+      "to": "NC04",
+      "ticks": 300,
+      "both": true
+    },
+    {
+      "from": "NC02",
+      "to": "NC05",
+      "ticks": 480,
+      "both": true
+    },
+    {
+      "from": "NC03",
+      "to": "NC04",
+      "ticks": 300,
+      "both": true
+    },
+    {
+      "from": "NC03",
+      "to": "NC05",
+      "ticks": 480,
+      "both": true
+    },
+    {
+      "from": "RO01",
+      "to": "RO02",
+      "ticks": 300,
+      "both": true
+    },
+    {
+      "from": "RO01",
+      "to": "RO03",
+      "ticks": 300,
+      "both": true
+    },
+    {
+      "from": "RO01",
+      "to": "RO04",
+      "ticks": 300,
+      "both": true
+    },
+    {
+      "from": "RO02",
+      "to": "RO04",
+      "ticks": 300,
+      "both": false
+    },
+    {
+      "from": "RO03",
+      "to": "RO05",
+      "ticks": 480,
+      "both": true
+    },
+    {
+      "from": "RO03",
+      "to": "RO06",
+      "ticks": 480,
+      "both": true
+    },
+    {
+      "from": "RO06",
+      "to": "TW01",
+      "ticks": 3600,
+      "both": true
+    },
+    {
+      "from": "TW01",
+      "to": "TW02",
+      "ticks": 300,
+      "both": true
+    },
+    {
+      "from": "TW01",
+      "to": "TW04",
+      "ticks": 600,
+      "both": true
+    },
+    {
+      "from": "TW01",
+      "to": "TW06",
+      "ticks": 900,
+      "both": false
+    },
+    {
+      "from": "TW02",
+      "to": "TW03",
+      "ticks": 480,
+      "both": true
+    },
+    {
+      "from": "TW02",
+      "to": "TW05",
+      "ticks": 720,
+      "both": true
+    },
+    {
+      "from": "TW03",
+      "to": "TW04",
+      "ticks": 600,
+      "both": true
+    },
+    {
+      "from": "TW06",
+      "to": "TW04",
+      "ticks": 720,
+      "both": false
+    }
   ]
 }

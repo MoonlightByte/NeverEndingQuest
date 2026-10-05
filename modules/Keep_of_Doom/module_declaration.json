@@ -222,5 +222,271 @@
       "index": 0,
       "disposition": "friendly"
     }
+  ],
+  "routes": [
+    {
+      "from": "A01",
+      "to": "A02",
+      "ticks": 120,
+      "both": true
+    },
+    {
+      "from": "A01",
+      "to": "A03",
+      "ticks": 300,
+      "both": true
+    },
+    {
+      "from": "A01",
+      "to": "A04",
+      "ticks": 240,
+      "both": true
+    },
+    {
+      "from": "A01",
+      "to": "A05",
+      "ticks": 180,
+      "both": true
+    },
+    {
+      "from": "A03",
+      "to": "A05",
+      "ticks": 300,
+      "both": true
+    },
+    {
+      "from": "A03",
+      "to": "A06",
+      "ticks": 480,
+      "both": true
+    },
+    {
+      "from": "A03",
+      "to": "B01",
+      "ticks": 1800,
+      "both": true
+    },
+    {
+      "from": "A05",
+      "to": "A06",
+      "ticks": 480,
+      "both": true
+    },
+    {
+      "from": "B01",
+      "to": "B02",
+      "ticks": 900,
+      "both": true
+    },
+    {
+      "from": "B01",
+      "to": "B03",
+      "ticks": 720,
+      "both": true
+    },
+    {
+      "from": "B02",
+      "to": "B04",
+      "ticks": 900,
+      "both": true
+    },
+    {
+      "from": "B02",
+      "to": "B08",
+      "ticks": 1080,
+      "both": true
+    },
+    {
+      "from": "B03",
+      "to": "B05",
+      "ticks": 900,
+      "both": true
+    },
+    {
+      "from": "B03",
+      "to": "B06",
+      "ticks": 720,
+      "both": true
+    },
+    {
+      "from": "B04",
+      "to": "B07",
+      "ticks": 900,
+      "both": true
+    },
+    {
+      "from": "B05",
+      "to": "B06",
+      "ticks": 1080,
+      "both": true
+    },
+    {
+      "from": "B06",
+      "to": "B07",
+      "ticks": 900,
+      "both": true
+    },
+    {
+      "from": "B07",
+      "to": "C01",
+      "ticks": 5400,
+      "both": true
+    },
+    {
+      "from": "B07",
+      "to": "D01",
+      "ticks": 10800,
+      "both": true
+    },
+    {
+      "from": "B08",
+      "to": "B09",
+      "ticks": 1200,
+      "both": true
+    },
+    {
+      "from": "B09",
+      "to": "C08",
+      "ticks": 480,
+      "both": true
+    },
+    {
+      "from": "C01",
+      "to": "C02",
+      "ticks": 300,
+      "both": true
+    },
+    {
+      "from": "C01",
+      "to": "C03",
+      "ticks": 360,
+      "both": true
+    },
+    {
+      "from": "C01",
+      "to": "C08",
+      "ticks": 480,
+      "both": true
+    },
+    {
+      "from": "C02",
+      "to": "C04",
+      "ticks": 300,
+      "both": true
+    },
+    {
+      "from": "C03",
+      "to": "C05",
+      "ticks": 240,
+      "both": true
+    },
+    {
+      "from": "C04",
+      "to": "C06",
+      "ticks": 360,
+      "both": true
+    },
+    {
+      "from": "C05",
+      "to": "C06",
+      "ticks": 300,
+      "both": true
+    },
+    {
+      "from": "C05",
+      "to": "C07",
+      "ticks": 180,
+      "both": true
+    },
+    {
+      "from": "C07",
+      "to": "E01",
+      "ticks": 600,
+      "both": true
+    },
+    {
+      "from": "D01",
+      "to": "D02",
+      "ticks": 1200,
+      "both": true
+    },
+    {
+      "from": "D01",
+      "to": "D03",
+      "ticks": 1080,
+      "both": true
+    },
+    {
+      "from": "D02",
+      "to": "D04",
+      "ticks": 1200,
+      "both": true
+    },
+    {
+      "from": "D02",
+      "to": "D05",
+      "ticks": 1080,
+      "both": true
+    },
+    {
+      "from": "D03",
+      "to": "D06",
+      "ticks": 1200,
+      "both": true
+    },
+    {
+      "from": "D04",
+      "to": "D05",
+      "ticks": 900,
+      "both": true
+    },
+    {
+      "from": "D05",
+      "to": "D06",
+      "ticks": 900,
+      "both": true
+    },
+    {
+      "from": "E01",
+      "to": "E02",
+      "ticks": 240,
+      "both": true
+    },
+    {
+      "from": "E01",
+      "to": "E03",
+      "ticks": 300,
+      "both": true
+    },
+    {
+      "from": "E02",
+      "to": "E04",
+      "ticks": 240,
+      "both": true
+    },
+    {
+      "from": "E03",
+      "to": "E05",
+      "ticks": 300,
+      "both": true
+    },
+    {
+      "from": "E04",
+      "to": "E06",
+      "ticks": 360,
+      "both": true
+    },
+    {
+      "from": "E05",
+      "to": "E06",
+      "ticks": 480,
+      "both": true
+    },
+    {
+      "from": "E06",
+      "to": "E07",
+      "ticks": 360,
+      "both": true
+    }
   ]
 }

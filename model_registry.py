@@ -581,6 +581,17 @@ _declare(
          "module at its integration. Bound like T104.",
 )
 _declare(
+    "T123",
+    _profiles(
+        "ROUTE_TIMING_T123_GPT56LUNA_NONE",
+        "ROUTE_TIMING_T123_GEMINI_PRO_LOW",
+        "ROUTE_TIMING_T123_LEGACY",
+        "ROUTE_TIMING_T123_LMSTUDIO",
+    ),
+    note="Timing a built module's links (N5), once per build in the declaration "
+         "emitter. Bound like T122.",
+)
+_declare(
     "T105",
     _profiles(
         "NPC_VOICE_T105_OPENAI_LUNA_NONE",
@@ -766,7 +777,7 @@ REGISTERED_TASK_IDS = tuple(
     "T054 T059 T063 T064 T065 T066 T067 T078 T079 T081 T082 T083 T084 "
     "T085 T086 T087 T088 T089 T090 T092 T093 T094 T095 T096 T097 T098 "
     "T099 T100 T101 T102 T103 T105 T107 T108 T112 T113 T114 "
-    "T115 T116 T117 T118 T119 T120 T121 T122".split()
+    "T115 T116 T117 T118 T119 T120 T121 T122 T123".split()
 )
 EXPECTED_TASK_IDS = tuple(sorted(REGISTERED_TASK_IDS + ("T104",)))
 
