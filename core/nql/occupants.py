@@ -41,7 +41,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from utils.enhanced_logger import debug, info, warning
 from utils.file_operations import safe_read_json, safe_write_json
-from core.nql import apply
+from core.nql import apply, game_clock
 
 DOCUMENT = "live_state.json"
 CONVERSION_DIR = os.path.join("modules", "logs", "roster_conversion")
@@ -288,6 +288,14 @@ def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
             # QS: the switch. A new document, or one from before the quest
             # record (v2), takes the played plot once, before this turn's call.
             live = _convert_quests(root, world, live, "new document" if created else "document without quests")
+        if create:
+            # D4: a writer's call starts with the tracker and the document at
+            # the same time (core/nql/game_clock.py). A reader never writes.
+            caught = game_clock.reconcile(root, world, live,
+                                          lambda w, d, a, i: _call(w, d, a, i, []))
+            if caught is not live:
+                _write(root, caught)
+                live = caught
         if actions and align:
             live = _align(root, world, live, game)
         tried_bak = False
@@ -302,6 +310,12 @@ def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
                 # a refused document and this one (the .bak) is good.
                 if response.get("live_state") != on_disk:
                     _write(root, response["live_state"])
+                # D4: the tracker's time follows the document's clock, on a
+                # historical answer too (it repairs a crash between the two
+                # writes on the retry).
+                tick = game_clock.document_tick(response.get("live_state"))
+                if create and tick is not None:
+                    game_clock.project(root, tick)
                 return response
             fault = response.get("fault") or {}
             if response.get("phase") != "live_state":

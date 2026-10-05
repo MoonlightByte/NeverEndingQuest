@@ -1226,7 +1226,6 @@ def apply_current_transition_action(operation_id, action_index):
         )
 
     from core.managers.campaign_manager import _party_module_transition_lock
-    from updates.update_world_time import apply_staged_world_time
 
     if family == "updatePlot":
         # QS: the quest record is the engine's. The prepared line is sent
@@ -1697,12 +1696,14 @@ def apply_current_transition_action(operation_id, action_index):
         )
 
     with _party_module_transition_lock():
-        outcome = apply_staged_world_time(receipt["before"], receipt["after"])
-        if outcome == "blocked_conflict":
-            record["status"] = "blocked_conflict"
-            checkpoint["phase"] = "blocked_conflict"
-            _write_location_transition_checkpoint(checkpoint)
-            return outcome
+        # D4: the clock reaches the approved arrival through the engine (its
+        # trip ticks count toward it); the id makes a resume historical. The
+        # tracker follows the document and never moves backwards.
+        from core.nql import game_clock
+
+        game_clock.apply_staged(
+            receipt, "travel:%s:time" % record["operation_id"]
+        )
         record["status"] = "committed"
         deferred["cursor"] = action_index + 1
         deferred["receipts"].append(
@@ -3677,7 +3678,15 @@ def process_action(
     elif action_type == ACTION_UPDATE_TIME:
         status_advancing_time()
         time_estimate_str = str(parameters["timeEstimate"])
-        update_world_time(time_estimate_str)
+        # D4: the engine's document holds the clock; the tracker follows it.
+        # The turn's id makes a retried turn historical, not a second wait.
+        from core.nql import game_clock
+
+        if not game_clock.advance_minutes(
+            time_estimate_str,
+            _engine_request_id(invocation_claim, action_context, "time"),
+        ):
+            update_world_time(time_estimate_str)
 
     elif action_type == ACTION_UPDATE_PLOT:
         # QS: the quest record is the engine's. One typed action, one engine
