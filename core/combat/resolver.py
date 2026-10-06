@@ -120,6 +120,10 @@ class DeterministicRollSource(object):
     def remaining(self, die):
         return len(self._pools.get(die, []))
 
+    def peek(self, die, count):
+        """The next ``count`` values for that die, not consumed."""
+        return list(self._pools.get(die) or [])[:max(0, int(count))]
+
 
 def parse_dice(expression):
     """'2d6+3' -> (count, sides, modifier). Raises ValueError on junk."""
@@ -1069,6 +1073,49 @@ def _sheet_delta(working, hp_after, status_after, creature, had_temp):
     return delta
 
 
+def _engine_swing(rolls, entry, sheet, to_hit, mode, faces, target_ac, target, target_hp, trait_sheet,
+                  log_label=""):
+    """Option 3: one swing scored by the rules engine (NQL X6 + X8), or None.
+
+    The engine keeps the face, decides hit, miss and critical, adds the
+    damage bonus once and applies the target's typed damage traits. Both
+    damage totals are summed from the faces the roll source will hand out
+    next (peeked, not taken), so the caller takes exactly what today's code
+    takes. None (engine missing or refusing, dice it cannot take) keeps
+    today's arithmetic for the whole swing.
+    """
+    from core.nql import attacks
+
+    try:
+        count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"))
+    except ValueError:
+        return None
+    peek = getattr(rolls, "peek", None)
+    upcoming = peek("d%d" % sides, 2 * count) if callable(peek) else []
+    normal = sum(upcoming[:count]) if len(upcoming) >= count else None
+    critical = sum(upcoming) if len(upcoming) >= 2 * count else None
+    # With no damage faces ahead (the player's miss) the swing is only scored.
+    scored = attacks.score(
+        to_hit=to_hit, count=count, sides=sides,
+        bonus=modifier + int(entry.get("damageBonus", 0) or 0) + modifier_total(sheet, "damageRolls"),
+        damage_type=entry.get("damageType"), mode=mode, faces=list(faces),
+        target_ac=target_ac, target_hp=target_hp,
+        target_max_hp=int((target or {}).get("maxHitPoints", 0) or 0),
+        target_sheet=trait_sheet, damage=normal, critical_damage=critical,
+    )
+    if scored.ok:
+        return scored
+    try:
+        from utils.enhanced_logger import warning as _warning
+        _warning(
+            "AS: %s scored without the engine (%s)" % (log_label or entry.get("name"), scored.reason),
+            category="combat_events",
+        )
+    except Exception:
+        pass
+    return None
+
+
 def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override=None):
     """Resolve a validated attack intent into an event + deltas.
 
@@ -1176,9 +1223,19 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
             else min(attack_faces) if attack_mode == "disadvantage"
             else attack_faces[0]
         )
-        total = attack_die + attack_bonus
-        critical = attack_die == 20
-        hit = critical or (attack_die != 1 and total >= target_ac)
+        # Option 3: the rules engine scores the swing and its damage; today's
+        # arithmetic stays the fallback (engine false on the swing).
+        scored = _engine_swing(
+            rolls, entry, sheet, attack_bonus, attack_mode, attack_faces, target_ac,
+            target, hp_after, trait_sheet,
+            log_label="%s %s" % (actor.get("name"), entry.get("name")),
+        )
+        if scored is not None:
+            total, critical, hit = int(scored.total), bool(scored.critical), bool(scored.hit)
+        else:
+            total = attack_die + attack_bonus
+            critical = attack_die == 20
+            hit = critical or (attack_die != 1 and total >= target_ac)
         if mode_sources:
             try:
                 from utils.enhanced_logger import info as _info
@@ -1216,17 +1273,25 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
                 event["rolls"].append(
                     {"die": "d%d" % sides, "value": value, "purpose": "damage"}
                 )
-            raw_damage = max(
-                0,
-                sum(damage_rolls)
-                + modifier
-                + int(entry.get("damageBonus", 0) or 0)
-                + modifier_total(sheet, "damageRolls"),
-            )
-            # #527: the target's trait for this damage type applies before
-            # the number reaches the engine or the arithmetic; the journal
-            # keeps both numbers so a replay applies the same result.
-            damage, damage_traits = _typed_damage(trait_sheet, entry.get("damageType"), raw_damage)
+            if (scored is not None and scored.raw_damage is not None
+                    and scored.damage_rolled == sum(damage_rolls)):
+                # Option 3: the engine's damage, its traits applied.
+                raw_damage = scored.raw_damage
+                damage, damage_traits = int(scored.damage or 0), list(scored.traits)
+            else:
+                if scored is not None:
+                    scored = None
+                raw_damage = max(
+                    0,
+                    sum(damage_rolls)
+                    + modifier
+                    + int(entry.get("damageBonus", 0) or 0)
+                    + modifier_total(sheet, "damageRolls"),
+                )
+                # #527: the target's trait for this damage type applies before
+                # the number reaches the engine or the arithmetic; the journal
+                # keeps both numbers so a replay applies the same result.
+                damage, damage_traits = _typed_damage(trait_sheet, entry.get("damageType"), raw_damage)
             if damage_traits:
                 try:
                     from utils.enhanced_logger import info as _info
@@ -1332,6 +1397,8 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
             "hit": hit,
             "critical": critical,
             "damage": damage,
+            # Option 3: scored by the rules engine, or by today's arithmetic.
+            "engine": scored is not None,
         }
         if attack_mode != "normal" or mode_sources:
             # #528: the mode, the faces it chose from and the conditions
@@ -1515,11 +1582,44 @@ def player_weapon_attack_score(encounter, characters, record, entry):
     sheet = _raw_combatant_sheet(encounter, characters, actor)
     faces = list((record.get("faces") or {}).get("attack") or [])
     mode = record.get("mode")
-    kept = max(faces) if mode == "advantage" else min(faces) if mode == "disadvantage" else faces[0]
-    total = kept + int(entry.get("attackBonus", 0) or 0) + modifier_total(sheet, "attackRolls")
+    to_hit = int(entry.get("attackBonus", 0) or 0) + modifier_total(sheet, "attackRolls")
     ac = _combatant_ac(encounter, characters, target)
+    # Option 3: the player's first step is a score-only engine call (no
+    # damage total yet); today's arithmetic stays the fallback.
+    scored = _engine_score_only(entry, to_hit, mode, faces, ac, target, sheet)
+    if scored is not None:
+        return bool(scored.hit), bool(scored.critical), int(scored.kept), int(scored.total), ac
+    kept = max(faces) if mode == "advantage" else min(faces) if mode == "disadvantage" else faces[0]
+    total = kept + to_hit
     critical = kept == 20
     return critical or (kept != 1 and total >= ac), critical, kept, total, ac
+
+
+def _engine_score_only(entry, to_hit, mode, faces, ac, target, sheet):
+    """Option 3: hit, miss and critical for the player's typed faces, with no
+    damage applied; None keeps today's arithmetic."""
+    from core.nql import attacks
+
+    try:
+        count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"))
+    except ValueError:
+        return None
+    scored = attacks.score(
+        to_hit=to_hit, count=count, sides=sides,
+        bonus=modifier + int(entry.get("damageBonus", 0) or 0) + modifier_total(sheet, "damageRolls"),
+        damage_type=entry.get("damageType"), mode=mode, faces=faces,
+        target_ac=ac, target_hp=int((target or {}).get("currentHitPoints", 0) or 0),
+        target_max_hp=int((target or {}).get("maxHitPoints", 0) or 0),
+    )
+    if scored.ok:
+        return scored
+    try:
+        from utils.enhanced_logger import warning as _warning
+        _warning("AS: %s scored without the engine (%s)" % (entry.get("name"), scored.reason),
+                 category="combat_events")
+    except Exception:
+        pass
+    return None
 
 
 def _split_total(total, count, sides):

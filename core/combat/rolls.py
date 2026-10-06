@@ -144,6 +144,13 @@ class PersistedPrerollSource(object):
             raise IndexError("Persisted preroll pool exhausted for %s" % label)
         return pool.pop(0)
 
+    def peek(self, die, count):
+        """Option 3: the next ``count`` generic faces of ``die``, not consumed
+        (fewer when the pool is short). Damage dice come from these shared
+        pools, so a swing sends both totals and then takes only what today's
+        code takes, keeping the dice stream unchanged."""
+        return list(self.generic.get(str(die).lower()) or [])[:max(0, int(count))]
+
     def take(self, die):
         key = str(die).lower()
         value = self._pop(self.generic.get(key), key)
