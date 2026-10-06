@@ -542,7 +542,11 @@ class ModuleStitcher:
             print("Migrating to isolated module architecture - removing cross-module connections")
             del self.world_registry['connections']
             self.world_registry['isolatedModules'] = True
-            safe_write_json(self.world_registry_file, self.world_registry)
+            # Redone in memory on every construction, so a read-only
+            # registry costs nothing here (issue #654).
+            safe_write_json(
+                self.world_registry_file, self.world_registry, stop_if_read_only=True
+            )
     
     def _default_world_registry(self) -> Dict[str, Any]:
         return {
@@ -1279,7 +1283,8 @@ class ModuleStitcher:
         """Atomically restore and fresh-read the prior registry snapshot."""
         try:
             write_result = safe_write_json(
-                self.world_registry_file, deepcopy(prior_registry)
+                self.world_registry_file, deepcopy(prior_registry),
+                stop_if_read_only=True,
             )
         except Exception as exc:
             return False, f"Prior registry restore raised: {exc}"
@@ -3607,7 +3612,7 @@ Create atmospheric travel narration that leads into this adventure."""
             registry_attempted = True
             try:
                 write_result = safe_write_json(
-                    self.world_registry_file, candidate
+                    self.world_registry_file, candidate, stop_if_read_only=True
                 )
             except Exception as exc:
                 return self._finish_registry_attempt_failure(
