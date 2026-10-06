@@ -89,6 +89,14 @@ _WATCHDOG_SECONDS = 600.0
 _WIZARD_READ_INACTIVITY_SECONDS = 40.0
 _WIZARD_BACKSTOP_SECONDS = 180.0
 _WIZARD_TASK_IDS = frozenset({"T092", "T093"})
+# TCP connect bound per resolved address: the OpenAI SDK default, which the
+# in-process path already uses. A bare float deadline is also the connect
+# timeout for each resolved address, so an endpoint whose first addresses
+# silently drop SYNs (a broken but routed IPv6 path in a VM) cost the OS SYN
+# limit per address (about 134 s on Linux) and the wizard backstop fired
+# every generation at "connecting" (#557). It fires only before any connection exists; the next
+# address is tried, then the existing reissue loop (#193 B2-iii).
+_CONNECT_SECONDS = 5.0
 # Level-up interview and specialist calls answer in 10 to 30 s; a provider
 # that accepts the body and never replies (run 9, 2026-09-14: one call in
 # ~330) is reissued after 2 minutes instead of 10. Still a reissue trigger,
@@ -1347,21 +1355,29 @@ def call_live_provider(
     # terminal (#193 B2-iii). It is set for every provider; each adapter
     # translates it (OpenAI-compatible: request option with SDK retries
     # zeroed; Gemini: http_options timeout). The task-level exclusion for
-    # plain-advisory T105/T112 is unchanged (D-VS-3).
+    # plain-advisory T105/T112 is unchanged (D-VS-3). Every deadline carries
+    # the bounded connect (#557); Gemini reads only its read/total value.
+    import httpx
+
     level_up_task = task_id in _LEVEL_UP_TASK_IDS
     if level_up_task:
-        frozen_kwargs["timeout"] = _LEVEL_UP_BACKSTOP_SECONDS
+        frozen_kwargs["timeout"] = httpx.Timeout(
+            _LEVEL_UP_BACKSTOP_SECONDS, connect=_CONNECT_SECONDS
+        )
     elif completion_required:
-        frozen_kwargs["timeout"] = _WATCHDOG_SECONDS
+        frozen_kwargs["timeout"] = httpx.Timeout(
+            _WATCHDOG_SECONDS, connect=_CONNECT_SECONDS
+        )
     elif wizard_task and frozen_kwargs.get("_request_provider") == "openai":
-        import httpx
-
         frozen_kwargs["timeout"] = httpx.Timeout(
             _WATCHDOG_SECONDS,
             read=_WIZARD_READ_INACTIVITY_SECONDS,
+            connect=_CONNECT_SECONDS,
         )
     elif task_id not in _NO_WATCHDOG_ADVISORY_TASK_IDS:
-        frozen_kwargs["timeout"] = _WATCHDOG_SECONDS
+        frozen_kwargs["timeout"] = httpx.Timeout(
+            _WATCHDOG_SECONDS, connect=_CONNECT_SECONDS
+        )
     failure_count = 0
     runaway_trips = 0
     logical_started = time.monotonic()
