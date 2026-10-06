@@ -2369,9 +2369,14 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             # fail-closed skip path (module published unchanged post-T088).
             # 110 < the 120s thread backstop so the transport reliably closes
             # (and the worker exits with APITimeoutError -> the normal skip
-            # path) BEFORE the thread is ever abandoned.
+            # path) BEFORE the thread is ever abandoned. Connect is bounded per
+            # resolved address, as in live_provider_call._CONNECT_SECONDS: a
+            # bare 110 also bounds each connect, so silent first addresses
+            # outlast the backstop before any request (#667).
             if provider in ("openai", "legacy", "lmstudio"):
-                extra["timeout"] = 110
+                import httpx
+
+                extra["timeout"] = httpx.Timeout(110, connect=5.0)
 
             def _t104_call():
                 return capture_and_fanout(

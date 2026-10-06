@@ -364,8 +364,13 @@ def _structured_call(task_id, schema_name, schema, prompt):
         response_format = {"type": "json_object"}
     # The transport deadline (110 s) closes the request before the 120 s
     # thread backstop abandons it, as for T104.
+    # Connect is bounded per resolved address, as in
+    # live_provider_call._CONNECT_SECONDS: a bare 110 also bounds each connect,
+    # so silent first addresses outlast the backstop before any request (#667).
     if provider in ("openai", "legacy", "lmstudio"):
-        extra["timeout"] = 110
+        import httpx
+
+        extra["timeout"] = httpx.Timeout(110, connect=5.0)
 
     def call():
         return capture_and_fanout(
