@@ -278,13 +278,17 @@ class PublicationStatus(str, Enum):
 
 
 class NotJoinedCause(str, Enum):
-    """Why a ``NOT_PUBLISHED`` module was refused, for the startup line."""
+    """Why an installed module was not joined, for the startup line."""
 
     # A check on this module's files or content refused it. This includes
     # local errors a check swallows (issue #639).
     CHECK_REFUSED = "check_refused"
     # The safety check produced no verdict (UNAVAILABLE).
     CHECK_UNAVAILABLE = "check_unavailable"
+    # Scan entry only, never a result's cause: publication was
+    # INDETERMINATE and the registry on disk does not join the module
+    # (issue #608).
+    UNPROVEN = "unproven"
 
 
 @dataclass(frozen=True)
@@ -526,8 +530,9 @@ class ModuleStitcher:
         # with a registered module: [{"module", "collides_with",
         # "refused_because"}], and the unplayed ones it joined by
         # renumbering a copy: [{"module", "collides_with", "renumbered"}].
-        # And the installed ones publication refused: [{"module", "reason",
-        # "cause"}], where cause is a NotJoinedCause value or None.
+        # And the installed ones publication refused, or could not prove and
+        # left unjoined: [{"module", "reason", "cause"}], where cause is a
+        # NotJoinedCause value or None ("unproven" for the latter).
         self.import_required = []
         self.imported = []
         self.not_joined = []
@@ -1010,6 +1015,24 @@ class ModuleStitcher:
             and cls._module_names_alias(area_data.get("module"), module_name)
             for area_data in registry.get("areas", {}).values()
         )
+
+    def _module_proven_unjoined(self, module_name: str) -> bool:
+        """Installed, and the registry does not join it (issue #608).
+
+        Absent or a bare stub counts as unjoined; any other row proves
+        nothing, so it is False. When the file cannot be read, this session's
+        registry decides: it is the world this session plays.
+        """
+        if not os.path.isdir(os.path.join(self.modules_dir, module_name)):
+            return False
+        registry, _reason = self._read_registry_snapshot()
+        if registry is None:
+            registry = self.world_registry
+        if not isinstance(registry, dict):
+            return False
+        return not self._registry_references_module(
+            registry, module_name
+        ) or self._is_registry_stub(registry, module_name)
 
     @classmethod
     def _is_registry_stub(
@@ -4950,6 +4973,16 @@ Respond with JSON:
                             f"{result.reason}",
                             category="module_integration",
                         )
+                        # The player is told only what is proven: still
+                        # installed, and not joined in the registry (issue #608).
+                        if self._module_proven_unjoined(module_name):
+                            self.not_joined.append(
+                                {
+                                    "module": module_name,
+                                    "reason": result.reason,
+                                    "cause": NotJoinedCause.UNPROVEN.value,
+                                }
+                            )
                 except Exception as e:
                     print(f"Failed to integrate module {module_name}: {e}")
                     continue
