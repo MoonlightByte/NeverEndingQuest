@@ -31,9 +31,9 @@ Local-party/shared-review delta checked on 2026-09-06 in the uncommitted guardia
 
 The DM and validator distinguish local companion scouting from party travel and genuine membership changes. Requests for player-directed companion missions in another location are corrected agentically, not converted into travel or dismissal. Existing updatePartyNPCs leaving/rejoining remains a membership operation; departure context is not remote-mission authority. T067 receives the common DM Note; T065 separately receives raw player intent and its own validation prompt. PR299's existing in-place roster/travel cancellation and the destination-first party-travel transaction remain unchanged. References: main common DM Note/validation assembly, action_handler.update_party_npcs, and the full/compact local-party prompt blocks. Lifecycle regression coverage: #304; known rejoin defect: #298.
 
-Cancellation establishes only that party travel was removed, not membership consent or commitment. `_review_dm_candidate` (`main.py:9585`) owns canonical normalization/target projection, T114, provisional route preflight, then T065. Each rejection revises the latest draft with applicable earlier feedback; changed candidates repeat applicable checks. Rejected drafts never become accepted history. T067 may discard unauthorized removal while keeping travel cancelled. Existing receipts/Save/Load are not fresh membership proposals.
+Cancellation establishes only that party travel was removed, not membership consent or commitment. `_review_dm_candidate` (`main.py:9844`) owns canonical normalization/target projection, T114, provisional route preflight, then T065. Each rejection revises the latest draft with applicable earlier feedback; changed candidates repeat applicable checks. Rejected drafts never become accepted history. T067 may discard unauthorized removal while keeping travel cancelled. Existing receipts/Save/Load are not fresh membership proposals.
 
-Fresh internal follow-ups use `_process_fresh_dm_response` (`main.py:9551`) outside response fences; raw parent player input remains explicit. Earlier committed beats survive a child failure. The sole `resolve_retryable_ai_result` (`main.py:6756`) retains the exact stale child's candidate, feedback, accepted-history and party snapshot for renewed review. This transient envelope is not movement authority and is never persisted. Detached recovery rechecks its existing scope, lease and accepted values; ordinary recovery prepares current canonical context. Unreadable travel records return a truthful content handback, not invented terrain or provider failure.
+Fresh internal follow-ups use `_process_fresh_dm_response` (`main.py:9810`) outside response fences; raw parent player input remains explicit. Earlier committed beats survive a child failure. The sole `resolve_retryable_ai_result` (`main.py:7017`) retains the exact stale child's candidate, feedback, accepted-history and party snapshot for renewed review. This transient envelope is not movement authority and is never persisted. Detached recovery rechecks its existing scope, lease and accepted values; ordinary recovery prepares current canonical context. Unreadable travel records return a truthful content handback, not invented terrain or provider failure.
 
 ### Within-module travel
 
@@ -166,16 +166,16 @@ acceptance verdict. The verification pin above describes the historical baseline
 
 ## Load-bearing seams
 
-1. `main.py:6665` - physical T067 call.
+1. `main.py:6926` - physical T067 call.
 2. `main.py:3350-3373` - T065 verdict and reissue boundary.
-3. `main.py:8754-8877` - semantic acceptance before route authority.
+3. `main.py:9015-9138` - semantic acceptance before route authority.
 4. `core/ai/action_handler.py:1871-2124` - route prevalidation and immutable plan.
 5. `utils/path_encounter_analyzer.py:160-235` - active-module disk snapshot.
 6. `core/ai/action_handler.py:2140-2206` - plan identity revalidation.
 7. `core/ai/action_handler.py:3467-3611` - checkpoint, proposals, locked movement receipt.
 8. `core/managers/location_manager.py:486-546` - destination-first commit.
-9. `main.py:4981-5050` - movement execution and suffix staging.
-10. `main.py:5232-5283` - committed-context chain and supersession recheck.
+9. `main.py:5230-5308` - movement execution and suffix staging.
+10. `main.py:5490-5541` - committed-context chain and supersession recheck.
 11. `main.py:1263-1310` - T013 departure layer.
 12. `main.py:1341-1412` - T063 arrival layer.
 13. `main.py:1462-1515` - T064 stitch and handback.

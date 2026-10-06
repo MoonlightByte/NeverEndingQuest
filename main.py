@@ -5285,6 +5285,15 @@ def _module_not_joined_line(refusal):
         )
     if cause == "check_unavailable":
         return _module_unchecked_line(refusal, False)
+    if cause == "unproven":
+        # Publication was indeterminate (issue #608): the files could not be
+        # verified, and neither "nothing was changed" nor a retry is proven,
+        # so neither is claimed.
+        return (
+            "%s is installed, but the game could not verify its files, so it "
+            "is not joined to this world yet. You can keep playing."
+            % _module_label(refusal.get("module"))
+        )
     return (
         "%s is installed, but it could not be joined to this world yet. It will "
         "be tried again the next time the game starts. You can keep playing; "

@@ -119,6 +119,10 @@ register_callsite("T033", "core/generators/module_stitcher.py", 4016)
 set_script_name("module_stitcher")
 from utils.encoding_utils import safe_json_load
 from utils.file_operations import safe_write_json
+from utils.transient_filesystem import (
+    is_transient_filesystem_error,
+    read_bytes_preserving_errors,
+)
 from utils.module_path_manager import ModulePathManager
 
 
@@ -134,6 +138,102 @@ _STAT_SUPPORTS_NOFOLLOW = os.stat in getattr(
 _LISTDIR_SUPPORTS_FD = os.listdir in getattr(os, "supports_fd", set())
 _UNLINK_SUPPORTS_DIR_FD = os.unlink in getattr(os, "supports_dir_fd", set())
 _RENAME_SUPPORTS_DIR_FD = os.rename in getattr(os, "supports_dir_fd", set())
+
+
+def _windows_held_handles_supported() -> bool:
+    """Whether native Windows entries can be held by handle (issue #608)."""
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+        import msvcrt
+    except ImportError:
+        return False
+    return hasattr(ctypes, "WinDLL") and hasattr(msvcrt, "open_osfhandle")
+
+
+def _open_windows_no_follow(path: str, *, directory: bool) -> int:
+    """Hold one native Windows entry without following a link (issue #608).
+
+    FILE_FLAG_OPEN_REPARSE_POINT opens a junction or symlink as itself, the
+    O_NOFOLLOW counterpart. Directories ask for FILE_LIST_DIRECTORY: an open
+    with attribute access alone was observed not to block a rename.
+    FILE_SHARE_DELETE is withheld, so while the handle is held the entry and
+    its ancestors cannot be renamed or deleted; its children still can, and
+    other processes may still write a held file. Returns a CRT descriptor.
+    Every failure is an OSError, so callers type it like any other I/O error.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+        import msvcrt
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateFileW.argtypes = (
+            wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+            wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+        )
+        kernel.CreateFileW.restype = wintypes.HANDLE
+        kernel.CloseHandle.argtypes = (wintypes.HANDLE,)
+        kernel.CloseHandle.restype = wintypes.BOOL
+        if directory:
+            access = 0x0001 | 0x0080  # FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES
+            flags = 0x00200000 | 0x02000000  # OPEN_REPARSE_POINT | BACKUP_SEMANTICS
+        else:
+            access = 0x80000000  # GENERIC_READ
+            flags = 0x00200000  # FILE_FLAG_OPEN_REPARSE_POINT
+        handle = kernel.CreateFileW(
+            os.fsdecode(path),
+            access,
+            1 | 2,  # FILE_SHARE_READ | FILE_SHARE_WRITE; no FILE_SHARE_DELETE
+            None, 3, flags, None,  # non-inherited, OPEN_EXISTING
+        )
+        if handle == ctypes.c_void_p(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            return msvcrt.open_osfhandle(
+                handle, os.O_RDONLY | os.O_BINARY | os.O_NOINHERIT
+            )
+        except BaseException:
+            kernel.CloseHandle(handle)
+            raise
+    except OSError:
+        raise
+    except Exception as exc:
+        raise OSError(f"Windows entry could not be held: {exc}") from exc
+
+
+def _windows_final_path(descriptor: int) -> str:
+    """Return a held Windows entry's own path (issue #608).
+
+    The path is read from the handle in \\\\?\\Volume{...} form: junctions on
+    the way are resolved, so every component is a real directory that the
+    held handle pins, and the prefix turns off Win32 name rewriting (a
+    trailing dot or space is kept). Children are named through it.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+        import msvcrt
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.GetFinalPathNameByHandleW.argtypes = (
+            wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD,
+        )
+        kernel.GetFinalPathNameByHandleW.restype = wintypes.DWORD
+        handle = msvcrt.get_osfhandle(descriptor)
+        size = 32768  # the longest Windows path, 32767 characters, plus NUL
+        buffer = ctypes.create_unicode_buffer(size)
+        length = kernel.GetFinalPathNameByHandleW(
+            handle, buffer, size, 0x1  # FILE_NAME_NORMALIZED | VOLUME_NAME_GUID
+        )
+        if length == 0 or length >= size:
+            raise ctypes.WinError(ctypes.get_last_error())
+        return buffer.value
+    except OSError:
+        raise
+    except Exception as exc:
+        raise OSError(f"Held entry path could not be read: {exc}") from exc
 
 
 class ModuleSafetyStatus(str, Enum):
@@ -178,13 +278,17 @@ class PublicationStatus(str, Enum):
 
 
 class NotJoinedCause(str, Enum):
-    """Why a ``NOT_PUBLISHED`` module was refused, for the startup line."""
+    """Why an installed module was not joined, for the startup line."""
 
     # A check on this module's files or content refused it. This includes
     # local errors a check swallows (issue #639).
     CHECK_REFUSED = "check_refused"
     # The safety check produced no verdict (UNAVAILABLE).
     CHECK_UNAVAILABLE = "check_unavailable"
+    # Scan entry only, never a result's cause: publication was
+    # INDETERMINATE and the registry on disk does not join the module
+    # (issue #608).
+    UNPROVEN = "unproven"
 
 
 @dataclass(frozen=True)
@@ -306,6 +410,9 @@ class _ExactModuleEntryGuard:
     module_path: str
     descriptor: int
     identity: Tuple[int, int, int]
+    # The path the manifest names children through: module_path on POSIX,
+    # the held handle's final path on native Windows (#608).
+    held_path: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -331,6 +438,15 @@ class _ModuleBackupResult:
 
 class _FdBackupError(Exception):
     """Controlled fail-closed result for descriptor-relative backup work."""
+
+
+class _ModuleFilesBusy(Exception):
+    """A module file was held by another process; not a property of the module (#608)."""
+
+
+_MODULE_FILES_BUSY_REASON = (
+    "Module files were busy; publication stopped before registry access"
+)
 
 
 class _ModuleFilesRefused(Exception):
@@ -414,8 +530,9 @@ class ModuleStitcher:
         # with a registered module: [{"module", "collides_with",
         # "refused_because"}], and the unplayed ones it joined by
         # renumbering a copy: [{"module", "collides_with", "renumbered"}].
-        # And the installed ones publication refused: [{"module", "reason",
-        # "cause"}], where cause is a NotJoinedCause value or None.
+        # And the installed ones publication refused, or could not prove and
+        # left unjoined: [{"module", "reason", "cause"}], where cause is a
+        # NotJoinedCause value or None ("unproven" for the latter).
         self.import_required = []
         self.imported = []
         self.not_joined = []
@@ -624,24 +741,44 @@ class ModuleStitcher:
     ) -> Tuple[Optional[_ExactModuleEntryGuard], str]:
         """Hold a no-follow directory descriptor when the platform supports it."""
         identity = self._stable_directory_identity(initial_stat)
+        windows = _windows_held_handles_supported()
         nofollow = getattr(os, "O_NOFOLLOW", 0)
         directory = getattr(os, "O_DIRECTORY", 0)
-        if identity is None or not nofollow or not directory:
+        if identity is None or not (windows or (nofollow and directory)):
             return None, "Stable no-follow directory identity is unsupported"
 
         descriptor = None
         try:
-            flags = os.O_RDONLY | nofollow | directory
-            flags |= getattr(os, "O_CLOEXEC", 0)
-            descriptor = os.open(module_path, flags)
+            if windows:
+                descriptor = _open_windows_no_follow(module_path, directory=True)
+            else:
+                flags = os.O_RDONLY | nofollow | directory
+                flags |= getattr(os, "O_CLOEXEC", 0)
+                descriptor = os.open(module_path, flags)
             held_stat = os.fstat(descriptor)
             if self._stable_directory_identity(held_stat) != identity:
                 return None, "Held module directory identity does not match"
+            held_path = module_path
+            if windows:
+                # OPEN_REPARSE_POINT holds a link as itself; refusing it is
+                # the O_NOFOLLOW proof. A volume with no serial cannot bind
+                # the manifest's device checks, and one whose handle has no
+                # final path (a network share) cannot name children through
+                # the held directory (issue #608).
+                if self._stat_result_is_reparse(held_stat):
+                    return None, "Held module directory identity does not match"
+                if held_stat.st_dev == 0:
+                    return None, "Stable no-follow directory identity is unsupported"
+                try:
+                    held_path = _windows_final_path(descriptor)
+                except OSError:
+                    return None, "Stable no-follow directory identity is unsupported"
             guard = _ExactModuleEntryGuard(
                 module_name,
                 module_path,
                 descriptor,
                 identity,
+                held_path,
             )
             valid, reason = self._revalidate_exact_module_entry_guard(guard)
             if not valid:
@@ -878,6 +1015,24 @@ class ModuleStitcher:
             and cls._module_names_alias(area_data.get("module"), module_name)
             for area_data in registry.get("areas", {}).values()
         )
+
+    def _module_proven_unjoined(self, module_name: str) -> bool:
+        """Installed, and the registry does not join it (issue #608).
+
+        Absent or a bare stub counts as unjoined; any other row proves
+        nothing, so it is False. When the file cannot be read, this session's
+        registry decides: it is the world this session plays.
+        """
+        if not os.path.isdir(os.path.join(self.modules_dir, module_name)):
+            return False
+        registry, _reason = self._read_registry_snapshot()
+        if registry is None:
+            registry = self.world_registry
+        if not isinstance(registry, dict):
+            return False
+        return not self._registry_references_module(
+            registry, module_name
+        ) or self._is_registry_stub(registry, module_name)
 
     @classmethod
     def _is_registry_stub(
@@ -1307,6 +1462,25 @@ class ModuleStitcher:
         except (OSError, ValueError) as exc:
             return None, None, f"Module identifiers could not be inspected: {exc}"
 
+    @staticmethod
+    def _read_error_is_busy(exc: OSError, path: str) -> bool:
+        """Whether a failed file read means another process holds the file.
+
+        The C runtime reports a Windows sharing or lock violation as access
+        denied. So a denied read is classified by one Win32 read of the same
+        file, whose bytes are not used: busy unless that read also fails for
+        a reason that is not transient (issue #608).
+        """
+        if is_transient_filesystem_error(exc):
+            return True
+        if not isinstance(exc, PermissionError):
+            return False
+        try:
+            read_bytes_preserving_errors(path)
+        except OSError as probe_exc:
+            return is_transient_filesystem_error(probe_exc)
+        return True
+
     def _paired_master_location_ids(self, module_path: str) -> set:
         """Read location ids from the candidate's paired ``_BU.json`` masters.
 
@@ -1315,7 +1489,8 @@ class ModuleStitcher:
         import's BU refresh rewrites exactly those, and boot hydration turns
         an orphan into a live file before the refresh. A master the ID fixer
         could not have read raises ``_ModuleFilesRefused`` so the module is
-        refused with a report rather than skipped in silence (issue #609).
+        refused with a report rather than skipped in silence (issue #609). A
+        master busy in another process raises ``_ModuleFilesBusy`` (#608).
         """
         areas_path = os.path.join(module_path, "areas")
         location_ids = set()
@@ -1332,7 +1507,12 @@ class ModuleStitcher:
                     raise _ModuleFilesRefused(
                         f"Paired master is not a regular file: areas/{name}"
                     )
-                master = safe_json_load(entry.path)
+                try:
+                    master = safe_json_load(entry.path)
+                except OSError as exc:
+                    if self._read_error_is_busy(exc, entry.path):
+                        raise _ModuleFilesBusy(str(exc)) from exc
+                    raise
                 if not master:
                     continue
                 if not isinstance(master, dict):
@@ -1363,6 +1543,8 @@ class ModuleStitcher:
         except _ModuleFilesRefused:
             raise
         except (OSError, ValueError, UnicodeError, TypeError) as exc:
+            if is_transient_filesystem_error(exc):
+                raise _ModuleFilesBusy(str(exc)) from exc
             raise _ModuleFilesRefused(
                 f"Paired masters could not be read: {exc}"
             ) from exc
@@ -1820,9 +2002,19 @@ Create atmospheric travel narration that leads into this adventure."""
 
     @staticmethod
     def _descriptor_mount_id(descriptor: int) -> Optional[int]:
-        """Read Linux mount identity for one already-open descriptor."""
+        """Read the mount identity for one already-open descriptor.
+
+        Linux: the mnt_id from /proc/self/fdinfo. Native Windows has no mount
+        id: another volume is reachable inside a tree only through a reparse
+        point, which every level refuses, so that refusal is the proof and
+        the volume serial stands in for the id (issue #608).
+        """
         if os.name == "nt":
-            return None
+            try:
+                device = os.fstat(int(descriptor)).st_dev
+            except (OSError, TypeError, ValueError):
+                return None
+            return device if isinstance(device, int) and device > 0 else None
         try:
             with open(
                 f"/proc/self/fdinfo/{int(descriptor)}",
@@ -1839,6 +2031,9 @@ Create atmospheric travel narration that leads into this adventure."""
 
     @staticmethod
     def _fd_relative_backup_supported() -> bool:
+        if os.name == "nt":
+            # The receipt is taken through held handles (issue #608).
+            return _windows_held_handles_supported()
         return (
             os.name != "nt"
             and bool(getattr(os, "O_NOFOLLOW", 0))
@@ -1864,17 +2059,49 @@ Create atmospheric travel narration that leads into this adventure."""
         except (OSError, TypeError, ValueError):
             return False
 
-    def _fd_directory_names(self, directory_descriptor: int) -> List[str]:
+    @staticmethod
+    def _held_entry_stat(
+        parent_descriptor: int, parent_path: Optional[str], name: str
+    ) -> os.stat_result:
+        """Stat one child of a held directory without following a link.
+
+        Native Windows has no dir_fd. The child is named through the held
+        parent's final path (_windows_final_path): every component is a real
+        directory the held handles pin, and no name is rewritten (issue #608).
+        """
+        if os.name == "nt":
+            return os.lstat(os.path.join(parent_path, name))
+        return os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
+
+    def _fd_directory_names(
+        self, directory_descriptor: int, held_path: Optional[str]
+    ) -> List[str]:
         """Return a deterministic entry list using a fresh directory offset."""
         scan_descriptor = None
         close_ok = True
         try:
-            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-            flags |= getattr(os, "O_CLOEXEC", 0)
-            scan_descriptor = os.open(
-                ".", flags, dir_fd=directory_descriptor
-            )
-            names = os.listdir(scan_descriptor)
+            if os.name == "nt":
+                # List the held directory by its final path and bind that
+                # path to the held handle on both sides (issue #608).
+                held_identity = self._filesystem_entry_identity(
+                    os.fstat(directory_descriptor)
+                )
+                before = self._filesystem_entry_identity(os.lstat(held_path))
+                names = os.listdir(held_path)
+                after = self._filesystem_entry_identity(os.lstat(held_path))
+                if held_identity is None or not (
+                    before == held_identity == after
+                ):
+                    raise _FdBackupError(
+                        "Directory enumeration could not be proven"
+                    )
+            else:
+                flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                flags |= getattr(os, "O_CLOEXEC", 0)
+                scan_descriptor = os.open(
+                    ".", flags, dir_fd=directory_descriptor
+                )
+                names = os.listdir(scan_descriptor)
             if not all(
                 isinstance(name, str)
                 and name not in {"", ".", ".."}
@@ -1904,6 +2131,7 @@ Create atmospheric travel narration that leads into this adventure."""
         *,
         expected_device: int,
         expected_mount_id: int,
+        parent_path: Optional[str],
     ) -> Tuple[int, Tuple[int, int, int]]:
         expected_identity = self._filesystem_entry_identity(expected_stat)
         if (
@@ -1916,9 +2144,14 @@ Create atmospheric travel narration that leads into this adventure."""
 
         descriptor = None
         try:
-            flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-            flags |= getattr(os, "O_CLOEXEC", 0)
-            descriptor = os.open(name, flags, dir_fd=parent_descriptor)
+            if os.name == "nt":
+                descriptor = _open_windows_no_follow(
+                    os.path.join(parent_path, name), directory=True
+                )
+            else:
+                flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                flags |= getattr(os, "O_CLOEXEC", 0)
+                descriptor = os.open(name, flags, dir_fd=parent_descriptor)
             held_stat = os.fstat(descriptor)
             if (
                 self._filesystem_entry_identity(held_stat) != expected_identity
@@ -1948,12 +2181,12 @@ Create atmospheric travel narration that leads into this adventure."""
         directory_descriptor: int,
         expected_identity: Tuple[int, int, int],
         expected_mount_id: int,
+        *,
+        parent_path: Optional[str],
     ) -> bool:
         try:
-            bound_stat = os.stat(
-                name,
-                dir_fd=parent_descriptor,
-                follow_symlinks=False,
+            bound_stat = self._held_entry_stat(
+                parent_descriptor, parent_path, name
             )
             held_stat = os.fstat(directory_descriptor)
             return (
@@ -1967,6 +2200,27 @@ Create atmospheric travel narration that leads into this adventure."""
         except (OSError, TypeError, ValueError):
             return False
 
+    @staticmethod
+    def _read_held_chunk(descriptor: int) -> bytes:
+        """Read up to 1 MiB from a held file.
+
+        On native Windows the C runtime reports a byte-range lock held by
+        another process as access denied; ReadFile keeps the Windows error,
+        so the lock reads as busy, not as a refused file (issue #608).
+        """
+        if os.name != "nt":
+            return os.read(descriptor, 1024 * 1024)
+        import _winapi
+        import ctypes
+        import msvcrt
+
+        chunk, error_code = _winapi.ReadFile(
+            msvcrt.get_osfhandle(descriptor), 1024 * 1024
+        )
+        if error_code:
+            raise ctypes.WinError(error_code)
+        return chunk
+
     def _open_verified_regular_for_read(
         self,
         parent_descriptor: int,
@@ -1975,7 +2229,8 @@ Create atmospheric travel narration that leads into this adventure."""
         *,
         expected_device: int,
         expected_mount_id: int,
-    ) -> Tuple[int, int, Tuple[int, int, int]]:
+        parent_path: Optional[str],
+    ) -> Tuple[Optional[int], int, Tuple[int, int, int]]:
         expected_identity = self._filesystem_entry_identity(expected_stat)
         if (
             expected_identity is None
@@ -1989,30 +2244,41 @@ Create atmospheric travel narration that leads into this adventure."""
         path_descriptor = None
         read_descriptor = None
         try:
-            path_flags = os.O_PATH | os.O_NOFOLLOW
-            path_flags |= getattr(os, "O_CLOEXEC", 0)
-            path_descriptor = os.open(
-                name,
-                path_flags,
-                dir_fd=parent_descriptor,
-            )
-            path_stat = os.fstat(path_descriptor)
-            if (
-                self._filesystem_entry_identity(path_stat) != expected_identity
-                or not stat.S_ISREG(path_stat.st_mode)
-                or self._stat_result_is_reparse(path_stat)
-                or path_stat.st_dev != expected_device
-                or getattr(path_stat, "st_nlink", 0) != 1
-                or self._descriptor_mount_id(path_descriptor)
-                != expected_mount_id
-            ):
-                raise _FdBackupError("Regular source identity changed before read")
+            if os.name == "nt":
+                # One no-follow read handle. A special file (for example a
+                # Linux FIFO seen over \\wsl.localhost) shows as a reparse
+                # point, so it is refused, not opened (issue #608).
+                read_descriptor = _open_windows_no_follow(
+                    os.path.join(parent_path, name), directory=False
+                )
+            else:
+                path_flags = os.O_PATH | os.O_NOFOLLOW
+                path_flags |= getattr(os, "O_CLOEXEC", 0)
+                path_descriptor = os.open(
+                    name,
+                    path_flags,
+                    dir_fd=parent_descriptor,
+                )
+                path_stat = os.fstat(path_descriptor)
+                if (
+                    self._filesystem_entry_identity(path_stat)
+                    != expected_identity
+                    or not stat.S_ISREG(path_stat.st_mode)
+                    or self._stat_result_is_reparse(path_stat)
+                    or path_stat.st_dev != expected_device
+                    or getattr(path_stat, "st_nlink", 0) != 1
+                    or self._descriptor_mount_id(path_descriptor)
+                    != expected_mount_id
+                ):
+                    raise _FdBackupError(
+                        "Regular source identity changed before read"
+                    )
 
-            read_flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
-            read_flags |= getattr(os, "O_CLOEXEC", 0)
-            read_descriptor = os.open(
-                f"/proc/self/fd/{path_descriptor}", read_flags
-            )
+                read_flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)
+                read_flags |= getattr(os, "O_CLOEXEC", 0)
+                read_descriptor = os.open(
+                    f"/proc/self/fd/{path_descriptor}", read_flags
+                )
             read_stat = os.fstat(read_descriptor)
             if (
                 self._filesystem_entry_identity(read_stat) != expected_identity
@@ -2056,17 +2322,16 @@ Create atmospheric travel narration that leads into this adventure."""
         expected_device: int,
         expected_mount_id: int,
         manifest: Dict[str, str],
+        held_path: Optional[str],
     ) -> None:
-        names = self._fd_directory_names(directory_descriptor)
+        names = self._fd_directory_names(directory_descriptor, held_path)
         folded_names = [name.casefold() for name in names]
         if len(folded_names) != len(set(folded_names)):
             raise _FdBackupError("Manifest contains case-aliased entries")
         for name in names:
             try:
-                entry_stat = os.stat(
-                    name,
-                    dir_fd=directory_descriptor,
-                    follow_symlinks=False,
+                entry_stat = self._held_entry_stat(
+                    directory_descriptor, held_path, name
                 )
             except (OSError, TypeError, ValueError) as exc:
                 raise _FdBackupError("Manifest entry could not be classified") from exc
@@ -2079,6 +2344,9 @@ Create atmospheric travel narration that leads into this adventure."""
             relative_path = (
                 name if relative_root == "." else f"{relative_root}/{name}"
             )
+            child_path = (
+                None if held_path is None else os.path.join(held_path, name)
+            )
             if stat.S_ISDIR(entry_stat.st_mode):
                 child_descriptor = None
                 close_ok = True
@@ -2090,6 +2358,7 @@ Create atmospheric travel narration that leads into this adventure."""
                             entry_stat,
                             expected_device=expected_device,
                             expected_mount_id=expected_mount_id,
+                            parent_path=held_path,
                         )
                     )
                     manifest[f"dir:{relative_path}"] = "directory"
@@ -2099,6 +2368,7 @@ Create atmospheric travel narration that leads into this adventure."""
                         expected_device=expected_device,
                         expected_mount_id=expected_mount_id,
                         manifest=manifest,
+                        held_path=child_path,
                     )
                     if not self._fd_directory_binding_matches(
                         directory_descriptor,
@@ -2106,6 +2376,7 @@ Create atmospheric travel narration that leads into this adventure."""
                         child_descriptor,
                         child_identity,
                         expected_mount_id,
+                        parent_path=held_path,
                     ):
                         raise _FdBackupError(
                             "Manifest directory binding changed"
@@ -2138,12 +2409,13 @@ Create atmospheric travel narration that leads into this adventure."""
                         entry_stat,
                         expected_device=expected_device,
                         expected_mount_id=expected_mount_id,
+                        parent_path=held_path,
                     )
                 )
                 digest = hashlib.sha256()
                 read_size = 0
                 while True:
-                    chunk = os.read(read_descriptor, 1024 * 1024)
+                    chunk = self._read_held_chunk(read_descriptor)
                     if not isinstance(chunk, bytes):
                         raise _FdBackupError(
                             "Manifest read returned an invalid value"
@@ -2153,10 +2425,8 @@ Create atmospheric travel narration that leads into this adventure."""
                     digest.update(chunk)
                     read_size += len(chunk)
                 final_stat = os.fstat(read_descriptor)
-                rebound_stat = os.stat(
-                    name,
-                    dir_fd=directory_descriptor,
-                    follow_symlinks=False,
+                rebound_stat = self._held_entry_stat(
+                    directory_descriptor, held_path, name
                 )
                 if (
                     self._filesystem_entry_identity(final_stat)
@@ -2189,8 +2459,16 @@ Create atmospheric travel narration that leads into this adventure."""
     def _manifest_exact_module_guard(
         self,
         entry_guard: Optional[_ExactModuleEntryGuard],
+        *,
+        report_busy: bool = False,
     ) -> Optional[Dict[str, str]]:
-        """Manifest only the directory held by the exact publication guard."""
+        """Manifest only the directory held by the exact publication guard.
+
+        With ``report_busy``, a transient error (a Windows sharing or lock
+        violation, or a temporary POSIX error) raises _ModuleFilesBusy instead
+        of returning None: another process holding a file is not a property
+        of the module (issue #608).
+        """
         if (
             not self._fd_relative_backup_supported()
             or not isinstance(entry_guard, _ExactModuleEntryGuard)
@@ -2207,6 +2485,11 @@ Create atmospheric travel narration that leads into this adventure."""
             mount_id = self._descriptor_mount_id(entry_guard.descriptor)
             if mount_id is None:
                 return None
+            # Only the path G1 proved names the held tree; a guard without
+            # one gets no receipt (issue #608).
+            held_path = entry_guard.held_path
+            if not held_path:
+                return None
             manifest = {"dir:.": "directory"}
             self._fd_directory_manifest(
                 entry_guard.descriptor,
@@ -2214,12 +2497,19 @@ Create atmospheric travel narration that leads into this adventure."""
                 expected_device=held_stat.st_dev,
                 expected_mount_id=mount_id,
                 manifest=manifest,
+                held_path=held_path,
             )
             entry_valid, _entry_reason = (
                 self._revalidate_exact_module_entry_guard(entry_guard)
             )
             return manifest if entry_valid else None
-        except (_FdBackupError, OSError, TypeError, ValueError):
+        except (_FdBackupError, OSError, TypeError, ValueError) as exc:
+            if report_busy:
+                cause = exc
+                while cause is not None:
+                    if is_transient_filesystem_error(cause):
+                        raise _ModuleFilesBusy(str(cause)) from exc
+                    cause = cause.__cause__
             return None
 
     @staticmethod
@@ -3115,6 +3405,14 @@ Create atmospheric travel narration that leads into this adventure."""
                     prior_registry,
                 )
             )
+        except _ModuleFilesBusy:
+            # Busy is not a property of the module: the scan stays
+            # inconclusive, so the result is INDETERMINATE (issue #608).
+            conflict_state, conflict_reason, conflicting_modules = (
+                None,
+                _MODULE_FILES_BUSY_REASON,
+                (),
+            )
         except _ModuleFilesRefused as exc:
             conflict_state, conflict_reason, conflicting_modules = None, "", ()
             files_refused = str(exc) or "Module reset masters could not be read"
@@ -3163,7 +3461,18 @@ Create atmospheric travel narration that leads into this adventure."""
         # The receipt is one manifest of the held tree. This path never writes
         # module files, so the failure proofs need only these hashes to tell
         # NOT_PUBLISHED from INDETERMINATE; no copy is kept (issue #565).
-        receipt_manifest = self._manifest_exact_module_guard(entry_guard)
+        try:
+            receipt_manifest = self._manifest_exact_module_guard(
+                entry_guard, report_busy=True
+            )
+        except _ModuleFilesBusy:
+            # Busy is not a property of the module: nothing was refused or
+            # written, and the next start tries again (issue #608).
+            return TargetedPublicationResult(
+                PublicationStatus.INDETERMINATE,
+                module_name,
+                _MODULE_FILES_BUSY_REASON,
+            )
         if not isinstance(receipt_manifest, dict):
             backup_result = _ModuleBackupResult(
                 proven=False,
@@ -4428,6 +4737,20 @@ Respond with JSON:
                 )
         return settled
 
+    def _refuse_links_while_copying(
+        self, directory: str, names: List[str]
+    ) -> List[str]:
+        """copytree ``ignore`` hook: raise on a link or reparse point.
+
+        copytree copies a Windows junction's target inline, so a link is
+        refused as copytree reaches it, on every platform (issue #608).
+        """
+        for name in names:
+            path = os.path.join(directory, name)
+            if self._is_symlink_or_reparse(path):
+                raise ValueError(f"Module contains a link or reparse point: {path}")
+        return []
+
     def _import_colliding_module_locked(self, module_name: str) -> Dict[str, Any]:
         """Join an unplayed module whose ids collide, renumbering a copy.
 
@@ -4461,7 +4784,16 @@ Respond with JSON:
             (workspace / "import.json").write_text(
                 json.dumps({"module": module_name}), encoding="utf-8"
             )
-            shutil.copytree(live_path, candidate, symlinks=True)
+            if self._is_symlink_or_reparse(str(live_path)):
+                raise ValueError(
+                    f"Module folder is a link or reparse point: {live_path}"
+                )
+            shutil.copytree(
+                live_path,
+                candidate,
+                symlinks=True,
+                ignore=self._refuse_links_while_copying,
+            )
             copied = {
                 os.path.relpath(os.path.join(directory, filename), candidate)
                 for directory, _dirs, filenames in os.walk(candidate)
@@ -4664,6 +4996,16 @@ Respond with JSON:
                             f"{result.reason}",
                             category="module_integration",
                         )
+                        # The player is told only what is proven: still
+                        # installed, and not joined in the registry (issue #608).
+                        if self._module_proven_unjoined(module_name):
+                            self.not_joined.append(
+                                {
+                                    "module": module_name,
+                                    "reason": result.reason,
+                                    "cause": NotJoinedCause.UNPROVEN.value,
+                                }
+                            )
                 except Exception as e:
                     print(f"Failed to integrate module {module_name}: {e}")
                     continue

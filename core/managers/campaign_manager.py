@@ -1904,7 +1904,8 @@ class CampaignManager:
         the import failed or its checks could not be finished
         (``refused_because``); ``imported`` lists the unplayed ones joined by
         renumbering; ``not_joined`` lists the installed ones publication
-        refused, with the reason and a typed ``cause`` (#586, #613).
+        refused or could not prove, with the reason and a typed ``cause``
+        (#586, #613, #608).
         """
         with module_refresh_lock() as acquired:
             if not acquired:

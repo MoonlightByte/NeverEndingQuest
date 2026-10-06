@@ -141,7 +141,7 @@ immediately. In-combat `pendingTurn` remains initiative-owned and unchanged.
 12. `core/managers/combat_manager.py:4507` - manager-to-orchestrator entry.
 13. `core/managers/combat_manager.py:4652` - history-backed display and acknowledgment.
 14. `core/managers/combat_manager.py:2129` - completion, rewards, summary, archive, clear.
-15. `main.py:6195` - post-combat T067 handoff.
+15. `main.py:6456` - post-combat T067 handoff.
 
 ## Invariants
 
