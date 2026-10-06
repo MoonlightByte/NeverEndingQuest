@@ -47,6 +47,7 @@ class ResourceOutcome:
     gaps: List[str] = field(default_factory=list)
     concentration_lines: List[str] = field(default_factory=list)  # CN: the saves the engine made for this damage
     concentration_ended: Optional[str] = None                  # CN: why the engine ended the caster's concentration
+    treated: Optional[Dict[str, Any]] = None  # K1: DamageApplied.resource for a kinded hp damage (requested, treated)
 
 
 def _q(value: str) -> str:
@@ -147,7 +148,8 @@ def _label(sheet: Dict[str, Any], rid: str) -> str:
     return rid
 
 
-def lines(cid: str, deltas: Dict[str, int]) -> List[str]:
+def lines(cid: str, deltas: Dict[str, int], kind: Optional[str] = None) -> List[str]:
+    """One action per pool; ``kind`` (K1) types the hp damage so the engine treats it."""
     out = []
     for rid, amount in deltas.items():
         if amount < 0:
@@ -156,7 +158,8 @@ def lines(cid: str, deltas: Dict[str, int]) -> List[str]:
             verb = "grant"
         else:
             verb = "heal"
-        out.append(f'{verb} {_q(cid)} resource {_q(rid)} by {abs(amount)};')
+        typed = f' kind {_q(kind)}' if kind and rid == "hp" and amount < 0 else ""
+        out.append(f'{verb} {_q(cid)} resource {_q(rid)} by {abs(amount)}{typed};')
     return out
 
 
@@ -192,13 +195,20 @@ def _write_back(sheet: Dict[str, Any], status: Dict[str, Any]) -> Optional[str]:
 
 
 def run(sheet: Dict[str, Any], deltas: Dict[str, int], *, location: str = "sheet", max_hp: Optional[int] = None,
-        request_id: Optional[str] = None, binary: Optional[str] = None) -> ResourceOutcome:
+        request_id: Optional[str] = None, binary: Optional[str] = None,
+        kind: Optional[str] = None) -> ResourceOutcome:
     """Submit {resource id: signed amount} for one sheet; write the engine's values back.
 
     ``max_hp`` is the effective maximum when a max-HP effect is live; the world
     is built with it so healing clamps at the value the table plays with, while
     the stored ``maxHitPoints`` is never touched.
+    ``kind`` (K1) is a typed damage kind for the hp damage: the world then
+    carries the attacks law and the sheet's traits for this request only, the
+    engine treats the amount, and ``treated`` holds its record. Without a kind
+    the request is byte-identical to before.
     """
+    if not kind or deltas.get("hp", 0) >= 0:
+        kind = None
     sheet = copy.deepcopy(sheet)
     world_sheet = copy.deepcopy(sheet)
     if max_hp is not None and type(max_hp) is int and max_hp >= 0:
@@ -210,13 +220,13 @@ def run(sheet: Dict[str, Any], deltas: Dict[str, int], *, location: str = "sheet
     if deltas.get("hp", 0) < 0 and stats.concentration_instance(world_sheet):
         from core.nql import checks
         seed = checks.fresh_seed()
-    world = genesis.build_world([world_sheet], location, dice_seed=seed)
+    world = genesis.build_world([world_sheet], location, dice_seed=seed, damage_traits=bool(kind))
     cid = genesis.character_id(sheet)
     if not deltas:
         return ResourceOutcome(True, sheet=sheet, gaps=world.gaps)
     try:
         response = apply.call({"world": world.source, "world_name": "resources-genesis.nql",
-                               "actions": "\n".join(lines(cid, deltas)), "actions_name": "resources.nql",
+                               "actions": "\n".join(lines(cid, deltas, kind)), "actions_name": "resources.nql",
                                "actor": {"kind": "character", "id": cid},
                                "request": request_id or f"resources:{uuid.uuid4().hex}",
                                "status": [cid]}, binary=binary)
@@ -237,13 +247,20 @@ def run(sheet: Dict[str, Any], deltas: Dict[str, int], *, location: str = "sheet
                 if isinstance(s.get("character"), dict) and s["character"].get("id") == cid]
     if not statuses:
         return ResourceOutcome(False, reason="engine returned no status for the character", gaps=world.gaps)
+    treated = None
+    if kind:
+        from core.nql import attacks
+        treated = attacks.treated_record(response)
+        if treated is None:
+            return ResourceOutcome(False, reason="engine returned no treated damage", gaps=world.gaps)
     problem = _write_back(sheet, statuses[0])
     if problem:
         return ResourceOutcome(False, reason=problem, gaps=world.gaps)
     from core.nql import concentration
     focus = concentration.read(world_sheet, response)
     return ResourceOutcome(True, sheet=sheet, applied=dict(deltas), receipt=response.get("receipt"), gaps=world.gaps,
-                           concentration_lines=focus.lines, concentration_ended=focus.ended_reason)
+                           concentration_lines=focus.lines, concentration_ended=focus.ended_reason,
+                           treated=treated)
 
 
 def apply_deltas(sheet: Dict[str, Any], updates: Dict[str, Any], **kwargs: Any) -> ResourceOutcome:

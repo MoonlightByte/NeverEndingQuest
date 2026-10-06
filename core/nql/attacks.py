@@ -95,6 +95,28 @@ def dice_token(count: int, sides: int, bonus: int) -> str:
     return token
 
 
+def journal_traits(treatments: Any) -> List[str]:
+    """The engine's treatments in the journal's #527 order and shape: immunity
+    alone, else resistance then vulnerability, each once."""
+    found = {TREATMENTS.get((treatment or {}).get("treatment")) for treatment in treatments or []
+             if isinstance(treatment, dict)}
+    return (["immunity"] if "immunity" in found
+            else [name for name in ("resistance", "vulnerability") if name in found])
+
+
+def treated_record(response: Any) -> Optional[Dict[str, Any]]:
+    """K1: the last DamageApplied event's resource with a `treated` record, or None."""
+    events = ((response or {}).get("receipt") or {}).get("events") or []
+    for event in reversed(events):
+        if not isinstance(event, dict) or event.get("kind") != "DamageApplied":
+            continue
+        resource = event.get("resource")
+        if isinstance(resource, dict) and isinstance(resource.get("treated"), dict) \
+                and type(resource.get("requested")) is int:
+            return resource
+    return None
+
+
 def world(target_ac: int, target_hp: int, target_max_hp: int, target_sheet: Any, typed: bool = True) -> str:
     hp = max(0, int(target_hp))
     cap = max(hp, int(target_max_hp or 0), 1)
@@ -170,14 +192,56 @@ def score(*, to_hit: int, count: int, sides: int, bonus: int, damage_type: Any, 
         damage_rolled=record.get("damage_rolled"),
         damage=record.get("damage"),
     )
-    found = {TREATMENTS.get((treatment or {}).get("treatment")) for treatment in record.get("treatments") or []}
-    # The journal's #527 order and shape: immunity alone, else resistance
-    # then vulnerability, each once.
-    result.traits = (["immunity"] if "immunity" in found
-                     else [name for name in ("resistance", "vulnerability") if name in found])
+    result.traits = journal_traits(record.get("treatments"))
     if result.hit and result.raw_damage is not None and result.damage is None:
         result.damage = 0
     if result.raw_damage is not None and result.raw_damage <= 0:
         # Today's journal names no trait when nothing was dealt (#527).
         result.traits = []
     return result
+
+
+@dataclass
+class Treatment:
+    ok: bool
+    reason: Optional[str] = None
+    amount: Optional[int] = None          # the amount as sent (after the save)
+    damage: Optional[int] = None          # after the target's traits
+    traits: List[str] = field(default_factory=list)
+
+
+def treat(*, amount: int, damage_type: Any, target_sheet: Any, target_hp: int, target_max_hp: int,
+          binary: Optional[str] = None) -> Treatment:
+    """Riders on a monster target (K1): the target's typed traits applied to one
+    damage amount by the engine's plain `damage ... kind`, in a throwaway world
+    holding the monster's current hp and traits. Only the treated amount and the
+    treatments are read; the monster's hp stays NEQ's arithmetic."""
+    from core.nql import apply
+
+    amount = int(amount)
+    kind = str(damage_type or "").strip().casefold()
+    if amount <= 0 or not kind:
+        # Nothing to treat: no amount, or no typed kind (today's arithmetic
+        # returns the amount unchanged and names no trait).
+        return Treatment(True, amount=amount, damage=max(0, amount), traits=[])
+    try:
+        response = apply.call({
+            "world": world(10, target_hp, target_max_hp, target_sheet),
+            "world_name": "treat-genesis.nql",
+            "actions": "damage %s resource \"hp\" by %d kind %s;" % (_q(TARGET), amount, _q(kind)),
+            "actions_name": "treat.nql",
+            "actor": {"kind": "character", "id": TARGET},
+            "request": "treat:%s" % os.urandom(8).hex(),
+        }, binary=binary)
+    except apply.EngineUnavailable as error:
+        return Treatment(False, reason=str(error))
+    if not response.get("ok"):
+        fault = response.get("fault") or {}
+        return Treatment(False, reason="engine refused the damage: %s"
+                         % (fault or response.get("diagnostics") or response.get("error"),))
+    record = treated_record(response)
+    if record is None:
+        return Treatment(False, reason="engine returned no treated damage")
+    return Treatment(True, amount=amount, damage=int(record["requested"]),
+                     traits=journal_traits((record.get("treated") or {}).get("treatments")))
+
