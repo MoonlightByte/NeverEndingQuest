@@ -393,8 +393,9 @@ def request(actions: Optional[str] = None, request_id: Optional[str] = None, *,
 def _align(root: str, world: str, live: Dict[str, Any], game) -> Dict[str, Any]:
     """C10a: before a writer's call, the document's party follows the
     tracker when another writer moved it (the wizard, a module switch, a
-    restore). `move` marks nothing; a committed in-module move is walked by
-    core/nql/travel.realign. A refusal keeps the document as it is."""
+    restore). `move` marks nothing, so travel.align_actions marks the place
+    visited in the same request (#641); a committed in-module move is walked
+    by core/nql/travel.realign. A refusal keeps the document as it is."""
     from core.nql import travel
     actions = travel.align_actions(live, game.tracker or {})
     if not actions:
