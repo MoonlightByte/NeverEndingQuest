@@ -14,7 +14,8 @@ else when the engine answers.
   clock"). So the first call of a session, a Load, a new game and a
   re-created document all start from the tracker's real time.
 - After each engine answer, ``project`` writes the four clock fields of the
-  tracker from the document's tick (a historical answer too).
+  tracker from the document's tick (a historical answer too), and
+  ``dayNightCycle`` from that time (#597).
 - Time that passes (a DM ``updateTime``, a trip's approved time) is an
   ``advance time by <seconds>;`` request with a stable id, so a retried turn
   is answered historical instead of adding the time twice.
@@ -83,13 +84,16 @@ def document_tick(live: Any) -> Optional[int]:
 
 
 def project(root: str, tick: int) -> bool:
-    """Write the tracker's four clock fields from the document's tick when they
-    differ. A read-modify-write of those fields only, under the transition
-    lock, read back; never a rewrite of the tracker from an earlier copy."""
+    """Write the tracker's four clock fields, and ``dayNightCycle`` from that
+    time, from the document's tick when they differ. A stale cycle alone is
+    written too (a save from before #597), with the clock unmoved. A
+    read-modify-write of those fields only, under the transition lock, read
+    back; never a rewrite of the tracker from an earlier copy."""
     try:
         fields = calendar.calendar_from_scalar(tick)
     except calendar.GameTimeError:
         return False
+    fields["dayNightCycle"] = calendar.day_night(fields["time"])
     path = _tracker_path(root)
     with _lock(root):
         tracker = safe_json_load(path)
@@ -98,18 +102,17 @@ def project(root: str, tick: int) -> bool:
             warning("CLOCK: the tracker is unavailable; its time is not projected",
                     category="location_transitions")
             return False
-        if {f: world.get(f) for f in CLOCK_FIELDS} == fields:
+        if {f: world.get(f) for f in fields} == fields:
             return True
         before = tracker_seconds(tracker)
         if before is not None and before > tick:
             # Never backwards: reconcile catches the engine up instead.
             return False
-        for f in CLOCK_FIELDS:
-            world[f] = fields[f]
+        world.update(fields)
         safe_json_dump(tracker, path, indent=4)
         verified = safe_json_load(path)
         verified_world = verified.get("worldConditions", {}) if isinstance(verified, dict) else {}
-        if {f: verified_world.get(f) for f in CLOCK_FIELDS} != fields:
+        if {f: verified_world.get(f) for f in fields} != fields:
             warning("CLOCK: the tracker's time did not verify after the projection",
                     category="location_transitions")
             return False

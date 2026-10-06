@@ -108,6 +108,19 @@ def calendar_from_scalar(value):
     }
 
 
+def day_night(time):
+    """Return worldConditions ``dayNightCycle`` for a persisted ``time``:
+    "Day" from 06:00 to before 18:00, else "Night". None when the time is
+    unreadable, so a writer leaves the field as it is (#597)."""
+    if not isinstance(time, str) or not time.strip():
+        return None
+    try:
+        hour = _time_parts(time)[0]
+    except GameTimeError:
+        return None
+    return "Day" if 6 <= hour < 18 else "Night"
+
+
 def display_iso_from_scalar(value):
     """Render a fantasy-calendar deadline in the existing ISO string field."""
     calendar = calendar_from_scalar(value)
