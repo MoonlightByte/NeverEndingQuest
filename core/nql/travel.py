@@ -20,8 +20,11 @@ brought in line by value (NQL docs/WORLD_MAP.md, LIVE_STATE.md):
   ``move`` under ``realign:<checkpoint>:move`` (its own id: the refused
   walk is not on record, and the resume must not reuse the id).
 - Every other change of place (the startup wizard, a module switch, a
-  restore) walked nothing: ``move`` marks nothing, under a fresh
-  ``align:<random id>``.
+  restore) walked nothing: ``move``, under a fresh ``align:<random id>``.
+  ``move`` marks nothing, so the same request marks the tracker's place
+  visited when it is not (#641): the party stands there, and a later trip
+  must not stop there as unvisited. ``mark visited`` on a visited place is
+  refused, so it is never sent for one.
 - Membership changes only through ``join party`` / ``leave party``; a member
   that left stays declared until its leave is applied (travel_map.lines).
 
@@ -158,7 +161,10 @@ def _moves(live: Dict[str, Any], members: List[str], place: str, source_place: O
 
 def align_actions(live: Dict[str, Any], tracker: Dict[str, Any]) -> List[str]:
     """The join / leave / move lines that bring the document's party to the
-    tracker's members and place, or [] when it is there (or has no map)."""
+    tracker's members and place, then `mark visited` for that place when
+    the map does not list it yet (#641; also repairs a party already
+    standing on an unvisited place). [] when it is there and visited (or
+    has no map)."""
     if not isinstance(live.get("map"), dict):
         return []
     members = _members(tracker)
@@ -166,6 +172,8 @@ def align_actions(live: Dict[str, Any], tracker: Dict[str, Any]) -> List[str]:
     out = _membership(live, members)
     if here in set(live.get("places") or []):
         out += _moves(live, members, here, here)
+        if members and here not in set(live["map"].get("visited") or []):
+            out.append("mark visited %s;" % travel_map.q(here))
     return out
 
 
