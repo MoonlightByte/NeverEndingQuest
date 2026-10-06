@@ -19,7 +19,7 @@ Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 
 | One-beat semantic boundary | T065 exact verdict | Invalid candidate returns to T067 correction with no mutation |
 | Route and topology | Request-bound `ApprovedTransitionPlan` from active-module disk | Identity reverified under transition lock before movement |
 | Current location | `party_tracker.json.worldConditions` | Atomic destination write occurs before departure effects/prose |
-| Recovery progress | `pending_location_transition.json` v2 checkpoint | Receipt advances after each durable step; removed after completion |
+| Recovery progress | `pending_location_transition.json` v2 checkpoint | Receipt advances after each durable step; an unparseable `journal.json` is set aside before a staged departure finishes (#636); removed after completion |
 | Origin departure | Checkpoint preimages plus canonical origin area/journal | Receipt-based reconcile after movement; T091 also reconciles the current location's `monsters[]` when a fight ends |
 | Player-facing travel prose | Committed destination/roster and retained narration identity | T013/T063/T064 retained, projection-checked, then published |
 | Conversation atlas | Fresh rendering of current module area files | Advisory T067 context only; not movement authorization |
@@ -67,9 +67,11 @@ Fresh internal follow-ups use `_process_fresh_dm_response` (`main.py:9560`) outs
 
 1. Recovery compares the checkpoint with canonical party location.
 2. Origin plus planned state retires/replans; committed destination resumes existing receipts.
-3. Resume completes origin reconciliation, T013/T063/T064, history compaction, staged siblings,
+3. Before the staged departure finishes, an unparseable `journal.json` is set aside (State and
+   atomicity) and the staged entry becomes entry 0 of a fresh chronicle (#636).
+4. Resume completes origin reconciliation, T013/T063/T064, history compaction, staged siblings,
    final context, and stable publication in checkpoint order.
-4. Operation-ID correlation prevents an unrelated transition from clearing the checkpoint.
+5. Operation-ID correlation prevents an unrelated transition from clearing the checkpoint.
 
 ### Atlas and gate
 
@@ -142,6 +144,20 @@ acceptance verdict. The verification pin above describes the historical baseline
   travel evidence, so the unreadable-record handback above does not apply to it. A busy
   `journal.json` there is waited for while an in-module move holds the party lock; the wait stays
   cancellable, because a superseding control sets its flag before it takes that lock.
+- The same set-aside runs when a staged departure finishes (`resolve_current_transition_departure`,
+  at resume or in the same session; #636, D-636-2/7): the staged entry becomes entry 0 of the fresh
+  chronicle. The checkpoint's `departure_commit.journal_entry_index` is rebased to 0 just before the
+  rename and written back at once if the rename fails. It stays rebased with the journal still in
+  place only after a process kill or an interrupt inside that bracket, a failed restore write, or a
+  directory-fsync failure (disclosed); the next drain then sets the journal aside, but a journal
+  that has become readable by then ends the departure in `blocked_conflict`. While a departure-summary marker exists or cannot be checked, including
+  one a failed removal left behind, the journal is left alone. The set-aside pre-empts the reads; it
+  does not change them. These stay fail-closed and raise if a corruption lands after it:
+  `build_journal_update` (`adv_summary.py:602`), the commit read (`action_handler.py:1090`), the
+  commit's reads under the target locks (`adv_summary.py:931`, `:973`), the marker-recovery reads
+  (`adv_summary.py:774`, `:845`), legacy repair (`main.py:4434` -> `:4181`) and the dormant legacy
+  departure pipeline (#653). Neither caller of resolve holds the party lock, so a busy
+  `journal.json` here is waited for unlocked, and the wait stays cancellable.
 - `safe_json_dump` publishes each JSON by same-directory temp, fsync, and `os.replace`.
 - The workflow is multi-file, not one rename; the checkpoint carries preimages, phases, stable
   message IDs, deferred cursor/operation IDs, and before/after projections for convergence.

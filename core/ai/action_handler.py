@@ -326,6 +326,56 @@ def _write_location_transition_checkpoint(checkpoint):
     safe_json_dump(checkpoint, PENDING_LOCATION_TRANSITION_FILE)
 
 
+def _read_journal_setting_aside(tail, before_rename=None, after_failed_rename=None):
+    """Read journal.json, setting an unreadable one aside (then None).
+
+    The chronicle is play history, not a rule input: an unreadable one
+    must not stop travel (#620, #636). Its bytes are set aside, never
+    overwritten, and the caller goes on as for a missing chronicle
+    (D-620-1, D-636-2); `tail` ends the WARNING. A busy file is waited for
+    and read again (D-303-2); if the set-aside itself is refused, the parse
+    error stands as before. `before_rename` runs just before the rename and
+    `after_failed_rename` first when it fails, so a caller's own record can
+    bracket the rename alone."""
+    from utils.transient_filesystem import is_transient_filesystem_error
+    from utils.capture.live_provider_call import (
+        _interruptible_wait, get_live_provider_scope,
+    )
+
+    while True:
+        try:
+            journal = safe_json_load("journal.json")
+            break
+        except ValueError as exc:
+            aside = "journal.json.unreadable-%s-%s" % (
+                datetime.now().strftime("%Y%m%d-%H%M%S"), uuid4().hex
+            )
+            if before_rename is not None:
+                before_rename()
+            try:
+                os.rename("journal.json", aside)
+            except OSError as rename_exc:
+                if after_failed_rename is not None:
+                    after_failed_rename()
+                if not is_transient_filesystem_error(rename_exc, allow_missing=True):
+                    raise exc from rename_exc
+            else:
+                warning(
+                    "TRAVEL: journal.json unreadable (%s); set aside as %s, "
+                    % (exc, aside) + tail,
+                    category="location_transitions",
+                )
+                journal = None
+                break
+        except OSError as exc:
+            if not is_transient_filesystem_error(exc):
+                raise
+        _interruptible_wait(
+            0.25, get_live_provider_scope(), "Reading the chronicle..."
+        )
+    return journal
+
+
 def _new_current_transition_checkpoint(
     *,
     module_name,
@@ -366,44 +416,9 @@ def _new_current_transition_checkpoint(
             segment_start = index + 1
             break
     origin_segment = persisted_history[segment_start:]
-    # The chronicle is play history, not a rule input: an unreadable one
-    # must not stop travel (#620). Its bytes are set aside, never
-    # overwritten, and the departure goes on as for a missing chronicle
-    # (D-620-1). A busy file is waited for and read again (D-303-2); if
-    # the set-aside itself is refused, the parse error stands as before.
-    from utils.transient_filesystem import is_transient_filesystem_error
-    from utils.capture.live_provider_call import (
-        _interruptible_wait, get_live_provider_scope,
+    journal = _read_journal_setting_aside(
+        "and the chronicle starts again from the next recorded departure"
     )
-
-    while True:
-        try:
-            journal = safe_json_load("journal.json")
-            break
-        except ValueError as exc:
-            aside = "journal.json.unreadable-%s-%s" % (
-                datetime.now().strftime("%Y%m%d-%H%M%S"), uuid4().hex
-            )
-            try:
-                os.rename("journal.json", aside)
-            except OSError as rename_exc:
-                if not is_transient_filesystem_error(rename_exc, allow_missing=True):
-                    raise exc from rename_exc
-            else:
-                warning(
-                    "TRAVEL: journal.json unreadable (%s); set aside as %s, and the "
-                    "chronicle starts again from the next recorded departure"
-                    % (exc, aside),
-                    category="location_transitions",
-                )
-                journal = None
-                break
-        except OSError as exc:
-            if not is_transient_filesystem_error(exc):
-                raise
-        _interruptible_wait(
-            0.25, get_live_provider_scope(), "Reading the chronicle..."
-        )
     journal_entries = (
         journal.get("entries", [])
         if isinstance(journal, dict) and isinstance(journal.get("entries"), list)
@@ -985,6 +1000,31 @@ def resolve_current_transition_departure(operation_id, transition_context):
         return summary_record.get("text")
 
     from core.ai import adv_summary
+
+    # An unreadable chronicle must not stop the departure from finishing
+    # (#636, D-636-2): it is set aside and the staged entry becomes entry 0
+    # of a fresh one. The index is rebased just before the rename and put
+    # back at once if the rename fails. While a departure-summary marker
+    # exists, or cannot be checked, the journal is left as it is (D-636-5).
+    try:
+        os.stat(adv_summary.PENDING_DEPARTURE_SUMMARY_FILE)
+    except FileNotFoundError:
+        staged_index = commit_record["journal_entry_index"]
+
+        def rebase(index):
+            if commit_record["journal_entry_index"] != index:
+                commit_record["journal_entry_index"] = index
+                _write_location_transition_checkpoint(checkpoint)
+
+        _read_journal_setting_aside(
+            "and the chronicle starts again with the interrupted departure "
+            "from %s (its entry, staged at index %s, is now entry 0)"
+            % (commit_record["journal_entry_after"].get("location"), staged_index),
+            before_rename=lambda: rebase(0),
+            after_failed_rename=lambda: rebase(staged_index),
+        )
+    except OSError:
+        pass
 
     if summary_record.get("status") != "accepted":
         action_projection = [

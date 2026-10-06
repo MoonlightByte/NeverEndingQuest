@@ -46,12 +46,12 @@
 .ember-desktop .neq-message-user { margin-bottom:22px; padding:0 0 15px; border-color:#d5b47b1c; }
 .ember-desktop .neq-message-header { margin:0 0 12px; gap:12px; }
 .ember-desktop .neq-message-author { color:var(--ember-brass)!important; font:600 11px/1.5 var(--font-chrome); letter-spacing:1.2px; text-transform:uppercase; }
-.ember-desktop .neq-message-text { margin-right:0; max-width:72ch; font:400 22px/1.55 'Crimson Text',Georgia,serif; color:#e7e2d3!important; letter-spacing:0; }
+.ember-desktop .neq-message-text { margin-right:0; max-width:none; font:400 22px/1.55 'Crimson Text',Georgia,serif; color:#e7e2d3!important; letter-spacing:0; }
 .ember-desktop .neq-message-user .neq-message-text { font-size:19px; }
 .ember-desktop .ember-message-action { font:500 10px/1.4 var(--font-chrome); gap:5px; }
 .ember-desktop .ember-message-action .ember-icon { width:15px; height:15px; }
 .ember-desktop .neq-inline-images { margin:22px 0; }
-.ember-desktop .neq-inline-images img { width:auto; max-width:100%; max-height:300px; margin-inline:auto; border:1px solid #af955235; border-radius:6px; background:transparent; }
+.ember-desktop .neq-inline-images img { width:100%; height:auto; object-fit:contain; max-width:100%; max-height:75vh; margin-inline:auto; border:1px solid #af955235; border-radius:6px; background:transparent; }
 .ember-desktop .ember-image-caption { text-align:center; font:400 10px/1.5 var(--font-chrome); margin-top:8px; color:var(--ember-muted); }
 .ember-desktop .ember-narration-continuation { margin-right:0; }
 .ember-desktop .ember-dice-dock { margin:0 20px; padding:11px 0; border:0; border-top:1px solid #d5b47b25; border-radius:0; }
@@ -163,3 +163,13 @@
   .ember-desktop .neq-message-header { gap:8px; flex-wrap:wrap; }
   .ember-desktop .neq-message-text { font-size:19px; }
 }
+
+/* Desktop dialogue: player replies sit to the right; narration uses its column. */
+.ember-desktop .neq-message-user { width:82%; margin-left:auto; flex-direction:row-reverse; border-bottom:0; border-right:2px solid #d5b47b38; padding:8px 12px 8px 0; }
+.ember-desktop .neq-message-user .neq-message-header { justify-content:flex-end; }
+.ember-desktop .neq-message-user .neq-message-text { text-align:right; }
+.ember-desktop .neq-insert-roll { margin-left:auto; padding:5px 12px; border:1px solid #b69a5b80; border-radius:4px; color:var(--ember-brass); background:#d5b47b12; font:500 12px/1.4 var(--font-chrome); cursor:pointer; }
+.ember-desktop .neq-insert-roll:disabled { opacity:.45; cursor:not-allowed; }
+
+.ember-desktop .neq-dice-results { display:flex; align-items:center; flex-wrap:wrap; gap:8px; width:100%; }
+.ember-desktop .neq-message-narration .neq-message-avatar { width:44px; height:44px; border-radius:0; overflow:visible; }

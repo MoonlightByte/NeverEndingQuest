@@ -14,7 +14,8 @@ import { GenerateImageButton } from './GenerateImageButton'
 import { useSettings } from '../../stores'
 import { useEmberDesktop } from '../layout/EmberPresentation'
 import { EmberIcon } from '../layout/EmberIcon'
-import { useState } from 'react'
+import dragonAvatar from '../../assets/dm-bronze-dragon.png'
+import { SceneImage } from './SceneImage'
 
 export interface MessageCardProps {
   message: GameMessage
@@ -22,22 +23,16 @@ export interface MessageCardProps {
   images?: GeneratedImage[] | undefined
 }
 
-function EmberSceneImage({ image }: { image: GeneratedImage }) {
-  const [failed, setFailed] = useState(false)
-  return failed ? <div className="ember-image-error" role="status">Scene image unavailable. <button type="button" onClick={() => setFailed(false)}>Retry image</button></div> : <img src={image.image_url} alt={`Generated scene: ${image.prompt.slice(0, 80)}`} onError={() => setFailed(true)} />
-}
-
 function InlineImages({ images }: { images: GeneratedImage[] }) {
   const ember = useEmberDesktop()
   if (images.length === 0) return null
   return (
     <div className="neq-inline-images mt-3 flex flex-col gap-2">
-      {images.map((image, index) => ember ? <EmberSceneImage key={`${image.image_url}-${index}`} image={image} /> : (
-        <img
+      {images.map((image, index) => (
+        <SceneImage
           key={`${image.image_url}-${index}`}
-          src={image.image_url}
-          alt={`Generated scene: ${image.prompt.slice(0, 80)}`}
-          className="max-w-full rounded-lg border-2 border-card"
+          image={image}
+          className={ember ? '' : 'max-w-full rounded-lg border-2 border-card'}
         />
       ))}
       {ember && <span className="ember-image-caption">Generated image · attached to this message</span>}
@@ -58,7 +53,7 @@ export function MessageCard({ message, images = [] }: MessageCardProps) {
       return (
         <div className="neq-message neq-message-narration my-5 flex items-start gap-3" data-message-type="narration">
           <div className="neq-message-avatar h-10 w-10 flex-shrink-0 overflow-hidden rounded-full" aria-hidden="true">
-            <img src="/static/dm_logo.png" alt="" className="h-full w-full object-cover" />
+            <img src={dragonAvatar} alt="" className="h-full w-full object-contain" />
           </div>
           <div className="neq-message-content min-w-0 flex-1">
             <div className="neq-message-header mb-1 flex items-center gap-2">
@@ -75,13 +70,13 @@ export function MessageCard({ message, images = [] }: MessageCardProps) {
               {aiImages && <GenerateImageButton content={message.content} messageId={message.message_id} />}
             </div>
             <div
-              className="neq-message-text whitespace-pre-wrap font-log text-[17px] leading-snug"
+              className="neq-message-text whitespace-pre-wrap [overflow-wrap:anywhere] font-log text-[17px] leading-snug"
               style={{ color: '#ffa500' }}
             >
               {message.content.slice(0, paragraphEnd?.index ?? splitAt)}
             </div>
             <InlineImages images={images} />
-            {splitAt < message.content.length && <div className="neq-message-text ember-narration-continuation whitespace-pre-wrap">{message.content.slice(splitAt)}</div>}
+            {splitAt < message.content.length && <div className="neq-message-text ember-narration-continuation whitespace-pre-wrap [overflow-wrap:anywhere]">{message.content.slice(splitAt)}</div>}
           </div>
         </div>
       )
@@ -103,7 +98,7 @@ export function MessageCard({ message, images = [] }: MessageCardProps) {
               </span>
             </div>
             <div
-              className="neq-message-text whitespace-pre-wrap font-log text-[17px] leading-snug"
+              className="neq-message-text whitespace-pre-wrap [overflow-wrap:anywhere] font-log text-[17px] leading-snug"
               style={{ color: '#e8e8e8' }}
             >
               {message.content}

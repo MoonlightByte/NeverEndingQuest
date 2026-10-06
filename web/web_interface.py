@@ -1160,6 +1160,18 @@ class WebInput:
                     run_input_poll_hook()
                 except Exception:
                     pass
+                # A welcome handback may publish busy while this read is parked.
+                # Reopen only after its synchronous game-thread work has finished,
+                # and only if lifecycle controls have not stopped gameplay.
+                service_live_input_boundary()
+                if _web_gameplay_paused():
+                    raise LiveProviderSuperseded('An accepted lifecycle control stopped gameplay')
+                try:
+                    from core.managers.status_manager import status_manager, status_ready
+                    if status_manager.is_processing():
+                        status_ready(at_input_boundary=True)
+                except Exception:
+                    pass
                 continue
             except (BrokenPipeError, OSError, IOError, EOFError):
                 # Genuine end-of-input: return '' so input() raises EOFError and
@@ -2845,6 +2857,7 @@ def handle_ui_snapshot_request(data=None):
         'status_message': status_message or '',
         'startup': _startup_ui_projection(running),
         'operations': operations,
+        'roll_prompt': rules_roll_prompt.current() if running else None,
     }))
 
 
@@ -2908,8 +2921,7 @@ def handle_connect():
     # Load and send cached messages from previous session
     with message_cache_lock:
         cached_messages = [] if _web_gameplay_paused() else list(message_cache)
-        if cached_messages:
-            emit('cached_messages', cached_messages)
+        emit('cached_messages', cached_messages)
 
     # If a game is already running, tell THIS client to reattach (issue #122).
     if game_thread and game_thread.is_alive() and not _web_gameplay_paused():
@@ -2928,11 +2940,42 @@ def handle_connect():
         _remember_ui_operation('module', progress_data)
         emit('module_creation_progress', progress_data)
 
+from core.managers import roll_prompt as rules_roll_prompt
+rules_roll_prompt.set_listener(lambda prompt: socketio.emit('roll_prompt', {'prompt': prompt}))
+
+
+@socketio.on('submit_check_roll')
+def handle_check_roll(data):
+    if _web_gameplay_paused() or not (game_thread and game_thread.is_alive()):
+        emit('error', {'message': 'Your game is not waiting for a roll.'})
+        return
+    try:
+        if not isinstance(data, dict) or 'faces' not in data:
+            raise ValueError('Choose Roll for me or enter individual dice results.')
+        rules_roll_prompt.submit(data.get('id'), data['faces'], user_input_queue.put)
+    except ValueError as exc:
+        emit('error', {'message': str(exc)})
+        emit('roll_prompt', {'prompt': rules_roll_prompt.current()})
+
+
 @socketio.on('user_input')
 def handle_user_input(data):
     """Handle input from the user"""
     if _web_gameplay_paused():
         emit('error', {'message': 'Gameplay is paused. Choose Load, Reset, or Exit.'})
+        return
+    pending_roll = rules_roll_prompt.current()
+    if pending_roll is not None:
+        # The legacy browser has a text-only composer. Keep its existing
+        # numeric dice input working through the same single-submit boundary.
+        from core.managers.checks_runtime import parse_faces
+        value = data.get('input') if isinstance(data, dict) else None
+        faces = parse_faces(value, pending_roll['faces']) if isinstance(value, str) else None
+        if faces is None:
+            emit('error', {'message': 'Use the roll panel or type the individual d20 results for this check.'})
+            emit('roll_prompt', {'prompt': pending_roll})
+        else:
+            handle_check_roll({'id': pending_roll['id'], 'faces': faces or None})
         return
     user_input = data.get('input', '')
     if not isinstance(user_input, str) or not user_input.strip():
@@ -3509,16 +3552,19 @@ def handle_start_game():
     # Claim the player-output sink only now that a web game session owns
     # the frontend (see the note at the old import-time install site).
     set_player_output_sink(_queue_safe_player_output)
-    
+    # Startup imports can install the terminal callback before capture exists.
+    # Reclaim status delivery when this browser owns the game.
+    set_status_callback(emit_status_update)
+
     # Start the game in a separate thread
     startup_handoff_active = True
     startup_ready_emitted = False
     startup_phase = "launching"
     load_message_cache(on_recovery=lambda notice: socketio.emit('game_output', notice))
     game_thread = threading.Thread(target=run_game_loop, daemon=True)
-    game_thread.start()
-
+    # Publish launching before a fast worker can emit its first ready prompt.
     emit('startup_status', {'status': 'in_progress', 'phase': 'launching'})
+    game_thread.start()
 
 @socketio.on('request_player_data')
 def handle_player_data_request(data=None):

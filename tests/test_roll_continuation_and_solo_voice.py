@@ -3,7 +3,7 @@ import ast
 from pathlib import Path
 from unittest.mock import Mock
 import pytest
-from core.managers import checks_runtime, checks_state
+from core.managers import checks_runtime, checks_state, roll_prompt
 from core.npc import voice_context, voice_service
 
 @pytest.fixture
@@ -11,6 +11,7 @@ def check_world(tmp_path, monkeypatch):
     monkeypatch.setattr(checks_state, "CHECKS_STATE_PATH", str(tmp_path / "modules" / "checks_state.json"))
     monkeypatch.setattr(checks_runtime, "_resolve_character", lambda name: (name, "player", "hero.json", {}))
     yield
+    roll_prompt.publish(None)
 
 @pytest.mark.parametrize("typed,expected", [("", None), ("15", [15])])
 def test_roll_persists_once_and_returns_for_narration(check_world, monkeypatch, typed, expected):
@@ -23,6 +24,7 @@ def test_roll_persists_once_and_returns_for_narration(check_world, monkeypatch, 
     assert checks_runtime.take_player_rolls(read) == ["Hero Perception: 15 +4 = 19"]
     assert resolve.call_args.kwargs["faces"] == expected
     read.assert_called_once()
+    assert roll_prompt.current() is None
     assert checks_runtime.take_player_rolls(read) == []
     resolve.assert_called_once()
     assert checks_state.consume_results(4) == ["Hero Perception: 15 +4 = 19"]
@@ -37,6 +39,7 @@ def test_invalid_dice_and_interruption_preserve_pending(check_world, monkeypatch
     with pytest.raises(EOFError):
         checks_runtime.take_player_rolls(Mock(side_effect=["25 2", EOFError()]))
     assert checks_state.pending_checks() == [entry]
+    assert roll_prompt.current() is None
     resolve.assert_not_called()
 
 def test_actual_main_roll_branch_does_not_read_another_command():
@@ -47,7 +50,7 @@ def test_actual_main_roll_branch_does_not_read_another_command():
     env = {"completed_checks": ["Hero rolled 6 +4 = 10"], "display_dm_narration": output, "input": read}
     exec(compile(ast.Module(body=[node], type_ignores=[]), "main-roll-boundary", "exec"), env)
     assert "submitted check" in env["user_input_text"]
-    output.assert_called_once_with("Hero rolled 6 +4 = 10", channel="main", color="yellow")
+    output.assert_not_called()
     read.assert_not_called()
 
 @pytest.mark.parametrize("roster", [[], None])

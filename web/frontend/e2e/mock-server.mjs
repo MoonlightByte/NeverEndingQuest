@@ -251,8 +251,26 @@ io.on('connection', (socket) => {
     }
   })
 
+  let pendingRoll = null
+  socket.on('submit_check_roll', ({ id, faces }) => {
+    if (!pendingRoll || pendingRoll.id !== id) return
+    pendingRoll = null
+    socket.emit('roll_prompt', { prompt: null })
+    socket.emit('game_output', { type: 'narration', content: faces === null
+      ? 'The engine rolled for you. You spot the concealed door.'
+      : `Your submitted dice (${faces.join(', ')}) reveal the concealed door.` })
+    socket.emit('status_update', { message: 'Ready', is_processing: false })
+  })
   socket.on('user_input', ({ input }) => {
     socket.emit('game_output', { type: 'user-input', content: input })
+    if (input === 'Inspect the gate for a check') {
+      pendingRoll = { id: `fixture-${Date.now()}`, characterName: 'Rowan Vale', label: 'Perception check', faces: 1,
+        netMode: 'normal', reason: 'Inspect the gate.', submitted: false }
+      socket.emit('game_output', { type: 'narration', content: 'Make a Perception check to inspect the gate.' })
+      socket.emit('roll_prompt', { prompt: pendingRoll })
+      socket.emit('status_update', { message: 'Ready', is_processing: false })
+      return
+    }
     socket.emit('status_update', { message: 'The DM is thinking...', is_processing: true })
     setTimeout(() => {
       if (input.toLowerCase().includes('combat')) {

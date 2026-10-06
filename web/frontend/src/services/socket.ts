@@ -1,3 +1,5 @@
+import { isTransientNotice, useConnectionNotice } from '../stores/connectionNotices'
+import { useRulesRoll } from '../stores/rulesRoll'
 /**
  * services/socket.ts -- the ONLY module in src/ allowed to import socket.io-client.
  * It owns the connection to the Flask-SocketIO server (:8357, default /socket.io
@@ -74,6 +76,7 @@ export function emitC<K extends keyof ClientEvents>(ev: K, payload: ClientEvents
   if (isHydrationEvent(String(ev))) {
     return hydration.request(ev as HydrationEvent, payload as HydrationPayload)
   }
+  if (ev === 'submit_check_roll' && !socket.connected) return
   const identified = withRequestIdentity(String(ev), payload)
   if (CLIENT_EVENT_ARITY[ev] === 0) {
     socket.emit(ev)
@@ -110,6 +113,8 @@ function refreshAuthoritativeState(): void {
 
 // ---------- transport-level ----------
 socket.on('connect', () => {
+  useLog.getState().beginHistorySync()
+  useConnectionNotice.getState().clear()
   void reloadIfRestartPending()
   const connectionEpoch = hydration.beginConnection()
   useSession.getState().beginConnection()
@@ -122,11 +127,12 @@ socket.on('connect', () => {
   refreshAuthoritativeState()
 })
 socket.on('disconnect', () => {
+  useRulesRoll.getState().setPrompt(null)
   useSession.getState().setConnected(false)
   // #214 F10: a welcome clear emitted while disconnected is lost; drop the
   // placeholder now - a still-active welcome's next heartbeat restores it.
   useSession.getState().setWelcome('')
-  useLog.getState().append({ type: 'system', content: 'Disconnected from the game server. Reconnecting...', message_id: `disconnect-${hydration.currentEpoch()}` })
+  useConnectionNotice.getState().show('Disconnected from the game server. Reconnecting...')
 })
 
 // ---------- session / startup ----------
@@ -161,10 +167,12 @@ on('game_started', (p) => {
 })
 on('game_resumed', (p) => {
   applyProcessingTransition(p.is_processing, () => useSession.getState().gameResumed(p.is_processing))
-  useLog.getState().append({ type: 'system', content: p.message })
+  if (isTransientNotice(p.message)) useConnectionNotice.getState().show(p.message)
+  else useLog.getState().append({ type: 'system', content: p.message })
   refreshAuthoritativeState()
 })
 on('startup_recovery_response', (p) => useSession.getState().setRecovery(p))
+on('roll_prompt', (p) => useRulesRoll.getState().setPrompt(p.prompt))
 on('ui_state_snapshot', (p) => {
   if (!hydration.accept('request_ui_snapshot', p)) return
   const session = useSession.getState()
@@ -176,6 +184,7 @@ on('ui_state_snapshot', (p) => {
     p.is_processing,
     () => session.applySnapshot(p),
   )
+  useRulesRoll.getState().setPrompt(p.roll_prompt ?? null)
   if (p.operations) {
     if (p.operations.restore?.can_resume === false || p.operations.restore?.restart_required === false) cancelPendingRestart()
     useDialogs.getState().applyOperationSnapshot(p.operations)
@@ -190,10 +199,16 @@ on('ui_state_snapshot', (p) => {
 })
 
 // ---------- game log ----------
-on('game_output', (m) => useLog.getState().append(m))
+on('game_output', (m) => {
+  if (m.type === 'system' && isTransientNotice(m.content)) useConnectionNotice.getState().show(m.content)
+  else useLog.getState().append(m)
+})
 on('cached_messages', (ms) => useLog.getState().replaceAll(ms))
 on('debug_output', (m) => useLog.getState().appendDebug(m))
-on('system_message', (p) => useLog.getState().append({ type: 'system', content: p.content }))
+on('system_message', (p) => {
+  if (isTransientNotice(p.content)) useConnectionNotice.getState().show(p.content)
+  else useLog.getState().append({ type: 'system', content: p.content })
+})
 on('error', (p) => useLog.getState().append({ type: 'error', content: p.message }))
 on('token_update', (t) => useLog.getState().setTokens(t))
 on('image_generated', (p) => useLog.getState().addImage(p))
@@ -234,7 +249,8 @@ on('restore_complete', (p) => {
   if (p.can_resume === false || p.restart_required === false) cancelPendingRestart()
   useSession.getState().setRestoreResult(p)
   useDialogs.getState().setActionResult({ kind: 'restore', ...p })
-  useLog.getState().append({ type: 'system', content: p.message })
+  if (isTransientNotice(p.message)) useConnectionNotice.getState().show(p.message)
+  else useLog.getState().append({ type: 'system', content: p.message })
 })
 on('reset_complete', (p) => {
   useDialogs.getState().setActionResult({ kind: 'reset', message: p.message })
