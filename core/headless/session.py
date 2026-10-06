@@ -354,20 +354,25 @@ class HeadlessSession:
         import re
         stats = {}
         # Main prompts show [HH:MM (context)]; combat prompts show the raw
-        # [HH:MM:SS] with no context. Accept both.
+        # [HH:MM:SS] with no context. Accept both. #642: main prompts may lead
+        # with the calendar day ([Springmonth 4]); it is reported as "date"
+        # only when present, so older prompt lines parse to the same keys.
         match = re.search(
+            r"(?:\[([A-Za-z]+ \d{1,2})\])?"
             r"\[(\d\d:\d\d)(?::\d\d)?(?: \(([^)]*)\))?\]\[HP:([^/\]]+)/([^\]]+)\]"
             r"\[XP:([^/\]]+)/([^\]]+)\]",
             clean_prompt)
         if match:
             stats = {
-                "time": match.group(1),
-                "time_context": match.group(2),
-                "hp": match.group(3),
-                "max_hp": match.group(4),
-                "xp": match.group(5),
-                "next_level_xp": match.group(6),
+                "time": match.group(2),
+                "time_context": match.group(3),
+                "hp": match.group(4),
+                "max_hp": match.group(5),
+                "xp": match.group(6),
+                "next_level_xp": match.group(7),
             }
+            if match.group(1):
+                stats["date"] = match.group(1)
         return stats
 
     def _on_prompt(self):

@@ -8633,6 +8633,22 @@ def _run_terminal_restore(request):
             return True
 
 
+def _prompt_date_display(world_conditions):
+    """#642: the calendar day the player prompt shows ("Springmonth 4"), or ""
+    when the tracker's calendar is unreadable (the prompt is then as before)."""
+    from core.effects.clock import DAYS_PER_MONTH, MONTHS
+
+    if not isinstance(world_conditions, dict):
+        return ""
+    month = world_conditions.get("month")
+    day = world_conditions.get("day")
+    if isinstance(day, str) and day.strip().isdigit():
+        day = int(day)
+    if month not in MONTHS or type(day) is not int or not 1 <= day <= DAYS_PER_MONTH:
+        return ""
+    return "%s %d" % (month, day)
+
+
 def main_game_loop():
     """Keep startup/turn cleanup outside the single game-loop implementation."""
     from contextlib import ExitStack
@@ -9557,7 +9573,11 @@ def _main_game_loop(startup_authority, turn_authority):
             time_context = get_time_context(current_time_str)
             # Show both time and context in prompt
             time_display = f"{current_time_str[:5]} ({time_context})"  # Show HH:MM (context)
-            stats_display = f"{LIGHT_OFF_GREEN}[{time_display}][HP:{current_hp}/{max_hp}][XP:{current_xp}/{next_level_xp}]{RESET_COLOR}"
+            # #642: the day goes in its own bracket before the time, so a trip
+            # that crosses days shows it; parsers of [HH:MM ...][HP: still match.
+            date_display = _prompt_date_display(party_tracker_data["worldConditions"])
+            date_bracket = f"[{date_display}]" if date_display else ""
+            stats_display = f"{LIGHT_OFF_GREEN}{date_bracket}[{time_display}][HP:{current_hp}/{max_hp}][XP:{current_xp}/{next_level_xp}]{RESET_COLOR}"
             player_name_display = f"{SOLID_GREEN}{player_name_actual}{RESET_COLOR}"
             print("[DEBUG] About to show input prompt with stats")
             # D-242 (Tasks 5 and 6): the prompt line is keyed on values read
