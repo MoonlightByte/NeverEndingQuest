@@ -12,20 +12,18 @@ total (the persisted prerolls, or the player's typed dice); the engine never
 draws. The engine's `damage` is the amount NEQ then applies: through CH for a
 party sheet (temp HP, concentration), by arithmetic for a monster, as today.
 
-Damage kinds match as exact strings, so both sides are casefolded and only
-the SRD damage types are declared as traits; any other damageType is sent as
-`untyped`, which no trait names.
+Damage kinds match as exact strings, as today's typed-trait arithmetic
+does: the damageType and every trait entry are sent trimmed and casefolded,
+so a homebrew type meets a trait that names it exactly. An empty damageType
+is sent as `untyped` and no traits are declared, since it meets none today.
 """
 from __future__ import annotations
 
 import os
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-SRD_DAMAGE_TYPES = frozenset((
-    "acid", "bludgeoning", "cold", "fire", "force", "lightning", "necrotic",
-    "piercing", "poison", "psychic", "radiant", "slashing", "thunder",
-))
 UNTYPED = "untyped"
 MODES = ("advantage", "disadvantage")
 MAX_DICE = 64
@@ -61,13 +59,15 @@ def _q(value: str) -> str:
 
 
 def damage_kind(damage_type: Any) -> str:
-    """The typed damage kind sent to the engine: an SRD type, casefolded, or `untyped`."""
+    """The typed damage kind sent to the engine: the damageType trimmed and
+    casefolded, or `untyped` when it is empty."""
     kind = str(damage_type or "").strip().casefold()
-    return kind if kind in SRD_DAMAGE_TYPES else UNTYPED
+    return kind or UNTYPED
 
 
 def trait_lines(sheet: Any) -> List[str]:
-    """`resist`/`vulnerable`/`immune` lines for the sheet's typed SRD damage traits."""
+    """`resist`/`vulnerable`/`immune` lines for the sheet's typed damage traits,
+    every non-empty entry trimmed and casefolded (exact equality, as today)."""
     lines: List[str] = []
     if not isinstance(sheet, dict):
         return lines
@@ -77,7 +77,10 @@ def trait_lines(sheet: Any) -> List[str]:
             if not isinstance(entry, str):
                 continue
             kind = entry.strip().casefold()
-            if kind in SRD_DAMAGE_TYPES and kind not in seen:
+            # The engine refuses an ID holding a control character, which
+            # would refuse every swing at this target; such an entry can
+            # only meet a kind the engine refuses anyway (today's arithmetic).
+            if kind and kind not in seen and not any(unicodedata.category(ch) == "Cc" for ch in kind):
                 seen.add(kind)
                 lines.append("%s %s;" % (word, _q(kind)))
     return lines
@@ -92,11 +95,12 @@ def dice_token(count: int, sides: int, bonus: int) -> str:
     return token
 
 
-def world(target_ac: int, target_hp: int, target_max_hp: int, target_sheet: Any) -> str:
+def world(target_ac: int, target_hp: int, target_max_hp: int, target_sheet: Any, typed: bool = True) -> str:
     hp = max(0, int(target_hp))
     cap = max(hp, int(target_max_hp or 0), 1)
     body = ["stat \"ac\" = %d;" % int(target_ac), "resource \"hp\" = %d min 0 max %d;" % (hp, cap)]
-    body.extend(trait_lines(target_sheet))
+    if typed:
+        body.extend(trait_lines(target_sheet))
     return "\n".join([
         "rules { transfer unequips; wear any; }",
         "clock \"second\" at 0;",
@@ -135,7 +139,8 @@ def score(*, to_hit: int, count: int, sides: int, bonus: int, damage_type: Any, 
         return AttackScore(False, reason="face count %d does not match mode %s" % (len(faces), mode))
     try:
         response = apply.call({
-            "world": world(target_ac, target_hp, target_max_hp, target_sheet),
+            "world": world(target_ac, target_hp, target_max_hp, target_sheet,
+                           typed=bool(str(damage_type or "").strip())),
             "world_name": "attack-genesis.nql",
             "actions": action(to_hit, count, sides, bonus, damage_kind(damage_type), mode, faces,
                               damage, critical_damage),
@@ -172,4 +177,7 @@ def score(*, to_hit: int, count: int, sides: int, bonus: int, damage_type: Any, 
                      else [name for name in ("resistance", "vulnerability") if name in found])
     if result.hit and result.raw_damage is not None and result.damage is None:
         result.damage = 0
+    if result.raw_damage is not None and result.raw_damage <= 0:
+        # Today's journal names no trait when nothing was dealt (#527).
+        result.traits = []
     return result
