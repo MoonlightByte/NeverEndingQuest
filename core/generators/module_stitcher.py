@@ -4737,6 +4737,20 @@ Respond with JSON:
                 )
         return settled
 
+    def _refuse_links_while_copying(
+        self, directory: str, names: List[str]
+    ) -> List[str]:
+        """copytree ``ignore`` hook: raise on a link or reparse point.
+
+        copytree copies a Windows junction's target inline, so a link is
+        refused as copytree reaches it, on every platform (issue #608).
+        """
+        for name in names:
+            path = os.path.join(directory, name)
+            if self._is_symlink_or_reparse(path):
+                raise ValueError(f"Module contains a link or reparse point: {path}")
+        return []
+
     def _import_colliding_module_locked(self, module_name: str) -> Dict[str, Any]:
         """Join an unplayed module whose ids collide, renumbering a copy.
 
@@ -4770,7 +4784,16 @@ Respond with JSON:
             (workspace / "import.json").write_text(
                 json.dumps({"module": module_name}), encoding="utf-8"
             )
-            shutil.copytree(live_path, candidate, symlinks=True)
+            if self._is_symlink_or_reparse(str(live_path)):
+                raise ValueError(
+                    f"Module folder is a link or reparse point: {live_path}"
+                )
+            shutil.copytree(
+                live_path,
+                candidate,
+                symlinks=True,
+                ignore=self._refuse_links_while_copying,
+            )
             copied = {
                 os.path.relpath(os.path.join(directory, filename), candidate)
                 for directory, _dirs, filenames in os.walk(candidate)
