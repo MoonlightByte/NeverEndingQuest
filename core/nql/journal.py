@@ -55,13 +55,23 @@ def line(entry: str, kind: str, place: Optional[str], live: Optional[Dict[str, A
     return ("record journal %s %s at %s%s;" % (json.dumps(entry), kind, json.dumps(place), party), entry)
 
 
-def view(ids: List[str], root: str = ".") -> List[Dict[str, Any]]:
-    """The engine's entries with these ids ([] when none, or no engine)."""
+def _read(filters: Dict[str, Any], root: str) -> List[Dict[str, Any]]:
     from core.nql import occupants
-    response = occupants.request(journal_view={"id": list(ids)}, root=root, create=False)
+    response = occupants.request(journal_view=filters, root=root, create=False)
     if not response or not response.get("ok"):
         return []
     return list((response.get("journal") or {}).get("entries") or [])
+
+
+def view(ids: List[str], root: str = ".") -> List[Dict[str, Any]]:
+    """The engine's entries with these ids ([] when none, or no engine)."""
+    return _read({"id": list(ids)}, root)
+
+
+def at(place: str, kinds: List[str], root: str = ".") -> List[Dict[str, Any]]:
+    """The engine's entries of these kinds at `place`, in seq order ([] when
+    none, or no engine). A typed view read: journal.json is not read."""
+    return _read({"place": place, "kind": list(kinds)}, root)
 
 
 def _cause(response: Dict[str, Any], lines: List[Line], root: str) -> Optional[str]:

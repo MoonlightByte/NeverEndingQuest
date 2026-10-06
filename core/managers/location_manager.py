@@ -86,14 +86,10 @@ _TRANSITION_NARRATION_FIELDS = (
 )
 
 
-def _build_transition_narration_prompt(
-    new_location_info,
-    *,
-    area_id,
-    area_name,
-    storage_description="",
-):
-    """Build a destination-grounded T013 prompt from verified location data."""
+def _transition_destination_facts(new_location_info, *, area_id, area_name):
+    """The code-filtered destination projection the travel narration layers
+    read: identity plus the disclosed fields, never encounter or DM-only
+    records."""
     location_data = new_location_info.get("data")
     if not isinstance(location_data, dict):
         location_data = new_location_info
@@ -110,6 +106,20 @@ def _build_transition_narration_prompt(
         value = location_data.get(field)
         if value not in (None, "", [], {}):
             facts[field] = value
+    return facts
+
+
+def _build_transition_narration_prompt(
+    new_location_info,
+    *,
+    area_id,
+    area_name,
+    storage_description="",
+):
+    """Build a destination-grounded T013 prompt from verified location data."""
+    facts = _transition_destination_facts(
+        new_location_info, area_id=area_id, area_name=area_name
+    )
 
     return (
         "Narrate the party's immediate arrival at the destination. Use only "

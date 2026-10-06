@@ -1848,6 +1848,252 @@ def _transition_narration_action_context(checkpoint):
     )
 
 
+# #648: the travel chain's inputs. T013 is the departure layer and T063 the
+# arrival layer (CLAUDE.md, "Player-turn and travel narration authority");
+# code hands each layer the facts of its part and checks nothing in the prose.
+
+def _record_transition_departure_text(operation_id, text):
+    """Keep the DM's accepted narration of a move's turn in its checkpoint
+    (narration.departure_text) before the narration chain runs, so a resume
+    narrates the same departure. A checkpoint that already holds one, or
+    whose narration is no longer pending, is left as it is; a checkpoint from
+    before #648 simply has none (T013 then narrates from the trip facts)."""
+    text = str(text or "").strip()
+    if not text:
+        return
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+    narration = checkpoint.get("narration") if isinstance(checkpoint, dict) else None
+    if (
+        not isinstance(narration, dict)
+        or narration.get("status") not in ("pending", "deferred_to_module_handoff")
+        or narration.get("departure_text")
+    ):
+        return
+    narration["departure_text"] = text
+    action_handler._write_location_transition_checkpoint(checkpoint)
+
+
+def _transition_trip_minutes(checkpoint):
+    """The accepted trip time in minutes: the turn's first updateTime (the
+    travel-owned one, C11/D4), else the staged engine minutes; None when
+    neither is readable."""
+    deferred = checkpoint.get("deferred_actions")
+    records = deferred.get("actions") if isinstance(deferred, dict) else None
+    for record in records if isinstance(records, list) else []:
+        if not isinstance(record, dict) or record.get("family") != "updateTime":
+            continue
+        action = record.get("action") if isinstance(record.get("action"), dict) else {}
+        try:
+            minutes = int((action.get("parameters") or {}).get("timeEstimate"))
+        except (TypeError, ValueError):
+            break
+        return minutes if minutes > 0 else None
+    minutes = checkpoint.get("travel_minutes")
+    return minutes if type(minutes) is int and minutes > 0 else None
+
+
+def _transition_clock_text(tick):
+    from core.effects import clock as calendar
+
+    try:
+        fields = calendar.calendar_from_scalar(tick)
+    except calendar.GameTimeError:
+        return None
+    return "%s on day %s of %s, %s" % (
+        str(fields["time"])[:5], fields["day"], fields["month"], fields["year"],
+    )
+
+
+def _transition_previous_visit(checkpoint, party):
+    """The party's last time at the destination before this trip, from the
+    engine journal's typed entries at that place (J2), or None when the
+    journal holds none (a first visit, or a save from before J2)."""
+    from core.nql import journal
+    from core.nql.game_clock import tracker_seconds
+    from utils import travel_map
+
+    place = travel_map.tracker_place(party)
+    if not place:
+        return None
+    module = str(checkpoint.get("module_name") or "")
+    operation_id = str(checkpoint.get("operation_id") or "")
+    this_trip = {
+        journal.entry_id(module, operation_id, kind)
+        for kind in ("departure", "arrival")
+    }
+    entries = [
+        entry
+        for entry in journal.at(place, ["arrival", "departure"])
+        if entry.get("id") not in this_trip and type(entry.get("tick")) is int
+    ]
+    if not entries:
+        return None
+    visit = {}
+    arrived = [entry for entry in entries if entry.get("kind") == "arrival"]
+    left = [entry for entry in entries if entry.get("kind") == "departure"]
+    if arrived:
+        visit["lastArrivedAt"] = _transition_clock_text(arrived[-1]["tick"])
+    if left:
+        visit["lastLeftAt"] = _transition_clock_text(left[-1]["tick"])
+        now = tracker_seconds(party)
+        if now is not None and now >= left[-1]["tick"]:
+            visit["minutesSinceLeaving"] = (now - left[-1]["tick"]) // 60
+    return {key: value for key, value in visit.items() if value is not None} or None
+
+
+def _transition_arrival_time(party):
+    """The clock at the arrival and its time of day (the label the game's
+    prompt shows), or None when the tracker's time is unreadable."""
+    from utils.time_context import get_time_context
+
+    world = party.get("worldConditions", {}) if isinstance(party, dict) else {}
+    time_str = world.get("time")
+    if not isinstance(time_str, str) or len(time_str) < 5:
+        return None
+    return {"clock": time_str[:5], "timeOfDay": get_time_context(time_str)}
+
+
+def _transition_companions(party):
+    """The party NPCs travelling with the player ([]: the player is alone)."""
+    return [
+        str(item.get("name"))
+        for item in (party.get("partyNPCs") or [] if isinstance(party, dict) else [])
+        if isinstance(item, dict) and item.get("name")
+    ]
+
+
+def _transition_departure_prompt(checkpoint, party, dm_text=""):
+    """Layer 1/3 (T013): the departure from the origin, the journey, and the
+    return or first arrival, from the committed trip facts and the DM's
+    accepted narration of the turn. The arrival scene is T063's."""
+    world = party.get("worldConditions", {}) if isinstance(party, dict) else {}
+    destination_data = get_location_data_from_party_tracker(party) or {}
+    destination = location_manager._transition_destination_facts(
+        destination_data,
+        area_id=world.get("currentAreaId"),
+        area_name=world.get("currentArea"),
+    ) if destination_data else {}
+    facts = {
+        "origin": {
+            "locationId": checkpoint.get("origin_location_id"),
+            "name": checkpoint.get("origin_location_name"),
+        },
+        "destination": {
+            "locationId": world.get("currentLocationId")
+            or checkpoint.get("destination_location_id"),
+            "name": world.get("currentLocation")
+            or checkpoint.get("destination_location_name"),
+            "areaName": world.get("currentArea")
+            or checkpoint.get("destination_area_name"),
+        },
+    }
+    if destination.get("adventureSummary"):
+        facts["destination"]["adventureSummary"] = destination["adventureSummary"]
+    minutes = _transition_trip_minutes(checkpoint)
+    if minutes:
+        facts["tripMinutes"] = minutes
+    visit = _transition_previous_visit(checkpoint, party)
+    if visit:
+        facts["previousVisit"] = visit
+    arrival_time = _transition_arrival_time(party)
+    if arrival_time:
+        facts["arrivalTime"] = arrival_time
+    facts["companions"] = _transition_companions(party)
+    prompt = (
+        "Narrate the player leaving the origin and the journey to the "
+        "destination, ending as the player reaches it. Another agent narrates "
+        "the arrival scene: do not describe the destination's interior, "
+        "features, or people beyond naming it. Use only the supplied facts; "
+        "do not invent technology, named characters, creatures, hazards, "
+        "history, or changes to game state. Do not resolve or trigger an "
+        "encounter. Say how long the journey took (tripMinutes) in natural "
+        "terms: minutes for a short walk, hours or days for a long road. Any "
+        "time of day you mention must match arrivalTime.timeOfDay at the "
+        "arrival; do not restate clock times or dates (the game shows them), "
+        "and never suggest that the clock stood still. The travellers are the "
+        "player and the named companions; with no companions the player "
+        "travels alone, so never write 'the party' or 'we'. When "
+        "previousVisit is supplied, or the destination has an "
+        "adventureSummary, this is a return: frame it as going back, and say "
+        "that anything has changed only from the supplied facts, such as the "
+        "time since the player left. Otherwise it is a first arrival. Treat "
+        "adventureSummary as already disclosed history from earlier visits: "
+        "use it for continuity, but do not replay it as a new current event."
+        "\n\nTRIP FACTS:\n"
+        + json.dumps(facts, ensure_ascii=False, sort_keys=True)
+    )
+    dm_text = str(dm_text or "").strip()
+    if dm_text:
+        prompt += (
+            "\n\nTHE DM'S ACCEPTED NARRATION OF THIS TURN (keep its departure "
+            "and journey; leave the arrival scene to the arrival agent):\n---\n"
+            + dm_text
+            + "\n---"
+        )
+    return prompt + _transition_narration_action_context(checkpoint)
+
+
+def _transition_arrival_facts(party):
+    """Layer 2/3 (T063) grounding: the code-filtered destination projection,
+    its player storage, and the people the engine records present there.
+    Hostile occupants are left out: the arrival never resolves or triggers an
+    encounter. "" when the destination is unreadable."""
+    from core.nql import occupants
+    from utils import travel_map
+
+    world = party.get("worldConditions", {}) if isinstance(party, dict) else {}
+    destination_data = get_location_data_from_party_tracker(party) or {}
+    if not destination_data:
+        return ""
+    facts = location_manager._transition_destination_facts(
+        destination_data,
+        area_id=world.get("currentAreaId"),
+        area_name=world.get("currentArea"),
+    )
+    block = ""
+    arrival_time = _transition_arrival_time(party)
+    if arrival_time:
+        block += (
+            "\n    ARRIVAL TIME: %s, %s. Describe the scene as it is at this "
+            "time of day; an authored detail tied to another time (dusk, "
+            "night, dawn) is not happening now.\n"
+            % (arrival_time["clock"], arrival_time["timeOfDay"])
+        )
+    if not _transition_companions(party):
+        block += (
+            "\n    The player arrives alone: never write 'the party'. The "
+            "player is always 'you', never named in the third person.\n"
+        )
+    block += (
+        "\n    DESTINATION FACTS (the scene the player arrives in; use only "
+        "these facts and invent no technology, named characters, creatures, "
+        "hazards, history, or changes to game state; do not resolve or "
+        "trigger an encounter; treat adventureSummary as already disclosed "
+        "history from earlier visits, not a new current event):\n    "
+        + json.dumps(facts, ensure_ascii=False, sort_keys=True)
+        + location_manager.format_storage_description(
+            location_manager.get_storage_at_location(world.get("currentLocationId"))
+        )
+    )
+    place = travel_map.tracker_place(party)
+    views = occupants.view([place]) if place else []
+    present = []
+    for occupant in (views[0].get("present") or []) if views else []:
+        if occupant.get("kind") != "person" or occupant.get("attitude") == "hostile":
+            continue
+        entry = {"name": occupant.get("name")}
+        if isinstance(occupant.get("count"), int) and occupant["count"] != 1:
+            entry["count"] = occupant["count"]
+        present.append(entry)
+    if present:
+        block += (
+            "\n\n    PRESENT HERE (people at this place, not travelers; show "
+            "them only as present, with no dialogue or new actions):\n    "
+            + json.dumps(present, ensure_ascii=False)
+        )
+    return block + "\n"
+
+
 def _transition_outcome_lines(checkpoint, party):
     """Render exact accepted outcomes that scene prose is not allowed to lose."""
     deferred = checkpoint.get("deferred_actions")
@@ -6096,6 +6342,9 @@ def process_ai_response(
                 party_tracker_data = load_json_file("party_tracker.json")
 
             if location_transition_id is not None:
+                _record_transition_departure_text(
+                    location_transition_id, departure_narration
+                )
                 resumed = _resume_v2_location_transition(
                     location_transition_id, publish=True
                 )
