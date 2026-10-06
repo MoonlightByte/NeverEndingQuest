@@ -736,10 +736,19 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
     return f"item {_q(iid)} named {_q(entry['item_name'])} {{ {' '.join(fields)} }}", (mode if worn else None)
 
 
+DAMAGE_TRAITS_LAW = 'attacks { defense "defense"; health "hp"; die 20; miss 1; critical 20; critical dice 2; }'
+
+
+def _trait_lines(sheet: Dict[str, Any]) -> List[str]:
+    from core.nql import attacks
+    return attacks.trait_lines(sheet)
+
+
 def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str = "",
                 containers: Optional[List[Dict[str, Any]]] = None, contents_owner: Optional[str] = None,
                 definition_entries: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
-                clock_tick: Optional[int] = None, dice_seed: Optional[Tuple[int, int]] = None) -> Genesis:
+                clock_tick: Optional[int] = None, dice_seed: Optional[Tuple[int, int]] = None,
+                damage_traits: bool = False) -> Genesis:
     """Return the NQL world source for these sheets and storage containers at one location.
 
     ``containers`` are player_storage.json container records at this location. Their
@@ -749,6 +758,9 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     ``clock_tick`` declares the world clock (game seconds) so owned timed effects
     carry their remaining ticks and ``advance time`` can end them; without it the
     world has no clock and every instance is untimed (coin, item and rest flows).
+    ``damage_traits`` (K1, a rider's typed damage) declares the world `attacks`
+    law and each sheet's resist/vulnerable/immune lines, so a `damage ... kind`
+    meets them; without it the world text is unchanged.
     """
     gaps: List[str] = []
     loc = location_id(location)
@@ -758,6 +770,10 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     ]
     if clock_tick is not None:
         lines.append(f'clock "second" at {int(clock_tick)};')
+    if damage_traits:
+        # K1: X8 traits exist only under the attacks law. `defense` only names
+        # the AC stat; no request in this world scores an attack.
+        lines.append(DAMAGE_TRAITS_LAW)
     if dice_seed is not None:
         # The world's dice (C2): a check without the player's faces rolls from
         # this seed; the host draws a fresh one from os.urandom per genesis.
@@ -825,7 +841,9 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
             f"character {_q(cid)} named {_q(sheet.get('name', ''))} at {_q(loc)} {{\n"
             f' stat "dexterity" = {dex};\n stat "defense" = 10;\n'
             + "\n".join(stats.stat_lines(sheet, gaps)) + "\n"
-            + "\n".join(resources) + "\n}"
+            + "\n".join(resources) + "\n"
+            + ("".join(" %s\n" % line for line in _trait_lines(sheet)) if damage_traits else "")
+            + "}"
         )
         for cond in _training(sheet) + stats.condition_types(sheet, gaps):
             if cond not in condition_types:

@@ -849,7 +849,7 @@ def _sheet_backed_target(characters, creature):
     return sheet if isinstance(sheet, dict) else None
 
 
-def _engine_hit_points(sheet, signed, event, focus=None):
+def _engine_hit_points(sheet, signed, event, focus=None, kind=None, treated=None):
     """CH: the rules engine applies one hit-point change to a party sheet.
 
     One damage instance is one engine request (the SRD concentration rule is
@@ -860,9 +860,22 @@ def _engine_hit_points(sheet, signed, event, focus=None):
     the engine is unavailable or refuses, in which case the caller keeps the
     arithmetic it did before this change (fail forward, the fight never
     pauses for the engine). Every engine line is journaled on the event.
+
+    K1: ``kind`` types a damage so the engine applies the sheet's traits to
+    it first; the engine's record (requested, treated) is copied into the
+    ``treated`` dict. On a failure ``treated`` holds only ``reason`` and
+    nothing is logged here: the rider logs it and retries without the kind.
     """
     if type(signed) is not int or signed == 0 or type(sheet.get("hitPoints")) is not int:
         return None
+
+    def failed(reason):
+        if kind and treated is not None:
+            treated["reason"] = reason
+        else:
+            _warn_engine(sheet, signed, reason)
+        return None
+
     try:
         from core.nql import resources as nql_resources
         effective_max = effective_sheet(sheet).get("maxHitPoints")
@@ -871,16 +884,16 @@ def _engine_hit_points(sheet, signed, event, focus=None):
             {"hpDelta": signed},
             max_hp=effective_max if type(effective_max) is int else None,
             location="combat",
+            kind=kind,
         )
     except Exception as exc:  # engine wrapper faults never stop a fight
-        _warn_engine(sheet, signed, str(exc))
-        return None
+        return failed(str(exc))
     if not outcome.ok or not isinstance(outcome.sheet, dict):
-        _warn_engine(sheet, signed, outcome.reason)
-        return None
+        return failed(outcome.reason)
     if type(outcome.sheet.get("hitPoints")) is not int:
-        _warn_engine(sheet, signed, "engine returned no hit points")
-        return None
+        return failed("engine returned no hit points")
+    if kind and treated is not None:
+        treated.update(outcome.treated or {})
     for line in outcome.concentration_lines or []:
         event.setdefault("engineChecks", []).append(line)
         if focus is not None:
@@ -916,6 +929,18 @@ def _engine_hit_points(sheet, signed, event, focus=None):
     return outcome.sheet
 
 
+def _warn_rider(actor, entry, reason):
+    try:
+        from utils.enhanced_logger import warning as _warning
+        _warning(
+            "AS: %s %s damage treated without the engine (%s)"
+            % ((actor or {}).get("name"), entry.get("name"), reason),
+            category="combat_events",
+        )
+    except Exception:
+        pass
+
+
 def _warn_engine(sheet, signed, reason):
     try:
         from utils.enhanced_logger import warning as _warning
@@ -926,6 +951,36 @@ def _warn_engine(sheet, signed, reason):
         )
     except Exception:
         pass
+
+
+def _engine_rider(working, trait_sheet, hp_after, kind, amount, event, focus):
+    """K1: the engine applies the target's typed traits to a rider's damage.
+
+    A party target's damage goes through CH with the kind (the engine treats,
+    then drains temporary hit points, applies hp and makes the concentration
+    save from the treated amount); a monster's through a throwaway world, its
+    hp staying NEQ's arithmetic. Returns ((damage, traits), applied sheet or
+    None, None), or (None, None, reason) when the engine did not answer.
+    """
+    from core.nql import attacks as nql_attacks
+    if working is not None:
+        treated = {}
+        applied = _engine_hit_points(working, -amount, event, focus, kind=kind, treated=treated)
+        record = treated.get("treated")
+        if applied is None or not isinstance(record, dict) or type(treated.get("requested")) is not int:
+            return None, None, treated.get("reason") or "engine returned no treated damage"
+        return (treated["requested"], nql_attacks.journal_traits(record.get("treatments"))), applied, None
+    max_hp = trait_sheet.get("maxHitPoints") if isinstance(trait_sheet, dict) else None
+    try:
+        result = nql_attacks.treat(
+            amount=amount, damage_type=kind, target_sheet=trait_sheet, target_hp=hp_after,
+            target_max_hp=max_hp if type(max_hp) is int else 0,
+        )
+    except Exception as exc:  # adapter faults never stop a fight
+        return None, None, str(exc)
+    if not result.ok or type(result.damage) is not int:
+        return None, None, result.reason or "engine returned no treated damage"
+    return (result.damage, list(result.traits)), None, None
 
 
 def _concentration_record(sheet):
@@ -1339,6 +1394,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
             )
             rider_damage = 0
             rider_typed = {}
+            rider_engine = False
             if rider_dice is not None:
                 r_count, r_sides, r_flat = rider_dice
                 r_rolls = [
@@ -1358,17 +1414,33 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
                     rider_damage = rider_damage // 2 if rider_spec.get("halfOnSave") else 0
                 # #527: the rider's own damage type (a venomous bite's poison)
                 # meets the target's traits like the swing's damage does.
+                # K1: the engine applies them; today's arithmetic is the
+                # fallback when it does not answer.
                 rider_raw = rider_damage
-                rider_damage, rider_traits = _typed_damage(
-                    trait_sheet,
-                    ((entry.get("rider") or {}).get("onFail") or {}).get("damageType"),
-                    rider_damage,
-                )
+                rider_type = ((entry.get("rider") or {}).get("onFail") or {}).get("damageType")
+                rider_kind = str(rider_type or "").strip().casefold()
+                rider_treated, rider_sheet = None, None
+                if rider_damage > 0 and rider_kind:
+                    rider_treated, rider_sheet, reason = _engine_rider(
+                        working, trait_sheet, hp_after, rider_kind, rider_damage, event, focus)
+                    if rider_treated is None:
+                        _warn_rider(actor, entry, reason)
+                if rider_treated is not None:
+                    rider_damage, rider_traits = rider_treated
+                    rider_engine = True
+                else:
+                    rider_damage, rider_traits = _typed_damage(trait_sheet, rider_type, rider_damage)
                 if rider_traits:
                     rider_typed = {"rawDamage": rider_raw, "damageTraits": rider_traits}
                 else:
                     rider_typed = {}
-                if rider_damage:
+                if rider_sheet is not None:
+                    # CH already applied the treated damage (0 changes nothing).
+                    working = rider_sheet
+                    hp_after = int(working["hitPoints"])
+                    engine_used = True
+                    total_damage += rider_damage
+                elif rider_damage:
                     applied = _engine_hit_points(working, -rider_damage, event, focus) if working is not None else None
                     if applied is not None:
                         working = applied
@@ -1395,6 +1467,8 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
             rider_result = {
                 "ability": entry.get("name"), "save": rider_spec["type"], "dc": rider_spec["dc"],
                 "saved": saved, "damage": rider_damage, "conditions": rider_applied,
+                # K1: the rider's typed damage was treated by the rules engine.
+                "engine": rider_engine,
             }
             rider_result.update(rider_typed)
         swing = {

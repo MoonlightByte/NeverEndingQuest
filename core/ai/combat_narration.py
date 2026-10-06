@@ -95,6 +95,14 @@ def _public_copy(value):
     return deepcopy(value)
 
 
+def _narrated_riders(riders):
+    """The riders records as T097 has always seen them: without the engine flag."""
+    if not isinstance(riders, list):
+        return riders
+    return [{key: value for key, value in rider.items() if key != "engine"} if isinstance(rider, dict) else rider
+            for rider in riders]
+
+
 def _combat_sheet(sheet):
     if not isinstance(sheet, dict):
         return {}
@@ -189,7 +197,8 @@ def _fact_event(event, creatures, presentation=None):
             "concentrationEnded": target.get("concentrationEnded"),
             "concentrationEndedEffects": target.get("concentrationEndedEffects"),
             # MS-b: a hit's rider save (venom): ability, save, dc, saved, damage, conditions
-            "riders": target.get("riders"),
+            # (K1's `engine` flag is bookkeeping, not part of the story.)
+            "riders": _narrated_riders(target.get("riders")),
         }
         targets.append({key: value for key, value in row.items() if value is not None})
     fact = {
