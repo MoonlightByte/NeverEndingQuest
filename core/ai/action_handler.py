@@ -1001,6 +1001,31 @@ def resolve_current_transition_departure(operation_id, transition_context):
 
     from core.ai import adv_summary
 
+    # An unreadable chronicle must not stop the departure from finishing
+    # (#636, D-636-2): it is set aside and the staged entry becomes entry 0
+    # of a fresh one. The index is rebased just before the rename and put
+    # back at once if the rename fails. While a departure-summary marker
+    # exists, or cannot be checked, the journal is left as it is (D-636-5).
+    try:
+        os.stat(adv_summary.PENDING_DEPARTURE_SUMMARY_FILE)
+    except FileNotFoundError:
+        staged_index = commit_record["journal_entry_index"]
+
+        def rebase(index):
+            if commit_record["journal_entry_index"] != index:
+                commit_record["journal_entry_index"] = index
+                _write_location_transition_checkpoint(checkpoint)
+
+        _read_journal_setting_aside(
+            "and the chronicle starts again with the interrupted departure "
+            "from %s (its entry, staged at index %s, is now entry 0)"
+            % (commit_record["journal_entry_after"].get("location"), staged_index),
+            before_rename=lambda: rebase(0),
+            after_failed_rename=lambda: rebase(staged_index),
+        )
+    except OSError:
+        pass
+
     if summary_record.get("status") != "accepted":
         action_projection = [
             {
