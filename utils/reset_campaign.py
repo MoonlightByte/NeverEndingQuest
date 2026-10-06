@@ -95,6 +95,8 @@ def create_backup():
                     '.module_transactions',
                     '.publication_transactions',
                     '.module_orphan_quarantine',
+                    # Legacy publication copies nothing reads; #565 stopped writing them (#614).
+                    '.integration_backups',
                 ])
                 ignored.extend(name for name in files if '.completion' in name)
             return ignored

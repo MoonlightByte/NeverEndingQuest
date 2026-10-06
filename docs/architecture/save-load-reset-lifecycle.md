@@ -235,7 +235,7 @@ Live Load-during-calculation and full committed-level-up continuity remain unpro
 10. `web/web_interface.py:2614-2959` - web input and Save/Load/Reset entrants.
 11. `updates/save_game_manager.py:147` and `updates/save_game_manager.py:232` - pending module context and essential startup history (startup candidate).
 12. `updates/save_game_manager.py:919` and `utils/file_operations.py:83` - restore rollback/absence semantics and guarded shared writer (startup candidate).
-13. `utils/reset_campaign.py:395-447` - reset backup-before-wipe ordering.
+13. `utils/reset_campaign.py:397-449` - reset backup-before-wipe ordering.
 
 ## Invariants
 
