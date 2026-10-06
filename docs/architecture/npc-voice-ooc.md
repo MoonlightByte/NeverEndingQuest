@@ -67,7 +67,7 @@ Local-party instruction, completion-collection and travel-publication seams chec
    companions (`core/npc/voice_context.py:1812`, `_RecallVoiceHandle.collect` at line328).
 7. T067 remains the sole player-facing DM and action author.
 8. In the guardian working candidate based on the revision above, structured membership
-   proposals receive T114 review before route preflight and T065. The shared owner (`main.py:9585`) keeps
+   proposals receive T114 review before route preflight and T065. The shared owner (`main.py:9594`) keeps
    actual player input, accepted context, latest candidate and review feedback distinct.
    T065 retains the same request-local advisory batch across correction attempts.
 
@@ -119,7 +119,7 @@ feedback is request-local and never committed as companion memory.
 
 ## Load-bearing seams
 
-1. `main.py:8401-8416` - stage starts after durable player-input claim.
+1. `main.py:8410-8425` - stage starts after durable player-input claim.
 2. `core/npc/voice_context.py:373-398` - E1 scene window.
 3. `core/npc/voice_context.py:401-428` - E2 visible companion acts.
 4. `core/npc/voice_context.py:431-495` - E4 companion relationships.
@@ -129,9 +129,9 @@ feedback is request-local and never committed as companion memory.
 7. `core/npc/voice_service.py:720-917` - fenced parallel T105 workers.
 8. `core/npc/voice_service.py:493-660` - response validator and affinity classification.
 9. `core/npc/voice_context.py:1812` - completion-collection and private injection; `_RecallVoiceHandle.collect` at line328.
-10. `main.py:6642-6671` - post-compression injection before T067.
+10. `main.py:6651-6680` - post-compression injection before T067.
 11. `main.py:2952-2996` - same advice reaches T065 validation.
-12. `main.py:8974-9007` - accepted-history and sidecar commit gate.
+12. `main.py:8983-9016` - accepted-history and sidecar commit gate.
 13. `core/npc/voice_context.py:1510-1615` - per-result sidecar commit.
 14. `core/npc/relationship_store.py:339-377` - lock, revision, atomic write.
 15. `core/npc/voice_context.py:1706-1726` - ordinary diagnostic redaction.

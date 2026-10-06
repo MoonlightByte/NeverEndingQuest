@@ -169,8 +169,8 @@ Startup delta verified 2026-09-05 against the `fix/issue-114-startup-repair` wor
 ## Load-bearing seams
 
 1. `main.py:4295-4319` - structured narration sink and terminal fallback.
-2. `main.py:7007-7007` and `main.py:7743-7758` - shared loop and input boundary.
-3. `main.py:9172-9295` - terminal entry.
+2. `main.py:7016-7016` and `main.py:7752-7767` - shared loop and input boundary.
+3. `main.py:9181-9304` - terminal entry.
 4. `web/shared_state.py:33-67` - sink ownership and failure semantics.
 5. `web/web_interface.py:226-452` - queues, game thread, revisions, and durable cache.
 6. `web/web_interface.py:842-899` and `web/web_interface.py:5743-5776` - blocking web input and both routes.

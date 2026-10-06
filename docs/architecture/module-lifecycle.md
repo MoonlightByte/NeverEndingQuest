@@ -128,7 +128,7 @@ This does not add a provider call, change the request mode, or own a new scope.
 | Module completion | Archive, T038 summary, T039 export or conservative fallback | Campaign pending marker governs the multi-file commit |
 | Restart identity | Same-ID completion receipt, work marker, pending marker, and lifecycle epoch | Recovery resumes or rolls back the same operation |
 
-Startup integration publishes a dropped-in or stubbed module registry-only through the stitcher's legacy publication. An id conflict, including one in a paired `_BU.json` master, routes an unplayed module to the managed import (copy, atomic swap); a played one is refused unchanged (an unreadable record counts as played). A manifest of the held tree, taken before validation, decides NOT_PUBLISHED versus INDETERMINATE after a later failure. The startup line is chosen from the publication result's typed cause and the import's refused_because, never from reason text; a safety check that gave no verdict (UNAVAILABLE) is told apart from one that refused (UNSAFE).
+Startup integration publishes a dropped-in or stubbed module registry-only through the stitcher's legacy publication. An id conflict, including one in a paired `_BU.json` master, routes an unplayed module to the managed import (copy, atomic swap); a played one is refused unchanged (an unreadable record counts as played). A manifest of the held tree, taken before validation, decides NOT_PUBLISHED versus INDETERMINATE after a later failure. On native Windows the module directory and each directory under it are held by no-follow handles opened without delete sharing, so neither they nor their real ancestors can be renamed while held, and the manifest names children through the held directory's final path (a volume where that path cannot be read, such as a network share, is unsupported). A module file busy in another process while the conflict scan or the manifest reads it makes the publication INDETERMINATE, not refused. The managed import refuses a link or reparse point as the copy reaches it. The startup line is chosen from a typed cause, never from reason text: the publication result's cause, the import's refused_because, or the scan's `unproven` for an INDETERMINATE publication, given only when the module is still installed and the registry does not join it. A safety check that gave no verdict (UNAVAILABLE) is told apart from one that refused (UNSAFE).
 
 ## Flow
 
@@ -171,12 +171,12 @@ Startup integration publishes a dropped-in or stubbed module registry-only throu
 4. `core/generators/module_builder.py:2902-3028` - explicit/T030 spec authority and branch selection.
 5. `core/generators/module_builder.py:2006-2105` - final context, T088, and validation.
 6. `core/generators/module_builder.py:2496-2560` - code-owned cross-area links.
-7. `core/generators/module_stitcher.py:2690-2863` (`build_publication_registry_bytes`) - hidden-candidate safety and registry bytes.
+7. `core/generators/module_stitcher.py:2980-3153` (`build_publication_registry_bytes`) - hidden-candidate safety and registry bytes.
 8. `utils/module_publish.py:283-392` - hidden workspace and atomic directory publication.
-9. `core/managers/campaign_manager.py:1776-1908` - intent-before-transition publication.
-10. `core/managers/campaign_manager.py:2038-2405` - prepared/ready intent lifecycle and ordered drain.
-11. `core/managers/campaign_manager.py:2468-3077` - archive, T038/T039, recovery, and transactional commit.
-12. `main.py:6295-6327` and `main.py:7135-7154` - post-response and startup completion drains.
+9. `core/managers/campaign_manager.py:1776-1909` - intent-before-transition publication.
+10. `core/managers/campaign_manager.py:2039-2406` - prepared/ready intent lifecycle and ordered drain.
+11. `core/managers/campaign_manager.py:2469-3078` - archive, T038/T039, recovery, and transactional commit.
+12. `main.py:6304-6336` and `main.py:7144-7163` - post-response and startup completion drains.
 
 ## Invariants
 

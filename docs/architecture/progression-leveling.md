@@ -115,11 +115,11 @@ verification pin. Live #193 v3.1, including D-323-1, remains authority.
 7. `schemas/char_schema.json:24-26` and `schemas/char_schema.json:519-548` - progression fields.
 8. `prompts/system_prompt.txt:965` and `prompts/validation/validation_prompt.txt:194` - full advancement-entry contracts; their compressed counterparts carry the same distinction.
 9. `core/ai/action_handler.py:3759` - `levelUp` entrant and session creation.
-10. `main.py:5384` - level-up interception before ordinary action output.
+10. `main.py:5393` - level-up interception before ordinary action output.
 11. `core/managers/level_up_manager.py:78` - captured commit guard and process-local session.
 12. `core/managers/level_up_manager.py:230`, `:372`, `:470`, `:484`, `:520`, `:635` and `:726` - interview loop, prospective guards, answer retention, domain packets, preparation, commit and shared evidence (2026-09-12 working candidate).
 13. `core/ai/level_up_specialists.py` `collect_domain_work` and `run_layer` - owned collection and fixed forward calculation; `utils/level_up_workspace.py` `promote`/`withdraw` preserve approved fact delivery/currentness. Specialist question/parking helpers are retired.
-14. `main.py:9566` and `main.py:9713` - typed handback and guarded common-tail save.
+14. `main.py:9575` and `main.py:9722` - typed handback and guarded common-tail save.
 15. `updates/update_character_info.py:1075` and `:1117` - shared preparation and guarded canonical commit used by the current level-up candidate.
 
 ## Invariants
