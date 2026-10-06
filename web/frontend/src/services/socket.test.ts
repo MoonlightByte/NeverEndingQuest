@@ -20,6 +20,7 @@ vi.mock('socket.io-client', () => ({
 
 import { emitC } from './socket'
 import { useDialogs, useSession } from '../stores'
+import { useRulesRoll } from '../stores/rulesRoll'
 
 const initialSession = useSession.getState()
 
@@ -29,6 +30,25 @@ describe('socket reconnect synchronization', () => {
     socketMock.connected = false
     useSession.setState(initialSession, true)
     useDialogs.setState({ moduleOperation: null, actionResult: null })
+    useRulesRoll.getState().setPrompt(null)
+  })
+
+  it('never buffers a check answer while disconnected and restores the server prompt', () => {
+    emitC('submit_check_roll', { id: 'old', faces: [15] })
+    expect(socketMock.emit).not.toHaveBeenCalled()
+    socketMock.connected = true
+    socketMock.handlers.get('connect')?.()
+    const prompt = { id: 'current', characterName: 'Hero', label: 'Perception', faces: 1 as const,
+      netMode: 'normal', reason: 'Look', submitted: false }
+    socketMock.handlers.get('ui_state_snapshot')?.({ revision: 20, game_running: true,
+      is_processing: false, status_message: 'Ready', roll_prompt: prompt })
+    expect(useRulesRoll.getState().prompt).toEqual(prompt)
+    socketMock.handlers.get('ui_state_snapshot')?.({ revision: 19, game_running: true,
+      is_processing: false, status_message: 'Ready', roll_prompt: null })
+    expect(useRulesRoll.getState().prompt).toEqual(prompt)
+    socketMock.connected = false
+    socketMock.handlers.get('disconnect')?.()
+    expect(useRulesRoll.getState().prompt).toBeNull()
   })
 
   it('allows Socket.IO to fall back to HTTP polling when WebSocket is unavailable', () => {

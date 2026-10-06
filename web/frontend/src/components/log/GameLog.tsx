@@ -3,12 +3,14 @@
  * Renders the log store ring as typed MessageCards, attaches generated
  * images (image_generated) inline to the narration whose content matches
  * the echoed prompt (GenerateImageButton emits the message content as the
- * prompt), and auto-scrolls with bottom-pin: new messages keep the view at
- * the bottom unless the player has scrolled up to read history.
+ * prompt). New narration opens at its beginning; reading is never pulled
+ * to the ending of a long response.
  */
-import { useEffect, useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLog } from '../../stores'
 import type { GeneratedImage } from '../../stores'
+import { SceneImage } from './SceneImage'
+import { firstNewNarration, revealStoryStart, softenStoryArrival } from './storyReading'
 import { MessageCard } from './MessageCard'
 import { useEmberDesktop } from '../layout/EmberPresentation'
 
@@ -22,6 +24,9 @@ export function GameLog() {
   const previousSessionCount = useLog((s) => s.previousSessionCount)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const pinnedRef = useRef(true)
+  const priorMessagesRef = useRef(messages)
+  const unreadRef = useRef<HTMLElement | null>(null)
+  const [hasNew, setHasNew] = useState(false)
 
   // Attach each generated image to the most recent narration whose content
   // equals the image prompt; anything unmatched renders at the end of the log.
@@ -59,14 +64,39 @@ export function GameLog() {
     const el = containerRef.current
     if (!el) return
     pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_PIN_THRESHOLD_PX
+    if (pinnedRef.current) { unreadRef.current = null; setHasNew(false) }
   }
 
-  useEffect(() => {
+  const readFromStart = (message: HTMLElement) => {
     const el = containerRef.current
-    if (el && pinnedRef.current) {
+    if (!el) return
+    pinnedRef.current = false
+    revealStoryStart(el, message)
+    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 1
+    unreadRef.current = null
+    setHasNew(false)
+  }
+
+  useLayoutEffect(() => {
+    const index = firstNewNarration(messages, priorMessagesRef.current, previousSessionCount)
+    priorMessagesRef.current = messages
+    const el = containerRef.current
+    if (unreadRef.current && !el?.contains(unreadRef.current)) {
+      unreadRef.current = null
+      setHasNew(false)
+    }
+    const message = el?.querySelector<HTMLElement>(`[data-story-index="${index}"]`)
+    if (message) {
+      softenStoryArrival(message)
+      if (pinnedRef.current) readFromStart(message)
+      else {
+        if (!unreadRef.current || !el?.contains(unreadRef.current)) unreadRef.current = message
+        setHasNew(true)
+      }
+    } else if (el && pinnedRef.current) {
       el.scrollTop = el.scrollHeight
     }
-  }, [messages, images])
+  }, [messages, images, previousSessionCount])
 
   return (
     <div
@@ -83,17 +113,21 @@ export function GameLog() {
       {messages.length > 0 || orphanImages.length > 0 ? (
         <>
           {previousSessionCount > 0 && <div className="neq-session-divider mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">--- Previous Session Messages ---</div>}
-          {messages.map((message, index) => <div key={message.message_id ?? index}>{index === previousSessionCount && <div className="neq-session-divider mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">{ember ? 'Current session' : '--- Current Session ---'}</div>}<MessageCard message={message} images={imagesByMessage.get(index)} /></div>)}
+          {messages.map((message, index) => <div key={message.message_id ?? index} data-story-index={message.type === 'narration' ? index : undefined}>{index === previousSessionCount && <div className="neq-session-divider mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">{ember ? 'Current session' : '--- Current Session ---'}</div>}<MessageCard message={message} images={imagesByMessage.get(index)} /></div>)}
           {previousSessionCount === messages.length && previousSessionCount > 0 && <div className="neq-session-divider mx-auto my-8 max-w-[500px] rounded border border-card py-2 text-center font-log text-sm italic text-secondary">--- Current Session ---</div>}
           {orphanImages.map((image, index) => (
             <div key={`${image.image_url}-${index}`} className="my-4 flex justify-center">
-              <img
-                src={image.image_url}
-                alt={`Generated scene: ${image.prompt.slice(0, 80)}`}
+              <SceneImage
+                image={image}
                 className="max-w-full rounded-lg border-2 border-card"
               />
             </div>
           ))}
+          {hasNew && <button type="button" className="sticky bottom-2 mx-auto block rounded-full border border-card bg-panel px-4 py-2 text-sm text-primary"
+            onClick={() => {
+              const el = containerRef.current
+              if (el && unreadRef.current && el.contains(unreadRef.current)) readFromStart(unreadRef.current)
+            }}>New from the DM ↓</button>}
         </>
       ) : null}
     </div>

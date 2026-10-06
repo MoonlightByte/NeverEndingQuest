@@ -1,3 +1,4 @@
+import { ConnectionNotice } from './ConnectionNotice'
 /**
  * AppShell (plan 4.4a) -- the full player layout:
  *
@@ -64,6 +65,9 @@ function CenterColumn({ focused, onToggleFocus }: { focused: boolean; onToggleFo
   const ember = useEmberDesktop()
   const location = useWorld(state => state.location)
   const dice = useDiceRolls()
+  const [rollInsertion, setRollInsertion] = useState<{ id: number; text: string }>()
+  const insertSequence = useRef(0)
+  const insertRoll = (text: string) => setRollInsertion({ id: ++insertSequence.current, text })
   const instance = useSession(state => state.serverInstanceId)
   const previous = useRef(instance)
   useEffect(() => {
@@ -83,11 +87,12 @@ function CenterColumn({ focused, onToggleFocus }: { focused: boolean; onToggleFo
           <PartyStrip />
           <InitiativeTracker />
         </div>
-        <DiceStrip state={dice} />
+        <DiceStrip state={dice} onInsertRoll={insertRoll} />
       </div>
       <div className="neq-header-divider" /></>}
       {!ember && <div id="neq-dice-results-host" />}
       <FirstRunBanner />
+      <ConnectionNotice />
       {ember && <div className="tavern-story-heading">
         <div><span className="tavern-eyebrow">Your adventure</span><h2>{location?.currentLocation || 'The next chapter awaits'}</h2></div>
         <button type="button" aria-pressed={focused} onClick={onToggleFocus}>{focused ? 'Show character & party' : 'Focus story'}<span aria-hidden="true">{focused ? ' ↙' : ' ↗'}</span></button>
@@ -95,8 +100,8 @@ function CenterColumn({ focused, onToggleFocus }: { focused: boolean; onToggleFo
       <div className="min-h-0 flex-1">
         <GameLog />
       </div>
-      {ember && <div className="ember-dice-dock"><DiceStrip state={dice} /><div id="neq-dice-results-host" /></div>}
-      <InputBar />
+      {ember && <div className="ember-dice-dock"><DiceStrip state={dice} onInsertRoll={insertRoll} /><div id="neq-dice-results-host" /></div>}
+      <InputBar rollInsertion={rollInsertion} />
     </div>
   )
 }

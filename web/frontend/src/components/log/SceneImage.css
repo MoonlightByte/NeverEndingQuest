@@ -1,0 +1,18 @@
+.neq-scene-thumbnail { position: relative; display: block; width: 100%; max-width: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; text-align: initial; }
+.neq-scene-open-hint { position: absolute; right: 10px; bottom: 10px; padding: 5px 8px; border: 1px solid #bfa57270; border-radius: 5px; background: #17150cdb; color: #f0ddbb; font: 12px/1.2 Georgia, serif; pointer-events: none; }
+.neq-scene-thumbnail:focus-visible { outline: 2px solid #d7b779; outline-offset: 4px; }
+.neq-scene-preview { position: fixed; inset: 0; z-index: 21000; display: flex; flex-direction: column; background: #100f0cf5; color: #f2e4c9; font-family: Georgia, serif; overscroll-behavior: contain; }
+.neq-scene-preview header, .neq-scene-preview footer { flex-shrink: 0; padding: 12px max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left)); background: #201c14; }
+.neq-scene-preview header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: max(8px, env(safe-area-inset-top)); border-bottom: 1px solid #8c754447; }
+.neq-scene-preview footer { padding-bottom: max(10px, env(safe-area-inset-bottom)); border-top: 1px solid #8c754447; text-align: center; }
+.neq-scene-preview button { min-width: 44px; min-height: 44px; padding: 6px 12px; border: 1px solid #8c754480; border-radius: 6px; color: #ecd3a6; background: #31291c; font: 15px/1.2 Georgia, serif; cursor: pointer; touch-action: manipulation; }
+.neq-scene-preview button:disabled { opacity: .4; cursor: default; }
+.neq-scene-preview button:focus-visible { outline: 2px solid #e6c589; outline-offset: 2px; }
+.neq-scene-stage { flex: 1; min-height: 0; position: relative; overflow: hidden; touch-action: none; user-select: none; cursor: grab; display: grid; place-items: center; }
+.neq-scene-stage:active { cursor: grabbing; }
+.neq-scene-stage img { display: block; width: 100%; height: 100%; min-height: 0; object-fit: contain; transform-origin: center; pointer-events: none; -webkit-user-drag: none; }
+.neq-scene-stage p { padding: 24px; text-align: center; }
+.neq-scene-tools { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.neq-scene-tools output { min-width: 45px; font-size: 15px; font-variant-numeric: tabular-nums; }
+.neq-scene-preview footer p { margin: 8px 0 0; color: #c2b598; font: 12px/1.4 sans-serif; }
+@media (max-height: 480px) { .neq-scene-preview header, .neq-scene-preview footer { padding-block: 4px; } .neq-scene-preview footer p { display: none; } }

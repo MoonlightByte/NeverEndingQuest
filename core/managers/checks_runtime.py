@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any, Callable, Dict, List, Optional
 
-from core.managers import checks_state
+from core.managers import checks_state, roll_prompt
 from core.managers.effects_runtime import _resolve_character
 from core.nql import checks
 from utils.enhanced_logger import info, warning
@@ -106,10 +106,14 @@ def take_player_rolls(read: Callable[[str], str]) -> List[str]:
             return completed
         entry = pending[0]
         faces: Optional[List[int]] = None
-        while faces is None:
-            faces = parse_faces(read(roll_prompt_text(entry)), entry["faces"])
-            if faces is None:
-                print(f"Type {entry['faces']} whole number{'s' if entry['faces'] == 2 else ''} between 1 and 20, or press Enter to let the game roll.")
+        try:
+            while faces is None:
+                roll_prompt.publish({**entry, 'label': checks.label(entry['stat'])})
+                faces = parse_faces(read(roll_prompt_text(entry)), entry["faces"])
+                if faces is None:
+                    print(f"Type {entry['faces']} whole number{'s' if entry['faces'] == 2 else ''} between 1 and 20, or press Enter to let the game roll.")
+        finally:
+            roll_prompt.publish(None)
         try:
             _resolved, _role, _path, sheet = _resolve_character(entry["characterName"])
             result = checks.resolve(sheet, entry["stat"], dc=entry.get("dc"), mode=entry.get("mode"), faces=faces or None)

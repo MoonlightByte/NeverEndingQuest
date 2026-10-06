@@ -9293,8 +9293,6 @@ def _main_game_loop(startup_authority, turn_authority):
         # A dice submission is the next player input; narrate its authoritative
         # result without requiring an unrelated command or rolling again.
         if completed_checks:
-            for check_line in completed_checks:
-                display_dm_narration(check_line, channel="main", color="yellow")
             user_input_text = "Continue with the outcome of my submitted check."
         elif player_data_current:
             current_hp = player_data_current.get("hitPoints", "N/A")
