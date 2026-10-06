@@ -488,7 +488,13 @@ def generate_adventure_summary(
             "actions the accepted turn actually proposed. Its absence is "
             "not permission to turn a player's requested outcome into "
             "history. Reconcile it with the Dungeon Master's resolved "
-            "narration; do not quote or mention this projection."
+            "narration; do not quote or mention this projection. Items "
+            "whose workflow_status is pending are proposals of the turn, not "
+            "results. A pending plotImpact is the Dungeon Master's proposed "
+            "story note: it is not evidence that anything in it happened. A "
+            "committed transitionLocation establishes only that the party "
+            "left this location for that destination; what happens on the "
+            "way or after arrival belongs to later entries."
         ),
     }
     messages = [
@@ -515,11 +521,16 @@ Do NOT:
 - Treat a player's request, plan, prediction, or command as an event that
   occurred. The Dungeon Master's resolved response establishes the semantic
   outcome.
+- Record what a final player message asked to do or find when the Dungeon
+  Master has not answered it in this conversation. That message began the
+  departure, so only the departure and where the party set out for are
+  established.
 - Claim a state-changing action occurred unless the resolved Dungeon Master
   response supports it and the corresponding structured action is present in
-  the supplied action projection. A proposed structured action may still be
-  awaiting its code-owned commit, so describe the resolved intent without
-  inventing its mechanical result.
+  the supplied action projection. A pending action, including any plotImpact
+  text, is a proposal and not an outcome: never state its contents as
+  something that happened. The place the party set out for may be named as
+  their destination.
 - Speculate about the future or characters’ intentions.
 - Use first-person narration or dialogue-heavy exchanges.
 - Use bullet points, headings, or formatting.
