@@ -108,6 +108,26 @@ def calendar_from_scalar(value):
     }
 
 
+# The parts of the day (utils/time_context.py, the prompt's label and the
+# model's timeOfDay) that are night: 19:00 to before 06:00.
+NIGHT_PARTS = ("evening", "night", "late night", "deep night", "pre-dawn")
+
+
+def day_night(time):
+    """Return worldConditions ``dayNightCycle`` for a persisted ``time``,
+    from the same part of the day the prompt shows: "Night" for
+    NIGHT_PARTS, else "Day". None when the time is unreadable, so a writer
+    leaves the field as it is (#597)."""
+    from utils.time_context import get_time_context
+    if not isinstance(time, str) or not time.strip():
+        return None
+    try:
+        hour, minute, second = _time_parts(time)
+    except GameTimeError:
+        return None
+    return "Night" if get_time_context("%02d:%02d:%02d" % (hour, minute, second)) in NIGHT_PARTS else "Day"
+
+
 def display_iso_from_scalar(value):
     """Render a fantasy-calendar deadline in the existing ISO string field."""
     calendar = calendar_from_scalar(value)

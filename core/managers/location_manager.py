@@ -250,6 +250,7 @@ def update_world_conditions(
 ):
     """Update world conditions based on location change"""
     from datetime import datetime, timedelta
+    from core.effects.clock import day_night
     current_time = datetime.strptime(current_conditions["time"], "%H:%M:%S")
     new_time = current_time.strftime("%H:%M:%S")  # Don't automatically add time - let DM handle it
 
@@ -270,7 +271,7 @@ def update_world_conditions(
             "time": new_time,
             "weather": location_info.get("weatherConditions", ""), 
             "season": current_conditions["season"],
-            "dayNightCycle": "Day" if 6 <= int(new_time[:2]) < 18 else "Night",
+            "dayNightCycle": day_night(new_time),
             "moonPhase": current_conditions["moonPhase"],
             "currentLocation": new_location,
             "currentLocationId": location_info["locationId"],

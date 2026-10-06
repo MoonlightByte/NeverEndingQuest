@@ -6,6 +6,7 @@
 from datetime import datetime, timedelta
 import json
 from utils.encoding_utils import safe_json_load, safe_json_dump
+from core.effects.clock import day_night
 
 
 _CLOCK_FIELDS = ("time", "day", "month", "year")
@@ -46,7 +47,9 @@ def calculate_world_time_fields(world_conditions, minutes):
 
 
 def apply_staged_world_time(before, after):
-    """Patch only the four clock fields using exact three-way recovery."""
+    """Patch only the four clock fields using exact three-way recovery, and
+    dayNightCycle from the new time (#597). The recovery compares the four
+    clock fields only: the cycle is derived, never a conflict."""
     party_tracker_data = safe_json_load("party_tracker.json")
     if not isinstance(party_tracker_data, dict):
         raise RuntimeError("party tracker is unavailable")
@@ -60,10 +63,15 @@ def apply_staged_world_time(before, after):
         return "blocked_conflict"
     for field in _CLOCK_FIELDS:
         world[field] = after[field]
+    cycle = day_night(after["time"])
+    if cycle:
+        world["dayNightCycle"] = cycle
     safe_json_dump(party_tracker_data, "party_tracker.json", indent=4)
     verified = safe_json_load("party_tracker.json")
     verified_world = verified.get("worldConditions", {}) if isinstance(verified, dict) else {}
     if {field: verified_world.get(field) for field in _CLOCK_FIELDS} != after:
+        raise IOError("world clock verification failed")
+    if cycle and verified_world.get("dayNightCycle") != cycle:
         raise IOError("world clock verification failed")
     return "committed"
 
@@ -94,6 +102,10 @@ def update_world_time(time_estimate_str):
     new_day = after["day"]
     updated_time = datetime.strptime(after["time"], "%H:%M:%S")
     party_tracker_data["worldConditions"].update(after)
+    # #597: the day/night half follows the time it now holds.
+    cycle = day_night(after["time"])
+    if cycle:
+        party_tracker_data["worldConditions"]["dayNightCycle"] = cycle
 
     # Save the updated party tracker data to the JSON file with safe encoding
     safe_json_dump(party_tracker_data, "party_tracker.json", indent=4)
