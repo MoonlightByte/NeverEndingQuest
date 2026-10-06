@@ -1280,6 +1280,15 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
                 damage, damage_traits = int(scored.damage or 0), list(scored.traits)
             else:
                 if scored is not None:
+                    try:
+                        from utils.enhanced_logger import warning as _warning
+                        _warning(
+                            "AS: %s %s scored without the engine (damage faces taken %d, engine used %s)"
+                            % (actor.get("name"), entry.get("name"), sum(damage_rolls), scored.damage_rolled),
+                            category="combat_events",
+                        )
+                    except Exception:
+                        pass
                     scored = None
                 raw_damage = max(
                     0,
