@@ -365,14 +365,13 @@ def _reset_global_state_locked(*, reset_prepared=False):
         json.dump(starting_location, f, indent=2, ensure_ascii=False)
     print("  [OK] Reset current_location.json to starting point (HH001 A01)")
     
-    # Create empty journal
-    journal_data = {
-        "module": "Keep_of_Doom",
-        "entries": []
-    }
-    with open("journal.json", 'w', encoding='utf-8') as f:
-        json.dump(journal_data, f, indent=2, ensure_ascii=False)
-    print("  [OK] Created empty journal.json")
+    # The chronicle starts fresh: no journal until the first departure,
+    # exactly as on a new install (the departure commit creates it).
+    try:
+        os.remove("journal.json")
+        print("  [OK] Removed journal.json (will be created fresh)")
+    except FileNotFoundError:
+        pass
     
     # Delete world_registry.json - will be recreated
     if os.path.exists("world_registry.json"):
