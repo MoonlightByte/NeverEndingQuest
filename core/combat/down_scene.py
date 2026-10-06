@@ -51,8 +51,9 @@ MAIN_DOWN_SINK_LINE = (
     "companions will tend to you as they see fit, or as you ask. Save and "
     "Load work as always."
 )
-# Banner suffixes: appended after the [time][HP][XP] prefix the headless and
-# web clients parse; the prefix bytes are never changed.
+# Banner suffixes: appended after the [date][time][HP][XP] prefix the headless
+# and web clients parse (the main prompt's [date] is #642's; the combat prompt
+# has none); the suffixes never change the prefix bytes.
 COMBAT_DOWN_BANNER = "{name} is down - table talk, or '{token}':"
 MAIN_DOWN_BANNER = "{name} is down - table talk:"
 TPK_BANNER_CONTROLS = "Your party has fallen - Load, Reset, or Quit:"
