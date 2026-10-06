@@ -36,6 +36,8 @@ from contextlib import nullcontext
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
+from utils.transient_filesystem import replace_target_is_read_only
+
 
 # Comprehensive character mapping for problematic Unicode characters
 CHARACTER_REPLACEMENTS = {
@@ -196,7 +198,8 @@ def safe_json_load(filepath: str) -> Any:
         raise
 
 
-def safe_json_dump(data: Any, filepath: str, *, commit_guard=None, **kwargs) -> None:
+def safe_json_dump(data: Any, filepath: str, *, commit_guard=None,
+                   stop_if_read_only: bool = False, **kwargs) -> None:
     """
     Save JSON with sanitization and an atomic same-directory replacement.
 
@@ -204,6 +207,9 @@ def safe_json_dump(data: Any, filepath: str, *, commit_guard=None, **kwargs) -> 
     state.  Flushing the file before ``os.replace`` means readers observe the
     complete old document or the complete new one, never a partially-written
     JSON document.
+
+    ``stop_if_read_only`` raises the replace error instead of waiting when the
+    target is read-only, for a caller that handles the raise (issue #654).
     """
     # Sanitize data before saving
     clean_data = sanitize_dict(data) if isinstance(data, (dict, list)) else data
@@ -238,6 +244,8 @@ def safe_json_dump(data: Any, filepath: str, *, commit_guard=None, **kwargs) -> 
         # the destination. One blip must not fail the write (a live
         # acceptance run lost a combat to this class in the sibling
         # writer). Retain the write until the transient sharing lock clears.
+        # A read-only target never clears by waiting, so a caller that opted
+        # in gets the error instead (issue #654).
         while True:
             try:
                 with commit_guard() if commit_guard is not None else nullcontext():
@@ -246,6 +254,9 @@ def safe_json_dump(data: Any, filepath: str, *, commit_guard=None, **kwargs) -> 
             except (PermissionError, OSError) as replace_error:
                 winerror = getattr(replace_error, 'winerror', None)
                 if winerror not in (5, 32):
+                    raise
+                if (winerror == 5 and stop_if_read_only
+                        and replace_target_is_read_only(filepath)):
                     raise
                 time.sleep(0.1)
 

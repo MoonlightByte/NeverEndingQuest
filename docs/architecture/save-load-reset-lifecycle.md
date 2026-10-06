@@ -49,7 +49,7 @@ common-tail history save retains the captured callback through compression and
 context refresh; ordinary turns keep a None callback and their existing behavior.
 
 Seams: `level_up_manager.py:78`, `updates/update_character_info.py:1324`,
-`utils/encoding_utils.py:200`, `main.py:7228`, `main.py:9799`, `main.py:9946`,
+`utils/encoding_utils.py:201`, `main.py:7228`, `main.py:9799`, `main.py:9946`,
 `web/web_interface.py:632`, `core/headless/protocol.py:46`.
 These are source contracts, not proof of live Load/Reset/Quit timing or #116
 display-replay acceptance. Native gates remain required under #193.
@@ -197,6 +197,11 @@ Startup/locking delta verified 2026-09-05 against the `fix/issue-114-startup-rep
   Startup's optional `commit_guard` checks supersession before a late replace.
   The #323 candidate adds the same optional replacement authority to sibling
   `safe_json_dump`; unguarded callers keep their existing behavior.
+- A read-only target never clears by waiting. A caller that passes
+  `stop_if_read_only=True` gets False (`safe_write_json`) or the raise
+  (`safe_json_dump`) instead, and its `.bak` keeps a write bit; every
+  other caller keeps the wait. Only the start-path registry writers opt in
+  (issue #654).
 
 ## Deployment boundary
 
@@ -234,7 +239,7 @@ Live Load-during-calculation and full committed-level-up continuity remain unpro
 9. `core/headless/session.py:379-693` - headless lifecycle commands (reset/quit at :379-466) and restart.
 10. `web/web_interface.py:2614-2959` - web input and Save/Load/Reset entrants.
 11. `updates/save_game_manager.py:147` and `updates/save_game_manager.py:232` - pending module context and essential startup history (startup candidate).
-12. `updates/save_game_manager.py:919` and `utils/file_operations.py:83` - restore rollback/absence semantics and guarded shared writer (startup candidate).
+12. `updates/save_game_manager.py:919` and `utils/file_operations.py:100` - restore rollback/absence semantics and guarded shared writer (startup candidate).
 13. `utils/reset_campaign.py:397-449` - reset backup-before-wipe ordering.
 
 ## Invariants

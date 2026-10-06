@@ -1,4 +1,5 @@
-"""Narrow classification and retry helpers for transient filesystem races."""
+"""Narrow classification and retry helpers for transient filesystem races,
+and the one verdict that a denied write is not transient (a read-only target)."""
 
 from __future__ import annotations
 
@@ -75,6 +76,33 @@ def read_bytes_preserving_errors(path) -> bytes:
             chunks.append(chunk)
     finally:
         _winapi.CloseHandle(handle)
+
+
+def replace_target_is_read_only(path) -> bool:
+    """Return whether a native Windows target carries the READONLY attribute.
+
+    The single home for the READONLY-attribute verdict used by the waiting
+    writer loops: waiting cannot clear it, so an opted-in writer stops on it
+    (issue #654). One attribute read, no handle and no retry. Anything that is
+    not provably a read-only file answers False, including an unreadable
+    attribute (a delete-pending name) and a directory. POSIX answers False.
+    """
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        get_attributes = ctypes.WinDLL("kernel32").GetFileAttributesW
+        get_attributes.argtypes = [wintypes.LPCWSTR]
+        get_attributes.restype = wintypes.DWORD
+        attributes = get_attributes(os.fsdecode(path))
+    except Exception:
+        return False
+    if attributes == 0xFFFFFFFF:  # INVALID_FILE_ATTRIBUTES
+        return False
+    # FILE_ATTRIBUTE_READONLY, and not FILE_ATTRIBUTE_DIRECTORY.
+    return bool(attributes & 0x1) and not attributes & 0x10
 
 
 def retry_transient_filesystem(

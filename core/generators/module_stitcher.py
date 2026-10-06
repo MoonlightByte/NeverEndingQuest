@@ -122,6 +122,7 @@ from utils.file_operations import safe_write_json
 from utils.transient_filesystem import (
     is_transient_filesystem_error,
     read_bytes_preserving_errors,
+    replace_target_is_read_only,
 )
 from utils.module_path_manager import ModulePathManager
 
@@ -289,6 +290,9 @@ class NotJoinedCause(str, Enum):
     # INDETERMINATE and the registry on disk does not join the module
     # (issue #608).
     UNPROVEN = "unproven"
+    # Scan entry only, never a result's cause: as UNPROVEN, while the
+    # registry file is read-only, so no module can join (issue #654).
+    REGISTRY_READ_ONLY = "registry_read_only"
 
 
 @dataclass(frozen=True)
@@ -532,7 +536,9 @@ class ModuleStitcher:
         # renumbering a copy: [{"module", "collides_with", "renumbered"}].
         # And the installed ones publication refused, or could not prove and
         # left unjoined: [{"module", "reason", "cause"}], where cause is a
-        # NotJoinedCause value or None ("unproven" for the latter).
+        # NotJoinedCause value or None. A publication that could not be proven
+        # is "unproven", or "registry_read_only" while the registry is
+        # read-only.
         self.import_required = []
         self.imported = []
         self.not_joined = []
@@ -542,7 +548,11 @@ class ModuleStitcher:
             print("Migrating to isolated module architecture - removing cross-module connections")
             del self.world_registry['connections']
             self.world_registry['isolatedModules'] = True
-            safe_write_json(self.world_registry_file, self.world_registry)
+            # Redone in memory on every construction, so a read-only
+            # registry costs nothing here (issue #654).
+            safe_write_json(
+                self.world_registry_file, self.world_registry, stop_if_read_only=True
+            )
     
     def _default_world_registry(self) -> Dict[str, Any]:
         return {
@@ -1279,7 +1289,8 @@ class ModuleStitcher:
         """Atomically restore and fresh-read the prior registry snapshot."""
         try:
             write_result = safe_write_json(
-                self.world_registry_file, deepcopy(prior_registry)
+                self.world_registry_file, deepcopy(prior_registry),
+                stop_if_read_only=True,
             )
         except Exception as exc:
             return False, f"Prior registry restore raised: {exc}"
@@ -3607,7 +3618,7 @@ Create atmospheric travel narration that leads into this adventure."""
             registry_attempted = True
             try:
                 write_result = safe_write_json(
-                    self.world_registry_file, candidate
+                    self.world_registry_file, candidate, stop_if_read_only=True
                 )
             except Exception as exc:
                 return self._finish_registry_attempt_failure(
@@ -4998,12 +5009,19 @@ Respond with JSON:
                         )
                         # The player is told only what is proven: still
                         # installed, and not joined in the registry (issue #608).
+                        # A read-only registry is a proven fact at this
+                        # moment, and the player can fix it (issue #654).
                         if self._module_proven_unjoined(module_name):
+                            cause = (
+                                NotJoinedCause.REGISTRY_READ_ONLY
+                                if replace_target_is_read_only(self.world_registry_file)
+                                else NotJoinedCause.UNPROVEN
+                            )
                             self.not_joined.append(
                                 {
                                     "module": module_name,
                                     "reason": result.reason,
-                                    "cause": NotJoinedCause.UNPROVEN.value,
+                                    "cause": cause.value,
                                 }
                             )
                 except Exception as e:

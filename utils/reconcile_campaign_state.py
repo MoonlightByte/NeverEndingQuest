@@ -208,7 +208,9 @@ def _reconcile_campaign_state_locked() -> Dict[str, Any]:
             registry_changed = True
     if registry_changed:
         _ensure_parent_dir(WORLD_REGISTRY_FILE)
-        safe_json_dump(world_registry, WORLD_REGISTRY_FILE)
+        # A read-only registry raises here instead of waiting forever; the
+        # startup caller logs it and goes on (issue #654).
+        safe_json_dump(world_registry, WORLD_REGISTRY_FILE, stop_if_read_only=True)
         changes.append("modules/world_registry.json:modules")
 
     if not os.path.exists(STARTUP_STATE_FILE):
