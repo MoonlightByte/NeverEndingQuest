@@ -136,6 +136,102 @@ _UNLINK_SUPPORTS_DIR_FD = os.unlink in getattr(os, "supports_dir_fd", set())
 _RENAME_SUPPORTS_DIR_FD = os.rename in getattr(os, "supports_dir_fd", set())
 
 
+def _windows_held_handles_supported() -> bool:
+    """Whether native Windows entries can be held by handle (issue #608)."""
+    if os.name != "nt":
+        return False
+    try:
+        import ctypes
+        import msvcrt
+    except ImportError:
+        return False
+    return hasattr(ctypes, "WinDLL") and hasattr(msvcrt, "open_osfhandle")
+
+
+def _open_windows_no_follow(path: str, *, directory: bool) -> int:
+    """Hold one native Windows entry without following a link (issue #608).
+
+    FILE_FLAG_OPEN_REPARSE_POINT opens a junction or symlink as itself, the
+    O_NOFOLLOW counterpart. Directories ask for FILE_LIST_DIRECTORY: an open
+    with attribute access alone was observed not to block a rename.
+    FILE_SHARE_DELETE is withheld, so while the handle is held the entry and
+    its ancestors cannot be renamed or deleted; its children still can, and
+    other processes may still write a held file. Returns a CRT descriptor.
+    Every failure is an OSError, so callers type it like any other I/O error.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+        import msvcrt
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.CreateFileW.argtypes = (
+            wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
+            wintypes.DWORD, wintypes.DWORD, wintypes.HANDLE,
+        )
+        kernel.CreateFileW.restype = wintypes.HANDLE
+        kernel.CloseHandle.argtypes = (wintypes.HANDLE,)
+        kernel.CloseHandle.restype = wintypes.BOOL
+        if directory:
+            access = 0x0001 | 0x0080  # FILE_LIST_DIRECTORY | FILE_READ_ATTRIBUTES
+            flags = 0x00200000 | 0x02000000  # OPEN_REPARSE_POINT | BACKUP_SEMANTICS
+        else:
+            access = 0x80000000  # GENERIC_READ
+            flags = 0x00200000  # FILE_FLAG_OPEN_REPARSE_POINT
+        handle = kernel.CreateFileW(
+            os.fsdecode(path),
+            access,
+            1 | 2,  # FILE_SHARE_READ | FILE_SHARE_WRITE; no FILE_SHARE_DELETE
+            None, 3, flags, None,  # non-inherited, OPEN_EXISTING
+        )
+        if handle == ctypes.c_void_p(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            return msvcrt.open_osfhandle(
+                handle, os.O_RDONLY | os.O_BINARY | os.O_NOINHERIT
+            )
+        except BaseException:
+            kernel.CloseHandle(handle)
+            raise
+    except OSError:
+        raise
+    except Exception as exc:
+        raise OSError(f"Windows entry could not be held: {exc}") from exc
+
+
+def _windows_final_path(descriptor: int) -> str:
+    """Return a held Windows entry's own path (issue #608).
+
+    The path is read from the handle in \\\\?\\Volume{...} form: junctions on
+    the way are resolved, so every component is a real directory that the
+    held handle pins, and the prefix turns off Win32 name rewriting (a
+    trailing dot or space is kept). Children are named through it.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+        import msvcrt
+
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.GetFinalPathNameByHandleW.argtypes = (
+            wintypes.HANDLE, wintypes.LPWSTR, wintypes.DWORD, wintypes.DWORD,
+        )
+        kernel.GetFinalPathNameByHandleW.restype = wintypes.DWORD
+        handle = msvcrt.get_osfhandle(descriptor)
+        size = 32768  # the longest Windows path, 32767 characters, plus NUL
+        buffer = ctypes.create_unicode_buffer(size)
+        length = kernel.GetFinalPathNameByHandleW(
+            handle, buffer, size, 0x1  # FILE_NAME_NORMALIZED | VOLUME_NAME_GUID
+        )
+        if length == 0 or length >= size:
+            raise ctypes.WinError(ctypes.get_last_error())
+        return buffer.value
+    except OSError:
+        raise
+    except Exception as exc:
+        raise OSError(f"Held entry path could not be read: {exc}") from exc
+
+
 class ModuleSafetyStatus(str, Enum):
     """Outcome of the module safety-validation pipeline.
 
@@ -306,6 +402,9 @@ class _ExactModuleEntryGuard:
     module_path: str
     descriptor: int
     identity: Tuple[int, int, int]
+    # The path the manifest names children through: module_path on POSIX,
+    # the held handle's final path on native Windows (#608).
+    held_path: Optional[str] = None
 
 
 @dataclass(frozen=True)
@@ -624,24 +723,44 @@ class ModuleStitcher:
     ) -> Tuple[Optional[_ExactModuleEntryGuard], str]:
         """Hold a no-follow directory descriptor when the platform supports it."""
         identity = self._stable_directory_identity(initial_stat)
+        windows = _windows_held_handles_supported()
         nofollow = getattr(os, "O_NOFOLLOW", 0)
         directory = getattr(os, "O_DIRECTORY", 0)
-        if identity is None or not nofollow or not directory:
+        if identity is None or not (windows or (nofollow and directory)):
             return None, "Stable no-follow directory identity is unsupported"
 
         descriptor = None
         try:
-            flags = os.O_RDONLY | nofollow | directory
-            flags |= getattr(os, "O_CLOEXEC", 0)
-            descriptor = os.open(module_path, flags)
+            if windows:
+                descriptor = _open_windows_no_follow(module_path, directory=True)
+            else:
+                flags = os.O_RDONLY | nofollow | directory
+                flags |= getattr(os, "O_CLOEXEC", 0)
+                descriptor = os.open(module_path, flags)
             held_stat = os.fstat(descriptor)
             if self._stable_directory_identity(held_stat) != identity:
                 return None, "Held module directory identity does not match"
+            held_path = module_path
+            if windows:
+                # OPEN_REPARSE_POINT holds a link as itself; refusing it is
+                # the O_NOFOLLOW proof. A volume with no serial cannot bind
+                # the manifest's device checks, and one whose handle has no
+                # final path (a network share) cannot name children through
+                # the held directory (issue #608).
+                if self._stat_result_is_reparse(held_stat):
+                    return None, "Held module directory identity does not match"
+                if held_stat.st_dev == 0:
+                    return None, "Stable no-follow directory identity is unsupported"
+                try:
+                    held_path = _windows_final_path(descriptor)
+                except OSError:
+                    return None, "Stable no-follow directory identity is unsupported"
             guard = _ExactModuleEntryGuard(
                 module_name,
                 module_path,
                 descriptor,
                 identity,
+                held_path,
             )
             valid, reason = self._revalidate_exact_module_entry_guard(guard)
             if not valid:
