@@ -1536,9 +1536,15 @@ def generate_transition_narration(transition_prompt, party_tracker_data):
         )
         return "You complete the journey and arrive at %s." % destination
 
-def generate_arrival_narration(departure_narration, party_tracker_data, conversation_history):
+def generate_arrival_narration(
+    departure_narration, party_tracker_data, conversation_history, arrival_facts=""
+):
     """
     Run layer 2/3 (T063) from T013 plus the committed target/roster projection.
+
+    `arrival_facts` (#648) is the destination scene the arrival is grounded
+    in: the code-filtered destination projection and who is present there
+    (_transition_arrival_facts). Without it the prompt is the historical one.
     """
     from utils.capture.live_provider_call import LiveProviderSuperseded
     debug("STATE_CHANGE: Generating cinematic arrival narration...", category="narrative_generation")
@@ -1568,7 +1574,7 @@ def generate_arrival_narration(departure_narration, party_tracker_data, conversa
     Player characters: {json.dumps(player_names, ensure_ascii=False)}
     Party NPCs: {json.dumps(npc_names, ensure_ascii=False)}
     Do not add, imply, count, or describe any other companion.
-
+{arrival_facts}
     DEPARTURE NARRATION (for context):
     ---
     {departure_narration}
@@ -1684,6 +1690,7 @@ Your task is to rewrite them into a single, cohesive, and cinematic narration.
 - Do not add, count, or imply any actor who is not explicitly identified in the source blocks.
 - Address the sole player character only in second person (you/your), never as a third-person protagonist.
 - End after the committed arrival with one open in-fiction invitation for the player to choose their next immediate action. Do not enumerate options and do not perform that next action.
+- When both blocks state the same fact, keep it once.
 
 DEPARTURE NARRATION:
 ---
@@ -2094,6 +2101,27 @@ def _transition_arrival_facts(party):
     return block + "\n"
 
 
+def _run_transition_chain(checkpoint, party, history):
+    """One travel turn's three narration layers from the committed checkpoint
+    and the party after the move: T013 the departure (with the DM's accepted
+    narration of the turn: narration.departure_text in-module, source_prompt
+    at a module handoff), T063 the arrival grounded in the destination, T064
+    the stitch."""
+    narration = checkpoint.get("narration") or {}
+    first = generate_transition_narration(
+        _transition_departure_prompt(
+            checkpoint,
+            party,
+            narration.get("departure_text") or narration.get("source_prompt"),
+        ),
+        party,
+    )
+    arrival = generate_arrival_narration(
+        first, party, history, _transition_arrival_facts(party)
+    )
+    return generate_seamless_transition_narration(first, arrival)
+
+
 def _transition_outcome_lines(checkpoint, party):
     """Render exact accepted outcomes that scene prose is not allowed to lose."""
     deferred = checkpoint.get("deferred_actions")
@@ -2373,23 +2401,9 @@ def _resume_v2_location_transition(operation_id, *, publish=True, publication=No
 
     narration_record = checkpoint["narration"]
     if narration_record.get("status") == "pending":
-        destination_data = get_location_data_from_party_tracker(party) or {}
-        transition_prompt = location_manager._build_transition_narration_prompt(
-            destination_data,
-            area_id=world.get("currentAreaId"),
-            area_name=world.get("currentArea"),
-            storage_description=location_manager.format_storage_description(
-                location_manager.get_storage_at_location(
-                    world.get("currentLocationId")
-                )
-            ),
+        final_text = _run_transition_chain(
+            checkpoint, party, load_json_file(json_file) or []
         )
-        transition_prompt += _transition_narration_action_context(checkpoint)
-        first = generate_transition_narration(transition_prompt, party)
-        arrival = generate_arrival_narration(
-            first, party, load_json_file(json_file) or []
-        )
-        final_text = generate_seamless_transition_narration(first, arrival)
         _check_live_authority(scope)
         final_text = _append_transition_outcomes(final_text, checkpoint, party)
         narration_entry = {
