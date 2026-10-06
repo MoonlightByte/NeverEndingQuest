@@ -164,7 +164,7 @@ provider router, persisted approval or background comparison is introduced.
 - Scope supersession reaps a child and raises before generation logging; absence of a
   completed T114 capture cannot prove whether an interrupted guardian started. The
   guardian-load acceptance observation does not certify task-specific cancellation.
-- Guardian seams: `core/npc/party_guardian.py:95`, `main.py:9254`,
+- Guardian seams: `core/npc/party_guardian.py:95`, `main.py:9506`,
   `model_registry.py:647`, `utils/capture/live_provider_call.py:52`.
 
 ## Load-bearing seams

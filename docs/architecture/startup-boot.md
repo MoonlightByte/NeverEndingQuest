@@ -142,8 +142,8 @@ Other historical anchors are not recertified by this note.
 
 ## Load-bearing seams
 
-1. `main.py:9181-9304` - terminal wrapper and shared-loop handoff.
-2. `main.py:7016-7066` - shared hydration, memory check, and startup attempt.
+1. `main.py:9433-9556` - terminal wrapper and shared-loop handoff.
+2. `main.py:7268-7318` - shared hydration, memory check, and startup attempt.
 3. `utils/startup_wizard.py:174` - orchestration, checkpoint/interview resume, and verified handoff.
 4. `utils/startup_wizard.py:392` and `:460` - isolated menu requests, dynamic module choice and missing-module continuity.
 5. `utils/startup_wizard.py:714` - independent semantic review, followed by the author/review interview loop.
@@ -151,12 +151,12 @@ Other historical anchors are not recertified by this note.
 7. `utils/startup_contract.py:1` and `utils/startup_prompt_builder.py:19` - narrow response/checkpoint contract and agent instructions.
 8. `utils/startup_handoff_state.py:112-159` - handoff-state loading and wizard status.
 9. `utils/startup_handoff_state.py:212-350` - welcome claim and completion lifecycle.
-10. `main.py:7144-7303` - module, effects, and travel recovery before context.
-11. `main.py:7314-7379` - active-combat startup branch.
-12. `main.py:7490-7593` - authoritative context build and no-compression save.
-13. `main.py:362` and `main.py:9533` - detached generation and applicable shared membership review.
-14. `main.py:443`, `main.py:702` and `main.py:6765` - welcome acceptance, owner currentness checks and shared stale resolver.
-15. `main.py:7595-7767` - surface split, readiness marker, and first input.
+10. `main.py:7396-7555` - module, effects, and travel recovery before context.
+11. `main.py:7566-7631` - active-combat startup branch.
+12. `main.py:7742-7845` - authoritative context build and no-compression save.
+13. `main.py:362` and `main.py:9783` - detached generation and applicable shared membership review.
+14. `main.py:443`, `main.py:702` and `main.py:7017` - welcome acceptance, owner currentness checks and shared stale resolver.
+15. `main.py:7847-8019` - surface split, readiness marker, and first input.
 
 ## Invariants
 

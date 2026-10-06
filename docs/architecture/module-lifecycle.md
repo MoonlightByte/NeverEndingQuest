@@ -176,7 +176,7 @@ Startup integration publishes a dropped-in or stubbed module registry-only throu
 9. `core/managers/campaign_manager.py:1776-1909` - intent-before-transition publication.
 10. `core/managers/campaign_manager.py:2039-2406` - prepared/ready intent lifecycle and ordered drain.
 11. `core/managers/campaign_manager.py:2469-3078` - archive, T038/T039, recovery, and transactional commit.
-12. `main.py:6304-6336` and `main.py:7144-7163` - post-response and startup completion drains.
+12. `main.py:6556-6588` and `main.py:7396-7415` - post-response and startup completion drains.
 
 ## Invariants
 

@@ -49,7 +49,7 @@ common-tail history save retains the captured callback through compression and
 context refresh; ordinary turns keep a None callback and their existing behavior.
 
 Seams: `level_up_manager.py:78`, `updates/update_character_info.py:1324`,
-`utils/encoding_utils.py:200`, `main.py:6976`, `main.py:9549`, `main.py:9696`,
+`utils/encoding_utils.py:200`, `main.py:7228`, `main.py:9799`, `main.py:9946`,
 `web/web_interface.py:632`, `core/headless/protocol.py:46`.
 These are source contracts, not proof of live Load/Reset/Quit timing or #116
 display-replay acceptance. Native gates remain required under #193.
@@ -228,9 +228,9 @@ Live Load-during-calculation and full committed-level-up continuity remain unpro
 3. `main.py:298-378` - welcome ownership and generation-only worker.
 4. `main.py:392-530` - handback ordering, attempt/lease receipt, and reconciliation.
 5. `main.py:753-924` - input pump, teardown, welcome registration, and worker start.
-6. `main.py:8240-8267` - ordinary live scope opening.
-7. `main.py:8897-8913` - mutation boundary.
-8. `main.py:9131-9172` - superseded and normal turn terminals.
+6. `main.py:8492-8519` - ordinary live scope opening.
+7. `main.py:9149-9165` - mutation boundary.
+8. `main.py:9383-9424` - superseded and normal turn terminals.
 9. `core/headless/session.py:379-693` - headless lifecycle commands (reset/quit at :379-466) and restart.
 10. `web/web_interface.py:2614-2959` - web input and Save/Load/Reset entrants.
 11. `updates/save_game_manager.py:147` and `updates/save_game_manager.py:232` - pending module context and essential startup history (startup candidate).
