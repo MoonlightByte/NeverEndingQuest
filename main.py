@@ -2278,12 +2278,7 @@ def _resume_cross_module_root(operation_id, *, publish=True, publication=None):
     checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
     narration = checkpoint["narration"]
     if narration.get("status") == "deferred_to_module_handoff":
-        first = generate_transition_narration(
-            narration.get("source_prompt") or "Describe the committed arrival.",
-            party,
-        )
-        arrival = generate_arrival_narration(first, party, history)
-        final_text = generate_seamless_transition_narration(first, arrival)
+        final_text = _run_transition_chain(checkpoint, party, history)
         _check_live_authority(scope)
         final_text = _append_transition_outcomes(final_text, checkpoint, party)
         entry = {
@@ -2651,13 +2646,7 @@ def _resume_v2_location_transition(operation_id, *, publish=True, publication=No
         target_history, target_party = rebuild_conversation_for_current_party(
             load_json_file(json_file) or [], return_party=True
         )
-        first = generate_transition_narration(
-            "Describe the committed arrival at the new module from the "
-            "authoritative destination context.",
-            target_party,
-        )
-        arrival = generate_arrival_narration(first, target_party, target_history)
-        final_text = generate_seamless_transition_narration(first, arrival)
+        final_text = _run_transition_chain(checkpoint, target_party, target_history)
         final_text = _append_transition_outcomes(
             final_text, checkpoint, target_party
         )
