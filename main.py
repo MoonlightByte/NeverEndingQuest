@@ -5294,6 +5294,17 @@ def _module_not_joined_line(refusal):
             "is not joined to this world yet. You can keep playing."
             % _module_label(refusal.get("module"))
         )
+    if cause == "registry_read_only":
+        # As "unproven", while the registry file is read-only (issue #654).
+        # The read-only file is proven; it is not claimed as the only cause.
+        return (
+            "%s is installed, but it is not joined to this world yet. The file "
+            "world_registry.json in the game's modules folder is read-only, and "
+            "the game cannot join a module while it is. To join it, clear that "
+            "file's Read-only setting, then close the game and start it again. "
+            "You can keep playing."
+            % _module_label(refusal.get("module"))
+        )
     return (
         "%s is installed, but it could not be joined to this world yet. It will "
         "be tried again the next time the game starts. You can keep playing; "

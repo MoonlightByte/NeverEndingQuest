@@ -122,6 +122,7 @@ from utils.file_operations import safe_write_json
 from utils.transient_filesystem import (
     is_transient_filesystem_error,
     read_bytes_preserving_errors,
+    replace_target_is_read_only,
 )
 from utils.module_path_manager import ModulePathManager
 
@@ -289,6 +290,9 @@ class NotJoinedCause(str, Enum):
     # INDETERMINATE and the registry on disk does not join the module
     # (issue #608).
     UNPROVEN = "unproven"
+    # Scan entry only, never a result's cause: as UNPROVEN, while the
+    # registry file is read-only, so no module can join (issue #654).
+    REGISTRY_READ_ONLY = "registry_read_only"
 
 
 @dataclass(frozen=True)
@@ -532,7 +536,9 @@ class ModuleStitcher:
         # renumbering a copy: [{"module", "collides_with", "renumbered"}].
         # And the installed ones publication refused, or could not prove and
         # left unjoined: [{"module", "reason", "cause"}], where cause is a
-        # NotJoinedCause value or None ("unproven" for the latter).
+        # NotJoinedCause value or None. A publication that could not be proven
+        # is "unproven", or "registry_read_only" while the registry is
+        # read-only.
         self.import_required = []
         self.imported = []
         self.not_joined = []
@@ -5003,12 +5009,19 @@ Respond with JSON:
                         )
                         # The player is told only what is proven: still
                         # installed, and not joined in the registry (issue #608).
+                        # A read-only registry is a proven fact at this
+                        # moment, and the player can fix it (issue #654).
                         if self._module_proven_unjoined(module_name):
+                            cause = (
+                                NotJoinedCause.REGISTRY_READ_ONLY
+                                if replace_target_is_read_only(self.world_registry_file)
+                                else NotJoinedCause.UNPROVEN
+                            )
                             self.not_joined.append(
                                 {
                                     "module": module_name,
                                     "reason": result.reason,
-                                    "cause": NotJoinedCause.UNPROVEN.value,
+                                    "cause": cause.value,
                                 }
                             )
                 except Exception as e:
