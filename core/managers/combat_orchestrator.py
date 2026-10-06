@@ -255,6 +255,21 @@ def _intent_correction(exc, batch=None):
             "per-use cost. Keep every other intent exactly as given."
             % items
         )
+    limits = feedback.get("featureHealLimits")
+    if isinstance(limits, list) and limits:
+        # #669: the typed limits of a class-feature heal, by the numbers.
+        rendered = "; ".join(
+            "%s at most %s (HP %s/%s)" % (r.get("combatantId"), r.get("allowed"), r.get("hpBefore"), r.get("max"))
+            for r in limits if isinstance(r, dict)
+        )
+        feature = next((r.get("ability") for r in limits if isinstance(r, dict) and r.get("ability")), "the feature")
+        instruction += (
+            " For the rejected actor, %s restores only creatures at or below half their HP maximum, and none "
+            "above half: %s. A target whose limit is 0 cannot be chosen. If no target can be healed, spend "
+            "nothing; for the player, return the intent with empty targets, resources and effects and "
+            "requiresPlayerInput {kind:'choice', prompt} saying so and asking what they do instead."
+            % (feature, rendered)
+        )
     if feedback.get("multiRollRequest"):
         instruction += (
             " requiresPlayerInput must ask for exactly one next roll or "
@@ -442,6 +457,43 @@ def _same_item_spent(events, refusals):
         and (resource.get("owner"), resource.get("name")) in wanted
         for event in events or [] if isinstance(event, dict)
         for resource in event.get("resources") or []
+    )
+
+
+def _same_feature_used(events, limits):
+    """#669: True when the resolved events still use the class feature the
+    refused heal named, by the same actor (typed ability and actor, by value)."""
+    wanted = {(r.get("actorId"), r.get("ability")) for r in limits or [] if isinstance(r, dict)}
+    return any(
+        isinstance(event, dict)
+        and (event.get("actorId"), (event.get("intent") or {}).get("ability")) in wanted
+        for event in events or []
+    )
+
+
+def _pause_for_refused_feature_heal(encounter_path, pending, limits, voice_intents):
+    """#669: the player's feature heal broke its typed limit and the correction
+    chose another action instead of asking. Record the DM's question on the
+    pending turn and pause, as H3b does for a refused item use."""
+    parts = []
+    for limit in limits or []:
+        if not isinstance(limit, dict):
+            continue
+        _LOGGER.info("FH: paused for the player: %s limited to %s for %s",
+                     limit.get("ability"), limit.get("allowed"), limit.get("combatantId"))
+        parts.append("%s can restore at most %s to that target (HP %s of %s)" % (
+            limit.get("ability"), limit.get("allowed"), limit.get("hpBefore"), limit.get("max")))
+    message = "%s. Nothing was spent. What do you do instead?" % (
+        "; ".join(parts) or "That healing cannot be used that way")
+    record_pending_player_request(
+        encounter_path,
+        pending.get("turnId"),
+        message,
+        npc_voice_intents=voice_intents,
+    )
+    raise CombatTurnPaused(
+        "The player's feature heal broke its limit; waiting for the player's choice",
+        player_message=message,
     )
 
 
@@ -1659,6 +1711,8 @@ def execute_agentic_turn(
     correction = None
     rules_drift_seen = False
     player_charge_refusal = None
+    feature_heal_limits = None
+    feature_heal_player = False
     window_kind = _window_kind(encounter, pending.get("actorIds", []))
     capability_count, rule_count = _diagnostic_context_counts(spell_references)
     attempt_number = 0
@@ -1827,6 +1881,8 @@ def execute_agentic_turn(
                 pending,
                 batch,
                 rolls,
+                # #669: a correction that still breaks the limit is clamped.
+                clamp_feature_heals=feature_heal_limits is not None,
             )
             roll_consumption = rolls.consumption()
             record_combat_diagnostic(
@@ -1859,6 +1915,10 @@ def execute_agentic_turn(
                 # Nothing is staged; the round waits for the player.
                 _pause_for_refused_item(encounter_path, pending, player_charge_refusal,
                                         immutable_voice_intents)
+            if feature_heal_player and not _same_feature_used(events, feature_heal_limits):
+                # #669: the correction chose another action for the player.
+                _pause_for_refused_feature_heal(encounter_path, pending, feature_heal_limits,
+                                                immutable_voice_intents)
             break
         except CombatPlayerInputRequired as exc:
             request = exc.feedback.get("request", {})
@@ -1901,6 +1961,11 @@ def execute_agentic_turn(
                 _pause_for_refused_item(encounter_path, pending, refused, immutable_voice_intents)
             if refused:
                 player_charge_refusal = refused
+            heal_limits = (getattr(exc, "feedback", None) or {}).get("featureHealLimits") \
+                if isinstance(getattr(exc, "feedback", None), dict) else None
+            if heal_limits:
+                feature_heal_limits = heal_limits
+                feature_heal_player = bool(exc.feedback.get("featureHealPlayer"))
             correction = _intent_correction(exc, batch=batch)
             failure_class = _resolution_failure_class(exc)
             rules_drift = (

@@ -199,6 +199,8 @@ def _fact_event(event, creatures, presentation=None):
             # MS-b: a hit's rider save (venom): ability, save, dc, saved, damage, conditions
             # (K1's `engine` flag is bookkeeping, not part of the story.)
             "riders": _narrated_riders(target.get("riders")),
+            # #669: a class-feature heal clamped to its typed limit (supplied, allowed)
+            "featureHeal": target.get("featureHeal"),
         }
         targets.append({key: value for key, value in row.items() if value is not None})
     fact = {

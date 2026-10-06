@@ -663,6 +663,60 @@ def _combatant_ac(encounter, characters, creature):
     return int((creature or {}).get("armorClass", 10) or 10)
 
 
+# #669: class-feature heals with a typed SRD 5.2 rule. Keyed by the feature's
+# name before " (", as the leveling tables key class features; an intent uses
+# one when its typed ability, by that same key (casefolded), names one of the
+# actor's own classFeatures. Nothing is read from descriptions. The table
+# grows only on an observed failure.
+FEATURE_HEALS = {
+    # Preserve Life: a pool of 5 x Cleric level, shared among Bloodied
+    # creatures (half their Hit Points or fewer), none restored above half
+    # its Hit Point maximum.
+    "Preserve Life": {"class": "cleric", "pool_per_level": 5},
+}
+
+
+def _feature_heal_rule(encounter, characters, proposal):
+    """(feature name, pool) when the intent's typed ability is one of the
+    actor's own class features with a FEATURE_HEALS rule, else (None, None).
+    The pool is None when the class level cannot be read from typed fields
+    (the check is then skipped and logged once)."""
+    ability = proposal.get("ability")
+    actor = combatant_by_id(encounter, proposal.get("actorId"))
+    sheet = (characters or {}).get((actor or {}).get("name"))
+    if not isinstance(ability, str) or not isinstance(sheet, dict):
+        return None, None
+    def base(name):
+        return name.split(" (", 1)[0].strip().casefold()
+
+    wanted = base(ability)
+    feature = next((f.get("name") for f in sheet.get("classFeatures") or []
+                    if isinstance(f, dict) and isinstance(f.get("name"), str) and base(f["name"]) == wanted), None)
+    rule = next((r for key, r in FEATURE_HEALS.items() if key.casefold() == wanted), None)
+    if feature is None or rule is None:
+        return None, None
+    ability = feature
+    level = sheet.get("level")
+    if str(sheet.get("class") or "").strip().casefold() != rule["class"] or type(level) is not int or level < 1:
+        try:
+            from utils.enhanced_logger import info as _info
+            _info("FH: %s %s limit not checked (class %r, level %r)"
+                  % (sheet.get("name"), ability, sheet.get("class"), level), category="combat_events")
+        except Exception:
+            pass
+        return ability, None
+    return ability, rule["pool_per_level"] * level
+
+
+def _feature_heal_allowed(hp_now, max_hp, pool_left):
+    """The most a FEATURE_HEALS heal may restore to one target: nothing unless
+    it is Bloodied (2 x hp <= max), then up to half its maximum, within the
+    pool still left."""
+    if 2 * hp_now > max_hp:
+        return 0
+    return max(0, min(max_hp // 2 - hp_now, pool_left))
+
+
 def _combatant_max_hp(encounter, characters, creature):
     sheet = _effective_combatant_sheet(encounter, characters, creature)
     if isinstance(sheet.get("maxHitPoints"), (int, float)):
@@ -1933,7 +1987,7 @@ def _warn_save(sheet, save_type, reason):
         pass
 
 
-def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
+def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_feature_heals=False):
     """General adjudicated-outcome contract for anything beyond weapon attacks.
 
     The DM model (or player-facing DM turn) proposes MECHANICS, not state:
@@ -1952,6 +2006,11 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
     exists); a successful save halves negative hpDelta when halfOnSave,
     else negates it. All quantities are clamped in apply_resolution -
     the proposal can never push state outside legal bounds.
+
+    #669: a heal from a FEATURE_HEALS class feature above its typed limit is a
+    violation carrying ``featureHealLimits`` (the correction's numbers); with
+    ``clamp_feature_heals`` (the corrected batch broke it again) it is
+    clamped to the limit and journaled as a ``featureHeal`` normalization.
     """
     event = {
         "eventId": event_id,
@@ -2567,6 +2626,7 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
             "a declared save requires at least one target (use hpDelta 0 for control)"
         )
 
+    heal_feature, heal_pool = _feature_heal_rule(encounter, characters, proposal)
     for entry in targets:
         target = combatant_by_id(encounter, entry.get("combatantId"))
         if target is None:
@@ -2585,6 +2645,26 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
                 % target["combatantId"]
             )
             continue
+        feature_heal = None
+        if heal_pool is not None and hp_delta > 0:
+            hp_now = int(target.get("currentHitPoints", 0) or 0)
+            max_now = _combatant_max_hp(encounter, characters, target) or hp_now
+            allowed = _feature_heal_allowed(hp_now, max_now, heal_pool)
+            if hp_delta > allowed:
+                if not clamp_feature_heals:
+                    resolution["violations"].append(
+                        "feature heal limit: %s restores at most %d to %s (%d/%d, half %d)"
+                        % (heal_feature, allowed, target["combatantId"], hp_now, max_now, max_now // 2))
+                    resolution.setdefault("featureHealLimits", []).append({
+                        "actorId": proposal.get("actorId"), "ability": heal_feature,
+                        "combatantId": target["combatantId"], "hpBefore": hp_now, "max": max_now, "allowed": allowed, "declared": hp_delta})
+                    continue
+                feature_heal = {"supplied": hp_delta, "allowed": allowed}
+                event.setdefault("normalizations", []).append({
+                    "kind": "featureHeal", "ability": heal_feature,
+                    "combatantId": target["combatantId"], "supplied": hp_delta, "allowed": allowed})
+                hp_delta = allowed
+            heal_pool -= hp_delta
         saved = None
         save_line = None
         if stated_dice is not None and hp_delta <= 0:
@@ -2707,6 +2787,9 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id):
             status_after = "alive"
         record = {"combatantId": target["combatantId"], "hpBefore": hp_before,
                   "hpAfter": hp_after, "statusAfter": status_after}
+        if feature_heal is not None:
+            # #669: the narrator states the clamped heal, never the supplied one.
+            record["featureHeal"] = feature_heal
         if saved is not None:
             record["saved"] = saved
         if working is not None:
