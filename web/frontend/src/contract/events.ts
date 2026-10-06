@@ -61,7 +61,13 @@ export type PlayerDataResponse =
     };
 
 // ---------- client -> server (31) ----------
+export interface RulesRollPrompt {
+  id: string; characterName: string; label: string; faces: number;
+  netMode: string; reason: string; submitted: boolean; dc?: number | null;
+}
+
 export interface ClientEvents {
+  submit_check_roll: { id: string; faces: number[] | null };
   user_input: { input: string };
   action: {
     action: 'listSaves' | 'saveGame' | 'restoreGame' | 'deleteSave' | 'nuclearReset' | 'recover_startup_handoff';
@@ -108,6 +114,7 @@ export interface ClientEvents {
  * raise a TypeError when handed the latter.
  */
 export const CLIENT_EVENT_ARITY = {
+  submit_check_roll: 1,
   user_input: 1,
   action: 1,
   start_game: 0,
@@ -152,6 +159,7 @@ export interface RestoreResult {
 }
 
 export interface ServerEvents {
+  roll_prompt: { prompt: RulesRollPrompt | null };
   connected: {
     data: string;
     capabilities?: UiProtocolCapabilities;
@@ -167,6 +175,7 @@ export interface ServerEvents {
   game_started: { message: string };
   startup_recovery_response: { status: string; error?: string; retryAfterSeconds?: number; expectedStartupAttemptId?: string };
   ui_state_snapshot: {
+    roll_prompt?: RulesRollPrompt | null;
     request_id?: string;
     revision: number;
     server_instance_id: string;

@@ -10,6 +10,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useEmberDesktop } from '../layout/EmberPresentation'
 import { EmberIcon } from '../layout/EmberIcon'
+import { useComposerGating } from '../../modes/useComposerGating'
+import { useRulesRoll } from '../../stores/rulesRoll'
 import { EmberDieIcon } from '../layout/EmberDieIcon'
 
 const DICE_SIDES = [20, 12, 10, 8, 6, 4] as const
@@ -31,6 +33,18 @@ interface DamageRoll {
   result: number
 }
 
+/** Preserve every face; d20 checks must never be summed into damage. */
+export function formatFreeRolls(d20Rolls: number[], damageRolls: DamageRoll[]): string {
+  const parts = [
+    ...d20Rolls.map((r) => `a ${r} on a d20`),
+    ...damageRolls.map((r) => `a ${r.result} on a d${r.sides}`),
+  ]
+  if (!parts.length) return ''
+  const rolls = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0]
+  const total = damageRolls.reduce((sum, r) => sum + r.result, 0)
+  return `I rolled ${rolls}.${damageRolls.length > 1 ? ` My damage dice add up to ${total}.` : ''}`
+}
+
 const diceButtonClass =
   'relative min-w-[50px] cursor-pointer overflow-hidden rounded-md border border-white/50 px-3 py-1.5 ' +
   'font-chrome text-[13px] font-bold text-white/90 shadow-[0_4px_6px_rgba(0,0,0,.2),inset_0_1px_0_rgba(255,255,255,.6)] ' +
@@ -45,7 +59,9 @@ export function useDiceRolls() {
   return { d20Rolls, setD20Rolls, damageRolls, setDamageRolls }
 }
 
-export function DiceStrip({ state }: { state?: ReturnType<typeof useDiceRolls> }) {
+export function DiceStrip({ state, onInsertRoll }: { state?: ReturnType<typeof useDiceRolls>; onInsertRoll?: (text: string) => void }) {
+  const gating = useComposerGating()
+  const requestedCheck = useRulesRoll((s) => s.prompt)
   const ember = useEmberDesktop()
   const local = useDiceRolls()
   const { d20Rolls, setD20Rolls, damageRolls, setDamageRolls } = state ?? local
@@ -63,6 +79,7 @@ export function DiceStrip({ state }: { state?: ReturnType<typeof useDiceRolls> }
     const result = rollDie(sides)
     if (sides === 20) {
       setD20Rolls((rolls) => [...rolls, result])
+      useRulesRoll.getState().addQuickFace(result)
     } else {
       setDamageRolls((rolls) => [...rolls, { sides, result }])
     }
@@ -70,17 +87,23 @@ export function DiceStrip({ state }: { state?: ReturnType<typeof useDiceRolls> }
 
   const clear = () => {
     setD20Rolls([])
+    useRulesRoll.getState().clearQuickFaces()
     setDamageRolls([])
   }
 
   const damageTotal = damageRolls.reduce((sum, r) => sum + r.result, 0)
   const hasResults = d20Rolls.length > 0 || damageRolls.length > 0
 
+  const insertRoll = () => {
+    if (!gating.canSend || requestedCheck || !onInsertRoll) return
+    onInsertRoll(formatFreeRolls(d20Rolls, damageRolls))
+  }
+
   const results = hasResults ? (
     <div className="neq-dice-results font-log text-sm" data-testid="dice-results">
       {d20Rolls.length > 0 && (
         <span className="neq-dice-result-item">
-          {d20Rolls.map((r) => `d20: ${r}`).join(', d20: ')}
+          {d20Rolls.map((r) => `d20: ${r}`).join(', ')}
         </span>
       )}
       {d20Rolls.length > 0 && damageRolls.length > 0 && <span>{'\u00a0| '}</span>}
@@ -92,6 +115,7 @@ export function DiceStrip({ state }: { state?: ReturnType<typeof useDiceRolls> }
           <span className="neq-dice-total">Total: {damageTotal}</span>
         </>
       )}
+      {onInsertRoll && !requestedCheck && <button type="button" className="neq-insert-roll" disabled={!gating.canSend} onClick={insertRoll}>Insert roll</button>}
     </div>
   ) : null
 
@@ -100,7 +124,7 @@ export function DiceStrip({ state }: { state?: ReturnType<typeof useDiceRolls> }
     <div className="neq-dice-strip flex shrink-0 flex-col items-center">
       <div className="neq-dice-label relative w-full text-center before:absolute before:left-0 before:right-0 before:top-1/2 before:h-px before:bg-[#ffa500]">
         <span className="neq-dice-label-text relative z-10 inline-block rounded border border-[#ffa500] bg-[#333] px-5 py-0.5 font-chrome text-xs font-bold uppercase tracking-wider text-[#ffa500]">Quick {ember ? 'rolls' : 'Rolls'}</span>
-        {ember && <span className="ember-dice-disclaimer">Local dice · not game checks</span>}
+        {ember && <span className="ember-dice-disclaimer">Roll, then submit requested checks</span>}
       </div>
       <div className="neq-dice-buttons flex items-center gap-1.5">
         {DICE_SIDES.map((sides) => (

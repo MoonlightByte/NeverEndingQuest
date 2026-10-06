@@ -131,7 +131,8 @@ describe('InputBar', () => {
     const input = screen.getByLabelText('Player input') as HTMLInputElement
     expect(input.disabled).toBe(true)
     expect((screen.getByText('Send') as HTMLButtonElement).disabled).toBe(true)
-    expect(screen.getByRole('status').textContent).toContain('The DM is thinking...')
+    expect(screen.getByRole('status').textContent).toContain('The Dungeon Master is weaving the tale')
+    expect(input.placeholder).toBe('Enter your command...')
   })
 
   it('stays visible but locked during the startup handoff', () => {

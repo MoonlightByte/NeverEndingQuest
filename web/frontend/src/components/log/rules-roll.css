@@ -1,0 +1,11 @@
+.neq-rules-roll { flex-shrink: 0; padding: .7rem 1rem; color: #e9dfca; background: #24231c; border-top: 1px solid #89734c; font-size: .9rem; max-height: 45dvh; overflow-y: auto; }
+.neq-rules-roll-title { display: flex; gap: .6rem; align-items: baseline; flex-wrap: wrap; }
+.neq-rules-roll-title strong { color: #e6c580; font-size: 1.05rem; }
+.neq-rules-roll p { margin: .25rem 0; }
+.neq-rules-roll-reason { color: #c5bda9; }
+.neq-rules-roll-actions { display: flex; flex-wrap: wrap; gap: .65rem 1rem; align-items: baseline; margin-top: .5rem; }
+.neq-rules-roll button { min-height: 44px; padding: .4rem .85rem; border: 1px solid #aa8b52; border-radius: .35rem; background: #53432a; color: #fff0d5; cursor: pointer; }
+.neq-rules-roll button:disabled { opacity: .5; cursor: default; }
+.neq-rules-roll summary { cursor: pointer; padding: .5rem 0; text-decoration: underline; }
+.neq-rules-roll form div { display: flex; gap: .5rem; margin-top: .5rem; }
+.neq-rules-roll input { width: 3.5rem; min-height: 44px; color: #fff0d5; background: #161711; border: 1px solid #89734c; border-radius: .3rem; text-align: center; font-size: 16px; }
