@@ -59,6 +59,7 @@ import json
 import hashlib
 import os
 import shutil
+import stat
 import time
 import threading
 import logging
@@ -80,6 +81,19 @@ logger = logging.getLogger(__name__)
 class FileLockError(Exception):
     """Raised when unable to acquire file lock"""
     pass
+
+
+def _restore_owner_write_bit(path: str) -> None:
+    """Give the game's own backup file back its owner write bit.
+
+    On Windows this clears only READONLY. A missing file is left to the copy.
+    """
+    try:
+        mode = os.stat(path).st_mode
+    except FileNotFoundError:
+        return
+    if not mode & stat.S_IWRITE:
+        os.chmod(path, stat.S_IMODE(mode) | stat.S_IWRITE)
 
 
 
@@ -140,14 +154,23 @@ class AtomicFileWriter:
         ownership.__exit__(None, None, None)
         logger.debug("Released lock for %s", canonical)
     
-    def create_backup(self, filepath: str) -> Optional[str]:
+    def create_backup(self, filepath: str, *, stop_if_read_only: bool = False) -> Optional[str]:
         """Create backup of existing file"""
         if not os.path.exists(filepath):
             return None
-            
+
         backup_path = f"{filepath}.bak"
         try:
+            if stop_if_read_only:
+                # copy2 copies a read-only source's mode onto the .bak, and
+                # copy2 onto that .bak then fails for good, even after the
+                # player clears the target (issue #654). Clear a stale one.
+                _restore_owner_write_bit(backup_path)
             shutil.copy2(filepath, backup_path)
+            if stop_if_read_only:
+                # The next write, once the target is cleared, must not meet
+                # the read-only .bak this copy just made.
+                _restore_owner_write_bit(backup_path)
             logger.debug(f"Created backup: {backup_path}")
             return backup_path
         except Exception as e:
@@ -189,7 +212,9 @@ class AtomicFileWriter:
             
             # Create backup if requested and file exists
             if create_backup and os.path.exists(filepath):
-                backup_path = self.create_backup(filepath)
+                backup_path = self.create_backup(
+                    filepath, stop_if_read_only=stop_if_read_only
+                )
             
             # Ensure directory exists
             dir_path = os.path.dirname(filepath)
