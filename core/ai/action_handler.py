@@ -4023,7 +4023,6 @@ def process_action(
                     "topology_identity": verified_transition_context.get("topology_identity"),
                     **destination_node,
                 },
-                defer_post_commit=True,
             )
 
         if pending_archive is not None:

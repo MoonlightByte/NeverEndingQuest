@@ -51,14 +51,9 @@
 
 import json
 import copy
-import subprocess
-import os
-import sys
-import tempfile
 import unicodedata
 import re
 import traceback
-from datetime import datetime
 from utils.module_path_manager import ModulePathManager
 import core.ai.cumulative_summary as cumulative_summary
 from utils.encoding_utils import (
@@ -68,7 +63,7 @@ from utils.encoding_utils import (
     safe_json_dump,
     fix_corrupted_location_name
 )
-from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
 # Set script name for logging
 set_script_name(__name__)
@@ -290,95 +285,6 @@ def update_world_conditions(
         return current_conditions
 
 
-def _run_departure_summary(
-    current_location, current_area_id, origin_party_tracker=None
-):
-    """Run the optional departure summary and return an explicit status."""
-    project_root = os.path.dirname(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    )
-    adv_summary_path = os.path.join(project_root, "core", "ai", "adv_summary.py")
-    tracker_snapshot_path = None
-    try:
-        if isinstance(origin_party_tracker, dict):
-            snapshot_file = tempfile.NamedTemporaryFile(
-                mode="w",
-                encoding="utf-8",
-                suffix=".json",
-                prefix="neq_departure_party_",
-                delete=False,
-            )
-            tracker_snapshot_path = snapshot_file.name
-            with snapshot_file:
-                json.dump(origin_party_tracker, snapshot_file, ensure_ascii=False)
-            try:
-                os.chmod(tracker_snapshot_path, 0o600)
-            except OSError:
-                pass
-
-        command = [
-            sys.executable,
-            adv_summary_path,
-            "modules/conversation_history/conversation_history.json",
-            "current_location.json",
-            current_location,
-            current_area_id,
-        ]
-        if tracker_snapshot_path:
-            command.append(tracker_snapshot_path)
-    except Exception as exc:
-        if tracker_snapshot_path:
-            try:
-                os.remove(tracker_snapshot_path)
-            except OSError:
-                pass
-        return {"success": False, "status": "unavailable", "error": str(exc)}
-    try:
-        result = subprocess.run(
-            command,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        error(
-            "FAILURE: Departure summary was unavailable; travel will continue",
-            exception=exc,
-            category="summary_building",
-        )
-        debug(f"SUBPROCESS: stdout: {exc.stdout}", category="subprocess_output")
-        debug(f"SUBPROCESS: stderr: {exc.stderr}", category="subprocess_output")
-        return {
-            "success": False,
-            "status": "unavailable",
-            "returncode": exc.returncode,
-        }
-    except Exception as exc:
-        error(
-            "FAILURE: Could not launch departure summary; travel will continue",
-            exception=exc,
-            category="summary_building",
-        )
-        return {
-            "success": False,
-            "status": "unavailable",
-            "error": str(exc),
-        }
-
-    else:
-        info("SUCCESS: Adventure summary transaction committed", category="summary_building")
-        return {
-            "success": True,
-            "status": "committed",
-            "stdout": result.stdout,
-        }
-    finally:
-        if tracker_snapshot_path:
-            try:
-                os.remove(tracker_snapshot_path)
-            except OSError:
-                pass
-
 def handle_location_transition(
     current_location,
     new_location,
@@ -386,7 +292,6 @@ def handle_location_transition(
     current_area_id,
     area_connectivity_id=None,
     authorized_destination=None,
-    defer_post_commit=False,
 ):
     """Handle transition between locations, prioritizing ID matching"""
     info(f"STATE_CHANGE: Location transition from '{current_location}' to '{new_location}'", category="location_transitions")
@@ -564,91 +469,10 @@ def handle_location_transition(
             "origin_area_path": current_area_file,
         }
 
-        # Current v2 travel lets the parent game thread own every later
-        # proposal/commit. Legacy callers retain the historical compatibility
-        # path below.
-        if defer_post_commit:
-            storage_containers = get_storage_at_location(new_location)
-            storage_description = format_storage_description(storage_containers)
-            transition_context["transition_prompt"] = _build_transition_narration_prompt(
-                new_location_info,
-                area_id=new_area_id_for_conditions or current_area_id,
-                area_name=(
-                    new_area_data.get("areaName", "Unknown Area")
-                    if new_area_data
-                    else current_area
-                ),
-                storage_description=storage_description,
-            )
-            return transition_context
-
-        # Everything below is the legacy optional post-commit processing.
-        try:
-            safe_json_dump(current_location_info, "current_location.json")
-        except Exception as e:
-            error(
-                "FILE_OP: Failed to update current_location.json",
-                exception=e,
-                category="file_operations",
-            )
-        try:
-            summary_result = _run_departure_summary(
-                current_location,
-                current_area_id,
-                origin_party_tracker=origin_party_tracker,
-            )
-        except Exception as e:
-            error(
-                "FAILURE: Departure summary raised after committed travel",
-                exception=e,
-                category="summary_building",
-            )
-            summary_result = {"status": "unavailable", "error": str(e)}
-
-        try:
-            with open("transition_debug.log", "a", encoding="utf-8") as debug_file:
-                debug_file.write(
-                    f"\n--- TRANSITION DEBUG: {current_location} to {new_location} ---\n"
-                )
-                debug_file.write(
-                    f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-                )
-                debug_file.write(f"Area ID: {current_area_id}\n")
-                debug_file.write(
-                    f"Adventure summary status: {summary_result['status']}\n"
-                )
-        except Exception as e:
-            error(
-                "FILE_OP: Failed to write to debug log",
-                exception=e,
-                category="file_operations",
-            )
-        try:
-            game_event(
-                "location_transition",
-                {
-                    "from": current_location,
-                    "to": new_location_info.get(
-                        "location_name",
-                        new_location_info.get("name", "Unknown Location"),
-                    ),
-                    "from_id": current_location_info.get(
-                        "locationId", current_location
-                    ),
-                    "to_id": new_location,
-                    "area_change": new_area_id_for_conditions != current_area_id,
-                },
-            )
-        except Exception as e:
-            error(
-                "FILE_OP: Failed to log location transition event",
-                exception=e,
-                category="file_operations",
-            )
-
+        # The parent game thread owns every later proposal and commit (v2 travel).
         storage_containers = get_storage_at_location(new_location)
         storage_description = format_storage_description(storage_containers)
-        return _build_transition_narration_prompt(
+        transition_context["transition_prompt"] = _build_transition_narration_prompt(
             new_location_info,
             area_id=new_area_id_for_conditions or current_area_id,
             area_name=(
@@ -658,6 +482,7 @@ def handle_location_transition(
             ),
             storage_description=storage_description,
         )
+        return transition_context
     else:
         error(f"FAILURE: Could not find information for current location: {current_location}", category="location_transitions")
         return None
