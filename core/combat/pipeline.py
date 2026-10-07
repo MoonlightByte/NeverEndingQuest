@@ -233,7 +233,7 @@ def resolve_effect_clock_window(encounter, characters, pending_turn):
     return [event], next_encounter, next_characters
 
 
-def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_source):
+def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_source, clamp_feature_heals=False):
     """Resolve a provider batch sequentially and return staged events.
 
     The batch must contain one ordered intent per claimed actor. Actors
@@ -241,6 +241,8 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
     event is resolved for them. Every still-eligible actor produces one event.
     ``mode='known'`` uses the deterministic weapon/stance resolver;
     ``mode='adjudicated'`` uses the bounded general outcome contract.
+    ``clamp_feature_heals`` (#669): the batch is a correction of a feature heal
+    over its typed limit; a heal still over it is clamped and journaled.
     """
     if not isinstance(pending_turn, dict):
         raise CombatIntentError("A persisted pending turn is required")
@@ -404,6 +406,7 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 intent,
                 roll_source,
                 event_id,
+                clamp_feature_heals=clamp_feature_heals,
             )
         else:
             raise CombatIntentError("Unknown intent mode %r" % mode, actor_id)
@@ -435,11 +438,29 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 {"violations": list(resolution["violations"]),
                  "playerChargeRefusal": refusals, "retryable": True},
             )
+        if controller == "human" and resolution.get("featureHealUnspent"):
+            # #669: the corrected batch still spends the player's feature on
+            # a heal that restores nothing. Nothing is committed; the
+            # orchestrator pauses for the player's choice.
+            raise CombatIntentError(
+                "feature heal limit: the corrected intent still restores nothing",
+                actor_id,
+                {"violations": ["feature heal limit: the corrected intent still restores nothing"],
+                 "featureHealLimits": deepcopy(resolution["featureHealUnspent"]),
+                 "featureHealPlayer": True, "retryable": True},
+            )
         if resolution.get("violations"):
+            feedback = {"violations": list(resolution["violations"])}
+            if resolution.get("featureHealLimits"):
+                # #669: the typed limits the correction names; a player's
+                # actor keeps the choice (the orchestrator pauses for it).
+                feedback["featureHealLimits"] = deepcopy(resolution["featureHealLimits"])
+                feedback["featureHealPlayer"] = controller == "human"
+                feedback["retryable"] = True
             raise CombatIntentError(
                 "; ".join(resolution["violations"]),
                 actor_id,
-                {"violations": list(resolution["violations"])},
+                feedback,
             )
         event_problems = validate_event(resolution.get("event"))
         if event_problems:
