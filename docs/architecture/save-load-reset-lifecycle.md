@@ -202,6 +202,11 @@ Startup/locking delta verified 2026-09-05 against the `fix/issue-114-startup-rep
   (`safe_json_dump`) instead, and its `.bak` keeps a write bit; every
   other caller keeps the wait. Only the start-path registry writers opt in
   (issue #654).
+- A read-only `modules/conversation_history/conversation_history.json`
+  refuses the start instead. `_main_game_loop` checks it first, before any
+  start path writes it or calls a model, shows one system line, and returns.
+  Play reads that file back throughout every turn, so the game never runs
+  without saving it (issue #654).
 
 ## Deployment boundary
 
