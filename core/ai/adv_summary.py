@@ -529,8 +529,10 @@ Do NOT:
   response supports it and the corresponding structured action is present in
   the supplied action projection. A pending action, including any plotImpact
   text, is a proposal and not an outcome: never state its contents as
-  something that happened. The place the party set out for may be named as
-  their destination.
+  something that happened. Never state the opposite either (for example
+  that a search found nothing or that an item was left behind): leave a
+  pending action's contents out of the summary. The place the party set out
+  for may be named as their destination.
 - Speculate about the future or characters’ intentions.
 - Use first-person narration or dialogue-heavy exchanges.
 - Use bullet points, headings, or formatting.
