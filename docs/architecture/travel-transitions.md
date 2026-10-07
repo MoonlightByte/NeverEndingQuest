@@ -155,9 +155,9 @@ acceptance verdict. The verification pin above describes the historical baseline
   does not change them. These stay fail-closed and raise if a corruption lands after it:
   `build_journal_update` (`adv_summary.py:602`), the commit read (`action_handler.py:1090`), the
   commit's reads under the target locks (`adv_summary.py:931`, `:973`), the marker-recovery reads
-  (`adv_summary.py:774`, `:845`), legacy repair (`main.py:4434` -> `:4181`) and the dormant legacy
-  departure pipeline (#653). Neither caller of resolve holds the party lock, so a busy
-  `journal.json` here is waited for unlocked, and the wait stays cancellable.
+  (`adv_summary.py:774`, `:845`) and legacy repair (`main.py:4434` -> `:4181`). Neither caller of
+  resolve holds the party lock, so a busy `journal.json` here is waited for unlocked, and the wait
+  stays cancellable.
 - `safe_json_dump` publishes each JSON by same-directory temp, fsync, and `os.replace`.
 - The workflow is multi-file, not one rename; the checkpoint carries preimages, phases, stable
   message IDs, deferred cursor/operation IDs, and before/after projections for convergence.
