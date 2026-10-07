@@ -10527,6 +10527,62 @@ def _process_fresh_dm_response(
     )
 
 
+def _turn_check_outcomes(conversation_history):
+    """#594: the check results this turn's DM note carried, read from the
+    persisted ``delivered`` record for exactly this turn (the count of DM
+    replies so far, the marker check_results_note was built with). [] on
+    any other turn, so a result handed to an earlier turn never counts."""
+    from core.managers.checks_state import delivered_for_turn
+
+    turn = sum(
+        1 for message in conversation_history or []
+        if isinstance(message, dict) and message.get("role") == "assistant"
+    )
+    return delivered_for_turn(turn)
+
+
+def _travel_unsupported_siblings(actions, check_outcomes):
+    """The actions after a within-module transitionLocation (actions[0]) that
+    a travel turn may not carry. Travel-owned: updateTime, updatePlot, and an
+    escort (P4-g: a moveOccupant whose locationId is the travel destination
+    brings a present occupant along; its receipt rides the travel
+    checkpoint). #594: when `check_outcomes` (this turn's CHECK RESULTS, see
+    _turn_check_outcomes) is not empty, an updateCharacterInfo too: a check
+    scored for this turn is the earlier action's result, not a later turn
+    (e.g. the item it found). T065 judges that it records those outcomes;
+    the checkpoint stages it before movement and applies it on arrival."""
+    supported_siblings = {
+        "updateTime",
+        "updatePlot",
+    }
+    if check_outcomes:
+        supported_siblings.add("updateCharacterInfo")
+    travel_destination = str(
+        ((actions[0].get("parameters") or {}).get("newLocation") or "")
+        if isinstance(actions[0], dict) else ""
+    ).strip()
+
+    def _escort_sibling(item):
+        return (
+            isinstance(item, dict)
+            and item.get("action") == "moveOccupant"
+            and bool(travel_destination)
+            and str(
+                (item.get("parameters") or {}).get("locationId") or ""
+            ).strip() == travel_destination
+        )
+
+    return [
+        item.get("action") if isinstance(item, dict) else type(item).__name__
+        for item in actions[1:]
+        if not isinstance(item, dict)
+        or (
+            item.get("action") not in supported_siblings
+            and not _escort_sibling(item)
+        )
+    ]
+
+
 def _review_dm_candidate(
     initial_candidate, *, accepted_history, player_input, party,
     validation_prompt, srd_context, npc_voice_batch, invocation_claim,
@@ -10829,37 +10885,9 @@ def _review_dm_candidate(
                     # updatePlot describes the immediate travel outcome); this
                     # structured-family envelope prevents future player plans
                     # from becoming additional post-arrival turns.
-                    supported_siblings = {
-                        "updateTime",
-                        "updatePlot",
-                    }
-                    # P4-g: an escort is travel-owned: a moveOccupant whose
-                    # locationId is the travel destination brings a present
-                    # occupant along; its receipt rides the travel checkpoint.
-                    travel_destination = str(
-                        ((actions[0].get("parameters") or {}).get("newLocation") or "")
-                        if isinstance(actions[0], dict) else ""
-                    ).strip()
-
-                    def _escort_sibling(item):
-                        return (
-                            isinstance(item, dict)
-                            and item.get("action") == "moveOccupant"
-                            and bool(travel_destination)
-                            and str(
-                                (item.get("parameters") or {}).get("locationId") or ""
-                            ).strip() == travel_destination
-                        )
-
-                    unsupported = [
-                        item.get("action") if isinstance(item, dict) else type(item).__name__
-                        for item in actions[1:]
-                        if not isinstance(item, dict)
-                        or (
-                            item.get("action") not in supported_siblings
-                            and not _escort_sibling(item)
-                        )
-                    ]
+                    # #594: a check scored for THIS turn may record its outcome.
+                    check_outcomes = _turn_check_outcomes(conversation_history)
+                    unsupported = _travel_unsupported_siblings(actions, check_outcomes)
                     # O1 (owner 2026-09-03): a roster change (updatePartyNPCs,
                     # remove OR add) co-emitted with a within-module travel must
                     # NOT be dropped in favor of the travel. Cancel the spurious
@@ -10947,6 +10975,14 @@ def _review_dm_candidate(
                             "occupant who comes along)."
                             % ", ".join(map(str, unsupported))
                         )
+                        if check_outcomes:
+                            contract_error += (
+                                " This turn's DM note carried CHECK RESULTS, so "
+                                "one more is allowed: an updateCharacterInfo "
+                                "that records the outcome of a check listed "
+                                "there (for example the item it found). No "
+                                "other character action may follow the travel."
+                            )
                     if contract_error:
                         retry_count += 1
                         transition_check_passed = False
