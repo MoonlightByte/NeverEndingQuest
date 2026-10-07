@@ -5313,6 +5313,15 @@ def _module_not_joined_line(refusal):
     )
 
 
+# Shown when the start refuses to run because the conversation history is
+# read-only (issue #654): play reads that file back throughout every turn.
+_CONVERSATION_HISTORY_READ_ONLY_LINE = (
+    "The file conversation_history.json in the game's conversation history "
+    "folder is read-only, and the game cannot save your story while it is. "
+    "To play, clear that file's Read-only setting, then start the game again."
+)
+
+
 
 
 
@@ -8723,6 +8732,18 @@ def _main_game_loop(startup_authority, turn_authority):
     if not os.path.exists("debug/logs/prompt_validation.json"):
         with open("debug/logs/prompt_validation.json", "w") as f:
             f.write("[]")  # Initialize with empty array
+
+    # A read-only conversation history can never be saved, and every save of
+    # it would wait forever. Refuse to start, before any start path writes it
+    # or calls a model (issue #654).
+    from utils.transient_filesystem import replace_target_is_read_only
+    if replace_target_is_read_only(json_file):
+        warning(
+            f"INITIALIZATION: {json_file} is read-only; the game cannot start",
+            category="startup",
+        )
+        display_dm_narration(_CONVERSATION_HISTORY_READ_ONLY_LINE, channel="system")
+        return
 
     # Issue #167 / E2E gate 2d: hydrate missing live module files from their _BU
     # masters on EVERY boot, not just new-game setup. The web entry runs this loop
