@@ -615,10 +615,7 @@ def build_journal_update(adventure_summary, party_tracker_data, location_name):
         raise DepartureSummaryError(f"could not load journal.json: {exc}") from exc
 
     if existing_journal is None:
-        journal_data = {
-            "module": party_tracker_data.get("module", "Keep_of_Doom"),
-            "entries": [],
-        }
+        journal_data = {"entries": []}
     elif (
         not isinstance(existing_journal, dict)
         or not isinstance(existing_journal.get("entries"), list)
@@ -649,18 +646,6 @@ def build_journal_update(adventure_summary, party_tracker_data, location_name):
         raise DepartureSummaryError(
             f"staged journal update failed schema validation: {exc.message}"
         ) from exc
-    return journal_data
-
-
-def update_journal(adventure_summary, party_tracker_data, location_name):
-    """Compatibility wrapper for callers that only need a journal write."""
-    journal_data = build_journal_update(
-        adventure_summary,
-        party_tracker_data,
-        location_name,
-    )
-    safe_json_dump(journal_data, "journal.json")
-    debug_print("Journal updated successfully")
     return journal_data
 
 
