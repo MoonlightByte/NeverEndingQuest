@@ -716,7 +716,9 @@ def _set_startup_progress(conversation, *, live_scope=None, **changes):
 
 
 def _review_startup_response(conversation, proposal, committed_facts, *,
-                             authored_proposal, normalization_provenance, live_scope):
+                             authored_proposal, normalization_provenance, live_scope,
+                             attempts=None):
+    """Return the parsed review; None once `attempts` reviews (when given) had invalid structure."""
     review_messages = [
         {"role": "system", "content": build_startup_review_prompt()},
         {"role": "user", "content": json.dumps({
@@ -728,6 +730,7 @@ def _review_startup_response(conversation, proposal, committed_facts, *,
             "committed_facts": committed_facts,
         }, ensure_ascii=True)},
     ]
+    invalid = 0
     while True:
         raw = get_ai_response(review_messages, {"type": "json_object"},
                               persist_response=False, live_scope=live_scope,
@@ -735,6 +738,9 @@ def _review_startup_response(conversation, proposal, committed_facts, *,
         try:
             return parse_startup_review(raw)
         except ValueError as exc:
+            invalid += 1
+            if attempts is not None and invalid >= attempts:
+                return None
             review_messages.append({"role": "system", "content": (
                 f"The rejected review has invalid structure: {exc}. "
                 "Return the complete corrected review object."
@@ -764,6 +770,18 @@ def _prepare_startup_proposal(authored_proposal):
     return proposal, provenance
 
 
+# Rejected proposals (invalid structure or review rejection) one player turn may
+# cost before the turn is handed back to the player; a review that cannot return
+# a valid verdict within the remaining budget also hands the turn back. Not
+# persisted: a restart replays the turn with a fresh count.
+STARTUP_TURN_REJECTION_LIMIT = 4
+STARTUP_HANDBACK_NOTICE = (
+    "I could not settle a rules question for that build yet. Your choices so far "
+    "are kept and no character has been saved. Tell me what to adjust, or say "
+    "continue and I will try again."
+)
+
+
 def ai_character_interview(conversation, module):
     """One agent-authored, independently reviewed startup turn at a time."""
     from utils.capture.live_provider_call import (
@@ -784,7 +802,22 @@ def ai_character_interview(conversation, module):
         try:
             save_startup_conversation(conversation, live_scope=scope)
             correction_context = copy.deepcopy(conversation)
+            rejected = 0
             while True:
+                if rejected >= STARTUP_TURN_REJECTION_LIMIT:
+                    # Fail forward: hand the turn back unpublished; nothing is approved or saved.
+                    if scope.is_superseded():
+                        raise LiveProviderSuperseded("startup review superseded")
+                    conversation.append({"role": "system", "content": json.dumps({
+                        "task_purpose": "startup_turn_handback",
+                        "rejected_outputs": rejected,
+                        "notice_shown_to_player": STARTUP_HANDBACK_NOTICE,
+                        "instruction": ("No proposal for the player's previous message was published or "
+                                        "approved. Answer the player's next message with the retained choices."),
+                    }, ensure_ascii=True)})
+                    save_startup_conversation(conversation, live_scope=scope)
+                    print(f"\nDungeon Master: {STARTUP_HANDBACK_NOTICE}")
+                    break
                 current_index = _latest_player_index(conversation)
                 facts = {
                     "selected_module": module["name"],
@@ -813,14 +846,21 @@ def ai_character_interview(conversation, module):
                             }
                     review = _review_startup_response(
                         request, proposal, facts, authored_proposal=authored_proposal,
-                        normalization_provenance=provenance, live_scope=scope)
+                        normalization_provenance=provenance, live_scope=scope,
+                        attempts=STARTUP_TURN_REJECTION_LIMIT - rejected)
                 except ValueError as exc:
+                    rejected += 1
                     correction_context.append({"role": "system", "content": (
                         f"Rejected startup proposal (not approved): {exc}. "
                         f"Correct this response using the retained player choices: {raw}"
                     )})
                     continue
+                if review is None:
+                    # No valid review within the turn's remaining budget.
+                    rejected = STARTUP_TURN_REJECTION_LIMIT
+                    continue
                 if not review["accepted"]:
+                    rejected += 1
                     correction_context.append({"role": "system", "content": json.dumps({
                         "rejected_proposal": authored_proposal,
                         "canonical_candidate": proposal,
