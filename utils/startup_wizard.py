@@ -31,6 +31,9 @@ from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
 from utils.startup_prompt_builder import build_character_creation_system_prompt as _build_character_creation_system_prompt
 from utils.startup_prompt_builder import build_startup_review_prompt
+from utils.startup_prompt_builder import (
+    STARTUP_RULES_REFERENCE_PURPOSE, build_startup_rules_reference,
+)
 from utils.startup_contract import (
     parse_startup_response, parse_startup_review, parse_startup_checkpoint,
 )
@@ -694,6 +697,32 @@ def _startup_interview_started(conversation):
     return False
 
 
+def _startup_rules_reference_present(conversation):
+    """True when a code-authored creation reference is already in the interview."""
+    for message in conversation:
+        if message.get("role") != "system":
+            continue
+        try:
+            record = json.loads(message.get("content", ""))
+        except (ValueError, TypeError):
+            continue
+        if isinstance(record, dict) and record.get("task_purpose") == STARTUP_RULES_REFERENCE_PURPOSE:
+            return True
+    return False
+
+
+def _append_startup_rules_reference(conversation):
+    """Supply the creation reference once per interview; a resume keeps the one it has."""
+    if _startup_rules_reference_present(conversation):
+        return
+    reference = build_startup_rules_reference()
+    if reference is None:
+        warning("Startup rules reference unavailable; the interview continues without it",
+                category="startup")
+        return
+    conversation.append({"role": "system", "content": json.dumps(reference, ensure_ascii=True)})
+
+
 def _startup_progress(conversation):
     try:
         return parse_startup_checkpoint(conversation)
@@ -796,6 +825,7 @@ def ai_character_interview(conversation, module):
                        "Old history is context, not proof of approval or saved state. "
                        "Follow the current startup response contract.",
     }, ensure_ascii=True)})
+    _append_startup_rules_reference(conversation)
     print("\nDungeon Master: Let's build your character together.")
     while True:
         scope = open_live_turn_scope()
