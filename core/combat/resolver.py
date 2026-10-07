@@ -676,6 +676,13 @@ FEATURE_HEALS = {
 }
 
 
+def feature_heal_key(name):
+    """The FEATURE_HEALS key of a feature name: the part before " (",
+    casefolded. Used wherever an intent's ability is compared to a sheet's
+    feature name, so both sides are read the same way."""
+    return name.split(" (", 1)[0].strip().casefold() if isinstance(name, str) else None
+
+
 def _feature_heal_rule(encounter, characters, proposal):
     """(feature name, pool) when the intent's typed ability is one of the
     actor's own class features with a FEATURE_HEALS rule, else (None, None).
@@ -686,12 +693,9 @@ def _feature_heal_rule(encounter, characters, proposal):
     sheet = (characters or {}).get((actor or {}).get("name"))
     if not isinstance(ability, str) or not isinstance(sheet, dict):
         return None, None
-    def base(name):
-        return name.split(" (", 1)[0].strip().casefold()
-
-    wanted = base(ability)
+    wanted = feature_heal_key(ability)
     feature = next((f.get("name") for f in sheet.get("classFeatures") or []
-                    if isinstance(f, dict) and isinstance(f.get("name"), str) and base(f["name"]) == wanted), None)
+                    if isinstance(f, dict) and isinstance(f.get("name"), str) and feature_heal_key(f["name"]) == wanted), None)
     rule = next((r for key, r in FEATURE_HEALS.items() if key.casefold() == wanted), None)
     if feature is None or rule is None:
         return None, None
@@ -2648,8 +2652,10 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
         feature_heal = None
         if heal_pool is not None and hp_delta > 0:
             hp_now = int(target.get("currentHitPoints", 0) or 0)
-            max_now = _combatant_max_hp(encounter, characters, target) or hp_now
-            allowed = _feature_heal_allowed(hp_now, max_now, heal_pool)
+            max_now = _combatant_max_hp(encounter, characters, target)
+            # An unreadable maximum keeps only the pool limit (fail forward).
+            allowed = (_feature_heal_allowed(hp_now, max_now, heal_pool) if max_now > 0
+                       else max(0, min(hp_delta, heal_pool)))
             if hp_delta > allowed:
                 if not clamp_feature_heals:
                     resolution["violations"].append(

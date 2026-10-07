@@ -23,6 +23,7 @@ from core.combat import (
 )
 from core.combat.pipeline import _intent_for_actor, _ordered_intents
 from core.combat.resolver import (
+    feature_heal_key,
     open_player_weapon_attack,
     player_weapon_attack_dice,
     player_weapon_attack_entry,
@@ -462,11 +463,13 @@ def _same_item_spent(events, refusals):
 
 def _same_feature_used(events, limits):
     """#669: True when the resolved events still use the class feature the
-    refused heal named, by the same actor (typed ability and actor, by value)."""
-    wanted = {(r.get("actorId"), r.get("ability")) for r in limits or [] if isinstance(r, dict)}
+    refused heal named, by the same actor (typed ability and actor, both read
+    by feature_heal_key, as the resolver matched them)."""
+    wanted = {(r.get("actorId"), feature_heal_key(r.get("ability")))
+              for r in limits or [] if isinstance(r, dict)}
     return any(
         isinstance(event, dict)
-        and (event.get("actorId"), (event.get("intent") or {}).get("ability")) in wanted
+        and (event.get("actorId"), feature_heal_key((event.get("intent") or {}).get("ability"))) in wanted
         for event in events or []
     )
 
