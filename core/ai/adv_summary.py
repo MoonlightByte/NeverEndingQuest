@@ -652,18 +652,6 @@ def build_journal_update(adventure_summary, party_tracker_data, location_name):
     return journal_data
 
 
-def update_journal(adventure_summary, party_tracker_data, location_name):
-    """Compatibility wrapper for callers that only need a journal write."""
-    journal_data = build_journal_update(
-        adventure_summary,
-        party_tracker_data,
-        location_name,
-    )
-    safe_json_dump(journal_data, "journal.json")
-    debug_print("Journal updated successfully")
-    return journal_data
-
-
 def _restore_json_snapshot(path, existed, snapshot):
     if existed:
         safe_json_dump(snapshot, path)
