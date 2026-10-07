@@ -989,6 +989,27 @@ def resolve_current_transition_reconciliation(operation_id, transition_context):
     return receipt["status"]
 
 
+def _departure_projection_status(action_record):
+    """The workflow_status T016 sees for one deferred action (#686).
+
+    A character update the engine has already staged (its typed receipt is
+    in the record, applied on arrival) is the outcome of an action taken at
+    the place being left, e.g. the item a scored check found (#594), so it
+    is shown as staged_on_arrival. Everything else keeps the record's own
+    status. The checkpoint record itself is never changed.
+    """
+    status = str(action_record.get("status") or "pending")
+    receipt = action_record.get("receipt")
+    if (
+        status == "pending"
+        and isinstance(receipt, dict)
+        and receipt.get("kind") == "updateCharacterInfo"
+        and receipt.get("status") == "staged"
+    ):
+        return "staged_on_arrival"
+    return status
+
+
 def resolve_current_transition_departure(operation_id, transition_context):
     """Run required T016/T015 outside locks, then commit once on game thread."""
     checkpoint = load_current_transition_checkpoint(operation_id)
@@ -1040,8 +1061,8 @@ def resolve_current_transition_departure(operation_id, transition_context):
             projected_action = copy.deepcopy(action_record.get("action"))
             if not isinstance(projected_action, dict):
                 continue
-            projected_action["workflow_status"] = str(
-                action_record.get("status") or "pending"
+            projected_action["workflow_status"] = _departure_projection_status(
+                action_record
             )
             action_projection.append(projected_action)
         proposal = adv_summary.prepare_departure_summary(
