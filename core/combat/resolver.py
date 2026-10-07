@@ -671,8 +671,8 @@ def _combatant_ac(encounter, characters, creature):
 FEATURE_HEALS = {
     # Preserve Life: a pool of 5 x Cleric level, shared among Bloodied
     # creatures (half their Hit Points or fewer), none restored above half
-    # its Hit Point maximum.
-    "Preserve Life": {"class": "cleric", "pool_per_level": 5},
+    # its Hit Point maximum. It is paid for with a Channel Divinity use.
+    "Preserve Life": {"class": "cleric", "pool_per_level": 5, "resource": "Channel Divinity"},
 }
 
 
@@ -710,6 +710,41 @@ def _feature_heal_rule(encounter, characters, proposal):
             pass
         return ability, None
     return ability, rule["pool_per_level"] * level
+
+
+def _feature_heal_unspent(event, resolution, encounter, proposal, feature, rows, clamp):
+    """#669: a FEATURE_HEALS use that spends its typed resource (by value: the
+    actor's own featureUse record whose name has the rule's key) but restores
+    nothing is refused, so the correction spends nothing and asks. On the
+    corrected pass the spend is dropped and journaled instead, and the
+    resolution says so (featureHealUnspent): the pipeline pauses for a
+    player's actor, an actor_agent's turn goes on with nothing spent."""
+    if any(row.get("applied") for row in rows):
+        return
+    rule = next((r for key, r in FEATURE_HEALS.items() if feature_heal_key(key) == feature_heal_key(feature)), None)
+    owner = (combatant_by_id(encounter, proposal.get("actorId")) or {}).get("name")
+    spends = [
+        record for record in event.get("resources") or []
+        if record.get("kind") == "featureUse" and record.get("owner") == owner
+        and rule is not None and feature_heal_key(record.get("name")) == feature_heal_key(rule.get("resource"))
+        and isinstance(record.get("delta"), int) and record["delta"] < 0
+    ]
+    if not spends:
+        return
+    rows = rows or [{"actorId": proposal.get("actorId"), "ability": feature, "combatantId": None,
+                     "hpBefore": None, "max": None, "allowed": 0, "declared": 0}]
+    rows = [{k: v for k, v in row.items() if k != "applied"} for row in rows]
+    if not clamp:
+        resolution["violations"].append(
+            "feature heal limit: %s restores nothing here, so %s is not spent"
+            % (feature, spends[0].get("name")))
+        resolution["featureHealLimits"] = rows
+        return
+    event["resources"] = [record for record in event["resources"] if record not in spends]
+    event.setdefault("normalizations", []).append({
+        "kind": "featureHeal", "ability": feature, "combatantId": None,
+        "supplied": 0, "allowed": 0, "unspent": [record.get("name") for record in spends]})
+    resolution["featureHealUnspent"] = rows
 
 
 def _feature_heal_allowed(hp_now, max_hp, pool_left):
@@ -2631,6 +2666,7 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
         )
 
     heal_feature, heal_pool = _feature_heal_rule(encounter, characters, proposal)
+    heal_rows = []
     for entry in targets:
         target = combatant_by_id(encounter, entry.get("combatantId"))
         if target is None:
@@ -2650,20 +2686,22 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
             )
             continue
         feature_heal = None
-        if heal_pool is not None and hp_delta > 0:
+        if heal_pool is not None and hp_delta >= 0:
             hp_now = int(target.get("currentHitPoints", 0) or 0)
             max_now = _combatant_max_hp(encounter, characters, target)
             # An unreadable maximum keeps only the pool limit (fail forward).
             allowed = (_feature_heal_allowed(hp_now, max_now, heal_pool) if max_now > 0
                        else max(0, min(hp_delta, heal_pool)))
+            heal_row = {
+                "actorId": proposal.get("actorId"), "ability": heal_feature,
+                "combatantId": target["combatantId"], "hpBefore": hp_now, "max": max_now, "allowed": allowed, "declared": hp_delta}
+            heal_rows.append(heal_row)
             if hp_delta > allowed:
                 if not clamp_feature_heals:
                     resolution["violations"].append(
                         "feature heal limit: %s restores at most %d to %s (%d/%d, half %d)"
                         % (heal_feature, allowed, target["combatantId"], hp_now, max_now, max_now // 2))
-                    resolution.setdefault("featureHealLimits", []).append({
-                        "actorId": proposal.get("actorId"), "ability": heal_feature,
-                        "combatantId": target["combatantId"], "hpBefore": hp_now, "max": max_now, "allowed": allowed, "declared": hp_delta})
+                    resolution.setdefault("featureHealLimits", []).append(heal_row)
                     continue
                 feature_heal = {"supplied": hp_delta, "allowed": allowed}
                 event.setdefault("normalizations", []).append({
@@ -2671,6 +2709,7 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                     "combatantId": target["combatantId"], "supplied": hp_delta, "allowed": allowed})
                 hp_delta = allowed
             heal_pool -= hp_delta
+            heal_row["applied"] = hp_delta
         saved = None
         save_line = None
         if stated_dice is not None and hp_delta <= 0:
@@ -2814,6 +2853,10 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
         if working is not None:
             resolution["charDeltas"][target["name"]] = _sheet_delta(
                 working, hp_after, status_after, target, temp_before)
+
+    if heal_pool is not None and not resolution.get("featureHealLimits"):
+        _feature_heal_unspent(event, resolution, encounter, proposal, heal_feature, heal_rows,
+                              clamp_feature_heals)
 
     save_results = {
         record.get("combatantId"): record.get("saved")

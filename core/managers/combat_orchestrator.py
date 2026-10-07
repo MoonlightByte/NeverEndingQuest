@@ -261,6 +261,7 @@ def _intent_correction(exc, batch=None):
         # #669: the typed limits of a class-feature heal, by the numbers.
         rendered = "; ".join(
             "%s at most %s (HP %s/%s)" % (r.get("combatantId"), r.get("allowed"), r.get("hpBefore"), r.get("max"))
+            if r.get("combatantId") is not None else "no target named, so at most 0"
             for r in limits if isinstance(r, dict)
         )
         feature = next((r.get("ability") for r in limits if isinstance(r, dict) and r.get("ability")), "the feature")
@@ -484,6 +485,9 @@ def _pause_for_refused_feature_heal(encounter_path, pending, limits, voice_inten
             continue
         _LOGGER.info("FH: paused for the player: %s limited to %s for %s",
                      limit.get("ability"), limit.get("allowed"), limit.get("combatantId"))
+        if limit.get("combatantId") is None:
+            parts.append("%s has no target it can heal" % limit.get("ability"))
+            continue
         parts.append("%s can restore at most %s to that target (HP %s of %s)" % (
             limit.get("ability"), limit.get("allowed"), limit.get("hpBefore"), limit.get("max")))
     message = "%s. Nothing was spent. What do you do instead?" % (
@@ -1966,6 +1970,11 @@ def execute_agentic_turn(
                 player_charge_refusal = refused
             heal_limits = (getattr(exc, "feedback", None) or {}).get("featureHealLimits") \
                 if isinstance(getattr(exc, "feedback", None), dict) else None
+            if heal_limits and feature_heal_limits is not None and exc.feedback.get("featureHealPlayer"):
+                # #669: the correction repeated a feature use that restores
+                # nothing; nothing is staged and the round waits for the player.
+                _pause_for_refused_feature_heal(encounter_path, pending, heal_limits,
+                                                immutable_voice_intents)
             if heal_limits:
                 feature_heal_limits = heal_limits
                 feature_heal_player = bool(exc.feedback.get("featureHealPlayer"))

@@ -438,6 +438,17 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 {"violations": list(resolution["violations"]),
                  "playerChargeRefusal": refusals, "retryable": True},
             )
+        if controller == "human" and resolution.get("featureHealUnspent"):
+            # #669: the corrected batch still spends the player's feature on
+            # a heal that restores nothing. Nothing is committed; the
+            # orchestrator pauses for the player's choice.
+            raise CombatIntentError(
+                "feature heal limit: the corrected intent still restores nothing",
+                actor_id,
+                {"violations": ["feature heal limit: the corrected intent still restores nothing"],
+                 "featureHealLimits": deepcopy(resolution["featureHealUnspent"]),
+                 "featureHealPlayer": True, "retryable": True},
+            )
         if resolution.get("violations"):
             feedback = {"violations": list(resolution["violations"])}
             if resolution.get("featureHealLimits"):
