@@ -114,3 +114,13 @@ def consume_results(turn_marker: Any = None) -> List[str]:
         state["delivered"] = {"turn": turn_marker, "lines": lines} if lines else None
         write_checks_state(state)
     return lines
+
+
+def delivered_for_turn(turn_marker: Any) -> List[str]:
+    """The result lines handed to the DM turn ``turn_marker`` (#594): the
+    checks this turn's DM note reported as scored. [] for any other turn, so
+    a ``delivered`` left from an earlier turn never counts."""
+    delivered = load_checks_state().get("delivered")
+    if turn_marker is None or not isinstance(delivered, dict) or delivered.get("turn") != turn_marker:
+        return []
+    return [line for line in delivered.get("lines") or [] if isinstance(line, str)]
