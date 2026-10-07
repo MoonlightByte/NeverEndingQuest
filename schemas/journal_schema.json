@@ -9,11 +9,11 @@
           "properties": {
             "date": {
               "type": "string",
-              "format": "date"
+              "description": "In-world calendar date from worldConditions: '<year> <month> <day>', e.g. '1492 Springmonth 1'. Not an ISO date."
             },
             "time": {
               "type": "string",
-              "format": "time"
+              "description": "In-world time of day from worldConditions, 'HH:MM:SS', with no offset. Not an RFC 3339 time."
             },
             "location": {
               "type": "string"
