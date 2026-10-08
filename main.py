@@ -7914,6 +7914,12 @@ def _get_ai_response_impl(
                 category="ai_routing",
             )
 
+    # Delivery guidance belongs after compression and retry feedback. Keep it
+    # request-local so rejected drafts never set the next turn's dialogue frame.
+    from utils.narration_prompt import with_narration_delivery
+    messages_to_send = with_narration_delivery(messages_to_send)
+    messages_for_diagnostics = with_narration_delivery(messages_for_diagnostics)
+
     # Suppress the fixed-path diagnostics export for the detached welcome; it
     # would race a concurrent player turn. T105 private guidance is redacted
     # from the ordinary export, while the API master log retains the request.

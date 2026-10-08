@@ -17,6 +17,8 @@ NAME FORM IS NEVER A DEFECT: a characterName/entityName in file-name form ("eiri
   enforcer: Block hallucinations; require existing data only
 }
 
+NARRATIVE ELABORATION: Location descriptions and NPC sketches are starting seeds, not exhaustive scripts. Accept plausible sensory detail, gestures, motives, recollections and dialogue that develop the established scene. Missing verbatim support alone is not an error. Distinguish a character's beliefs, fears and fallible account from objective world facts. Still reject contradictions of accepted history or fixed adventure facts, protected-secret disclosures, invalid entities/action targets, fabricated mechanical rewards or obligations, and decisions made for the player. Flavor cannot bypass consent, recruitment, travel, quest, combat or NQL rules. Only accepted, published narration becomes conversation history; rejected drafts and reviewer feedback never do.
+
 @PRIORITIES={
   1:hallucination_detection: NPCs/locations MUST exist in MODULE DATA
   2:location_aware_npc: NPCs used appropriately for locations
