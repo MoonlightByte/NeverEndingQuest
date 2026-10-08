@@ -551,7 +551,7 @@ class ModuleStitcher:
             # Redone in memory on every construction, so a read-only
             # registry costs nothing here (issue #654).
             safe_write_json(
-                self.world_registry_file, self.world_registry, stop_if_read_only=True
+                self.world_registry_file, self.world_registry, on_read_only="raise"
             )
     
     def _default_world_registry(self) -> Dict[str, Any]:
@@ -1290,7 +1290,7 @@ class ModuleStitcher:
         try:
             write_result = safe_write_json(
                 self.world_registry_file, deepcopy(prior_registry),
-                stop_if_read_only=True,
+                on_read_only="raise",
             )
         except Exception as exc:
             return False, f"Prior registry restore raised: {exc}"
@@ -3618,7 +3618,7 @@ Create atmospheric travel narration that leads into this adventure."""
             registry_attempted = True
             try:
                 write_result = safe_write_json(
-                    self.world_registry_file, candidate, stop_if_read_only=True
+                    self.world_registry_file, candidate, on_read_only="raise"
                 )
             except Exception as exc:
                 return self._finish_registry_attempt_failure(
