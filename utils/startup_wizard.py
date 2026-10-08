@@ -32,7 +32,7 @@ from core.generators.module_stitcher import ModuleStitcher
 from utils.startup_prompt_builder import build_character_creation_system_prompt as _build_character_creation_system_prompt
 from utils.startup_prompt_builder import build_startup_review_prompt
 from utils.startup_prompt_builder import (
-    STARTUP_RULES_REFERENCE_PURPOSE, build_startup_rules_reference,
+    ORIGINS_FILE, STARTUP_RULES_REFERENCE_PURPOSE, build_startup_rules_reference,
 )
 from utils.startup_contract import (
     parse_startup_response, parse_startup_review, parse_startup_checkpoint,
@@ -776,6 +776,34 @@ def _review_startup_response(conversation, proposal, committed_facts, *,
             )})
 
 
+def _origin_key(name):
+    """Typed name key: the part before " (", casefolded ("Magic Initiate (Cleric)" -> "magic initiate")."""
+    return str(name or "").split(" (")[0].strip().casefold()
+
+
+def _check_background_origin_feat(character):
+    """A sheet whose background is an SRD 5.2.1 background must list that background's Origin feat.
+
+    Typed name equality only. A background outside the reference, or a missing reference file, is not checked.
+    """
+    origins = safe_json_load(ORIGINS_FILE)
+    if not isinstance(origins, dict):
+        return
+    background = _origin_key(character.get("background"))
+    entry = next((b for b in origins.get("backgrounds", []) if _origin_key(b.get("name")) == background), None)
+    if entry is None:
+        return
+    feat = entry["feat"]
+    feats = character.get("feats") or []
+    if any(isinstance(f, dict) and _origin_key(f.get("name")) == _origin_key(feat) for f in feats):
+        return
+    raise ValueError(
+        f"The {entry['name']} background grants the Origin feat {feat} (SRD 5.2.1, startup_rules_reference); "
+        f"the sheet's feats do not list it. Record it as the reference's sheet_representation says, keeping "
+        f"the player's approved choices."
+    )
+
+
 def _prepare_startup_proposal(authored_proposal):
     """Normalize a private copy; keep authorship distinct from engine output."""
     proposal = copy.deepcopy(authored_proposal)
@@ -795,6 +823,7 @@ def _prepare_startup_proposal(authored_proposal):
         validate(character, safe_json_load("schemas/char_schema.json"))
     except ValidationError as exc:
         raise ValueError(exc.message) from exc
+    _check_background_origin_feat(character)
     proposal["character"] = character
     return proposal, provenance
 
