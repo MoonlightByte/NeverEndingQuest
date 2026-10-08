@@ -6,6 +6,7 @@ from __future__ import annotations
 import errno
 import os
 from pathlib import Path
+import threading
 import time
 from typing import Callable, TypeVar
 
@@ -103,6 +104,73 @@ def replace_target_is_read_only(path) -> bool:
         return False
     # FILE_ATTRIBUTE_READONLY, and not FILE_ATTRIBUTE_DIRECTORY.
     return bool(attributes & 0x1) and not attributes & 0x10
+
+
+# What a shared writer loop does when its target is read-only (issue #654).
+# "stop" (the default) records the save stop and raises ReadOnlySaveStop, and
+# the session ends. "raise" re-raises the plain replace error and records
+# nothing, for a caller that handles it. "fail" does the same for a file that
+# is not game state, and its caller reports the failure as it does today.
+# Once a stop is recorded, "stop" and "raise" saves write nothing and raise
+# ReadOnlySaveStop at once; only "fail" saves still run. A caller chooses
+# "raise" or "fail" by passing the keyword; nothing is inferred from the path.
+ON_READ_ONLY_STOP = "stop"
+ON_READ_ONLY_RAISE = "raise"
+ON_READ_ONLY_FAIL = "fail"
+_ON_READ_ONLY_MODES = frozenset({ON_READ_ONLY_STOP, ON_READ_ONLY_RAISE, ON_READ_ONLY_FAIL})
+
+
+class ReadOnlySaveStop(PermissionError):
+    """A game-state save met a read-only target, so the session stops.
+
+    Raised by the shared writer loops instead of waiting forever, and by every
+    later save while the stop is recorded, so nothing is written after it.
+    """
+
+    def __init__(self, path):
+        path = os.fsdecode(path)
+        super().__init__(errno.EACCES, "The file is read-only", path, 5)
+        self.path = path
+
+
+_save_stop_lock = threading.Lock()
+_save_stop_path = None
+
+
+def check_on_read_only(mode) -> str:
+    """Return a valid ``on_read_only`` mode, or raise ValueError."""
+    if mode not in _ON_READ_ONLY_MODES:
+        raise ValueError(f"unknown on_read_only mode: {mode!r}")
+    return mode
+
+
+def record_save_stop(path) -> str:
+    """Record the first read-only save of this process; return the recorded path."""
+    global _save_stop_path
+    with _save_stop_lock:
+        if _save_stop_path is None:
+            _save_stop_path = os.path.abspath(os.fsdecode(path))
+        return _save_stop_path
+
+
+def save_stop_path():
+    """Return the recorded read-only path, or None while saves may run."""
+    with _save_stop_lock:
+        return _save_stop_path
+
+
+def clear_save_stop() -> None:
+    """Forget the recorded stop when a new game session begins."""
+    global _save_stop_path
+    with _save_stop_lock:
+        _save_stop_path = None
+
+
+def raise_if_save_stopped() -> None:
+    """Raise ReadOnlySaveStop while a stop is recorded."""
+    path = save_stop_path()
+    if path is not None:
+        raise ReadOnlySaveStop(path)
 
 
 def retry_transient_filesystem(
