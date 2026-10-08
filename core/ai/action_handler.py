@@ -77,6 +77,7 @@ from core.managers.location_manager import get_location_data
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import sanitize_text, safe_json_dump, safe_json_load
 from utils.file_operations import safe_read_json, safe_write_json
+from utils.transient_filesystem import ReadOnlySaveStop
 from core.managers.status_manager import (
     status_transitioning_location, status_updating_character, status_updating_party,
     status_updating_plot, status_advancing_time, status_processing_levelup
@@ -3738,7 +3739,9 @@ def process_action(
                 except Exception:
                     pass
 
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            # A read-only save stop inside the combat ends the session now,
+            # not after the rest of this turn (issue #654).
             raise
         except subprocess.CalledProcessError as e:
             print(f"Error occurred while running combat_builder.py: {e}")
