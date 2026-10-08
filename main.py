@@ -5322,6 +5322,36 @@ _CONVERSATION_HISTORY_READ_ONLY_LINE = (
 )
 
 
+def _read_only_save_stop_line(path):
+    """Player line for a save that stopped the session on a read-only file."""
+    absolute = os.path.abspath(path)
+    try:
+        folder = os.path.relpath(os.path.dirname(absolute))
+    except ValueError:  # another drive than the game folder
+        folder = None
+    if folder == os.curdir:
+        where = "the game folder"
+    elif folder is None or folder == os.pardir or folder.startswith(os.pardir + os.sep):
+        where = "the folder %s" % os.path.dirname(absolute)
+    else:
+        where = "the game's %s folder" % folder.replace(os.sep, "/")
+    return (
+        "The file %s in %s is read-only, so the game stopped before it could "
+        "save your progress. To play on, clear that file's Read-only setting, "
+        "then start the game again. Your progress up to the last save is kept."
+        % (os.path.basename(absolute), where)
+    )
+
+
+def _show_read_only_save_stop(path):
+    """Tell the player once why the session stops (issue #654)."""
+    warning(
+        f"SAVE STOP: {path} is read-only; the game stopped",
+        category="session_management",
+    )
+    display_dm_narration(_read_only_save_stop_line(path), channel="system")
+
+
 
 
 
@@ -8688,6 +8718,7 @@ def main_game_loop():
         finish_live_turn_scope,
         get_live_turn_scope,
     )
+    from utils.transient_filesystem import ReadOnlySaveStop
 
     try:
         with ExitStack() as startup_authority, ExitStack() as turn_authority:
@@ -8706,6 +8737,16 @@ def main_game_loop():
         return result
     except _TravelRecoveryControl as choice:
         return choice
+    except ReadOnlySaveStop as stop:
+        # A save met a read-only file: the locks are already released, and
+        # nothing more is written. End the session the way a read-only start
+        # does, with one line (issue #654).
+        scope = get_live_turn_scope()
+        if scope is not None:
+            finish_live_turn_scope(scope)
+            scope.quiescent.wait()
+        _show_read_only_save_stop(stop.path)
+        return
     except (LiveProviderSuperseded, InvocationSupersededError):
         scope = get_live_turn_scope()
         if scope is not None:
@@ -8721,6 +8762,11 @@ def _main_game_loop(startup_authority, turn_authority):
     global needs_conversation_history_update, should_inject_creation_prompt
     from core.combat.invocation import InvocationSupersededError, require_current_invocation
     from utils.capture.live_provider_call import LiveProviderSuperseded, get_live_turn_scope
+
+    # A new session saves again; a file still read-only stops it again at its
+    # first save (issue #654).
+    from utils.transient_filesystem import clear_save_stop, save_stop_path
+    clear_save_stop()
 
     # Ensure debug directories and files exist
     import os
@@ -9452,6 +9498,12 @@ def _main_game_loop(startup_authority, turn_authority):
         emit_startup_marker("startup_loop_ready", source="main_loop", result="ready")
     while True:
         print("[DEBUG] Top of main game loop iteration")
+        # A read-only save that a caller swallowed still ends the session
+        # here, before another turn reads or writes anything (issue #654).
+        stopped_path = save_stop_path()
+        if stopped_path is not None:
+            _show_read_only_save_stop(stopped_path)
+            return
         if _travel_recovery_pending():
             with _travel_recovery_authority() as recovery_scope:
                 recovered = _finish_pending_travel_before_input(recovery_scope)
