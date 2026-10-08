@@ -688,6 +688,11 @@ def service_live_input_boundary():
     Deliberately called outside best-effort presentation hooks: supersession
     must unwind the game, not become EOF or a swallowed status failure.
     """
+    from utils.transient_filesystem import raise_if_save_stopped
+
+    # A read-only save stop unwinds the game at the next input, the way
+    # supersession does, even inside combat or a level-up (issue #654).
+    raise_if_save_stopped()
     scope = get_live_turn_scope()
     if scope is None:
         return False
@@ -1183,9 +1188,14 @@ def _check_live_authority(scope, authority_check=None):
 
 
 def _interruptible_wait(seconds, scope, message, emit=None, authority_check=None):
+    from utils.transient_filesystem import raise_if_save_stopped
+
     emit = emit if emit is not None else _emit_working
     deadline = time.monotonic() + max(0.0, float(seconds))
     while True:
+        # A wait that retries a save must not outlast a read-only save stop:
+        # no save can succeed until the session ends (issue #654).
+        raise_if_save_stopped()
         try:
             _check_live_authority(scope, authority_check)
         except OSError:
