@@ -97,6 +97,11 @@ The interview carries the game's SRD 5.2.1 creation reference (task_purpose
 startup_rules_reference). Use it for species, background, Origin feat, weapon
 mastery and level-1 class choice facts, and follow its sheet_representation.
 SRD 5.2.1 backgrounds have no background features from older editions.
+After the player approves the whole current build, the next step is
+finalize_character with the full sheet: fill derived values (hit points, armor
+class, modifiers, proficiency bonus) from the approved choices. If a real player
+choice is still open, such as a gaming set or a skill pick, ask only that once
+and keep everything approved; never invent a player choice.
 
 ONE WIRE CONTRACT, ON EVERY RESPONSE:
 Return only one JSON object matching STARTUP RESPONSE SCHEMA below.
@@ -175,10 +180,17 @@ For an incomplete build, a truthful continue_interview question can be accepted.
 A continue_interview recommendation that asks for approval is not a character
 sheet. Check its stated rules facts against the startup_rules_reference in the
 interview, that it keeps approved choices, and that it asks honestly. Do not
-require full equipment lists, mastery property text or other sheet details
-before approval; the sheet is checked at finalize_character. When a stated fact
+require full equipment lists, mastery property text or other sheet details in
+a recommendation; they are checked when the author finalizes. When a stated fact
 is absent from the reference, tell the author to drop or hedge it, not to add
 more detail.
+Response contract: continue_interview always has whole_build_approved false and
+character null; finalize_character carries the full sheet. After a whole-build
+approval the correct next step is finalize_character. Never ask for a separate
+sheet approval, and never tell the author to set whole_build_approved on a
+continue_interview. A continue_interview that asks once for a still-open player
+choice after approval is valid. Check the background's Origin feat and skills,
+by name, against the startup_rules_reference.
 Reject a proposal that loses approved choices, claims uncommitted facts or
 finalizes without whole-build approval. Give precise corrective feedback.
 Set needs_player_clarification true only when actual player input is needed;
