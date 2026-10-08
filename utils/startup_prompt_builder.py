@@ -16,6 +16,67 @@ def _read_text_file(relative_path):
         return fh.read()
 
 
+STARTUP_RULES_REFERENCE_PURPOSE = "startup_rules_reference"
+ORIGINS_FILE = "data/srd_character_origins.json"
+
+
+def _level_1_choices(choice_points):
+    """A new character's level-1 choices for one class (multiclass-only entries omitted)."""
+    choices = []
+    for point in choice_points.get("1", []):
+        if point.get("applies") == "multiclass":
+            continue
+        entry = {"name": point["name"], "count": point["count"]}
+        if isinstance(point.get("option_source"), list):
+            entry["options"] = point["option_source"]
+        entry["text"] = point.get("evidence")
+        entry["page"] = point.get("source", {}).get("page")
+        choices.append(entry)
+    return choices
+
+
+def build_startup_rules_reference():
+    """The creation reference both the author and the reviewer read, from typed data only.
+
+    Returns None when a data file is missing; the interview then runs without it.
+    """
+    origins = safe_json_load(ORIGINS_FILE)
+    choices = safe_json_load("data/srd/choices.json")
+    items = safe_json_load("data/srd/item_catalog.json")
+    if not origins or not choices or not items:
+        return None
+    return {
+        "task_purpose": STARTUP_RULES_REFERENCE_PURPOSE,
+        "ruleset": "SRD 5.2.1",
+        "attribution": choices["sources"]["attribution"],
+        "use": ("This is the game's complete SRD 5.2.1 character-origin reference for this interview: "
+                "backgrounds, species, Origin and Fighting Style feats, weapon mastery, the weapons table "
+                "and each class's level-1 choices. Use it for these facts instead of remembered rules. "
+                "A fact absent here is not supplied."),
+        "sheet_representation": (
+            "SRD 5.2.1 backgrounds have no background feature: a background raises ability scores "
+            "(background_ability_scores_rule) and grants an Origin feat, skills, a tool and equipment. "
+            "Put the species name in race and the background name in background. Record the background's "
+            "Origin feat in feats as {\"name\": \"<feat name>\", \"description\": \"<its text here>\", "
+            "\"source\": \"<background> background (SRD 5.2.1)\"}, and set backgroundFeature to exactly "
+            "{\"name\": \"Origin feat: <feat name>\", \"description\": \"<the same text>\", "
+            "\"source\": \"<background> background (SRD 5.2.1)\"}. Other feats, such as a Human's "
+            "Versatile Origin feat or a Fighting Style feat, also go in feats with their source."),
+        "background_ability_scores_rule": origins["background_ability_scores_rule"],
+        "backgrounds": origins["backgrounds"],
+        "species": origins["species"],
+        "origin_feats": origins["origin_feats"],
+        "fighting_style_feats": origins["fighting_style_feats"],
+        "weapon_mastery_rule": origins["weapon_mastery_rule"],
+        "weapon_mastery_properties": origins["weapon_mastery_properties"],
+        "weapons": [{"name": e["name"], "description": e["description"]} for e in items["entries"]
+                    if e.get("kind") == "weapon" and not e.get("magical")],
+        "class_level_1": {name: {"primary_ability": choices["class_traits"][name]["primary_ability"],
+                                 "choices": _level_1_choices(points)}
+                          for name, points in choices["choice_points"].items()},
+    }
+
+
 def build_character_creation_system_prompt():
     """Build module-independent character authorship instructions."""
     schema = safe_json_load("schemas/char_schema.json")
@@ -32,6 +93,10 @@ build, and honor revisions. Do not choose those major decisions for the player.
 The player chooses the ability-score method. For player-rolled scores, ask them
 to submit their actual results and allocation; never invent, replace, or reroll
 them. Use supplied rules for mechanics and preserve accepted choices.
+The interview carries the game's SRD 5.2.1 creation reference (task_purpose
+startup_rules_reference). Use it for species, background, Origin feat, weapon
+mastery and level-1 class choice facts, and follow its sheet_representation.
+SRD 5.2.1 backgrounds have no background features from older editions.
 
 ONE WIRE CONTRACT, ON EVERY RESPONSE:
 Return only one JSON object matching STARTUP RESPONSE SCHEMA below.
@@ -107,6 +172,13 @@ Check proposed narration against committed facts. An unsaved proposal cannot
 truthfully claim saved, created, placed, or adventure events. Review meaning,
 not a success-word blacklist. Never treat old assistant prose as disk proof.
 For an incomplete build, a truthful continue_interview question can be accepted.
+A continue_interview recommendation that asks for approval is not a character
+sheet. Check its stated rules facts against the startup_rules_reference in the
+interview, that it keeps approved choices, and that it asks honestly. Do not
+require full equipment lists, mastery property text or other sheet details
+before approval; the sheet is checked at finalize_character. When a stated fact
+is absent from the reference, tell the author to drop or hedge it, not to add
+more detail.
 Reject a proposal that loses approved choices, claims uncommitted facts or
 finalizes without whole-build approval. Give precise corrective feedback.
 Set needs_player_clarification true only when actual player input is needed;

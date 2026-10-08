@@ -1,0 +1,331 @@
+{
+ "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+ "schema": "srd-character-origins-v1",
+ "source": {
+  "document": "System Reference Document 5.2.1 (SRD_CC_v5.2.1.pdf)",
+  "pdf_sha256": "8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87",
+  "pages": "83-90",
+  "attribution": "This work includes material from the System Reference Document 5.2.1 (\"SRD 5.2.1\") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode."
+ },
+ "background_ability_scores_rule": "A background lists three of your character's ability scores. Increase one by 2 and another one by 1, or increase all three by 1. None of these increases can raise a score above 20.",
+ "backgrounds": [
+  {
+   "name": "Acolyte",
+   "ability_scores": "Intelligence, Wisdom, Charisma",
+   "feat": "Magic Initiate (Cleric)",
+   "skill_proficiencies": "Insight and Religion",
+   "tool_proficiency": "Calligrapher's Supplies",
+   "equipment": "Choose A or B: (A) Calligrapher's Supplies, Book (prayers), Holy Symbol, Parchment (10 sheets), Robe, 8 GP; or (B) 50 GP",
+   "page": 83
+  },
+  {
+   "name": "Criminal",
+   "ability_scores": "Dexterity, Constitution, Intelligence",
+   "feat": "Alert",
+   "skill_proficiencies": "Sleight of Hand and Stealth",
+   "tool_proficiency": "Thieves' Tools",
+   "equipment": "Choose A or B: (A) 2 Daggers, Thieves' Tools, Crowbar, 2 Pouches, Traveler's Clothes, 16 GP; or (B) 50 GP",
+   "page": 83
+  },
+  {
+   "name": "Sage",
+   "ability_scores": "Constitution, Intelligence, Wisdom",
+   "feat": "Magic Initiate (Wizard)",
+   "skill_proficiencies": "Arcana and History",
+   "tool_proficiency": "Calligrapher's Supplies",
+   "equipment": "Choose A or B: (A) Quarterstaff, Calligrapher's Supplies, Book (history), Parchment (8 sheets), Robe, 8 GP; or (B) 50 GP",
+   "page": 83
+  },
+  {
+   "name": "Soldier",
+   "ability_scores": "Strength, Dexterity, Constitution",
+   "feat": "Savage Attacker",
+   "skill_proficiencies": "Athletics and Intimidation",
+   "tool_proficiency": "Choose one kind of Gaming Set (see \"Equipment\")",
+   "equipment": "Choose A or B: (A) Spear, Shortbow, 20 Arrows, Gaming Set (same as above), Healer's Kit, Quiver, Traveler's Clothes, 14 GP; or (B) 50 GP",
+   "page": 83
+  }
+ ],
+ "species": [
+  {
+   "name": "Dragonborn",
+   "creature_type": "Humanoid",
+   "size": "Medium (about 5-7 feet tall)",
+   "speed": "30 feet",
+   "traits": "Draconic Ancestry. Your lineage stems from a dragon progenitor. Choose the kind of dragon from the Draconic Ancestors table. Your choice affects your Breath Weapon and Damage Resistance traits as well as your appearance. Breath Weapon. When you take the Attack action on your turn, you can replace one of your attacks with an exhalation of magical energy in either a 15-foot Cone or a 30-foot Line that is 5 feet wide (choose the shape each time). Each creature in that area must make a Dexterity saving throw (DC 8 plus your Constitution modifier and Proficiency Bonus). On a failed save, a creature takes 1d10 damage of the type determined by your Draconic Ancestry trait. On a successful save, a creature takes half as much damage. This damage increases by 1d10 when you reach character levels 5 (2d10), 11 (3d10), and 17 (4d10). You can use this Breath Weapon a number of times equal to your Proficiency Bonus, and you regain all expended uses when you finish a Long Rest. Damage Resistance. You have Resistance to the damage type determined by your Draconic Ancestry trait. Darkvision. You have Darkvision with a range of 60 feet. Draconic Flight. When you reach character level 5, you can channel draconic magic to give yourself temporary flight. As a Bonus Action, you sprout spectral wings on your back that last for 10 minutes or until you retract the wings (no action required) or have the Incapacitated condition. During that time, you have a Fly Speed equal to your Speed. Your wings appear to be made of the same energy as your Breath Weapon. Once you use this trait, you can't use it again until you finish a Long Rest.",
+   "page": 84,
+   "tables": [
+    {
+     "title": "Draconic Ancestors",
+     "columns": [
+      "Dragon",
+      "Damage Type"
+     ],
+     "rows": [
+      [
+       "Black",
+       "Acid"
+      ],
+      [
+       "Blue",
+       "Lightning"
+      ],
+      [
+       "Brass",
+       "Fire"
+      ],
+      [
+       "Bronze",
+       "Lightning"
+      ],
+      [
+       "Copper",
+       "Acid"
+      ],
+      [
+       "Gold",
+       "Fire"
+      ],
+      [
+       "Green",
+       "Poison"
+      ],
+      [
+       "Red",
+       "Fire"
+      ],
+      [
+       "Silver",
+       "Cold"
+      ],
+      [
+       "White",
+       "Cold"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Dwarf",
+   "creature_type": "Humanoid",
+   "size": "Medium (about 4-5 feet tall)",
+   "speed": "30 feet",
+   "traits": "Darkvision. You have Darkvision with a range of 120 feet. Dwarven Resilience. You have Resistance to Poison damage. You also have Advantage on saving throws you make to avoid or end the Poisoned condition. Dwarven Toughness. Your Hit Point maximum increases by 1, and it increases by 1 again whenever you gain a level. Stonecunning. As a Bonus Action, you gain Tremorsense with a range of 60 feet for 10 minutes. You must be on a stone surface or touching a stone surface to use this Tremorsense. The stone can be natural or worked. You can use this Bonus Action a number of times equal to your Proficiency Bonus, and you regain all expended uses when you finish a Long Rest.",
+   "page": 84
+  },
+  {
+   "name": "Elf",
+   "creature_type": "Humanoid",
+   "size": "Medium (about 5-6 feet tall)",
+   "speed": "30 feet",
+   "traits": "Darkvision. You have Darkvision with a range of 60 feet. Elven Lineage. You are part of a lineage that grants you supernatural abilities. Choose a lineage from the Elven Lineages table. You gain the level 1 benefit of that lineage. When you reach character levels 3 and 5, you learn a higher-level spell, as shown on the table. You always have that spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast the spell using any spell slots you have of the appropriate level. Intelligence, Wisdom, or Charisma is your spellcasting ability for the spells you cast with this trait (choose the ability when you select the lineage). Fey Ancestry. You have Advantage on saving throws you make to avoid or end the Charmed condition. Keen Senses. You have proficiency in the Insight, Perception, or Survival skill. Trance. You don't need to sleep, and magic can't put you to sleep. You can finish a Long Rest in 4 hours if you spend those hours in a trancelike meditation, during which you retain consciousness.",
+   "page": 84,
+   "tables": [
+    {
+     "title": "Elven Lineages",
+     "columns": [
+      "Lineage",
+      "Level 1",
+      "Level 3",
+      "Level 5"
+     ],
+     "rows": [
+      [
+       "Drow",
+       "The range of your Darkvision increases to 120 feet. You also know the Dancing Lights cantrip.",
+       "Faerie Fire",
+       "Darkness"
+      ],
+      [
+       "High Elf",
+       "You know the Prestidigitation cantrip. Whenever you finish a Long Rest, you can replace that cantrip with a different cantrip from the Wizard spell list.",
+       "Detect Magic",
+       "Misty Step"
+      ],
+      [
+       "Wood Elf",
+       "Your Speed increases to 35 feet. You also know the Druidcraft cantrip.",
+       "Longstrider",
+       "Pass without Trace"
+      ]
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Gnome",
+   "creature_type": "Humanoid",
+   "size": "Small (about 3-4 feet tall)",
+   "speed": "30 feet",
+   "traits": "Darkvision. You have Darkvision with a range of 60 feet. Gnomish Cunning. You have Advantage on Intelligence, Wisdom, and Charisma saving throws. Gnomish Lineage. You are part of a lineage that grants you supernatural abilities. Choose one of the following options; whichever one you choose, Intelligence, Wisdom, or Charisma is your spellcasting ability for the spells you cast with this trait (choose the ability when you select the lineage): Forest Gnome. You know the Minor Illusion cantrip. You also always have the Speak with Animals spell prepared. You can cast it without a spell slot a number of times equal to your Proficiency Bonus, and you regain all expended uses when you finish a Long Rest. You can also use any spell slots you have to cast the spell. Rock Gnome. You know the Mending and Prestidigitation cantrips. In addition, you can spend 10 minutes casting Prestidigitation to create a Tiny clockwork device (AC 5, 1 HP), such as a toy, fire starter, or music box. When you create the device, you determine its function by choosing one effect from Prestidigitation; the device produces that effect whenever you or another creature takes a Bonus Action to activate it with a touch. If the chosen effect has options within it, you choose one of those options for the device when you create it. For example, if you choose the spell's ignite-extinguish effect, you determine whether the device ignites or extinguishes fire; the device doesn't do both. You can have three such devices in existence at a time, and each falls apart 8 hours after its creation or when you dismantle it with a touch as a Utilize action.",
+   "page": 85
+  },
+  {
+   "name": "Goliath",
+   "creature_type": "Humanoid",
+   "size": "Medium (about 7-8 feet tall)",
+   "speed": "35 feet",
+   "traits": "Giant Ancestry. You are descended from Giants. Choose one of the following benefits -- a supernatural boon from your ancestry; you can use the chosen benefit a number of times equal to your Proficiency Bonus, and you regain all expended uses when you finish a Long Rest: Cloud's Jaunt (Cloud Giant). As a Bonus Action, you magically teleport up to 30 feet to an unoccupied space you can see. Fire's Burn (Fire Giant). When you hit a target with an attack roll and deal damage to it, you can also deal 1d10 Fire damage to that target. Frost's Chill (Frost Giant). When you hit a target with an attack roll and deal damage to it, you can also deal 1d6 Cold damage to that target and reduce its Speed by 10 feet until the start of your next turn. Hill's Tumble (Hill Giant). When you hit a Large or smaller creature with an attack roll and deal damage to it, you can give that target the Prone condition. Stone's Endurance (Stone Giant). When you take damage, you can take a Reaction to roll 1d12. Add your Constitution modifier to the number rolled and reduce the damage by that total. Storm's Thunder (Storm Giant). When you take damage from a creature within 60 feet of you, you can take a Reaction to deal 1d8 Thunder damage to that creature. Large Form. Starting at character level 5, you can change your size to Large as a Bonus Action if you're in a big enough space. This transformation lasts for 10 minutes or until you end it (no action required). For that duration, you have Advantage on Strength checks, and your Speed increases by 10 feet. Once you use this trait, you can't use it again until you finish a Long Rest. Powerful Build. You have Advantage on any ability check you make to end the Grappled condition. You also count as one size larger when determining your carrying capacity.",
+   "page": 85
+  },
+  {
+   "name": "Halfling",
+   "creature_type": "Humanoid",
+   "size": "Small (about 2-3 feet tall)",
+   "speed": "30 feet",
+   "traits": "Brave. You have Advantage on saving throws you make to avoid or end the Frightened condition. Halfling Nimbleness. You can move through the space of any creature that is a size larger than you, but you can't stop in the same space. Luck. When you roll a 1 on the d20 of a D20 Test, you can reroll the die, and you must use the new roll. Naturally Stealthy. You can take the Hide action even when you are obscured only by a creature that is at least one size larger than you.",
+   "page": 86
+  },
+  {
+   "name": "Human",
+   "creature_type": "Humanoid",
+   "size": "Medium (about 4-7 feet tall) or Small (about 2-4 feet tall), chosen when you select this species",
+   "speed": "30 feet",
+   "traits": "Resourceful. You gain Heroic Inspiration whenever you finish a Long Rest. Skillful. You gain proficiency in one skill of your choice. Versatile. You gain an Origin feat of your choice (see \"Feats\"). Skilled is recommended.",
+   "page": 86
+  },
+  {
+   "name": "Orc",
+   "creature_type": "Humanoid",
+   "size": "Medium (about 6-7 feet tall)",
+   "speed": "30 feet",
+   "traits": "Adrenaline Rush. You can take the Dash action as a Bonus Action. When you do so, you gain a number of Temporary Hit Points equal to your Proficiency Bonus. You can use this trait a number of times equal to your Proficiency Bonus, and you regain all expended uses when you finish a Short or Long Rest. Darkvision. You have Darkvision with a range of 120 feet. Relentless Endurance. When you are reduced to 0 Hit Points but not killed outright, you can drop to 1 Hit Point instead. Once you use this trait, you can't do so again until you finish a Long Rest.",
+   "page": 86
+  },
+  {
+   "name": "Tiefling",
+   "creature_type": "Humanoid",
+   "size": "Medium (about 4-7 feet tall) or Small (about 3-4 feet tall), chosen when you select this species",
+   "speed": "30 feet",
+   "traits": "Darkvision. You have Darkvision with a range of 60 feet. Fiendish Legacy. You are the recipient of a legacy that grants you supernatural abilities. Choose a legacy from the Fiendish Legacies table. You gain the level 1 benefit of the chosen legacy. When you reach character levels 3 and 5, you learn a higher-level spell, as shown on the table. You always have that spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast the spell using any spell slots you have of the appropriate level. Intelligence, Wisdom, or Charisma is your spellcasting ability for the spells you cast with this trait (choose the ability when you select the legacy). Otherworldly Presence. You know the Thaumaturgy cantrip. When you cast it with this trait, the spell uses the same spellcasting ability you use for your Fiendish Legacy trait.",
+   "page": 86,
+   "tables": [
+    {
+     "title": "Fiendish Legacies",
+     "columns": [
+      "Legacy",
+      "Level 1",
+      "Level 3",
+      "Level 5"
+     ],
+     "rows": [
+      [
+       "Abyssal",
+       "You have Resistance to Poison damage. You also know the Poison Spray cantrip.",
+       "Ray of Sickness",
+       "Hold Person"
+      ],
+      [
+       "Chthonic",
+       "You have Resistance to Necrotic damage. You also know the Chill Touch cantrip.",
+       "False Life",
+       "Ray of Enfeeblement"
+      ],
+      [
+       "Infernal",
+       "You have Resistance to Fire damage. You also know the Fire Bolt cantrip.",
+       "Hellish Rebuke",
+       "Darkness"
+      ]
+     ]
+    }
+   ]
+  }
+ ],
+ "origin_feats": [
+  {
+   "name": "Alert",
+   "category": "Origin",
+   "text": "You gain the following benefits. Initiative Proficiency. When you roll Initiative, you can add your Proficiency Bonus to the roll. Initiative Swap. Immediately after you roll Initiative, you can swap your Initiative with the Initiative of one willing ally in the same combat. You can't make this swap if you or the ally has the Incapacitated condition.",
+   "page": 87
+  },
+  {
+   "name": "Magic Initiate",
+   "category": "Origin",
+   "text": "You gain the following benefits. Two Cantrips. You learn two cantrips of your choice from the Cleric, Druid, or Wizard spell list. Intelligence, Wisdom, or Charisma is your spellcasting ability for this feat's spells (choose when you select this feat). Level 1 Spell. Choose a level 1 spell from the same list you selected for this feat's cantrips. You always have that spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast the spell using any spell slots you have. Spell Change. Whenever you gain a new level, you can replace one of the spells you chose for this feat with a different spell of the same level from the chosen spell list. Repeatable. You can take this feat more than once, but you must choose a different spell list each time.",
+   "page": 87
+  },
+  {
+   "name": "Savage Attacker",
+   "category": "Origin",
+   "text": "You've trained to deal particularly damaging strikes. Once per turn when you hit a target with a weapon, you can roll the weapon's damage dice twice and use either roll against the target.",
+   "page": 87
+  },
+  {
+   "name": "Skilled",
+   "category": "Origin",
+   "text": "You gain proficiency in any combination of three skills or tools of your choice. Repeatable. You can take this feat more than once.",
+   "page": 87
+  }
+ ],
+ "fighting_style_feats": [
+  {
+   "name": "Archery",
+   "category": "Fighting Style",
+   "text": "You gain a +2 bonus to attack rolls you make with Ranged weapons.",
+   "page": 87
+  },
+  {
+   "name": "Defense",
+   "category": "Fighting Style",
+   "text": "While you're wearing Light, Medium, or Heavy armor, you gain a +1 bonus to Armor Class.",
+   "page": 88
+  },
+  {
+   "name": "Great Weapon Fighting",
+   "category": "Fighting Style",
+   "text": "When you roll damage for an attack you make with a Melee weapon that you are holding with two hands, you can treat any 1 or 2 on a damage die as a 3. The weapon must have the Two-Handed or Versatile property to gain this benefit.",
+   "page": 88
+  },
+  {
+   "name": "Two-Weapon Fighting",
+   "category": "Fighting Style",
+   "text": "When you make an extra attack as a result of using a weapon that has the Light property, you can add your ability modifier to the damage of that attack if you aren't already adding it to the damage.",
+   "page": 88
+  }
+ ],
+ "weapon_mastery_rule": "Each weapon has a mastery property, which is usable only by a character who has a feature, such as Weapon Mastery, that unlocks the property for the character. The properties are defined below.",
+ "weapon_mastery_properties": [
+  {
+   "name": "Cleave",
+   "text": "If you hit a creature with a melee attack roll using this weapon, you can make a melee attack roll with the weapon against a second creature within 5 feet of the first that is also within your reach. On a hit, the second creature takes the weapon's damage, but don't add your ability modifier to that damage unless that modifier is negative. You can make this extra attack only once per turn.",
+   "page": 90
+  },
+  {
+   "name": "Graze",
+   "text": "If your attack roll with this weapon misses a creature, you can deal damage to that creature equal to the ability modifier you used to make the attack roll. This damage is the same type dealt by the weapon, and the damage can be increased only by increasing the ability modifier.",
+   "page": 90
+  },
+  {
+   "name": "Nick",
+   "text": "When you make the extra attack of the Light property, you can make it as part of the Attack action instead of as a Bonus Action. You can make this extra attack only once per turn.",
+   "page": 90
+  },
+  {
+   "name": "Push",
+   "text": "If you hit a creature with this weapon, you can push the creature up to 10 feet straight away from yourself if it is Large or smaller.",
+   "page": 90
+  },
+  {
+   "name": "Sap",
+   "text": "If you hit a creature with this weapon, that creature has Disadvantage on its next attack roll before the start of your next turn.",
+   "page": 90
+  },
+  {
+   "name": "Slow",
+   "text": "If you hit a creature with this weapon and deal damage to it, you can reduce its Speed by 10 feet until the start of your next turn. If the creature is hit more than once by weapons that have this property, the Speed reduction doesn't exceed 10 feet.",
+   "page": 90
+  },
+  {
+   "name": "Topple",
+   "text": "If you hit a creature with this weapon, you can force the creature to make a Constitution saving throw (DC 8 plus the ability modifier used to make the attack roll and your Proficiency Bonus). On a failed save, the creature has the Prone condition.",
+   "page": 90
+  },
+  {
+   "name": "Vex",
+   "text": "If you hit a creature with this weapon and deal damage to the creature, you have Advantage on your next attack roll against that creature before the end of your next turn.",
+   "page": 90
+  }
+ ]
+}
