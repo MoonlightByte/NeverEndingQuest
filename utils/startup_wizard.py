@@ -804,6 +804,42 @@ def _check_background_origin_feat(character):
     )
 
 
+def _schema_allows_null(prop):
+    """True when a JSON-schema property admits null (or does not constrain the type)."""
+    if not isinstance(prop, dict):
+        return True
+    branches = prop.get("anyOf", []) + prop.get("oneOf", [])
+    if branches:
+        return any(_schema_allows_null(branch) for branch in branches)
+    if "enum" in prop:
+        return None in prop["enum"]
+    kind = prop.get("type")
+    if kind is None:
+        return True
+    return kind == "null" or (isinstance(kind, list) and "null" in kind)
+
+
+def _drop_schema_disallowed_nulls(character):
+    """Drop optional top-level keys set to null where the frozen schema does not admit null.
+
+    Keyed on the schema only (property type and required list), never on field names. A required key with
+    null is kept, so validation still refuses it. Returns the drops for normalization provenance.
+    """
+    schema = safe_json_load("schemas/char_schema.json") or {}
+    properties = schema.get("properties", {})
+    required = set(schema.get("required", []))
+    dropped = []
+    for key in list(character):
+        if character[key] is not None or key in required or key not in properties:
+            continue
+        if _schema_allows_null(properties[key]):
+            continue
+        del character[key]
+        dropped.append({"field": key, "supplied": None, "schema_type": properties[key].get("type"),
+                        "reason": "optional property whose schema does not admit null; dropped by the game"})
+    return character, dropped
+
+
 def _prepare_startup_proposal(authored_proposal):
     """Normalize a private copy; keep authorship distinct from engine output."""
     proposal = copy.deepcopy(authored_proposal)
@@ -811,6 +847,9 @@ def _prepare_startup_proposal(authored_proposal):
     if proposal["decision"] != "finalize_character":
         return proposal, provenance
     character = sanitize_character_data(proposal["character"])
+    character, dropped = _drop_schema_disallowed_nulls(character)
+    if dropped:
+        provenance["schema_null_drops"] = dropped
     character, _ = repair_required_ammunition_field(character)
     character, _ = repair_startup_character_sheet(character)
     character = auto_fix_character_data(character)
