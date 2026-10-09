@@ -1212,7 +1212,7 @@ class SaveGameManager:
             
             info(f"SUCCESS: {success_msg}", category="save_game")
             return True, success_msg
-
+            
         except ReadOnlySaveStop:
             raise
         except Exception as e:

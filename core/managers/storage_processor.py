@@ -390,7 +390,7 @@ For "What's in our storage here?":
                     "description": original_description,
                     "processed_at": datetime.now().isoformat()
                 }
-
+                
             except ReadOnlySaveStop:
                 raise
             except Exception as e:

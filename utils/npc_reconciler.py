@@ -147,7 +147,7 @@ def _durable_copy(source, destination):
 def _durable_write_json(path, payload, *, create_backup=False):
     """Atomically persist JSON and its directory without sentinel locks."""
     raise_if_save_stopped()
-    canonical =os.path.abspath(os.path.normpath(os.fspath(path)))
+    canonical = os.path.abspath(os.path.normpath(os.fspath(path)))
     parent = os.path.dirname(canonical)
     if parent:
         os.makedirs(parent, exist_ok=True)
@@ -172,7 +172,7 @@ def _durable_write_json(path, payload, *, create_backup=False):
 def _durable_remove(path):
     """Remove a transaction marker durably when the platform supports it."""
     raise_if_save_stopped()
-    canonical =os.path.abspath(os.path.normpath(os.fspath(path)))
+    canonical = os.path.abspath(os.path.normpath(os.fspath(path)))
     try:
         os.remove(canonical)
     except FileNotFoundError:

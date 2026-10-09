@@ -1356,7 +1356,7 @@ def generate_chat_history(conversation_history):
     output_file = "modules/conversation_history/chat_history.json"
     # Outside the try below: a read-only save stop must not be logged away.
     raise_if_save_stopped()
-
+    
     try:
         # Filter out system messages and keep only user and assistant messages
         chat_history = [msg for msg in conversation_history if msg["role"] != "system"]
