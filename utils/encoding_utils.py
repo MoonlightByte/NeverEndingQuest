@@ -36,7 +36,15 @@ from contextlib import nullcontext
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
-from utils.transient_filesystem import replace_target_is_read_only
+from utils.transient_filesystem import (
+    ON_READ_ONLY_FAIL,
+    ON_READ_ONLY_STOP,
+    ReadOnlySaveStop,
+    check_on_read_only,
+    raise_if_save_stopped,
+    record_save_stop,
+    replace_target_is_read_only,
+)
 
 
 # Comprehensive character mapping for problematic Unicode characters
@@ -199,7 +207,7 @@ def safe_json_load(filepath: str) -> Any:
 
 
 def safe_json_dump(data: Any, filepath: str, *, commit_guard=None,
-                   stop_if_read_only: bool = False, **kwargs) -> None:
+                   on_read_only: str = ON_READ_ONLY_STOP, **kwargs) -> None:
     """
     Save JSON with sanitization and an atomic same-directory replacement.
 
@@ -208,9 +216,17 @@ def safe_json_dump(data: Any, filepath: str, *, commit_guard=None,
     complete old document or the complete new one, never a partially-written
     JSON document.
 
-    ``stop_if_read_only`` raises the replace error instead of waiting when the
-    target is read-only, for a caller that handles the raise (issue #654).
+    A read-only target never clears by waiting (issue #654). With
+    ``on_read_only="stop"`` (the default) the save raises ReadOnlySaveStop and
+    the session stops; ``"raise"`` and ``"fail"`` raise the replace error, for
+    a caller that handles the raise (``"fail"`` only for a file that is not
+    game state).
     """
+    on_read_only = check_on_read_only(on_read_only)
+    stop_on_read_only = on_read_only == ON_READ_ONLY_STOP
+    if on_read_only != ON_READ_ONLY_FAIL:
+        # No game state is written after a read-only save stopped the session.
+        raise_if_save_stopped()
     # Sanitize data before saving
     clean_data = sanitize_dict(data) if isinstance(data, (dict, list)) else data
     
@@ -244,8 +260,9 @@ def safe_json_dump(data: Any, filepath: str, *, commit_guard=None,
         # the destination. One blip must not fail the write (a live
         # acceptance run lost a combat to this class in the sibling
         # writer). Retain the write until the transient sharing lock clears.
-        # A read-only target never clears by waiting, so a caller that opted
-        # in gets the error instead (issue #654).
+        # A read-only target never clears by waiting, so the save stops the
+        # session, or raises for a caller that passed on_read_only="raise" or
+        # "fail" (issue #654).
         while True:
             try:
                 with commit_guard() if commit_guard is not None else nullcontext():
@@ -255,8 +272,10 @@ def safe_json_dump(data: Any, filepath: str, *, commit_guard=None,
                 winerror = getattr(replace_error, 'winerror', None)
                 if winerror not in (5, 32):
                     raise
-                if (winerror == 5 and stop_if_read_only
-                        and replace_target_is_read_only(filepath)):
+                if winerror == 5 and replace_target_is_read_only(filepath):
+                    if stop_on_read_only:
+                        record_save_stop(filepath)
+                        raise ReadOnlySaveStop(filepath) from replace_error
                     raise
                 time.sleep(0.1)
 

@@ -197,11 +197,20 @@ Startup/locking delta verified 2026-09-05 against the `fix/issue-114-startup-rep
   Startup's optional `commit_guard` checks supersession before a late replace.
   The #323 candidate adds the same optional replacement authority to sibling
   `safe_json_dump`; unguarded callers keep their existing behavior.
-- A read-only target never clears by waiting. A caller that passes
-  `stop_if_read_only=True` gets False (`safe_write_json`) or the raise
-  (`safe_json_dump`) instead, and its `.bak` keeps a write bit; every
-  other caller keeps the wait. Only the start-path registry writers opt in
-  (issue #654).
+- A read-only target never clears by waiting, so a save to one stops the
+  session (issue #654). The shared writers raise `ReadOnlySaveStop` and record
+  the stop. From then on every game-state save raises it at once and writes
+  nothing, as does every `_interruptible_wait` and every web or headless input
+  boundary. `main_game_loop` catches the stop and shows one system line naming
+  the file, and the session ends as a read-only start does. A stop that a
+  caller swallows ends the session at the top of the next loop turn.
+  - Only an explicit keyword changes this. With `on_read_only="raise"` (the
+    start-path registry writers) the save returns False (`safe_write_json`)
+    or raises the plain error (`safe_json_dump`), and records nothing.
+    `on_read_only="fail"` (the web message cache, which is not game state)
+    does the same and keeps writing after a stop.
+  - Every `.bak` keeps a write bit.
+  - WinError 32 and other denials keep the wait.
 - A read-only `modules/conversation_history/conversation_history.json`
   refuses the start instead. `_main_game_loop` checks it first, before any
   start path writes it or calls a model, shows one system line, and returns.

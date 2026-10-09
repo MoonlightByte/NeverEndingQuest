@@ -638,12 +638,16 @@ def add_to_message_cache(message, *, commit_guard=None):
                     message_cache.extend(base)
                 return False
             candidate = (base + [dict(message)])[-MESSAGE_CACHE_SIZE:]
+            # The cache is not game state: a read-only cache fails this write
+            # instead of stopping the game, and it still runs after a save
+            # stop, so the stop line reaches the browser (issue #654).
             if not safe_write_json(
                 MESSAGE_CACHE_FILE,
                 candidate,
                 create_backup=False,
                 acquire_lock=False,
                 commit_guard=commit_guard,
+                on_read_only="fail",
             ):
                 return False
             with commit_guard() if commit_guard is not None else nullcontext():

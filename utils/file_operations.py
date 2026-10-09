@@ -70,7 +70,13 @@ from utils.capture.live_provider_call import LiveProviderSuperseded
 from utils.module_refresh_lock import RUNTIME_LOCKS_DIR
 from utils.path_transaction_lock import path_transaction_lock
 from utils.transient_filesystem import (
+    ON_READ_ONLY_FAIL,
+    ON_READ_ONLY_STOP,
+    ReadOnlySaveStop,
+    check_on_read_only,
     is_transient_filesystem_error,
+    raise_if_save_stopped,
+    record_save_stop,
     replace_target_is_read_only,
 )
 
@@ -154,23 +160,21 @@ class AtomicFileWriter:
         ownership.__exit__(None, None, None)
         logger.debug("Released lock for %s", canonical)
     
-    def create_backup(self, filepath: str, *, stop_if_read_only: bool = False) -> Optional[str]:
+    def create_backup(self, filepath: str) -> Optional[str]:
         """Create backup of existing file"""
         if not os.path.exists(filepath):
             return None
 
         backup_path = f"{filepath}.bak"
         try:
-            if stop_if_read_only:
-                # copy2 copies a read-only source's mode onto the .bak, and
-                # copy2 onto that .bak then fails for good, even after the
-                # player clears the target (issue #654). Clear a stale one.
-                _restore_owner_write_bit(backup_path)
+            # copy2 copies a read-only source's mode onto the .bak, and copy2
+            # onto that .bak then fails for good, even after the player
+            # clears the target (issue #654). Clear a stale one.
+            _restore_owner_write_bit(backup_path)
             shutil.copy2(filepath, backup_path)
-            if stop_if_read_only:
-                # The next write, once the target is cleared, must not meet
-                # the read-only .bak this copy just made.
-                _restore_owner_write_bit(backup_path)
+            # The next write, once the target is cleared, must not meet the
+            # read-only .bak this copy just made.
+            _restore_owner_write_bit(backup_path)
             logger.debug(f"Created backup: {backup_path}")
             return backup_path
         except Exception as e:
@@ -179,7 +183,7 @@ class AtomicFileWriter:
     
     def write_json(self, filepath: str, data: Dict[str, Any], 
                    create_backup: bool = True, acquire_lock: bool = True,
-                   *, commit_guard=None, stop_if_read_only: bool = False) -> bool:
+                   *, commit_guard=None, on_read_only: str = ON_READ_ONLY_STOP) -> bool:
         """
         Atomically write JSON data to file with optional backup and locking.
 
@@ -188,17 +192,25 @@ class AtomicFileWriter:
             data: Dictionary to write as JSON
             create_backup: Whether to create a backup before writing
             acquire_lock: Whether to use file locking
-            stop_if_read_only: Return False instead of waiting when the
-                target is read-only, for a caller that handles False
+            on_read_only: For a read-only target, "stop" (the default) raises
+                ReadOnlySaveStop and the session stops; "raise" and "fail"
+                return False instead of waiting, for a caller that handles
+                False ("fail" only for a file that is not game state)
 
         Returns:
             True if successful, False otherwise
         """
         filepath = str(filepath)  # Handle Path objects
+        on_read_only = check_on_read_only(on_read_only)
+        stop_on_read_only = on_read_only == ON_READ_ONLY_STOP
+        if on_read_only != ON_READ_ONLY_FAIL:
+            # No game state is written after a read-only save stopped the
+            # session.
+            raise_if_save_stopped()
         temp_path = f"{filepath}.tmp"
         backup_path = None
         lock_acquired = False
-        
+
         try:
             dir_path = os.path.dirname(filepath)
             if dir_path:
@@ -212,9 +224,7 @@ class AtomicFileWriter:
             
             # Create backup if requested and file exists
             if create_backup and os.path.exists(filepath):
-                backup_path = self.create_backup(
-                    filepath, stop_if_read_only=stop_if_read_only
-                )
+                backup_path = self.create_backup(filepath)
             
             # Ensure directory exists
             dir_path = os.path.dirname(filepath)
@@ -242,8 +252,9 @@ class AtomicFileWriter:
             # acceptance run lost an entire combat to a single WinError 5
             # here. Retry sharing contention patiently; nonretryable errors
             # still follow the existing error path below. A read-only target
-            # is not contention: waiting cannot clear it, so a caller that
-            # opted in gets False instead of an endless wait (issue #654).
+            # is not contention: waiting cannot clear it, so the save stops
+            # the session, or returns False for a caller that passed
+            # on_read_only="raise" or "fail" (issue #654).
             _replace_attempt = 0
             while True:
                 try:
@@ -254,8 +265,14 @@ class AtomicFileWriter:
                     winerror = getattr(replace_error, "winerror", None)
                     if winerror not in (5, 32):
                         raise
-                    if (winerror == 5 and stop_if_read_only
-                            and replace_target_is_read_only(filepath)):
+                    if winerror == 5 and replace_target_is_read_only(filepath):
+                        if stop_on_read_only:
+                            record_save_stop(filepath)
+                            logger.warning(
+                                "Stopping: the save to %s cannot finish, "
+                                "the file is read-only (WinError 5)", filepath
+                            )
+                            raise ReadOnlySaveStop(filepath) from replace_error
                         logger.warning(
                             "Not retrying the write to %s: the file is "
                             "read-only (WinError 5)", filepath
@@ -273,8 +290,8 @@ class AtomicFileWriter:
             # logger.info(f"Successfully wrote {filepath}")
             
             return True
-            
-        except LiveProviderSuperseded:
+
+        except (LiveProviderSuperseded, ReadOnlySaveStop):
             raise
         except Exception as e:
             logger.error(f"Error writing {filepath}: {e}")
@@ -349,11 +366,11 @@ atomic_writer = AtomicFileWriter()
 # Convenience functions
 def safe_write_json(filepath: str, data: Dict[str, Any], 
                    create_backup: bool = True, acquire_lock: bool = True,
-                   *, commit_guard=None, stop_if_read_only: bool = False) -> bool:
+                   *, commit_guard=None, on_read_only: str = ON_READ_ONLY_STOP) -> bool:
     """Atomically write JSON data to file"""
     return atomic_writer.write_json(filepath, data, create_backup, acquire_lock,
                                     commit_guard=commit_guard,
-                                    stop_if_read_only=stop_if_read_only)
+                                    on_read_only=on_read_only)
 
 def safe_read_json(filepath: str, acquire_lock: bool = False) -> Optional[Dict[str, Any]]:
     """Safely read JSON file"""
