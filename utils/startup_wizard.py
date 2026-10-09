@@ -27,6 +27,7 @@ from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T092", "utils/startup_wizard.py", 1539)
 register_callsite("T093", "utils/startup_wizard.py", 1665)
+register_callsite("T124", "utils/startup_wizard.py", 765)
 from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
 from utils.startup_prompt_builder import build_character_creation_system_prompt as _build_character_creation_system_prompt
@@ -763,7 +764,7 @@ def _review_startup_response(conversation, proposal, committed_facts, *,
     while True:
         raw = get_ai_response(review_messages, {"type": "json_object"},
                               persist_response=False, live_scope=live_scope,
-                              startup_phase="startup_review")
+                              startup_phase="startup_review", task_id="T124")
         try:
             return parse_startup_review(raw)
         except ValueError as exc:
@@ -2028,8 +2029,11 @@ def _startup_configuration_handback(exc, provider, revision, scope):
 
 
 def get_ai_response(conversation, response_format=None, *, persist_response=True, live_scope=None,
-                    startup_phase="startup_interview"):
-    """Run T092 through shared cancellable transport; borrowed scope stays open."""
+                    startup_phase="startup_interview", task_id="T092"):
+    """Run T092 (author) or T124 (semantic review) through shared cancellable transport.
+
+    The borrowed scope stays open.
+    """
     from utils.capture.live_provider_call import (
         LiveProviderSuperseded, finish_live_turn_scope, open_live_turn_scope,
         _interruptible_wait, _delay_for_error,
@@ -2058,7 +2062,7 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                 main_cfg = profiles[provider]
                 revision = configuration_revision(provider)
                 response = capture_and_fanout(
-                    "T092", api_client.create_completion,
+                    task_id, api_client.create_completion,
                     _request_provider=provider, _live_selected="required",
                     _detached_scope=scope,
                     messages=copy.deepcopy(request_messages),

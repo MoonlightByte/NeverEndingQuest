@@ -122,6 +122,19 @@ _declare(
     ),
 )
 _declare(
+    "T124",
+    _profiles(
+        "OPENAI_GPT56_LUNA_LOW",
+        "DM_MAIN_GEMINI_PRO_LOW",
+        "DM_MAIN_LEGACY",
+        "DM_MAIN_LMSTUDIO",
+    ),
+    note="Startup semantic reviewer (#682), split from T092 so the reviewer binds alone. OpenAI=luna|low: at "
+         "luna|none it invented requirements in three acceptance runs (a sheet-approval step, a required null, "
+         "shifting wording demands). Gemini/legacy/lmstudio keep T092's profiles. Escalate to terra|low only on "
+         "a reviewer invention at luna|low (T040 precedent).",
+)
+_declare(
     "T024",
     _profiles(
         "OPENAI_GPT56_LUNA_NONE",
@@ -749,6 +762,7 @@ OPENAI_OUTPUT_CEILING_CHARS: Mapping[str, int] = {
     "T084": 18448,  # n=3830 p95=4612 max=7811
     "T090": 5892,  # n=73 p95=1473 max=1580
     "T092": 18808,  # n=34 p95=4702 max=4747
+    "T124": 4972,  # startup reviewer (split from T092): n=25 p95=1243 max=1347
     "T096": 7412,  # n=353 p95=1853 max=1896
     "T097": 3012,  # n=122 p95=753 max=826
     "T105": 2776,  # n=477 p95=694 max=1275
@@ -777,7 +791,7 @@ REGISTERED_TASK_IDS = tuple(
     "T054 T059 T063 T064 T065 T066 T067 T078 T079 T081 T082 T083 T084 "
     "T085 T086 T087 T088 T089 T090 T092 T093 T094 T095 T096 T097 T098 "
     "T099 T100 T101 T102 T103 T105 T107 T108 T112 T113 T114 "
-    "T115 T116 T117 T118 T119 T120 T121 T122 T123".split()
+    "T115 T116 T117 T118 T119 T120 T121 T122 T123 T124".split()
 )
 EXPECTED_TASK_IDS = tuple(sorted(REGISTERED_TASK_IDS + ("T104",)))
 
