@@ -44,6 +44,7 @@ from jsonschema import validate, ValidationError
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import sanitize_text, safe_json_load, safe_json_dump
 from utils.file_operations import FileLockError, atomic_writer
+from utils.transient_filesystem import ReadOnlySaveStop, raise_if_save_stopped
 from utils.module_refresh_lock import module_refresh_lock
 from core.managers.status_manager import status_generating_summary
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -409,6 +410,8 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
                 raise DepartureSummaryError(
                     "T015 exhausted retries after schema validation failures"
                 )
+        except ReadOnlySaveStop:
+            raise
         except Exception as e_gen: # Renamed to avoid conflict
             debug_print(f"Unexpected error in update_location_json: {str(e_gen)}")
             if attempt < max_retries - 1:
@@ -557,14 +560,20 @@ Your writing should feel immersive, literary, and grounded -- like a historical 
         except OSError as e:
             debug_print(f"Error removing {dump_file_path}: {e}")
 
+    # A read-only save stop is an IOError too; it ends the session, so it
+    # passes these diagnostic dumps' catches.
     try:
         safe_json_dump(messages, dump_file_path)
+    except ReadOnlySaveStop:
+        raise
     except IOError as e:
         debug_print(f"Error writing to {dump_file_path}: {e}")
 
     trimmed_data = trim_conversation(messages)
     try:
         safe_json_dump(trimmed_data, 'trimmed_summary_dump.json')
+    except ReadOnlySaveStop:
+        raise
     except IOError as e:
         debug_print(f"Error writing to trimmed_summary_dump.json: {e}")
 
@@ -572,6 +581,8 @@ Your writing should feel immersive, literary, and grounded -- like a historical 
     dialogue_data.insert(1, structured_projection_message)
     try:
         safe_json_dump(dialogue_data, 'dialogue_summary.json')
+    except ReadOnlySaveStop:
+        raise
     except IOError as e:
         debug_print(f"Error writing to dialogue_summary.json: {e}")
 
@@ -606,6 +617,8 @@ Your writing should feel immersive, literary, and grounded -- like a historical 
         # Sanitize AI response to prevent encoding issues
         adventure_summary = sanitize_text(adventure_summary)
         return adventure_summary
+    except ReadOnlySaveStop:
+        raise
     except Exception as e:
         debug_print(f"ERROR: Failed to generate adventure summary. Error: {str(e)}")
         return None
@@ -675,6 +688,7 @@ def _fsync_parent_directory(path):
 
 
 def _durable_remove(path):
+    raise_if_save_stopped()
     try:
         os.remove(path)
     except FileNotFoundError:
@@ -855,6 +869,8 @@ def _recover_pending_summary_targets(pending, pending_path, area_path, journal_p
                 raise DepartureSummaryError(
                     f"recovery verification failed for {path}"
                 )
+    except ReadOnlySaveStop:
+        raise
     except Exception as exc:
         if isinstance(exc, DepartureSummaryError):
             detail = str(exc)
@@ -949,6 +965,8 @@ def _commit_departure_summary_targets_locked(
     }
     try:
         safe_json_dump(pending_record, pending_path)
+    except ReadOnlySaveStop:
+        raise
     except Exception as exc:
         raise DepartureSummaryError(
             f"could not create departure summary recovery marker: {exc}"
@@ -973,6 +991,10 @@ def _commit_departure_summary_targets_locked(
             raise DepartureSummaryError(
                 "departure summary commit verification failed"
             )
+    except ReadOnlySaveStop:
+        # No rollback or marker write under a read-only save stop: the staged
+        # marker stays, and the next departure's recovery finishes it.
+        raise
     except Exception as commit_exc:
         pending_record["status"] = "rollback_required"
         pending_record["commit_error"] = str(commit_exc)

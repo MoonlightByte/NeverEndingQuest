@@ -85,6 +85,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from utils.enhanced_logger import info, warning
 from utils.file_operations import safe_read_json
 from utils import travel_map
+from utils.transient_filesystem import ReadOnlySaveStop
 
 # The engine's work bound per request (WORLD_MAP.md): a hop costs a move per
 # member plus its time; membership edits and the start moves take the rest.
@@ -594,6 +595,8 @@ def realign(checkpoint: Optional[Dict[str, Any]] = None, *, root: str = ".") -> 
         if fallback and fallback not in done:
             return _align(root, fallback, live, tracker, "after a move", *_journal(checkpoint, live, here))
         return _align(root, align_id(), live, tracker, "after a move" if cp else "align")
+    except ReadOnlySaveStop:
+        raise  # a read-only save ends the session; it is not a failure to fail forward from
     except Exception as exc:  # fail forward: the tracker already stands
         warning("TRAVEL: the engine party was not aligned (%s)" % exc, category="location_transitions")
         return None

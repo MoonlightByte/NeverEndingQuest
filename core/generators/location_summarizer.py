@@ -25,6 +25,7 @@ from utils.token_estimator import TokenEstimator
 from core.ai import api_client
 from core.combat.invocation import InvocationSupersededError
 from utils.capture.live_provider_call import LiveProviderSuperseded
+from utils.transient_filesystem import ReadOnlySaveStop
 import config
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
@@ -691,7 +692,7 @@ Your output should read like a published game codex, narrative recap, or campaig
                 # Add a note about AI generation
                 return f"{chronicle}\n\n[AI-Generated Chronicle Summary]"
                 
-            except (LiveProviderSuperseded, InvocationSupersededError):
+            except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
                 raise
             except Exception as e:
                 if attempt < max_retries - 1:

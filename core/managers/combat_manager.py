@@ -222,6 +222,7 @@ from core.managers.combat_transaction import (
 # Import safe JSON functions
 from utils.encoding_utils import safe_json_load
 from utils.file_operations import safe_write_json
+from utils.transient_filesystem import ReadOnlySaveStop, raise_if_save_stopped
 from utils.module_refresh_lock import module_refresh_lock
 import core.ai.cumulative_summary as cumulative_summary
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
@@ -329,7 +330,7 @@ def _finalize_t043_resume_exchange(
     if response_content is None and retry_provider is not None:
         try:
             response_content = retry_provider(None)
-        except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError):
+        except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as exc:
             parse_error = exc
@@ -351,7 +352,7 @@ def _finalize_t043_resume_exchange(
             break
         try:
             response_content = retry_provider(parse_error)
-        except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError):
+        except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as exc:
             parse_error = exc
@@ -637,6 +638,8 @@ def load_json_file(file_path):
 def save_json_file(file_path, data):
     try:
         safe_write_json(file_path, data)
+    except ReadOnlySaveStop:
+        raise  # the read-only save stop ends the session, not just this save
     except Exception as e:
         error(f"FILE_OP: Failed to save {file_path}: {str(e)}", category="file_operations")
 
@@ -1240,8 +1243,8 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
                 debug(f"VALIDATION: Invalid JSON from validation model (Attempt {attempt + 1})", category="combat_validation")
                 debug(f"VALIDATION: Problematic response: {validation_response}", category="combat_validation")
                 continue
-                
-        except (LiveProviderSuperseded, InvocationSupersededError):
+
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as e:
             debug(f"VALIDATION: Validation error - {str(e)}", category="combat_validation")
@@ -3631,6 +3634,8 @@ def _run_combat_simulation(
                combat_state["phase"] = "awaiting_actor"
            save_json_file(json_file_path, encounter_data)
        print(f"[COMBAT_MANAGER] Encounter loaded: {len(encounter_data.get('creatures', []))} creatures")
+   except ReadOnlySaveStop:
+       raise
    except Exception as e:
        print(f"[COMBAT_MANAGER] Exception loading encounter: {str(e)}")
        error(f"FAILURE: Failed to load encounter file {json_file_path}", exception=e, category="file_operations")
@@ -4117,7 +4122,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                **{k: v for k, v in combat_config.items() if k != "model"})
            _require_current_combat_invocation(invocation_claim)
 
-       except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError):
+       except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
            raise
        except Exception as e:
            resume_stage_failed = True
@@ -4303,7 +4308,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                    # validation_result is now the full feedback string
                    conversation_history.append({"role": "user", "content": validation_result})
                    continue
-           except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError):
+           except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
                raise
            except Exception as e:
                error(f"FAILURE: AI call for initial scene failed on attempt {attempt + 1}", exception=e, category="combat_events")
@@ -4563,6 +4568,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                        name=player_name_display, token=GO_ON_TOKEN
                    )
                )
+               raise_if_save_stopped()
                try:
                    boundary_line = input(
                        f"{stats_display} "
@@ -4722,6 +4728,9 @@ This is narration only. Do not advance the round or apply any combat action."""
                category="combat_events",
            )
        else:
+           # The terminal's builtin input() has no stop hook: never ask for
+           # an action that could not be saved (issue #654).
+           raise_if_save_stopped()
            try:
                # Item 3: an open code-issued weapon roll asks with its own
                # [ROLL] line; the typed answer goes to the turn as is.
@@ -5746,7 +5755,7 @@ Rules:
                    else:
                        warning("VALIDATION: Max retries exceeded for combat validation. Using last response.", category="combat_validation")
                        break
-           except (LiveProviderSuperseded, InvocationSupersededError):
+           except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
                raise
            except Exception as e:
                error(f"FAILURE: Failed to get or validate AI response (Attempt {attempt + 1}/{max_retries})", exception=e, category="combat_events")

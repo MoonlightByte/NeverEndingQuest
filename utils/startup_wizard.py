@@ -1844,6 +1844,7 @@ def save_character_to_module(character_data, module_name, *, live_scope=None, pr
     """Publish one canonical root sheet, never replace a different identity."""
     from utils.file_operations import atomic_writer
     from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.transient_filesystem import ReadOnlySaveStop
     with _startup_operation(live_scope) as scope:
         _emit_startup_phase("startup_character_commit")
         data = copy.deepcopy(character_data)
@@ -1867,7 +1868,7 @@ def save_character_to_module(character_data, module_name, *, live_scope=None, pr
             if not safe_write_json(char_file, data, acquire_lock=False, commit_guard=guard):
                 return False
             return safe_json_load(char_file) == data
-        except (LiveProviderSuperseded, FileExistsError):
+        except (LiveProviderSuperseded, FileExistsError, ReadOnlySaveStop):
             raise
         except Exception as exc:
             warning(f"Character publication pending: {exc}", category="startup")
@@ -2034,6 +2035,7 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
         LiveProviderSuperseded, finish_live_turn_scope, open_live_turn_scope,
         _interruptible_wait, _delay_for_error,
     )
+    from utils.transient_filesystem import ReadOnlySaveStop
     from model_config import get_provider
     from utils.startup_provider_recovery import configuration_revision
 
@@ -2076,7 +2078,7 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                     conversation.append({"role": "assistant", "content": content})
                     save_startup_conversation(conversation, live_scope=scope)
                 return content
-            except LiveProviderSuperseded:
+            except (LiveProviderSuperseded, ReadOnlySaveStop):
                 raise
             except (StartupCancelled, KeyboardInterrupt, EOFError):
                 raise
@@ -2177,6 +2179,7 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
     from utils.capture.live_provider_call import (
         LiveProviderSuperseded, _interruptible_wait, _delay_for_error,
     )
+    from utils.transient_filesystem import ReadOnlySaveStop
 
     provider = request_provider or get_provider()
     profiles = {
@@ -2228,7 +2231,7 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
                     + raw + "\nCURRENT MODULE DATA:\n"
                     + json.dumps(load_module_for_ai_analysis(module_name), ensure_ascii=True)
                 )})
-            except LiveProviderSuperseded:
+            except (LiveProviderSuperseded, ReadOnlySaveStop):
                 raise
             except (StartupCancelled, KeyboardInterrupt, EOFError):
                 raise

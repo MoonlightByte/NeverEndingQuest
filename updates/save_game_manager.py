@@ -75,6 +75,7 @@ from typing import Dict, List, Optional, Tuple, Any
 from uuid import uuid4
 # Import our existing utilities
 from utils.file_operations import atomic_writer, safe_write_json, safe_read_json
+from utils.transient_filesystem import ReadOnlySaveStop, raise_if_save_stopped
 from web.shared_state import message_cache_lock
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import safe_json_load
@@ -928,6 +929,8 @@ class SaveGameManager:
         wait_reporter = _lifecycle_wait_reporter("Save")
         from utils.transient_filesystem import is_transient_filesystem_error
 
+        # After a read-only save stop, a Save writes nothing (issue #654).
+        raise_if_save_stopped()
         try:
             while True:
                 try:
@@ -1228,6 +1231,8 @@ class SaveGameManager:
             info(f"SUCCESS: {success_msg}", category="save_game")
             return True, success_msg
             
+        except ReadOnlySaveStop:
+            raise
         except Exception as e:
             error_msg = f"Failed to create save game: {str(e)}"
             error(f"FAILURE: {error_msg}", category="save_game")

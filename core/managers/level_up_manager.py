@@ -63,6 +63,7 @@ register_callsite("T048", "core/managers/level_up_manager.py", 329)
 from utils.file_operations import safe_read_json
 from updates.update_character_info import normalize_character_name, load_schema
 from utils.encoding_utils import safe_json_dump
+from utils.transient_filesystem import ReadOnlySaveStop
 from utils.level_up_contract import (LevelUpTurn, parse_level_up_stage,
                                      parse_level_up_validation_response)
 from utils.level_up_workspace import (LevelUpWorkspace, merge_domain_changes, sheet_diff,
@@ -216,7 +217,7 @@ class LevelUpSession:
         """THE protected boundary around _cycle(); only accepted narration reaches history."""
         try:
             return self._cycle()
-        except LiveProviderSuperseded:
+        except (LiveProviderSuperseded, ReadOnlySaveStop):
             raise
         except LiveProviderCompletedError:
             return self._hand_back(self._phase)
@@ -858,7 +859,7 @@ class LevelUpSession:
         """Accepted audit only; capture failure is not gameplay failure."""
         try:
             safe_json_dump(self.conversation, self.conversation_file, commit_guard=self.commit_guard)
-        except LiveProviderSuperseded:
+        except (LiveProviderSuperseded, ReadOnlySaveStop):
             raise
         except Exception as exc:
             print(f"[WARNING] Saving accepted level-up audit: {exc}")

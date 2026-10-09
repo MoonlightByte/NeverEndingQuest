@@ -84,6 +84,7 @@ from utils.encoding_utils import safe_json_load
 from utils.character_sheet_contract import normalize_for_runtime
 from utils.plot_formatting import format_plot_for_ai
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.transient_filesystem import raise_if_save_stopped
 from core.ai.atlas_builder import cached_atlas_for_module, format_atlas_for_conversation
 from core.combat.down_scene import (
     DOWN_RULES_MARKER,
@@ -1353,6 +1354,8 @@ FLAWS: {npc_data['flaws']}
 def generate_chat_history(conversation_history):
     """Generate a lightweight chat history without system messages"""
     output_file = "modules/conversation_history/chat_history.json"
+    # Outside the try below: a read-only save stop must not be logged away.
+    raise_if_save_stopped()
     
     try:
         # Filter out system messages and keep only user and assistant messages

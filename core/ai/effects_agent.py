@@ -20,6 +20,7 @@ from utils.capture.live_provider_call import (
     LiveProviderSuperseded,
 )
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+from utils.transient_filesystem import ReadOnlySaveStop
 from utils.character_sheet_contract import extract_json_object
 
 
@@ -277,7 +278,7 @@ def classify_effect(character_name, change_description, sheet, now_scalar, max_a
                     result["effect"], now_scalar, character_name, change_description
                 )
             return result
-        except (LiveProviderCompletedError, LiveProviderSuperseded):
+        except (LiveProviderCompletedError, LiveProviderSuperseded, ReadOnlySaveStop):
             # A provider refusal cannot heal by reissuing the same request
             # (#240), and a supersession must reach the caller; neither is a
             # contract failure to correct (#432, D-432-4(iii)).

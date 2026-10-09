@@ -21,6 +21,7 @@ import model_config
 from utils.capture.file_writer import CaptureFileWriter
 from utils.capture.openai_caller import call_openai_variant
 from utils.capture.gemini_caller import call_gemini_variant
+from utils.transient_filesystem import raise_if_save_stopped
 
 # Shared thread pool - initialized once
 _executor = ThreadPoolExecutor(max_workers=8)
@@ -400,6 +401,9 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         response = capture_and_fanout("T013", client.chat.completions.create,
                                       messages=messages, model=..., temperature=0.7)
     """
+    # Issue #654: after a read-only save stop, no model call is made, whatever
+    # a caller's except clauses do. A no-op while no stop is recorded.
+    raise_if_save_stopped()
     live_selected = kwargs.pop("_live_selected", None)
     # Detached execution context (issue #214): an off-thread caller (the
     # startup welcome) passes its own cancellable scope + status sink so its

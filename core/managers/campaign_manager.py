@@ -87,6 +87,7 @@ register_callsite("T039", "core/managers/campaign_manager.py", 3245)
 import config
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.file_operations import safe_write_json
+from utils.transient_filesystem import ReadOnlySaveStop, raise_if_save_stopped
 from utils.module_path_manager import ModulePathManager
 from utils.module_refresh_lock import module_refresh_lock
 from utils.path_transaction_lock import path_transaction_lock
@@ -817,6 +818,7 @@ def _validate_receipt_committed_projection(
 
 def _durable_write_json(path: str, payload: Dict[str, Any]) -> None:
     """Write transaction metadata durably without a stale sentinel lock."""
+    raise_if_save_stopped()
     canonical = os.path.abspath(os.path.normpath(path))
     parent = os.path.dirname(canonical)
     if parent:
@@ -846,6 +848,7 @@ def _durable_write_json(path: str, payload: Dict[str, Any]) -> None:
 
 
 def _durable_remove(path: str) -> None:
+    raise_if_save_stopped()
     try:
         os.remove(path)
     except FileNotFoundError:
@@ -2361,6 +2364,10 @@ class CampaignManager:
             )
             try:
                 transition_result = transition_callable()
+            except ReadOnlySaveStop:
+                # Keep the stop's type and write nothing more: the prepared
+                # intent stays for the next start's recovery (issue #654).
+                raise
             except BaseException as transition_exc:
                 current = safe_json_load("party_tracker.json")
                 if current == persisted:

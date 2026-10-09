@@ -38,6 +38,7 @@ register_callsite("T049", "core/managers/storage_processor.py", 313)
 import config
 from core.ai import api_client
 from utils.encoding_utils import safe_json_load, safe_json_dump
+from utils.transient_filesystem import ReadOnlySaveStop
 from utils.module_path_manager import ModulePathManager
 import jsonschema
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -390,6 +391,8 @@ For "What's in our storage here?":
                     "processed_at": datetime.now().isoformat()
                 }
                 
+            except ReadOnlySaveStop:
+                raise
             except Exception as e:
                 error(f"FAILURE: Storage processing exception on attempt {attempt + 1}", exception=e, category="storage_operations")
                 if max_attempts is not None and attempt >= max_attempts:
