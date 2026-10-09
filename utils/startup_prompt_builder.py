@@ -210,8 +210,9 @@ Earlier rejection feedback is an allegation to verify, not a rules authority;
 recheck it independently rather than treating repetition as proof.
 The payload separates authored_proposal (the untouched model response) from
 proposal (the normalized canonical candidate to be saved if accepted).
-Apply author-only restrictions, including not inventing equipment_effects or
-savingThrowBonuses, to authored_proposal. When normalization_provenance reports
+Apply author-only restrictions, such as not inventing equipment_effects, to
+authored_proposal. Attribute a field to the author only when authored_proposal
+itself contains it. When normalization_provenance reports
 an applied engine_projection, its AC-target effects and matching status totals
 are engine output, even when armorClass and hit points did not change. Do not
 attribute those additions to the author or demand their removal on retry.
