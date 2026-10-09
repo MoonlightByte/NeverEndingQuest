@@ -141,11 +141,11 @@ _declare(
         "DM_MAIN_LEGACY",
         "DM_MAIN_LMSTUDIO",
     ),
-    note="Startup semantic reviewer (#682), split from T092 so the reviewer binds alone. OpenAI=luna|low: at "
-         "luna|none it invented requirements in three acceptance runs (a sheet-approval step, a required null, "
-         "shifting wording demands). Gemini/legacy/lmstudio keep T092's profiles. OpenAI=terra|low since #682 "
-         "acceptance run 4: at luna|low it twice blamed the author for engine-written savingThrowBonuses "
-         "(T040 precedent).",
+    note="Startup semantic reviewer (#682), split from T092 so the reviewer binds alone. OpenAI=terra|low "
+         "(T040 precedent). History: at luna|none (shared with T092, acceptance runs 1-3) it invented "
+         "requirements (a sheet-approval step, a required null, shifting wording demands); at luna|low (run 4) "
+         "it twice blamed the author for engine-written savingThrowBonuses. Gemini/legacy/lmstudio keep T092's "
+         "profiles.",
 )
 _declare(
     "T024",
