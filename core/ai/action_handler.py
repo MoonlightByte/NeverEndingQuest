@@ -3204,6 +3204,8 @@ def get_module_starting_location(module_name: str) -> tuple:
                     info(f"SUCCESS: Cached AI-determined starting location for {module_name}", category="module_loading")
                 else:
                     warning(f"FILE_OP: Starting-location cache skipped for {module_name}; registry changed or refresh was busy", category="module_loading")
+            except ReadOnlySaveStop:
+                raise
             except Exception as cache_err:
                 # INT-H5: a cache-WRITE failure must not discard an already-valid
                 # starting location and strand the player; log and continue.
@@ -3211,6 +3213,8 @@ def get_module_starting_location(module_name: str) -> tuple:
 
         return starting_location
 
+    except ReadOnlySaveStop:
+        raise
     except Exception as e:
         error(f"FAILURE: Could not get starting location for {module_name}: {e}", category="module_loading")
         # INT-H5: recover a REAL location from the module's area files rather
@@ -4060,6 +4064,8 @@ def process_action(
                         run_location_transition,
                     )
                 )
+            except ReadOnlySaveStop:
+                raise
             except Exception as e:
                 error(
                     "FAILURE: Could not publish cross-module location transition",
@@ -4362,6 +4368,8 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             from core.managers.checks_runtime import stage_roll_check
 
             outcome = stage_roll_check(parameters)
+        except ReadOnlySaveStop:
+            raise
         except Exception as exc:
             error("FAILURE: rollCheck failed safely", exception=exc, category="character_updates")
             return create_return(status="error", response_data={"error_message": "The check could not be staged safely."})
@@ -4377,6 +4385,8 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             from core.managers.experience_runtime import award_experience
 
             outcome = award_experience(parameters)
+        except ReadOnlySaveStop:
+            raise
         except Exception as exc:
             error("FAILURE: awardExperience failed safely", exception=exc, category="character_updates")
             return create_return(status="error", response_data={"error_message": "The XP award could not be applied safely."})
