@@ -191,6 +191,10 @@ sheet approval, and never tell the author to set whole_build_approved on a
 continue_interview. A continue_interview that asks once for a still-open player
 choice after approval is valid. Check the background's Origin feat and skills,
 by name, against the startup_rules_reference.
+A proposal that reaches you has already passed the game's schema validation.
+Do not request schema fields, placeholders or null values. The proposal shown
+(the canonical candidate) is authoritative over any memory of earlier drafts;
+normalization_provenance lists what the game dropped or derived.
 Reject a proposal that loses approved choices, claims uncommitted facts or
 finalizes without whole-build approval. Give precise corrective feedback.
 Set needs_player_clarification true only when actual player input is needed;
