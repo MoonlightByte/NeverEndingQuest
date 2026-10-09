@@ -124,15 +124,16 @@ _declare(
 _declare(
     "T124",
     _profiles(
-        "OPENAI_GPT56_LUNA_LOW",
+        "OPENAI_GPT56_TERRA_LOW",
         "DM_MAIN_GEMINI_PRO_LOW",
         "DM_MAIN_LEGACY",
         "DM_MAIN_LMSTUDIO",
     ),
     note="Startup semantic reviewer (#682), split from T092 so the reviewer binds alone. OpenAI=luna|low: at "
          "luna|none it invented requirements in three acceptance runs (a sheet-approval step, a required null, "
-         "shifting wording demands). Gemini/legacy/lmstudio keep T092's profiles. Escalate to terra|low only on "
-         "a reviewer invention at luna|low (T040 precedent).",
+         "shifting wording demands). Gemini/legacy/lmstudio keep T092's profiles. OpenAI=terra|low since #682 "
+         "acceptance run 4: at luna|low it twice blamed the author for engine-written savingThrowBonuses "
+         "(T040 precedent).",
 )
 _declare(
     "T024",
