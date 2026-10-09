@@ -248,6 +248,19 @@ class SaveGameManager:
             pass
 
     @staticmethod
+    def _clear_departure_summary_runtime_marker() -> None:
+        """Discard departure-summary recovery from the replaced timeline."""
+        marker = os.path.join(
+            "modules",
+            "conversation_history",
+            "pending_departure_summary.json",
+        )
+        try:
+            os.remove(marker)
+        except FileNotFoundError:
+            pass
+
+    @staticmethod
     def _restore_path_value(path):
         """Read a restore-owned node without following links out of the game."""
         if os.path.islink(path) or (hasattr(os.path, "isjunction") and os.path.isjunction(path)):
@@ -327,6 +340,7 @@ class SaveGameManager:
         for path in (
             "modules/encounters", "modules/.campaign.json.completion",
             "modules/conversation_history/pending_location_transition.json",
+            "modules/conversation_history/pending_departure_summary.json",
             # D4: removed by the restore, so a failed Load can put it back.
             "live_state.json.bak",
         ):
@@ -350,6 +364,7 @@ class SaveGameManager:
                     or normalized == "modules/.campaign.json.completion-epoch.json"
                     or normalized.startswith("modules/.campaign.json.completion/")
                     or normalized == "modules/conversation_history/pending_location_transition.json"
+                    or normalized == "modules/conversation_history/pending_departure_summary.json"
                 ):
                     continue
                 record(relative, recursive=True)
@@ -452,7 +467,8 @@ class SaveGameManager:
                      'modules/conversation_history/combat_conversation_history.json',
                      'modules/conversation_history/startup_conversation.json',
                      'modules/conversation_history/game_interface_cache.json',
-                     'modules/conversation_history/pending_location_transition.json'):
+                     'modules/conversation_history/pending_location_transition.json',
+                     'modules/conversation_history/pending_departure_summary.json'):
             path = os.path.normpath(path)
             if path not in source_files:
                 expected[path] = ('absent', None)
@@ -583,6 +599,7 @@ class SaveGameManager:
             "modules/.runtime_quarantine/",
             ".runtime_locks/",
             "modules/conversation_history/pending_location_transition.json",
+            "modules/conversation_history/pending_departure_summary.json",
             
             # CRITICAL: Exclude save directories to prevent recursive nesting
             "saved_games/",
@@ -1511,6 +1528,7 @@ class SaveGameManager:
             # campaign data on the next CampaignManager construction.
             self._restore_io(self._clear_campaign_completion_metadata)
             self._restore_io(self._clear_location_transition_runtime_marker)
+            self._restore_io(self._clear_departure_summary_runtime_marker)
             self._restore_io(self._verify_selected_restore,
                 original_inventory, source_files, directory_roots,
                 directories_to_clean + [
