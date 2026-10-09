@@ -53,6 +53,7 @@ from core.managers.combat_transaction import (
     write_weapon_attack,
 )
 from utils.encoding_utils import normalize_typography_deep, safe_json_load
+from utils.transient_filesystem import ReadOnlySaveStop
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -1173,7 +1174,7 @@ def _deliver_committed_turn(
                                 warning_codes=lint["warnings"],
                             )
                             break
-                except InvocationSupersededError:
+                except (InvocationSupersededError, ReadOnlySaveStop):
                     raise
                 except Exception as exc:
                     candidate = str(getattr(exc, "candidate", "") or "")
@@ -1753,7 +1754,7 @@ def execute_agentic_turn(
                 spell_references,
                 now_scalar=combat_now_scalar,
             )
-        except InvocationSupersededError:
+        except (InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as exc:
             # Keep the same persisted logical operation alive. Provider/network

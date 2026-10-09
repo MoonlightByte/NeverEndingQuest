@@ -111,6 +111,7 @@ from utils.capture.live_provider_call import (
     LiveProviderCompletedError,
     LiveProviderSuperseded,
 )
+from utils.transient_filesystem import ReadOnlySaveStop
 register_callsite("T079", "updates/update_character_info.py", 1692)
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Tuple, Dict, Any, Optional
@@ -2983,7 +2984,7 @@ Character Role: {character_role}
                 f.write(f"Clean response attempt:\n{clean_response if 'clean_response' in locals() else 'Not extracted'}\n")
             debug(f"JSON parse error details saved to: {debug_error_file}", category="character_updates")
             
-        except EngineRefusedChange:
+        except (EngineRefusedChange, ReadOnlySaveStop):
             raise
         except Exception as e:
             if isinstance(e, LiveProviderCompletedError):

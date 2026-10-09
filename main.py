@@ -3619,7 +3619,7 @@ def validate_ai_response(
         LiveProviderSuperseded, _interruptible_wait, get_live_provider_scope,
     )
     from utils.transient_filesystem import (
-        is_transient_filesystem_error, read_bytes_preserving_errors,
+        ReadOnlySaveStop, is_transient_filesystem_error, read_bytes_preserving_errors,
     )
 
     print("DEBUG: NPC validation running...")
@@ -4212,7 +4212,7 @@ def validate_ai_response(
                 require_current_invocation(invocation_claim)
             if detached_scope is not None and detached_scope.is_superseded():
                 raise LiveProviderSuperseded("scene review superseded")
-        except (InvocationSupersededError, LiveProviderSuperseded):
+        except (InvocationSupersededError, LiveProviderSuperseded, ReadOnlySaveStop):
             raise
         except Exception as provider_error:
             warning(
@@ -10702,6 +10702,7 @@ def _review_dm_candidate(
     )
     from core.npc.party_guardian import review_party_membership
     from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.transient_filesystem import ReadOnlySaveStop
 
     # Keep the extracted travel/validation contracts on their existing names.
     party_tracker_data = party
@@ -11386,7 +11387,7 @@ def _review_dm_candidate(
                 "approved_transition_plan": approved_transition_plan,
                 "review_feedback": copy.deepcopy(review_feedback),
             }
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as response_error:
             classification = classify_provider_error(response_error)

@@ -330,7 +330,7 @@ def _finalize_t043_resume_exchange(
     if response_content is None and retry_provider is not None:
         try:
             response_content = retry_provider(None)
-        except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError):
+        except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as exc:
             parse_error = exc
@@ -352,7 +352,7 @@ def _finalize_t043_resume_exchange(
             break
         try:
             response_content = retry_provider(parse_error)
-        except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError):
+        except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as exc:
             parse_error = exc
@@ -1243,8 +1243,8 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
                 debug(f"VALIDATION: Invalid JSON from validation model (Attempt {attempt + 1})", category="combat_validation")
                 debug(f"VALIDATION: Problematic response: {validation_response}", category="combat_validation")
                 continue
-                
-        except (LiveProviderSuperseded, InvocationSupersededError):
+
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as e:
             debug(f"VALIDATION: Validation error - {str(e)}", category="combat_validation")
@@ -4122,7 +4122,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                **{k: v for k, v in combat_config.items() if k != "model"})
            _require_current_combat_invocation(invocation_claim)
 
-       except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError):
+       except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
            raise
        except Exception as e:
            resume_stage_failed = True
@@ -4308,7 +4308,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                    # validation_result is now the full feedback string
                    conversation_history.append({"role": "user", "content": validation_result})
                    continue
-           except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError):
+           except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
                raise
            except Exception as e:
                error(f"FAILURE: AI call for initial scene failed on attempt {attempt + 1}", exception=e, category="combat_events")
@@ -5755,7 +5755,7 @@ Rules:
                    else:
                        warning("VALIDATION: Max retries exceeded for combat validation. Using last response.", category="combat_validation")
                        break
-           except (LiveProviderSuperseded, InvocationSupersededError):
+           except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
                raise
            except Exception as e:
                error(f"FAILURE: Failed to get or validate AI response (Attempt {attempt + 1}/{max_retries})", exception=e, category="combat_events")
