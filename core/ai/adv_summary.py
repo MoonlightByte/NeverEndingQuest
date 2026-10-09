@@ -44,6 +44,7 @@ from jsonschema import validate, ValidationError
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import sanitize_text, safe_json_load, safe_json_dump
 from utils.file_operations import FileLockError, atomic_writer
+from utils.transient_filesystem import ReadOnlySaveStop
 from utils.module_refresh_lock import module_refresh_lock
 from core.managers.status_manager import status_generating_summary
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -409,6 +410,8 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
                 raise DepartureSummaryError(
                     "T015 exhausted retries after schema validation failures"
                 )
+        except ReadOnlySaveStop:
+            raise
         except Exception as e_gen: # Renamed to avoid conflict
             debug_print(f"Unexpected error in update_location_json: {str(e_gen)}")
             if attempt < max_retries - 1:
@@ -557,14 +560,20 @@ Your writing should feel immersive, literary, and grounded -- like a historical 
         except OSError as e:
             debug_print(f"Error removing {dump_file_path}: {e}")
 
+    # A read-only save stop is an IOError too; it ends the session, so it
+    # passes these diagnostic dumps' catches.
     try:
         safe_json_dump(messages, dump_file_path)
+    except ReadOnlySaveStop:
+        raise
     except IOError as e:
         debug_print(f"Error writing to {dump_file_path}: {e}")
 
     trimmed_data = trim_conversation(messages)
     try:
         safe_json_dump(trimmed_data, 'trimmed_summary_dump.json')
+    except ReadOnlySaveStop:
+        raise
     except IOError as e:
         debug_print(f"Error writing to trimmed_summary_dump.json: {e}")
 
@@ -572,6 +581,8 @@ Your writing should feel immersive, literary, and grounded -- like a historical 
     dialogue_data.insert(1, structured_projection_message)
     try:
         safe_json_dump(dialogue_data, 'dialogue_summary.json')
+    except ReadOnlySaveStop:
+        raise
     except IOError as e:
         debug_print(f"Error writing to dialogue_summary.json: {e}")
 
@@ -606,6 +617,8 @@ Your writing should feel immersive, literary, and grounded -- like a historical 
         # Sanitize AI response to prevent encoding issues
         adventure_summary = sanitize_text(adventure_summary)
         return adventure_summary
+    except ReadOnlySaveStop:
+        raise
     except Exception as e:
         debug_print(f"ERROR: Failed to generate adventure summary. Error: {str(e)}")
         return None
