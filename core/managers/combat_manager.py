@@ -222,6 +222,7 @@ from core.managers.combat_transaction import (
 # Import safe JSON functions
 from utils.encoding_utils import safe_json_load
 from utils.file_operations import safe_write_json
+from utils.transient_filesystem import ReadOnlySaveStop
 from utils.module_refresh_lock import module_refresh_lock
 import core.ai.cumulative_summary as cumulative_summary
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
@@ -637,6 +638,8 @@ def load_json_file(file_path):
 def save_json_file(file_path, data):
     try:
         safe_write_json(file_path, data)
+    except ReadOnlySaveStop:
+        raise  # the read-only save stop ends the session, not just this save
     except Exception as e:
         error(f"FILE_OP: Failed to save {file_path}: {str(e)}", category="file_operations")
 
@@ -3631,6 +3634,8 @@ def _run_combat_simulation(
                combat_state["phase"] = "awaiting_actor"
            save_json_file(json_file_path, encounter_data)
        print(f"[COMBAT_MANAGER] Encounter loaded: {len(encounter_data.get('creatures', []))} creatures")
+   except ReadOnlySaveStop:
+       raise
    except Exception as e:
        print(f"[COMBAT_MANAGER] Exception loading encounter: {str(e)}")
        error(f"FAILURE: Failed to load encounter file {json_file_path}", exception=e, category="file_operations")
