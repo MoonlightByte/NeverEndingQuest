@@ -1667,7 +1667,7 @@ def startup_mechanics(character, *, provenance=None):
     if not isinstance(character, dict):
         return character, notes
     name = character.get("name", "Unknown")
-    from core.nql import armor_class
+    from core.nql import armor_class, stats
     projection = armor_class.project(character)
     if provenance is not None:
         provenance["engine_projection"] = {
@@ -1696,6 +1696,9 @@ def startup_mechanics(character, *, provenance=None):
                     ]),
                 },
                 "status": copy.deepcopy(projection.status),
+                # The engine's own derived fields on the projected sheet (#682): the
+                # engine writes them, so they are never an author change.
+                "engine_owned_fields": [f for f in stats.DERIVED_FIELDS if f in projection.sheet],
             })
         if projection.changed:
             parts = [f"{e.get('source')} {e.get('value'):+d}" if e.get("type") == "bonus" else f"{e.get('source')} {e.get('value')}"

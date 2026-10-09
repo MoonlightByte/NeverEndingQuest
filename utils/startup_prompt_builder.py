@@ -215,6 +215,8 @@ savingThrowBonuses, to authored_proposal. When normalization_provenance reports
 an applied engine_projection, its AC-target effects and matching status totals
 are engine output, even when armorClass and hit points did not change. Do not
 attribute those additions to the author or demand their removal on retry.
+Fields named in engine_projection.engine_owned_fields are engine-written: never
+an author change, even when absent from authored_proposal.
 An unavailable or incomplete projection does not certify fields as engine output.
 Still check actual typed equipment/features, approved choices, schema, arithmetic,
 and narration against the canonical candidate. Provenance is not whole-build
