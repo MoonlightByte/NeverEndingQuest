@@ -119,19 +119,19 @@ recall acceptance. Older sections below retain their historical pins.
 2. `core/npc/episode_store.py:51-73` - coordinate-derived episode identity.
 3. `core/npc/episode_store.py:190-294` - latch, strict query read, lock, revision, schema, atomic write.
 4. `core/npc/episode_store.py:296-378` - idempotent commit and witnessed retrieval.
-5. `core/npc/relationship_store.py:285-377` - relationship-sidecar persistence.
-6. `core/npc/relationship_store.py:422-500` - stable identity registration.
-7. `core/npc/relationship_store.py:765-875` - typed relationship event application.
-8. `core/npc/relationship_store.py:978-1045` - exactly-one legacy identity migration.
-9. `core/npc/relationship_store.py:1165-1260,1357-1377` - one locked join/rejoin mutation.
-10. `core/ai/action_handler.py:2473-2635` - roster lifecycle routing and receipt verification.
-11. `core/npc/episode_extraction.py:138-201` - T108 parsing/presence reconciliation.
-12. `core/npc/episode_capture.py:151-265` - location capture and POV projection.
-13. `core/npc/episode_capture.py:268-412` - combat capture and async dispatch.
-14. `core/npc/episode_recall.py:173-245` - T112 typed-anchor and current-location scoring.
-15. `core/npc/voice_context.py:130-323` - witnessed candidates, location threading, and T105 handoff.
-16. `core/npc/episode_backfill.py:195-254` - T113 roster-bound backfill.
-17. `updates/save_game_manager.py:927-1041` - restore, cleanup, and rollback.
+5. `core/npc/relationship_store.py:281-376` - relationship-sidecar persistence.
+6. `core/npc/relationship_store.py:421-498` - stable identity registration.
+7. `core/npc/relationship_store.py:729-839` - typed relationship event application.
+8. `core/npc/relationship_store.py:942-1009` - exactly-one legacy identity migration.
+9. `core/npc/relationship_store.py:1164-1259,1357-1377` - one locked join/rejoin mutation.
+10. `core/ai/action_handler.py:2881-3043` - roster lifecycle routing and receipt verification.
+11. `core/npc/episode_extraction.py:138-204` - T108 parsing/presence reconciliation.
+12. `core/npc/episode_capture.py:163-312` - location capture and POV projection.
+13. `core/npc/episode_capture.py:315-500` - combat capture and async dispatch.
+14. `core/npc/episode_recall.py:173-246` - T112 typed-anchor and current-location scoring.
+15. `core/npc/voice_context.py:128-321` - witnessed candidates, location threading, and T105 handoff.
+16. `core/npc/episode_backfill.py:215-279` - T113 roster-bound backfill.
+17. `updates/save_game_manager.py:1397-1552` - restore, cleanup, and rollback.
 
 ## Invariants
 

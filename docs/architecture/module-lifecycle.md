@@ -165,18 +165,18 @@ Startup integration publishes a dropped-in or stubbed module registry-only throu
 
 ## Load-bearing seams
 
-1. `core/ai/action_handler.py:3871-4184` - create action, lock, builder call, and result.
-2. `core/generators/module_builder.py:105-187` - shared build boundary and fresh fallback candidate.
-3. `core/generators/module_builder.py:471-545` - compatible builder stage order.
-4. `core/generators/module_builder.py:2902-3028` - explicit/T030 spec authority and branch selection.
-5. `core/generators/module_builder.py:2006-2105` - final context, T088, and validation.
-6. `core/generators/module_builder.py:2496-2560` - code-owned cross-area links.
+1. `core/ai/action_handler.py:4537-4850` - create action, lock, builder call, and result.
+2. `core/generators/module_builder.py:132-214` - shared build boundary and fresh fallback candidate.
+3. `core/generators/module_builder.py:648-722` - compatible builder stage order.
+4. `core/generators/module_builder.py:3076-3202` - explicit/T030 spec authority and branch selection.
+5. `core/generators/module_builder.py:2184-2283` - final context, T088, and validation.
+6. `core/generators/module_builder.py:2670-2734` - code-owned cross-area links.
 7. `core/generators/module_stitcher.py:2991-3164` (`build_publication_registry_bytes`) - hidden-candidate safety and registry bytes.
 8. `utils/module_publish.py:283-392` - hidden workspace and atomic directory publication.
-9. `core/managers/campaign_manager.py:1776-1909` - intent-before-transition publication.
-10. `core/managers/campaign_manager.py:2039-2406` - prepared/ready intent lifecycle and ordered drain.
-11. `core/managers/campaign_manager.py:2469-3078` - archive, T038/T039, recovery, and transactional commit.
-12. `main.py:6556-6588` and `main.py:7396-7415` - post-response and startup completion drains.
+9. `core/managers/campaign_manager.py:2249-2428` - intent-before-transition publication.
+10. `core/managers/campaign_manager.py:2513-2949` - prepared/ready intent lifecycle and ordered drain.
+11. `core/managers/campaign_manager.py:3137-3702` - archive, T038/T039, recovery, and transactional commit.
+12. `main.py:7486-7515` and `main.py:8933-8965` - post-response and startup completion drains.
 
 ## Invariants
 

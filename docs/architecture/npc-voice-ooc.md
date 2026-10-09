@@ -64,10 +64,10 @@ Local-party instruction, completion-collection and travel-publication seams chec
    when prior committed relationship evidence exists.
 6. During T067 request assembly, after compression, code completion-collects dispatched advice
    before injection immediately before the final player message; it does not pre-empt pending
-   companions (`core/npc/voice_context.py:1812`, `_RecallVoiceHandle.collect` at line328).
+   companions (`core/npc/voice_context.py:1832`, `_RecallVoiceHandle.collect` at line328).
 7. T067 remains the sole player-facing DM and action author.
 8. In the guardian working candidate based on the revision above, structured membership
-   proposals receive T114 review before route preflight and T065. The shared owner (`main.py:9844`) keeps
+   proposals receive T114 review before route preflight and T065. The shared owner (`main.py:10665`) keeps
    actual player input, accepted context, latest candidate and review feedback distinct.
    T065 retains the same request-local advisory batch across correction attempts.
 
@@ -119,22 +119,22 @@ feedback is request-local and never committed as companion memory.
 
 ## Load-bearing seams
 
-1. `main.py:8662-8677` - stage starts after durable player-input claim.
-2. `core/npc/voice_context.py:373-398` - E1 scene window.
-3. `core/npc/voice_context.py:401-428` - E2 visible companion acts.
-4. `core/npc/voice_context.py:431-495` - E4 companion relationships.
-5. `core/npc/voice_context.py:130-323` - E3/T112 witnessed selection, typed-location scoring,
+1. `main.py:10127-10147` - stage starts after durable player-input claim.
+2. `core/npc/voice_context.py:510-535` - E1 scene window.
+3. `core/npc/voice_context.py:538-565` - E2 visible companion acts.
+4. `core/npc/voice_context.py:568-631` - E4 companion relationships.
+5. `core/npc/voice_context.py:128-321` - E3/T112 witnessed selection, typed-location scoring,
    and T105 handoff.
-6. `core/npc/voice_context.py:810-990` - canonical packet construction.
-7. `core/npc/voice_service.py:720-917` - fenced parallel T105 workers.
-8. `core/npc/voice_service.py:493-660` - response validator and affinity classification.
-9. `core/npc/voice_context.py:1812` - completion-collection and private injection; `_RecallVoiceHandle.collect` at line328.
-10. `main.py:6903-6932` - post-compression injection before T067.
-11. `main.py:2952-2996` - same advice reaches T065 validation.
-12. `main.py:9235-9268` - accepted-history and sidecar commit gate.
-13. `core/npc/voice_context.py:1510-1615` - per-result sidecar commit.
-14. `core/npc/relationship_store.py:339-377` - lock, revision, atomic write.
-15. `core/npc/voice_context.py:1706-1726` - ordinary diagnostic redaction.
+6. `core/npc/voice_context.py:935-1135` - canonical packet construction.
+7. `core/npc/voice_service.py:713-926` - fenced parallel T105 workers.
+8. `core/npc/voice_service.py:486-653` - response validator and affinity classification.
+9. `core/npc/voice_context.py:1832` - completion-collection and private injection; `_RecallVoiceHandle.collect` at line328.
+10. `main.py:7927-7959` - post-compression injection before T067.
+11. `main.py:3484-3528` - same advice reaches T065 validation.
+12. `main.py:10208-10240` - accepted-history and sidecar commit gate.
+13. `core/npc/voice_context.py:1709-1814` - per-result sidecar commit.
+14. `core/npc/relationship_store.py:335-376` - lock, revision, atomic write.
+15. `core/npc/voice_context.py:1899-1919` - ordinary diagnostic redaction.
 
 ## Invariants
 

@@ -128,20 +128,20 @@ immediately. In-combat `pendingTurn` remains initiative-owned and unchanged.
 ## Load-bearing seams
 
 1. `core/combat/scene.py:71` - exact-key scene reconciliation.
-2. `core/generators/combat_builder.py:570` - new typed encounter construction.
-3. `core/managers/combat_state.py:448` - conditional activation publication.
-4. `core/managers/combat_state.py:727` - durable turn claim.
-5. `core/managers/combat_state.py:855` - cursor advance and pending delivery.
-6. `core/managers/combat_state.py:924` - restart recovery classifier.
-7. `core/managers/combat_transaction.py:806` - staged events and preconditions.
-8. `core/managers/combat_transaction.py:1160` - lease-protected exact-once apply.
-9. `core/managers/combat_orchestrator.py:949` - typed turn coordinator.
-10. `core/managers/combat_manager.py:3615` - T043 resume/pending-receipt split.
-11. `core/managers/combat_manager.py:3840` - T044 opening; T040 follows in validation.
-12. `core/managers/combat_manager.py:4507` - manager-to-orchestrator entry.
-13. `core/managers/combat_manager.py:4652` - history-backed display and acknowledgment.
-14. `core/managers/combat_manager.py:2129` - completion, rewards, summary, archive, clear.
-15. `main.py:6456` - post-combat T067 handoff.
+2. `core/generators/combat_builder.py:620` - new typed encounter construction.
+3. `core/managers/combat_state.py:599` - conditional activation publication.
+4. `core/managers/combat_state.py:878` - durable turn claim.
+5. `core/managers/combat_state.py:1117` - cursor advance and pending delivery.
+6. `core/managers/combat_state.py:1200` - restart recovery classifier.
+7. `core/managers/combat_transaction.py:897` - staged events and preconditions.
+8. `core/managers/combat_transaction.py:1271` - lease-protected exact-once apply.
+9. `core/managers/combat_orchestrator.py:1334` - typed turn coordinator.
+10. `core/managers/combat_manager.py:4019` - T043 resume/pending-receipt split.
+11. `core/managers/combat_manager.py:4273` - T044 opening; T040 follows in validation.
+12. `core/managers/combat_manager.py:5093` - manager-to-orchestrator entry.
+13. `core/managers/combat_manager.py:5257` - history-backed display and acknowledgment.
+14. `core/managers/combat_manager.py:2317` - completion, rewards, summary, archive, clear.
+15. `main.py:7363` - post-combat T067 handoff.
 
 ## Invariants
 
