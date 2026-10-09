@@ -113,13 +113,25 @@ def _declare(task_ids, profiles, *, status="active", note=""):
 
 
 _declare(
-    "T022 T023 T025 T028 T029 T031 T036 T037 T059 T092",
+    "T022 T023 T025 T028 T029 T031 T036 T037 T059",
     _profiles(
         "OPENAI_GPT56_LUNA_NONE",
         "DM_MAIN_GEMINI_PRO_LOW",
         "DM_MAIN_LEGACY",
         "DM_MAIN_LMSTUDIO",
     ),
+)
+_declare(
+    "T092",
+    _profiles(
+        "OPENAI_GPT56_LUNA_LOW",
+        "DM_MAIN_GEMINI_PRO_LOW",
+        "DM_MAIN_LEGACY",
+        "DM_MAIN_LMSTUDIO",
+    ),
+    note="Startup interview author (#682), split from the T022 group. OpenAI=luna|low: in acceptance run 5 at "
+         "luna|none each finalize attempt carried new real rules errors (Soldier equipment package omitted, "
+         "masteries on unmastered weapons, engine equipment_effects copied back). Other providers unchanged.",
 )
 _declare(
     "T124",
