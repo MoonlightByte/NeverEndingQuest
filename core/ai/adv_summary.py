@@ -62,6 +62,18 @@ class DepartureSummaryError(RuntimeError):
     """An optional departure summary could not be staged or committed safely."""
 
 
+class LocationUpdateExhausted(DepartureSummaryError):
+    """T015 used every attempt without a valid location update."""
+
+
+def _is_supersession(exc):
+    """A Load, Reset or Quit took over this call; it is not a T015 failure."""
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+
+    return isinstance(exc, (LiveProviderSuperseded, InvocationSupersededError))
+
+
 _DEPARTURE_TRANSACTION_LOCKS = {}
 _DEPARTURE_TRANSACTION_LOCKS_GUARD = threading.Lock()
 
@@ -397,7 +409,7 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
                 location_updater_prompt.append({"role": "user", "content": "The JSON schema you provided is invalid. Please try again and ensure the output is a valid JSON format."})
             else:
                 debug_print("Max retries reached. Unable to generate valid JSON.")
-                raise DepartureSummaryError(
+                raise LocationUpdateExhausted(
                     "T015 exhausted retries after malformed JSON"
                 )
         except ValidationError as e_val: # Renamed to avoid conflict
@@ -407,18 +419,20 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
                 location_updater_prompt.append({"role": "user", "content": f"The JSON schema you provided does not match the required structure. Error: {e_val}. Please try again."})
             else:
                 debug_print("Max retries reached. Unable to generate valid JSON matching schema.")
-                raise DepartureSummaryError(
+                raise LocationUpdateExhausted(
                     "T015 exhausted retries after schema validation failures"
                 )
         except ReadOnlySaveStop:
             raise
         except Exception as e_gen: # Renamed to avoid conflict
+            if _is_supersession(e_gen):
+                raise
             debug_print(f"Unexpected error in update_location_json: {str(e_gen)}")
             if attempt < max_retries - 1:
                 debug_print(f"Retrying... Attempt {attempt + 2}/{max_retries}")
             else:
                 debug_print("Max retries reached. Unable to update location JSON.")
-                raise DepartureSummaryError(
+                raise LocationUpdateExhausted(
                     f"T015 exhausted retries: {e_gen}"
                 ) from e_gen
     return None # Should only be reached if loop finishes without success (e.g. after retries)
@@ -1124,11 +1138,22 @@ def prepare_departure_summary(
     if leaving_index is None:
         raise DepartureSummaryError("canonical departure location is absent")
     location_before = copy.deepcopy(area_before["locations"][leaving_index])
-    updated_location = update_location_json(
-        adventure_summary,
-        copy.deepcopy(location_before),
-        current_area_id,
-    )
+    try:
+        updated_location = update_location_json(
+            adventure_summary,
+            copy.deepcopy(location_before),
+            current_area_id,
+        )
+    except LocationUpdateExhausted as exc:
+        # Fail forward (#653): the party has moved and T016 produced the
+        # chronicle. Keep the location as it was, marked visited.
+        warning(
+            "FALLBACK: location update skipped for %s: %s"
+            % (leaving_location_id, exc),
+            category="location_transitions",
+        )
+        updated_location = copy.deepcopy(location_before)
+        updated_location["explorationState"] = {"status": "visited"}
     if not isinstance(updated_location, dict):
         raise DepartureSummaryError("T015 did not produce a location update")
     # The engine's occupant record is the presence authority. T015 owns the
