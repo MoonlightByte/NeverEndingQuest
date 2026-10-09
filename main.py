@@ -470,6 +470,7 @@ def _apply_welcome(lifecycle):
     from utils.capture.live_provider_call import (
         LiveProviderSuperseded, _executing_control_scope,
     )
+    from utils.transient_filesystem import ReadOnlySaveStop
     from utils.startup_handoff_state import (
         is_kickoff_claim_still_active,
         renew_kickoff_lease,
@@ -841,6 +842,10 @@ def _apply_welcome(lifecycle):
     except (LiveProviderSuperseded, InvocationSupersededError):
         _finish_welcome(lifecycle, "SUPERSEDED")
         return
+    except ReadOnlySaveStop:
+        # Nothing more may be written: no failed receipt, no history save.
+        # The caller ends the lifecycle and the session.
+        raise
     except BaseException as exc:
         failed_receipt = mark_kickoff_failed(
             lifecycle.startup_attempt_id, lifecycle.lease_owner, str(exc)
@@ -938,8 +943,14 @@ def service_welcome_lifecycle():
             elif lifecycle.phase != "APPLY_PENDING":
                 return
         restore_request = None
+        from utils.transient_filesystem import ReadOnlySaveStop
         try:
             restore_request = _apply_welcome(lifecycle)
+        except ReadOnlySaveStop:
+            # A read-only save: reach QUIESCENT without the receipt or history
+            # writes below, then let the stop end the session (issue #654).
+            _finish_welcome(lifecycle, "FAILED")
+            raise
         except BaseException as exc:
             # A handback fault must never wedge the lifecycle invisibly (the
             # input-poll pump swallows exceptions, so a repeating fault here
@@ -5423,12 +5434,15 @@ def prepare_conversation_for_ai_request(conversation_history):
 def _strictly_persist_conversation_history(conversation_history):
     """Persist the authoritative list and track literal failure as dirty."""
     global _conversation_history_dirty, _dirty_conversation_history
+    from utils.transient_filesystem import ReadOnlySaveStop
     try:
         saved = save_conversation_history(
             conversation_history,
             strict=True,
             allow_compression=False,
         )
+    except ReadOnlySaveStop:
+        raise
     except Exception as save_error:
         error(
             "FAILURE: Safe action history could not be persisted",
@@ -5861,6 +5875,7 @@ def process_ai_response(
 ):
     global needs_conversation_history_update
     from contextlib import ExitStack
+    from utils.transient_filesystem import ReadOnlySaveStop
 
     level_up_context = {
         'accepted_history': copy.deepcopy(conversation_history),
@@ -7265,6 +7280,8 @@ def process_ai_response(
                     "status": "superseded_invocation",
                     "retryable": False,
                 }
+            except ReadOnlySaveStop:
+                raise
             except Exception as action_error:
                 error(
                     "FAILURE: Action handler raised unexpectedly",
