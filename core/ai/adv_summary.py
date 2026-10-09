@@ -869,6 +869,8 @@ def _recover_pending_summary_targets(pending, pending_path, area_path, journal_p
                 raise DepartureSummaryError(
                     f"recovery verification failed for {path}"
                 )
+    except ReadOnlySaveStop:
+        raise
     except Exception as exc:
         if isinstance(exc, DepartureSummaryError):
             detail = str(exc)
@@ -963,6 +965,8 @@ def _commit_departure_summary_targets_locked(
     }
     try:
         safe_json_dump(pending_record, pending_path)
+    except ReadOnlySaveStop:
+        raise
     except Exception as exc:
         raise DepartureSummaryError(
             f"could not create departure summary recovery marker: {exc}"
@@ -987,6 +991,10 @@ def _commit_departure_summary_targets_locked(
             raise DepartureSummaryError(
                 "departure summary commit verification failed"
             )
+    except ReadOnlySaveStop:
+        # No rollback or marker write under a read-only save stop: the staged
+        # marker stays, and the next departure's recovery finishes it.
+        raise
     except Exception as commit_exc:
         pending_record["status"] = "rollback_required"
         pending_record["commit_error"] = str(commit_exc)
