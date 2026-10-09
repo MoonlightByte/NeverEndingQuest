@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+from utils.transient_filesystem import raise_if_save_stopped
+
 
 _PROCESS_LOCKS = {}
 _PROCESS_LOCKS_GUARD = threading.Lock()
@@ -72,6 +74,7 @@ def _read_mapping_unlocked(path: Path):
 
 
 def _write_mapping_unlocked(path: Path, value):
+    raise_if_save_stopped()
     temporary = Path(
         f"{path}.{os.getpid()}.{threading.get_ident()}.{uuid4().hex}.tmp"
     )

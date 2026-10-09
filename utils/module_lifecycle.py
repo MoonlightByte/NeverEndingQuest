@@ -29,6 +29,7 @@ from utils.transient_filesystem import (
     TRANSIENT_FILESYSTEM_ATTEMPTS,
     TRANSIENT_FILESYSTEM_BACKOFF_SECONDS,
     is_transient_filesystem_error,
+    raise_if_save_stopped,
     retry_transient_filesystem,
 )
 
@@ -433,6 +434,7 @@ class ModuleLifecycleStore:
 
     @classmethod
     def _atomic_write_bytes(cls, path: Path, payload: bytes) -> None:
+        raise_if_save_stopped()
         parent = path.parent
         temporary = parent / f".{path.name}.{uuid4().hex}.tmp"
         descriptor = None

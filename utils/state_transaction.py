@@ -39,6 +39,7 @@ from typing import (
 from uuid import uuid4
 
 from utils.path_transaction_lock import path_transaction_lock
+from utils.transient_filesystem import raise_if_save_stopped
 
 
 JOURNAL_SCHEMA_VERSION = 1
@@ -273,6 +274,7 @@ def _durable_sync_directory(path: str) -> None:
 
 
 def _durable_write_json(path: str, value: Any) -> None:
+    raise_if_save_stopped()
     canonical = os.path.abspath(os.path.normpath(path))
     parent = os.path.dirname(canonical)
     os.makedirs(parent, exist_ok=True)
@@ -302,6 +304,7 @@ def _durable_write_json(path: str, value: Any) -> None:
 
 
 def _durable_remove(path: str) -> None:
+    raise_if_save_stopped()
     canonical = os.path.abspath(os.path.normpath(path))
     try:
         os.remove(canonical)
@@ -311,6 +314,7 @@ def _durable_remove(path: str) -> None:
 
 
 def _durable_move(source: str, destination: str) -> None:
+    raise_if_save_stopped()
     source = os.path.abspath(os.path.normpath(source))
     destination = os.path.abspath(os.path.normpath(destination))
     destination_parent = os.path.dirname(destination)

@@ -24,6 +24,7 @@ except:
     def track_response(r): pass
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.transient_filesystem import raise_if_save_stopped
 
 # Set script name for logging
 set_script_name("update_encounter")
@@ -243,6 +244,7 @@ Remember to only update monster information and leave player and NPC data unchan
             info(f"SUCCESS: Encounter update - PASS", category="encounter_updates")
 
             # Save the updated encounter info
+            raise_if_save_stopped()
             with open(f"modules/encounters/encounter_{encounter_id}.json", "w") as file:
                 json.dump(encounter_info, file, indent=2)
 

@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 
 from utils.encoding_utils import safe_json_load
+from utils.transient_filesystem import raise_if_save_stopped
 
 STATE_FILE = "modules/conversation_history/startup_state.json"
 LOCK_FILE = "modules/conversation_history/startup_state.lock"
@@ -42,6 +43,7 @@ def _ensure_parent_dirs() -> None:
 
 
 def _atomic_write_json(path: str, payload: Dict[str, Any]) -> None:
+    raise_if_save_stopped()
     _ensure_parent_dirs()
     tmp_path = f"{path}.tmp"
     with open(tmp_path, "w", encoding="utf-8") as handle:

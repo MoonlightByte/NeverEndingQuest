@@ -10,6 +10,7 @@ import stat
 from uuid import uuid4
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_read_json
+from utils.transient_filesystem import raise_if_save_stopped
 from utils.module_context import ModuleContext
 from utils.path_transaction_lock import (
     path_transaction_lock,
@@ -110,6 +111,7 @@ def _capture_contained_json(module_dir, path):
 
 def _durable_copy(source, destination):
     """Atomically preserve a byte-for-byte backup without writer sentinels."""
+    raise_if_save_stopped()
     canonical_source = os.path.abspath(os.path.normpath(os.fspath(source)))
     canonical_destination = os.path.abspath(
         os.path.normpath(os.fspath(destination))
@@ -144,7 +146,8 @@ def _durable_copy(source, destination):
 
 def _durable_write_json(path, payload, *, create_backup=False):
     """Atomically persist JSON and its directory without sentinel locks."""
-    canonical = os.path.abspath(os.path.normpath(os.fspath(path)))
+    raise_if_save_stopped()
+    canonical =os.path.abspath(os.path.normpath(os.fspath(path)))
     parent = os.path.dirname(canonical)
     if parent:
         os.makedirs(parent, exist_ok=True)
@@ -168,7 +171,8 @@ def _durable_write_json(path, payload, *, create_backup=False):
 
 def _durable_remove(path):
     """Remove a transaction marker durably when the platform supports it."""
-    canonical = os.path.abspath(os.path.normpath(os.fspath(path)))
+    raise_if_save_stopped()
+    canonical =os.path.abspath(os.path.normpath(os.fspath(path)))
     try:
         os.remove(canonical)
     except FileNotFoundError:

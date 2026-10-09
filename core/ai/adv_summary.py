@@ -44,7 +44,7 @@ from jsonschema import validate, ValidationError
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import sanitize_text, safe_json_load, safe_json_dump
 from utils.file_operations import FileLockError, atomic_writer
-from utils.transient_filesystem import ReadOnlySaveStop
+from utils.transient_filesystem import ReadOnlySaveStop, raise_if_save_stopped
 from utils.module_refresh_lock import module_refresh_lock
 from core.managers.status_manager import status_generating_summary
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -688,6 +688,7 @@ def _fsync_parent_directory(path):
 
 
 def _durable_remove(path):
+    raise_if_save_stopped()
     try:
         os.remove(path)
     except FileNotFoundError:
