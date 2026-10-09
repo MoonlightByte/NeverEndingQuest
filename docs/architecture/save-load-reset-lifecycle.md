@@ -204,6 +204,20 @@ Startup/locking delta verified 2026-09-05 against the `fix/issue-114-startup-rep
   boundary. `main_game_loop` catches the stop and shows one system line naming
   the file, and the session ends as a read-only start does. A stop that a
   caller swallows ends the session at the top of the next loop turn.
+  - Under a recorded stop nothing more runs, whatever a caller catches.
+    `capture_and_fanout` raises the stop before any model call. Every
+    durable writer, remover and mover that bypasses the shared writers
+    (`_durable_*`, `_atomic_write_*`, `_write_mapping_unlocked`,
+    `generate_chat_history`, the encounter update) raises it before touching
+    a file. The terminal combat and level-up loops raise it before builtin
+    `input()`, which has no input boundary.
+  - A broad catch in play code lets `ReadOnlySaveStop` through, next to the
+    supersession errors it already lets through. A retry loop must not catch
+    it: under the stop every retry fails at once, and a loop with no
+    `_interruptible_wait` would spin.
+  - Under a stop no cleanup is written: a prepared module-completion intent,
+    an unreceipted startup kickoff or a departure-summary marker stays on disk
+    for the next start's recovery.
   - Only an explicit keyword changes this. With `on_read_only="raise"` (the
     start-path registry writers) the save returns False (`safe_write_json`)
     or raises the plain error (`safe_json_dump`), and records nothing.
