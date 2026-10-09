@@ -222,7 +222,7 @@ from core.managers.combat_transaction import (
 # Import safe JSON functions
 from utils.encoding_utils import safe_json_load
 from utils.file_operations import safe_write_json
-from utils.transient_filesystem import ReadOnlySaveStop
+from utils.transient_filesystem import ReadOnlySaveStop, raise_if_save_stopped
 from utils.module_refresh_lock import module_refresh_lock
 import core.ai.cumulative_summary as cumulative_summary
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
@@ -4568,6 +4568,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                        name=player_name_display, token=GO_ON_TOKEN
                    )
                )
+               raise_if_save_stopped()
                try:
                    boundary_line = input(
                        f"{stats_display} "
@@ -4727,6 +4728,9 @@ This is narration only. Do not advance the round or apply any combat action."""
                category="combat_events",
            )
        else:
+           # The terminal's builtin input() has no stop hook: never ask for
+           # an action that could not be saved (issue #654).
+           raise_if_save_stopped()
            try:
                # Item 3: an open code-issued weapon roll asks with its own
                # [ROLL] line; the typed answer goes to the turn as is.

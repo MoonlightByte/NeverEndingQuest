@@ -8788,7 +8788,9 @@ def _main_game_loop(startup_authority, turn_authority):
 
     # A new session saves again; a file still read-only stops it again at its
     # first save (issue #654).
-    from utils.transient_filesystem import clear_save_stop, save_stop_path
+    from utils.transient_filesystem import (
+        clear_save_stop, raise_if_save_stopped, save_stop_path,
+    )
     clear_save_stop()
 
     # Ensure debug directories and files exist
@@ -10395,6 +10397,9 @@ def _main_game_loop(startup_authority, turn_authority):
                 interrupted = False
                 while not level_up_session.is_complete:
                     player_name_display = f"{SOLID_GREEN}{player_name_actual}{RESET_COLOR}"
+                    # The terminal's builtin input() has no stop hook: never
+                    # ask for an answer that could not be saved (issue #654).
+                    raise_if_save_stopped()
                     try:
                         level_up_input = input(f"{player_name_display} (Leveling Up): ")
                     except EOFError:
