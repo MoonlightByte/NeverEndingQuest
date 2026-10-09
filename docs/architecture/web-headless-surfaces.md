@@ -80,8 +80,8 @@ outside cache locks; replay deduplicates that same ID. Restore-paused cache
 load/add/match and gameplay drain suppress abandoned output, not lifecycle controls.
 Missing history is reconstructed once into the existing cache, never model context.
 
-Seams: `web/frontend/src/services/socket.ts:133`,
-`web/templates/game_interface.html:5704`, `web/web_interface.py:479` and `:2855`.
+Seams: `web/frontend/src/services/socket.ts:140`,
+`web/templates/game_interface.html:5718`, `web/web_interface.py:482` and `:2869`.
 Policy: #193 p9/p10/p12, D-UI-1. Shared SaveGameManager gives headless/terminal the
 same cache snapshot/absence semantics; those surfaces do not generate a web log.
 
@@ -168,21 +168,21 @@ Startup delta verified 2026-09-05 against the `fix/issue-114-startup-repair` wor
 
 ## Load-bearing seams
 
-1. `main.py:4295-4319` - structured narration sink and terminal fallback.
-2. `main.py:7268-7268` and `main.py:8004-8019` - shared loop and input boundary.
-3. `main.py:9433-9556` - terminal entry.
-4. `web/shared_state.py:33-67` - sink ownership and failure semantics.
-5. `web/web_interface.py:226-452` - queues, game thread, revisions, and durable cache.
-6. `web/web_interface.py:842-899` and `web/web_interface.py:5743-5776` - blocking web input and both routes.
-7. `web/web_interface.py:2506` - startup projection, ordered reconnect, and snapshot truth (startup candidate).
-8. `web/web_interface.py:2638-2961` - Save/Load/Reset dispatch and restart.
-9. `web/web_interface.py:3081-3111` and `web/web_interface.py:4589-4746` - one game thread and output pump.
-10. `web/frontend/src/services/socket.ts:145`, `web/frontend/src/stores/session.ts:68`, and `web/frontend/src/components/layout/HeaderBar.tsx:63` - ready refresh, interview/play permissions, and lifecycle availability (startup candidate).
-11. `web/frontend/src/services/hydration.ts:51-187` - correlation, coalescing, and stale rejection.
-12. `core/headless/protocol.py:5-116` - NDJSON protocol and serialized writer.
-13. `core/headless/streams.py:30-151` - output capture and blocking queue input.
-14. `core/headless/session.py:56-205` and `core/headless/session.py:300-467` - adapters, engine, prompt/state, and commands.
-15. `core/headless/state_reader.py:5-142` - disk-only state projection.
+1. `main.py:5169-5200` - structured narration sink and terminal fallback.
+2. `main.py:8717-8717` and `main.py:9640-9716` - shared loop and input boundary.
+3. `main.py:11399-11545` - terminal entry.
+4. `web/shared_state.py:40-78` - sink ownership and failure semantics.
+5. `web/web_interface.py:228-707` - queues, game thread, revisions, and durable cache.
+6. `web/web_interface.py:1118-1209` and `web/web_interface.py:6248-6287` - blocking web input and both routes.
+7. `web/web_interface.py:2804` - startup projection, ordered reconnect, and snapshot truth (startup candidate).
+8. `web/web_interface.py:3012-3409` - Save/Load/Reset dispatch and restart.
+9. `web/web_interface.py:3536-3571` and `web/web_interface.py:5082-5246` - one game thread and output pump.
+10. `web/frontend/src/services/socket.ts:158`, `web/frontend/src/stores/session.ts:77`, and `web/frontend/src/components/layout/HeaderBar.tsx:74` - ready refresh, interview/play permissions, and lifecycle availability (startup candidate).
+11. `web/frontend/src/services/hydration.ts:52-190` - correlation, coalescing, and stale rejection.
+12. `core/headless/protocol.py:5-118` - NDJSON protocol and serialized writer.
+13. `core/headless/streams.py:30-174` - output capture and blocking queue input.
+14. `core/headless/session.py:58-226` and `core/headless/session.py:324-627` - adapters, engine, prompt/state, and commands.
+15. `core/headless/state_reader.py:5-146` - disk-only state projection.
 
 ## #323 postapproval surface delta (2026-09-13; acceptance incomplete)
 
