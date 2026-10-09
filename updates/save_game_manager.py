@@ -446,6 +446,7 @@ class SaveGameManager:
             if value[0] == 'file' and replaced(path) and not self._restore_preserves_file(os.path.basename(path)):
                 expected[path] = ('absent', None)
         for path in ('modules/effects_state.json',
+                     'journal.json',
                      'live_state.json',
                      'live_state.json.bak',
                      'modules/conversation_history/combat_conversation_history.json',
@@ -1444,6 +1445,9 @@ class SaveGameManager:
             # The verified backup retains these files for a failed-Load rollback.
             for optional_path in (
                 "modules/effects_state.json",
+                # A save from before the first departure has no chronicle;
+                # keeping the current one would record a journey not taken.
+                "journal.json",
                 # A save from before the engine's location record: the record
                 # is re-created from that save's files on the next roster call.
                 "live_state.json",
