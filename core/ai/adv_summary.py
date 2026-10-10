@@ -855,10 +855,76 @@ def _snapshot_matches(existed, value, expected_existed, expected_value):
     )
 
 
-def _recover_pending_summary_targets(pending, pending_path, area_path, journal_path):
+def _load_journal_under_marker(journal_path):
+    """(existed, value, unreadable) for the journal a marker recovers (#636).
+
+    Unreadable means it does not parse, or parses but fails its schema
+    (D-636-12); with no schema to judge by it reads as before.
+    """
+    if not os.path.exists(journal_path):
+        return False, None, False
+    try:
+        value = safe_json_load(journal_path)
+    except ValueError:
+        return True, None, True
+    except Exception as exc:
+        raise DepartureSummaryError(
+            f"could not read departure transaction state {journal_path}: {exc}"
+        ) from exc
+    try:
+        failure = journal_schema_failure(value)
+    except DepartureSummaryError:
+        failure = None
+    return True, value, failure is not None
+
+
+def _set_lost_journal_aside(
+    pending, pending_path, journal_path, journal_existed, set_journal_aside
+):
+    """Record a lost journal in the marker, then set it aside (#636).
+
+    The marker holds the whole chronicle, so its own snapshot replaces the
+    journal (D-636-10). The flag is written first: a crash after the rename
+    resumes here with the journal absent.
+    """
+    if pending.get("journal_lost") is not True:
+        pending["journal_lost"] = True
+        try:
+            safe_json_dump(pending, pending_path)
+        except ReadOnlySaveStop:
+            raise
+        except Exception as exc:
+            raise DepartureSummaryError(
+                "could not record the lost journal; marker retained at "
+                f"{pending_path}: {exc}"
+            ) from exc
+    if journal_existed:
+        try:
+            set_journal_aside()
+        except (OSError, ValueError) as exc:
+            raise DepartureSummaryError(
+                "could not set the unreadable journal aside; marker retained "
+                f"at {pending_path}: {exc}"
+            ) from exc
+        if os.path.exists(journal_path):
+            raise DepartureSummaryError(
+                "the unreadable journal was not set aside; marker retained at "
+                f"{pending_path}"
+            )
+
+
+def _recover_pending_summary_targets(
+    pending, pending_path, area_path, journal_path, set_journal_aside=None
+):
     """Classify and repair target state while both target locks are held."""
     area_existed, current_area = _load_json_snapshot(area_path)
-    journal_existed, current_journal = _load_json_snapshot(journal_path)
+    if set_journal_aside is None:
+        journal_existed, current_journal = _load_json_snapshot(journal_path)
+        journal_unreadable = False
+    else:
+        journal_existed, current_journal, journal_unreadable = (
+            _load_journal_under_marker(journal_path)
+        )
 
     area_matches_before = _snapshot_matches(
         area_existed,
@@ -884,18 +950,30 @@ def _recover_pending_summary_targets(pending, pending_path, area_path, journal_p
         True,
         pending["journal_after"],
     )
+    journal_lost = (
+        journal_unreadable
+        and not (journal_matches_before or journal_matches_after)
+    ) or (
+        set_journal_aside is not None
+        and pending.get("journal_lost") is True
+        and not journal_existed
+    )
 
-    if (
+    if journal_lost and (area_matches_before or area_matches_after):
+        _set_lost_journal_aside(
+            pending, pending_path, journal_path, journal_existed, set_journal_aside
+        )
+    elif (
         pending["status"] == "staged"
         and area_matches_after
         and journal_matches_after
     ):
         _durable_remove(pending_path)
         return {"status": "already_committed"}
-    if area_matches_before and journal_matches_before:
+    elif area_matches_before and journal_matches_before:
         _durable_remove(pending_path)
         return {"status": "already_rolled_back"}
-    if not (
+    elif journal_lost or not (
         (area_matches_before or area_matches_after)
         and (journal_matches_before or journal_matches_after)
     ):
@@ -955,7 +1033,7 @@ def _recover_pending_summary_targets(pending, pending_path, area_path, journal_p
     return {"status": recovered_status}
 
 
-def _resolve_prior_pending_summary_unlocked(pending_path):
+def _resolve_prior_pending_summary_unlocked(pending_path, set_journal_aside=None):
     if not os.path.exists(pending_path):
         return {"status": "none"}
     try:
@@ -968,13 +1046,33 @@ def _resolve_prior_pending_summary_unlocked(pending_path):
 
     area_path = pending["area_path"]
     journal_path = pending.get("journal_path", "journal.json")
+    if os.path.abspath(journal_path) != os.path.abspath("journal.json"):
+        set_journal_aside = None  # the set-aside renames journal.json only
     with _departure_target_locks(area_path, journal_path, pending_path):
         return _recover_pending_summary_targets(
             pending,
             pending_path,
             area_path,
             journal_path,
+            set_journal_aside,
         )
+
+
+def resolve_prior_departure_summary(
+    set_journal_aside, pending_path=PENDING_DEPARTURE_SUMMARY_FILE
+):
+    """Resolve an interrupted commit's marker before its targets are read.
+
+    The drain calls this first (#636, D-636-11): a staged marker is finished
+    forward and a rollback_required one rolled back, from the marker's own
+    snapshots. `set_journal_aside` sets an unreadable journal aside, so the
+    marker's snapshot can replace it (D-636-10).
+    """
+    with _wait_for_module_refresh():
+        with _departure_transaction_lock(pending_path):
+            return _resolve_prior_pending_summary_unlocked(
+                pending_path, set_journal_aside
+            )
 
 
 def _journal_before_from_appended_update(journal_after):

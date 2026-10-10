@@ -1033,6 +1033,21 @@ def resolve_current_transition_departure(operation_id, transition_context):
 
     from core.ai import adv_summary
 
+    # An interrupted commit's marker is resolved first, from its own
+    # snapshots, before anything here reads the area or the journal (#636,
+    # D-636-11). An unreadable journal under it is set aside and rebuilt
+    # from the marker (D-636-10).
+    try:
+        os.stat(adv_summary.PENDING_DEPARTURE_SUMMARY_FILE)
+    except OSError:
+        pass
+    else:
+        adv_summary.resolve_prior_departure_summary(
+            lambda: _read_journal_setting_aside(
+                "and the chronicle is rebuilt from the interrupted commit's record"
+            )
+        )
+
     # An unreadable chronicle must not stop the departure from finishing
     # (#636, D-636-2): it is set aside and the staged entry becomes entry 0
     # of a fresh one. The index is rebased just before the rename and put
