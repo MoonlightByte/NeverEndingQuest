@@ -35,6 +35,18 @@ def _level_1_choices(choice_points):
     return choices
 
 
+def _level_1_features(progression_class):
+    """A class's fixed level-1 feature names and level-1 class-table values, or nothing."""
+    if not isinstance(progression_class, dict):
+        return {}
+    features = (progression_class.get("features_by_level") or {}).get("1")
+    if not isinstance(features, list):
+        return {}
+    table = {column: values["1"] for column, values in (progression_class.get("table_columns") or {}).items()
+             if isinstance(values, dict) and "1" in values}
+    return {"features": list(features), "class_table_at_level_1": table}
+
+
 def build_startup_rules_reference():
     """The creation reference both the author and the reviewer read, from typed data only.
 
@@ -45,13 +57,17 @@ def build_startup_rules_reference():
     items = safe_json_load("data/srd/item_catalog.json")
     if not origins or not choices or not items:
         return None
+    # Fixed level-1 class features and class-table values (#682 E13). Optional: without the
+    # progression file the reference keeps its earlier shape.
+    progression = (safe_json_load("data/srd/progression.json") or {}).get("classes") or {}
     return {
         "task_purpose": STARTUP_RULES_REFERENCE_PURPOSE,
         "ruleset": "SRD 5.2.1",
         "attribution": choices["sources"]["attribution"],
         "use": ("This is the game's complete SRD 5.2.1 character-origin reference for this interview: "
                 "backgrounds, species, Origin and Fighting Style feats, weapon mastery, the weapons table "
-                "and each class's level-1 choices. Use it for these facts instead of remembered rules. "
+                "and each class's level-1 choices, fixed level-1 features and level-1 class-table values. "
+                "Use it for these facts instead of remembered rules. "
                 "A fact absent here is not supplied."),
         "sheet_representation": (
             "SRD 5.2.1 backgrounds have no background feature: a background raises ability scores "
@@ -71,8 +87,8 @@ def build_startup_rules_reference():
         "weapon_mastery_properties": origins["weapon_mastery_properties"],
         "weapons": [{"name": e["name"], "description": e["description"]} for e in items["entries"]
                     if e.get("kind") == "weapon" and not e.get("magical")],
-        "class_level_1": {name: {"primary_ability": choices["class_traits"][name]["primary_ability"],
-                                 "choices": _level_1_choices(points)}
+        "class_level_1": {name: dict({"primary_ability": choices["class_traits"][name]["primary_ability"],
+                                      "choices": _level_1_choices(points)}, **_level_1_features(progression.get(name)))
                           for name, points in choices["choice_points"].items()},
     }
 
@@ -190,6 +206,9 @@ require full equipment lists, mastery property text or other sheet details in
 a recommendation; they are checked when the author finalizes. When a stated fact
 is absent from the reference, tell the author to drop or hedge it, not to add
 more detail.
+A feature named in a class's class_level_1 features is a supplied level-1 fact,
+as are its class_table_at_level_1 values: never ask the author to remove it
+from a sheet; hedge only mechanics the reference does not give.
 Response contract: continue_interview always has whole_build_approved false and
 character null; finalize_character carries the full sheet. After a whole-build
 approval the correct next step is finalize_character. Never ask for a separate
