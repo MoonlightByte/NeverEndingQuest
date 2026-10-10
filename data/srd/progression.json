@@ -1,5 +1,5 @@
 {
- "schema": "srd-progression/1",
+ "schema": "srd-progression/2",
  "ruleset": "SRD 5.2.1",
  "sources": {
   "document": "System Reference Document 5.2.1 (SRD_CC_v5.2.1.pdf)",
@@ -152,7 +152,8 @@
   "Ability Score Improvement levels are 4, 8, 12 and 16 for every class, plus 6 and 14 for Fighter and 10 for Rogue. Level 19 grants Epic Boon (a feat), not an Ability Score Improvement.",
   "No SRD 5.2.1 class is a third caster; caster_kind third is unused.",
   "Subclass features appear as the SRD's 'Subclass feature' entry; subclass tables are not included.",
-  "table_columns holds the class table's other columns (for example Rages or Sneak Attack) exactly as printed."
+  "table_columns holds the class table's other columns (for example Rages or Sneak Attack) exactly as printed.",
+  "srd-progression/2 (NUM): classes.<class>.use_pools lists every class feature (not subclass) whose uses are counted and restored by a rest: maximum is {column} (the class table), {fixed}, {by_level}, {ability_modifier, minimum} or {class_level_times}; refresh is a list of steps from a class level, short_rest and long_rest each one, all or null. use_pools_not_modeled names the three whose limits are not a count. ac_formulas: unarmored base Armor Class features. hp_bonuses: typed Hit Point maximum increases (SRD 5.2.1 has no Tough feat)."
  ],
  "xp_thresholds": {
   "1": 0,
@@ -355,7 +356,72 @@
      "19": 4,
      "20": 4
     }
-   }
+   },
+   "use_pools": [
+    {
+     "feature": "Rage",
+     "level": 1,
+     "maximum": {
+      "column": "Rages"
+     },
+     "refresh": [
+      {
+       "from_level": 1,
+       "short_rest": "one",
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "the number of times shown for your Barbarian level in the Rages column",
+      "You regain one expended use when you finish a Short Rest, and you regain all expended uses when you finish a Long Rest."
+     ],
+     "source": {
+      "section": "Classes > Barbarian > Barbarian Class Features > Level 1: Rage",
+      "page": 28
+     }
+    },
+    {
+     "feature": "Persistent Rage",
+     "level": 15,
+     "maximum": {
+      "fixed": 1
+     },
+     "refresh": [
+      {
+       "from_level": 15,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "When you roll Initiative, you can regain all expended uses of Rage. After you regain uses of Rage in this way, you can't do so again until you finish a Long Rest."
+     ],
+     "source": {
+      "section": "Classes > Barbarian > Barbarian Class Features > Level 15: Persistent Rage",
+      "page": 30
+     }
+    }
+   ],
+   "ac_formulas": [
+    {
+     "feature": "Unarmored Defense",
+     "level": 1,
+     "formula": {
+      "base": 10,
+      "abilities": [
+       "Dexterity",
+       "Constitution"
+      ],
+      "while": "no armor",
+      "shield": "allowed"
+     },
+     "evidence": "While you aren't wearing any armor, your base Armor Class equals 10 plus your Dexterity and Constitution modifiers. You can use a Shield and still gain this benefit.",
+     "source": {
+      "section": "Classes > Barbarian > Barbarian Class Features > Level 1: Unarmored Defense",
+      "page": 29
+     }
+    }
+   ]
   },
   "bard": {
    "name": "Bard",
@@ -720,7 +786,39 @@
      "19": "D12",
      "20": "D12"
     }
-   }
+   },
+   "use_pools": [
+    {
+     "feature": "Bardic Inspiration",
+     "level": 1,
+     "maximum": {
+      "ability_modifier": "Charisma",
+      "minimum": 1
+     },
+     "refresh": [
+      {
+       "from_level": 1,
+       "short_rest": null,
+       "long_rest": "all"
+      },
+      {
+       "from_level": 5,
+       "short_rest": "all",
+       "long_rest": "all",
+       "feature": "Font of Inspiration",
+       "evidence": "You now regain all your expended uses of Bardic Inspiration when you finish a Short or Long Rest."
+      }
+     ],
+     "evidence": [
+      "a number of times equal to your Charisma modifier (minimum of once), and you regain all expended uses when you finish a Long Rest."
+     ],
+     "source": {
+      "section": "Classes > Bard > Bard Class Features > Level 1: Bardic Inspiration",
+      "page": 31
+     }
+    }
+   ],
+   "ac_formulas": []
   },
   "cleric": {
    "name": "Cleric",
@@ -1082,7 +1180,53 @@
      "19": 4,
      "20": 4
     }
-   }
+   },
+   "use_pools": [
+    {
+     "feature": "Channel Divinity",
+     "level": 2,
+     "maximum": {
+      "column": "Channel Divinity"
+     },
+     "refresh": [
+      {
+       "from_level": 2,
+       "short_rest": "one",
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "You regain one of its expended uses when you finish a Short Rest, and you regain all expended uses when you finish a Long Rest.",
+      "as shown in the Channel Divinity column of the Cleric Features table"
+     ],
+     "source": {
+      "section": "Classes > Cleric > Cleric Class Features > Level 2: Channel Divinity",
+      "page": 37
+     }
+    },
+    {
+     "feature": "Divine Intervention",
+     "level": 10,
+     "maximum": {
+      "fixed": 1
+     },
+     "refresh": [
+      {
+       "from_level": 10,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "You can't use this feature again until you finish a Long Rest."
+     ],
+     "source": {
+      "section": "Classes > Cleric > Cleric Class Features > Level 10: Divine Intervention",
+      "page": 38
+     }
+    }
+   ],
+   "ac_formulas": []
   },
   "druid": {
    "name": "Druid",
@@ -1448,7 +1592,53 @@
      "19": 4,
      "20": 4
     }
-   }
+   },
+   "use_pools": [
+    {
+     "feature": "Wild Shape",
+     "level": 2,
+     "maximum": {
+      "column": "Wild Shape"
+     },
+     "refresh": [
+      {
+       "from_level": 2,
+       "short_rest": "one",
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "You regain one expended use when you finish a Short Rest, and you regain all expended uses when you finish a Long Rest.",
+      "as shown in the Wild Shape column of the Druid Features table"
+     ],
+     "source": {
+      "section": "Classes > Druid > Druid Class Features > Level 2: Wild Shape",
+      "page": 42
+     }
+    },
+    {
+     "feature": "Wild Resurgence",
+     "level": 5,
+     "maximum": {
+      "fixed": 1
+     },
+     "refresh": [
+      {
+       "from_level": 5,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "you can expend one use of Wild Shape (no action required) to give yourself a level 1 spell slot, but you can't do so again until you finish a Long Rest."
+     ],
+     "source": {
+      "section": "Classes > Druid > Druid Class Features > Level 5: Wild Resurgence",
+      "page": 43
+     }
+    }
+   ],
+   "ac_formulas": []
   },
   "fighter": {
    "name": "Fighter",
@@ -1587,7 +1777,81 @@
      "19": 6,
      "20": 6
     }
-   }
+   },
+   "use_pools": [
+    {
+     "feature": "Second Wind",
+     "level": 1,
+     "maximum": {
+      "column": "Second Wind"
+     },
+     "refresh": [
+      {
+       "from_level": 1,
+       "short_rest": "one",
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "You can use this feature twice. You regain one expended use when you finish a Short Rest, and you regain all expended uses when you finish a Long Rest.",
+      "as shown in the Second Wind column of the Fighter Features table"
+     ],
+     "source": {
+      "section": "Classes > Fighter > Fighter Class Features > Level 1: Second Wind",
+      "page": 48
+     }
+    },
+    {
+     "feature": "Action Surge",
+     "level": 2,
+     "maximum": {
+      "by_level": {
+       "2": 1,
+       "17": 2
+      }
+     },
+     "refresh": [
+      {
+       "from_level": 2,
+       "short_rest": "all",
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "Once you use this feature, you can't do so again until you finish a Short or Long Rest. Starting at level 17, you can use it twice before a rest"
+     ],
+     "source": {
+      "section": "Classes > Fighter > Fighter Class Features > Level 2: Action Surge",
+      "page": 48
+     }
+    },
+    {
+     "feature": "Indomitable",
+     "level": 9,
+     "maximum": {
+      "by_level": {
+       "9": 1,
+       "13": 2,
+       "17": 3
+      }
+     },
+     "refresh": [
+      {
+       "from_level": 9,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "you can't use this feature again until you finish a Long Rest. You can use this feature twice before a Long Rest starting at level 13 and three times before a Long Rest starting at level 17."
+     ],
+     "source": {
+      "section": "Classes > Fighter > Fighter Class Features > Level 9: Indomitable",
+      "page": 48
+     }
+    }
+   ],
+   "ac_formulas": []
   },
   "monk": {
    "name": "Monk",
@@ -1747,7 +2011,72 @@
      "19": "+30 ft.",
      "20": "+30 ft."
     }
-   }
+   },
+   "use_pools": [
+    {
+     "feature": "Monk's Focus",
+     "level": 2,
+     "maximum": {
+      "column": "Focus Points"
+     },
+     "refresh": [
+      {
+       "from_level": 2,
+       "short_rest": "all",
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "as shown in the Focus Points column of the Monk Features table",
+      "it is unavailable until you finish a Short or Long Rest, at the end of which you regain all your expended points."
+     ],
+     "source": {
+      "section": "Classes > Monk > Monk Class Features > Level 2: Monk's Focus",
+      "page": 50
+     }
+    },
+    {
+     "feature": "Uncanny Metabolism",
+     "level": 2,
+     "maximum": {
+      "fixed": 1
+     },
+     "refresh": [
+      {
+       "from_level": 2,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "Once you use this feature, you can't use it again until you finish a Long Rest."
+     ],
+     "source": {
+      "section": "Classes > Monk > Monk Class Features > Level 2: Uncanny Metabolism",
+      "page": 51
+     }
+    }
+   ],
+   "ac_formulas": [
+    {
+     "feature": "Unarmored Defense",
+     "level": 1,
+     "formula": {
+      "base": 10,
+      "abilities": [
+       "Dexterity",
+       "Wisdom"
+      ],
+      "while": "no armor",
+      "shield": "not allowed"
+     },
+     "evidence": "While you aren't wearing armor or wielding a Shield, your base Armor Class equals 10 plus your Dexterity and Wisdom modifiers.",
+     "source": {
+      "section": "Classes > Monk > Monk Class Features > Level 1: Unarmored Defense",
+      "page": 50
+     }
+    }
+   ]
   },
   "paladin": {
    "name": "Paladin",
@@ -2098,7 +2427,96 @@
      "19": 3,
      "20": 3
     }
-   }
+   },
+   "use_pools": [
+    {
+     "feature": "Lay On Hands",
+     "level": 1,
+     "maximum": {
+      "class_level_times": 5,
+      "unit": "hit points"
+     },
+     "refresh": [
+      {
+       "from_level": 1,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "You have a pool of healing power that replenishes when you finish a Long Rest.",
+      "a total number of Hit Points equal to five times your Paladin level."
+     ],
+     "source": {
+      "section": "Classes > Paladin > Paladin Class Features > Level 1: Lay On Hands",
+      "page": 53
+     }
+    },
+    {
+     "feature": "Paladin's Smite",
+     "level": 2,
+     "maximum": {
+      "fixed": 1
+     },
+     "refresh": [
+      {
+       "from_level": 2,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "you can cast it without expending a spell slot, but you must finish a Long Rest before you can cast it in this way again."
+     ],
+     "source": {
+      "section": "Classes > Paladin > Paladin Class Features > Level 2: Paladin's Smite",
+      "page": 54
+     }
+    },
+    {
+     "feature": "Channel Divinity",
+     "level": 3,
+     "maximum": {
+      "column": "Channel Divinity"
+     },
+     "refresh": [
+      {
+       "from_level": 3,
+       "short_rest": "one",
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "You can use this class's Channel Divinity twice. You regain one of its expended uses when you finish a Short Rest, and you regain all expended uses when you finish a Long Rest. You gain an additional use when you reach Paladin level 11."
+     ],
+     "source": {
+      "section": "Classes > Paladin > Paladin Class Features > Level 3: Channel Divinity",
+      "page": 54
+     }
+    },
+    {
+     "feature": "Faithful Steed",
+     "level": 5,
+     "maximum": {
+      "fixed": 1
+     },
+     "refresh": [
+      {
+       "from_level": 5,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "You can also cast the spell once without expending a spell slot, and you regain the ability to do so when you finish a Long Rest."
+     ],
+     "source": {
+      "section": "Classes > Paladin > Paladin Class Features > Level 5: Faithful Steed",
+      "page": 55
+     }
+    }
+   ],
+   "ac_formulas": []
   },
   "ranger": {
    "name": "Ranger",
@@ -2451,7 +2869,76 @@
      "19": 6,
      "20": 6
     }
-   }
+   },
+   "use_pools": [
+    {
+     "feature": "Favored Enemy",
+     "level": 1,
+     "maximum": {
+      "column": "Favored Enemy"
+     },
+     "refresh": [
+      {
+       "from_level": 1,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "You can cast it twice without expending a spell slot, and you regain all expended uses of this ability when you finish a Long Rest.",
+      "as shown in the Favored Enemy column of the Ranger Features table"
+     ],
+     "source": {
+      "section": "Classes > Ranger > Ranger Class Features > Level 1: Favored Enemy",
+      "page": 58
+     }
+    },
+    {
+     "feature": "Tireless",
+     "level": 10,
+     "maximum": {
+      "ability_modifier": "Wisdom",
+      "minimum": 1
+     },
+     "refresh": [
+      {
+       "from_level": 10,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "a number of times equal to your Wisdom modifier (minimum of once), and you regain all expended uses when you finish a Long Rest."
+     ],
+     "source": {
+      "section": "Classes > Ranger > Ranger Class Features > Level 10: Tireless",
+      "page": 59
+     }
+    },
+    {
+     "feature": "Nature's Veil",
+     "level": 14,
+     "maximum": {
+      "ability_modifier": "Wisdom",
+      "minimum": 1
+     },
+     "refresh": [
+      {
+       "from_level": 14,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "a number of times equal to your Wisdom modifier (minimum of once), and you regain all expended uses when you finish a Long Rest."
+     ],
+     "source": {
+      "section": "Classes > Ranger > Ranger Class Features > Level 14: Nature's Veil",
+      "page": 59
+     }
+    }
+   ],
+   "ac_formulas": []
   },
   "rogue": {
    "name": "Rogue",
@@ -2566,7 +3053,31 @@
      "19": "10d6",
      "20": "10d6"
     }
-   }
+   },
+   "use_pools": [
+    {
+     "feature": "Stroke of Luck",
+     "level": 20,
+     "maximum": {
+      "fixed": 1
+     },
+     "refresh": [
+      {
+       "from_level": 20,
+       "short_rest": "all",
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "Once you use this feature, you can't use it again until you finish a Short or Long Rest."
+     ],
+     "source": {
+      "section": "Classes > Rogue > Rogue Class Features > Level 20: Stroke of Luck",
+      "page": 63
+     }
+    }
+   ],
+   "ac_formulas": []
   },
   "sorcerer": {
    "name": "Sorcerer",
@@ -2931,7 +3442,94 @@
      "19": 19,
      "20": 20
     }
-   }
+   },
+   "use_pools": [
+    {
+     "feature": "Innate Sorcery",
+     "level": 1,
+     "maximum": {
+      "fixed": 2
+     },
+     "refresh": [
+      {
+       "from_level": 1,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "You can use this feature twice, and you regain all expended uses of it when you finish a Long Rest."
+     ],
+     "source": {
+      "section": "Classes > Sorcerer > Sorcerer Class Features > Level 1: Innate Sorcery",
+      "page": 65
+     }
+    },
+    {
+     "feature": "Font of Magic",
+     "level": 2,
+     "maximum": {
+      "column": "Sorcery Points"
+     },
+     "refresh": [
+      {
+       "from_level": 2,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "You have 2 Sorcery Points, and you gain more as you reach higher levels, as shown in the Sorcery Points column of the Sorcerer Features table.",
+      "You regain all expended Sorcery Points when you finish a Long Rest."
+     ],
+     "source": {
+      "section": "Classes > Sorcerer > Sorcerer Class Features > Level 2: Font of Magic",
+      "page": 66
+     }
+    },
+    {
+     "feature": "Sorcerous Restoration",
+     "level": 5,
+     "maximum": {
+      "fixed": 1
+     },
+     "refresh": [
+      {
+       "from_level": 5,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "Once you use this feature, you can't do so again until you finish a Long Rest."
+     ],
+     "source": {
+      "section": "Classes > Sorcerer > Sorcerer Class Features > Level 5: Sorcerous Restoration",
+      "page": 66
+     }
+    }
+   ],
+   "ac_formulas": [
+    {
+     "feature": "Draconic Resilience",
+     "level": 3,
+     "formula": {
+      "base": 10,
+      "abilities": [
+       "Dexterity",
+       "Charisma"
+      ],
+      "while": "no armor",
+      "shield": "allowed"
+     },
+     "evidence": "While you aren't wearing armor, your base Armor Class equals 10 plus your Dexterity and Charisma modifiers.",
+     "source": {
+      "section": "Classes > Sorcerer > Sorcerer Subclass: Draconic Sorcery > Level 3: Draconic Resilience",
+      "page": 69
+     },
+     "subclass": "Draconic Sorcery"
+    }
+   ]
   },
   "warlock": {
    "name": "Warlock",
@@ -3157,7 +3755,52 @@
      "19": 10,
      "20": 10
     }
-   }
+   },
+   "use_pools": [
+    {
+     "feature": "Magical Cunning",
+     "level": 2,
+     "maximum": {
+      "fixed": 1
+     },
+     "refresh": [
+      {
+       "from_level": 2,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "Once you use this feature, you can't do so again until you finish a Long Rest."
+     ],
+     "source": {
+      "section": "Classes > Warlock > Warlock Class Features > Level 2: Magical Cunning",
+      "page": 72
+     }
+    },
+    {
+     "feature": "Contact Patron",
+     "level": 9,
+     "maximum": {
+      "fixed": 1
+     },
+     "refresh": [
+      {
+       "from_level": 9,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "Once you cast the spell with this feature, you can't do so in this way again until you finish a Long Rest."
+     ],
+     "source": {
+      "section": "Classes > Warlock > Warlock Class Features > Level 9: Contact Patron",
+      "page": 72
+     }
+    }
+   ],
+   "ac_formulas": []
   },
   "wizard": {
    "name": "Wizard",
@@ -3495,7 +4138,71 @@
      "Signature Spells"
     ]
    },
-   "table_columns": {}
+   "table_columns": {},
+   "use_pools": [
+    {
+     "feature": "Arcane Recovery",
+     "level": 1,
+     "maximum": {
+      "fixed": 1
+     },
+     "refresh": [
+      {
+       "from_level": 1,
+       "short_rest": null,
+       "long_rest": "all"
+      }
+     ],
+     "evidence": [
+      "Once you use this feature, you can't do so again until you finish a Long Rest."
+     ],
+     "source": {
+      "section": "Classes > Wizard > Wizard Class Features > Level 1: Arcane Recovery",
+      "page": 78
+     }
+    }
+   ],
+   "ac_formulas": []
   }
- }
+ },
+ "use_pools_not_modeled": [
+  {
+   "class": "cleric",
+   "feature": "Greater Divine Intervention",
+   "why": "the wait is a dice roll of Long Rests, not a count of uses"
+  },
+  {
+   "class": "warlock",
+   "feature": "Mystic Arcanum",
+   "why": "one use per arcanum spell, gained at 11, 13, 15 and 17"
+  },
+  {
+   "class": "wizard",
+   "feature": "Signature Spells",
+   "why": "one use per signature spell"
+  }
+ ],
+ "hp_bonuses": [
+  {
+   "name": "Dwarven Toughness",
+   "granted_by": {
+    "kind": "species trait",
+    "species": "Dwarf"
+   },
+   "per_character_level": 1,
+   "evidence": "Dwarven Toughness. Your Hit Point maximum increases by 1, and it increases by 1 again whenever you gain a level."
+  },
+  {
+   "name": "Draconic Resilience",
+   "granted_by": {
+    "kind": "subclass feature",
+    "class": "sorcerer",
+    "subclass": "Draconic Sorcery",
+    "level": 3
+   },
+   "per_class_level": 1,
+   "from_class_level": 3,
+   "evidence": "Your Hit Point maximum increases by 3, and it increases by 1 whenever you gain another Sorcerer level."
+  }
+ ]
 }
