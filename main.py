@@ -4657,8 +4657,43 @@ def _apply_legacy_json_target(target):
     return "applied"
 
 
+LEGACY_JOURNAL_ASIDE_TAIL = (
+    "and the chronicle starts again with the repaired older departure"
+)
+
+
+def _set_unreadable_legacy_journal_aside(checkpoint, target):
+    """Set an unreadable journal aside before a legacy repair applies (#636).
+
+    The repair's entry then starts a fresh chronicle (D-620-1, D-636-13).
+    The target is rebased to that fresh base just before the rename and put
+    back if the rename fails, as the v2 drain rebases its index (#656).
+    """
+    original = copy.deepcopy({"before": target["before"], "after": target["after"]})
+    entry = target["after"]["value"]["entries"][-1]
+
+    def rebase():
+        target["before"] = _legacy_absent_target("journal.json")
+        target["after"] = {
+            "path": "journal.json",
+            "exists": True,
+            "value": {"entries": [copy.deepcopy(entry)]},
+        }
+        action_handler._write_location_transition_checkpoint(checkpoint)
+
+    def restore():
+        target.update(copy.deepcopy(original))
+        action_handler._write_location_transition_checkpoint(checkpoint)
+
+    action_handler._read_journal_setting_aside(
+        LEGACY_JOURNAL_ASIDE_TAIL, before_rename=rebase, after_failed_rename=restore
+    )
+
+
 def _apply_legacy_repair_checkpoint_unlocked(checkpoint, conversation_history):
     repair = checkpoint.get("legacy_repair") or {}
+    if isinstance(repair.get("journal"), dict):
+        _set_unreadable_legacy_journal_aside(checkpoint, repair["journal"])
     targets = [repair.get("journal")] + list(repair.get("memory_targets") or [])
     for target in targets:
         if not isinstance(target, dict):
@@ -4726,7 +4761,16 @@ def check_and_process_location_transitions(conversation_history, party_tracker_d
     enhanced_summary = enhance_location_summary(summary) or summary
 
     world = party_tracker_data.get("worldConditions") or {}
-    journal_target_before = _legacy_json_target("journal.json")
+    # An unreadable journal is set aside (bytes kept), never overwritten or
+    # read as a raise (#636, D-636-13); the repair then starts it afresh.
+    journal_value = action_handler._read_journal_setting_aside(
+        LEGACY_JOURNAL_ASIDE_TAIL
+    )
+    journal_target_before = {
+        "path": "journal.json",
+        "exists": Path("journal.json").exists(),
+        "value": journal_value,
+    }
     journal_before = copy.deepcopy(journal_target_before["value"])
     if not isinstance(journal_before, dict):
         journal_before = {"entries": []}
