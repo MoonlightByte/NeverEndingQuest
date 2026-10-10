@@ -164,7 +164,7 @@ provider router, persisted approval or background comparison is introduced.
 - Scope supersession reaps a child and raises before generation logging; absence of a
   completed T114 capture cannot prove whether an interrupted guardian started. The
   guardian-load acceptance observation does not certify task-specific cancellation.
-- Guardian seams: `core/npc/party_guardian.py:94`, `main.py:11146`,
+- Guardian seams: `core/npc/party_guardian.py:94`, `main.py:11169`,
   `model_registry.py:662`, `utils/capture/live_provider_call.py:52`.
 
 ## Load-bearing seams
@@ -176,13 +176,13 @@ provider router, persisted approval or background comparison is introduced.
 5. `model_config.py:1069-1175` - capture defaults, provider defaults, and switching.
 6. `model_config.py:1198-1439` - persisted settings and credentials.
 7. `model_config.py:1442-1572` - registry validation, resolution, and derived variants.
-8. `utils/capture/multi_model_capture.py:324-386` - profile replacement and empty-only retry.
-9. `utils/capture/multi_model_capture.py:389-521` - provider snapshot and primary execution.
-10. `utils/capture/multi_model_capture.py:523-643` - failure-isolated capture and variants.
+8. `utils/capture/multi_model_capture.py:325-387` - profile replacement and empty-only retry.
+9. `utils/capture/multi_model_capture.py:390-525` - provider snapshot and primary execution.
+10. `utils/capture/multi_model_capture.py:527-647` - failure-isolated capture and variants.
 11. `core/ai/api_client.py:217-302` - response rejection and actual model/ID normalization.
 12. `core/ai/api_client.py:319-442` - provider-neutral router and error normalization.
 13. `core/ai/api_client.py:532-1019` - provider constraints and Gemini translation.
-14. `utils/capture/live_provider_call.py:793` and `utils/capture/multi_model_capture.py:389` - live children, correlation, required reissue, and capture bookkeeping.
+14. `utils/capture/live_provider_call.py:793` and `utils/capture/multi_model_capture.py:390` - live children, correlation, required reissue, and capture bookkeeping.
 15. `core/ai/api_client.py` `normalize_local_template_messages` / `_local_template_repair` - Local/Custom strict-template shape repair (#179, #389). Lives in the adapter so every caller, the live child included, gets it: on a COMPLETED Local/Custom rejection (any HTTP status; provider prose is never parsed) the request is reissued once with one leading system block, later system messages converted to user turns in place, and a trailing user turn; an array the reshape leaves unchanged re-raises as before, so lenient models are never reshaped and nothing can loop. Capture rows keep the caller's assembled request; replay through the adapter applies the same repair.
 16. `utils/capture/file_writer.py:36-181` and `utils/api_logger.py:42-130` - capture and API evidence stores.
 

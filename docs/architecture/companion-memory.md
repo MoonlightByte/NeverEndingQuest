@@ -131,7 +131,7 @@ recall acceptance. Older sections below retain their historical pins.
 14. `core/npc/episode_recall.py:173-246` - T112 typed-anchor and current-location scoring.
 15. `core/npc/voice_context.py:128-321` - witnessed candidates, location threading, and T105 handoff.
 16. `core/npc/episode_backfill.py:215-279` - T113 roster-bound backfill.
-17. `updates/save_game_manager.py:1397-1552` - restore, cleanup, and rollback.
+17. `updates/save_game_manager.py:1420-1579` - restore, cleanup, and rollback.
 
 ## Invariants
 

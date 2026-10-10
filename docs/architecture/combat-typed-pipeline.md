@@ -135,13 +135,13 @@ immediately. In-combat `pendingTurn` remains initiative-owned and unchanged.
 6. `core/managers/combat_state.py:1200` - restart recovery classifier.
 7. `core/managers/combat_transaction.py:897` - staged events and preconditions.
 8. `core/managers/combat_transaction.py:1271` - lease-protected exact-once apply.
-9. `core/managers/combat_orchestrator.py:1334` - typed turn coordinator.
-10. `core/managers/combat_manager.py:4019` - T043 resume/pending-receipt split.
-11. `core/managers/combat_manager.py:4273` - T044 opening; T040 follows in validation.
-12. `core/managers/combat_manager.py:5093` - manager-to-orchestrator entry.
-13. `core/managers/combat_manager.py:5257` - history-backed display and acknowledgment.
-14. `core/managers/combat_manager.py:2317` - completion, rewards, summary, archive, clear.
-15. `main.py:7363` - post-combat T067 handoff.
+9. `core/managers/combat_orchestrator.py:1335` - typed turn coordinator.
+10. `core/managers/combat_manager.py:4024` - T043 resume/pending-receipt split.
+11. `core/managers/combat_manager.py:4278` - T044 opening; T040 follows in validation.
+12. `core/managers/combat_manager.py:5102` - manager-to-orchestrator entry.
+13. `core/managers/combat_manager.py:5266` - history-backed display and acknowledgment.
+14. `core/managers/combat_manager.py:2320` - completion, rewards, summary, archive, clear.
+15. `main.py:7380` - post-combat T067 handoff.
 
 ## Invariants
 

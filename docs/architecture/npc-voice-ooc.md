@@ -67,7 +67,7 @@ Local-party instruction, completion-collection and travel-publication seams chec
    companions (`core/npc/voice_context.py:1832`, `_RecallVoiceHandle.collect` at line328).
 7. T067 remains the sole player-facing DM and action author.
 8. In the guardian working candidate based on the revision above, structured membership
-   proposals receive T114 review before route preflight and T065. The shared owner (`main.py:10665`) keeps
+   proposals receive T114 review before route preflight and T065. The shared owner (`main.py:10687`) keeps
    actual player input, accepted context, latest candidate and review feedback distinct.
    T065 retains the same request-local advisory batch across correction attempts.
 
@@ -119,7 +119,7 @@ feedback is request-local and never committed as companion memory.
 
 ## Load-bearing seams
 
-1. `main.py:10127-10147` - stage starts after durable player-input claim.
+1. `main.py:10146-10166` - stage starts after durable player-input claim.
 2. `core/npc/voice_context.py:510-535` - E1 scene window.
 3. `core/npc/voice_context.py:538-565` - E2 visible companion acts.
 4. `core/npc/voice_context.py:568-631` - E4 companion relationships.
@@ -129,9 +129,9 @@ feedback is request-local and never committed as companion memory.
 7. `core/npc/voice_service.py:713-926` - fenced parallel T105 workers.
 8. `core/npc/voice_service.py:486-653` - response validator and affinity classification.
 9. `core/npc/voice_context.py:1832` - completion-collection and private injection; `_RecallVoiceHandle.collect` at line328.
-10. `main.py:7927-7959` - post-compression injection before T067.
-11. `main.py:3484-3528` - same advice reaches T065 validation.
-12. `main.py:10208-10240` - accepted-history and sidecar commit gate.
+10. `main.py:7944-7976` - post-compression injection before T067.
+11. `main.py:3495-3539` - same advice reaches T065 validation.
+12. `main.py:10227-10259` - accepted-history and sidecar commit gate.
 13. `core/npc/voice_context.py:1709-1814` - per-result sidecar commit.
 14. `core/npc/relationship_store.py:335-376` - lock, revision, atomic write.
 15. `core/npc/voice_context.py:1899-1919` - ordinary diagnostic redaction.

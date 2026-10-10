@@ -165,7 +165,7 @@ Startup integration publishes a dropped-in or stubbed module registry-only throu
 
 ## Load-bearing seams
 
-1. `core/ai/action_handler.py:4537-4850` - create action, lock, builder call, and result.
+1. `core/ai/action_handler.py:4547-4860` - create action, lock, builder call, and result.
 2. `core/generators/module_builder.py:132-214` - shared build boundary and fresh fallback candidate.
 3. `core/generators/module_builder.py:648-722` - compatible builder stage order.
 4. `core/generators/module_builder.py:3076-3202` - explicit/T030 spec authority and branch selection.
@@ -173,10 +173,10 @@ Startup integration publishes a dropped-in or stubbed module registry-only throu
 6. `core/generators/module_builder.py:2670-2734` - code-owned cross-area links.
 7. `core/generators/module_stitcher.py:2991-3164` (`build_publication_registry_bytes`) - hidden-candidate safety and registry bytes.
 8. `utils/module_publish.py:283-392` - hidden workspace and atomic directory publication.
-9. `core/managers/campaign_manager.py:2249-2428` - intent-before-transition publication.
-10. `core/managers/campaign_manager.py:2513-2949` - prepared/ready intent lifecycle and ordered drain.
-11. `core/managers/campaign_manager.py:3137-3702` - archive, T038/T039, recovery, and transactional commit.
-12. `main.py:7486-7515` and `main.py:8933-8965` - post-response and startup completion drains.
+9. `core/managers/campaign_manager.py:2252-2435` - intent-before-transition publication.
+10. `core/managers/campaign_manager.py:2520-2956` - prepared/ready intent lifecycle and ordered drain.
+11. `core/managers/campaign_manager.py:3144-3709` - archive, T038/T039, recovery, and transactional commit.
+12. `main.py:7503-7532` and `main.py:8952-8984` - post-response and startup completion drains.
 
 ## Invariants
 
