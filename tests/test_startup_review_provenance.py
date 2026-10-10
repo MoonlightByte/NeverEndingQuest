@@ -117,6 +117,68 @@ def test_narrow_engine_certificate_does_not_claim_other_effects(wizard, authored
     assert provenance["engine_projection"]["equipment_effects"]["selector"] == {"target": "AC"}
 
 
+def test_authored_hit_points_are_set_exactly_before_projection(wizard, authored):
+    # #570: an authored maximum above the derivation is not kept. #696: the
+    # projection status the reviewer sees carries the committed maximum.
+    authored["character"]["hitPoints"] = authored["character"]["maxHitPoints"] = 13
+    candidate, provenance = wizard._prepare_startup_proposal(authored)
+    assert candidate["character"]["maxHitPoints"] == candidate["character"]["hitPoints"] == 12
+    assert authored["character"]["maxHitPoints"] == 13
+    assert provenance["hit_points"]["expected_maximum"] == 12
+    assert provenance["hit_points"]["policy"].startswith("Set exactly")
+    assert any(note.startswith("maxHitPoints 13 -> 12") for note in provenance["mechanics_notes"])
+    assert any(note.startswith("hitPoints 13 -> 12") for note in provenance["mechanics_notes"])
+    hp = provenance["engine_projection"]["status"]["resources"]["hp"]
+    assert hp["maximum"] == hp["current"] == candidate["character"]["maxHitPoints"]
+
+
+@pytest.mark.parametrize("cls, con, traits, feats, expected", [
+    ("Wizard", 8, [], [], 5),                                    # 6 - 1
+    ("Cleric", 12, ["Dwarven Toughness"], [], 10),               # 8 + 1 + 1
+    ("Barbarian", 10, [], [], 12),
+    ("Fighter", 14, [], ["Tough"], 12),                           # SRD 5.2.1 has no Tough feat
+    ("Sorcerer", 1, [], [], 1),                                   # 6 - 5
+])
+def test_level_one_hit_points_come_from_progression(wizard, authored, cls, con, traits, feats, expected):
+    sheet = copy.deepcopy(authored["character"])
+    sheet["class"] = cls
+    sheet["abilities"]["constitution"] = con
+    sheet["racialTraits"] = [{"name": name, "description": "typed"} for name in traits]
+    sheet["feats"] = [{"name": name, "description": "typed"} for name in feats]
+    maximum, terms = wizard.expected_starting_hit_points(sheet)
+    assert maximum == expected
+    from core.leveling import tables
+    die = tables.tables()["classes"][cls.casefold()]["hp_at_first_level_base"]
+    assert terms[0] == f"{cls} d{die} maximum {die}"
+    assert not any(term.startswith("Tough feat") for term in terms)
+
+
+def test_only_level_one_sheets_are_derived(wizard, authored):
+    sheet = copy.deepcopy(authored["character"])
+    sheet["level"] = 2
+    sheet["hitPoints"] = sheet["maxHitPoints"] = 21
+    assert wizard.expected_starting_hit_points(sheet) == (None, [])
+    provenance = {}
+    result, notes = wizard.startup_mechanics(sheet, provenance=provenance)
+    assert result["maxHitPoints"] == result["hitPoints"] == 21
+    assert "hit_points" not in provenance
+    assert not any("HitPoints" in note for note in notes)
+
+
+def test_existing_hero_is_never_rederived(wizard, authored, monkeypatch, tmp_path):
+    # A saved hero chosen at startup keeps its sheet: no startup_mechanics run.
+    hero = copy.deepcopy(authored["character"])
+    hero["hitPoints"] = hero["maxHitPoints"] = 15
+    path = tmp_path / "saved-hero.json"
+    path.write_text(json.dumps(hero), encoding="utf-8")
+    monkeypatch.setattr(wizard, "startup_mechanics", lambda *a, **k: pytest.fail("existing hero re-derived"))
+    monkeypatch.setattr(wizard, "_set_startup_progress", lambda *a, **k: None)
+    commits = []
+    monkeypatch.setattr(wizard, "_commit_startup_build",
+                        lambda conversation, module, character, **k: commits.append(copy.deepcopy(character)))
+    assert wizard._use_existing_startup_character([], "Test_Module", {"path": str(path)}) == hero["name"]
+    assert commits == [hero]
+
 def run_interview(wizard, authored, monkeypatch, *, review, stop_after_rejection=False):
     from utils.capture.live_provider_call import LiveProviderSuperseded
     proposal = copy.deepcopy(authored)
@@ -186,7 +248,10 @@ def test_negative_review_retains_authorship_and_never_commits(wizard, authored, 
     def review(payload):
         assert payload["normalization_provenance"]["engine_projection"]["applied"]
         if defect == "mechanics":
-            assert payload["proposal"]["character"]["maxHitPoints"] == 99
+            # Hit points are code output (#570): the candidate carries the exact
+            # maximum; the authored 99 stays visible as authorship.
+            assert payload["proposal"]["character"]["maxHitPoints"] == 12
+            assert payload["authored_proposal"]["character"]["maxHitPoints"] == 99
             assert payload["normalization_provenance"]["hit_points"]["expected_maximum"] == 12
         if defect == "author_saves":
             assert payload["authored_proposal"]["character"]["savingThrowBonuses"]["strength"] == 99

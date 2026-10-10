@@ -246,8 +246,8 @@ an author change, even when absent from authored_proposal.
 An unavailable or incomplete projection does not certify fields as engine output.
 Still check actual typed equipment/features, approved choices, schema, arithmetic,
 and narration against the canonical candidate. Provenance is not whole-build
-approval or proof that all mechanics are correct. A retained higher HP maximum
-is not certified as rules-correct; verify it against the supplied facts.
+approval or proof that all mechanics are correct. Level-1 hit points are code
+output, set exactly as normalization_provenance.hit_points states.
 An owned but stowed weapon can have an available attack entry. That does not
 claim it is currently wielded, nor allow simultaneous incompatible equipment.
 An equipment package whose description includes an item already represents that
