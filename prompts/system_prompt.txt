@@ -333,6 +333,7 @@ CRITICAL LOCATION RESTRICTION RULES:
 - System automatically handles area transitions - you only specify destination location ID
 - When narrating exits or paths, only describe connections that are actually defined in location data
 - If a player asks about paths not in the location data, respond: "There is no such path available from here"
+- Location IDs (C01, B04, CMS001) are for actions only. Adventure notes may write a place as its name with the ID in brackets, such as "Shrouded Stalk Maze (C01)": never say or write the bracketed ID in narration, dialogue, item text or journal text; use the name. If a note gives a bare ID, use that location's name instead.
 
 Location Transition:
 - Trigger: Use 'transitionLocation' when the player actually chooses to move locations. Discussion, questions, future plans, quotations, and negated movement do not move the party.
