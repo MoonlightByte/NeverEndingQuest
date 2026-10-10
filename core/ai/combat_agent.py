@@ -270,6 +270,32 @@ def build_contextual_spell_payload(
     }
 
 
+def _spell_attack_prompt():
+    """#672: the paragraph for the spell attacks code asks for and scores,
+    named from the typed records; empty when the records are unavailable
+    (then every spell keeps the model's roll request)."""
+    try:
+        from core.ai import srd_spell_attacks
+
+        records = srd_spell_attacks.load_spell_attacks()["attacks"]
+        names = sorted(record["name"] for record in records.values())
+    except Exception:
+        return ""
+    if not names:
+        return ""
+    listed = names[0] if len(names) == 1 else "%s or %s" % (", ".join(names[:-1]), names[-1])
+    return (
+        "A player's %s cast at one hostile creature is asked for and scored by\n"
+        "code too: declare action='cast', the exact spell name as ability and\n"
+        "targetId, targets empty, the spell's resources (its spell slot, if any)\n"
+        "and no requiresPlayerInput. Code asks for the d20 and, on a hit, the\n"
+        "damage dice, and deals the damage. An effect the spell grants only on a\n"
+        "hit (Guiding Bolt's Advantage on the next attack roll against the\n"
+        "target) gets applyOn 'hit'; code stages it only when the attack hits.\n"
+        "Every other spell attack keeps requiresPlayerInput as below.\n\n" % listed
+    )
+
+
 def _intent_system_prompt():
     return """You are the tactical-intent role in a turn-based fantasy combat engine.
 You choose actions and structured rulings; code owns initiative, dice consumption,
@@ -460,7 +486,7 @@ situational edge (cover, an unseen attacker, a clever setup) add
 attackMode='advantage'|'disadvantage' with a short attackModeReason. When
 the actor makes more than one attack this turn, set attacks to that number.
 
-The PLAYER actor must always use mode='adjudicated'; never roll automatically
+""" + _spell_attack_prompt() + """The PLAYER actor must always use mode='adjudicated'; never roll automatically
 for the player. Apply only rolls/results explicitly supplied in playerInput,
 or set requiresPlayerInput={kind:'roll'|'choice', prompt:'...', die:'d20',
 reason:'...', spellName:'exact spell name', phase:'typed spell phase',
