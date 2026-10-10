@@ -4783,6 +4783,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 validate_create_new_module_action,
             )
             from core.generators.module_builder import (
+                ModuleCreationBusyError,
                 ModuleCreationCancelledError,
                 ModuleCreationFailedError,
                 ai_driven_module_creation,
@@ -4795,7 +4796,9 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             # Build + publish are one atomic unit: the module is built in a
             # hidden temp workspace and swapped into modules/ in a single rename,
             # so a failure never leaves a half-built module live (fail-forward).
-            from utils.module_refresh_lock import module_refresh_lock
+            # The build takes module_refresh_lock itself, only to reserve its
+            # name and to publish (issue #708); it is not held here while the
+            # module generates.
 
             with module_build_usage_scope(build_id=build_id) as build_context:
                 build_id = str(build_context.build_id)
@@ -4809,86 +4812,85 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     )
                     return failure
 
-                with module_refresh_lock() as publication_acquired:
-                    if not publication_acquired:
-                        mark_module_build_outcome("lock_unavailable")
-                        failure = module_failure(
-                            message=(
-                                "Module creation is busy; no game state was "
-                                "changed. Please retry shortly."
-                            )
-                        )
-                        terminal_progress(
-                            "failed", failure["response_data"]["error_message"]
-                        )
-                        return failure
-
-                    # No cross-turn idempotency dedup: a createNewModule may carry
-                    # only a narrative (no module_name), and the allocated final
-                    # name may differ, so nothing can reliably match a retry to a
-                    # prior build. A crash-then-recreate yields a harmless SPARE
-                    # module the player can delete -- fail-forward, never a broken
-                    # or corrupted game. No prior in-flight state ever BLOCKS a
-                    # new build.
-                    stitcher = get_module_stitcher()
-                    try:
-                        # Builds into a hidden temp workspace and atomically swaps
-                        # the module into modules/<name> in one rename, updating
-                        # the advisory registry via the store-free helper. A
-                        # failure here NEVER touches live state -- the build simply
-                        # did not happen and the player keeps playing.
-                        success, module_name = ai_driven_module_creation(
-                            parameters,
-                            progress_callback=module_progress_callback,
-                            policy="game",
-                            prepare_candidate=(
-                                stitcher.build_publication_registry_bytes
-                            ),
-                        )
-                    except ModuleCreationCancelledError:
-                        mark_module_build_outcome("not_generated")
-                        failure = module_failure()
-                        terminal_progress(
-                            "failed", failure["response_data"]["error_message"]
-                        )
-                        return failure
-                    except ModuleCreationFailedError as build_error:
-                        # The build reports its reason instead of returning a bare
-                        # failure (issue #130). Log the detail, but keep the
-                        # player-facing message sanitized: provider output must
-                        # not leak into the DM conversation.
-                        error(
-                            f"Module creation failed: {build_error}",
-                            exception=build_error,
-                            category="module_creation",
-                        )
-                        mark_module_build_outcome("not_generated")
-                        failure = module_failure()
-                        terminal_progress(
-                            "failed", failure["response_data"]["error_message"]
-                        )
-                        return failure
-
-                    if not success or not module_name:
-                        mark_module_build_outcome("not_generated")
-                        failure = module_failure()
-                        terminal_progress(
-                            "failed", failure["response_data"]["error_message"]
-                        )
-                        return failure
-
-                    mark_module_build_outcome("published")
+                # No cross-turn idempotency dedup: a createNewModule may carry
+                # only a narrative (no module_name), and the allocated final
+                # name may differ, so nothing can reliably match a retry to a
+                # prior build. A crash-then-recreate yields a harmless SPARE
+                # module the player can delete -- fail-forward, never a broken
+                # or corrupted game. No prior in-flight state ever BLOCKS a
+                # new build.
+                stitcher = get_module_stitcher()
+                try:
+                    # Builds into a hidden temp workspace and atomically swaps
+                    # the module into modules/<name> in one rename, updating
+                    # the advisory registry via the store-free helper. A
+                    # failure here NEVER touches live state -- the build simply
+                    # did not happen and the player keeps playing.
+                    success, module_name = ai_driven_module_creation(
+                        parameters,
+                        progress_callback=module_progress_callback,
+                        policy="game",
+                        prepare_candidate=(
+                            stitcher.build_publication_registry_bytes
+                        ),
+                    )
+                except ModuleCreationCancelledError:
+                    mark_module_build_outcome("not_generated")
+                    failure = module_failure()
                     terminal_progress(
-                        "published",
-                        f"Module {module_name} was published successfully.",
-                        module_name,
+                        "failed", failure["response_data"]["error_message"]
                     )
-                    info(
-                        f"SUCCESS: Module '{module_name}' created and published",
-                        category="module_management",
+                    return failure
+                except ModuleCreationBusyError:
+                    # Module refresh stayed busy before anything was built.
+                    mark_module_build_outcome("lock_unavailable")
+                    failure = module_failure(
+                        message=(
+                            "Module creation is busy; no game state was "
+                            "changed. Please retry shortly."
+                        )
                     )
-                    needs_conversation_history_update = True
-                    return published_result(module_name)
+                    terminal_progress(
+                        "failed", failure["response_data"]["error_message"]
+                    )
+                    return failure
+                except ModuleCreationFailedError as build_error:
+                    # The build reports its reason instead of returning a bare
+                    # failure (issue #130). Log the detail, but keep the
+                    # player-facing message sanitized: provider output must
+                    # not leak into the DM conversation.
+                    error(
+                        f"Module creation failed: {build_error}",
+                        exception=build_error,
+                        category="module_creation",
+                    )
+                    mark_module_build_outcome("not_generated")
+                    failure = module_failure()
+                    terminal_progress(
+                        "failed", failure["response_data"]["error_message"]
+                    )
+                    return failure
+
+                if not success or not module_name:
+                    mark_module_build_outcome("not_generated")
+                    failure = module_failure()
+                    terminal_progress(
+                        "failed", failure["response_data"]["error_message"]
+                    )
+                    return failure
+
+                mark_module_build_outcome("published")
+                terminal_progress(
+                    "published",
+                    f"Module {module_name} was published successfully.",
+                    module_name,
+                )
+                info(
+                    f"SUCCESS: Module '{module_name}' created and published",
+                    category="module_management",
+                )
+                needs_conversation_history_update = True
+                return published_result(module_name)
         except Exception as module_error:
             error(
                 "FAILURE: Unexpected module creation pipeline error",
