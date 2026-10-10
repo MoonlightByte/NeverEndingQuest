@@ -1908,7 +1908,8 @@ class CampaignManager:
         (``refused_because``); ``imported`` lists the unplayed ones joined by
         renumbering; ``not_joined`` lists the installed ones publication
         refused or could not prove, with the reason and a typed ``cause``
-        (#586, #613, #608).
+        (#586, #613, #608), or the waiting ones a scan blocked by
+        INDETERMINATE lifecycle recovery did not check (#638).
         """
         with module_refresh_lock() as acquired:
             if not acquired:

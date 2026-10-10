@@ -5351,6 +5351,25 @@ def _module_not_joined_line(refusal):
             "You can keep playing."
             % _module_label(refusal.get("module"))
         )
+    if cause == "lifecycle_indeterminate":
+        # The scan joined nothing while lifecycle recovery was INDETERMINATE
+        # (issue #638). Recovery gives no typed cause (an interrupted build, a
+        # linked modules folder or a file error), so none is named. No module
+        # means the waiting ones could not be listed.
+        if refusal.get("module") is None:
+            return (
+                "New modules could not be checked this time because the game "
+                "could not safely read the state of its modules folder. The "
+                "game will try again the next time it starts. You can keep "
+                "playing; nothing was changed."
+            )
+        return (
+            "%s is installed, but it could not be checked this time because "
+            "the game could not safely read the state of its modules folder, "
+            "so it is not joined to this world yet. The game will try again "
+            "the next time it starts. You can keep playing; nothing was changed."
+            % _module_label(refusal.get("module"))
+        )
     return (
         "%s is installed, but it could not be joined to this world yet. It will "
         "be tried again the next time the game starts. You can keep playing; "
