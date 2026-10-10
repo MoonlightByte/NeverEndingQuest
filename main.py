@@ -1677,9 +1677,12 @@ def generate_arrival_narration(
 
 
 # <--- NEW FUNCTION to blend the departure and arrival narrations --->
-def generate_seamless_transition_narration(departure_narration, arrival_narration):
+def generate_seamless_transition_narration(departure_narration, arrival_narration, dm_text=""):
     """
     Run layer 3/3 (T064), preserving both accepted layers as one seamless turn.
+    dm_text is the DM's accepted narration of the turn (#670): the closing
+    invitation keeps what it says the player asked for that waits for the next
+    turn. Empty dm_text leaves the prompt unchanged.
     """
     from utils.capture.live_provider_call import LiveProviderSuperseded
     debug("STATE_CHANGE: Blending departure and arrival narrations into a seamless whole...", category="narrative_generation")
@@ -1689,6 +1692,14 @@ def generate_seamless_transition_narration(departure_narration, arrival_narratio
         return arrival_narration
     if not arrival_narration:
         return departure_narration
+
+    dm_text = str(dm_text or "").strip()
+    dm_block = (
+        "\nTHE DM'S ACCEPTED NARRATION OF THIS TURN (use it only for this: if it "
+        "tells the player that something they asked for has not happened yet and "
+        "waits for their next turn, say so plainly in the closing invitation, in "
+        "its own terms; take nothing else from it):\n---\n" + dm_text + "\n---\n"
+    ) if dm_text else ""
 
     stitching_prompt = f"""
 You are a master storyteller and narrative editor. The following two text blocks describe a party's departure from one place and their subsequent arrival at another. The transition between them is abrupt because they were generated separately.
@@ -1712,7 +1723,7 @@ ARRIVAL NARRATION:
 ---
 {arrival_narration}
 ---
-
+{dm_block}
 Now, provide the rewritten, seamless narration.
 """
 
@@ -2119,18 +2130,15 @@ def _run_transition_chain(checkpoint, party, history):
     at a module handoff), T063 the arrival grounded in the destination, T064
     the stitch."""
     narration = checkpoint.get("narration") or {}
+    dm_text = narration.get("departure_text") or narration.get("source_prompt")
     first = generate_transition_narration(
-        _transition_departure_prompt(
-            checkpoint,
-            party,
-            narration.get("departure_text") or narration.get("source_prompt"),
-        ),
+        _transition_departure_prompt(checkpoint, party, dm_text),
         party,
     )
     arrival = generate_arrival_narration(
         first, party, history, _transition_arrival_facts(party)
     )
-    return generate_seamless_transition_narration(first, arrival)
+    return generate_seamless_transition_narration(first, arrival, dm_text)
 
 
 def _transition_outcome_lines(checkpoint, party):
@@ -6462,7 +6470,7 @@ def process_ai_response(
             # <--- MODIFIED SECTION: Use the new seamless narration generator --->
             # Step 4: Blend the departure and arrival narrations into a single, cohesive story.
             full_narration = generate_seamless_transition_narration(
-                transition_narration, arrival_narration
+                transition_narration, arrival_narration, departure_narration
             )
 
             # T063/T064 may overlap another worker's transition. Do not save
