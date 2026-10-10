@@ -197,6 +197,18 @@ export function skillRows(data: Record<string, unknown>): SkillRow[] {
   return []
 }
 
+/** All eighteen skills A-Z with bonus and proficiency, for the player sheet's Skills list. */
+export function allSkillRows(data: Record<string, unknown>): Array<SkillRow & { proficient: boolean }> {
+  const proficient = proficientSkills(data)
+  return Object.entries(SKILL_MAP)
+    .flatMap(([abilityLabel, skills]) => skills.map((name) => ({
+      name,
+      proficient: proficient.includes(name),
+      bonus: skillBonus(name, abilityLabel.toLowerCase() as AbilityName, data),
+    })))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
 // ---------- hit points ----------
 
 export type HpTone = 'healthy' | 'medium' | 'low'

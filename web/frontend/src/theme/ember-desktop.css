@@ -95,9 +95,10 @@
 .ember-desktop .neq-ability-name { color: var(--ember-brass); letter-spacing: 0; font: 400 16px/1.2 var(--font-body); }
 .ember-desktop .neq-ability-value { color: var(--ember-text); font: 400 23px/1.1 var(--font-body); }
 .ember-desktop .neq-ability-modifier { width: auto; height: auto; margin-top: 3px; border: 0; border-radius: 0; background: none; color: var(--ember-text); font: 400 17px/1.1 var(--font-body); }
-.ember-desktop .neq-weapons-grid { order: 3; display: block; margin: 0; }
-.ember-desktop .neq-saving-throws { order: 4; }
-.ember-desktop .neq-abilities-grid { order: 5; display: block; margin: 0; }
+.ember-desktop .neq-weapons-grid { order: 4; display: block; margin: 0; }
+.ember-desktop .neq-saving-throws { order: 5; }
+.ember-desktop .neq-skills { order: 6; }
+.ember-desktop .neq-abilities-grid { order: 7; display: block; margin: 0; }
 .ember-desktop .neq-sheet-section, .ember-desktop .neq-saving-throws { margin: 0 10px 4px; padding: 0; border: 0; border-radius: 0; background: none; min-height: 0; }
 .ember-desktop .neq-weapons-grid .neq-sheet-section { min-height: 0; }
 .ember-desktop .neq-sheet-section h4, .ember-desktop .neq-saving-throws h4 { display: flex; align-items: center; gap: 10px; padding: 0; margin: 0; border: 0; color: var(--ember-brass); font: 400 17px/1.3 var(--font-body); text-transform: none; letter-spacing: 0; }
@@ -110,7 +111,8 @@
 .ember-desktop .neq-saving-throws-grid { display: flex; gap: 7px; justify-content: space-between; flex-wrap: wrap; }
 .ember-desktop .neq-saving-throws-grid > div { display: flex; gap: 6px; padding: 0; border: 0; background: none; border-radius: 0; min-height: 0; font: 400 16px/1.4 var(--font-body); }
 .ember-desktop .neq-saving-throws-grid > div > span { color: var(--ember-text); font-weight: 400; }
-.ember-desktop .ember-currency-row { order: 6; display: flex; justify-content: space-around; margin-top: 10px; padding: 9px 0; border-block: 1px solid var(--ember-frame); }
+.ember-desktop .neq-skills-grid > div[data-proficient='false'] > span:first-child { color: var(--ember-muted); }
+.ember-desktop .ember-currency-row { order: 3; display: flex; justify-content: space-around; margin: 0 0 8px; padding: 9px 0; border-block: 1px solid var(--ember-frame); }
 .ember-desktop .ember-currency-row > div, body[data-ember-desktop='true'] .ember-npc-full-card .ember-currency-row > div { display: flex; align-items: center; gap: 7px; }
 .ember-desktop .ember-currency-row > div > span:nth-child(2), body[data-ember-desktop='true'] .ember-npc-full-card .ember-currency-row > div > span:nth-child(2) { color: var(--ember-brass); }
 .ember-desktop .ember-coin, body[data-ember-desktop='true'] .ember-npc-full-card .ember-coin { width: 18px; height: 18px; border: 2px solid #b88a42; outline: 1px solid #52341b; outline-offset: -4px; border-radius: 50%; background: radial-gradient(circle at 30% 20%,#fff0c8,#b57b30 50%,#40260e); box-shadow: inset 0 0 2px #fff9; }

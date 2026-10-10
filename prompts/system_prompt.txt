@@ -972,7 +972,7 @@ Membership proposals receive a party-guardian review before full validation. Gua
           "npc": {
             "name": "<npc_name>",
             "role": "<npc_role>",
-            "level": "<recommended_level>"
+            "level": "<optional: omit to use the party level>"
           },
           "lifecycleContext": {
             "reason": "<short phrase: why this NPC is joining or leaving>",
@@ -986,7 +986,7 @@ Membership proposals receive a party-guardian review before full validation. Gua
 - Replace <add_or_remove> with either "add" or "remove".
 - Replace <npc_name> with the name of the NPC joining or leaving the party.
 - Replace <npc_role> with a brief description of the NPC's role or function in the party.
-- Replace <recommended_level> with an appropriate level (usually party level or slightly lower for support NPCs).
+- Level is optional: omit it unless the story has established it, and the system uses the party's level.
 - If level is not specified, the system will automatically use the party's level as default.
 - On a "remove", ALWAYS include "lifecycleContext" with at least "reason" and "departureKind", and "destination" when you know where the companion is going, so the departure is recorded to the companion's memory ledger. Fail-open: if you do not know the destination, omit only that field - never invent one; omitting lifecycleContext entirely never blocks the departure.
 - This action MUST be included immediately after narrating an NPC joining or leaving the party.

@@ -97,7 +97,8 @@
 .ember-desktop .neq-sheet-section-content > div,.ember-desktop .neq-feature-item { font-size:16px; line-height:1.5; }
 .ember-desktop .neq-saving-throws-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:5px; }
 .ember-desktop .neq-saving-throws-grid > div { justify-content:space-between; font:400 11px/1.5 var(--font-chrome); background:#d5b47b07; padding:4px; border-radius:3px; }
-.ember-desktop .ember-currency-row { padding:10px 0; margin:0; font:500 12px/1.4 var(--font-chrome); }
+.ember-desktop .neq-skills-grid { grid-template-columns:repeat(2,1fr); }
+.ember-desktop .ember-currency-row { padding:10px 0; margin:0 0 14px; font:500 12px/1.4 var(--font-chrome); }
 .ember-desktop .ember-sheet-footer { gap:6px; padding:12px 0 0; }
 .ember-desktop .ember-sheet-footer button { flex:1; gap:8px; min-height:38px; border:1px solid #d5b47b2e; border-radius:5px; box-shadow:none; font:500 11px/1.2 var(--font-chrome); }
 .ember-desktop .ember-sheet-footer .ember-icon { width:17px; height:17px; }
