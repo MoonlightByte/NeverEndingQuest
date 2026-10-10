@@ -5840,10 +5840,24 @@ def _agentic_post_combat_engine_echo(action):
 
 
 _AGENTIC_POST_COMBAT_DROP_NOTICE = (
-    "Character updates in this post-combat pass were ignored because combat "
-    "already committed all changes. Re-issue genuinely new changes with the "
-    "player's next action."
+    "Character updates in this post-combat pass were not applied. Combat "
+    "committed only the changes its record lists. Re-issue a change still "
+    "wanted with the player's next action."
 )
+
+
+def _agentic_post_combat_drop_record(dropped_actions):
+    """The history line naming the post-combat actions that were not applied (#543).
+
+    The dropped action objects are listed as data, so a later turn reads that
+    they never ran rather than taking the pass's reply as their receipt.
+    """
+    return (
+        "Not applied (automatic post-combat pass, no player action): "
+        + json.dumps(dropped_actions)
+        + ". Combat committed only the changes its record lists. A change still "
+        "wanted needs the player's next action."
+    )
 
 
 def _record_agentic_post_combat_updates_dropped(count):
@@ -7221,10 +7235,10 @@ def process_ai_response(
             party_tracker_data
         ):
             retained_actions = []
-            dropped_update_count = 0
+            dropped_actions = []
             for action in actions:
                 if _agentic_post_combat_engine_echo(action):
-                    dropped_update_count += 1
+                    dropped_actions.append(action)
                     debug(
                         "STATE_CHANGE: Ignoring an agentic post-combat "
                         "character-state echo; the committed combat state "
@@ -7234,10 +7248,16 @@ def process_ai_response(
                 else:
                     retained_actions.append(action)
             actions = retained_actions
+            dropped_update_count = len(dropped_actions)
             if dropped_update_count:
+                # The stored reply records what ran (#543): its narration and
+                # other fields as parsed, its actions as the retained list.
+                stored_reply = dict(parsed_response)
+                stored_reply["actions"] = copy.deepcopy(retained_actions)
+                response = json.dumps(stored_reply)
                 drop_notice = {
                     "role": "system",
-                    "content": _AGENTIC_POST_COMBAT_DROP_NOTICE,
+                    "content": _agentic_post_combat_drop_record(dropped_actions),
                 }
                 conversation_history.append(drop_notice)
                 save_conversation_history(conversation_history)
