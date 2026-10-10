@@ -158,6 +158,12 @@ acceptance verdict. The verification pin above describes the historical baseline
   (`adv_summary.py:781`, `:848`) and legacy repair (`main.py:4434` -> `:4423`). Neither caller of
   resolve holds the party lock, so a busy `journal.json` here is waited for unlocked, and the wait
   stays cancellable.
+- The departure commit waits while module refresh is busy and never refuses (#637). It makes
+  short attempts with an interruptible beat between them (`_wait_for_module_refresh` in
+  `adv_summary.py`) and shows "Waiting for module work to finish before recording your journey
+  (N seconds).", in the turn and at the startup resume alike. Neither caller holds another lock
+  there, and each beat checks the read-only save stop and the turn's authority, so a superseding
+  Load, Reset or Quit still ends the wait.
 - `safe_json_dump` publishes each JSON by same-directory temp, fsync, and `os.replace`.
 - The workflow is multi-file, not one rename; the checkpoint carries preimages, phases, stable
   message IDs, deferred cursor/operation IDs, and before/after projections for convergence.
