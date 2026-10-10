@@ -113,7 +113,9 @@ except:
     def track_response(r): pass
 
 # Import other necessary modules (config is now patched)
-from core.managers.combat_manager import run_combat_simulation, render_combat_record_marker
+from core.managers.combat_manager import (
+    combat_record_exit_kind, run_combat_simulation, render_combat_record_marker,
+)
 from core.combat.down_scene import (
     MAIN_DOWN_BANNER,
     MAIN_DOWN_SINK_LINE,
@@ -3382,9 +3384,34 @@ def _select_validation_history(conversation_history, raw_user_input):
             current_enhanced_index = index
             break
 
-    recent_messages = []
+    # #543: a post-combat drop record (typed flag) is stored just before the
+    # reply whose actions it names; the review reads it right after that reply,
+    # or at the end when the reply was never stored.
+    notes_after = {}
+    for index, message in enumerate(history):
+        if not (
+            isinstance(message, dict)
+            and message.get("role") == "system"
+            and message.get("post_combat_drop") is True
+            and isinstance(message.get("content"), str)
+        ):
+            continue
+        anchor = next(
+            (
+                later for later in range(index + 1, len(history))
+                if isinstance(history[later], dict)
+                and history[later].get("role") == "assistant"
+            ),
+            len(history),
+        )
+        notes_after.setdefault(anchor, []).append(
+            {"role": "user", "content": "[ENGINE NOTE] " + message["content"]}
+        )
+
+    recent_messages = list(notes_after.get(len(history), []))
     skip_next_assistant = False
     for index in range(len(history) - 1, -1, -1):
+        recent_messages[0:0] = notes_after.get(index, [])
         if index == current_enhanced_index:
             continue
         message = history[index]
@@ -5838,10 +5865,24 @@ def _agentic_post_combat_engine_echo(action):
 
 
 _AGENTIC_POST_COMBAT_DROP_NOTICE = (
-    "Character updates in this post-combat pass were ignored because combat "
-    "already committed all changes. Re-issue genuinely new changes with the "
-    "player's next action."
+    "Character updates in this post-combat pass were not applied. Combat "
+    "committed only the changes its record lists. Re-issue a change still "
+    "wanted with the player's next action."
 )
+
+
+def _agentic_post_combat_drop_record(dropped_actions):
+    """The history line naming the post-combat actions that were not applied (#543).
+
+    The dropped action objects are listed as data, so a later turn reads that
+    they never ran rather than taking the pass's reply as their receipt.
+    """
+    return (
+        "Not applied (automatic post-combat pass, no player action): "
+        + json.dumps(dropped_actions)
+        + ". Combat committed only the changes its record lists. A change still "
+        "wanted needs the player's next action."
+    )
 
 
 def _record_agentic_post_combat_updates_dropped(count):
@@ -7219,10 +7260,10 @@ def process_ai_response(
             party_tracker_data
         ):
             retained_actions = []
-            dropped_update_count = 0
+            dropped_actions = []
             for action in actions:
                 if _agentic_post_combat_engine_echo(action):
-                    dropped_update_count += 1
+                    dropped_actions.append(action)
                     debug(
                         "STATE_CHANGE: Ignoring an agentic post-combat "
                         "character-state echo; the committed combat state "
@@ -7232,10 +7273,17 @@ def process_ai_response(
                 else:
                     retained_actions.append(action)
             actions = retained_actions
+            dropped_update_count = len(dropped_actions)
             if dropped_update_count:
+                # The stored reply records what ran (#543): its narration and
+                # other fields as parsed, its actions as the retained list.
+                stored_reply = dict(parsed_response)
+                stored_reply["actions"] = copy.deepcopy(retained_actions)
+                response = json.dumps(stored_reply)
                 drop_notice = {
                     "role": "system",
-                    "content": _AGENTIC_POST_COMBAT_DROP_NOTICE,
+                    "content": _agentic_post_combat_drop_record(dropped_actions),
+                    "post_combat_drop": True,
                 }
                 conversation_history.append(drop_notice)
                 save_conversation_history(conversation_history)
@@ -9251,7 +9299,8 @@ def _main_game_loop(startup_authority, turn_authority):
             # We create a clear, systemic message indicating combat is over.
             # The same record text as the handoff from action_handler (#253).
             combat_summary_message = render_combat_record_marker(
-                "Combat Summary: " + dialogue_summary
+                "Combat Summary: " + dialogue_summary,
+                combat_record_exit_kind(active_encounter_id),
             )
             conversation_history.append({"role": "user", "content": combat_summary_message})
             debug("STATE_CHANGE: Appended combat summary to main history after resumed session.", category="session_management")
