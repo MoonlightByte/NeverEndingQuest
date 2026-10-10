@@ -177,6 +177,16 @@ app.config['SECRET_KEY'] = os.environ.get("NEQ_FLASK_SECRET_KEY") or secrets.tok
 app.config.update(PLAYER_UI='react', TOOLKIT_ONLY=False)
 # Same-origin is the safe default. Explicit cross-origin support is not needed
 # for the bundled UI, which is served by this Flask application.
+# Long-polling batches every packet the client queued between polls into ONE
+# POST (always the case before a WebSocket upgrade). The React client's
+# connect burst (location, party, initiative, ui snapshot, player data, plot,
+# storage, map) sits near Engine.IO's default decode cap of 16 packets per
+# payload; when a tab poller or reconnect adds a few more, the server rejects
+# the WHOLE batch ("Too many packets in payload") and every request in it is
+# lost. Raise the cap well above any burst the client produces.
+import engineio.payload
+engineio.payload.Payload.max_decode_packets = SOCKET_MAX_DECODE_PACKETS = 96
+
 socketio = SocketIO(app, cors_allowed_origins=None)
 
 
@@ -1213,8 +1223,9 @@ def serve_video(filename):
     """Serve video files from the media directory"""
     import os
     from flask import send_file
-    video_path = os.path.join(os.path.dirname(__file__), 'static', 'media', 'videos', filename)
-    if os.path.exists(video_path):
+    from web.media_paths import resolve_file_within
+    video_path = resolve_file_within(os.path.join(os.path.dirname(__file__), 'static', 'media', 'videos'), filename)
+    if video_path is not None:
         return send_file(video_path, mimetype='video/mp4')
     return "Video not found", 404
 
@@ -1235,8 +1246,9 @@ def serve_icon(filename):
     # Ensure the filename ends with .png for security
     if not filename.endswith('.png'):
         return "Not found", 404
-    icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'icons', filename)
-    if os.path.exists(icon_path):
+    from web.media_paths import resolve_file_within
+    icon_path = resolve_file_within(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'icons'), filename)
+    if icon_path is not None:
         return send_file(icon_path, mimetype='image/png')
     return "Not found", 404
 
@@ -1248,8 +1260,9 @@ def serve_portrait(filename):
     # Ensure the filename ends with .png for security
     if not filename.endswith('.png'):
         return "Not found", 404
-    portrait_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'portraits', filename)
-    if os.path.exists(portrait_path):
+    from web.media_paths import resolve_file_within
+    portrait_path = resolve_file_within(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'portraits'), filename)
+    if portrait_path is not None:
         return send_file(portrait_path, mimetype='image/png')
     return "Not found", 404
 
@@ -1267,48 +1280,26 @@ def serve_module_media(media_type, filename):
     import mimetypes
     from flask import send_file
     from utils.file_operations import safe_read_json
-    
-    # Validate media type
-    if media_type not in ['monsters', 'npcs', 'environment']:
-        return "Invalid media type", 404
-    
+    from web.media_paths import resolve_media_path
+
     # Determine current module from party tracker
     current_module = None
     party_data = safe_read_json('party_tracker.json')
     if party_data:
         # Check both 'module' and 'module_name' fields for compatibility
         current_module = party_data.get('module') or party_data.get('module_name')
-    
-    # Priority 1: Check current module's media folder first
-    if current_module:
-        module_media_path = os.path.join('modules', current_module, 'media', media_type, filename)
-        if os.path.exists(module_media_path):
-            mimetype, _ = mimetypes.guess_type(module_media_path)
-            info(f"Serving {media_type}/{filename} from current module: {current_module}")
-            return send_file(os.path.abspath(module_media_path), mimetype=mimetype)
-    
-    # Priority 2: Check ALL other modules for the media file
-    modules_dir = 'modules'
-    if os.path.exists(modules_dir):
-        for module_name in os.listdir(modules_dir):
-            # Skip non-directories and the current module
-            module_path = os.path.join(modules_dir, module_name)
-            if os.path.isdir(module_path) and module_name != current_module:
-                module_media_path = os.path.join(module_path, 'media', media_type, filename)
-                if os.path.exists(module_media_path):
-                    mimetype, _ = mimetypes.guess_type(module_media_path)
-                    info(f"Serving {media_type}/{filename} from module: {module_name}")
-                    return send_file(os.path.abspath(module_media_path), mimetype=mimetype)
-    
-    # Priority 3: Fall back to static media folder
-    static_media_path = os.path.join(os.path.dirname(__file__), 'static', 'media', media_type, filename)
-    if os.path.exists(static_media_path):
-        mimetype, _ = mimetypes.guess_type(static_media_path)
-        info(f"Serving {media_type}/{filename} from static folder")
-        return send_file(static_media_path, mimetype=mimetype)
-    
-    warning(f"Media file not found in any location: {media_type}/{filename}")
-    return "Media not found", 404
+
+    # The filename is URL-controlled. resolve_media_path refuses anything
+    # that could leave the media directory (../, absolute, backslash, NUL)
+    # and only returns an existing file inside one of the allowed roots.
+    static_media_dir = os.path.join(os.path.dirname(__file__), 'static', 'media')
+    resolved = resolve_media_path(media_type, filename, current_module,
+                                  'modules', static_media_dir)
+    if resolved is None:
+        warning(f"Media file not found or refused: {media_type}/{filename}")
+        return "Media not found", 404
+    mimetype, _ = mimetypes.guess_type(resolved)
+    return send_file(resolved, mimetype=mimetype)
 
 @app.route('/get_character_data')
 def get_character_data():
@@ -1351,7 +1342,11 @@ def _effective_character_for_ui(character_data):
         pass
     return character_data
 
+from web.portrait_security import bounded_portrait_upload, decode_portrait
+from werkzeug.exceptions import HTTPException
+
 @app.route('/upload-portrait', methods=['POST'])
+@bounded_portrait_upload
 def upload_portrait():
     """Handle character portrait upload, cropping, and saving."""
     try:
@@ -1376,10 +1371,7 @@ def upload_portrait():
             os.makedirs(portraits_dir, exist_ok=True)
 
             # Open the image with Pillow
-            img = Image.open(file.stream)
-            img.verify()
-            file.stream.seek(0)
-            img = Image.open(file.stream).convert('RGB')
+            img = decode_portrait(file.stream)
 
             # --- Cropping Logic ---
             width, height = img.size
@@ -1424,9 +1416,11 @@ def upload_portrait():
             info(f"PORTRAIT: Saved new portrait for {character_name} to {save_path}")
             return jsonify({'success': True, 'message': 'Portrait uploaded successfully'})
 
+    except HTTPException:
+        raise
     except Exception as e:
         error(f"PORTRAIT: Upload failed", exception=e, category="web_interface")
-        return jsonify({'success': False, 'message': str(e)})
+        return jsonify({'success': False, 'message': 'Unable to process this portrait. Use a PNG, JPEG or WebP image up to 16 megapixels.'}), 400
 
 @app.route('/spell-data')
 def get_spell_data():
@@ -3619,8 +3613,13 @@ def handle_player_data_request(data=None):
             current_module = party_tracker.get("module", "").replace(" ", "_")
             path_manager = ModulePathManager(current_module)
             
-            for npc_info in party_tracker.get('partyNPCs', []):
-                npc_name = npc_info['name']
+            from web.npc_projection import visible_npc_names, npc_sheet_projection
+            from utils.file_operations import safe_read_json
+            world = party_tracker.get('worldConditions', {})
+            area_path = os.path.join('modules', current_module, 'areas',
+                                     str(world.get('currentAreaId', '')) + '.json')
+            area = safe_read_json(area_path) if os.path.isfile(area_path) else {}
+            for npc_name in visible_npc_names(party_tracker, area):
                 
                 try:
                     # Use fuzzy matching to find the correct NPC file
@@ -3633,7 +3632,7 @@ def handle_player_data_request(data=None):
                             with open(npc_file, 'r', encoding='utf-8') as f:
                                 npc_data = json.load(f)
                                 npc_data = _effective_character_for_ui(npc_data)
-                                npcs.append(npc_data)
+                                npcs.append(npc_sheet_projection(npc_data))
                 except:
                     pass
             
@@ -3682,159 +3681,49 @@ def handle_location_data_request(data=None):
     except Exception as e:
         emit('location_data_response', _ui_response(data, {'data': None, 'error': str(e)}))
 
+def _handle_npc_sheet_request(data, kind):
+    """All named-NPC detail responses share visibility and field boundaries."""
+    from web.npc_access import load_inspectable_npc
+    from web.npc_projection import npc_sheet_projection
+    requested = data.get('npcName') if isinstance(data, dict) else None
+    name = requested if isinstance(requested, str) and len(requested) <= 512 else ''
+    event = 'npc_inventory_response' if kind == 'inventory' else 'npc_details_response'
+    payload = {'npcName': name, 'data': None}
+    if kind != 'inventory':
+        payload['modalType'] = kind
+    try:
+        character = load_inspectable_npc(name)
+        if character is not None:
+            sheet = npc_sheet_projection(_effective_character_for_ui(character))
+            payload['data'] = sheet.get('equipment', []) if kind == 'inventory' else sheet
+        else:
+            payload['error'] = 'NPC is not available.'
+    except Exception:
+        # Invalid/private names and malformed records must not reveal paths or
+        # the contents of a saved NPC through exception text.
+        payload['error'] = 'NPC is not available.'
+    emit(event, payload)
+
+
 @socketio.on('request_npc_saves')
 def handle_npc_saves_request(data):
-    """Handle requests for NPC saving throws"""
-    try:
-        npc_name = data.get('npcName', '')
-        
-        # Load the NPC file
-        from utils.module_path_manager import ModulePathManager
-        from utils.encoding_utils import safe_json_load
-        # Get current module from party tracker for consistent path resolution
-        try:
-            party_tracker = safe_json_load("party_tracker.json")
-            current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
-            path_manager = ModulePathManager(current_module)
-        except:
-            path_manager = ModulePathManager()  # Fallback to reading from file
-        
-        from updates.update_character_info import normalize_character_name, find_character_file_fuzzy
-        
-        # Use fuzzy matching to find the correct NPC file
-        matched_name = find_character_file_fuzzy(npc_name)
-        if matched_name:
-            npc_file = path_manager.get_character_path(matched_name)
-        else:
-            # Fallback to normalized name if no match found
-            npc_file = path_manager.get_character_path(normalize_character_name(npc_name))
-        if os.path.exists(npc_file):
-            with open(npc_file, 'r', encoding='utf-8') as f:
-                npc_data = json.load(f)
-            npc_data = _effective_character_for_ui(npc_data)
-            
-            emit('npc_details_response', {'npcName': npc_name, 'data': npc_data, 'modalType': 'saves'})
-        else:
-            emit('npc_details_response', {'npcName': npc_name, 'data': None, 'error': 'NPC file not found'})
-            
-    except Exception as e:
-        emit('npc_details_response', {'npcName': npc_name, 'data': None, 'error': str(e)})
+    _handle_npc_sheet_request(data, 'saves')
+
 
 @socketio.on('request_npc_skills')
 def handle_npc_skills_request(data):
-    """Handle requests for NPC skills"""
-    try:
-        npc_name = data.get('npcName', '')
-        
-        # Load the NPC file
-        from utils.module_path_manager import ModulePathManager
-        from utils.encoding_utils import safe_json_load
-        # Get current module from party tracker for consistent path resolution
-        try:
-            party_tracker = safe_json_load("party_tracker.json")
-            current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
-            path_manager = ModulePathManager(current_module)
-        except:
-            path_manager = ModulePathManager()  # Fallback to reading from file
-        
-        from updates.update_character_info import normalize_character_name, find_character_file_fuzzy
-        
-        # Use fuzzy matching to find the correct NPC file
-        matched_name = find_character_file_fuzzy(npc_name)
-        if matched_name:
-            npc_file = path_manager.get_character_path(matched_name)
-        else:
-            # Fallback to normalized name if no match found
-            npc_file = path_manager.get_character_path(normalize_character_name(npc_name))
-        if os.path.exists(npc_file):
-            with open(npc_file, 'r', encoding='utf-8') as f:
-                npc_data = json.load(f)
-            npc_data = _effective_character_for_ui(npc_data)
-            
-            emit('npc_details_response', {'npcName': npc_name, 'data': npc_data, 'modalType': 'skills'})
-        else:
-            emit('npc_details_response', {'npcName': npc_name, 'data': None, 'error': 'NPC file not found'})
-            
-    except Exception as e:
-        emit('npc_details_response', {'npcName': npc_name, 'data': None, 'error': str(e)})
+    _handle_npc_sheet_request(data, 'skills')
+
 
 @socketio.on('request_npc_spells')
 def handle_npc_spells_request(data):
-    """Handle requests for NPC spellcasting"""
-    try:
-        npc_name = data.get('npcName', '')
-        
-        # Load the NPC file
-        from utils.module_path_manager import ModulePathManager
-        from utils.encoding_utils import safe_json_load
-        # Get current module from party tracker for consistent path resolution
-        try:
-            party_tracker = safe_json_load("party_tracker.json")
-            current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
-            path_manager = ModulePathManager(current_module)
-        except:
-            path_manager = ModulePathManager()  # Fallback to reading from file
-        
-        from updates.update_character_info import normalize_character_name, find_character_file_fuzzy
-        
-        # Use fuzzy matching to find the correct NPC file
-        matched_name = find_character_file_fuzzy(npc_name)
-        if matched_name:
-            npc_file = path_manager.get_character_path(matched_name)
-        else:
-            # Fallback to normalized name if no match found
-            npc_file = path_manager.get_character_path(normalize_character_name(npc_name))
-        if os.path.exists(npc_file):
-            with open(npc_file, 'r', encoding='utf-8') as f:
-                npc_data = json.load(f)
-            npc_data = _effective_character_for_ui(npc_data)
-            
-            emit('npc_details_response', {'npcName': npc_name, 'data': npc_data, 'modalType': 'spells'})
-        else:
-            emit('npc_details_response', {'npcName': npc_name, 'data': None, 'error': 'NPC file not found'})
-            
-    except Exception as e:
-        emit('npc_details_response', {'npcName': npc_name, 'data': None, 'error': str(e)})
+    _handle_npc_sheet_request(data, 'spells')
+
 
 @socketio.on('request_npc_inventory')
 def handle_npc_inventory_request(data):
-    """Handle requests for NPC inventory"""
-    try:
-        npc_name = data.get('npcName', '')
-        
-        # Load the NPC file
-        from utils.module_path_manager import ModulePathManager
-        from utils.encoding_utils import safe_json_load
-        # Get current module from party tracker for consistent path resolution
-        try:
-            party_tracker = safe_json_load("party_tracker.json")
-            current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
-            path_manager = ModulePathManager(current_module)
-        except:
-            path_manager = ModulePathManager()  # Fallback to reading from file
-        
-        from updates.update_character_info import normalize_character_name, find_character_file_fuzzy
-        
-        # Use fuzzy matching to find the correct NPC file
-        matched_name = find_character_file_fuzzy(npc_name)
-        if matched_name:
-            npc_file = path_manager.get_character_path(matched_name)
-        else:
-            # Fallback to normalized name if no match found
-            npc_file = path_manager.get_character_path(normalize_character_name(npc_name))
-        if os.path.exists(npc_file):
-            with open(npc_file, 'r', encoding='utf-8') as f:
-                npc_data = json.load(f)
-            npc_data = _effective_character_for_ui(npc_data)
-            
-            # Extract equipment for inventory display
-            equipment = npc_data.get('equipment', [])
-            emit('npc_inventory_response', {'npcName': npc_name, 'data': equipment})
-        else:
-            emit('npc_inventory_response', {'npcName': npc_name, 'data': None, 'error': 'NPC file not found'})
-            
-    except Exception as e:
-        emit('npc_inventory_response', {'npcName': npc_name, 'data': None, 'error': str(e)})
+    _handle_npc_sheet_request(data, 'inventory')
+
 
 @socketio.on('request_party_data')
 def handle_party_data_request(data=None):
