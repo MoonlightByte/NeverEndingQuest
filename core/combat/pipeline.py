@@ -20,6 +20,7 @@ from core.combat.resolver import (
     plan_effect_ticks,
     resolve_adjudicated,
     resolve_intent,
+    resolve_player_spell_attack,
     resolve_player_weapon_attack,
     stage_dodge,
     validate_intent,
@@ -373,14 +374,25 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             and weapon_attack.get("actorId") == actor_id
         ):
             # Item 3: the player's swing, scored by code from the faces the
-            # completed roll phase holds (never from a model-written field).
-            resolution = resolve_player_weapon_attack(
-                next_encounter,
-                next_characters,
-                intent,
-                weapon_attack,
-                event_id,
-            )
+            # completed roll phase holds (never from a model-written field);
+            # #672: a recorded spell attack, the same way.
+            if isinstance(weapon_attack.get("spell"), dict):
+                resolution = resolve_player_spell_attack(
+                    next_encounter,
+                    next_characters,
+                    intent,
+                    weapon_attack,
+                    event_id,
+                    roll_source,
+                )
+            else:
+                resolution = resolve_player_weapon_attack(
+                    next_encounter,
+                    next_characters,
+                    intent,
+                    weapon_attack,
+                    event_id,
+                )
         elif intent.get("action") in ("flee", "yield"):
             # Leaving the fight is the same act in either mode (#466): a
             # player's flee/yield arrives adjudicated and must not be dropped.

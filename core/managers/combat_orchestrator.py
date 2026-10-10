@@ -24,10 +24,13 @@ from core.combat import (
 from core.combat.pipeline import _intent_for_actor, _ordered_intents
 from core.combat.resolver import (
     feature_heal_key,
+    open_player_spell_attack,
     open_player_weapon_attack,
+    player_spell_attack_entry,
     player_weapon_attack_dice,
     player_weapon_attack_entry,
     player_weapon_attack_score,
+    spell_attack_violations,
     validate_intent,
     weapon_attack_sheet_entry,
 )
@@ -815,9 +818,10 @@ def _parse_weapon_roll(text, record, entry):
 
 def _player_weapon_takeover(encounter, characters, pending, batch):
     """(record, entry) when the window opens with the human player's plain
-    melee weapon swing; None keeps today's path. The other intents are checked
-    the way resolution checks them, so a bad one still goes to the normal
-    correction before any roll is asked for."""
+    melee weapon swing, or (#672) a cast of a recorded spell attack; None
+    keeps today's path. The other intents are checked the way resolution
+    checks them, so a bad one still goes to the normal correction before any
+    roll is asked for."""
     actor_ids = pending.get("actorIds") or []
     state = encounter.get("combatState") or {}
     first = combatant_by_id(encounter, actor_ids[0]) if actor_ids else None
@@ -828,8 +832,13 @@ def _player_weapon_takeover(encounter, characters, pending, batch):
     if intent is None or intent.get("actorId") != actor_ids[0] or intent.get("mode") != "adjudicated":
         return None
     entry = player_weapon_attack_entry(encounter, characters, intent)
+    spell = None
     if entry is None:
-        return None
+        spell = player_spell_attack_entry(encounter, characters, intent)
+        if spell is None or spell_attack_violations(encounter, characters, intent, spell):
+            # A cast whose slot or effects would not resolve keeps today's
+            # path, where the normal correction answers it.
+            return None
     for index, actor_id in enumerate(actor_ids[1:], start=1):
         other = _intent_for_actor(intents, index, actor_id)
         actor = combatant_by_id(encounter, actor_id)
@@ -842,7 +851,11 @@ def _player_weapon_takeover(encounter, characters, pending, batch):
             raise CombatIntentError(rejection.get("reason", "Intent rejected"), actor_id, dict(rejection))
     if len(intents) != len(actor_ids):
         raise CombatIntentError("Intent batch contains actors outside the claimed window")
-    record = open_player_weapon_attack(encounter, characters, intent, entry)
+    if spell is not None:
+        record = open_player_spell_attack(encounter, characters, intent, spell)
+        entry = weapon_attack_sheet_entry(encounter, characters, record)
+    else:
+        record = open_player_weapon_attack(encounter, characters, intent, entry)
     record["batch"] = deepcopy(batch)
     for stored in record["batch"].get("intents") or []:
         # Code asks for this swing's dice; the model's own request (if any)
@@ -1647,7 +1660,7 @@ def execute_agentic_turn(
             record_combat_diagnostic(
                 record_type="window_outcome",
                 callsite="T096",
-                outcome="weapon_attack_scored",
+                outcome="spell_attack_scored" if ready_attack.get("spell") else "weapon_attack_scored",
                 encounter_id=encounter.get("encounterId"),
                 turn_id=pending.get("turnId"),
                 revision=(encounter.get("combatState") or {}).get("revision"),
@@ -1664,7 +1677,7 @@ def execute_agentic_turn(
             record_combat_diagnostic(
                 record_type="window_outcome",
                 callsite="T096",
-                outcome="weapon_attack_fallback",
+                outcome="spell_attack_fallback" if ready_attack.get("spell") else "weapon_attack_fallback",
                 encounter_id=encounter.get("encounterId"),
                 turn_id=pending.get("turnId"),
                 revision=(encounter.get("combatState") or {}).get("revision"),
@@ -1804,7 +1817,7 @@ def execute_agentic_turn(
                 record_combat_diagnostic(
                     record_type="call_attempt",
                     callsite="T096",
-                    outcome="weapon_attack_opened",
+                    outcome="spell_attack_opened" if record.get("spell") else "weapon_attack_opened",
                     provider=intent_provider_name,
                     model=intent_model_name,
                     encounter_id=encounter.get("encounterId"),
