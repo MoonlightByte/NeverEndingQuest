@@ -11172,6 +11172,22 @@ def _review_dm_candidate(
                         planner_projection = {"module": candidate_module, **target_projection}
                     except OSError as exc:
                         return content_unavailable()
+                    except action_handler.ModuleNotJoinedError as exc:
+                        # #720: no ids can fix this destination, so the DM is
+                        # told to keep the party here instead of retrying it.
+                        retry_count += 1
+                        transition_check_passed = False
+                        rejected_candidate = ai_response_content
+                        retry_correction = (
+                            "The previous structured response was rejected "
+                            "before mutation: %s. Do not move the party or "
+                            "narrate an arrival there. Tell the player that "
+                            "place cannot be reached yet, keep the party where "
+                            "it is, and invite the next action. Return the "
+                            "complete corrected JSON."
+                            % str(exc)
+                        )
+                        review_retry_status(retry_count)
                     except ValueError as exc:
                         retry_count += 1
                         transition_check_passed = False
