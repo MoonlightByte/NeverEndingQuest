@@ -293,6 +293,11 @@ class NotJoinedCause(str, Enum):
     # Scan entry only, never a result's cause: as UNPROVEN, while the
     # registry file is read-only, so no module can join (issue #654).
     REGISTRY_READ_ONLY = "registry_read_only"
+    # Scan entry only, never a result's cause: lifecycle recovery was
+    # INDETERMINATE, so the scan joined nothing. The entry names a module
+    # that was waiting, or no module when the wait list could not be read
+    # (issue #638).
+    LIFECYCLE_INDETERMINATE = "lifecycle_indeterminate"
 
 
 @dataclass(frozen=True)
@@ -538,7 +543,8 @@ class ModuleStitcher:
         # left unjoined: [{"module", "reason", "cause"}], where cause is a
         # NotJoinedCause value or None. A publication that could not be proven
         # is "unproven", or "registry_read_only" while the registry is
-        # read-only.
+        # read-only. A scan blocked by lifecycle recovery lists the waiting
+        # ones as "lifecycle_indeterminate".
         self.import_required = []
         self.imported = []
         self.not_joined = []
@@ -1648,8 +1654,11 @@ class ModuleStitcher:
             ), tuple(sorted(colliding_modules))
         return False, "", ()
     
-    def detect_new_modules(self) -> List[str]:
-        """Detect new modules in the modules directory"""
+    def detect_new_modules(self, *, strict: bool = False) -> List[str]:
+        """Detect new modules in the modules directory.
+
+        ``strict`` raises a failure instead of reporting no new module
+        (issue #638)."""
         try:
             detected_modules = []
             
@@ -1687,6 +1696,8 @@ class ModuleStitcher:
             return sorted(detected_modules)
             
         except Exception as e:
+            if strict:
+                raise
             print(f"Error detecting modules: {e}")
             return []
     
@@ -4913,10 +4924,35 @@ Respond with JSON:
                     "Module integration blocked by indeterminate lifecycle recovery",
                     category="module_integration",
                 )
+                self._note_lifecycle_blocked(recovery.reason)
                 return []
             return self._scan_and_integrate_new_modules_locked(
                 priority_module=priority_module
             )
+
+    def _note_lifecycle_blocked(self, reason) -> None:
+        """List the modules a lifecycle-blocked scan left waiting.
+
+        The scan joins nothing while recovery is INDETERMINATE (an unresolved
+        publication may be on disk), so the startup line can say so. Only the
+        modules that are waiting are listed; when the wait list cannot be
+        read, one entry without a module stands for them (issue #638).
+        """
+        self.import_required = []
+        self.imported = []
+        cause = NotJoinedCause.LIFECYCLE_INDETERMINATE.value
+        try:
+            waiting = self.detect_new_modules(strict=True)
+        except Exception as exc:
+            warning(
+                f"Modules waiting to join could not be listed: {exc}",
+                category="module_integration",
+            )
+            self.not_joined = [{"module": None, "reason": reason, "cause": cause}]
+            return
+        self.not_joined = [
+            {"module": name, "reason": reason, "cause": cause} for name in waiting
+        ]
 
     def _scan_and_integrate_new_modules_locked(
         self, priority_module: Optional[str] = None
