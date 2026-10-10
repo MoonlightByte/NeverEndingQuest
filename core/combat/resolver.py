@@ -2014,6 +2014,162 @@ def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id):
     return result, faces
 
 
+def _spell_save_rule(encounter, characters, proposal, save_spec, targets, event):
+    """#703: the typed save of a spell with a record, or None (today's path).
+
+    The intent's ``ability`` is looked up by the roll contracts' canonical key
+    (a typed key, never the description). The record gives the ability and
+    the effect of a success; the DC is the party caster's sheet spellSaveDC
+    (with its effect modifiers), else the supplied DC. A ``spellSave``
+    normalization journals every difference from the model's save object.
+    """
+    name = proposal.get("ability")
+    if not isinstance(name, str) or not name.strip():
+        return None
+    if save_spec is None and not targets:
+        return None
+    from core.ai import srd_roll_contracts, srd_spell_saves
+
+    status, record, phase = srd_spell_saves.lookup(name)
+    if status != "recorded":
+        if save_spec is not None:
+            _log_spell_save("spell_save_unchecked: %s (%s); the model's save applies" % (name, status))
+        return None
+    caster = _sheet_backed_target(characters, combatant_by_id(encounter, proposal.get("actorId")))
+    dc = None
+    casting = caster.get("spellcasting") if caster is not None else None
+    stored = casting.get("spellSaveDC") if isinstance(casting, dict) else None
+    if type(stored) is int and stored > 0:
+        dc = stored + modifier_total(caster, "spellSaveDC")
+    else:
+        supplied_dc = (save_spec or {}).get("dc")
+        if type(supplied_dc) is int and supplied_dc > 0:
+            dc = supplied_dc
+    if dc is None:
+        _log_spell_save("spell_save_unchecked: %s has no DC (no caster spellSaveDC, none supplied)" % name)
+        return None
+    spec = {"type": record["save"], "dc": dc, "halfOnSave": record["success"] == "half"}
+    supplied = {
+        "type": str((save_spec or {}).get("type") or "").strip().lower(),
+        "dc": (save_spec or {}).get("dc"),
+        "halfOnSave": bool((save_spec or {}).get("halfOnSave")),
+    }
+    if save_spec is None or supplied != spec:
+        event.setdefault("normalizations", []).append({
+            "kind": "spellSave",
+            "spell": record["name"],
+            "record": record["source"],
+            "supplied": deepcopy(save_spec),
+            "applied": dict(spec),
+        })
+    level = caster.get("level") if caster is not None else None
+    dice = srd_spell_saves.damage_dice(
+        phase, srd_roll_contracts._slot_level(proposal, {}), level if type(level) is int else None,
+    ) if phase else None
+    return {"name": record["name"], "spec": spec, "success": record["success"],
+            "kind": record["damageKind"], "dice": dice}
+
+
+def _spell_save_target(encounter, characters, proposal, target, spell_save, hp_delta, rolls, event):
+    """#703: one target's save against a recorded spell: (saved, hp_delta, save_line).
+
+    Code takes the d20 faces the target's roll mode needs from the persisted
+    prerolls (as the CS party save does; one for a monster). The engine
+    scores the save and applies the record's effect, then the target's damage
+    traits, to the rolled total: |hpDelta|, which it range-checks against the
+    spell's dice. A refused total is applied by the record's effect without
+    the engine (the save is still the engine's); an unavailable engine keeps
+    the arithmetic with the same faces. The HP change itself stays CH's.
+    """
+    from core.nql import checks as nql_checks
+    from core.nql import saves as nql_saves
+
+    spec = spell_save["spec"]
+    ability, dc = spec["type"], spec["dc"]
+    stat = nql_saves.stat_id(ability)
+    party = _sheet_backed_target(characters, target)
+    mode = "normal"
+    if party is not None:
+        try:
+            net = nql_checks.net_mode(party, stat)
+            if not net.reason:
+                mode = net.mode
+        except Exception:  # engine wrapper faults never stop a fight
+            pass
+    faces = [
+        _take_roll(rolls, "d20", "save", actor_id=proposal.get("actorId"),
+                   target_id=target.get("combatantId"), ability=ability)
+        for _ in range(nql_checks.faces_needed(mode))
+    ]
+    total = -hp_delta if hp_delta < 0 else None
+    name = target.get("name") or target["combatantId"]
+    record = {"die": "d20", "purpose": "save", "combatantId": target["combatantId"],
+              "spell": spell_save["name"], "faces": faces}
+    scored = None
+    unchecked = None
+    if spell_save["dice"] is not None:
+        count, sides = spell_save["dice"]
+        arguments = dict(
+            ability=ability, dc=dc, count=count, sides=sides, damage_type=spell_save["kind"],
+            success=spell_save["success"], faces=faces, party_sheet=party,
+            save_bonus=None if party is not None else _save_bonus(encounter, characters, target, ability),
+            target_hp=int(target.get("currentHitPoints", 0) or 0),
+            target_max_hp=_combatant_max_hp(encounter, characters, target),
+            target_sheet=_raw_combatant_sheet(encounter, characters, target),
+        )
+        scored = nql_saves.score(damage=total, **arguments)
+        if not scored.ok and total is not None:
+            # The total is off the spell's dice (a bonus the record does not
+            # type, or a wrong roll): the engine still scores the save alone.
+            unchecked = scored.reason
+            scored = nql_saves.score(damage=None, **arguments)
+    else:
+        unchecked = "no damage dice for %s at this level" % spell_save["name"]
+    if scored is not None and scored.ok:
+        saved = bool(scored.success)
+        record.update({"value": scored.kept if scored.kept is not None else 0, "bonus": scored.bonus,
+                       "success": saved, "engine": True, "kept": scored.kept, "mode": scored.mode,
+                       "sources": scored.sources, "total": scored.total, "margin": scored.margin,
+                       "effect": scored.effect})
+        if scored.unused_faces:
+            record["unusedFaces"] = scored.unused_faces
+        save_line = nql_saves.describe(scored, name, dc)
+        event.setdefault("engineChecks", []).append(save_line)
+        if total is not None and unchecked is None:
+            record["damageRolled"] = total
+            record["damage"] = int(scored.damage or 0)
+            if scored.traits:
+                record["traits"] = scored.traits
+            event["rolls"].append(record)
+            return saved, -int(scored.damage or 0), save_line
+    else:
+        reason = scored.reason if scored is not None else unchecked
+        _log_spell_save("CS: %s %s save scored without the engine (%s)" % (name, ability, reason))
+        bonus = _save_bonus(encounter, characters, target, ability)
+        kept = (None if not faces else max(faces) if mode == "advantage"
+                else min(faces) if mode == "disadvantage" else faces[0])
+        saved = kept is not None and kept + bonus >= dc
+        record.update({"value": kept or 0, "bonus": bonus, "success": saved, "engine": False})
+        save_line = None
+    if total is not None:
+        record["damageRolled"] = total
+        if unchecked is not None:
+            record["damageUnchecked"] = unchecked
+            _log_spell_save("CS: %s damage applied without the engine (%s)" % (spell_save["name"], unchecked))
+    event["rolls"].append(record)
+    if saved and hp_delta < 0:
+        hp_delta = -((-hp_delta) // 2) if spec["halfOnSave"] else 0
+    return saved, hp_delta, save_line
+
+
+def _log_spell_save(message):
+    try:
+        from utils.enhanced_logger import warning as _warning
+        _warning(message, category="combat_events")
+    except Exception:
+        pass
+
+
 def _warn_save(sheet, save_type, reason):
     try:
         from utils.enhanced_logger import warning as _warning
@@ -2564,6 +2720,17 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                 "applied": dict(stated_save),
             })
         save_spec = dict(stated_save)
+    # #703: a spell with a typed save record (data/srd_spell_saves.json) takes
+    # the save ability and the effect of a success from the record, never from
+    # the model's save object, and a party caster's DC from its sheet. The
+    # record requires the save even when the intent omits it. The rules engine
+    # scores each target's save below. A spell without a record keeps the
+    # model-declared save.
+    spell_save = None
+    if stated_save is None:
+        spell_save = _spell_save_rule(encounter, characters, proposal, save_spec, targets, event)
+        if spell_save is not None:
+            save_spec = dict(spell_save["spec"])
     target_entries = {
         entry.get("combatantId"): entry
         for entry in targets
@@ -2742,7 +2909,13 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                     "rolled": -stated_damage,
                 })
             hp_delta = -stated_damage
-        if save_spec and hp_delta <= 0:
+        spell_scored = None
+        if spell_save is not None and save_spec and hp_delta <= 0:
+            spell_scored = _spell_save_target(encounter, characters, proposal, target, spell_save,
+                                              hp_delta, rolls, event)
+        if spell_scored is not None:
+            saved, hp_delta, save_line = spell_scored
+        elif save_spec and hp_delta <= 0:
             # CS: a party target's save is the rules engine's (conditions'
             # roll modes, the sheet's total, the verdict); monsters and an
             # unavailable engine keep the arithmetic below.
