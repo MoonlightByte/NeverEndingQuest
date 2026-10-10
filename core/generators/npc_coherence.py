@@ -153,8 +153,14 @@ def build_coherence_prompt(packet: Dict[str, Any]) -> str:
         "never invent a new name (the canonical name is fixed); never use a party "
         "member name (%s).\n\n"
         "GROUPS:\n%s\n\n"
-        "Return ONLY the JSON object with the 'decisions' array."
-        % (", ".join(party) or "none", _json.dumps(groups, indent=2, ensure_ascii=True))
+        "Return ONLY this JSON object: {\"decisions\": [{\"canonicalName\": \"<the group's name>\", "
+        "\"classification\": \"<%s>\", \"primaryOccurrenceId\": \"<occurrence id>\", "
+        "\"continuityReason\": \"<why>\", \"repairs\": [{\"occurrenceId\": \"<occurrence id>\", "
+        "\"keepInRoster\": true or false, \"description\": \"<text>\", \"attitude\": \"<text>\", "
+        "\"dmInstructions\": \"<text>\"}, ...]}, ...]} -- \"decisions\" and each \"repairs\" are "
+        "lists of objects."
+        % (", ".join(party) or "none", _json.dumps(groups, indent=2, ensure_ascii=True),
+           "|".join(CLASSIFICATIONS))
     )
 
 
