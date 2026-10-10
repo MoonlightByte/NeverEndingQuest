@@ -2080,10 +2080,11 @@ SPELL_SAVE_APPLY_ON = ("always", "failedSave", "successfulSave")
 
 def player_spell_save_entry(encounter, characters, intent):
     """The roll phase's spell entry when the intent is a cast of a recorded
-    save spell at one or more listed, targetable creatures (each hpDelta 0)
-    by a caster whose sheet lists the spell and states its spell save DC;
-    None otherwise. The entry fixes the damage dice (slot or character
-    level) and the save when the phase opens."""
+    save spell at one or more listed, targetable creatures (each hpDelta 0;
+    a typed targetId with no targets listed is that one target) by a caster
+    whose sheet lists the spell and states its spell save DC; None
+    otherwise. The entry fixes the damage dice (slot or character level) and
+    the save when the phase opens."""
     if not isinstance(intent, dict) or intent.get("action") not in SPELL_SAVE_ACTIONS:
         return None
     attacks = intent.get("attacks")
@@ -2094,6 +2095,8 @@ def player_spell_save_entry(encounter, characters, intent):
         return None
     save = intent.get("save")
     targets = intent.get("targets")
+    if targets in (None, []) and isinstance(intent.get("targetId"), str):
+        targets = [{"combatantId": intent["targetId"], "hpDelta": 0}]
     if (save is not None and not isinstance(save, dict)) or not isinstance(targets, list) or not targets:
         return None
     target_ids = []
@@ -2153,13 +2156,15 @@ def player_spell_save_entry(encounter, characters, intent):
     }
 
 
-def spell_save_proposal(intent, damage):
+def spell_save_proposal(intent, target_ids, damage):
     """The adjudicated proposal the stored intent resolves as: the model's
-    resources and effects, and the rolled total on every listed target (the
-    #703 save applies the record's effect to it per target)."""
+    resources and effects, and the rolled total on every target of the entry
+    (the #703 save applies the record's effect to it per target)."""
     proposal = deepcopy(intent)
     proposal.pop("requiresPlayerInput", None)
-    proposal["targets"] = [dict(listed, hpDelta=-int(damage)) for listed in intent.get("targets") or []]
+    listed = {entry.get("combatantId"): entry for entry in intent.get("targets") or [] if isinstance(entry, dict)}
+    proposal["targets"] = [dict(listed.get(target_id) or {"combatantId": target_id}, hpDelta=-int(damage))
+                           for target_id in target_ids]
     return proposal
 
 
@@ -2173,7 +2178,7 @@ def open_player_spell_save(encounter, characters, intent, spell, rolls):
     are persisted on the record; ``ready`` when no target takes damage."""
     try:
         preview = resolve_adjudicated(
-            deepcopy(encounter), deepcopy(characters), spell_save_proposal(intent, 0), rolls,
+            deepcopy(encounter), deepcopy(characters), spell_save_proposal(intent, spell["targetIds"], 0), rolls,
             "spell-save-check",
         )
     except (IndexError, KeyError, TypeError, ValueError):
@@ -2267,7 +2272,8 @@ def resolve_player_spell_save(encounter, characters, intent, record, event_id, r
         raise ValueError("the save-first cast has no damage roll to apply")
     replay = _ReplayedSaveRolls(rolls, {result["combatantId"]: result["faces"] for result in results})
     resolution = resolve_adjudicated(
-        encounter, characters, spell_save_proposal(intent, rolled if needs_damage else 0), replay, event_id,
+        encounter, characters, spell_save_proposal(intent, spell.get("targetIds") or [], rolled if needs_damage else 0),
+        replay, event_id,
     )
     event = resolution["event"]
     scored = {
