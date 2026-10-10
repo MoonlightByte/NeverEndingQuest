@@ -81,6 +81,10 @@ class Genesis:
     content_ids: Dict[str, Dict[int, str]] = field(default_factory=dict)   # storage id -> contents index -> item id
     effect_names: Dict[str, str] = field(default_factory=dict)            # condition instance id -> effect name
     gaps: List[str] = field(default_factory=list)
+    # NUM-H3a: item id -> character id for an equipped catalog weapon the hand
+    # rule declared carried. Its sheet row stays equipped: a write that reads
+    # the engine's wearer back keeps the row's flag (no sheet change).
+    carried: Dict[str, str] = field(default_factory=dict)
 
 
 ABILITY_NAMES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
@@ -706,12 +710,14 @@ def _weapon_definition(entry: Dict[str, Any], monk_rules: List[Dict[str, Any]]) 
 def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: bool,
                definitions: List[str], gaps: List[str], cid: str,
                charged: Optional[Tuple[List[str], set]] = None,
-               hands_free: Optional[int] = None) -> Tuple[str, Optional[str], int]:
+               hands_free: Optional[int] = None,
+               carried: Optional[Dict[str, str]] = None) -> Tuple[str, Optional[str], int]:
     """One item declaration. Returns (line, mode-if-held, hands it holds).
 
     ``hands_free`` (NUM-H3a) is the hands left for an equipped catalog weapon,
     whose held mode states its own hand count: one that would overfill them is
-    declared carried (custody kept, not worn), with a gap naming it.
+    declared carried (custody kept, not worn), with a gap naming it, and
+    recorded in ``carried``.
 
     ``charged`` is (item type lines, type ids already used) for the world; a
     non-catalog row with an acceptable ``charges`` object (charges_fields) is
@@ -754,6 +760,8 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
             gaps.append(f"{cid}: {entry.get('item_name')!r} ({catalog['id']}) is equipped but holds in {hands} hands "
                         f"and {max(hands_free, 0)} are free; declared carried, not worn")
             worn = False
+            if carried is not None:
+                carried[iid] = cid
         fields = [f"owner {_q(owner)};", custody]
         if worn:
             fields.append(f"wearer {_q(cid)};")
@@ -928,6 +936,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     effect_types: List[str] = []
     effect_names: Dict[str, str] = {}
     all_ids: set = set()
+    carried: Dict[str, str] = {}
     # Item charges (H1): one item type per charged sheet row, declared after the pack.
     charged: Tuple[List[str], set] = ([], set())
 
@@ -1012,7 +1021,8 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
             hands += held_hands
         for index, iid, entry in weapons_last:
             line, _, held_hands = _item_line(iid, entry, cid, f"custody character {_q(cid)};",
-                                             True, definitions, gaps, cid, charged, hands_free=2 - hands)
+                                             True, definitions, gaps, cid, charged, hands_free=2 - hands,
+                                             carried=carried)
             declared[index] = (line, ac_effect_lines(iid, entry))
             hands += held_hands
         for index in sorted(declared):
@@ -1106,7 +1116,8 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
             lines.append(features)
     lines.extend(charged[0])
     return Genesis(source="\n".join(lines) + "\n", location=loc, character_ids=character_ids, item_ids=item_ids,
-                   container_ids=container_ids, content_ids=content_ids, effect_names=effect_names, gaps=gaps)
+                   container_ids=container_ids, content_ids=content_ids, effect_names=effect_names, gaps=gaps,
+                   carried=carried)
 
 
 def expected_armor_class(sheet: Dict[str, Any]) -> Tuple[Optional[int], List[str]]:
