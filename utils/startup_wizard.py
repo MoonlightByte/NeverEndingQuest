@@ -940,7 +940,7 @@ def ai_character_interview(conversation, module):
                                 "status": "already applied by the game to the candidate sheet under review",
                                 "meaning": ("These normalization notes describe the candidate, not author requirements "
                                             "or player approval. Check narration against the candidate and still reject "
-                                            "unsupported mechanics or lost choices. A kept HP maximum is not rules-verified."),
+                                            "unsupported mechanics or lost choices."),
                                 "changes": mechanics,
                             }
                     review = _review_startup_response(
