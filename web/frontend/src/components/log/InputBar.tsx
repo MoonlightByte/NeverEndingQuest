@@ -10,6 +10,7 @@ import { RulesRollPanel } from '../log/RulesRollPanel'
 import { useEffect, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { useTurnStatus } from './turnStatus'
+import { ThinkingMist, useDmBusy } from './ThinkingMist'
 import { useComposerGating } from '../../modes/useComposerGating'
 import { useEmberDesktop } from '../layout/EmberPresentation'
 import { EmberIcon } from '../layout/EmberIcon'
@@ -17,6 +18,7 @@ import { EmberIcon } from '../layout/EmberIcon'
 export function InputBar({ rollInsertion }: { rollInsertion?: { id: number; text: string } } = {}) {
   const ember = useEmberDesktop()
   const turnStatus = useTurnStatus()
+  const dmBusy = useDmBusy()
   const gating = useComposerGating()
   const rulesRoll = useRulesRoll((s) => s.prompt)
   // #214: background welcome liveness - presentational, never locks input.
@@ -54,7 +56,7 @@ export function InputBar({ rollInsertion }: { rollInsertion?: { id: number; text
 
   return (
     <div className="neq-input-container shrink-0 border-t border-card bg-[#333] p-[10px]">
-      {turnStatus && <p className="neq-turn-status" role="status">{turnStatus}</p>}
+      {turnStatus && <p className={dmBusy ? 'neq-turn-status neq-turn-status--busy' : 'neq-turn-status'} role="status"><ThinkingMist />{turnStatus}</p>}
       <div className="flex items-center">
         <input
           ref={inputRef}

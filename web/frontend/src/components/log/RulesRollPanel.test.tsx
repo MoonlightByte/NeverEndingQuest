@@ -6,6 +6,7 @@ import { useRulesRoll } from '../../stores/rulesRoll'
 import { emitC } from '../../services/socket'
 import { InputBar } from './InputBar'
 import { DiceStrip } from './DiceStrip'
+import { EmberPresentation } from '../layout/EmberPresentation'
 vi.mock('../../services/socket', () => ({ emitC: vi.fn() }))
 const initialSession = useSession.getState()
 beforeEach(() => {
@@ -57,4 +58,18 @@ it('ignores local dice with no pending check and preserves dice on reconnect', (
   expect(useRulesRoll.getState().quickFaces).toEqual([15])
   store.clearQuickFaces()
   expect(useRulesRoll.getState().quickFaces).toEqual([])
+})
+
+
+it('docks desktop submission beside Clear, with no duplicate panel buttons', () => {
+  render(<EmberPresentation.Provider value={true}><DiceStrip /><InputBar /></EmberPresentation.Provider>)
+  const roll = screen.getByText('Roll for me')
+  const clear = screen.getByTitle('Clear results')
+  expect(roll.closest('.neq-dice-submit-controls')).toBe(clear.parentElement)
+  fireEvent.click(screen.getByTitle('Roll D20'))
+  fireEvent.click(screen.getByTitle('Roll D20'))
+  const submit = screen.getByText(/Submit rolled dice/)
+  expect(submit.closest('.neq-dice-submit-controls')).toBe(clear.parentElement)
+  fireEvent.click(submit)
+  expect(emitC).toHaveBeenCalledTimes(1)
 })

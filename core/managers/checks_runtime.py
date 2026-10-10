@@ -125,6 +125,14 @@ def take_player_rolls(read: Callable[[str], str]) -> List[str]:
             continue
         line = checks.describe(result) + (f" [{entry['reason']}]" if entry.get("reason") else "")
         checks_state.complete_pending(entry, line)
+        # The rules command is not ordinary chat input. Publish its accepted
+        # dice separately as the player's reply, including engine-rolled dice,
+        # before the next DM narration. Keep totals/mechanics in the DM context.
+        if result.ok and result.faces:
+            from web.shared_state import emit_player_output
+            dice = [f"{face} on a d20" for face in result.faces]
+            rolled = " and ".join(dice)
+            emit_player_output({'type': 'user-input', 'content': f"I rolled {rolled}."})
         info(f"CHECK: {line}", category="character_updates")
         completed.append(line)
 

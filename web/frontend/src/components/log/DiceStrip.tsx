@@ -13,6 +13,7 @@ import { EmberIcon } from '../layout/EmberIcon'
 import { useComposerGating } from '../../modes/useComposerGating'
 import { useRulesRoll } from '../../stores/rulesRoll'
 import { EmberDieIcon } from '../layout/EmberDieIcon'
+import { RulesRollActions } from './RulesRollPanel'
 
 const DICE_SIDES = [20, 12, 10, 8, 6, 4] as const
 
@@ -70,6 +71,14 @@ export function DiceStrip({ state, onInsertRoll }: { state?: ReturnType<typeof u
   // Resolve after commit: a breakpoint move replaces the previous dock node.
   useLayoutEffect(() => { setResultsHost(document.getElementById('neq-dice-results-host')) }, [ember])
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const previousCheck = useRef<string | null>(null)
+  useEffect(() => {
+    if (previousCheck.current && previousCheck.current !== requestedCheck?.id) {
+      setD20Rolls([])
+      setDamageRolls([])
+    }
+    previousCheck.current = requestedCheck?.id ?? null
+  }, [requestedCheck?.id, setD20Rolls, setDamageRolls])
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current) }, [])
 
   const roll = (sides: number) => {
@@ -93,6 +102,9 @@ export function DiceStrip({ state, onInsertRoll }: { state?: ReturnType<typeof u
 
   const damageTotal = damageRolls.reduce((sum, r) => sum + r.result, 0)
   const hasResults = d20Rolls.length > 0 || damageRolls.length > 0
+  const clearButton = <button type="button" title="Clear results" onClick={clear} className={clearButtonClass}>
+    {ember && <EmberIcon name="clear" />}Clear
+  </button>
 
   const insertRoll = () => {
     if (!gating.canSend || requestedCheck || !onInsertRoll) return
@@ -138,9 +150,7 @@ export function DiceStrip({ state, onInsertRoll }: { state?: ReturnType<typeof u
             {ember && <EmberDieIcon sides={sides} rolling={rolling === sides} />}D{sides}
           </button>
         ))}
-        <button type="button" title="Clear results" onClick={clear} className={clearButtonClass}>
-          {ember && <EmberIcon name="clear" />}Clear
-        </button>
+        {ember && requestedCheck ? <span className="neq-dice-submit-controls"><RulesRollActions prompt={requestedCheck} />{clearButton}</span> : clearButton}
       </div>
     </div>
     {resultsHost && results ? createPortal(results, resultsHost) : results}

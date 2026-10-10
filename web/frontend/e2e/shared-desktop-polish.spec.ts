@@ -24,13 +24,16 @@ for (const width of [1440, 1280]) {
     await page.getByRole('button', { name: 'Send', exact: true }).click()
     const check = page.getByRole('region', { name: 'Requested check' })
     await expect(check).toBeVisible()
+    // On the desktop layout the check's submit controls sit beside the quick
+    // dice and Clear, so the dice just rolled are submitted from where they are.
+    const submitControls = page.locator('.neq-dice-submit-controls')
     await page.getByTitle('Roll D20', { exact: true }).click()
-    await check.getByRole('button', { name: /Submit rolled dice/ }).click()
+    await submitControls.getByRole('button', { name: /Submit rolled dice/ }).click()
     await expect(page.getByText(/Your submitted dice .* reveal the concealed door/)).toBeVisible()
     await expect(input).toBeEnabled()
     await input.fill('Inspect the gate for a check')
     await page.getByRole('button', { name: 'Send', exact: true }).click()
-    await check.getByRole('button', { name: 'Roll for me', exact: true }).click()
+    await submitControls.getByRole('button', { name: 'Roll for me', exact: true }).click()
     await expect(page.getByText('The engine rolled for you. You spot the concealed door.')).toBeVisible()
     await expect(input).toBeEnabled()
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
