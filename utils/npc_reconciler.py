@@ -725,14 +725,18 @@ class NpcReconciler:
         self._validate_transaction_record(record)
         return record
 
-    def reconcile_all_areas(self):
+    def reconcile_all_areas(self, refresh_lock=None):
         """Optimistically reconcile one exact module snapshot.
 
         Standalone calls release module refresh and the context target lock
         during provider waits, then reacquire strictly refresh -> context and
         revalidate bytes, containment, and directory/file identities. A caller
-        that already owns refresh (managed build) retains its outer fence.
+        that already owns refresh retains its outer fence. ``refresh_lock`` is
+        the context-manager factory used to take refresh (default
+        ``module_refresh_lock``); a module build passes one that waits instead
+        of refusing (issue #708).
         """
+        refresh_lock = refresh_lock or module_refresh_lock
         # Do not create a phantom module directory merely to place a lock file.
         # The context is required for both normal work and pending recovery.
         if not os.path.isfile(self.context_path):
@@ -751,7 +755,7 @@ class NpcReconciler:
             return False
         try:
             for source_attempt in range(_T088_SOURCE_RETRY_LIMIT):
-                with module_refresh_lock() as snapshot_acquired:
+                with refresh_lock() as snapshot_acquired:
                     if not snapshot_acquired:
                         print(
                             "ERROR: [NpcReconciler] Module refresh is busy; "
@@ -783,7 +787,7 @@ class NpcReconciler:
                     )
                     return False
 
-                with module_refresh_lock() as commit_acquired:
+                with refresh_lock() as commit_acquired:
                     if not commit_acquired:
                         self.context = original_context
                         self._rebuild_canonical_map()

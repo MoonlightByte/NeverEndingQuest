@@ -18,7 +18,6 @@ import json
 import os
 import sys
 import threading
-import time
 import traceback
 from contextlib import contextmanager
 from datetime import datetime
@@ -46,7 +45,6 @@ from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import sanitize_text, safe_json_load, safe_json_dump
 from utils.file_operations import FileLockError, atomic_writer
 from utils.transient_filesystem import ReadOnlySaveStop, raise_if_save_stopped
-from utils.module_refresh_lock import module_refresh_lock
 from core.managers.status_manager import status_generating_summary
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
@@ -95,27 +93,18 @@ def _wait_for_module_refresh():
     Busy means wait, never refuse (#193 B2-ii, issue #637). Short attempts
     with an interruptible beat between them, like the move's own travel-map
     wait: each beat checks the read-only save stop and the turn's authority,
-    so Load, Reset or Quit still end the wait.
+    so Load, Reset or Quit still end the wait. The loop itself is shared with
+    the module build's publish step (issue #708).
     """
-    from utils.capture.live_provider_call import (
-        _interruptible_wait,
-        get_live_provider_scope,
-    )
+    from utils.module_refresh_lock import wait_for_module_refresh
 
-    wait_started = time.monotonic()
-    while True:
-        with module_refresh_lock(max_wait_seconds=0.25) as refresh_acquired:
-            if refresh_acquired:
-                yield
-                return
-        _interruptible_wait(
-            0.25,
-            get_live_provider_scope(),
-            lambda: (
-                "Waiting for module work to finish before recording your "
-                "journey (%d seconds)." % int(time.monotonic() - wait_started)
-            ),
+    with wait_for_module_refresh(
+        lambda seconds: (
+            "Waiting for module work to finish before recording your "
+            "journey (%d seconds)." % seconds
         )
+    ):
+        yield
 
 
 @contextmanager

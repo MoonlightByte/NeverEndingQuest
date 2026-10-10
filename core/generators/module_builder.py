@@ -57,6 +57,7 @@ from core.ai.module_creation_contract import (
     GAME_MODULE_POLICY,
     MODULE_ADVENTURE_TYPES,
     MODULE_SPEC_FIELDS,
+    ModuleCreationBusyError,
     ModuleCreationCancelledError,
     ModuleCreationContractError,
     ModuleCreationFailedError,
@@ -142,23 +143,51 @@ def _run_managed_module_build(
 
     Runs story-first once, then safely dials down to the compatible generator on
     a bounded set of model-format exhaustion errors. Each attempt gets a FRESH
-    temp workspace via ``publish_module_atomic``; an ordinary build failure
-    removes its workspace best-effort and NEVER touches ``modules/<name>``. A
-    hard process crash can leave only a hidden, ignored workspace for P2c's
-    orphan sweep. A failed build is a failed action, not a broken or corrupted
-    game (fail-forward). Local durability, authentication, cancellation, and
-    interruption failures deliberately bypass this fallback.
+    reserved temp workspace; an ordinary build failure removes its workspace
+    best-effort and NEVER touches ``modules/<name>``. A hard process crash can
+    leave only a hidden workspace, which keeps its name reserved (the next
+    build of that name gets a value suffix). A failed build is a failed action,
+    not a broken or corrupted game (fail-forward). Local durability,
+    authentication, cancellation, and interruption failures deliberately
+    bypass this fallback.
+
+    module_refresh_lock is held only to reserve the name and to publish, not
+    while the attempt generates (issue #708), so Save, Load and travel do not
+    wait for a build's model calls.
     """
-    from utils.module_publish import publish_module_atomic
+    from utils.module_publish import (
+        discard_reservation,
+        publish_reserved,
+        reserve_build_workspace,
+    )
     from utils.module_refresh_lock import module_refresh_lock
 
     def run(candidate):
-        return publish_module_atomic(
-            requested_name,
-            candidate,
-            modules_dir="modules",
-            prepare_registry_fn=prepare_registry_fn,
-        )
+        # Reserve: short, and before anything is spent, so a lock that stays
+        # busy still refuses, as before.
+        with module_refresh_lock() as acquired:
+            if not acquired:
+                raise ModuleCreationBusyError(
+                    "Module creation is busy; no game state was changed. "
+                    "Please retry shortly."
+                )
+            reservation = reserve_build_workspace(
+                requested_name, modules_dir="modules"
+            )
+        try:
+            # Generate without the lock, into the private workspace.
+            candidate(reservation.candidate_path, reservation.module_name)
+            # Publish: the registry preparation, the occupancy guard, the
+            # rename and the registry write stay serialized. The build is
+            # already paid for, so a busy lock is waited for, never refused.
+            with _build_refresh_wait(_progress_wait_reporter(progress_callback)):
+                return publish_reserved(
+                    reservation,
+                    prepare_registry_fn=prepare_registry_fn,
+                )
+        except BaseException:
+            discard_reservation(reservation)
+            raise
 
     def _build_and_publish():
         if not use_story_first:
@@ -199,19 +228,54 @@ def _run_managed_module_build(
             )
         return run(compatible_candidate)
 
-    # SHARED orchestration lock. The former ManagedModuleBuilder.run() acquired
-    # module_refresh_lock for EVERY build entry point (in-game, toolkit, headless,
-    # interactive); publish_module_atomic only ASSERTS ownership, so the lock must
-    # be taken HERE -- the one boundary all callers funnel through -- or the
-    # toolkit/headless/interactive callers fail the ownership assert. Reentrant:
-    # the in-game path already holds it (thread-local depth), so this nests safely.
-    with module_refresh_lock() as acquired:
-        if not acquired:
-            raise ModuleCreationFailedError(
-                "Module creation is busy; no game state was changed. "
-                "Please retry shortly."
-            )
-        return _build_and_publish()
+    # SHARED orchestration boundary. Every build entry point (in-game, toolkit,
+    # headless, interactive) funnels through here, and run() takes
+    # module_refresh_lock itself around the reserve and the publish (the
+    # publish helpers only ASSERT ownership). Reentrant: a caller that still
+    # holds the lock nests safely, but then generates under it.
+    return _build_and_publish()
+
+
+_BUILD_REFRESH_WAIT_LINE = (
+    "Waiting for other game work to finish before continuing your module "
+    "(%d seconds)."
+)
+
+
+def _build_refresh_wait(on_wait=None):
+    """Hold module refresh inside a build that has already spent model calls.
+
+    Waits instead of refusing (issue #708): a Save, a departure or another
+    build's publish can hold the lock for a while, and dropping a paid build
+    for that would waste it. ``on_wait(line)`` passes the waiting line to the
+    build's progress callback; that callback raising (an operator cancel)
+    ends the wait.
+    """
+    from utils.module_refresh_lock import wait_for_module_refresh
+
+    return wait_for_module_refresh(
+        lambda seconds: _BUILD_REFRESH_WAIT_LINE % seconds,
+        on_wait=on_wait,
+    )
+
+
+def _progress_wait_reporter(progress_callback):
+    """``on_wait`` for a build's web-shaped progress callback."""
+    if not progress_callback:
+        return None
+
+    def on_wait(line):
+        progress_callback(
+            {
+                "stage": 8,
+                "total_stages": 9,
+                "stage_name": "Waiting",
+                "percentage": 88,
+                "message": line,
+            }
+        )
+
+    return on_wait
 
 
 def _is_auth_error(exc):
@@ -2194,15 +2258,22 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         reconciler.path_manager.module_dir = self.config.output_directory
         reconciler.context_path = context_path
 
+        # Lock order is module_refresh -> context. The build no longer holds
+        # module_refresh while it generates (issue #708), so each locked step
+        # takes it here, waiting rather than dropping a paid build. T088 runs
+        # in the reconciler's standalone mode, which holds both locks only to
+        # snapshot and to commit, never while the model works.
+        on_wait = self._refresh_wait_reporter()
+
+        def refresh_lock():
+            return _build_refresh_wait(on_wait)
+
         if expected_context is not None:
             from core.generators.story_first.compatibility import (
                 validate_reconciled_context,
             )
-            from utils.module_refresh_lock import module_refresh_lock
 
-            with module_refresh_lock() as refresh_acquired:
-                if not refresh_acquired:
-                    raise OSError("Module refresh is busy during story-first context")
+            with refresh_lock():
                 with path_transaction_lock(context_path):
                     recovery = reconciler._recover_pending_transaction()
                     if recovery:
@@ -2216,9 +2287,11 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                             "Could not publish module context before NPC reconciliation"
                         )
 
-                    self.log("Step 6.5: Reconciling NPC names for consistency...")
-                    if not reconciler._reconcile_all_areas_unlocked():
-                        raise OSError("NPC identity reconciliation did not commit")
+            self.log("Step 6.5: Reconciling NPC names for consistency...")
+            if not reconciler.reconcile_all_areas(refresh_lock=refresh_lock):
+                raise OSError("NPC identity reconciliation did not commit")
+            with refresh_lock():
+                with path_transaction_lock(context_path):
                     self.context = ModuleContext.load(context_path)
                     self.log("Step 7: Validating module consistency...")
                     self.validate_module()
@@ -2231,15 +2304,10 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         # Lock order MUST be module_refresh -> context, matching the story-first
         # branch above. The reconciler's locked reconcile_all_areas() refuses a
         # caller that holds the context lock without refresh (a refresh->context
-        # inversion, npc_reconciler.py:731-738), so a legacy build that took only
-        # the context lock here would abort every time with "did not commit".
-        # Acquire refresh first, then context, then call the UNLOCKED helper that
-        # expects both locks already held.
-        from utils.module_refresh_lock import module_refresh_lock
-
-        with module_refresh_lock() as refresh_acquired:
-            if not refresh_acquired:
-                raise OSError("Module refresh is busy during NPC reconciliation")
+        # inversion, npc_reconciler.py:731-738), so each step here takes refresh
+        # first, then context, and reconcile_all_areas() is called holding
+        # neither: it takes them itself in the same order.
+        with refresh_lock():
             with path_transaction_lock(context_path):
                 # Resolve a prior interrupted T088 before considering the builder's
                 # in-memory snapshot. Overwriting a staged target first would turn
@@ -2269,10 +2337,12 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                             "Could not publish module context before NPC reconciliation"
                         )
 
-                self.log("Step 6.5: Reconciling NPC names for consistency...")
-                if not reconciler._reconcile_all_areas_unlocked():
-                    raise OSError("NPC identity reconciliation did not commit")
+        self.log("Step 6.5: Reconciling NPC names for consistency...")
+        if not reconciler.reconcile_all_areas(refresh_lock=refresh_lock):
+            raise OSError("NPC identity reconciliation did not commit")
 
+        with refresh_lock():
+            with path_transaction_lock(context_path):
                 # T088 owns a separate ModuleContext instance. Refresh the builder
                 # before validation so Step 7 cannot overwrite its identity merge.
                 self.context = ModuleContext.load(context_path)
@@ -2285,6 +2355,13 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         # failure leaves the reconciled module intact and NEVER aborts the build
         # (heal-forward -- a module is always produced).
         self._apply_npc_coherence(context_path)
+
+    def _refresh_wait_reporter(self):
+        """``on_wait`` for this builder's own (status, message) progress callback."""
+        callback = self.progress_callback
+        if not callback:
+            return None
+        return lambda line: callback("finalizing", line)
 
     def _apply_npc_coherence(self, context_path):
         """Issue #160: reconcile same-name NPCs recurring across areas via one
@@ -3402,7 +3479,11 @@ def _ai_driven_module_creation_impl(
 
         return True, module_name
 
-    except (ModuleCreationRecoveryRequiredError, ModuleCreationCancelledError):
+    except (
+        ModuleCreationRecoveryRequiredError,
+        ModuleCreationCancelledError,
+        ModuleCreationBusyError,
+    ):
         raise
     except Exception as e:
         print(
