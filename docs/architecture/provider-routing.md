@@ -170,7 +170,7 @@ provider router, persisted approval or background comparison is introduced.
 ## Load-bearing seams
 
 1. `model_registry.py:14-39` - supported providers and eligible model catalog.
-2. `model_registry.py:75-113` and `model_registry.py:708-782` - binding schema and immutable inventory.
+2. `model_registry.py:75-112` and `model_registry.py:734-743` - binding schema and immutable inventory.
 3. `model_registry.py:247-289` and `model_registry.py:416-432` - representative validator and main-DM bindings.
 4. `model_registry.py:496-521` - T096/T097 profiles and attempt ladders.
 5. `model_config.py:1069-1175` - capture defaults, provider defaults, and switching.
@@ -182,7 +182,7 @@ provider router, persisted approval or background comparison is introduced.
 11. `core/ai/api_client.py:217-302` - response rejection and actual model/ID normalization.
 12. `core/ai/api_client.py:319-442` - provider-neutral router and error normalization.
 13. `core/ai/api_client.py:532-1019` - provider constraints and Gemini translation.
-14. `utils/capture/live_provider_call.py:793` and `utils/capture/multi_model_capture.py:390` - live children, correlation, required reissue, and capture bookkeeping.
+14. `utils/capture/live_provider_call.py:1310` and `utils/capture/multi_model_capture.py:390` - live children, correlation, required reissue, and capture bookkeeping.
 15. `core/ai/api_client.py` `normalize_local_template_messages` / `_local_template_repair` - Local/Custom strict-template shape repair (#179, #389). Lives in the adapter so every caller, the live child included, gets it: on a COMPLETED Local/Custom rejection (any HTTP status; provider prose is never parsed) the request is reissued once with one leading system block, later system messages converted to user turns in place, and a trailing user turn; an array the reshape leaves unchanged re-raises as before, so lenient models are never reshaped and nothing can loop. Capture rows keep the caller's assembled request; replay through the adapter applies the same repair.
 16. `utils/capture/file_writer.py:36-181` and `utils/api_logger.py:42-130` - capture and API evidence stores.
 
