@@ -1745,7 +1745,8 @@ def validate_character_with_recovery(character_data):
         
         # Validate the character data
         validate(character_data, schema)
-        return True, None
+        from utils.startup_mechanics import validate_startup_mechanics
+        return validate_startup_mechanics(character_data)
         
     except ValidationError as e:
         # Provide detailed error information

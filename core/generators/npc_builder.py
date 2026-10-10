@@ -41,6 +41,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from jsonschema import validate, ValidationError
 import config
 from core.ai import api_client
+from core.nql.legacy_loadout import RECEIPT_FIELD, migrate as repair_initial_loadout
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.character_sheet_contract import repair_required_ammunition_field
@@ -116,13 +117,19 @@ NAME HANDLING: The `name` field must preserve the NPC's full name including any 
 - 'Scout Kira' -> 'Scout Kira'
 - 'Guard Marcus' -> 'Guard Marcus'
 
-EQUIPMENT REQUIREMENTS: Equip the NPC fully. Minimum 5 equipped items including:
+EQUIPMENT REQUIREMENTS: Give the NPC a complete carried inventory, not five simultaneously held items. Include:
 - Armor appropriate for class (studded leather for rogues, chain mail for fighters, etc.)
 - Primary weapon (matching class proficiencies)
 - Secondary/ranged weapon
 - Shield (if class supports and build uses one)
 - Class tools (thieves' tools, holy symbol, component pouch, etc.)
 - At least 2 adventuring items (backpack, rope, rations, torches, etc.)
+
+The equipped flag means currently held or worn, not merely owned. Keep spare weapons
+in inventory with equipped=false. Use one primary weapon and an optional shield;
+a two-handed primary weapon needs both hands and no shield. Keep all other weapons
+stowed. Wear only one suit of armor and at most one shield. Do not invent code-owned
+nqlEquipmentMigration receipts.
 
 RACIAL TRAITS: Include ALL racial traits as separate entries in the racialTraits array. Every trait the race grants must be listed, including ability score increases. Examples:
 - Human: [{{"name":"Ability Score Increase","description":"Your ability scores each increase by 1."}},{{"name":"Extra Language","description":"You can speak, read, and write one extra language of your choice."}}]
@@ -203,6 +210,17 @@ Adhere strictly to 5e rules and the provided schema."""
                 npc_data, _ = repair_required_ammunition_field(npc_data)
                 last_parsed_data = npc_data
                 validate(instance=npc_data, schema=schema)
+                # A fresh AI draft is not an established player's loadout. Apply
+                # the existing saved-order, shield-first capacity repair before
+                # its first save so the first inventory delta can build a world.
+                # Never run this on an existing target or a proposed equip action.
+                npc_data.pop(RECEIPT_FIELD, None)
+                changes = repair_initial_loadout(npc_data)
+                if changes:
+                    warning(
+                        f"NPC initial loadout stowed {len(changes)} excess held items",
+                        category="npc_creation",
+                    )
                 return npc_data
             except json.JSONDecodeError as e:
                 last_json_err = e
