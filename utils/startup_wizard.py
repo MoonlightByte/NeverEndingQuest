@@ -1923,6 +1923,9 @@ def update_party_tracker(module_name, character_name, *, live_scope=None, starti
             "season": "Spring", "dayNightCycle": "Day", "moonPhase": "New Moon",
             "majorEventsUnderway": [], "activeEncounter": "", "activeCombatEncounter": "",
             "weatherConditions": "",
+            # A missing weather or politicalClimate reads as unknown, never
+            # as a schema failure on a same-module resume (#576).
+            "weather": "", "politicalClimate": "",
         }
         for key, value in defaults.items():
             world.setdefault(key, value)
@@ -1931,8 +1934,8 @@ def update_party_tracker(module_name, character_name, *, live_scope=None, starti
             "currentArea": location["areaName"], "currentAreaId": location["areaId"],
         })
         for key in ("weather", "politicalClimate"):
-            # Preserve declared empty built weather/climate on a new tracker.
-            if location.get(key) or (key not in world and isinstance(location.get(key), str)):
+            # A built location's own value wins; otherwise the tracker keeps its own.
+            if location.get(key):
                 world[key] = location[key]
         party_data["module"] = module_name
         party_data["partyMembers"] = [character_name]

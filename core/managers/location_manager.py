@@ -264,7 +264,9 @@ def update_world_conditions(
             "month": current_conditions["month"],
             "day": current_conditions["day"],
             "time": new_time,
-            "weather": location_info.get("weatherConditions", ""), 
+            # A destination that names no weather keeps the current weather,
+            # and the political climate carries across moves (#627).
+            "weather": location_info.get("weatherConditions") or current_conditions.get("weather", ""),
             "season": current_conditions["season"],
             "dayNightCycle": day_night(new_time),
             "moonPhase": current_conditions["moonPhase"],
@@ -273,7 +275,7 @@ def update_world_conditions(
             "currentArea": current_area,
             "currentAreaId": current_area_id,
             "majorEventsUnderway": current_conditions["majorEventsUnderway"],
-            "politicalClimate": "",
+            "politicalClimate": current_conditions.get("politicalClimate", ""),
             "activeEncounter": "",
             "activeCombatEncounter": current_conditions.get("activeCombatEncounter", ""),
             "weatherConditions": location_info.get(
