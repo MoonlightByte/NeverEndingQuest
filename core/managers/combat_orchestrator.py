@@ -25,8 +25,10 @@ from core.combat.pipeline import _intent_for_actor, _ordered_intents
 from core.combat.resolver import (
     feature_heal_key,
     open_player_spell_attack,
+    open_player_spell_save,
     open_player_weapon_attack,
     player_spell_attack_entry,
+    player_spell_save_entry,
     player_weapon_attack_dice,
     player_weapon_attack_entry,
     player_weapon_attack_score,
@@ -788,6 +790,20 @@ def _weapon_attack_prompt(record, entry):
         return "%s attack against %s: roll %dd20%s and type %s, or press Enter and the game rolls." % (
             record.get("ability"), record.get("targetName"), count, why, what,
         )
+    spell = record.get("spell") if isinstance(record.get("spell"), dict) else {}
+    if spell.get("type") == "save":
+        # #723: the saves are scored first; the request states each one.
+        save = spell.get("save") or {}
+        verdicts = []
+        for result in save.get("results") or []:
+            verdicts.append("%s %s (%s save %s vs DC %s%s)" % (
+                result.get("name"), "succeeds" if result.get("success") else "fails",
+                str(save.get("type") or "").capitalize(), result.get("total"), save.get("dc"),
+                {"half": ", half damage", "none": ", no damage"}.get(result.get("effect"), ""),
+            ))
+        return "%s: %s. Roll %dd%d for damage and type the total, or press Enter and the game rolls." % (
+            record.get("ability"), "; ".join(verdicts), count, sides,
+        )
     hit = (
         "critical hit" if record.get("critical")
         else "hit (%s vs AC %s)" % (record.get("attackTotal"), record.get("targetAC"))
@@ -818,10 +834,10 @@ def _parse_weapon_roll(text, record, entry):
 
 def _player_weapon_takeover(encounter, characters, pending, batch):
     """(record, entry) when the window opens with the human player's plain
-    melee weapon swing, or (#672) a cast of a recorded spell attack; None
-    keeps today's path. The other intents are checked the way resolution
-    checks them, so a bad one still goes to the normal correction before any
-    roll is asked for."""
+    melee weapon swing, a cast of a recorded spell attack (#672) or of a
+    recorded save spell, save first (#723); None keeps today's path. The other
+    intents are checked the way resolution checks them, so a bad one still
+    goes to the normal correction before any roll is asked for."""
     actor_ids = pending.get("actorIds") or []
     state = encounter.get("combatState") or {}
     first = combatant_by_id(encounter, actor_ids[0]) if actor_ids else None
@@ -833,9 +849,18 @@ def _player_weapon_takeover(encounter, characters, pending, batch):
         return None
     entry = player_weapon_attack_entry(encounter, characters, intent)
     spell = None
+    record = None
     if entry is None:
         spell = player_spell_attack_entry(encounter, characters, intent)
-        if spell is None or spell_attack_violations(encounter, characters, intent, spell):
+        if spell is None:
+            save_spell = player_spell_save_entry(encounter, characters, intent)
+            # The saves are scored now from a fresh copy of the persisted
+            # prerolls (nothing is consumed until the window commits).
+            record = (open_player_spell_save(encounter, characters, intent, save_spell, _fresh_rolls(encounter))
+                      if save_spell is not None else None)
+            if record is None:
+                return None
+        elif spell_attack_violations(encounter, characters, intent, spell):
             # A cast whose slot or effects would not resolve keeps today's
             # path, where the normal correction answers it.
             return None
@@ -851,7 +876,9 @@ def _player_weapon_takeover(encounter, characters, pending, batch):
             raise CombatIntentError(rejection.get("reason", "Intent rejected"), actor_id, dict(rejection))
     if len(intents) != len(actor_ids):
         raise CombatIntentError("Intent batch contains actors outside the claimed window")
-    if spell is not None:
+    if record is not None:
+        entry = weapon_attack_sheet_entry(encounter, characters, record)
+    elif spell is not None:
         record = open_player_spell_attack(encounter, characters, intent, spell)
         entry = weapon_attack_sheet_entry(encounter, characters, record)
     else:
@@ -862,8 +889,63 @@ def _player_weapon_takeover(encounter, characters, pending, batch):
         # is superseded by the code-issued [ROLL] line.
         if isinstance(stored, dict) and stored.get("actorId") == record["actorId"]:
             stored.pop("requiresPlayerInput", None)
-    record["prompt"] = _weapon_attack_prompt(record, entry)
+    if record.get("ready") is not True:
+        record["prompt"] = _weapon_attack_prompt(record, entry)
     return record, entry
+
+
+def _phase_kind(record):
+    """The diagnostics name of a code-issued roll phase."""
+    spell = record.get("spell") if isinstance(record, dict) else None
+    if isinstance(spell, dict):
+        return "spell_save" if spell.get("type") == "save" else "spell_attack"
+    return "weapon_attack"
+
+
+def _resolve_ready_phase(encounter_path, encounter, characters, pending):
+    """Item 3: resolve the window from a completed code-issued roll phase,
+    with the batch the model gave when the phase opened (no second T096
+    pass). Returns (pending, events, roll_consumption, preview_characters);
+    events is None after a fallback, when the model rules the window."""
+    ready_attack = pending.get("weaponAttack")
+    try:
+        rolls = _fresh_rolls(encounter)
+        events, _preview_encounter, preview_characters = resolve_claimed_window(
+            encounter,
+            characters,
+            pending,
+            deepcopy(ready_attack.get("batch")),
+            rolls,
+        )
+        roll_consumption = rolls.consumption()
+        record_combat_diagnostic(
+            record_type="window_outcome",
+            callsite="T096",
+            outcome="%s_scored" % _phase_kind(ready_attack),
+            encounter_id=encounter.get("encounterId"),
+            turn_id=pending.get("turnId"),
+            revision=(encounter.get("combatState") or {}).get("revision"),
+            round_number=(encounter.get("combatState") or {}).get("round"),
+            window_kind="player",
+            actor_count=len(pending.get("actorIds") or []),
+        )
+        return pending, events, roll_consumption, preview_characters
+    except (CombatIntentError, IndexError, TypeError, ValueError):
+        # Fail forward: the stored batch no longer resolves, so the model
+        # rules the window from the exchanges, which keep the typed faces.
+        pending = write_weapon_attack(encounter_path, pending.get("turnId"), None)
+        record_combat_diagnostic(
+            record_type="window_outcome",
+            callsite="T096",
+            outcome="%s_fallback" % _phase_kind(ready_attack),
+            encounter_id=encounter.get("encounterId"),
+            turn_id=pending.get("turnId"),
+            revision=(encounter.get("combatState") or {}).get("revision"),
+            round_number=(encounter.get("combatState") or {}).get("round"),
+            window_kind="player",
+            actor_count=len(pending.get("actorIds") or []),
+        )
+        return pending, None, None, None
 
 
 def _advance_weapon_attack(encounter_path, encounter, characters, pending, text, voice_intents):
@@ -1647,44 +1729,9 @@ def execute_agentic_turn(
     if isinstance(ready_attack, dict) and ready_attack.get("ready") is True:
         # Item 3: the swing's dice are in; resolve the window with the batch
         # the model gave when the roll phase opened (no second T096 pass).
-        try:
-            rolls = _fresh_rolls(encounter)
-            events, _preview_encounter, _preview_characters = resolve_claimed_window(
-                encounter,
-                characters,
-                pending,
-                deepcopy(ready_attack.get("batch")),
-                rolls,
-            )
-            roll_consumption = rolls.consumption()
-            record_combat_diagnostic(
-                record_type="window_outcome",
-                callsite="T096",
-                outcome="spell_attack_scored" if ready_attack.get("spell") else "weapon_attack_scored",
-                encounter_id=encounter.get("encounterId"),
-                turn_id=pending.get("turnId"),
-                revision=(encounter.get("combatState") or {}).get("revision"),
-                round_number=(encounter.get("combatState") or {}).get("round"),
-                window_kind="player",
-                actor_count=len(pending.get("actorIds") or []),
-            )
-        except (CombatIntentError, IndexError, TypeError, ValueError):
-            # Fail forward: the stored batch no longer resolves, so the model
-            # rules the window from the exchanges, which keep the typed faces.
-            events = None
-            roll_consumption = None
-            pending = write_weapon_attack(encounter_path, pending.get("turnId"), None)
-            record_combat_diagnostic(
-                record_type="window_outcome",
-                callsite="T096",
-                outcome="spell_attack_fallback" if ready_attack.get("spell") else "weapon_attack_fallback",
-                encounter_id=encounter.get("encounterId"),
-                turn_id=pending.get("turnId"),
-                revision=(encounter.get("combatState") or {}).get("revision"),
-                round_number=(encounter.get("combatState") or {}).get("round"),
-                window_kind="player",
-                actor_count=len(pending.get("actorIds") or []),
-            )
+        pending, events, roll_consumption, _preview_characters = _resolve_ready_phase(
+            encounter_path, encounter, characters, pending,
+        )
     provider_player_input = _composed_player_input(pending, player_input)
     roll_contract_error = None if events is not None else _player_roll_contract_error(pending)
     if roll_contract_error:
@@ -1806,18 +1853,21 @@ def execute_agentic_turn(
                 # Item 3: the player's plain melee swing. Code asks for the
                 # d20 now; the dice, not another model pass, finish the window.
                 record, _entry = takeover
-                write_weapon_attack(
+                written = write_weapon_attack(
                     encounter_path,
                     pending.get("turnId"),
                     record,
-                    player_message=record["prompt"],
-                    requested_die=record["dice"],
+                    player_message=record.get("prompt"),
+                    requested_die=record.get("dice"),
                     npc_voice_intents=immutable_voice_intents,
                 )
                 record_combat_diagnostic(
                     record_type="call_attempt",
                     callsite="T096",
-                    outcome="spell_attack_opened" if record.get("spell") else "weapon_attack_opened",
+                    outcome=(
+                        "spell_save_no_damage" if record.get("ready") is True
+                        else "%s_opened" % _phase_kind(record)
+                    ),
                     provider=intent_provider_name,
                     model=intent_model_name,
                     encounter_id=encounter.get("encounterId"),
@@ -1833,10 +1883,19 @@ def execute_agentic_turn(
                     rule_references=rule_count,
                     intents=len(batch.get("intents") or []) if isinstance(batch, dict) else None,
                 )
-                raise CombatTurnPaused(
-                    "Code-issued weapon roll is waiting for the player",
-                    player_message=record["prompt"],
+                if record.get("ready") is not True:
+                    raise CombatTurnPaused(
+                        "Code-issued weapon roll is waiting for the player",
+                        player_message=record["prompt"],
+                    )
+                # #723: every target saved against a spell that does nothing
+                # on a save, so no roll is asked: the window resolves now. A
+                # fallback sends this batch down today's path below.
+                pending, events, roll_consumption, _preview_characters = _resolve_ready_phase(
+                    encounter_path, encounter, characters, written,
                 )
+                if events is not None:
+                    continue
             _validate_player_input_request_ownership(batch, encounter)
             _validate_single_player_input_request(
                 batch,
