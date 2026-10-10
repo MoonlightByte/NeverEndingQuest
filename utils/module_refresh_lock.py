@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 from contextlib import contextmanager
 
 from utils.path_transaction_lock import (
@@ -67,3 +68,36 @@ def module_refresh_lock(max_wait_seconds: float = 5.0, poll_seconds: float = 0.0
         wait_callback=wait_callback,
     ) as acquired:
         yield acquired is not None
+
+
+@contextmanager
+def wait_for_module_refresh(message, on_wait=None):
+    """Hold module refresh, waiting while it is busy instead of refusing.
+
+    Busy means wait, never refuse (#193 B2-ii, issues #637 and #708). Short
+    attempts with an interruptible beat between them: each beat checks the
+    read-only save stop and the live turn's authority, so Load, Reset or Quit
+    still end the wait. ``message(seconds)`` renders the waiting line, shown
+    on the working status line. ``on_wait(line)``, when given, also runs on
+    every beat, and may raise to end the wait (a module build's progress
+    callback raises when the operator cancels). Yields True, like
+    ``module_refresh_lock``.
+    """
+    from utils.capture.live_provider_call import (
+        _interruptible_wait,
+        get_live_provider_scope,
+    )
+
+    wait_started = time.monotonic()
+    while True:
+        with module_refresh_lock(max_wait_seconds=0.25) as refresh_acquired:
+            if refresh_acquired:
+                yield True
+                return
+        if on_wait is not None:
+            on_wait(message(int(time.monotonic() - wait_started)))
+        _interruptible_wait(
+            0.25,
+            get_live_provider_scope(),
+            lambda: message(int(time.monotonic() - wait_started)),
+        )

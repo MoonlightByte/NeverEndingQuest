@@ -12,7 +12,9 @@ Design (isolated single-writer per the server's per-player instance model):
   1. Caller holds ``module_refresh_lock`` for the whole build+publish unit.
   2. Build into ``modules/.module_build_<uuid>/<final_name>/`` via ``build_fn``.
   3. Resolve the final module name by VALUE (auto-suffix ``_v2``) -- never a
-     content digest (project ban: identity is never derived from content).
+     content digest (project ban: identity is never derived from content). A
+     name inside any ``.module_build_*`` workspace counts as taken, so builds
+     that overlap never pick the same name.
   4. Resolve area-ID conflicts and compute ``world_registry.json`` bytes on the
      hidden candidate BEFORE it is live (via ``prepare_registry_fn``).
   5. Atomic ``os.replace`` of the built dir into ``modules/<final_name>/`` -- the
@@ -98,9 +100,25 @@ def validate_module_name(value: Any) -> str:
 
 
 def _occupied_names(modules_dir: Path) -> set:
-    """Case-folded names already live under modules/ (excludes hidden dirs)."""
+    """Case-folded names live under modules/ or reserved by a build workspace.
+
+    Generation runs outside ``module_refresh_lock`` (issue #708), so a build in
+    progress reserves its name through its hidden workspace. A crashed build's
+    leftover workspace keeps its name too: the cost is a value suffix on the
+    next build of that name. Other hidden dirs are ignored.
+    """
     occupied = set()
     for entry in os.scandir(modules_dir):
+        if entry.name.startswith(_BUILD_WORKSPACE_PREFIX):
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    for reserved in os.scandir(entry.path):
+                        occupied.add(reserved.name.casefold())
+            except OSError:
+                # Unreadable workspace: the occupancy guard at publish still
+                # refuses a name that went live meanwhile.
+                pass
+            continue
         if entry.name.startswith("."):
             continue
         occupied.add(entry.name.casefold())
