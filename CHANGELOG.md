@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- A module that is installed but not joined to the world, for example because its files did not pass the checks, is no longer offered to the DM or reachable by travel (#720). Campaign `availableModules` lists only joined modules and the party's own module, and each start removes other names an older save still lists. The DM's installed-module references leave such a module out. A move into it is refused before anything changes: the party stays where it is and the DM is told that place cannot be reached yet.
 - Legacy character, item, quest, spell and save text now displays literally, including quoted names in NPC and saved-game buttons. Tooltips preserve descriptions without interpreting embedded HTML.
 - A campaign reset no longer copies `modules/.integration_backups` into its safety backup. That folder, and any copy of it under `modules/backups/campaign_backup_*/modules/`, is left over from older builds, is never read by the game, and can be deleted by hand (#614).
 - A native Windows start no longer freezes when `modules/world_registry.json` is read-only. The game shows one line saying the file is read-only and that a module cannot join until its Read-only setting is cleared and the game is started again; play continues meanwhile.

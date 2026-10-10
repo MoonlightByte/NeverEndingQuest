@@ -63,8 +63,13 @@ def format_installed_module_references(current_module: str, modules_root: str = 
     except (OSError, ValueError) as exc:
         lines.append(f"Registry references unavailable ({type(exc).__name__}); no absence conclusion is supported.")
         return "\n".join(lines)
+    from core.generators.module_stitcher import ModuleStitcher
     for module in sorted(modules):
         if module.replace(" ", "_") == current_module.replace(" ", "_"):
+            continue
+        # #720: a module that is not joined (a bare registry stub) is not
+        # offered; the player was already told it could not be joined.
+        if not ModuleStitcher.is_joined_registry_module(registry, module):
             continue
         # C3: the level range and the recorded starting location are told here
         # once (the DM Note used to carry them); registry facts only, no lookup.

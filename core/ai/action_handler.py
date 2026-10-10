@@ -612,6 +612,17 @@ def _new_current_transition_checkpoint(
     }
 
 
+class ModuleNotJoinedError(ValueError):
+    """The destination module is installed but not joined to the world (#720)."""
+
+    def __init__(self, module_name):
+        self.module_name = module_name
+        super().__init__(
+            "module %s is installed but not joined to this world, so it is "
+            "not a travel destination" % module_name
+        )
+
+
 def resolve_cross_module_target_projection(target_module, parameters):
     """Resolve one represented module destination to canonical IDs and names.
 
@@ -620,8 +631,22 @@ def resolve_cross_module_target_projection(target_module, parameters):
     prose nor silently combines an area from one location with a location from
     another.  Invalid structured references return facts to the agent before
     any checkpoint or gameplay mutation exists.
+
+    The destination must be a joined module (#720): one whose joining was
+    refused, never checked, or blocked keeps only a bare registry stub, and
+    its files on disk are not part of the world.
     """
     parameters = parameters if isinstance(parameters, dict) else {}
+    from core.generators.module_stitcher import ModuleStitcher
+    registry = safe_json_load(os.path.join("modules", "world_registry.json"))
+    if not isinstance(registry, dict) or not isinstance(registry.get("modules"), dict):
+        import errno
+        raise OSError(errno.EIO, "World registry could not be verified")
+    # The same name the snapshot below reads (spaces read as underscores).
+    if not ModuleStitcher.is_joined_registry_module(
+        registry, str(target_module or "").replace(" ", "_")
+    ):
+        raise ModuleNotJoinedError(target_module)
     from utils.path_encounter_analyzer import build_active_module_snapshot
     snapshot = build_active_module_snapshot(target_module)
     supplied = {
