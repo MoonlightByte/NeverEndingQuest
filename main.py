@@ -638,7 +638,7 @@ def _apply_welcome(lifecycle):
             failed_receipt.get("status") == "updated"
             and not lifecycle.scope.is_superseded()
         ):
-            if lifecycle.review_failure_status == "travel_content_unavailable":
+            if lifecycle.review_failure_status in {"travel_content_unavailable", "review_exhausted"}:
                 display_dm_narration(lifecycle.error)
             elif lifecycle.review_failure_status == "provider_error":
                 refusal_text = account_refusal_message(
@@ -822,7 +822,9 @@ def _apply_welcome(lifecycle):
         if isinstance(process_result, dict) and process_result.get("status") == "superseded_invocation":
             _finish_welcome(lifecycle, "SUPERSEDED")
             return
-        if isinstance(process_result, dict) and process_result.get("status") == "travel_content_unavailable":
+        if isinstance(process_result, dict) and process_result.get("status") in {
+            "travel_content_unavailable", "review_exhausted",
+        }:
             # Content failure is not a completed welcome or a provider error.
             # Existing failure cleanup retains any accepted parent beats.
             if not is_kickoff_claim_still_active(lifecycle.startup_attempt_id, lifecycle.lease_owner):
@@ -1171,7 +1173,7 @@ def _run_startup_kickoff_once(
         if reviewed["status"] != "accepted":
             # A rejected draft and its notice both belong to this lease.
             # Existing exception cleanup owns its failure receipt/recovery.
-            if reviewed["status"] == "travel_content_unavailable":
+            if reviewed["status"] in {"travel_content_unavailable", "review_exhausted"}:
                 display_dm_narration(reviewed["player_message"])
             raise RuntimeError(reviewed["player_message"])
         initial_ai_response = reviewed["candidate"]
@@ -1224,7 +1226,9 @@ def _run_startup_kickoff_once(
             return process_result
         if isinstance(process_result, dict) and process_result.get("status") == "superseded_invocation":
             return "stale_discarded"
-        if isinstance(process_result, dict) and process_result.get("status") == "travel_content_unavailable":
+        if isinstance(process_result, dict) and process_result.get("status") in {
+            "travel_content_unavailable", "review_exhausted",
+        }:
             if not is_kickoff_claim_still_active(startup_attempt_id, lease_owner):
                 return "stale_discarded"
             display_dm_narration(process_result["player_message"])
@@ -9424,7 +9428,7 @@ def _main_game_loop(startup_authority, turn_authority):
                 raise InvocationSupersededError("Post-combat handoff was superseded")
             require_current_invocation(startup_claim)
             if isinstance(post_combat_result, dict) and post_combat_result.get("status") in {
-                "provider_error", "travel_content_unavailable",
+                "provider_error", "travel_content_unavailable", "review_exhausted",
             }:
                 display_dm_narration(post_combat_result["player_message"])
             if (
@@ -10477,7 +10481,7 @@ def _main_game_loop(startup_authority, turn_authority):
                 )
 
             if isinstance(final_result, dict) and final_result.get("status") in {
-                "provider_error", "travel_content_unavailable",
+                "provider_error", "travel_content_unavailable", "review_exhausted",
             }:
                 # Only the new followup was refused. Its accepted parent beat
                 # remains committed; ordinary end-of-turn cleanup still runs.
@@ -10587,6 +10591,9 @@ def _main_game_loop(startup_authority, turn_authority):
                 if review_failure_status == "travel_content_unavailable":
                     warning("Travel records unavailable; proposed move not applied.",
                             category="module_management")
+                elif review_failure_status == "review_exhausted":
+                    warning("Review rejection limit reached; no game state was changed.",
+                            category="ai_validation")
                 else:
                     error(
                         "FAILURE: Provider call could not be completed for this "
@@ -10804,6 +10811,25 @@ def _travel_unsupported_siblings(actions, check_outcomes):
     ]
 
 
+# #488: rejected drafts one review may spend before the turn fails without
+# change. Recovered turns in live runs needed at most 7.
+_DM_REVIEW_REJECTION_LIMIT = 10
+_DM_REVIEW_EXHAUSTED_MESSAGE = (
+    "Nothing in your game was changed. The DM could not settle a response "
+    "for that action. You can try it again one step at a time."
+)
+# #488: the fact a misordered travel draft lacks. Code checks only the order.
+_TRAVEL_ORDER_FACT = (
+    "Only the travel's own bookkeeping (such as updateTime) may follow it; "
+    "travel ends at the destination. A change the player wants made before "
+    "leaving cannot share a travel response: either resolve the player's "
+    "nearest step now, without transitionLocation, and leave the move for "
+    "the player's next turn, or return the travel alone. Narrate only what "
+    "the returned actions record: a step this response does not take is "
+    "acknowledged as still to come, never told as done."
+)
+
+
 def _review_dm_candidate(
     initial_candidate, *, accepted_history, player_input, party,
     validation_prompt, srd_context, npc_voice_batch, invocation_claim,
@@ -10873,8 +10899,29 @@ def _review_dm_candidate(
     consecutive_semantic_rejections = 0
     provider_failures = 0
     provider_retry_notice_shown = False
+    # #488: one count of rejected drafts, whatever stage rejected them. A
+    # pass that raised retry_count without a provider failure rejected its
+    # draft; only acceptance (the return) ends the count.
+    rejected_drafts = 0
+    counted_retry_count = 0
+    counted_provider_failures = 0
     while True:
         require_current()
+        if retry_count != counted_retry_count:
+            if provider_failures == counted_provider_failures:
+                rejected_drafts += 1
+            counted_retry_count = retry_count
+            counted_provider_failures = provider_failures
+            if rejected_drafts >= _DM_REVIEW_REJECTION_LIMIT:
+                warning(
+                    "VALIDATION: %d drafts rejected in one review; the turn "
+                    "ends without change." % rejected_drafts,
+                    category="ai_validation",
+                )
+                return {
+                    "status": "review_exhausted",
+                    "player_message": _DM_REVIEW_EXHAUSTED_MESSAGE,
+                }
         approved_transition_plan = None
         if module_snapshot is None:
             # Internal entrants have no ordinary preparation result. Read only
@@ -10974,8 +11021,8 @@ def _review_dm_candidate(
                     retry_correction = (
                         "The previous structured response was rejected: "
                         "transitionLocation must be the first action and may "
-                        "appear only once. Put time, save, and all other state "
-                        "changes after it. Return the complete corrected JSON."
+                        "appear only once. " + _TRAVEL_ORDER_FACT
+                        + " Return the complete corrected JSON."
                     )
                     info(
                         "VALIDATION: Rejected unsafe transition action order; "
@@ -11486,8 +11533,9 @@ def _review_dm_candidate(
                 rejected_candidate = ai_response_content
                 retry_correction = (
                     "The normalized response is structurally unsafe: "
-                    "transitionLocation must appear once and first. Return "
-                    "the complete corrected JSON response."
+                    "transitionLocation must appear once and first. "
+                    + _TRAVEL_ORDER_FACT
+                    + " Return the complete corrected JSON response."
                 )
                 retry_count += 1
                 review_retry_status(retry_count)
