@@ -31,9 +31,9 @@ Local-party/shared-review delta checked on 2026-09-06 in the uncommitted guardia
 
 The DM and validator distinguish local companion scouting from party travel and genuine membership changes. Requests for player-directed companion missions in another location are corrected agentically, not converted into travel or dismissal. Existing updatePartyNPCs leaving/rejoining remains a membership operation; departure context is not remote-mission authority. T067 receives the common DM Note; T065 separately receives raw player intent and its own validation prompt. PR299's existing in-place roster/travel cancellation and the destination-first party-travel transaction remain unchanged. References: main common DM Note/validation assembly, action_handler.update_party_npcs, and the full/compact local-party prompt blocks. Lifecycle regression coverage: #304; known rejoin defect: #298.
 
-Cancellation establishes only that party travel was removed, not membership consent or commitment. `_review_dm_candidate` (`main.py:10687`) owns canonical normalization/target projection, T114, provisional route preflight, then T065. Each rejection revises the latest draft with applicable earlier feedback; changed candidates repeat applicable checks. Rejected drafts never become accepted history. T067 may discard unauthorized removal while keeping travel cancelled. Existing receipts/Save/Load are not fresh membership proposals.
+Cancellation establishes only that party travel was removed, not membership consent or commitment. `_review_dm_candidate` (`main.py`) owns canonical normalization/target projection, T114, provisional route preflight, then T065. Each rejection revises the latest draft with applicable earlier feedback; changed candidates repeat applicable checks. Rejected drafts never become accepted history. T067 may discard unauthorized removal while keeping travel cancelled. Existing receipts/Save/Load are not fresh membership proposals.
 
-Fresh internal follow-ups use `_process_fresh_dm_response` (`main.py:10596`) outside response fences; raw parent player input remains explicit. Earlier committed beats survive a child failure. The sole `resolve_retryable_ai_result` (`main.py:7555`) retains the exact stale child's candidate, feedback, accepted-history and party snapshot for renewed review, at most twice per turn on a budget separate from regeneration; then the turn ends with `travel_content_unavailable` and a fixed line that names no cause (#707). This transient envelope is not movement authority and is never persisted. Detached recovery rechecks its existing scope, lease and accepted values; ordinary recovery prepares current canonical context. Unreadable travel records return a truthful content handback, not invented terrain or provider failure.
+Fresh internal follow-ups use `_process_fresh_dm_response` (`main.py`) outside response fences; raw parent player input remains explicit. Earlier committed beats survive a child failure. The sole `resolve_retryable_ai_result` (`main.py`) retains the exact stale child's candidate, feedback, accepted-history and party snapshot for renewed review, at most twice per turn on a budget separate from regeneration; then the turn ends with `travel_content_unavailable` and a fixed line that names no cause (#707). This transient envelope is not movement authority and is never persisted. Detached recovery rechecks its existing scope, lease and accepted values; ordinary recovery prepares current canonical context. Unreadable travel records return a truthful content handback, not invented terrain or provider failure.
 
 ### Within-module travel
 
@@ -153,9 +153,12 @@ acceptance verdict. The verification pin above describes the historical baseline
   that has become readable by then ends the departure in `blocked_conflict`. While a departure-summary marker exists or cannot be checked, including
   one a failed removal left behind, the journal is left alone. The set-aside pre-empts the reads; it
   does not change them. These stay fail-closed and raise if a corruption lands after it:
-  `build_journal_update` (`adv_summary.py:640`), the commit read (`action_handler.py:1112`), the
-  commit's reads under the target locks (`adv_summary.py:951`, `:995`), the marker-recovery reads
-  (`adv_summary.py:809`, `:876`) and legacy repair (`main.py:4445` -> `:4434`). Neither caller of
+  `build_journal_update` (`adv_summary.py:701`), the commit read (`action_handler.py:1138`), the
+  commit's reads under the target locks (`adv_summary.py:1105`, `:1149`), the marker-recovery reads
+  (`adv_summary.py:922`, `:1010`). Legacy repair no longer raises here: since #731 it reads the
+  journal through `action_handler._read_journal_setting_aside`
+  (`main.py::check_and_process_location_transitions`), which sets an unreadable journal aside
+  (bytes kept) and starts it afresh (#636, D-636-13). Neither caller of
   resolve holds the party lock, so a busy `journal.json` here is waited for unlocked, and the wait
   stays cancellable.
 - The departure commit waits while module refresh is busy and never refuses (#637). It makes
@@ -172,20 +175,20 @@ acceptance verdict. The verification pin above describes the historical baseline
 
 ## Load-bearing seams
 
-1. `main.py:8042` - physical T067 call.
-2. `main.py:4194-4223` - T065 verdict and reissue boundary.
-3. `main.py:11298-11389` - T065 verdict on the guardian- and route-checked draft, structure recheck and acceptance; publication keeps committed route authority.
-4. `core/ai/action_handler.py:2105-2527` - route prevalidation and immutable plan.
-5. `utils/path_encounter_analyzer.py:165-282` - active-module disk snapshot.
-6. `core/ai/action_handler.py:2543-2614` - plan identity revalidation.
-7. `core/ai/action_handler.py:3987-4151` - checkpoint, proposals, locked movement receipt.
-8. `core/managers/location_manager.py:410-470` - destination-first commit.
-9. `main.py:6207-6258` - movement execution and suffix staging.
-10. `main.py:6446-6494` - committed-context chain and supersession recheck.
-11. `main.py:1469-1517` - T013 departure layer.
-12. `main.py:1550-1628` - T063 arrival layer.
-13. `main.py:1680-1735` - T064 stitch and handback.
-14. `main.py:2350-2751` - v2 resume and checkpoint completion.
+1. `main.py::_get_ai_response_impl` at `response = capture_and_fanout("T067", api_client.create_completion,` - physical T067 call.
+2. `main.py::validate_ai_response` from `attempt = 0` - T065 verdict and reissue boundary.
+3. `main.py::_review_dm_candidate` from `validation_result = validate_ai_response(` - T065 verdict on the guardian- and route-checked draft, structure recheck and acceptance; publication keeps committed route authority.
+4. `core/ai/action_handler.py:2131-2553` - route prevalidation and immutable plan.
+5. `utils/path_encounter_analyzer.py:165-641` - active-module disk snapshot.
+6. `core/ai/action_handler.py:2569-2652` - plan identity revalidation.
+7. `core/ai/action_handler.py:4018-4182` - checkpoint, proposals, locked movement receipt.
+8. `core/managers/location_manager.py:412-472` - destination-first commit.
+9. `main.py::process_ai_response` from `# If it's a transition, handle it with the special two-step process` - movement execution and suffix staging.
+10. `main.py::process_ai_response` from `# Step 2: Reload the state to get the NEW location context` - committed-context chain and supersession recheck.
+11. `main.py::generate_transition_narration` - T013 departure layer.
+12. `main.py::generate_arrival_narration` - T063 arrival layer.
+13. `main.py::generate_seamless_transition_narration` - T064 stitch and handback.
+14. `main.py::_resume_v2_location_transition` - v2 resume and checkpoint completion.
 15. `core/ai/conversation_utils.py:946-973` - fresh advisory atlas injection.
 
 ## Invariants

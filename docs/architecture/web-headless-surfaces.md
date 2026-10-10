@@ -81,7 +81,7 @@ load/add/match and gameplay drain suppress abandoned output, not lifecycle contr
 Missing history is reconstructed once into the existing cache, never model context.
 
 Seams: `web/frontend/src/services/socket.ts:140`,
-`web/templates/game_interface.html:5718`, `web/web_interface.py:482` and `:2869`.
+`web/templates/game_interface.html:5718`, `web/web_interface.py::load_message_cache` and `::handle_connect`.
 Policy: #193 p9/p10/p12, D-UI-1. Shared SaveGameManager gives headless/terminal the
 same cache snapshot/absence semantics; those surfaces do not generate a web log.
 
@@ -168,20 +168,20 @@ Startup delta verified 2026-09-05 against the `fix/issue-114-startup-repair` wor
 
 ## Load-bearing seams
 
-1. `main.py:5180-5211` - structured narration sink and terminal fallback.
-2. `main.py:8734-8734` and `main.py:9659-9735` - shared loop and input boundary.
-3. `main.py:11422-11568` - terminal entry.
-4. `web/shared_state.py:40-78` - sink ownership and failure semantics.
-5. `web/web_interface.py:228-707` - queues, game thread, revisions, and durable cache.
-6. `web/web_interface.py:1118-1209` and `web/web_interface.py:6248-6287` - blocking web input and both routes.
-7. `web/web_interface.py:2804` - startup projection, ordered reconnect, and snapshot truth (startup candidate).
-8. `web/web_interface.py:3012-3409` - Save/Load/Reset dispatch and restart.
-9. `web/web_interface.py:3536-3571` and `web/web_interface.py:5082-5246` - one game thread and output pump.
+1. `main.py::display_dm_narration` - structured narration sink and terminal fallback.
+2. `main.py::main_game_loop` and `main.py::_main_game_loop` from `# The startup combat scope owns all first-prompt preparation, not the` - shared loop and input boundary.
+3. `main.py::main` - terminal entry.
+4. `web/shared_state.py:40-79` - sink ownership and failure semantics.
+5. `web/web_interface.py` module state from `# Global variables for managing output` through `::_emit_pending_game_output` - queues, game thread, revisions, and durable cache.
+6. `web/web_interface.py::WebInput`, `::index` and `::serve_react_play` - blocking web input and both routes.
+7. `web/web_interface.py::_startup_ui_projection` - startup projection, ordered reconnect, and snapshot truth (startup candidate).
+8. `web/web_interface.py::handle_action` - Save/Load/Reset dispatch and restart.
+9. `web/web_interface.py::handle_start_game` and `web/web_interface.py::run_game_loop` - one game thread and output pump.
 10. `web/frontend/src/services/socket.ts:158`, `web/frontend/src/stores/session.ts:77`, and `web/frontend/src/components/layout/HeaderBar.tsx:74` - ready refresh, interview/play permissions, and lifecycle availability (startup candidate).
 11. `web/frontend/src/services/hydration.ts:52-190` - correlation, coalescing, and stale rejection.
 12. `core/headless/protocol.py:5-118` - NDJSON protocol and serialized writer.
 13. `core/headless/streams.py:30-174` - output capture and blocking queue input.
-14. `core/headless/session.py:58-226` and `core/headless/session.py:324-627` - adapters, engine, prompt/state, and commands.
+14. `core/headless/session.py:58-256` and `core/headless/session.py:274-1032` - adapters, engine, prompt/state, and commands.
 15. `core/headless/state_reader.py:5-146` - disk-only state projection.
 
 ## #323 postapproval surface delta (2026-09-13; acceptance incomplete)
