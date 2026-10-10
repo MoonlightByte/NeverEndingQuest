@@ -8000,7 +8000,12 @@ def _get_ai_response_impl(
 
     # Delivery guidance belongs after compression and retry feedback. Keep it
     # request-local so rejected drafts never set the next turn's dialogue frame.
-    from utils.narration_prompt import with_narration_delivery
+    from utils.narration_prompt import with_narration_delivery, with_opening_scene
+    if not any(m.get("role") in ("user", "assistant") for m in messages_to_send if isinstance(m, dict)):
+        # A fresh adventure: ask for an opening scene, not a briefing.
+        opening_tracker = load_json_file("party_tracker.json") or {}
+        messages_to_send = with_opening_scene(messages_to_send, opening_tracker)
+        messages_for_diagnostics = with_opening_scene(messages_for_diagnostics, opening_tracker)
     messages_to_send = with_narration_delivery(messages_to_send)
     messages_for_diagnostics = with_narration_delivery(messages_for_diagnostics)
 
