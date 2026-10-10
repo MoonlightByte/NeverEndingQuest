@@ -1959,7 +1959,13 @@ class CampaignManager:
 
                 world_registry = stitcher.world_registry
                 if world_registry and "modules" in world_registry:
-                    world_modules = set(world_registry["modules"].keys())
+                    # Only joined modules are offered (#720); a bare stub
+                    # names a module whose joining was refused or not done.
+                    world_modules = {
+                        name
+                        for name in world_registry["modules"]
+                        if stitcher.is_joined_registry_module(world_registry, name)
+                    }
                     merge_result = {
                         "missing_modules": set(),
                         "lifecycle_changed": False,
