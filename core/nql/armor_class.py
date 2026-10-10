@@ -18,7 +18,7 @@ import copy
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from core.nql import apply, genesis, stats
+from core.nql import apply, class_conditions, genesis, stats
 
 AC_TARGET = "AC"
 PROJECTION_LOCATION = "projection"
@@ -33,6 +33,7 @@ class Projection:
     previous_armor_class: Optional[int] = None
     explanation: Optional[Dict[str, Any]] = None
     gaps: List[str] = field(default_factory=list)
+    notes: List[str] = field(default_factory=list)  # genesis notes (NUM-H3b); they never block the projection
     status: Optional[Dict[str, Any]] = None
 
     @property
@@ -63,6 +64,27 @@ def _ac_entries(explanation: Dict[str, Any], names_by_id: Dict[str, str]) -> Lis
             "value": base if type(base) is int else None,
             "description": f"Base AC {base} from {name}",
             "source": name,
+        })
+    # NUM-H3b: an active Unarmored Defense term of the defense derive (a recipe
+    # term whose typed requires names feature:unarmored-defense:<class>) is
+    # named on the sheet, with the engine's exact amount and its ability.
+    for term in recipe.get("terms") or []:
+        spec = term.get("term") if isinstance(term, dict) else None
+        if not (isinstance(spec, dict) and term.get("active") is True
+                and str(spec.get("requires") or "").startswith(class_conditions.UNARMORED_DEFENSE_PREFIX)):
+            continue
+        try:
+            amount = int(str(term.get("exact")))
+        except ValueError:
+            continue
+        ability = str(spec.get("stat") or "").capitalize()
+        entries.append({
+            "name": "Unarmored Defense - AC Bonus",
+            "type": "bonus",
+            "target": AC_TARGET,
+            "value": amount,
+            "description": f"{'+' if amount >= 0 else ''}{amount} AC from Unarmored Defense ({ability})",
+            "source": "Unarmored Defense",
         })
     for contribution in explanation.get("contributions") or []:
         source = (contribution.get("source") or {}).get("id")
@@ -96,14 +118,14 @@ def project(sheet: Dict[str, Any], *, binary: Optional[str] = None) -> Projectio
     try:
         response = apply.genesis(world.source, explain=[{"character": cid, "stat": "defense"}], status=[cid], binary=binary)
     except apply.EngineUnavailable as error:
-        return Projection(sheet, False, str(error), previous_armor_class=previous, gaps=world.gaps)
+        return Projection(sheet, False, str(error), previous_armor_class=previous, gaps=world.gaps, notes=world.notes)
     if not response.get("ok"):
         detail = response.get("diagnostics") or response.get("fault") or response.get("error")
         return Projection(sheet, False, f"engine refused the world at {response.get('phase')}: {detail}",
-                          previous_armor_class=previous, gaps=world.gaps)
+                          previous_armor_class=previous, gaps=world.gaps, notes=world.notes)
     explanations = response.get("explain") or []
     if len(explanations) != 1 or type(explanations[0].get("effective")) is not int:
-        return Projection(sheet, False, "engine returned no defense explanation", previous_armor_class=previous, gaps=world.gaps)
+        return Projection(sheet, False, "engine returned no defense explanation", previous_armor_class=previous, gaps=world.gaps, notes=world.notes)
     explanation = explanations[0]
     names_by_id = dict(world.effect_names)
     for index, item_id in (world.item_ids.get(cid) or {}).items():
@@ -121,4 +143,4 @@ def project(sheet: Dict[str, Any], *, binary: Optional[str] = None) -> Projectio
             if not (isinstance(e, dict) and e.get("target") == AC_TARGET)]
     result["equipment_effects"] = kept + _ac_entries(explanation, names_by_id)
     return Projection(result, True, "", armor_class=explanation["effective"], previous_armor_class=previous,
-                      explanation=explanation, gaps=world.gaps, status=projected_status)
+                      explanation=explanation, gaps=world.gaps, notes=world.notes, status=projected_status)
