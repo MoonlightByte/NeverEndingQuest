@@ -140,7 +140,9 @@ def check_results_note(turn_marker=None) -> str:
         LAST_NOTE = ""
         return ""
     LAST_NOTE = ("\nCHECK RESULTS (the rules engine scored the attempts you left unresolved last turn; open this response by narrating "
-                 "each outcome, then answer the new input; never re-roll or re-add): " + " | ".join(lines) + "\n")
+                 "each outcome in story terms, then answer the new input; never re-roll or re-add; the player already sees "
+                 "these numbers on the dice receipt, so do not restate dice, bonus, total, DC or margin): "
+                 + " | ".join(lines) + "\n")
     return LAST_NOTE
 
 
@@ -149,6 +151,8 @@ def validation_context() -> str:
     if not LAST_NOTE:
         return ""
     return ("The Dungeon Master Note for this turn carried the rules engine's scored check results below. The candidate "
-            "is REQUIRED to narrate these outcomes as settled facts (dice, bonus, total and margin are the engine's, not "
-            "the DM's arithmetic); a candidate that calls such a check pending or unresolved, or asks for its dice again, "
-            "is invalid. Numbers the player typed in chat are not dice; only these lines are." + LAST_NOTE)
+            "is REQUIRED to narrate each outcome (success or failure and what it means in the scene) as a settled fact; "
+            "a candidate that calls such a check pending or unresolved, contradicts its success or failure, or asks for "
+            "its dice again, is invalid. The dice, bonus, total, DC and margin are the engine's and the player already "
+            "sees them on the dice receipt: do NOT require the narration to state any of these numbers, and do not reject "
+            "a candidate for leaving them out. Numbers the player typed in chat are not dice; only these lines are." + LAST_NOTE)

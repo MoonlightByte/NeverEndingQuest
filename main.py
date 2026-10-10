@@ -1384,6 +1384,35 @@ def exit_game():
     print("Fond farewell until we meet again!")
     exit()
 
+def _resume_guidance():
+    """How the returning-player narration should read; restates a check that still awaits the player's dice."""
+    guidance = (
+        "As the narrator, welcome the player back to the table in a sentence. In the fiction no time has passed: "
+        "characters do not remark on the player having been away. Give a brief present-tense reminder of where "
+        "they are, who is with them and what was just happening, without retelling the whole adventure. "
+    )
+    try:
+        from core.managers import checks_state
+        from core.nql import checks
+        pending = checks_state.pending_checks()
+    except Exception:
+        pending = []
+    if pending:
+        entry = pending[0]
+        attempt = entry.get("reason") or checks.label(entry.get("stat"))
+        guidance += (
+            "A check is still waiting for the player's dice (" + str(entry.get("characterName")) + ": "
+            + checks.label(entry.get("stat")) + ", " + str(attempt) + "). Remind them what they were attempting and "
+            "that the roll is theirs to make; do not ask for a new action and do not narrate the outcome. "
+        )
+    else:
+        guidance += "End on an open moment for the player's next action. "
+    return guidance + (
+        "IMPORTANT: Do NOT use transitionLocation action - the party is already at their current location. "
+        "Just provide narrative and prompts."
+    )
+
+
 def check_and_inject_return_message(conversation_history, is_combat_active=False, location_note=""):
     """
     Checks if a 'player has returned' message needs to be injected at startup.
@@ -1448,7 +1477,7 @@ def check_and_inject_return_message(conversation_history, is_combat_active=False
     # top of this function still matches; empty keeps the note byte-identical.
     return_message = {
         "role": "user",
-        "content": "Dungeon Master Note: Resume the game, the player has returned. " + location_note + "Welcome the player back warmly. Have the party members acknowledge their return with brief in-character reactions. Provide a concise atmospheric recap of the immediate situation and surroundings, then naturally prompt for the player's next action while maintaining immersion in the ongoing narrative. IMPORTANT: Do NOT use transitionLocation action - the party is already at their current location. Just provide narrative and prompts."
+        "content": "Dungeon Master Note: Resume the game, the player has returned. " + location_note + _resume_guidance()
     }
     conversation_history.append(return_message)
     debug("STATE_CHANGE: Injected 'player has returned' message at startup", category="session_management")
