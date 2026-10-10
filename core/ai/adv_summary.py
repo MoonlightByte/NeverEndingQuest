@@ -18,6 +18,7 @@ import json
 import os
 import sys
 import threading
+import time
 import traceback
 from contextlib import contextmanager
 from datetime import datetime
@@ -84,6 +85,36 @@ def _departure_transaction_thread_lock(pending_path):
         return _DEPARTURE_TRANSACTION_LOCKS.setdefault(
             canonical_path,
             threading.RLock(),
+        )
+
+
+@contextmanager
+def _wait_for_module_refresh():
+    """Hold module refresh, waiting while it is busy instead of refusing.
+
+    Busy means wait, never refuse (#193 B2-ii, issue #637). Short attempts
+    with an interruptible beat between them, like the move's own travel-map
+    wait: each beat checks the read-only save stop and the turn's authority,
+    so Load, Reset or Quit still end the wait.
+    """
+    from utils.capture.live_provider_call import (
+        _interruptible_wait,
+        get_live_provider_scope,
+    )
+
+    wait_started = time.monotonic()
+    while True:
+        with module_refresh_lock(max_wait_seconds=0.25) as refresh_acquired:
+            if refresh_acquired:
+                yield
+                return
+        _interruptible_wait(
+            0.25,
+            get_live_provider_scope(),
+            lambda: (
+                "Waiting for module work to finish before recording your "
+                "journey (%d seconds)." % int(time.monotonic() - wait_started)
+            ),
         )
 
 
@@ -1077,11 +1108,7 @@ def commit_departure_summary(
     # Lock order is module refresh, marker, then canonical targets. Ordinary
     # AtomicFileWriter callers acquire only target locks, so they cannot form
     # a target -> marker cycle with this transaction.
-    with module_refresh_lock() as refresh_acquired:
-        if not refresh_acquired:
-            raise DepartureSummaryError(
-                "module refresh is busy; departure summary made no changes"
-            )
+    with _wait_for_module_refresh():
         with _departure_transaction_lock(pending_path):
             _resolve_prior_pending_summary_unlocked(pending_path)
             with _departure_target_locks(area_path, journal_path, pending_path):
