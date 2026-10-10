@@ -3384,9 +3384,34 @@ def _select_validation_history(conversation_history, raw_user_input):
             current_enhanced_index = index
             break
 
-    recent_messages = []
+    # #543: a post-combat drop record (typed flag) is stored just before the
+    # reply whose actions it names; the review reads it right after that reply,
+    # or at the end when the reply was never stored.
+    notes_after = {}
+    for index, message in enumerate(history):
+        if not (
+            isinstance(message, dict)
+            and message.get("role") == "system"
+            and message.get("post_combat_drop") is True
+            and isinstance(message.get("content"), str)
+        ):
+            continue
+        anchor = next(
+            (
+                later for later in range(index + 1, len(history))
+                if isinstance(history[later], dict)
+                and history[later].get("role") == "assistant"
+            ),
+            len(history),
+        )
+        notes_after.setdefault(anchor, []).append(
+            {"role": "user", "content": "[ENGINE NOTE] " + message["content"]}
+        )
+
+    recent_messages = list(notes_after.get(len(history), []))
     skip_next_assistant = False
     for index in range(len(history) - 1, -1, -1):
+        recent_messages[0:0] = notes_after.get(index, [])
         if index == current_enhanced_index:
             continue
         message = history[index]
@@ -7258,6 +7283,7 @@ def process_ai_response(
                 drop_notice = {
                     "role": "system",
                     "content": _agentic_post_combat_drop_record(dropped_actions),
+                    "post_combat_drop": True,
                 }
                 conversation_history.append(drop_notice)
                 save_conversation_history(conversation_history)
