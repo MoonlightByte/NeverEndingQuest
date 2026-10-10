@@ -1083,6 +1083,23 @@ class ModuleStitcher:
             for area_data in areas.values()
         )
 
+    @classmethod
+    def is_joined_registry_module(
+        cls, registry: Dict[str, Any], module_name: str
+    ) -> bool:
+        """Whether the world registry has joined the module (#720).
+
+        Joined means the registry's modules table holds an entry for the
+        exact name that is not a bare stub, the rule
+        roster_conversion.world_modules uses. A module whose joining was
+        refused, never checked, or blocked by an id collision keeps only the
+        stub that startup reconciliation writes, so it is not joined.
+        """
+        modules = registry.get("modules") if isinstance(registry, dict) else None
+        if not isinstance(modules, dict) or module_name not in modules:
+            return False
+        return not cls._is_registry_stub(registry, module_name)
+
     def _prove_module_absent_from_registry_locked(
         self, module_name: str
     ) -> RegistryAbsenceResult:
