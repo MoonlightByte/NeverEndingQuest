@@ -1,0 +1,32 @@
+{
+  "_metadata": {
+    "schemaVersion": 1,
+    "created": "2026-10-10",
+    "description": "Typed SRD 5.2.1 spell attack records (#672): the spell attack (melee or ranged), the damage kind and whether the spellcasting ability modifier is added to the damage, hand-authored and reviewed against the SRD text; verified-only",
+    "source": "System Reference Document 5.2.1, CC BY 4.0",
+    "sourceRepository": "data/spell_repository.json",
+    "sourceSha256": "5fafd1c79e869dbca686e3efbc18e9e680119b55a662400b1e1513892c9068ee",
+    "totalRecords": 2,
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+  },
+  "attacks": {
+    "fire_bolt": {
+      "name": "Fire Bolt",
+      "attack": "ranged",
+      "damageKind": "fire",
+      "abilityModifierToDamage": false,
+      "contractKey": "fire_bolt",
+      "source": "SRD 5.2.1 p.132",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "guiding_bolt": {
+      "name": "Guiding Bolt",
+      "attack": "ranged",
+      "damageKind": "radiant",
+      "abilityModifierToDamage": false,
+      "contractKey": "guiding_bolt",
+      "source": "SRD 5.2.1 p.138",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    }
+  }
+}
