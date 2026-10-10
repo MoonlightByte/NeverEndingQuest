@@ -131,6 +131,25 @@ def take_player_rolls(read: Callable[[str], str]) -> List[str]:
 
 LAST_NOTE = ""  # the CHECK RESULTS delivered with the current turn's DM note (the validator reviews against it)
 
+# A read of a person or a scene: the character's own silent observation.
+_READ = re.compile(r"^(?P<who>.+?) (?P<skill>Insight|Perception) check\b(?!: not resolved)")
+
+
+def read_note(line: str) -> str:
+    """The narration rule for a scored read, beside its result. Replays of a
+    successful Insight read on an NPC whose record says she admits a secret
+    had her confess it in every draft while this rule lived only in the system
+    prompt; next to the result, no draft did, and pressing her still did."""
+    match = _READ.match(line)
+    if not match:
+        return ""
+    who, skill = match.group("who"), match.group("skill")
+    return (f"READ ({who}'s {skill}): a silent observation; no one in the scene knows a check was made. Narrate only what "
+            f"{who} notices (tells, tension, a mismatch between words and body, a detail out of place) and what it suggests; "
+            "on a failure the surface stays consistent or the signs are ambiguous. In this response no NPC confesses, explains "
+            "or names what they are hiding, even if their record says they admit it: that disclosure waits until the player "
+            "presses, asks or persuades them. Then stop and leave the next move to the player.\n")
+
 
 def check_results_note(turn_marker=None) -> str:
     """turn_marker: the count of DM replies in the history (the turn this note is for); see checks_state.consume_results."""
@@ -140,7 +159,8 @@ def check_results_note(turn_marker=None) -> str:
         LAST_NOTE = ""
         return ""
     LAST_NOTE = ("\nCHECK RESULTS (the rules engine scored the attempts you left unresolved last turn; open this response by narrating "
-                 "each outcome, then answer the new input; never re-roll or re-add): " + " | ".join(lines) + "\n")
+                 "each outcome, then answer the new input; never re-roll or re-add): " + " | ".join(lines) + "\n"
+                 + "".join(read_note(line) for line in lines))
     return LAST_NOTE
 
 
@@ -151,4 +171,6 @@ def validation_context() -> str:
     return ("The Dungeon Master Note for this turn carried the rules engine's scored check results below. The candidate "
             "is REQUIRED to narrate these outcomes as settled facts (dice, bonus, total and margin are the engine's, not "
             "the DM's arithmetic); a candidate that calls such a check pending or unresolved, or asks for its dice again, "
-            "is invalid. Numbers the player typed in chat are not dice; only these lines are." + LAST_NOTE)
+            "is invalid. Numbers the player typed in chat are not dice; only these lines are. A READ line governs how its "
+            "read is narrated: a candidate in which an NPC confesses, explains or names what they are hiding in answer to "
+            "that read is invalid." + LAST_NOTE)
