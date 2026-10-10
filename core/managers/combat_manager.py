@@ -1988,21 +1988,59 @@ def _append_combat_encounter_to_current_area(current_location_id, new_encounter)
         return True
 
 
-def render_combat_record_marker(summary_line):
+def combat_record_exit_kind(encounter_id):
+    """The typed combatState.pipelineMode of a finished encounter (#543).
+
+    None when the encounter record is missing or unreadable; the marker then
+    states the contract that holds for every exit.
+    """
+    if not encounter_id:
+        return None
+    try:
+        encounter = safe_json_load(
+            os.path.join("modules", "encounters", "encounter_%s.json" % encounter_id)
+        )
+    except Exception:
+        return None
+    state = encounter.get("combatState") if isinstance(encounter, dict) else None
+    return state.get("pipelineMode") if isinstance(state, dict) else None
+
+
+def render_combat_record_marker(summary_line, exit_kind=None):
     """Return the historical combat record appended to the main history.
 
     ``summary_line`` is the "Combat Summary: ..." line. The normal flow and the
     resumed-combat flow both append this exact text so the DM treats the fight
     as history and does not re-award its changes (#253).
+
+    ``exit_kind`` is the encounter's typed pipelineMode (#543). The agentic exit
+    commits HP, slots, effects, ammunition, existing item quantities and XP, and
+    never adds an item or currency; the legacy exit runs the fight's own
+    character updates, which may. The record states only what that exit wrote,
+    so a summary's narrated loot is never presented as owned.
     """
+    if exit_kind == "agentic":
+        contract = (
+            "IMPORTANT: The combat system already applied this fight's HP, spell "
+            "slot, effect, ammunition, consumable and combat XP changes; the "
+            "current character sheets show them, so do not re-emit them. This "
+            "combat adds no new item and no currency to any inventory: something "
+            "this summary describes being taken is owned only once a later "
+            "accepted action adds it and the character sheet lists it."
+        )
+    else:
+        contract = (
+            "IMPORTANT: The changes this fight's turns applied are on the current "
+            "character sheets; do not re-emit them. Something this summary "
+            "describes (an item, treasure or currency) that no character sheet "
+            "lists was not applied, and is owned only once a later accepted "
+            "action adds it."
+        )
     return (
         "[COMBAT CONCLUDED - HISTORICAL RECORD]\n"
         + summary_line
         + "\n[END OF COMBAT RECORD - Please continue the narrative after this combat]"
-        "\n\nIMPORTANT: This historical record describes character changes already "
-        "applied by the combat system, including HP, spell slots, effects, XP, "
-        "treasure, currency, items, and other rewards. Do not re-emit "
-        "updateCharacterInfo actions for those changes."
+        "\n\n" + contract
     )
 
 

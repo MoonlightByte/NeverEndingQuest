@@ -113,7 +113,9 @@ except:
     def track_response(r): pass
 
 # Import other necessary modules (config is now patched)
-from core.managers.combat_manager import run_combat_simulation, render_combat_record_marker
+from core.managers.combat_manager import (
+    combat_record_exit_kind, run_combat_simulation, render_combat_record_marker,
+)
 from core.combat.down_scene import (
     MAIN_DOWN_BANNER,
     MAIN_DOWN_SINK_LINE,
@@ -9251,7 +9253,8 @@ def _main_game_loop(startup_authority, turn_authority):
             # We create a clear, systemic message indicating combat is over.
             # The same record text as the handoff from action_handler (#253).
             combat_summary_message = render_combat_record_marker(
-                "Combat Summary: " + dialogue_summary
+                "Combat Summary: " + dialogue_summary,
+                combat_record_exit_kind(active_encounter_id),
             )
             conversation_history.append({"role": "user", "content": combat_summary_message})
             debug("STATE_CHANGE: Appended combat summary to main history after resumed session.", category="session_management")

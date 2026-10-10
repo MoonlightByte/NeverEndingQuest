@@ -3718,10 +3718,15 @@ def process_action(
                 if combat_summary:
                     print("[DEBUG ACTION_HANDLER] Found combat summary, appending to conversation history")
                     # Add clear historical marker to prevent Combat Commitment Point confusion
-                    from core.managers.combat_manager import render_combat_record_marker
+                    from core.managers.combat_manager import (
+                        combat_record_exit_kind, render_combat_record_marker,
+                    )
                     modified_combat_summary = {
                         "role": "user",
-                        "content": render_combat_record_marker(combat_summary["content"])
+                        "content": render_combat_record_marker(
+                            combat_summary["content"],
+                            combat_record_exit_kind(encounter_id),
+                        )
                     }
                     conversation_history.append(modified_combat_summary)
                     # Import save_conversation_history from main
