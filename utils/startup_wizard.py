@@ -1655,11 +1655,13 @@ def expected_starting_hit_points(character):
 def startup_mechanics(character, *, provenance=None):
     """Derive a new character's engine-owned and SRD-derived numbers.
 
-    Armor class comes from the engine's defense explanation, the same
-    projection every later write applies (#531). The level-1 hit point
-    maximum is the SRD derivation from typed facts: hit die, Constitution,
-    Tough feat entries, Dwarven Toughness (#532). A lower maximum is raised,
-    never reduced; current hit points follow only for an uninjured hero.
+    The level-1 hit point maximum is set exactly to the SRD derivation from
+    typed facts: hit die maximum, Constitution, Dwarven Toughness (#532, #570).
+    An authored value that differs is overwritten and noted, and current hit
+    points start at that maximum. It is set before the engine projection, so
+    the projection's status carries the committed maximum (#696). Armor class
+    comes from the engine's defense explanation, the same projection every
+    later write applies (#531).
     Returns the sheet and the notes of what changed (also logged), which the
     startup reviewer receives as committed facts. When provenance is supplied,
     retain successful projection output even if these scalar notes are empty.
@@ -1668,6 +1670,23 @@ def startup_mechanics(character, *, provenance=None):
     if not isinstance(character, dict):
         return character, notes
     name = character.get("name", "Unknown")
+    expected, terms = expected_starting_hit_points(character)
+    if provenance is not None and expected is not None:
+        provenance["hit_points"] = {
+            "source": "utils.startup_wizard.expected_starting_hit_points",
+            "expected_maximum": expected, "terms": terms,
+            "policy": "Set exactly to the SRD level-1 derivation; a differing authored value is overwritten and noted.",
+        }
+    if expected is not None:
+        breakdown = " + ".join(terms)
+        current_max = character.get("maxHitPoints")
+        current = character.get("hitPoints")
+        if current_max != expected:
+            notes.append(f"maxHitPoints {current_max} -> {expected} (SRD level 1: {breakdown})")
+        if current != expected:
+            notes.append(f"hitPoints {current} -> {expected} (a new level-1 hero starts at its maximum)")
+        character["maxHitPoints"] = expected
+        character["hitPoints"] = expected
     from core.nql import armor_class, stats
     projection = armor_class.project(character)
     if provenance is not None:
@@ -1711,24 +1730,6 @@ def startup_mechanics(character, *, provenance=None):
     else:
         warning(f"[Startup Mechanics] {name}: armorClass left as written: {projection.reason}",
                 category="character_validation")
-    expected, terms = expected_starting_hit_points(character)
-    if provenance is not None and expected is not None:
-        provenance["hit_points"] = {
-            "source": "utils.startup_wizard.expected_starting_hit_points",
-            "expected_maximum": expected, "terms": terms,
-            "policy": "Raise missing/low maxima; preserve higher maxima. Preserved is not rules-verified.",
-        }
-    if expected is not None:
-        current_max = character.get("maxHitPoints")
-        current = character.get("hitPoints")
-        breakdown = " + ".join(terms)
-        if type(current_max) is not int or current_max < expected:
-            if type(current_max) is not int or current == current_max:
-                character["hitPoints"] = expected
-            character["maxHitPoints"] = expected
-            notes.append(f"maxHitPoints {current_max} -> {expected} (SRD level 1: {breakdown})")
-        elif current_max > expected:
-            notes.append(f"maxHitPoints {current_max} kept above the SRD level-1 derivation {expected} ({breakdown})")
     for note in notes:
         info(f"[Startup Mechanics] {name}: {note}", category="character_validation")
     return character, notes
