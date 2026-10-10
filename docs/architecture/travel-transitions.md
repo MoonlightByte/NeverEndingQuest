@@ -168,7 +168,7 @@ acceptance verdict. The verification pin above describes the historical baseline
 
 1. `main.py:8025` - physical T067 call.
 2. `main.py:4183-4212` - T065 verdict and reissue boundary.
-3. `main.py:9015-9138` - semantic acceptance before route authority.
+3. `main.py:11298-11389` - T065 verdict on the guardian- and route-checked draft, structure recheck and acceptance; publication keeps committed route authority.
 4. `core/ai/action_handler.py:2105-2527` - route prevalidation and immutable plan.
 5. `utils/path_encounter_analyzer.py:165-282` - active-module disk snapshot.
 6. `core/ai/action_handler.py:2543-2614` - plan identity revalidation.
