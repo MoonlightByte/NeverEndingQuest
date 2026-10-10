@@ -232,7 +232,22 @@
 /* Compatibility repair below the Ember breakpoint: the legacy desktop rules
    force one unbroken header row and clip the last sheet tabs at tablet widths.
    Keep the existing layout and phone styles; make its controls reachable. */
-.neq-turn-status { margin: 0 0 8px; color: #cbbb99; font-size: 13px; line-height: 1.4; font-style: italic; overflow-wrap: anywhere; }
+.neq-turn-status { margin: 0 0 8px; color: #cbbb99; font-size: 13px; line-height: 1.4; font-style: italic; overflow-wrap: anywhere; display: flex; align-items: center; gap: 8px; }
+/* Thinking mist: a glowing emerald swirl, and a slow green shimmer on the
+   status text, while the DM works. Sized to be noticed on the dark composer. */
+.neq-thinking-mist { position: relative; flex: none; width: 26px; height: 26px; filter: drop-shadow(0 0 6px rgba(80,200,120,.8)); animation: neq-mist-breathe 2.4s ease-in-out infinite; }
+.neq-thinking-mist::before { content: ""; position: absolute; inset: 8px; border-radius: 50%; background: radial-gradient(circle, rgba(190,255,215,.95), rgba(80,200,120,.35) 70%, transparent); }
+.neq-thinking-mist-swirl { position: absolute; inset: 0; border-radius: 50%; filter: blur(.6px);
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(80,200,120,1) 80deg, transparent 160deg, rgba(140,235,175,.8) 240deg, transparent 330deg);
+  animation: neq-mist-spin 1.4s linear infinite; }
+.neq-thinking-mist-swirl--inner { inset: 5px; filter: blur(.4px);
+  background: conic-gradient(from 180deg, transparent 0deg, rgba(200,255,220,1) 100deg, transparent 210deg);
+  animation: neq-mist-spin .9s linear infinite reverse; }
+.neq-turn-status--busy { animation: neq-mist-text 2.4s ease-in-out infinite; }
+@keyframes neq-mist-spin { to { transform: rotate(360deg); } }
+@keyframes neq-mist-breathe { 0%, 100% { transform: scale(.9); opacity: .85; } 50% { transform: scale(1.08); opacity: 1; } }
+@keyframes neq-mist-text { 0%, 100% { color: #cbbb99; } 50% { color: #8fe3b0; } }
+@media (prefers-reduced-motion: reduce) { .neq-thinking-mist, .neq-thinking-mist-swirl, .neq-turn-status--busy { animation: none; } }
 @media (min-width: 761px) and (max-width: 1023px) {
   .neq-app-grid:not(.ember-desktop) .neq-header-actions { flex-wrap: wrap; max-width: 100%; }
   .neq-app-grid:not(.ember-desktop) .neq-tabs { overflow-x: auto; }
