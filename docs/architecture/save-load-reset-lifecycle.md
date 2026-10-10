@@ -21,8 +21,8 @@ by the existing cache file lock; both release before post-Load memory repair.
 Save stages complete cache bytes outside the saved-game directory before atomic
 publication. Cache-only failure preserves canonical Save and reports omission.
 
-Seams: `updates/save_game_manager.py:499` (membership), `:996` (ownership),
-`:1124` (publication), `:1318` (restore), `:1455` and `:453` (absence);
+Seams: `updates/save_game_manager.py:517` (membership), `:1017` (ownership),
+`:1145` (publication), `:1341` (restore), `:1481` and `:470` (absence);
 `web/shared_state.py:16` (same reentrant memory lock used by web writers).
 Policy: #193 p9/p10, B1/B2, GL-1. Browser and native fault evidence remain scoped;
 this source map is not a full acceptance verdict.
@@ -48,8 +48,8 @@ buffer. Already admitted output is not retroactively revoked. Main's final
 common-tail history save retains the captured callback through compression and
 context refresh; ordinary turns keep a None callback and their existing behavior.
 
-Seams: `level_up_manager.py:78`, `updates/update_character_info.py:1772`,
-`utils/encoding_utils.py:209`, `main.py:7267`, `main.py:9878`, `main.py:10025`,
+Seams: `level_up_manager.py:79`, `updates/update_character_info.py:1773`,
+`utils/encoding_utils.py:209`, `main.py:7282`, `main.py:9897`, `main.py:10044`,
 `web/web_interface.py:632`, `core/headless/protocol.py:46`.
 These are source contracts, not proof of live Load/Reset/Quit timing or #116
 display-replay acceptance. Native gates remain required under #193.
@@ -259,15 +259,15 @@ Live Load-during-calculation and full committed-level-up continuity remain unpro
 1. `utils/capture/live_provider_call.py:184-724` - live/welcome scope authority, promotion, queues, and quiescence.
 2. `utils/capture/live_provider_call.py` `call_live_provider` (generation loop; anchors moved by #284) - child polling, reaping, universal backstop envelope, and correlation gate.
 3. `main.py:320-425` - welcome ownership and generation-only worker.
-4. `main.py:439-582` - handback ordering, attempt/lease receipt, and reconciliation.
-5. `main.py:906-1082` - input pump, teardown, welcome registration, and worker start.
-6. `main.py:10026-10041` - ordinary live scope opening.
-7. `main.py:10195-10206` - mutation boundary.
-8. `main.py:10435-10526` - superseded and normal turn terminals.
+4. `main.py:439-583` - handback ordering, attempt/lease receipt, and reconciliation.
+5. `main.py:911-1093` - input pump, teardown, welcome registration, and worker start.
+6. `main.py:10045-10060` - ordinary live scope opening.
+7. `main.py:10214-10225` - mutation boundary.
+8. `main.py:10457-10548` - superseded and normal turn terminals.
 9. `core/headless/session.py:425-1032` - headless lifecycle commands (reset/quit at :379-466) and restart.
 10. `web/web_interface.py:2965-3403` - web input and Save/Load/Reset entrants.
-11. `updates/save_game_manager.py:174` and `updates/save_game_manager.py:479` - pending module context and essential startup history (startup candidate).
-12. `updates/save_game_manager.py:919` and `utils/file_operations.py:106` - restore rollback/absence semantics and guarded shared writer (startup candidate).
+11. `updates/save_game_manager.py:175` and `updates/save_game_manager.py:497` - pending module context and essential startup history (startup candidate).
+12. `updates/save_game_manager.py:940` and `utils/file_operations.py:106` - restore rollback/absence semantics and guarded shared writer (startup candidate).
 13. `utils/reset_campaign.py:507-547` - reset backup-before-wipe ordering.
 
 ## Invariants

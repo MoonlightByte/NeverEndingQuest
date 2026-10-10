@@ -108,19 +108,19 @@ verification pin. Live #193 v3.1, including D-323-1, remains authority.
 
 1. `utils/xp.py:10-30` - CR-to-XP table and normalization.
 2. `utils/xp.py:35-112` - defeated-enemy accounting and party division.
-3. `core/managers/combat_manager.py:1631-1656` - exact recipient character paths.
-4. `core/managers/combat_manager.py:2317-2420` - completion, XP history, and summary.
+3. `core/managers/combat_manager.py:1634-1659` - exact recipient character paths.
+4. `core/managers/combat_manager.py:2320-2423` - completion, XP history, and summary.
 5. `core/managers/combat_transaction.py:1477-1520` - reward journal and receipt-last writes.
 6. `schemas/encounter_schema.json:570-582` - completion receipt schema.
 7. `schemas/char_schema.json:24-26` and `schemas/char_schema.json:578-589` - progression fields.
 8. `prompts/system_prompt.txt:933` and `prompts/validation/validation_prompt.txt:206` - full advancement-entry contracts; their compressed counterparts carry the same distinction.
-9. `core/ai/action_handler.py:4217` - `levelUp` entrant and session creation.
-10. `main.py:6119` - level-up interception before ordinary action output.
-11. `core/managers/level_up_manager.py:78` - captured commit guard and process-local session.
-12. `core/managers/level_up_manager.py:233`, `:443`, `:519`, `:533`, `:578`, `:686` and `:787` - interview loop, prospective guards, answer retention, domain packets, preparation, commit and shared evidence (2026-09-12 working candidate).
+9. `core/ai/action_handler.py:4223` - `levelUp` entrant and session creation.
+10. `main.py:6134` - level-up interception before ordinary action output.
+11. `core/managers/level_up_manager.py:79` - captured commit guard and process-local session.
+12. `core/managers/level_up_manager.py:234`, `:444`, `:520`, `:534`, `:579`, `:687` and `:788` - interview loop, prospective guards, answer retention, domain packets, preparation, commit and shared evidence (2026-09-12 working candidate).
 13. `core/ai/level_up_specialists.py` `collect_domain_work` and `run_layer` - owned collection and fixed forward calculation; `utils/level_up_workspace.py` `promote`/`withdraw` preserve approved fact delivery/currentness. Specialist question/parking helpers are retired.
-14. `main.py:10358` and `main.py:10512` - typed handback and guarded common-tail save.
-15. `updates/update_character_info.py:1325` and `:1559` - shared preparation and guarded canonical commit used by the current level-up candidate.
+14. `main.py:10377` and `main.py:10534` - typed handback and guarded common-tail save.
+15. `updates/update_character_info.py:1326` and `:1560` - shared preparation and guarded canonical commit used by the current level-up candidate.
 
 ## Invariants
 
