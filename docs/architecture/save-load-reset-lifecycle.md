@@ -48,9 +48,9 @@ buffer. Already admitted output is not retroactively revoked. Main's final
 common-tail history save retains the captured callback through compression and
 context refresh; ordinary turns keep a None callback and their existing behavior.
 
-Seams: `level_up_manager.py:79`, `updates/update_character_info.py:1773`,
-`utils/encoding_utils.py:209`, `main.py:7282`, `main.py:9897`, `main.py:10044`,
-`web/web_interface.py:632`, `core/headless/protocol.py:46`.
+Seams: `core/managers/level_up_manager.py:185`, `updates/update_character_info.py:1855`,
+`utils/encoding_utils.py:209`, `main.py:10500`, `main.py:10512`, `main.py:10654`,
+`web/web_interface.py:671`, `core/headless/protocol.py:46`.
 These are source contracts, not proof of live Load/Reset/Quit timing or #116
 display-replay acceptance. Native gates remain required under #193.
 
