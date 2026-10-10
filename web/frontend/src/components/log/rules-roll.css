@@ -9,3 +9,10 @@
 .neq-rules-roll summary { cursor: pointer; padding: .5rem 0; text-decoration: underline; }
 .neq-rules-roll form div { display: flex; gap: .5rem; margin-top: .5rem; }
 .neq-rules-roll input { width: 3.5rem; min-height: 44px; color: #fff0d5; background: #161711; border: 1px solid #89734c; border-radius: .3rem; text-align: center; font-size: 16px; }
+.neq-requested-roll-actions { display: inline-flex; gap: .5rem; flex-wrap: wrap; }
+.ember-desktop .neq-dice-buttons { min-width: 0; flex-wrap: wrap; }
+.ember-desktop .neq-dice-submit-controls { display: inline-flex; align-items: center; justify-content: flex-end; gap: .4rem; margin-left: auto; max-width: 100%; }
+.ember-desktop .neq-dice-submit-controls > button,
+.ember-desktop .neq-requested-roll-actions button:last-child { margin-left: 0; }
+.ember-desktop .neq-rules-roll-actions { justify-content: flex-end; }
+.ember-desktop .neq-rules-roll-actions form div { justify-content: flex-end; }

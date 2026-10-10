@@ -17,7 +17,7 @@ def check_world(tmp_path, monkeypatch):
 def test_roll_persists_once_and_returns_for_narration(check_world, monkeypatch, typed, expected):
     entry = {"characterName": "Hero", "stat": "perception", "faces": 1, "dc": 12}
     checks_state.add_pending(entry)
-    resolve = Mock(return_value={})
+    resolve = Mock(return_value=checks_runtime.checks.CheckResult(True, "perception", "Hero", faces=[15]))
     monkeypatch.setattr(checks_runtime.checks, "resolve", resolve)
     monkeypatch.setattr(checks_runtime.checks, "describe", lambda result: "Hero Perception: 15 +4 = 19")
     read = Mock(return_value=typed)
@@ -80,3 +80,18 @@ def test_completion_status_requires_actual_voice_result(has_result):
     assert handle.collect_to_completion(emit) == "batch"
     assert emit.call_count == int(has_result)
 
+
+
+@pytest.mark.parametrize("typed,faces", [("", [7]), ("18", [18]), ("2 18", [2, 18]), ("", [4, 19])])
+def test_accepted_roll_is_a_natural_player_reply_once(check_world, monkeypatch, typed, faces):
+    from web import shared_state
+    checks_state.add_pending({"characterName": "Hero", "stat": "perception", "faces": len(faces), "dc": 12, "netMode": "advantage"})
+    result = checks_runtime.checks.CheckResult(True, "perception", "Hero", faces=faces)
+    monkeypatch.setattr(checks_runtime.checks, "resolve", lambda *a, **kw: result)
+    monkeypatch.setattr(checks_runtime.checks, "describe", lambda r: "Resolved check")
+    output = Mock()
+    monkeypatch.setattr(shared_state, "emit_player_output", output)
+    checks_runtime.take_player_rolls(lambda p: typed)
+    checks_runtime.take_player_rolls(lambda p: pytest.fail("Already submitted"))
+    expected = "I rolled " + " and ".join(f"{f} on a d20" for f in faces) + "."
+    output.assert_called_once_with({"type": "user-input", "content": expected})
