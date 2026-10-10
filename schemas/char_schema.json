@@ -317,6 +317,30 @@
         "required": ["name", "description"]
       }
     },
+    "nqlEquipmentMigration": {
+      "description": "Code-owned receipt of a one-time legacy equipment repair; preserve unchanged.",
+      "type": "object",
+      "properties": {
+        "version": {"const": "two-hand-loadout-v1"},
+        "kept_indices": {"type": "array", "items": {"type": "integer", "minimum": 0}},
+        "stowed": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "index": {"type": "integer", "minimum": 0},
+              "item_name": {"type": "string"},
+              "nql_id": {"type": ["string", "null"]},
+              "previous_equipped": {"const": true}
+            },
+            "required": ["index", "item_name", "nql_id", "previous_equipped"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["version", "kept_indices", "stowed"],
+      "additionalProperties": false
+    },
     "effectsMigration": {
       "type": "object",
       "properties": {
