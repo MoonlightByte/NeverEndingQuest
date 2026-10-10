@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A native Windows game no longer freezes when a save during play meets a read-only file. The game shows one line naming the file and how to clear its Read-only setting, and ends the session without saving anything more, so the next start, once the file is cleared, picks up from the last save.
 - When a save during play meets a read-only file, the game now stops right there: it makes no further model calls, writes no further files, and no longer goes on with travel summaries, combat, a level-up or a Save first. A terminal combat or level-up ends at its next question instead of waiting for an answer it could not save.
 - Leaving a location no longer ends the session when other module work, such as a module build, keeps the module-refresh lock busy for more than 5 seconds. The game shows "Waiting for module work to finish before recording your journey (N seconds)." and records the departure once that work finishes. The same applies when an interrupted journey is finished at the next start (#637).
+- A start no longer skips a dropped-in module without a word when the game cannot safely read the state of its modules folder, for example after an interrupted module build. The game still leaves the module unjoined, and now shows one line naming it, saying it could not be checked this time and will be tried again at the next start. A start with no module waiting shows nothing (#638).
 
 ## [0.2.0] - 2025-08-11
 
