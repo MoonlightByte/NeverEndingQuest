@@ -10845,6 +10845,9 @@ def _travel_unsupported_siblings(actions, check_outcomes):
 # #488: rejected drafts one review may spend before the turn fails without
 # change. Recovered turns in live runs needed at most 7.
 _DM_REVIEW_REJECTION_LIMIT = 10
+# #729: unusable T114 verdicts one review may draw before the turn fails
+# without change (an unreviewed roster change never commits).
+_GUARDIAN_UNUSABLE_LIMIT = 3
 _DM_REVIEW_EXHAUSTED_MESSAGE = (
     "Nothing in your game was changed. The DM could not settle a response "
     "for that action. You can try it again one step at a time."
@@ -10936,6 +10939,9 @@ def _review_dm_candidate(
     rejected_drafts = 0
     counted_retry_count = 0
     counted_provider_failures = 0
+    # #729: unusable T114 verdicts in this review; never reset before the
+    # return, whichever draft drew them.
+    unusable_guardian_verdicts = 0
     while True:
         require_current()
         if retry_count != counted_retry_count:
@@ -10943,16 +10949,20 @@ def _review_dm_candidate(
                 rejected_drafts += 1
             counted_retry_count = retry_count
             counted_provider_failures = provider_failures
-            if rejected_drafts >= _DM_REVIEW_REJECTION_LIMIT:
-                warning(
-                    "VALIDATION: %d drafts rejected in one review; the turn "
-                    "ends without change." % rejected_drafts,
-                    category="ai_validation",
-                )
-                return {
-                    "status": "review_exhausted",
-                    "player_message": _DM_REVIEW_EXHAUSTED_MESSAGE,
-                }
+        if (
+            rejected_drafts >= _DM_REVIEW_REJECTION_LIMIT
+            or unusable_guardian_verdicts >= _GUARDIAN_UNUSABLE_LIMIT
+        ):
+            warning(
+                "VALIDATION: %d drafts rejected and %d unusable T114 verdicts "
+                "in one review; the turn ends without change."
+                % (rejected_drafts, unusable_guardian_verdicts),
+                category="ai_validation",
+            )
+            return {
+                "status": "review_exhausted",
+                "player_message": _DM_REVIEW_EXHAUSTED_MESSAGE,
+            }
         approved_transition_plan = None
         if module_snapshot is None:
             # Internal entrants have no ordinary preparation result. Read only
@@ -11372,6 +11382,7 @@ def _review_dm_candidate(
             )
             require_current()
             if guardian_result is None:
+                unusable_guardian_verdicts += 1
                 warning("T114 malformed verdict; reissuing guardian on the same candidate",
                         category="ai_validation")
                 continue
