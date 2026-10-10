@@ -1,0 +1,41 @@
+{
+  "_metadata": {
+    "schemaVersion": 1,
+    "created": "2026-10-09",
+    "description": "Typed SRD 5.2.1 spell save records (#703): the save ability, the effect of a successful save on the damage, and the damage kind, hand-authored and reviewed against the SRD text; verified-only",
+    "source": "System Reference Document 5.2.1, CC BY 4.0",
+    "sourceRepository": "data/spell_repository.json",
+    "sourceSha256": "5fafd1c79e869dbca686e3efbc18e9e680119b55a662400b1e1513892c9068ee",
+    "totalRecords": 3,
+    "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+  },
+  "saves": {
+    "fireball": {
+      "name": "Fireball",
+      "save": "dexterity",
+      "success": "half",
+      "damageKind": "fire",
+      "contractKey": "fireball",
+      "source": "SRD 5.2.1 p.131",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "inflict_wounds": {
+      "name": "Inflict Wounds",
+      "save": "constitution",
+      "success": "half",
+      "damageKind": "necrotic",
+      "contractKey": "inflict_wounds",
+      "source": "SRD 5.2.1 p.143",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "sacred_flame": {
+      "name": "Sacred Flame",
+      "save": "dexterity",
+      "success": "none",
+      "damageKind": "radiant",
+      "contractKey": "sacred_flame",
+      "source": "SRD 5.2.1 p.159",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    }
+  }
+}
