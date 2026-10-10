@@ -7675,6 +7675,14 @@ def process_ai_response(
         response_fences.close()
 
 
+# Shown when a reviewed travel draft keeps going stale before it commits
+# (issue #707). Several precommit failures reach this, so it names no cause.
+_TRAVEL_MOVE_NOT_COMPLETED_LINE = (
+    "You remain where you are. That move could not be completed, so it "
+    "hasn't happened. You can take another action here or Load a saved game."
+)
+
+
 def resolve_retryable_ai_result(
     final_result,
     party_tracker_data,
@@ -7682,12 +7690,18 @@ def resolve_retryable_ai_result(
     conversation_history,
     *,
     max_state_retries=2,
+    max_review_retries=2,
     invocation_claim=None,
     player_input=None,
     detached_context=None,
     authority_check=None,
 ):
-    """Regenerate responses invalidated by a concurrent timeline change."""
+    """Regenerate responses invalidated by a concurrent timeline change.
+
+    A travel draft that went stale before it committed is re-reviewed at most
+    ``max_review_retries`` times, on its own budget; then the move is refused
+    with a line the player sees (issue #707).
+    """
     from core.combat.invocation import require_current_invocation
     from utils.capture.live_provider_call import LiveProviderSuperseded, get_live_provider_scope
 
@@ -7705,6 +7719,7 @@ def resolve_retryable_ai_result(
         "transition_state_changed",
     }
     retries = 0
+    review_retries = 0
     while (
         isinstance(final_result, dict)
         and final_result.get("retryable") is True
@@ -7722,6 +7737,22 @@ def resolve_retryable_ai_result(
             if not review_authority_current(review_context):
                 final_result = {"status": "stale_discarded", "retryable": False}
                 break
+            if review_retries >= max_review_retries:
+                # The same precommit failure can repeat on every pass, and
+                # each pass is a paid review. Nothing moved; the line names
+                # no cause, because several producers reach here (#707).
+                last_error = final_result.get("error") or final_result.get("status")
+                warning(
+                    f"Travel re-review limit reached ({max_review_retries}); "
+                    f"move refused: {last_error}",
+                    category="location_transitions",
+                )
+                final_result = {
+                    "status": "travel_content_unavailable",
+                    "player_message": _TRAVEL_MOVE_NOT_COMPLETED_LINE,
+                }
+                break
+            review_retries += 1
             if detached_context is None:
                 conversation_history = (
                     load_json_file(json_file)
