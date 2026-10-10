@@ -473,7 +473,8 @@ def test_actual_wizard_calls_with_parent_resolved_credential(run_case,wizard,con
     assert result['children']==1
     assert len(result['http_requests'])==1
     assert result['http_requests'][0]['auth_matches']
-    assert result['envelopes'][0]['task_id']==('T093' if wizard=='location' else 'T092')
+    assert result['envelopes'][0]['task_id']==('T093' if wizard=='location'
+                                               else 'T124' if wizard=='review' else 'T092')
     assert len(result['usage_rows'])==1
     if wizard=='location':
         assert json.loads(result['content'])['locationName']=='Fixture Entry'

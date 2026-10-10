@@ -57,6 +57,7 @@ _REQUIRED_TASK_IDS = frozenset(
         "T119",
         "T120",
         "T121",
+        "T124",
     }
 )
 _ADVISORY_TASK_IDS = frozenset(
@@ -88,7 +89,7 @@ _HEARTBEAT_SECONDS = 10.0
 _WATCHDOG_SECONDS = 600.0
 _WIZARD_READ_INACTIVITY_SECONDS = 40.0
 _WIZARD_BACKSTOP_SECONDS = 180.0
-_WIZARD_TASK_IDS = frozenset({"T092", "T093"})
+_WIZARD_TASK_IDS = frozenset({"T092", "T093", "T124"})
 # TCP connect bound per resolved address: the OpenAI SDK default, which the
 # in-process path already uses. A bare float deadline is also the connect
 # timeout for each resolved address, so an endpoint whose first addresses
