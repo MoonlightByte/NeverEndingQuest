@@ -682,12 +682,24 @@ def _departure_fact(leaving_location_name, destination_location_name):
     return "The party left %s." % origin
 
 
-def build_journal_update(adventure_summary, party_tracker_data, location_name):
-    """Stage a validated journal update without writing runtime state."""
+def journal_schema_failure(journal_data):
+    """The journal schema's failure message for journal_data, or None.
+
+    The one check both the staged departure update and the chronicle's
+    read use (#633), so the two cannot drift.
+    """
     journal_schema = load_json_file("schemas/journal_schema.json")
     if not isinstance(journal_schema, dict):
         raise DepartureSummaryError("journal schema is unavailable or invalid")
+    try:
+        validate(instance=journal_data, schema=journal_schema)
+    except ValidationError as exc:
+        return exc.message
+    return None
 
+
+def build_journal_update(adventure_summary, party_tracker_data, location_name):
+    """Stage a validated journal update without writing runtime state."""
     try:
         existing_journal = safe_json_load("journal.json")
     except Exception as exc:
@@ -719,12 +731,11 @@ def build_journal_update(adventure_summary, party_tracker_data, location_name):
         }
     )
 
-    try:
-        validate(instance=journal_data, schema=journal_schema)
-    except ValidationError as exc:
+    failure = journal_schema_failure(journal_data)
+    if failure is not None:
         raise DepartureSummaryError(
-            f"staged journal update failed schema validation: {exc.message}"
-        ) from exc
+            f"staged journal update failed schema validation: {failure}"
+        )
     return journal_data
 
 

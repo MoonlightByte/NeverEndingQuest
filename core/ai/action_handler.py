@@ -337,15 +337,25 @@ def _read_journal_setting_aside(tail, before_rename=None, after_failed_rename=No
     and read again (D-303-2); if the set-aside itself is refused, the parse
     error stands as before. `before_rename` runs just before the rename and
     `after_failed_rename` first when it fails, so a caller's own record can
-    bracket the rename alone."""
+    bracket the rename alone. A journal that parses but fails its schema
+    counts as unreadable, since every departure would refuse it (#633)."""
     from utils.transient_filesystem import is_transient_filesystem_error
     from utils.capture.live_provider_call import (
         _interruptible_wait, get_live_provider_scope,
     )
+    from core.ai import adv_summary
 
     while True:
         try:
             journal = safe_json_load("journal.json")
+            failure = None
+            if journal is not None:
+                try:
+                    failure = adv_summary.journal_schema_failure(journal)
+                except adv_summary.DepartureSummaryError:
+                    failure = None  # no schema to judge by: read as before
+            if failure is not None:
+                raise ValueError("does not match its schema: %s" % failure[:200])
             break
         except ValueError as exc:
             aside = "journal.json.unreadable-%s-%s" % (
