@@ -1073,6 +1073,7 @@ def resolve_current_transition_departure(operation_id, transition_context):
             checkpoint["origin_area_id"],
             checkpoint["origin_location_id"],
             structured_actions=action_projection,
+            destination_location_name=checkpoint.get("destination_location_name"),
         )
         area_before = proposal["area_before"]
         location_index = next(

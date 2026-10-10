@@ -634,8 +634,22 @@ Your writing should feel immersive, literary, and grounded -- like a historical 
     except ReadOnlySaveStop:
         raise
     except Exception as e:
+        if _is_supersession(e):
+            raise
         debug_print(f"ERROR: Failed to generate adventure summary. Error: {str(e)}")
         return None
+
+
+def _departure_fact(leaving_location_name, destination_location_name):
+    """The departure as a plain fact from the checkpoint's own names (#699)."""
+    origin = sanitize_text(str(leaving_location_name or "")).strip()
+    destination = sanitize_text(str(destination_location_name or "")).strip()
+    if not origin:
+        return None
+    if destination:
+        return "The party left %s for %s." % (origin, destination)
+    return "The party left %s." % origin
+
 
 def build_journal_update(adventure_summary, party_tracker_data, location_name):
     """Stage a validated journal update without writing runtime state."""
@@ -1103,6 +1117,7 @@ def prepare_departure_summary(
     current_area_id,
     leaving_location_id,
     structured_actions=None,
+    destination_location_name=None,
 ):
     """Run T016/T015 and return exact commit material without writing targets."""
     if not isinstance(conversation_history, list):
@@ -1116,8 +1131,22 @@ def prepare_departure_summary(
         leaving_location_name,
         structured_actions=structured_actions,
     )
-    if not isinstance(adventure_summary, str) or not adventure_summary.strip():
-        raise DepartureSummaryError("T016 did not produce an adventure summary")
+    summary_fallback = (
+        not isinstance(adventure_summary, str) or not adventure_summary.strip()
+    )
+    if summary_fallback:
+        # Fail forward (#699): the party has moved. The chronicle records the
+        # departure itself, and T015 has nothing to rewrite the location from.
+        adventure_summary = _departure_fact(
+            leaving_location_name, destination_location_name
+        )
+        if adventure_summary is None:
+            raise DepartureSummaryError("T016 did not produce an adventure summary")
+        warning(
+            "FALLBACK: departure summary unavailable for %s; the journal "
+            "records the departure only" % leaving_location_id,
+            category="location_transitions",
+        )
 
     current_module = party_tracker.get("module", "").replace(" ", "_")
     area_path = ModulePathManager(current_module or None).get_area_path(current_area_id)
@@ -1138,22 +1167,27 @@ def prepare_departure_summary(
     if leaving_index is None:
         raise DepartureSummaryError("canonical departure location is absent")
     location_before = copy.deepcopy(area_before["locations"][leaving_index])
-    try:
-        updated_location = update_location_json(
-            adventure_summary,
-            copy.deepcopy(location_before),
-            current_area_id,
-        )
-    except LocationUpdateExhausted as exc:
-        # Fail forward (#653): the party has moved and T016 produced the
-        # chronicle. Keep the location as it was, marked visited.
-        warning(
-            "FALLBACK: location update skipped for %s: %s"
-            % (leaving_location_id, exc),
-            category="location_transitions",
-        )
+    if summary_fallback:
+        # T015 is not called: keep the location as it was, marked visited.
         updated_location = copy.deepcopy(location_before)
         updated_location["explorationState"] = {"status": "visited"}
+    else:
+        try:
+            updated_location = update_location_json(
+                adventure_summary,
+                copy.deepcopy(location_before),
+                current_area_id,
+            )
+        except LocationUpdateExhausted as exc:
+            # Fail forward (#653): the party has moved and T016 produced the
+            # chronicle. Keep the location as it was, marked visited.
+            warning(
+                "FALLBACK: location update skipped for %s: %s"
+                % (leaving_location_id, exc),
+                category="location_transitions",
+            )
+            updated_location = copy.deepcopy(location_before)
+            updated_location["explorationState"] = {"status": "visited"}
     if not isinstance(updated_location, dict):
         raise DepartureSummaryError("T015 did not produce a location update")
     # The engine's occupant record is the presence authority. T015 owns the
