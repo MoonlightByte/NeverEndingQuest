@@ -2182,7 +2182,8 @@ def _warn_save(sheet, save_type, reason):
         pass
 
 
-def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_feature_heals=False):
+def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_feature_heals=False,
+                        attack_hits=None):
     """General adjudicated-outcome contract for anything beyond weapon attacks.
 
     The DM model (or player-facing DM turn) proposes MECHANICS, not state:
@@ -2206,6 +2207,10 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
     violation carrying ``featureHealLimits`` (the correction's numbers); with
     ``clamp_feature_heals`` (the corrected batch broke it again) it is
     clamped to the limit and journaled as a ``featureHeal`` normalization.
+
+    #672: ``attack_hits`` maps the target of a spell attack code scored to
+    whether it hit; an effect op with applyOn 'hit' is staged only on a hit,
+    and is a violation on any other intent.
     """
     event = {
         "eventId": event_id,
@@ -2687,7 +2692,12 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                 )
                 event.setdefault("normalizations", []).append(normalization)
         apply_on = op.get("applyOn", "always")
-        if apply_on not in ("always", "failedSave", "successfulSave"):
+        if apply_on == "hit" and attack_hits is None:
+            resolution["violations"].append(
+                "effect applyOn 'hit' is only for a spell attack code scores; use always, failedSave, or successfulSave"
+            )
+            continue
+        if apply_on not in ("always", "failedSave", "successfulSave", "hit"):
             resolution["violations"].append(
                 "effect applyOn must be always, failedSave, or successfulSave"
             )
@@ -3054,7 +3064,13 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                 "an effect on a save target requires explicit applyOn"
             )
             continue
-        if apply_on != "always":
+        if apply_on == "hit":
+            # #672: the one target of the code-scored spell attack.
+            hit_target_id = next(iter(attack_hits))
+            if not attack_hits[hit_target_id]:
+                continue
+            op["hitTargetId"] = hit_target_id
+        elif apply_on != "always":
             save_target_id = op.get("saveTargetId") or op.get("combatantId")
             if not save_target_id and op.get("owner"):
                 owner_matches = [
