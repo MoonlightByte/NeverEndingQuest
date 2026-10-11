@@ -3571,6 +3571,9 @@ class CampaignManager:
             if not isinstance(updated_campaign.get(field), type(default)):
                 updated_campaign[field] = copy.deepcopy(default)
 
+        # completedModules means visited and summarized: every crossing
+        # completes the module it leaves (#747). Plot progress is tracked
+        # separately.
         if module_name not in updated_campaign["completedModules"]:
             updated_campaign["completedModules"].append(module_name)
         self._handle_module_completion_export(
@@ -4511,15 +4514,6 @@ Focus on story outcomes, character development, and decisions that will matter i
     ):
         """Update available modules based on completion"""
         target = self.campaign_data if campaign_data is None else campaign_data
-        # Remove completed module
-        if completed_module in target['availableModules']:
-            target['availableModules'].remove(completed_module)
-        
-        # Add newly unlocked modules. The names are model-written (T039, or
-        # the party tracker in the local fallback), so only a joined module
-        # is added, by its registry id (#746, the #720 rule). Spaces read as
-        # underscores, as the module snapshot reads them. An unreadable
-        # registry adds nothing; the next refresh lists every joined module.
         from core.generators.module_stitcher import ModuleStitcher
 
         try:
@@ -4528,6 +4522,25 @@ Focus on story outcomes, character development, and decisions that will matter i
             )
         except (OSError, ValueError):
             registry = None
+
+        # The completed module is often just the one the party left: a
+        # crossing completes it to write the visit summary. A joined module
+        # stays offered so the party can go back (#747); only a module the
+        # registry does not join is removed. An unreadable registry removes
+        # nothing, as in startup reconciliation; the next refresh decides.
+        registry_readable = isinstance(registry, dict) and isinstance(registry.get("modules"), dict)
+        if (
+            registry_readable
+            and completed_module in target['availableModules']
+            and not ModuleStitcher.is_joined_registry_module(registry, completed_module)
+        ):
+            target['availableModules'].remove(completed_module)
+
+        # Add newly unlocked modules. The names are model-written (T039, or
+        # the party tracker in the local fallback), so only a joined module
+        # is added, by its registry id (#746, the #720 rule). Spaces read as
+        # underscores, as the module snapshot reads them. An unreadable
+        # registry adds nothing; the next refresh lists every joined module.
         unlocked = summary.get('unlockedModules', [])
         for module in unlocked if isinstance(unlocked, list) else []:
             module_id = module.strip().replace(" ", "_") if isinstance(module, str) else ""
