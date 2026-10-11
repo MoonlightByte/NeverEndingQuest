@@ -73,6 +73,7 @@ from utils.transient_filesystem import (
     ON_READ_ONLY_FAIL,
     ON_READ_ONLY_STOP,
     ReadOnlySaveStop,
+    ReplaceContention,
     check_on_read_only,
     is_transient_filesystem_error,
     raise_if_save_stopped,
@@ -210,6 +211,9 @@ class AtomicFileWriter:
         temp_path = f"{filepath}.tmp"
         backup_path = None
         lock_acquired = False
+        contention = ReplaceContention(
+            filepath, check_save_stop=on_read_only != ON_READ_ONLY_FAIL
+        )
 
         try:
             dir_path = os.path.dirname(filepath)
@@ -254,8 +258,8 @@ class AtomicFileWriter:
             # still follow the existing error path below. A read-only target
             # is not contention: waiting cannot clear it, so the save stops
             # the session, or returns False for a caller that passed
-            # on_read_only="raise" or "fail" (issue #654).
-            _replace_attempt = 0
+            # on_read_only="raise" or "fail" (issue #654). The wait is reported
+            # and, during a live turn, shown on screen (#653 item 6).
             while True:
                 try:
                     with commit_guard() if commit_guard is not None else nullcontext():
@@ -278,14 +282,7 @@ class AtomicFileWriter:
                             "read-only (WinError 5)", filepath
                         )
                         raise
-                    _replace_attempt += 1
-                    if _replace_attempt % 20 == 0:
-                        logger.warning(
-                            f"Transient Windows rename contention on "
-                            f"{filepath} (WinError {winerror}), attempt "
-                            f"{_replace_attempt}; still retrying"
-                        )
-                    time.sleep(0.1)
+                    contention.tick(winerror)
             # Suppress success messages - only log errors
             # logger.info(f"Successfully wrote {filepath}")
             
@@ -303,6 +300,7 @@ class AtomicFileWriter:
             return False
             
         finally:
+            contention.finish()
             if os.path.exists(temp_path) and (lock_acquired or not acquire_lock):
                 try:
                     os.unlink(temp_path)

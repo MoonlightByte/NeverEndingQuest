@@ -4,6 +4,7 @@ and the one verdict that a denied write is not transient (a read-only target).""
 from __future__ import annotations
 
 import errno
+import logging
 import os
 from pathlib import Path
 import threading
@@ -26,6 +27,14 @@ _TRANSIENT_ERRNOS = frozenset(
     if value is not None
 )
 _TRANSIENT_WINDOWS_ERRORS = frozenset({32, 33})
+
+# A rename that another program blocks is retried every 0.1 s, as before. It is
+# reported after a short grace and then on a heartbeat (#653 item 6).
+REPLACE_CONTENTION_SLEEP_SECONDS = 0.1
+REPLACE_CONTENTION_GRACE_SECONDS = 2.0
+REPLACE_CONTENTION_HEARTBEAT_SECONDS = 10.0
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def is_transient_filesystem_error(
@@ -171,6 +180,82 @@ def raise_if_save_stopped() -> None:
     path = save_stop_path()
     if path is not None:
         raise ReadOnlySaveStop(path)
+
+
+class ReplaceContention:
+    """One writer's wait while another program blocks its rename (#653 item 6).
+
+    Windows refuses the rename (WinError 5/32) while a scanner, a sync client
+    or another program holds the target. The write is never given up on a
+    timer. ``tick`` waits one step; after a short grace it logs a warning, and
+    during a live turn it shows one status line, both on a heartbeat.
+    ``finish`` puts the earlier status back if that line is still showing.
+    A read-only stop recorded during the wait ends it, except for a writer
+    that passed on_read_only="fail" (``check_save_stop`` False, #654).
+    """
+
+    def __init__(self, filepath, check_save_stop: bool = True):
+        self._path = os.fsdecode(filepath)
+        self._check_save_stop = check_save_stop
+        self._started = None
+        self._next_report = None
+        self._line = None
+        self._previous = None
+
+    def tick(self, winerror=None) -> None:
+        if self._check_save_stop:
+            raise_if_save_stopped()
+        now = time.monotonic()
+        if self._started is None:
+            self._started = now
+            self._next_report = now + REPLACE_CONTENTION_GRACE_SECONDS
+        elif now >= self._next_report:
+            self._next_report = now + REPLACE_CONTENTION_HEARTBEAT_SECONDS
+            self._report(now - self._started, winerror)
+        time.sleep(REPLACE_CONTENTION_SLEEP_SECONDS)
+
+    def _report(self, elapsed, winerror) -> None:
+        _LOGGER.warning(
+            "Waiting to save %s: the rename is refused (WinError %s) for %.0f s, "
+            "another program holds the file; still retrying",
+            self._path, winerror, elapsed,
+        )
+        try:
+            # Only a live turn shows the line: outside one, nothing would clear
+            # the processing flag after the write lands.
+            from utils.capture.live_provider_call import get_live_turn_scope
+
+            if get_live_turn_scope() is None:
+                return
+            from core.managers.status_manager import status_manager
+
+            line = (
+                "Waiting to save %s: another program on this computer is using "
+                "it. Closing that program lets the game continue."
+                % os.path.basename(self._path)
+            )
+            # Restore what was showing before this line: a status that came in
+            # since the last line is the newer one to put back.
+            current = status_manager.get_status()
+            if self._line is None or current[0] != self._line:
+                self._previous = current
+            status_manager.update_status(line, True)
+            self._line = line
+        except Exception:  # noqa: BLE001 - a status line never breaks a save
+            pass
+
+    def finish(self) -> None:
+        line, self._line = self._line, None
+        if line is None or self._previous is None:
+            return
+        try:
+            from core.managers.status_manager import status_manager
+
+            if status_manager.get_status()[0] == line:
+                message, processing = self._previous
+                status_manager.update_status(message, processing)
+        except Exception:  # noqa: BLE001 - a status line never breaks a save
+            pass
 
 
 def retry_transient_filesystem(
