@@ -97,6 +97,10 @@ def create_backup():
                     '.module_orphan_quarantine',
                     # Legacy publication copies nothing reads; #565 stopped writing them (#614).
                     '.integration_backups',
+                    # Refresh-commit rollback state (utils/commit_state.py); only
+                    # older builds wrote it, and a restored copy would roll back (#813).
+                    '.commit_backups',
+                    'commit_state.json',
                 ])
                 ignored.extend(name for name in files if '.completion' in name)
             return ignored
