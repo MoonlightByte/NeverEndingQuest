@@ -101,6 +101,7 @@ This release brings significant improvements to the user interface, combat exper
   - Clearer player turn prompts
 
 #### Fixed
+- The Thornwood Watch: Bandit Captain Gorvek is now sized for the module's level 1 party. The module had no stat block for him, so the game generated the full-strength bandit captain (65 hit points, three attacks a turn), who could defeat a level 1 party in a round or two. The module now ships his stat block: 27 hit points, AC 15 with Parry, and two attacks a turn (scimitar and dagger). Campaigns that already generated Gorvek keep their copy; a new campaign uses the module's.
 - Video reset issues during 5-second refresh cycles
 - Vertical scrollbar problems in initiative tracker
 - Portrait upload and positioning system
