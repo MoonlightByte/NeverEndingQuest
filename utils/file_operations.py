@@ -72,6 +72,7 @@ from utils.path_transaction_lock import path_transaction_lock
 from utils.transient_filesystem import (
     ON_READ_ONLY_FAIL,
     ON_READ_ONLY_STOP,
+    LockContention,
     ReadOnlySaveStop,
     ReplaceContention,
     check_on_read_only,
@@ -112,41 +113,56 @@ class AtomicFileWriter:
         self.retry_delay = retry_delay
         self.lock_files = {}
     
-    def acquire_lock(self, filepath: str, timeout=None, *, commit_guard=None) -> Optional[int]:
-        """Wait for OS ownership; timeout is retained only for API compatibility."""
+    def acquire_lock(self, filepath: str, timeout=None, *, commit_guard=None,
+                     check_save_stop: bool = False, wait_reporter=None) -> Optional[int]:
+        """Wait for OS ownership; timeout is retained only for API compatibility.
+
+        While another thread or another copy of the game holds the lock, the
+        wait is reported (LockContention, #803). ``check_save_stop`` lets a
+        recorded read-only stop end it; ``wait_reporter`` replaces the status
+        line for a caller outside a live turn.
+        """
         canonical = os.path.normcase(os.path.abspath(os.path.normpath(os.fspath(filepath))))
         runtime_lock_target = os.path.join(
             RUNTIME_LOCKS_DIR, "atomic", hashlib.sha256(os.fsencode(canonical)).hexdigest()
         )
         key = (os.getpid(), threading.get_ident(), canonical)
-        while True:
-            if commit_guard is not None:
-                with commit_guard():
-                    pass
-            ownership = path_transaction_lock(
-                runtime_lock_target, suffix=".lock",
-                timeout_seconds=self.retry_delay, poll_seconds=self.retry_delay,
-            )
-            try:
-                acquired = ownership.__enter__()
-            except OSError as exc:
-                if not is_transient_filesystem_error(exc):
-                    raise
-                time.sleep(self.retry_delay)
-                continue
-            if acquired is None:
-                ownership.__exit__(None, None, None)
-                continue
-            try:
+        contention = LockContention(
+            filepath, check_save_stop=check_save_stop, wait_reporter=wait_reporter
+        )
+        try:
+            while True:
                 if commit_guard is not None:
                     with commit_guard():
                         pass
-                self.lock_files.setdefault(key, []).append(ownership)
-            except BaseException:
-                ownership.__exit__(None, None, None)
-                raise
-            logger.debug("Acquired lock for %s", canonical)
-            return 1
+                ownership = path_transaction_lock(
+                    runtime_lock_target, suffix=".lock",
+                    timeout_seconds=self.retry_delay, poll_seconds=self.retry_delay,
+                )
+                try:
+                    acquired = ownership.__enter__()
+                except OSError as exc:
+                    if not is_transient_filesystem_error(exc):
+                        raise
+                    contention.tick()
+                    time.sleep(self.retry_delay)
+                    continue
+                if acquired is None:
+                    ownership.__exit__(None, None, None)
+                    contention.tick()
+                    continue
+                try:
+                    if commit_guard is not None:
+                        with commit_guard():
+                            pass
+                    self.lock_files.setdefault(key, []).append(ownership)
+                except BaseException:
+                    ownership.__exit__(None, None, None)
+                    raise
+                logger.debug("Acquired lock for %s", canonical)
+                return 1
+        finally:
+            contention.finish()
 
     def release_lock(self, filepath: str):
         """Release only this thread's ownership, retaining the advisory inode."""
@@ -222,7 +238,10 @@ class AtomicFileWriter:
             # Acquire lock if requested
             if acquire_lock:
                 print(f"DEBUG: [FILE_OPS] Attempting to acquire lock for {filepath}")
-                self.acquire_lock(filepath, commit_guard=commit_guard)
+                self.acquire_lock(
+                    filepath, commit_guard=commit_guard,
+                    check_save_stop=on_read_only != ON_READ_ONLY_FAIL,
+                )
                 lock_acquired = True
                 print(f"DEBUG: [FILE_OPS] Lock acquired successfully")
             
