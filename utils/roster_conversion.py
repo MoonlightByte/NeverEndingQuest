@@ -165,7 +165,17 @@ class Game:
                 entries = doc.get("entries", []) if isinstance(doc, dict) else None
                 if not isinstance(entries, list):
                     raise ValueError("no list of entries")
-                self.journal = entries
+                # mentions() reads an entry's location and summary as text;
+                # an entry of another shape gives no evidence (#634).
+                self.journal = [e for e in entries if isinstance(e, dict)
+                                and isinstance(e.get("location"), str)
+                                and isinstance(e.get("summary") or "", str)]
+                if len(self.journal) < len(entries):
+                    from utils.enhanced_logger import warning
+                    warning("ROSTER: %d of journal.json's %d entries are not readable chronicle "
+                            "entries; they are left out of the evidence and play continues"
+                            % (len(entries) - len(self.journal), len(entries)),
+                            category="location_transitions")
             except (OSError, ValueError) as exc:
                 from utils.enhanced_logger import warning
                 warning("ROSTER: journal.json unreadable (%s); the chronicle's evidence "
