@@ -633,7 +633,7 @@ class ModuleBuilder:
                     "name": name,
                     "home": primary[0]["locationId"],
                     "appearances": [o["locationId"] for o in resolved],
-                    "aliases": aliases[:16],
+                    "aliases": aliases,
                     "identity": decision["classification"],
                 })
 

@@ -71,7 +71,12 @@ def load_declared_world(module_path, module_name):
         tracker = None if os.path.exists("party_tracker.json") else {}
         game = roster_conversion.Game(".", modules, paths={module_name: os.fspath(module_path)},
                                       tracker=tracker)
-        source, _ = roster_conversion.world_source(game, roster_conversion.seeds(game, []))
+        notes = []
+        source, _ = roster_conversion.world_source(game, roster_conversion.seeds(game, notes))
+        for kind, text in notes:
+            # Aliases the engine cannot take are said once per load (#647).
+            if kind == "aliases":
+                info(f"MODULE_DECLARATION: {text}", category="module_creation")
         return source
 
     try:

@@ -289,18 +289,22 @@ class Seed:
 DECLARATION = "module_declaration.json"
 
 
-def usable_aliases(name, aliases):
+ENGINE_MAX_ALIASES = 16
+
+
+def usable_aliases(name, aliases, *, limit=ENGINE_MAX_ALIASES):
     """The aliases the engine will take for an occupant named name, in order:
     trimmed, non-empty, no control characters, at most 4096 bytes, neither
     the name nor one already kept, at most 16. The engine refuses the whole
-    world for any other alias, so the rest are dropped."""
+    world for any other alias, so the rest are dropped. limit=None keeps
+    every usable alias, for counting what the 16 leaves out (issue #647)."""
     kept = []
     for a in aliases:
         a = a.strip() if isinstance(a, str) else ""
         if (a and a != name and a not in kept and len(a.encode("utf-8")) <= 4096
                 and not any(unicodedata.category(c) == "Cc" for c in a)):
             kept.append(a)
-    return kept[:16]
+    return kept if limit is None else kept[:limit]
 
 
 def declared_start(module_dir):
@@ -415,7 +419,12 @@ def declared_beings(game, module, notes):
             notes.append(("declaration", "%s: being %r does not match the authored NPCs; derived as before" % (module, name)))
             continue
         aliases = being.get("aliases") if isinstance(being.get("aliases"), list) else []
-        homes[(home, named[home])] = usable_aliases(named[home], aliases)
+        usable = usable_aliases(named[home], aliases, limit=None)
+        if len(usable) > ENGINE_MAX_ALIASES:
+            notes.append(("aliases", "%s: being %r has %d usable aliases; the engine takes %d, so %d are "
+                          "not seeded" % (module, name, len(usable), ENGINE_MAX_ALIASES,
+                                          len(usable) - ENGINE_MAX_ALIASES)))
+        homes[(home, named[home])] = usable[:ENGINE_MAX_ALIASES]
         elsewhere.update((p, n) for p, n in named.items() if p != home)
     for item in data.get("dispositions") if isinstance(data.get("dispositions"), list) else []:
         item = item if isinstance(item, dict) else {}
