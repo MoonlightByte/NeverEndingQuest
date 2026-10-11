@@ -9014,6 +9014,15 @@ def main_game_loop():
         raise
 
 
+# Told once at startup when an unreadable journal.json skips the companion
+# memory build (#623).
+_MEMORY_JOURNAL_UNREADABLE_LINE = (
+    "Your companions' memories could not be rebuilt from the journey chronicle "
+    "this time, because its file could not be read. You can keep playing; "
+    "nothing was changed."
+)
+
+
 def _main_game_loop(startup_authority, turn_authority):
     global needs_conversation_history_update, should_inject_creation_prompt
     from core.combat.invocation import InvocationSupersededError, require_current_invocation
@@ -9063,12 +9072,19 @@ def _main_game_loop(startup_authority, turn_authority):
     except Exception as e:
         debug(f"Startup module hydration skipped (non-fatal): {e}", category="startup")
 
-    # Initialize companion memories from journal if needed
+    # Initialize companion memories from journal if needed. A journal that
+    # cannot be read skips the build for this start and is told once (#623).
+    memory_journal_told = False
     try:
-        from core.memories.initialize_memories import check_and_initialize_on_startup
-        check_and_initialize_on_startup()
+        from core.memories.initialize_memories import (
+            JOURNAL_UNREADABLE,
+            check_and_initialize_on_startup,
+        )
+        if check_and_initialize_on_startup() == JOURNAL_UNREADABLE:
+            display_dm_narration(_MEMORY_JOURNAL_UNREADABLE_LINE, channel="system")
+            memory_journal_told = True
     except Exception as e:
-        debug(f"Could not initialize memories (non-fatal): {e}", category="startup")
+        warning(f"Could not initialize memories (non-fatal): {e}", category="startup")
 
     # W5: one-time seamless upgrade of a pre-feature game to episodic memory.
     # Valid current state does zero work. Missing historical state blocks context
@@ -9082,7 +9098,15 @@ def _main_game_loop(startup_authority, turn_authority):
 
         run_registered_episode_upgrade(progress=default_progress)
     except Exception as e:
-        debug(f"Episodic upgrade skipped (non-fatal): {e}", category="startup")
+        warning(f"Episodic upgrade skipped (non-fatal): {e}", category="startup")
+        if not memory_journal_told and isinstance(e, json.JSONDecodeError):
+            try:
+                from core.memories.initialize_memories import journal_unreadable
+                if journal_unreadable():
+                    display_dm_narration(_MEMORY_JOURNAL_UNREADABLE_LINE, channel="system")
+            except Exception as note_exc:
+                warning(f"Could not check journal.json after the episodic upgrade: {note_exc}",
+                        category="startup")
 
     # Reset startup state for this session. The lease file persists "kickoff_done"
     # from the previous session, which causes claim_kickoff_lease() to return
