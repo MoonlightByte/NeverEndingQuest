@@ -854,11 +854,17 @@ def _prepare_startup_proposal(authored_proposal):
     character, _ = repair_required_ammunition_field(character)
     character, _ = repair_startup_character_sheet(character)
     character = auto_fix_character_data(character)
-    valid, detail = validate_character_with_recovery(character)
+    valid, detail = validate_character_with_recovery(character, mechanics=False)
     if not valid:
         raise ValueError(detail)
     character, mechanics = startup_mechanics(character, provenance=provenance)
     provenance["mechanics_notes"] = mechanics
+    # The ordinary-armor check reads the sheet as the engine left it: a Fighting
+    # Style recorded as level-up writes it, and the engine's armorClass.
+    from utils.startup_mechanics import validate_startup_mechanics
+    valid, detail = validate_startup_mechanics(character)
+    if not valid:
+        raise ValueError(detail)
     try:
         validate(character, safe_json_load("schemas/char_schema.json"))
     except ValidationError as exc:
@@ -1955,7 +1961,7 @@ def startup_mechanics(character, *, provenance=None):
     return character, notes
 
 
-def validate_character_with_recovery(character_data):
+def validate_character_with_recovery(character_data, mechanics=True):
     """Enhanced validation with automatic error recovery and detailed reporting"""
     try:
         schema = safe_json_load("schemas/char_schema.json")
@@ -1967,7 +1973,10 @@ def validate_character_with_recovery(character_data):
         
         # Validate the character data
         validate(character_data, schema)
-        return True, None
+        if not mechanics:
+            return True, None
+        from utils.startup_mechanics import validate_startup_mechanics
+        return validate_startup_mechanics(character_data)
         
     except ValidationError as e:
         # Provide detailed error information

@@ -113,6 +113,9 @@ def test_captured_author_replays_through_real_normalization(wizard, authored):
 @pytest.mark.parametrize("failure", ["unavailable", "gaps"])
 def test_failed_or_incomplete_projection_has_no_engine_certificate(wizard, authored, monkeypatch, failure):
     from core.nql import armor_class
+    # No engine total to fall back on: the authored one must already be right
+    # (Chain Mail 16 + Shield 2 + Defense 1) for the ordinary-armor check.
+    authored["character"]["armorClass"] = 19
     projection = armor_class.Projection(
         copy.deepcopy(authored["character"]), failure == "gaps",
         reason="offline unavailable" if failure == "unavailable" else "",

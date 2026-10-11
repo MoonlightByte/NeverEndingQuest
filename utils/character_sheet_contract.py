@@ -539,6 +539,11 @@ def repair_and_persist_character(
     # Run repair (runtime mode - comprehensive repairs for game execution)
     repaired_data, raw_changes = normalize_for_runtime(character_data, character_type=character_type)
 
+    # Old saves may mark a shield and multiple weapons ready at once. Resolve
+    # that legacy ambiguity once, with a receipt, before engine validation.
+    from core.nql.legacy_loadout import migrate as migrate_legacy_loadout
+    raw_changes = list(raw_changes) + migrate_legacy_loadout(repaired_data)
+
     # Extract field names from changes (e.g., "ammunition=default_list" -> "ammunition")
     changes = [change.split("=", 1)[0] for change in raw_changes]
 
