@@ -1669,6 +1669,16 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
                         record["engine"] = False
                 event["resources"].append(record)
                 break
+    # NUM-B (owner BQ1-BQ3): the swing stands. The engine's option for the swung
+    # row is recorded on the event, and a carried weapon that fits is drawn
+    # (applied by apply_resolution from the record, so a replay matches).
+    if (swings and selected_entry and actor.get("type") in ("player", "npc")
+            and isinstance((characters or {}).get(actor.get("name")), dict)):
+        from core.nql import hands
+        hands_record = hands.after_swing(sheet, selected_entry.get("name"))
+        if hands_record is not None:
+            hands_record["owner"] = actor.get("name")
+            event["hands"] = hands_record
     return resolution
 
 
@@ -3880,6 +3890,17 @@ def apply_resolution(encounter, characters, resolution):
             sheet["temporaryHitPoints"] = max(0, delta["temporaryHitPoints"])
         if "status" in delta:
             sheet["status"] = delta["status"]
+
+    # NUM-B: a weapon drawn after a swing (BQ1); the record holds the absolute value.
+    hands = event.get("hands")
+    draw = hands.get("draw") if isinstance(hands, dict) else None
+    if isinstance(draw, dict):
+        sheet = new_characters.get(hands.get("owner"))
+        rows = sheet.get("equipment") if isinstance(sheet, dict) else None
+        index = draw.get("index")
+        if (isinstance(rows, list) and type(index) is int and 0 <= index < len(rows)
+                and isinstance(rows[index], dict) and rows[index].get("item_name") == draw.get("item_name")):
+            rows[index]["equipped"] = draw.get("equippedAfter") is True
 
     for resource in event.get("resources", []) or []:
         sheet = new_characters.get(resource.get("owner"))
