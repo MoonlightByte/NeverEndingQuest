@@ -1,5 +1,14 @@
 # NeverEndingQuest
 
+## Help build NeverEndingQuest
+
+Find current opportunities, offer a hand, and pick up contributor guidance on
+[NeverEndingQuest's GitMeUp page](https://gitmeup.com/projects/neverendingquest-381865#help).
+Testing, documentation, design and code contributions are welcome. Read
+[GITMEUP.md](GITMEUP.md) and the applicable repository instructions before starting;
+code review and merging stay on GitHub.
+
+
 ## Launch the game: React by default
 
 After installation, run these commands from your game folder with its Python
