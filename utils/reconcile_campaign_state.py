@@ -170,13 +170,21 @@ def _reconcile_campaign_state_locked() -> Dict[str, Any]:
     world_registry = _load_json_dict(WORLD_REGISTRY_FILE)
     registry_readable = isinstance(world_registry.get("modules"), dict)
 
-    def is_offered(item: str) -> bool:
+    def offered_id(item: str) -> str:
         # availableModules offers only joined modules (#720), plus the
         # party's own module, which is never dropped. A module left unjoined
         # still gets its registry stub below, so the refresh can retry it.
-        return _normalize_module_name(item) == module_name or (
-            ModuleStitcher.is_joined_registry_module(world_registry, item)
-        )
+        # A kept name is written as its registry id (#754): the exact name
+        # when the registry joins it, else the name with spaces read as
+        # underscores. "" means the name is not offered.
+        if ModuleStitcher.is_joined_registry_module(world_registry, item):
+            return item
+        normalized = _normalize_module_name(item)
+        if normalized == module_name or ModuleStitcher.is_joined_registry_module(
+            world_registry, normalized
+        ):
+            return normalized
+        return ""
 
     def merge_available_modules(fresh_campaign: Dict[str, Any]) -> bool:
         campaign_available = fresh_campaign.get("availableModules")
@@ -184,19 +192,22 @@ def _reconcile_campaign_state_locked() -> Dict[str, Any]:
         if not isinstance(campaign_available, list):
             campaign_available = []
         # Each start also drops names an older list holds for modules that
-        # are not joined. An unreadable registry drops nothing.
-        filtered_available = [
-            item
-            for item in campaign_available
-            if not _is_system_module_name(item)
-            and (not registry_readable or is_offered(item))
-        ]
+        # are not joined, and writes each kept name once, as its id (#754).
+        # An unreadable registry drops nothing: names are only normalized
+        # and exact repeats removed.
+        filtered_available: List[str] = []
+        for item in campaign_available:
+            if _is_system_module_name(item):
+                continue
+            item = offered_id(item) if registry_readable else _normalize_module_name(item)
+            if item:
+                _append_unique(filtered_available, item)
         if filtered_available != campaign_available:
             changed = True
         campaign_available = filtered_available
         fresh_campaign["availableModules"] = campaign_available
         for mod in canonical_modules:
-            if is_offered(mod):
+            if offered_id(mod):
                 changed = _append_unique(campaign_available, mod) or changed
         return changed
 
