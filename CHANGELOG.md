@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Creating a new adventure no longer shows the DM's narration of it before the module is built (#182). The DM could narrate the party's arrival somewhere that did not exist yet, and when the build failed that narration stayed on screen and in the story. Now a published module is narrated once it exists, and a failed build shows only its notice.
 - Campaign `availableModules` no longer changes order from one start to the next (#761). The module refresh rebuilt the list from a set whenever it had a module to add, so the order followed Python's hash seed; it now keeps the listed order and appends new modules in sorted order, as startup reconciliation does.
 - Leaving a module no longer takes it off campaign `availableModules` while it is still joined to the world (#747). Every crossing completes the module the party leaves, to write the visit summary, and that removed it until the next start, so the DM lost the "Other installed modules" line for the place the party had just left. Now only a module the world registry does not join is removed, and an unreadable registry removes nothing. `completedModules` still means visited and summarized.
 - A start no longer keeps a module in campaign `availableModules` twice under two spellings, such as `The Thornwood Watch` next to `The_Thornwood_Watch` (#754). Each offered module is written once, by its registry id, and a joined module spelled with spaces is kept under its id instead of being dropped.
