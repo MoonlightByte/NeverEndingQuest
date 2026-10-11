@@ -1980,14 +1980,19 @@ class CampaignManager:
                         available = campaign.get("availableModules")
                         if not isinstance(available, list):
                             available = []
-                        current_available = set(available)
-                        missing_modules = world_modules - current_available
+                        # Keep the listed order and append new names sorted,
+                        # so the list does not follow the hash seed (#761).
+                        # An exact repeat is still written once.
+                        current_available = list(dict.fromkeys(available))
+                        missing_modules = world_modules - set(current_available)
                         merge_result["missing_modules"] = missing_modules
                         all_updates = set(newly_integrated) | missing_modules
                         if not all_updates:
                             return False
-                        current_available.update(all_updates)
-                        campaign["availableModules"] = list(current_available)
+                        for name in sorted(all_updates):
+                            if name not in current_available:
+                                current_available.append(name)
+                        campaign["availableModules"] = current_available
                         campaign["lastUpdated"] = datetime.now().isoformat()
                         return True
 
