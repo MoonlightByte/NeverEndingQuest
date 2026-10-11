@@ -24,6 +24,7 @@ import {
   portraitSlug,
   proficientSkills,
   saveRows,
+  allSkillRows,
   str,
 } from './characterData'
 import type { AbilityName } from './characterData'
@@ -277,6 +278,21 @@ export function CharacterSheet({ expanded = false, hideIdentity = false }: { exp
                 {expanded && <span aria-hidden="true">{save.proficient ? PROFICIENT_DOT : UNPROFICIENT_DOT} </span>}{ember ? save.name.slice(0, 3).toUpperCase() : save.name} {!ember && (save.proficient ? PROFICIENT_DOT : UNPROFICIENT_DOT)}
               </span>
               <span className="text-accent">{formatModifier(save.bonus)}</span>
+            </div>
+          ))}
+        </div>
+      </div>}
+
+      {/* every skill with its bonus; proficient ones are marked */}
+      {!expanded && <div className="neq-saving-throws neq-skills mt-3 rounded border border-card bg-panel p-2">
+        <h4 className="font-display text-xs text-[#ffa500]">Skills</h4>
+        <div className="neq-saving-throws-grid neq-skills-grid mt-1 grid grid-cols-2 gap-x-4 gap-y-1">
+          {allSkillRows(stats).map((skill) => (
+            <div key={skill.name} data-proficient={skill.proficient} className="flex justify-between text-sm" aria-label={`${skill.name} ${formatModifier(skill.bonus)}${skill.proficient ? ', proficient' : ''}`} title={`${skill.name}${skill.proficient ? ' — proficient' : ''}`}>
+              <span className={skill.proficient ? 'text-primary' : 'text-secondary'}>
+                <span aria-hidden="true">{skill.proficient ? PROFICIENT_DOT : UNPROFICIENT_DOT} </span>{skill.name}
+              </span>
+              <span className="text-accent">{formatModifier(skill.bonus)}</span>
             </div>
           ))}
         </div>

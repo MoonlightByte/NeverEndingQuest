@@ -75,6 +75,34 @@ def membership_proposals(candidate: str, party: dict) -> list[dict]:
     return proposals
 
 
+def _consent_npc(parameters):
+    """The guardian judges who joins or leaves, not the companion's sheet.
+
+    Level and class/role are mechanical fields the engine fills (an omitted
+    level becomes the party level), so the review packet carries only the
+    name. Otherwise the guardian can reject a supplied level as invented and
+    a missing one as incomplete, leaving no draft it would approve.
+    """
+    if not isinstance(parameters, dict) or not isinstance(parameters.get("npc"), dict):
+        return parameters
+    view = copy.deepcopy(parameters)
+    view["npc"] = {"name": parameters["npc"].get("name")}
+    return view
+
+
+def consent_view(candidate: str, proposals: list[dict]):
+    """Candidate and proposals as the guardian sees them; never published."""
+    data = json.loads(candidate)
+    for action in data.get("actions", []):
+        if isinstance(action, dict) and action.get("action") == "updatePartyNPCs":
+            action["parameters"] = _consent_npc(action.get("parameters"))
+    view = copy.deepcopy(proposals)
+    for proposal in view:
+        if proposal["action"] == "updatePartyNPCs":
+            proposal["parameters"] = _consent_npc(proposal["parameters"])
+    return json.dumps(data, ensure_ascii=True), view
+
+
 def _parse_verdict(raw):
     """None is a malformed verdict, never permission or a made-up correction."""
     try:
@@ -126,12 +154,13 @@ def review_party_membership(
     else:
         config["response_format"] = {"type": "json_object"}
     prompt = Path("prompts/validation/party_guardian_prompt.txt").read_text(encoding="utf-8")
+    review_candidate, review_proposals = consent_view(candidate, proposals)
     packet = {
         "player_input": player_input,
         "accepted_history": accepted_history,
         "canonical_party": party,
-        "candidate": candidate,
-        "membership_proposals": proposals,
+        "candidate": review_candidate,
+        "membership_proposals": review_proposals,
         "review_feedback": review_feedback,
     }
     register_callsite(TASK_ID, "core/npc/party_guardian.py", 138)
