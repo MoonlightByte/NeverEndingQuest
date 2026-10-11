@@ -3594,6 +3594,36 @@ def _combat_start_failed(reason, conversation_history, invocation_claim):
     return {"status": "needs_response", "needs_update": True}
 
 
+def _built_encounter(result_path, returncode):
+    """The encounter id the combat builder saved, or the reason it has none (#812).
+
+    Decided only from the builder's typed result file and exit code, never
+    from its printed lines (colored text broke the old parse). A saved id
+    counts only when its encounter file names the same id.
+    """
+    try:
+        with open(result_path, "r", encoding="utf-8") as result_file:
+            result = json.load(result_file)
+    except (OSError, ValueError):
+        return None, "builder_failed"
+    if not isinstance(result, dict) or result.get("version") != 1:
+        return None, "builder_failed"
+    if result.get("status") != "saved":
+        return None, "builder_no_encounter"
+    encounter_id = result.get("encounterId")
+    if returncode != 0 or not isinstance(encounter_id, str) or not encounter_id.strip():
+        return None, "builder_failed"
+    encounter_path = os.path.join("modules", "encounters", "encounter_%s.json" % encounter_id)
+    try:
+        with open(encounter_path, "r", encoding="utf-8") as encounter_file:
+            saved = json.load(encounter_file)
+    except (OSError, ValueError):
+        return None, "builder_no_encounter"
+    if not isinstance(saved, dict) or saved.get("encounterId") != encounter_id:
+        return None, "builder_no_encounter"
+    return encounter_id, None
+
+
 def process_action(
     action,
     party_tracker_data,
@@ -3729,27 +3759,30 @@ def process_action(
             # Get the path to combat_builder.py relative to the project root
             combat_builder_path = _generator_script_path("combat_builder.py")
             
-            result = subprocess.run(
-                [sys.executable, combat_builder_path],
-                input=json.dumps(action),
-                check=True, capture_output=True, text=True
-            )
+            import shutil
+            import tempfile
+
+            result_dir = tempfile.mkdtemp(prefix="combat_builder_")
+            try:
+                result = subprocess.run(
+                    [sys.executable, combat_builder_path, "--result-file",
+                     os.path.join(result_dir, "result.json")],
+                    input=json.dumps(action),
+                    capture_output=True, text=True
+                )
+                encounter_id, build_failure = _built_encounter(
+                    os.path.join(result_dir, "result.json"), result.returncode
+                )
+            finally:
+                shutil.rmtree(result_dir, ignore_errors=True)
             print(f"[DEBUG ACTION_HANDLER] combat_builder.py completed")
             print(f"[DEBUG ACTION_HANDLER] Output: {result.stdout[:200]}...")  # First 200 chars
             debug(f"SUBPROCESS: combat_builder.py output: {result.stdout}", category="combat_processing")
             debug(f"SUBPROCESS: combat_builder.py status: {result.stderr}", category="combat_processing")
-            info("SUCCESS: Combat encounter created successfully", category="combat_processing")
+            info("SUBPROCESS: combat_builder.py exited %d" % result.returncode, category="combat_processing")
 
-            print(f"[DEBUG ACTION_HANDLER] Checking for success in output...")
-            if "Encounter successfully built and saved to" in result.stdout:
-                # Extract encounter ID from the full path
-                # Example: "modules/encounters/encounter_TW03-E2.json" -> "TW03-E2"
-                for line in result.stdout.split('\n'):
-                    if "Encounter successfully built and saved to" in line:
-                        encounter_path = line.split()[-1]
-                        encounter_id = encounter_path.split('encounter_')[-1].replace('.json', '')
-                        print(f"[DEBUG ACTION_HANDLER] SUCCESS! Encounter created with ID: {encounter_id}")
-                        break
+            if encounter_id:
+                print(f"[DEBUG ACTION_HANDLER] SUCCESS! Encounter created with ID: {encounter_id}")
 
                 # The builder persists an inactive typed candidate. Combat
                 # setup writes the complete history marker and conditionally
@@ -3934,7 +3967,7 @@ def process_action(
                 print(f"[DEBUG ACTION_HANDLER] Full stderr: {result.stderr}")
                 print("[DEBUG ACTION_HANDLER] ========== CREATE ENCOUNTER END WITH FAILURE ==========\n")
                 return _combat_start_failed(
-                    "builder_no_encounter", conversation_history, invocation_claim
+                    build_failure, conversation_history, invocation_claim
                 )
 
         except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):

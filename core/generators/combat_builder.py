@@ -658,7 +658,36 @@ def generate_encounter(encounter_data):
 
     return encounter
 
-def main():
+RESULT_VERSION = 1
+
+
+def _write_result(result_file, status, encounter_id=None, encounter_file=None):
+    """Hand the caller a typed result; printed lines are for people only (#812)."""
+    if not result_file:
+        return True
+    result = {"version": RESULT_VERSION, "status": status}
+    if encounter_id is not None:
+        result["encounterId"] = encounter_id
+        result["encounterFile"] = encounter_file
+    if save_json(result_file, result):
+        return True
+    logging.error(f"Failed to write the builder result to {result_file}")
+    return False
+
+
+def main(argv=None):
+    """Build one encounter from the JSON on stdin.
+
+    Exits 0 only when the encounter is saved, else 1. With --result-file the
+    outcome is also written there as {"version", "status", "encounterId",
+    "encounterFile"}; status is saved, invalid_input, generation_failed or
+    save_failed (#812).
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Build a combat encounter from JSON on stdin.")
+    parser.add_argument("--result-file", default=None)
+    result_file = parser.parse_args(sys.argv[1:] if argv is None else argv).result_file
     logging.debug("Starting combat encounter creation")
     
     # Read input from stdin
@@ -673,16 +702,19 @@ def main():
 
         if "player" not in encounter_data or "monsters" not in encounter_data:
             print(colored("Error: Invalid encounter data format. 'player' and 'monsters' are required.", "red"))
-            return
+            _write_result(result_file, "invalid_input")
+            return 1
 
         # NPCs are optional, so we don't check for their presence
 
     except json.JSONDecodeError:
         print(colored("Error: Invalid JSON format in storyteller input.", "red"))
-        return
+        _write_result(result_file, "invalid_input")
+        return 1
     except KeyError as e:
         print(colored(f"Error: Missing key in JSON structure: {e}", "red"))
-        return
+        _write_result(result_file, "invalid_input")
+        return 1
 
     encounter = generate_encounter(encounter_data)
     
@@ -701,13 +733,20 @@ def main():
                 "[COMBAT_BUILDER] Encounter is durably prepared; "
                 "activation waits for the full combat history marker"
             )
+            if _write_result(result_file, "saved", encounter["encounterId"], encounter_file):
+                return 0
+            return 1
         else:
             logging.error(f"Failed to save encounter to {encounter_file}")
             print(colored(f"Error: Failed to save encounter to {encounter_file}", "red"))
+            _write_result(result_file, "save_failed")
+            return 1
     else:
         print(f"[COMBAT_BUILDER] Encounter generation failed")
         logging.error("Failed to generate encounter due to previous errors.")
         print(colored("Error: Failed to generate encounter due to previous errors.", "red"))
+        _write_result(result_file, "generation_failed")
+        return 1
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
