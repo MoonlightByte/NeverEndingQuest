@@ -195,12 +195,15 @@ def seed_character(character_file, module_name):
         raise BootstrapError(
             "character file %s failed the starting mechanics check: %s"
             % (character_file, validation_error))
-    valid, validation_error = validate_character_with_recovery(
-        character_data, mechanics=False)
-    if not valid:
+    # The kept sheet itself, as the wizard checks it after the projection.
+    from jsonschema import ValidationError, validate
+    from utils.encoding_utils import safe_json_load
+    try:
+        validate(character_data, safe_json_load("schemas/char_schema.json"))
+    except ValidationError as exc:
         raise BootstrapError(
             "character file %s failed schema validation after the starting "
-            "projection: %s" % (character_file, validation_error))
+            "projection: %s" % (character_file, exc.message))
     if not save_character_to_module(character_data, module_name):
         raise BootstrapError(
             "failed to save character %r into module %r"
