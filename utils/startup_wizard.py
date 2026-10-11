@@ -1728,6 +1728,77 @@ def _canonicalize_fighting_style(character, provenance=None):
     return notes
 
 
+def _usage_text(usage):
+    """A use pool's usage for a mechanics note, e.g. "2/2 shortRest (a Short Rest regains 1)"."""
+    if not isinstance(usage, dict):
+        return repr(usage)
+    text = f"{usage.get('current')}/{usage.get('max')} {usage.get('refreshOn')}"
+    if usage.get("shortRestRegain") is not None:
+        text += f" (a Short Rest regains {usage['shortRestRegain']})"
+    return text
+
+
+def _level_one_pools_and_slots(character, provenance=None):
+    """A new level-1 character's feature use pools and spell slots from the SRD
+    progression tables, data/srd/progression.json use_pools and spell or pact
+    slots (#704). Each pool the class has at level 1 is set full on the
+    classFeatures entry that names it (the name before any parenthesis, as
+    level-up matches pools); a pool whose feature the sheet does
+    not list is noted for the reviewer, not invented. Spell slots are set
+    exactly to the class's level-1 slots. A sheet that is not level 1 or not an
+    SRD class is unchanged."""
+    from core.leveling import tables
+    notes = []
+    if not isinstance(character, dict) or character.get("level") != 1:
+        return notes
+    cls = tables.class_key(character)
+    if cls is None:
+        return notes
+    pools = tables.use_pools_at(cls, 1, character.get("abilities"))
+    slots = tables.slot_maxima(cls, 1)
+    record = {
+        "source": "utils.startup_wizard._level_one_pools_and_slots",
+        "tables": "data/srd/progression.json use_pools, spell_slots_by_level, pact_slots_by_level",
+        "pools": {}, "slots": {level: n for level, n in slots.items() if n}, "missing_features": [],
+        "policy": ("Level-1 pools set full on the classFeatures entry that names them; spell slots set "
+                   "exactly to the class table; a missing pool feature is noted, not invented."),
+    }
+    if provenance is not None:
+        provenance["use_pools"] = record
+    features = character.get("classFeatures") if isinstance(character.get("classFeatures"), list) else []
+    for name, pool in pools.items():
+        entry = tables.pool_feature(features, name)
+        if entry is None:
+            record["missing_features"].append(name)
+            notes.append(f"{name}: no classFeatures entry of that name; its level-1 use pool "
+                         f"({_usage_text(pool.usage())}) is not set")
+            continue
+        usage = pool.usage()
+        record["pools"][entry["name"]] = usage
+        if entry.get("usage") != usage:
+            notes.append(f"{entry['name']} usage {_usage_text(entry.get('usage'))} -> {_usage_text(usage)} "
+                         "(SRD level 1)")
+            entry["usage"] = usage
+    casting = character.get("spellcasting")
+    if not isinstance(casting, dict):
+        if record["slots"]:
+            notes.append(f"{character.get('class')} level 1 has spell slots {record['slots']}, but the sheet "
+                         "has no spellcasting object; slots not set")
+        return notes
+    current = casting.get("spellSlots") if isinstance(casting.get("spellSlots"), dict) else {}
+    # A slot level the sheet does not list counts as none; only a listed level
+    # that differs, or a level the table grants, is written.
+    target = {level: {"current": n, "max": n} for level, n in slots.items()
+              if n or (level in current and current[level] != {"current": 0, "max": 0})}
+    changed = [f"{level} {(current.get(level) or {}).get('current', 0)}/{(current.get(level) or {}).get('max', 0)}"
+               f" -> {slot['max']}/{slot['max']}" for level, slot in target.items() if current.get(level) != slot]
+    if changed:
+        casting["spellSlots"] = dict(current, **target)
+        notes.append(f"spellSlots {', '.join(changed)} (SRD level 1)")
+    return notes
+
+
+
 def _normalize_shield_defense(item):
     """A shield's defense is ac_base + ac_bonus (core.nql.genesis). The SRD shield
     is base 2 with no bonus; only a magical shield carries one (#531)."""
@@ -1786,7 +1857,8 @@ def startup_mechanics(character, *, provenance=None):
     points start at that maximum. It is set before the engine projection, so
     the projection's status carries the committed maximum (#696). A chosen
     Fighting Style is then recorded as level-up writes it, one classFeatures
-    entry "Fighting Style: <name>", so the projection sees it (#569). Armor class
+    entry "Fighting Style: <name>", so the projection sees it (#569), and its
+    level-1 use pools and spell slots come from the class tables (#704). Armor class
     comes from the engine's defense explanation, the same projection every
     later write applies (#531).
     Returns the sheet and the notes of what changed (also logged), which the
@@ -1815,6 +1887,7 @@ def startup_mechanics(character, *, provenance=None):
         character["maxHitPoints"] = expected
         character["hitPoints"] = expected
     notes.extend(_canonicalize_fighting_style(character, provenance))
+    notes.extend(_level_one_pools_and_slots(character, provenance))
     from core.nql import armor_class, startup_rows, stats
     # NUM-H3c: exact-name catalog rows (HQ4), then the hand rule's carried rows
     # unequipped, before the projection reads the equipment.
