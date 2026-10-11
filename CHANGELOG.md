@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- In a fight, after a character swings a weapon, the fight event now records the engine's view of that character's hands, and a carried weapon that fits a free hand in its default grip is drawn, so it is in hand for the next turn (NUM-B, Refs #193). The swing itself is never refused or changed. A thrown weapon, a stack such as eight javelins, a grip other than the default, or hands that are full is recorded but not drawn.
+- In a fight, after a character swings a weapon, the fight event now records the engine's view of that character's hands, and a carried weapon that fits a free hand in its default grip is drawn, so it is in hand for the next turn (NUM-B, Refs #193). The swing itself is never refused or changed. A thrown weapon, a stack such as eight javelins, a grip other than the default, or hands that are full is recorded but not drawn. When a weapon is drawn this way, the fight narration now says so ("draws the dagger and attacks"); nothing else about the hands reaches the narration (NUM-B2).
 
 ### Fixed
 - A new module now keeps every alias the DM gave an NPC in its saved module file (#647). The game engine takes at most 16 per NPC; it still gets the first 16 usable ones, and the conversion report and the build log now say how many were left out, instead of the extras being cut silently.
