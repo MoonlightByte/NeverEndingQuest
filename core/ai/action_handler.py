@@ -70,7 +70,6 @@ from utils.capture.live_provider_call import (
 )
 from utils.provider_errors import classify_provider_error
 from core.combat.invocation import InvocationSupersededError
-register_callsite("T013", "core/ai/action_handler.py", 1255)
 register_callsite("T012", "core/ai/action_handler.py", 676)
 import config
 from core.managers.location_manager import get_location_data
@@ -4102,61 +4101,57 @@ def process_action(
         # IDs and could turn an authorized local move into a false module
         # transition. Real module changes use updatePartyTracker and its
         # existing publication transaction instead.
-        pending_archive = None
-        campaign_manager = None
-
         transition_checkpoint = None
-        if pending_archive is None:
-            from core.managers.campaign_manager import (
-                _party_module_transition_lock,
+        from core.managers.campaign_manager import (
+            _party_module_transition_lock,
+        )
+
+        with _party_module_transition_lock():
+            existing_checkpoint = safe_json_load(
+                PENDING_LOCATION_TRANSITION_FILE
             )
-
-            with _party_module_transition_lock():
-                existing_checkpoint = safe_json_load(
-                    PENDING_LOCATION_TRANSITION_FILE
+            if isinstance(existing_checkpoint, dict):
+                return create_return(
+                    status="error",
+                    needs_update=False,
+                    response_data={
+                        "error_message": (
+                            "A prior location transition is awaiting recovery"
+                        ),
+                        "retryable": True,
+                        "error_code": "transition_plan_stale",
+                    },
                 )
-                if isinstance(existing_checkpoint, dict):
-                    return create_return(
-                        status="error",
-                        needs_update=False,
-                        response_data={
-                            "error_message": (
-                                "A prior location transition is awaiting recovery"
-                            ),
-                            "retryable": True,
-                            "error_code": "transition_plan_stale",
-                        },
-                    )
-                transition_checkpoint = _new_current_transition_checkpoint(
-                    module_name=approved_transition_plan.module_name,
-                    origin_area_id=current_area_id,
-                    origin_location_id=current_location_id,
-                    origin_location_name=current_location_name,
-                    destination_location_id=new_location_name_or_id,
-                    destination_location_name=destination_node.get(
-                        "location_name", new_location_name_or_id
-                    ),
-                    destination_area_id=destination_node.get("area_id", ""),
-                    destination_area_name=destination_node.get("area_name", ""),
-                    conversation_history=conversation_history,
-                    deferred_actions=transition_deferred_actions,
-                    origin_party_tracker=authoritative_party,
-                    path=(
-                        ()
-                        if approved_transition_plan.authority == "engine"
-                        else approved_transition_plan.path
-                    ),
-                    authority=approved_transition_plan.authority,
-                    travel_minutes=getattr(approved_transition_plan, "travel_minutes", None),
-                )
-                transition_id = transition_checkpoint["operation_id"]
-                _write_location_transition_checkpoint(transition_checkpoint)
+            transition_checkpoint = _new_current_transition_checkpoint(
+                module_name=approved_transition_plan.module_name,
+                origin_area_id=current_area_id,
+                origin_location_id=current_location_id,
+                origin_location_name=current_location_name,
+                destination_location_id=new_location_name_or_id,
+                destination_location_name=destination_node.get(
+                    "location_name", new_location_name_or_id
+                ),
+                destination_area_id=destination_node.get("area_id", ""),
+                destination_area_name=destination_node.get("area_name", ""),
+                conversation_history=conversation_history,
+                deferred_actions=transition_deferred_actions,
+                origin_party_tracker=authoritative_party,
+                path=(
+                    ()
+                    if approved_transition_plan.authority == "engine"
+                    else approved_transition_plan.path
+                ),
+                authority=approved_transition_plan.authority,
+                travel_minutes=getattr(approved_transition_plan, "travel_minutes", None),
+            )
+            transition_id = transition_checkpoint["operation_id"]
+            _write_location_transition_checkpoint(transition_checkpoint)
 
-            # Required semantic sibling proposals are frozen before movement,
-            # outside the party/module mutation lock. A provider wait can
-            # therefore neither hold the transition fence nor strand a
-            # partially applied player turn.
-            prepare_current_transition_actions(transition_id)
+        # Required semantic sibling proposals are frozen before movement,
+        # outside the party/module mutation lock. A provider wait can
+        # therefore neither hold the transition fence nor strand a
+        # partially applied player turn.
+        prepare_current_transition_actions(transition_id)
         
         # Use enhanced location manager with auto-generated area connectivity ID
         def run_location_transition():
@@ -4174,134 +4169,95 @@ def process_action(
                 },
             )
 
-        if pending_archive is not None:
-            try:
-                transition_prompt, _transitioned_party = (
-                    campaign_manager.publish_location_module_transition(
-                        pending_archive["from_module"],
-                        pending_archive["to_module"],
-                        conversation_history,
-                        pending_archive["completion_id"],
-                        run_location_transition,
+        from core.managers.campaign_manager import (
+            _party_module_transition_lock,
+        )
+
+        while True:
+            with _party_module_transition_lock():
+                try:
+                    locked_party = safe_json_load("party_tracker.json")
+                    locked_valid, locked_error, _locked_context = (
+                        verify_approved_transition_plan(
+                            approved_transition_plan,
+                            party_tracker_data=locked_party,
+                            destination_location_id=new_location_name_or_id,
+                            location_graph=None,
+                            return_context=True,
+                        )
                     )
+                except OSError as exc:
+                    if not is_transient_filesystem_error(exc):
+                        raise
+                else:
+                    if not locked_valid:
+                        pending = load_current_transition_checkpoint(transition_id)
+                        if pending is not None and pending.get("phase") == "planned":
+                            _remove_location_transition_checkpoint()
+                        return create_return(
+                            status="error",
+                            needs_update=False,
+                            response_data={
+                                "error_message": locked_error,
+                                "retryable": True,
+                                "error_code": "transition_plan_stale",
+                            },
+                        )
+                    # Never retry movement here: only the pre-commit reads
+                    # above may wait and reacquire this lock.
+                    transition_result = run_location_transition()
+                    break
+            _interruptible_wait(
+                0.25, transition_scope, "Checking the travel map..."
+            )
+        transition_context = (
+            transition_result if isinstance(transition_result, dict) else None
+        )
+        # handle_location_transition returns its context dict only when the
+        # party moved (#773).
+        movement_committed = transition_context is not None
+        if movement_committed and transition_checkpoint is not None:
+            with _party_module_transition_lock():
+                current_checkpoint = load_current_transition_checkpoint(
+                    transition_id
                 )
-            except ReadOnlySaveStop:
-                raise
-            except Exception as e:
-                error(
-                    "FAILURE: Could not publish cross-module location transition",
-                    exception=e,
-                    category="module_management",
-                )
-                publication_state = _completion_publication_state(
-                    campaign_manager,
-                    pending_archive,
-                )
+                if current_checkpoint is None:
+                    raise RuntimeError(
+                        "current transition checkpoint disappeared before movement receipt"
+                    )
+                current_checkpoint["phase"] = "movement_committed"
+                _write_location_transition_checkpoint(current_checkpoint)
+            # C10a: the engine's party walks the committed path (the
+            # resume walks it again, answered from the record).
+            from core.nql import travel
+            travel.realign(current_checkpoint)
+
+        if movement_committed:
+            reconciliation_status = resolve_current_transition_reconciliation(
+                transition_id, transition_context
+            )
+            if reconciliation_status == "blocked_conflict":
                 return create_return(
                     status="error",
                     needs_update=False,
                     response_data={
-                        "error_message": str(e),
-                        "pending_archive": pending_archive,
-                        "completion_publication_state": publication_state,
-                        "transition_recovery_required": (
-                            publication_state != "absent"
+                        "error_message": (
+                            "The origin location changed while its committed "
+                            "departure was being reconciled. Recovery is "
+                            "required before another turn."
                         ),
+                        "retryable": False,
+                        "error_code": "transition_recovery_conflict",
                     },
                 )
-        else:
-            from core.managers.campaign_manager import (
-                _party_module_transition_lock,
+            departure_summary = resolve_current_transition_departure(
+                transition_id, transition_context
             )
+            transition_context["departure_summary"] = departure_summary
 
-            while True:
-                with _party_module_transition_lock():
-                    try:
-                        locked_party = safe_json_load("party_tracker.json")
-                        locked_valid, locked_error, _locked_context = (
-                            verify_approved_transition_plan(
-                                approved_transition_plan,
-                                party_tracker_data=locked_party,
-                                destination_location_id=new_location_name_or_id,
-                                location_graph=None,
-                                return_context=True,
-                            )
-                        )
-                    except OSError as exc:
-                        if not is_transient_filesystem_error(exc):
-                            raise
-                    else:
-                        if not locked_valid:
-                            pending = load_current_transition_checkpoint(transition_id)
-                            if pending is not None and pending.get("phase") == "planned":
-                                _remove_location_transition_checkpoint()
-                            return create_return(
-                                status="error",
-                                needs_update=False,
-                                response_data={
-                                    "error_message": locked_error,
-                                    "retryable": True,
-                                    "error_code": "transition_plan_stale",
-                                },
-                            )
-                        # Never retry movement here: only the pre-commit reads
-                        # above may wait and reacquire this lock.
-                        transition_result = run_location_transition()
-                        break
-                _interruptible_wait(
-                    0.25, transition_scope, "Checking the travel map..."
-                )
-            transition_context = (
-                transition_result if isinstance(transition_result, dict) else None
-            )
-            transition_prompt = (
-                transition_context.get("transition_prompt")
-                if transition_context is not None
-                else transition_result
-            )
-            if transition_prompt and transition_checkpoint is not None:
-                with _party_module_transition_lock():
-                    current_checkpoint = load_current_transition_checkpoint(
-                        transition_id
-                    )
-                    if current_checkpoint is None:
-                        raise RuntimeError(
-                            "current transition checkpoint disappeared before movement receipt"
-                        )
-                    current_checkpoint["phase"] = "movement_committed"
-                    _write_location_transition_checkpoint(current_checkpoint)
-                # C10a: the engine's party walks the committed path (the
-                # resume walks it again, answered from the record).
-                from core.nql import travel
-                travel.realign(current_checkpoint)
-
-            if transition_prompt and transition_context is not None:
-                reconciliation_status = resolve_current_transition_reconciliation(
-                    transition_id, transition_context
-                )
-                if reconciliation_status == "blocked_conflict":
-                    return create_return(
-                        status="error",
-                        needs_update=False,
-                        response_data={
-                            "error_message": (
-                                "The origin location changed while its committed "
-                                "departure was being reconciled. Recovery is "
-                                "required before another turn."
-                            ),
-                            "retryable": False,
-                            "error_code": "transition_recovery_conflict",
-                        },
-                    )
-                departure_summary = resolve_current_transition_departure(
-                    transition_id, transition_context
-                )
-                transition_context["departure_summary"] = departure_summary
-
-        if transition_prompt:
+        if movement_committed:
             info("SUCCESS: Location movement and departure state committed", category="location_transitions")
             response_data = {
-                "transition_prompt": transition_prompt,
                 "departure_summary": transition_context.get("departure_summary"),
             }
             if transition_checkpoint is not None:
