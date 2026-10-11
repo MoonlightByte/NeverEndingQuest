@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Completing a module no longer adds module names that are not joined to the world to campaign `availableModules` (#746). The names come from the module summary (or the party tracker when that export fails) and are written by the model; now only a joined module is added, by its id ("The Thornwood Watch" counts as `The_Thornwood_Watch`). The summary still records the names as written.
 - A module that is installed but not joined to the world, for example because its files did not pass the checks, is no longer offered to the DM or reachable by travel (#720). Campaign `availableModules` lists only joined modules and the party's own module, and each start removes other names an older save still lists. The DM's installed-module references leave such a module out. A move into it is refused before anything changes: the party stays where it is and the DM is told that place cannot be reached yet.
 - Legacy character, item, quest, spell and save text now displays literally, including quoted names in NPC and saved-game buttons. Tooltips preserve descriptions without interpreting embedded HTML.
 - A campaign reset no longer copies `modules/.integration_backups` into its safety backup. That folder, and any copy of it under `modules/backups/campaign_backup_*/modules/`, is left over from older builds, is never read by the game, and can be deleted by hand (#614).
