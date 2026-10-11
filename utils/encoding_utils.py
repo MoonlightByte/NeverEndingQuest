@@ -40,6 +40,7 @@ from utils.transient_filesystem import (
     ON_READ_ONLY_FAIL,
     ON_READ_ONLY_STOP,
     ReadOnlySaveStop,
+    ReplaceContention,
     check_on_read_only,
     raise_if_save_stopped,
     record_save_stop,
@@ -250,6 +251,9 @@ def safe_json_dump(data: Any, filepath: str, *, commit_guard=None,
         ),
     )
 
+    contention = ReplaceContention(
+        filepath, check_save_stop=on_read_only != ON_READ_ONLY_FAIL
+    )
     try:
         with open(temporary_path, 'w', encoding='utf-8') as f:
             json.dump(clean_data, f, **default_kwargs)
@@ -262,7 +266,8 @@ def safe_json_dump(data: Any, filepath: str, *, commit_guard=None,
         # writer). Retain the write until the transient sharing lock clears.
         # A read-only target never clears by waiting, so the save stops the
         # session, or raises for a caller that passed on_read_only="raise" or
-        # "fail" (issue #654).
+        # "fail" (issue #654). The wait is reported and, during a live turn,
+        # shown on screen; it still never gives up on a timer (#653 item 6).
         while True:
             try:
                 with commit_guard() if commit_guard is not None else nullcontext():
@@ -277,7 +282,7 @@ def safe_json_dump(data: Any, filepath: str, *, commit_guard=None,
                         record_save_stop(filepath)
                         raise ReadOnlySaveStop(filepath) from replace_error
                     raise
-                time.sleep(0.1)
+                contention.tick(winerror)
 
         # Persist the directory entry where the platform supports fsync on a
         # directory. Windows does not expose an equivalent through os.open.
@@ -288,6 +293,7 @@ def safe_json_dump(data: Any, filepath: str, *, commit_guard=None,
             finally:
                 os.close(directory_fd)
     finally:
+        contention.finish()
         if os.path.exists(temporary_path):
             os.remove(temporary_path)
 
