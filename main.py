@@ -157,7 +157,7 @@ from core.managers.status_manager import (
 
 # Import atomic file operations
 from utils.file_operations import safe_write_json, safe_read_json
-from utils.module_path_manager import ModulePathManager
+from utils.module_path_manager import ActiveModuleUnavailable, ModulePathManager
 from core.managers.campaign_manager import CampaignManager
 from core.ai.inventory_context_integration import (
     build_enhanced_dm_note,
@@ -8274,6 +8274,20 @@ def main_game_loop():
             finish_live_turn_scope(scope)
             scope.quiescent.wait()
         return
+    except ActiveModuleUnavailable as exc:
+        # The active module could not be read, and no other module is used.
+        # Tell the player once; the terminal pauses on the shared menu, the
+        # web session ends cleanly (issue #448).
+        scope = get_live_turn_scope()
+        if scope is not None:
+            finish_live_turn_scope(scope)
+            scope.quiescent.wait()
+        warning(f"ACTIVE MODULE: {exc}", category="session_management")
+        display_dm_narration(str(exc), channel="system")
+        if hasattr(sys.stdin, "queue"):
+            return
+        from updates.save_game_manager import SaveGameManager
+        return _terminal_recovery_menu(SaveGameManager())
     except BaseException:
         abort_live_turn_scope()
         raise
@@ -8464,6 +8478,8 @@ def _main_game_loop(startup_authority, turn_authority):
             )
     except LiveProviderSuperseded:
         return
+    except ActiveModuleUnavailable:
+        raise
     except Exception as e:
         error(f"FAILURE: Startup wizard failed", exception=e, category="startup")
         return
@@ -10113,7 +10129,7 @@ def _review_fresh_membership_candidate(
         validation_prompt=load_validation_prompt(), srd_context=None,
         npc_voice_batch=None, invocation_claim=invocation_claim,
         live_turn_scope=get_live_provider_scope(),
-        path_manager=ModulePathManager(str(party.get("module", "")).replace(" ", "_")),
+        path_manager=ModulePathManager(str(party.get("module") or "").replace(" ", "_")),
         location_graph=location_graph, detached_context=detached_context,
         normalization=record if normalized else None,
         campaign_end=False,
@@ -11146,7 +11162,15 @@ def main():
     global location_graph
     print("DEBUG: [LocationGraph] Initializing global graph for game session...")
     location_graph = LocationGraph()
-    location_graph.load_module_data()
+    pending_result = None
+    try:
+        location_graph.load_module_data()
+    except ActiveModuleUnavailable as exc:
+        # The same one line and pause menu as main_game_loop (issue #448).
+        warning(f"ACTIVE MODULE: {exc}", category="session_management")
+        display_dm_narration(str(exc), channel="system")
+        from updates.save_game_manager import SaveGameManager
+        pending_result = _terminal_recovery_menu(SaveGameManager())
     print(f"DEBUG: [LocationGraph] Initialization complete. Total nodes loaded: {len(location_graph.nodes)}")
     print(f"DEBUG: [LocationGraph] Total edges loaded: {sum(len(edges) for edges in location_graph.edges.values())}")
     if len(location_graph.nodes) > 0:
@@ -11156,7 +11180,8 @@ def main():
 
     # Continue with normal game loop
     while True:
-        result = main_game_loop()
+        result = pending_result if pending_result is not None else main_game_loop()
+        pending_result = None
         if isinstance(result, _TravelRecoveryControl):
             while result.kind == 'reset':
                 from utils.reset_campaign import perform_reset_logic
