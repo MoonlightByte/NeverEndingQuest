@@ -103,6 +103,30 @@ def _lifecycle_wait_reporter(operation):
 
     return report
 
+
+def _busy_file_wait_reporter(operation):
+    """Report one Save/Load step waiting for a busy file (#826).
+
+    Silent below one second, so an instant retry does not blame another
+    program.
+    """
+    last_second = [0]
+
+    def report(elapsed):
+        second = int(elapsed)
+        if second < 1 or second == last_second[0]:
+            return
+        last_second[0] = second
+        from core.managers.status_manager import status_manager
+
+        status_manager.update_status(
+            "%s is waiting for a file another program is using (%d seconds)"
+            % (operation, second),
+            True,
+        )
+
+    return report
+
 # Versioned rules guidance ships with the application. It is never campaign
 # state, and an older saved-game folder must not overwrite a newer installation.
 APPLICATION_OWNED_REFERENCE_FILES = frozenset(
@@ -202,7 +226,7 @@ class SaveGameManager:
         from utils.transient_filesystem import is_transient_filesystem_error
 
         started = time.monotonic()
-        report = _lifecycle_wait_reporter(wait_label)
+        report = _busy_file_wait_reporter(wait_label)
         while True:
             if cancel_check is not None:
                 cancel_check()
