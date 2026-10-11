@@ -1988,12 +1988,8 @@ def _append_combat_encounter_to_current_area(current_location_id, new_encounter)
         return True
 
 
-def combat_record_exit_kind(encounter_id):
-    """The typed combatState.pipelineMode of a finished encounter (#543).
-
-    None when the encounter record is missing or unreadable; the marker then
-    states the contract that holds for every exit.
-    """
+def _combat_record_state(encounter_id):
+    """The combatState of a finished encounter, or None when unreadable."""
     if not encounter_id:
         return None
     try:
@@ -2003,10 +1999,32 @@ def combat_record_exit_kind(encounter_id):
     except Exception:
         return None
     state = encounter.get("combatState") if isinstance(encounter, dict) else None
-    return state.get("pipelineMode") if isinstance(state, dict) else None
+    return state if isinstance(state, dict) else None
 
 
-def render_combat_record_marker(summary_line, exit_kind=None):
+def combat_record_exit_kind(encounter_id):
+    """The typed combatState.pipelineMode of a finished encounter (#543).
+
+    None when the encounter record is missing or unreadable; the marker then
+    states the contract that holds for every exit.
+    """
+    state = _combat_record_state(encounter_id)
+    return state.get("pipelineMode") if state else None
+
+
+def combat_record_xp_receipt(encounter_id):
+    """The combat XP each member was awarded, from the typed receipt (#726).
+
+    None when the encounter has no receipt (an older save or a fight that
+    never applied rewards); the marker then carries no XP line.
+    """
+    state = _combat_record_state(encounter_id)
+    completion = state.get("completion") if state else None
+    receipt = completion.get("appliedRewards") if isinstance(completion, dict) else None
+    return dict(receipt) if isinstance(receipt, dict) and receipt else None
+
+
+def render_combat_record_marker(summary_line, exit_kind=None, xp_receipt=None):
     """Return the historical combat record appended to the main history.
 
     ``summary_line`` is the "Combat Summary: ..." line. The normal flow and the
@@ -2018,6 +2036,10 @@ def render_combat_record_marker(summary_line, exit_kind=None):
     never adds an item or currency; the legacy exit runs the fight's own
     character updates, which may. The record states only what that exit wrote,
     so a summary's narrated loot is never presented as owned.
+
+    ``xp_receipt`` is the encounter's typed combat XP receipt (#726). On the
+    agentic exit it is stated as data, so the amount already awarded is a fact
+    rather than something read back out of the summary's prose.
     """
     if exit_kind == "agentic":
         contract = (
@@ -2028,6 +2050,12 @@ def render_combat_record_marker(summary_line, exit_kind=None):
             "this summary describes being taken is owned only once a later "
             "accepted action adds it and the character sheet lists it."
         )
+        if xp_receipt:
+            contract += (
+                "\nCombat XP already applied by the combat system: "
+                + json.dumps(xp_receipt, sort_keys=True)
+                + "."
+            )
     else:
         contract = (
             "IMPORTANT: The changes this fight's turns applied are on the current "

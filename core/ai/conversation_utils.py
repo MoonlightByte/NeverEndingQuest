@@ -1034,7 +1034,8 @@ def update_conversation_history(
                 current_location_id, party_tracker_data.get("module", "") if party_tracker_data else ""
             )
         except Exception as _exc:  # the context is never the reason a turn stops
-            print(f"DEBUG: [update_conversation_history] roster record unavailable: {_exc}")
+            warning(f"[update_conversation_history] roster record unavailable: {_exc}",
+                    category="conversation_history")
             _record = None
         if _record is not None:
             # P4-f: who is here is the engine's view (`occupants`, with the

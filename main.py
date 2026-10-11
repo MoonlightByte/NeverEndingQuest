@@ -114,7 +114,8 @@ except:
 
 # Import other necessary modules (config is now patched)
 from core.managers.combat_manager import (
-    combat_record_exit_kind, run_combat_simulation, render_combat_record_marker,
+    combat_record_exit_kind, combat_record_xp_receipt, run_combat_simulation,
+    render_combat_record_marker,
 )
 from core.combat.down_scene import (
     MAIN_DOWN_BANNER,
@@ -1390,6 +1391,35 @@ def exit_game():
     print("Fond farewell until we meet again!")
     exit()
 
+def _resume_guidance():
+    """How the returning-player narration should read; restates a check that still awaits the player's dice."""
+    guidance = (
+        "As the narrator, welcome the player back to the table in a sentence. In the fiction no time has passed: "
+        "characters do not remark on the player having been away. Give a brief present-tense reminder of where "
+        "they are, who is with them and what was just happening, without retelling the whole adventure. "
+    )
+    try:
+        from core.managers import checks_state
+        from core.nql import checks
+        pending = checks_state.pending_checks()
+    except Exception:
+        pending = []
+    if pending:
+        entry = pending[0]
+        attempt = entry.get("reason") or checks.label(entry.get("stat"))
+        guidance += (
+            "A check is still waiting for the player's dice (" + str(entry.get("characterName")) + ": "
+            + checks.label(entry.get("stat")) + ", " + str(attempt) + "). Remind them what they were attempting and "
+            "that the roll is theirs to make; do not ask for a new action and do not narrate the outcome. "
+        )
+    else:
+        guidance += "End on an open moment for the player's next action. "
+    return guidance + (
+        "IMPORTANT: Do NOT use transitionLocation action - the party is already at their current location. "
+        "Just provide narrative and prompts."
+    )
+
+
 def check_and_inject_return_message(conversation_history, is_combat_active=False, location_note=""):
     """
     Checks if a 'player has returned' message needs to be injected at startup.
@@ -1454,7 +1484,7 @@ def check_and_inject_return_message(conversation_history, is_combat_active=False
     # top of this function still matches; empty keeps the note byte-identical.
     return_message = {
         "role": "user",
-        "content": "Dungeon Master Note: Resume the game, the player has returned. " + location_note + "Welcome the player back warmly. Have the party members acknowledge their return with brief in-character reactions. Provide a concise atmospheric recap of the immediate situation and surroundings, then naturally prompt for the player's next action while maintaining immersion in the ongoing narrative. IMPORTANT: Do NOT use transitionLocation action - the party is already at their current location. Just provide narrative and prompts."
+        "content": "Dungeon Master Note: Resume the game, the player has returned. " + location_note + _resume_guidance()
     }
     conversation_history.append(return_message)
     debug("STATE_CHANGE: Injected 'player has returned' message at startup", category="session_management")
@@ -5893,10 +5923,10 @@ def _complete_committed_module_followup_in_scope(
         return fallback
 
 
-def _agentic_post_combat_narration_pass(party_tracker_data):
-    """Return whether this response follows an agentic authoritative commit."""
+def _agentic_post_combat_encounter(party_tracker_data):
+    """Return the agentic encounter this response follows, or None."""
     if not getattr(process_ai_response, "_just_finished_combat", False):
-        return False
+        return None
     # One combat-return path recurses before the caller's in-memory tracker is
     # refreshed.  The committed tracker on disk is authoritative at this
     # boundary; otherwise a valid post-combat echo can bypass this gate.
@@ -5906,15 +5936,66 @@ def _agentic_post_combat_narration_pass(party_tracker_data):
     world = (party_tracker_data or {}).get("worldConditions") or {}
     encounter_id = world.get("lastCompletedEncounter")
     if not encounter_id:
-        return False
+        return None
     encounter = safe_json_load(
         os.path.join("modules", "encounters", "encounter_%s.json" % encounter_id)
     )
-    return (
+    if (
         isinstance(encounter, dict)
         and ((encounter.get("combatState") or {}).get("pipelineMode") == "agentic")
         and ((encounter.get("combatState") or {}).get("phase") == "complete")
-    )
+    ):
+        return encounter
+    return None
+
+
+def _agentic_post_combat_narration_pass(party_tracker_data):
+    """Return whether this response follows an agentic authoritative commit."""
+    return _agentic_post_combat_encounter(party_tracker_data) is not None
+
+
+def _agentic_post_combat_xp_receipt(encounter):
+    """The encounter's typed combat XP receipt {member: amount} (#726), or {}."""
+    completion = ((encounter or {}).get("combatState") or {}).get("completion")
+    receipt = completion.get("appliedRewards") if isinstance(completion, dict) else None
+    return receipt if isinstance(receipt, dict) else {}
+
+
+def _agentic_post_combat_xp_echo(action, xp_receipt):
+    """Return whether an award repeats this fight's combat XP exactly (#726).
+
+    Combat already awarded each member the amount its receipt lists. An
+    awardExperience in the automatic post-combat pass is that award again only
+    when it names the same member (by the award's own character resolution)
+    and carries the same amount; any other award, such as quest XP, runs.
+    """
+    if not (
+        isinstance(action, dict)
+        and action.get("action") == "awardExperience"
+        and xp_receipt
+    ):
+        return False
+    from core.managers.effects_runtime import _resolve_character
+    from core.nql import experience
+
+    parameters = action.get("parameters") or {}
+    amount = experience.normalize_amount(parameters.get("amount"))
+    name = str(parameters.get("characterName") or "").strip()
+    if amount is None or not name:
+        return False
+    try:
+        award_path = os.path.abspath(_resolve_character(name)[2])
+    except Exception:
+        return False
+    for member, received in xp_receipt.items():
+        if received != amount:
+            continue
+        try:
+            if os.path.abspath(_resolve_character(member)[2]) == award_path:
+                return True
+        except Exception:
+            continue
+    return False
 
 
 def _agentic_post_combat_engine_echo(action):
@@ -7313,7 +7394,21 @@ def process_ai_response(
         # If not a transition or levelup, proceed with normal processing
         narration = parsed_response.get("narration", "")
         sanitized_narration = sanitize_text(narration)
-        display_dm_narration(sanitized_narration)
+        # A reply whose only action is createNewModule narrates a module that
+        # does not exist yet, so its narration is held, as a transition holds
+        # its departure narration (#182). A published build is narrated by the
+        # DM's post-publish follow-up; a failed build shows only its system
+        # line. The stored reply leaves out the narration that was not shown.
+        if (
+            len(actions) == 1
+            and isinstance(actions[0], dict)
+            and actions[0].get("action") == action_handler.ACTION_CREATE_NEW_MODULE
+        ):
+            held_reply = dict(parsed_response)
+            held_reply["narration"] = ""
+            response = json.dumps(held_reply)
+        else:
+            display_dm_narration(sanitized_narration)
 
         actions_processed = False
         
@@ -7323,13 +7418,20 @@ def process_ai_response(
             debug(f"DEBUG:   Action {i+1}: {action.get('action', 'unknown')}", category="character_updates")
         
         # Filter committed combat echoes without changing accepted action order.
-        if any(action.get("action") == "updateCharacterInfo" for action in actions) and _agentic_post_combat_narration_pass(
-            party_tracker_data
+        post_combat_encounter = None
+        if any(
+            action.get("action") in ("updateCharacterInfo", "awardExperience")
+            for action in actions
         ):
+            post_combat_encounter = _agentic_post_combat_encounter(party_tracker_data)
+        if post_combat_encounter is not None:
+            xp_receipt = _agentic_post_combat_xp_receipt(post_combat_encounter)
             retained_actions = []
             dropped_actions = []
             for action in actions:
-                if _agentic_post_combat_engine_echo(action):
+                if _agentic_post_combat_engine_echo(action) or _agentic_post_combat_xp_echo(
+                    action, xp_receipt
+                ):
                     dropped_actions.append(action)
                     debug(
                         "STATE_CHANGE: Ignoring an agentic post-combat "
@@ -7662,15 +7764,21 @@ def process_ai_response(
             "retryable": False,
         }
     except json.JSONDecodeError as e:
-        print(f"Error: Unable to parse AI response as JSON: {e}")
-        print(f"Problematic response: {response}")
-        sanitized_response = sanitize_text(response)
-        display_dm_narration(sanitized_response)
-        # Even in error case, append to history
-        assistant_message = {"role": "assistant", "content": response}
-        conversation_history.append(assistant_message)
-        save_conversation_history(conversation_history)
-        return assistant_message
+        # The model reply was parsed before this try (#621), so a
+        # JSONDecodeError here comes from a game file or helper read while
+        # applying it. It ends the turn like any other action failure.
+        error(
+            "FAILURE: Response processing hit unreadable JSON outside the "
+            "model reply",
+            exception=e,
+            category="action_processing",
+        )
+        return _handle_ordinary_action_failure(
+            {"status": "error", "success": False},
+            response,
+            None,
+            conversation_history,
+        )
     finally:
         response_fences.close()
 
@@ -8935,6 +9043,15 @@ def main_game_loop():
         raise
 
 
+# Told once at startup when an unreadable journal.json skips the companion
+# memory build (#623).
+_MEMORY_JOURNAL_UNREADABLE_LINE = (
+    "Your companions' memories could not be rebuilt from the journey chronicle "
+    "this time, because its file could not be read. You can keep playing; "
+    "nothing was changed."
+)
+
+
 def _main_game_loop(startup_authority, turn_authority):
     global needs_conversation_history_update, should_inject_creation_prompt
     from core.combat.invocation import InvocationSupersededError, require_current_invocation
@@ -8984,12 +9101,19 @@ def _main_game_loop(startup_authority, turn_authority):
     except Exception as e:
         debug(f"Startup module hydration skipped (non-fatal): {e}", category="startup")
 
-    # Initialize companion memories from journal if needed
+    # Initialize companion memories from journal if needed. A journal that
+    # cannot be read skips the build for this start and is told once (#623).
+    memory_journal_told = False
     try:
-        from core.memories.initialize_memories import check_and_initialize_on_startup
-        check_and_initialize_on_startup()
+        from core.memories.initialize_memories import (
+            JOURNAL_UNREADABLE,
+            check_and_initialize_on_startup,
+        )
+        if check_and_initialize_on_startup() == JOURNAL_UNREADABLE:
+            display_dm_narration(_MEMORY_JOURNAL_UNREADABLE_LINE, channel="system")
+            memory_journal_told = True
     except Exception as e:
-        debug(f"Could not initialize memories (non-fatal): {e}", category="startup")
+        warning(f"Could not initialize memories (non-fatal): {e}", category="startup")
 
     # W5: one-time seamless upgrade of a pre-feature game to episodic memory.
     # Valid current state does zero work. Missing historical state blocks context
@@ -9003,7 +9127,15 @@ def _main_game_loop(startup_authority, turn_authority):
 
         run_registered_episode_upgrade(progress=default_progress)
     except Exception as e:
-        debug(f"Episodic upgrade skipped (non-fatal): {e}", category="startup")
+        warning(f"Episodic upgrade skipped (non-fatal): {e}", category="startup")
+        if not memory_journal_told and isinstance(e, json.JSONDecodeError):
+            try:
+                from core.memories.initialize_memories import journal_unreadable
+                if journal_unreadable():
+                    display_dm_narration(_MEMORY_JOURNAL_UNREADABLE_LINE, channel="system")
+            except Exception as note_exc:
+                warning(f"Could not check journal.json after the episodic upgrade: {note_exc}",
+                        category="startup")
 
     # Reset startup state for this session. The lease file persists "kickoff_done"
     # from the previous session, which causes claim_kickoff_lease() to return
@@ -9399,6 +9531,7 @@ def _main_game_loop(startup_authority, turn_authority):
             combat_summary_message = render_combat_record_marker(
                 "Combat Summary: " + dialogue_summary,
                 combat_record_exit_kind(active_encounter_id),
+                combat_record_xp_receipt(active_encounter_id),
             )
             conversation_history.append({"role": "user", "content": combat_summary_message})
             debug("STATE_CHANGE: Appended combat summary to main history after resumed session.", category="session_management")
@@ -9461,7 +9594,7 @@ def _main_game_loop(startup_authority, turn_authority):
             if isinstance(post_combat_result, dict) and post_combat_result.get("status") in {
                 "provider_error", "travel_content_unavailable", "review_exhausted",
             }:
-                display_dm_narration(post_combat_result["player_message"])
+                display_dm_narration(_followup_failure_message(post_combat_result))
             if (
                 isinstance(post_combat_result, dict)
                 and (
@@ -10516,7 +10649,7 @@ def _main_game_loop(startup_authority, turn_authority):
             }:
                 # Only the new followup was refused. Its accepted parent beat
                 # remains committed; ordinary end-of-turn cleanup still runs.
-                display_dm_narration(final_result["player_message"])
+                display_dm_narration(_followup_failure_message(final_result))
 
             # After processing, we only need to check for control flow signals.
             # Everything else (including history updates) has been handled by process_ai_response.
@@ -10852,6 +10985,21 @@ _DM_REVIEW_EXHAUSTED_MESSAGE = (
     "Nothing in your game was changed. The DM could not settle a response "
     "for that action. You can try it again one step at a time."
 )
+# #735: a follow-up review's failure, shown after an earlier beat of the turn
+# may already have committed (so "Nothing in your game was changed" is false).
+_FOLLOWUP_NOT_APPLIED_MESSAGE = (
+    "That last response could not be completed, so it was not applied. "
+    "You can try that action again."
+)
+
+
+def _followup_failure_message(result):
+    """The line a failed follow-up result shows the player (#735)."""
+    if result.get("status") == "review_exhausted":
+        return _FOLLOWUP_NOT_APPLIED_MESSAGE
+    return result.get("player_message") or _FOLLOWUP_NOT_APPLIED_MESSAGE
+
+
 # #488: the fact a misordered travel draft lacks. Code checks only the order.
 _TRAVEL_ORDER_FACT = (
     "Only the travel's own bookkeeping (such as updateTime) may follow it; "
@@ -11172,6 +11320,22 @@ def _review_dm_candidate(
                         planner_projection = {"module": candidate_module, **target_projection}
                     except OSError as exc:
                         return content_unavailable()
+                    except action_handler.ModuleNotJoinedError as exc:
+                        # #720: no ids can fix this destination, so the DM is
+                        # told to keep the party here instead of retrying it.
+                        retry_count += 1
+                        transition_check_passed = False
+                        rejected_candidate = ai_response_content
+                        retry_correction = (
+                            "The previous structured response was rejected "
+                            "before mutation: %s. Do not move the party or "
+                            "narrate an arrival there. Tell the player that "
+                            "place cannot be reached yet, keep the party where "
+                            "it is, and invite the next action. Return the "
+                            "complete corrected JSON."
+                            % str(exc)
+                        )
+                        review_retry_status(retry_count)
                     except ValueError as exc:
                         retry_count += 1
                         transition_check_passed = False

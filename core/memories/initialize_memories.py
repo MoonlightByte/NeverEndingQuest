@@ -9,6 +9,20 @@ from pathlib import Path
 from utils.enhanced_logger import debug, info, warning
 from utils.encoding_utils import safe_json_load
 
+# check_and_initialize_on_startup's result when journal.json cannot be read (#623).
+JOURNAL_UNREADABLE = "journal_unreadable"
+
+
+def journal_unreadable(journal_path="journal.json"):
+    """The parse error when journal.json exists but cannot be read, else None."""
+    if not Path(journal_path).exists():
+        return None
+    try:
+        safe_json_load(journal_path)
+    except json.JSONDecodeError as e:
+        return str(e)
+    return None
+
 def initialize_memories_if_needed():
     """
     Check if memories need initialization and create them from journal if needed.
@@ -30,7 +44,14 @@ def initialize_memories_if_needed():
         return False
 
     # Load journal
-    journal_data = safe_json_load(journal_path)
+    try:
+        journal_data = safe_json_load(journal_path)
+    except json.JSONDecodeError as e:
+        # An unreadable chronicle skips the build for this start; play
+        # continues, and the chronicle sets the file aside at its next read.
+        warning("MEMORY: journal.json could not be read (%s); companion memories are not "
+                "built from it this session and play continues" % e, category="startup")
+        return JOURNAL_UNREADABLE
     if not journal_data or not journal_data.get('entries'):
         debug("initialize_memories", "Journal empty or invalid, skipping memory initialization")
         return False
@@ -125,7 +146,10 @@ def check_and_initialize_on_startup():
     memory_dir.mkdir(parents=True, exist_ok=True)
 
     # Initialize if needed
-    if initialize_memories_if_needed():
+    result = initialize_memories_if_needed()
+    if result == JOURNAL_UNREADABLE:
+        return JOURNAL_UNREADABLE
+    if result:
         info("initialize_memories", "Memory system initialized from existing journal")
     else:
         debug("initialize_memories", "Memory initialization not needed or not possible")

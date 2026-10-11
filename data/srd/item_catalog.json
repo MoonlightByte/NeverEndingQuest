@@ -1,5 +1,5 @@
 {
- "schema": "srd-item-catalog/3",
+ "schema": "srd-item-catalog/4",
  "ruleset": "SRD 5.2.1",
  "sources": {
   "document": "System Reference Document 5.2.1 (SRD_CC_v5.2.1.pdf)",
@@ -19,7 +19,9 @@
   "v3 adds 74 SRD magic items with charge rules (NQL docs/ITEM_CHARGES.md): 50 with charges and 24 with uses per dawn (charges N, regain all at dawn). They come from drafts/build_charged_draft.py, checked by drafts/check_charged_draft.py and reviewed by the NEQ session.",
   "Magic items are unpriced (the SRD gives rarity, not price) and carry rarity, attunement, category, charges, charge_source, evidence and gaps. kind is weapon, armor or miscellaneous with a subtype, as NEQ types magic items.",
   "A magic armor names its own gear:srd/<slug> definition, built from neq_armor copied from the armor named in armor_base. A magic weapon copies the weapon block of the pack weapon named in weapon_base.",
-  "Recharge is every 86400 at 21600: daily at 06:00 dawn on the host's absolute game seconds. gaps name what the engine does not model for an entry."
+  "Recharge is every 86400 at 21600: daily at 06:00 dawn on the host's absolute game seconds. gaps name what the engine does not model for an entry.",
+  "srd-item-catalog/4 (NUM): every weapon has typed damage, properties, mastery and attack_modes from equipment.json, and names its own equipment definition gear:srd/<slug>, which the host declares from those fields as it does for armor (catalog_equipment.py is the reference). A magic weapon copies its base's block and adds magic_bonus from its printed text.",
+  "NUM-P1 (NQL engine dafd508): every attack mode is an engine grant (engine \"shared\"): melee, thrown, ranged with ammunition_type (the catalog ammunition it takes, by type) and the Blowgun's flat damage ({flat, kind}). Unarmed Strike and the Monk's Martial Arts are Condition types in attack_features.nql."
  ],
  "counts": {
   "weapon": 46,
@@ -51,9 +53,38 @@
    },
    "weapon": {
     "category": "Simple",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 4,
+     "flat": null,
+     "kind": "bludgeoning"
+    },
+    "properties": [
+     {
+      "name": "Light"
+     }
+    ],
+    "mastery": "Slow",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 4,
+       "kind": "bludgeoning"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/club"
   },
   {
    "id": "itemdef:srd/dagger",
@@ -75,9 +106,68 @@
    },
    "weapon": {
     "category": "Simple",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 4,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Finesse"
+     },
+     {
+      "name": "Light"
+     },
+     {
+      "name": "Thrown",
+      "range": {
+       "normal": 20,
+       "long": 60
+      }
+     }
+    ],
+    "mastery": "Nick",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength",
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 4,
+       "kind": "piercing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "held",
+      "attack": "thrown",
+      "hands": 1,
+      "abilities": [
+       "strength",
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 4,
+       "kind": "piercing"
+      },
+      "range": {
+       "normal": 20,
+       "long": 60
+      },
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/dagger"
   },
   {
    "id": "itemdef:srd/greatclub",
@@ -99,9 +189,38 @@
    },
    "weapon": {
     "category": "Simple",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 8,
+     "flat": null,
+     "kind": "bludgeoning"
+    },
+    "properties": [
+     {
+      "name": "Two-Handed"
+     }
+    ],
+    "mastery": "Push",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "bludgeoning"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/greatclub"
   },
   {
    "id": "itemdef:srd/handaxe",
@@ -123,9 +242,63 @@
    },
    "weapon": {
     "category": "Simple",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 6,
+     "flat": null,
+     "kind": "slashing"
+    },
+    "properties": [
+     {
+      "name": "Light"
+     },
+     {
+      "name": "Thrown",
+      "range": {
+       "normal": 20,
+       "long": 60
+      }
+     }
+    ],
+    "mastery": "Vex",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 6,
+       "kind": "slashing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "held",
+      "attack": "thrown",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 6,
+       "kind": "slashing"
+      },
+      "range": {
+       "normal": 20,
+       "long": 60
+      },
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/handaxe"
   },
   {
    "id": "itemdef:srd/javelin",
@@ -147,9 +320,60 @@
    },
    "weapon": {
     "category": "Simple",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 6,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Thrown",
+      "range": {
+       "normal": 30,
+       "long": 120
+      }
+     }
+    ],
+    "mastery": "Slow",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 6,
+       "kind": "piercing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "held",
+      "attack": "thrown",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 6,
+       "kind": "piercing"
+      },
+      "range": {
+       "normal": 30,
+       "long": 120
+      },
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/javelin"
   },
   {
    "id": "itemdef:srd/light-hammer",
@@ -171,9 +395,63 @@
    },
    "weapon": {
     "category": "Simple",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 4,
+     "flat": null,
+     "kind": "bludgeoning"
+    },
+    "properties": [
+     {
+      "name": "Light"
+     },
+     {
+      "name": "Thrown",
+      "range": {
+       "normal": 20,
+       "long": 60
+      }
+     }
+    ],
+    "mastery": "Nick",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 4,
+       "kind": "bludgeoning"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "held",
+      "attack": "thrown",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 4,
+       "kind": "bludgeoning"
+      },
+      "range": {
+       "normal": 20,
+       "long": 60
+      },
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/light-hammer"
   },
   {
    "id": "itemdef:srd/mace",
@@ -195,9 +473,34 @@
    },
    "weapon": {
     "category": "Simple",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 6,
+     "flat": null,
+     "kind": "bludgeoning"
+    },
+    "properties": [],
+    "mastery": "Sap",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 6,
+       "kind": "bludgeoning"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/mace"
   },
   {
    "id": "itemdef:srd/quarterstaff",
@@ -219,9 +522,54 @@
    },
    "weapon": {
     "category": "Simple",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 6,
+     "flat": null,
+     "kind": "bludgeoning"
+    },
+    "properties": [
+     {
+      "name": "Versatile",
+      "damage": "1d8"
+     }
+    ],
+    "mastery": "Topple",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 6,
+       "kind": "bludgeoning"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "two-handed",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "bludgeoning"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/quarterstaff"
   },
   {
    "id": "itemdef:srd/sickle",
@@ -243,9 +591,38 @@
    },
    "weapon": {
     "category": "Simple",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 4,
+     "flat": null,
+     "kind": "slashing"
+    },
+    "properties": [
+     {
+      "name": "Light"
+     }
+    ],
+    "mastery": "Nick",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 4,
+       "kind": "slashing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/sickle"
   },
   {
    "id": "itemdef:srd/spear",
@@ -267,9 +644,79 @@
    },
    "weapon": {
     "category": "Simple",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 6,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Thrown",
+      "range": {
+       "normal": 20,
+       "long": 60
+      }
+     },
+     {
+      "name": "Versatile",
+      "damage": "1d8"
+     }
+    ],
+    "mastery": "Sap",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 6,
+       "kind": "piercing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "two-handed",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "piercing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "held",
+      "attack": "thrown",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 6,
+       "kind": "piercing"
+      },
+      "range": {
+       "normal": 20,
+       "long": 60
+      },
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/spear"
   },
   {
    "id": "itemdef:srd/dart",
@@ -291,9 +738,49 @@
    },
    "weapon": {
     "category": "Simple",
-    "kind": "Ranged"
+    "kind": "Ranged",
+    "damage": {
+     "count": 1,
+     "sides": 4,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Finesse"
+     },
+     {
+      "name": "Thrown",
+      "range": {
+       "normal": 20,
+       "long": 60
+      }
+     }
+    ],
+    "mastery": "Vex",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "thrown",
+      "hands": 1,
+      "abilities": [
+       "strength",
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 4,
+       "kind": "piercing"
+      },
+      "range": {
+       "normal": 20,
+       "long": 60
+      },
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/dart"
   },
   {
    "id": "itemdef:srd/light-crossbow",
@@ -315,9 +802,54 @@
    },
    "weapon": {
     "category": "Simple",
-    "kind": "Ranged"
+    "kind": "Ranged",
+    "damage": {
+     "count": 1,
+     "sides": 8,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Ammunition",
+      "range": {
+       "normal": 80,
+       "long": 320
+      },
+      "ammunition": "Bolt"
+     },
+     {
+      "name": "Loading"
+     },
+     {
+      "name": "Two-Handed"
+     }
+    ],
+    "mastery": "Slow",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "ranged",
+      "hands": 2,
+      "abilities": [
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "piercing"
+      },
+      "range": {
+       "normal": 80,
+       "long": 320
+      },
+      "ammunition": "Bolt",
+      "ammunition_type": "itemdef:srd/bolts",
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/light-crossbow"
   },
   {
    "id": "itemdef:srd/shortbow",
@@ -339,9 +871,51 @@
    },
    "weapon": {
     "category": "Simple",
-    "kind": "Ranged"
+    "kind": "Ranged",
+    "damage": {
+     "count": 1,
+     "sides": 6,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Ammunition",
+      "range": {
+       "normal": 80,
+       "long": 320
+      },
+      "ammunition": "Arrow"
+     },
+     {
+      "name": "Two-Handed"
+     }
+    ],
+    "mastery": "Vex",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "ranged",
+      "hands": 2,
+      "abilities": [
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 6,
+       "kind": "piercing"
+      },
+      "range": {
+       "normal": 80,
+       "long": 320
+      },
+      "ammunition": "Arrow",
+      "ammunition_type": "itemdef:srd/arrows",
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/shortbow"
   },
   {
    "id": "itemdef:srd/sling",
@@ -363,9 +937,48 @@
    },
    "weapon": {
     "category": "Simple",
-    "kind": "Ranged"
+    "kind": "Ranged",
+    "damage": {
+     "count": 1,
+     "sides": 4,
+     "flat": null,
+     "kind": "bludgeoning"
+    },
+    "properties": [
+     {
+      "name": "Ammunition",
+      "range": {
+       "normal": 30,
+       "long": 120
+      },
+      "ammunition": "Bullet"
+     }
+    ],
+    "mastery": "Slow",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "ranged",
+      "hands": 1,
+      "abilities": [
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 4,
+       "kind": "bludgeoning"
+      },
+      "range": {
+       "normal": 30,
+       "long": 120
+      },
+      "ammunition": "Bullet",
+      "ammunition_type": "itemdef:srd/bullets-sling",
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/sling"
   },
   {
    "id": "itemdef:srd/battleaxe",
@@ -387,9 +1000,54 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 8,
+     "flat": null,
+     "kind": "slashing"
+    },
+    "properties": [
+     {
+      "name": "Versatile",
+      "damage": "1d10"
+     }
+    ],
+    "mastery": "Topple",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "slashing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "two-handed",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 10,
+       "kind": "slashing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/battleaxe"
   },
   {
    "id": "itemdef:srd/flail",
@@ -411,9 +1069,34 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 8,
+     "flat": null,
+     "kind": "bludgeoning"
+    },
+    "properties": [],
+    "mastery": "Sap",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "bludgeoning"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/flail"
   },
   {
    "id": "itemdef:srd/glaive",
@@ -435,9 +1118,44 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 10,
+     "flat": null,
+     "kind": "slashing"
+    },
+    "properties": [
+     {
+      "name": "Heavy"
+     },
+     {
+      "name": "Reach"
+     },
+     {
+      "name": "Two-Handed"
+     }
+    ],
+    "mastery": "Graze",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 10,
+       "kind": "slashing"
+      },
+      "reach": 10,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/glaive"
   },
   {
    "id": "itemdef:srd/greataxe",
@@ -459,9 +1177,41 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 12,
+     "flat": null,
+     "kind": "slashing"
+    },
+    "properties": [
+     {
+      "name": "Heavy"
+     },
+     {
+      "name": "Two-Handed"
+     }
+    ],
+    "mastery": "Cleave",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 12,
+       "kind": "slashing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/greataxe"
   },
   {
    "id": "itemdef:srd/greatsword",
@@ -483,9 +1233,41 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 2,
+     "sides": 6,
+     "flat": null,
+     "kind": "slashing"
+    },
+    "properties": [
+     {
+      "name": "Heavy"
+     },
+     {
+      "name": "Two-Handed"
+     }
+    ],
+    "mastery": "Graze",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 2,
+       "sides": 6,
+       "kind": "slashing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/greatsword"
   },
   {
    "id": "itemdef:srd/halberd",
@@ -507,9 +1289,44 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 10,
+     "flat": null,
+     "kind": "slashing"
+    },
+    "properties": [
+     {
+      "name": "Heavy"
+     },
+     {
+      "name": "Reach"
+     },
+     {
+      "name": "Two-Handed"
+     }
+    ],
+    "mastery": "Cleave",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 10,
+       "kind": "slashing"
+      },
+      "reach": 10,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/halberd"
   },
   {
    "id": "itemdef:srd/lance",
@@ -531,9 +1348,45 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 10,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Heavy"
+     },
+     {
+      "name": "Reach"
+     },
+     {
+      "name": "Two-Handed",
+      "note": "unless mounted"
+     }
+    ],
+    "mastery": "Topple",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 10,
+       "kind": "piercing"
+      },
+      "reach": 10,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/lance"
   },
   {
    "id": "itemdef:srd/longsword",
@@ -555,9 +1408,54 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 8,
+     "flat": null,
+     "kind": "slashing"
+    },
+    "properties": [
+     {
+      "name": "Versatile",
+      "damage": "1d10"
+     }
+    ],
+    "mastery": "Sap",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "slashing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "two-handed",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 10,
+       "kind": "slashing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/longsword"
   },
   {
    "id": "itemdef:srd/maul",
@@ -579,9 +1477,41 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 2,
+     "sides": 6,
+     "flat": null,
+     "kind": "bludgeoning"
+    },
+    "properties": [
+     {
+      "name": "Heavy"
+     },
+     {
+      "name": "Two-Handed"
+     }
+    ],
+    "mastery": "Topple",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 2,
+       "sides": 6,
+       "kind": "bludgeoning"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/maul"
   },
   {
    "id": "itemdef:srd/morningstar",
@@ -603,9 +1533,34 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 8,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [],
+    "mastery": "Sap",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "piercing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/morningstar"
   },
   {
    "id": "itemdef:srd/pike",
@@ -627,9 +1582,44 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 10,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Heavy"
+     },
+     {
+      "name": "Reach"
+     },
+     {
+      "name": "Two-Handed"
+     }
+    ],
+    "mastery": "Push",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 10,
+       "kind": "piercing"
+      },
+      "reach": 10,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/pike"
   },
   {
    "id": "itemdef:srd/rapier",
@@ -651,9 +1641,39 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 8,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Finesse"
+     }
+    ],
+    "mastery": "Vex",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength",
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "piercing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/rapier"
   },
   {
    "id": "itemdef:srd/scimitar",
@@ -675,9 +1695,42 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 6,
+     "flat": null,
+     "kind": "slashing"
+    },
+    "properties": [
+     {
+      "name": "Finesse"
+     },
+     {
+      "name": "Light"
+     }
+    ],
+    "mastery": "Nick",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength",
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 6,
+       "kind": "slashing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/scimitar"
   },
   {
    "id": "itemdef:srd/shortsword",
@@ -699,9 +1752,42 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 6,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Finesse"
+     },
+     {
+      "name": "Light"
+     }
+    ],
+    "mastery": "Vex",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength",
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 6,
+       "kind": "piercing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/shortsword"
   },
   {
    "id": "itemdef:srd/trident",
@@ -723,9 +1809,79 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 8,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Thrown",
+      "range": {
+       "normal": 20,
+       "long": 60
+      }
+     },
+     {
+      "name": "Versatile",
+      "damage": "1d10"
+     }
+    ],
+    "mastery": "Topple",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "piercing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "two-handed",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 10,
+       "kind": "piercing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "held",
+      "attack": "thrown",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "piercing"
+      },
+      "range": {
+       "normal": 20,
+       "long": 60
+      },
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/trident"
   },
   {
    "id": "itemdef:srd/warhammer",
@@ -747,9 +1903,54 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 8,
+     "flat": null,
+     "kind": "bludgeoning"
+    },
+    "properties": [
+     {
+      "name": "Versatile",
+      "damage": "1d10"
+     }
+    ],
+    "mastery": "Push",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "bludgeoning"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "two-handed",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 10,
+       "kind": "bludgeoning"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/warhammer"
   },
   {
    "id": "itemdef:srd/war-pick",
@@ -771,9 +1972,54 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 8,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Versatile",
+      "damage": "1d10"
+     }
+    ],
+    "mastery": "Sap",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "piercing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "two-handed",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 10,
+       "kind": "piercing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/war-pick"
   },
   {
    "id": "itemdef:srd/whip",
@@ -795,9 +2041,42 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 4,
+     "flat": null,
+     "kind": "slashing"
+    },
+    "properties": [
+     {
+      "name": "Finesse"
+     },
+     {
+      "name": "Reach"
+     }
+    ],
+    "mastery": "Slow",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength",
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 4,
+       "kind": "slashing"
+      },
+      "reach": 10,
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/whip"
   },
   {
    "id": "itemdef:srd/blowgun",
@@ -819,9 +2098,50 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Ranged"
+    "kind": "Ranged",
+    "damage": {
+     "count": null,
+     "sides": null,
+     "flat": 1,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Ammunition",
+      "range": {
+       "normal": 25,
+       "long": 100
+      },
+      "ammunition": "Needle"
+     },
+     {
+      "name": "Loading"
+     }
+    ],
+    "mastery": "Vex",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "ranged",
+      "hands": 1,
+      "abilities": [
+       "dexterity"
+      ],
+      "damage": {
+       "flat": 1,
+       "kind": "piercing"
+      },
+      "range": {
+       "normal": 25,
+       "long": 100
+      },
+      "ammunition": "Needle",
+      "ammunition_type": "itemdef:srd/needles",
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/blowgun"
   },
   {
    "id": "itemdef:srd/hand-crossbow",
@@ -843,9 +2163,54 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Ranged"
+    "kind": "Ranged",
+    "damage": {
+     "count": 1,
+     "sides": 6,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Ammunition",
+      "range": {
+       "normal": 30,
+       "long": 120
+      },
+      "ammunition": "Bolt"
+     },
+     {
+      "name": "Light"
+     },
+     {
+      "name": "Loading"
+     }
+    ],
+    "mastery": "Vex",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "ranged",
+      "hands": 1,
+      "abilities": [
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 6,
+       "kind": "piercing"
+      },
+      "range": {
+       "normal": 30,
+       "long": 120
+      },
+      "ammunition": "Bolt",
+      "ammunition_type": "itemdef:srd/bolts",
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/hand-crossbow"
   },
   {
    "id": "itemdef:srd/heavy-crossbow",
@@ -867,9 +2232,57 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Ranged"
+    "kind": "Ranged",
+    "damage": {
+     "count": 1,
+     "sides": 10,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Ammunition",
+      "range": {
+       "normal": 100,
+       "long": 400
+      },
+      "ammunition": "Bolt"
+     },
+     {
+      "name": "Heavy"
+     },
+     {
+      "name": "Loading"
+     },
+     {
+      "name": "Two-Handed"
+     }
+    ],
+    "mastery": "Push",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "ranged",
+      "hands": 2,
+      "abilities": [
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 10,
+       "kind": "piercing"
+      },
+      "range": {
+       "normal": 100,
+       "long": 400
+      },
+      "ammunition": "Bolt",
+      "ammunition_type": "itemdef:srd/bolts",
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/heavy-crossbow"
   },
   {
    "id": "itemdef:srd/longbow",
@@ -891,9 +2304,54 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Ranged"
+    "kind": "Ranged",
+    "damage": {
+     "count": 1,
+     "sides": 8,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Ammunition",
+      "range": {
+       "normal": 150,
+       "long": 600
+      },
+      "ammunition": "Arrow"
+     },
+     {
+      "name": "Heavy"
+     },
+     {
+      "name": "Two-Handed"
+     }
+    ],
+    "mastery": "Slow",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "ranged",
+      "hands": 2,
+      "abilities": [
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "piercing"
+      },
+      "range": {
+       "normal": 150,
+       "long": 600
+      },
+      "ammunition": "Arrow",
+      "ammunition_type": "itemdef:srd/arrows",
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/longbow"
   },
   {
    "id": "itemdef:srd/musket",
@@ -915,9 +2373,54 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Ranged"
+    "kind": "Ranged",
+    "damage": {
+     "count": 1,
+     "sides": 12,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Ammunition",
+      "range": {
+       "normal": 40,
+       "long": 120
+      },
+      "ammunition": "Bullet"
+     },
+     {
+      "name": "Loading"
+     },
+     {
+      "name": "Two-Handed"
+     }
+    ],
+    "mastery": "Slow",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "ranged",
+      "hands": 2,
+      "abilities": [
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 12,
+       "kind": "piercing"
+      },
+      "range": {
+       "normal": 40,
+       "long": 120
+      },
+      "ammunition": "Bullet",
+      "ammunition_type": "itemdef:srd/bullets-firearm",
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/musket"
   },
   {
    "id": "itemdef:srd/pistol",
@@ -939,9 +2442,51 @@
    },
    "weapon": {
     "category": "Martial",
-    "kind": "Ranged"
+    "kind": "Ranged",
+    "damage": {
+     "count": 1,
+     "sides": 10,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Ammunition",
+      "range": {
+       "normal": 30,
+       "long": 90
+      },
+      "ammunition": "Bullet"
+     },
+     {
+      "name": "Loading"
+     }
+    ],
+    "mastery": "Vex",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "ranged",
+      "hands": 1,
+      "abilities": [
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 10,
+       "kind": "piercing"
+      },
+      "range": {
+       "normal": 30,
+       "long": 90
+      },
+      "ammunition": "Bullet",
+      "ammunition_type": "itemdef:srd/bullets-firearm",
+      "engine": "shared"
+     }
+    ]
    },
-   "equipment": "gear:held"
+   "equipment": "gear:srd/pistol"
   },
   {
    "id": "itemdef:srd/padded-armor",
@@ -3797,10 +5342,69 @@
     "section": "Magic Items > Magic Items A-Z > Dagger of Venom",
     "page": 216
    },
-   "equipment": "gear:held",
+   "equipment": "gear:srd/dagger-of-venom",
    "weapon": {
     "category": "Simple",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 4,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Finesse"
+     },
+     {
+      "name": "Light"
+     },
+     {
+      "name": "Thrown",
+      "range": {
+       "normal": 20,
+       "long": 60
+      }
+     }
+    ],
+    "mastery": "Nick",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength",
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 4,
+       "kind": "piercing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "held",
+      "attack": "thrown",
+      "hands": 1,
+      "abilities": [
+       "strength",
+       "dexterity"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 4,
+       "kind": "piercing"
+      },
+      "range": {
+       "normal": 20,
+       "long": 60
+      },
+      "engine": "shared"
+     }
+    ]
    },
    "weapon_base": "itemdef:srd/dagger",
    "charges": {
@@ -3813,7 +5417,12 @@
    },
    "charge_source": "uses per dawn",
    "evidence": "The weapon can't be used this way again until the next dawn.",
-   "gaps": []
+   "gaps": [],
+   "magic_bonus": {
+    "attack": 1,
+    "damage": 1,
+    "evidence": "You gain a +1 bonus to attack rolls and damage rolls made with this magic weapon."
+   }
   },
   {
    "id": "itemdef:srd/dragon-orb",
@@ -3981,10 +5590,55 @@
     "section": "Magic Items > Magic Items A-Z > Giant Fly > Hammer of Thunderbolts",
     "page": 224
    },
-   "equipment": "gear:held",
+   "equipment": "gear:srd/hammer-of-thunderbolts",
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 8,
+     "flat": null,
+     "kind": "bludgeoning"
+    },
+    "properties": [
+     {
+      "name": "Versatile",
+      "damage": "1d10"
+     }
+    ],
+    "mastery": "Push",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "bludgeoning"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "two-handed",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 10,
+       "kind": "bludgeoning"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
    "weapon_base": "itemdef:srd/warhammer",
    "charges": {
@@ -4003,7 +5657,12 @@
    "evidence": "The weapon regains 1d4 + 1 expended charges daily at dawn.",
    "gaps": [
     "The SRD allows Maul or Warhammer; the weapon block is copied from itemdef:srd/warhammer."
-   ]
+   ],
+   "magic_bonus": {
+    "attack": 1,
+    "damage": 1,
+    "evidence": "You gain a +1 bonus to attack rolls and damage rolls made with this magic weapon."
+   }
   },
   {
    "id": "itemdef:srd/helm-of-teleportation",
@@ -4079,10 +5738,61 @@
     "section": "Magic Items > Magic Items A-Z > Giant Fly > Javelin of Lightning",
     "page": 228
    },
-   "equipment": "gear:held",
+   "equipment": "gear:srd/javelin-of-lightning",
    "weapon": {
     "category": "Simple",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 6,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Thrown",
+      "range": {
+       "normal": 30,
+       "long": 120
+      }
+     }
+    ],
+    "mastery": "Slow",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 6,
+       "kind": "piercing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "held",
+      "attack": "thrown",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 6,
+       "kind": "piercing"
+      },
+      "range": {
+       "normal": 30,
+       "long": 120
+      },
+      "engine": "shared"
+     }
+    ]
    },
    "weapon_base": "itemdef:srd/javelin",
    "charges": {
@@ -4111,10 +5821,55 @@
     "section": "Magic Items > Magic Items A-Z > Giant Fly > Luck Blade",
     "page": 229
    },
-   "equipment": "gear:held",
+   "equipment": "gear:srd/luck-blade",
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 8,
+     "flat": null,
+     "kind": "slashing"
+    },
+    "properties": [
+     {
+      "name": "Versatile",
+      "damage": "1d10"
+     }
+    ],
+    "mastery": "Sap",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "slashing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "two-handed",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 10,
+       "kind": "slashing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
    "weapon_base": "itemdef:srd/longsword",
    "charges": {
@@ -4132,7 +5887,12 @@
     "The Luck property (once per dawn) is separate from the charges and is not counted.",
     "With no charges the Wish property is gone: available 0 says so.",
     "The SRD allows Glaive, Greatsword, Longsword, Rapier, Scimitar, Sickle, or Shortsword; the weapon block is copied from itemdef:srd/longsword."
-   ]
+   ],
+   "magic_bonus": {
+    "attack": 1,
+    "damage": 1,
+    "evidence": "You gain a +1 bonus to attack rolls and damage rolls made with this magic weapon."
+   }
   },
   {
    "id": "itemdef:srd/mace-of-terror",
@@ -4148,10 +5908,35 @@
     "section": "Magic Items > Magic Items A-Z > Giant Fly > Mace of Terror",
     "page": 229
    },
-   "equipment": "gear:held",
+   "equipment": "gear:srd/mace-of-terror",
    "weapon": {
     "category": "Simple",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 6,
+     "flat": null,
+     "kind": "bludgeoning"
+    },
+    "properties": [],
+    "mastery": "Sap",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 6,
+       "kind": "bludgeoning"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
    "weapon_base": "itemdef:srd/mace",
    "charges": {
@@ -4216,10 +6001,55 @@
     "section": "Magic Items > Magic Items A-Z > Avatar of Death > Nine Lives Stealer",
     "page": 233
    },
-   "equipment": "gear:held",
+   "equipment": "gear:srd/nine-lives-stealer",
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 8,
+     "flat": null,
+     "kind": "slashing"
+    },
+    "properties": [
+     {
+      "name": "Versatile",
+      "damage": "1d10"
+     }
+    ],
+    "mastery": "Sap",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "slashing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "two-handed",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 10,
+       "kind": "slashing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
    "weapon_base": "itemdef:srd/longsword",
    "charges": {
@@ -4236,7 +6066,12 @@
     "The maximum is 9, the most 1d8 + 1 can roll; the SRD states no maximum.",
     "A charge is lost when the property slays a creature; the agent expends it.",
     "The SRD allows Any Simple or Martial; the weapon block is copied from itemdef:srd/longsword."
-   ]
+   ],
+   "magic_bonus": {
+    "attack": 2,
+    "damage": 2,
+    "evidence": "You gain a +2 bonus to attack rolls and damage rolls made with this magic weapon."
+   }
   },
   {
    "id": "itemdef:srd/pearl-of-power",
@@ -5251,10 +7086,39 @@
     "section": "Magic Items > Magic Items A-Z > Avatar of Death > Thunderous Greatclub",
     "page": 249
    },
-   "equipment": "gear:held",
+   "equipment": "gear:srd/thunderous-greatclub",
    "weapon": {
     "category": "Simple",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 8,
+     "flat": null,
+     "kind": "bludgeoning"
+    },
+    "properties": [
+     {
+      "name": "Two-Handed"
+     }
+    ],
+    "mastery": "Push",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "bludgeoning"
+      },
+      "reach": 5,
+      "engine": "shared"
+     }
+    ]
    },
    "weapon_base": "itemdef:srd/greatclub",
    "charges": {
@@ -5283,10 +7147,80 @@
     "section": "Magic Items > Magic Items A-Z > Avatar of Death > Trident of Fish Command",
     "page": 250
    },
-   "equipment": "gear:held",
+   "equipment": "gear:srd/trident-of-fish-command",
    "weapon": {
     "category": "Martial",
-    "kind": "Melee"
+    "kind": "Melee",
+    "damage": {
+     "count": 1,
+     "sides": 8,
+     "flat": null,
+     "kind": "piercing"
+    },
+    "properties": [
+     {
+      "name": "Thrown",
+      "range": {
+       "normal": 20,
+       "long": 60
+      }
+     },
+     {
+      "name": "Versatile",
+      "damage": "1d10"
+     }
+    ],
+    "mastery": "Topple",
+    "attack_modes": [
+     {
+      "mode": "held",
+      "attack": "melee",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "piercing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "two-handed",
+      "attack": "melee",
+      "hands": 2,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 10,
+       "kind": "piercing"
+      },
+      "reach": 5,
+      "engine": "shared"
+     },
+     {
+      "mode": "held",
+      "attack": "thrown",
+      "hands": 1,
+      "abilities": [
+       "strength"
+      ],
+      "damage": {
+       "count": 1,
+       "sides": 8,
+       "kind": "piercing"
+      },
+      "range": {
+       "normal": 20,
+       "long": 60
+      },
+      "engine": "shared"
+     }
+    ]
    },
    "weapon_base": "itemdef:srd/trident",
    "charges": {

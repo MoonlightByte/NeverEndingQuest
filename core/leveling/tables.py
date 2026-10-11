@@ -6,7 +6,8 @@
 Everything a level-up settles without a choice comes from ``data/srd/progression.json``
 (parsed from the SRD PDF, machine-checked): eligibility, proficiency bonus, hit die and
 fixed gain, spell slot maxima, cantrip and prepared counts, the features a level grants,
-feature pool sizes from the class table columns, and the choice points the level opens.
+feature use pools (maximum and rest refresh) from the class's use_pools, and the choice
+points the level opens.
 Nothing here reads prose from a sheet and nothing here calls a model.
 
 Numbers derived from the sheet's typed fields (skill bonuses, save DC, attack bonus,
@@ -31,15 +32,6 @@ SKILL_ABILITY = {
     "performance": "charisma", "persuasion": "charisma",
 }
 ABILITY_CAP = 20
-# Class table columns that size a feature's use pool, mapped to the feature that owns the pool.
-POOL_COLUMNS = {
-    "Rages": ("Rage", "longRest"),
-    "Channel Divinity": ("Channel Divinity", "shortRest"),
-    "Focus Points": ("Monk's Focus", "shortRest"),
-    "Sorcery Points": ("Font of Magic", "longRest"),
-    "Bardic Inspiration": ("Bardic Inspiration", "longRest"),
-    "Wild Shape": ("Wild Shape", "shortRest"),
-}
 
 
 def tables() -> Dict[str, Any]:
@@ -157,6 +149,51 @@ def slot_maxima(cls: str, level: int) -> Dict[str, int]:
     return out
 
 
+def pact_slot_set(cls: str, level: int) -> Optional[Tuple[str, int]]:
+    """A pact caster's slots at ``level`` as one set, (levelN, count); None for other classes."""
+    pact = tables()["classes"][cls].get("pact_slots_by_level")
+    if not pact:
+        return None
+    row = pact[str(level)]
+    return f"level{int(row['slot_level'])}", int(row["slots"])
+
+
+def move_pact_slots(slots: Dict[str, Any], cls: str, level: int) -> List[str]:
+    """Write a pact caster's slots as one set, in place (#704, H4-Q4 a).
+
+    Pact slots change slot level as the class advances (level 1, then 2 from
+    Warlock 3, ...), so the set is moved, not grown beside the old level: the
+    table's level gets the table's count, every other level's maximum becomes 0,
+    and the unspent slots move with the set (capped at the count), so no level
+    keeps a current above its maximum. Returns one note per level changed."""
+    target = pact_slot_set(cls, level)
+    if target is None or not isinstance(slots, dict):
+        return []
+    key, count = target
+    notes: List[str] = []
+    carried = 0
+    for other in sorted(slots):
+        slot = slots[other]
+        if other == key or not isinstance(slot, dict):
+            continue
+        maximum = slot.get("max") if type(slot.get("max")) is int else 0
+        current = slot.get("current") if type(slot.get("current")) is int else 0
+        if maximum or current:
+            carried += current
+            slot.update({"current": 0, "max": 0})
+            notes.append(f"spellSlots {other} {current}/{maximum} -> 0/0 (pact slots are {key} at "
+                         f"{cls.capitalize()} level {level})")
+    slot = slots.get(key) if isinstance(slots.get(key), dict) else {}
+    maximum = slot.get("max") if type(slot.get("max")) is int else 0
+    current = slot.get("current") if type(slot.get("current")) is int else 0
+    moved = {"current": min(current + carried, count), "max": count}
+    if (current, maximum) != (moved["current"], moved["max"]):
+        notes.append(f"spellSlots {key} {current}/{maximum} -> {moved['current']}/{count} (SRD "
+                     f"{cls.capitalize()} level {level} pact slots)")
+        slots[key] = dict(slot, **moved)
+    return notes
+
+
 def hit_die(cls: str) -> int:
     return int(str(tables()["classes"][cls]["hit_die"]).lstrip("d"))
 
@@ -169,19 +206,134 @@ def features_gained(cls: str, level: int) -> List[str]:
     return list(tables()["classes"][cls]["features_by_level"].get(str(level), []))
 
 
-def pool_sizes(cls: str, level: int) -> Dict[str, Tuple[int, str]]:
-    """{feature name: (max uses, refreshOn)} for every table column that sizes a pool at this level."""
-    columns = tables()["classes"][cls].get("table_columns") or {}
-    out: Dict[str, Tuple[int, str]] = {}
-    for column, (feature, refresh) in POOL_COLUMNS.items():
-        rows = columns.get(column)
-        if isinstance(rows, dict) and str(level) in rows:
-            value = rows[str(level)]
-            try:
-                out[feature] = (int(str(value).split()[0]), refresh)
-            except (TypeError, ValueError):
-                continue
+@dataclass(frozen=True)
+class Pool:
+    """A feature's use pool at one class level: its maximum, the rest that
+    refreshes it, and how many uses a Short Rest regains when it regains only
+    some (None: a Short Rest, if it refreshes the pool, refills it)."""
+    max: int
+    refresh_on: str
+    short_rest_regain: Optional[int] = None
+    follows_ability: bool = field(default=False, compare=False)
+
+    def usage(self, current: Optional[int] = None) -> Dict[str, Any]:
+        """The sheet's classFeatures[].usage for this pool."""
+        out: Dict[str, Any] = {"current": self.max if current is None else current, "max": self.max,
+                               "refreshOn": self.refresh_on}
+        if self.short_rest_regain is not None:
+            out["shortRestRegain"] = self.short_rest_regain
+        return out
+
+
+def _pool_maximum(maximum: Dict[str, Any], columns: Dict[str, Any], level: int,
+                  abilities: Dict[str, Any]) -> Optional[int]:
+    """A use_pools maximum resolved from its typed kind; None when it does not resolve."""
+    if "column" in maximum:
+        rows = columns.get(maximum["column"])
+        value = rows.get(str(level)) if isinstance(rows, dict) else None
+        try:
+            return int(str(value).split()[0])
+        except (TypeError, ValueError, IndexError):
+            return None
+    if "by_level" in maximum:
+        steps = [(int(at), n) for at, n in maximum["by_level"].items() if int(at) <= level]
+        return int(max(steps)[1]) if steps else None
+    if "fixed" in maximum:
+        return int(maximum["fixed"])
+    if "ability_modifier" in maximum:
+        score = (abilities or {}).get(str(maximum["ability_modifier"]).lower())
+        return max(int(maximum.get("minimum", 0)), modifier(score))
+    if "class_level_times" in maximum:
+        return int(maximum["class_level_times"]) * level
+    return None
+
+
+def use_pools_at(cls: str, level: int, abilities: Optional[Dict[str, Any]] = None) -> Dict[str, Pool]:
+    """{feature name: Pool} for every use pool the class has at ``level``. The refresh
+    is the class table's row in effect at that level (a pool's rest can change as the
+    class advances, e.g. Bardic Inspiration from level 5). A Short Rest that regains
+    "one" use is a partial regain of 1; "all" refills; none leaves a Long Rest pool."""
+    c = tables()["classes"][cls]
+    columns = c.get("table_columns") or {}
+    out: Dict[str, Pool] = {}
+    for pool in c.get("use_pools") or []:
+        if int(pool["level"]) > level:
+            continue
+        maximum = _pool_maximum(pool.get("maximum") or {}, columns, level, abilities or {})
+        if maximum is None:
+            continue
+        rows = [row for row in pool.get("refresh") or [] if int(row["from_level"]) <= level]
+        short_rest = max(rows, key=lambda row: int(row["from_level"])).get("short_rest") if rows else None
+        out[pool["feature"]] = Pool(maximum, "shortRest" if short_rest in ("one", "all") else "longRest",
+                                    1 if short_rest == "one" else None,
+                                    "ability_modifier" in (pool.get("maximum") or {}))
     return out
+
+
+def pool_key(name: Any) -> str:
+    """A feature name as pools match it: the part before any parenthesis,
+    casefolded ("Action Surge (one use)" and "Channel Divinity (2/rest)" name
+    the Action Surge and Channel Divinity pools)."""
+    return str(name).split("(")[0].strip().casefold()
+
+
+def pool_feature(features: Any, name: str) -> Optional[Dict[str, Any]]:
+    """The classFeatures entry that owns pool ``name``, or None."""
+    return next((f for f in features or [] if isinstance(f, dict) and pool_key(f.get("name", "")) == pool_key(name)),
+                None)
+
+
+def raise_to_tables(sheet: Dict[str, Any]) -> List[str]:
+    """Raise a saved hero's use pools and spell slots that sit below the class
+    table for its level, in place; returns one note per change (#704, H4-Q1).
+
+    Raise only: a ``max`` below the table is set to the table, a table pool's
+    feature (matched by ``pool_key``) with no usage gets one, and a slot level
+    the table grants is added. ``current`` is never changed (an added pool or
+    slot starts at 0 until the next rest refills it) and nothing is lowered. A pool whose maximum
+    follows an ability is resolved at startup and level-up only (H4-Q2), so here
+    it only gains a missing usage. Pact slots are written as one set by
+    ``move_pact_slots``, the one place this step lowers a maximum (H4-Q4 a). A
+    sheet without an SRD class and a level is unchanged."""
+    notes: List[str] = []
+    cls = class_key(sheet)
+    level = sheet.get("level")
+    if cls is None or type(level) is not int or not 1 <= level <= 20:
+        return notes
+    features = sheet.get("classFeatures") if isinstance(sheet.get("classFeatures"), list) else []
+    for name, pool in use_pools_at(cls, level, sheet.get("abilities")).items():
+        feature = pool_feature(features, name)
+        if feature is None:
+            continue
+        usage = feature.get("usage")
+        if not isinstance(usage, dict):
+            feature["usage"] = pool.usage(0)
+            notes.append(f"{feature['name']} usage added: 0/{pool.max} {pool.refresh_on} (SRD {sheet.get('class')} "
+                         f"level {level})")
+        elif not pool.follows_ability and (type(usage.get("max")) is not int or usage["max"] < pool.max):
+            notes.append(f"{feature['name']} max {usage.get('max')!r} -> {pool.max} (SRD {sheet.get('class')} "
+                         f"level {level})")
+            usage["max"] = pool.max
+    casting = sheet.get("spellcasting")
+    slots = casting.get("spellSlots") if isinstance(casting, dict) else None
+    if not isinstance(slots, dict):
+        return notes
+    if pact_slot_set(cls, level) is not None:
+        return notes + move_pact_slots(slots, cls, level)
+    for slot_level, n in slot_maxima(cls, level).items():
+        slot = slots.get(slot_level)
+        if not n or (isinstance(slot, dict) and type(slot.get("max")) is int and slot["max"] >= n):
+            continue
+        if isinstance(slot, dict):
+            notes.append(f"spellSlots {slot_level} max {slot.get('max')!r} -> {n} (SRD {sheet.get('class')} "
+                         f"level {level})")
+            slot["max"] = n
+            if type(slot.get("current")) is not int:
+                slot["current"] = 0
+        else:
+            slots[slot_level] = {"current": 0, "max": n}
+            notes.append(f"spellSlots {slot_level} added: 0/{n} (SRD {sheet.get('class')} level {level})")
+    return notes
 
 
 def spell_counts(cls: str, level: int) -> Dict[str, Optional[int]]:
@@ -239,7 +391,7 @@ class Settled:
     hit_die: int
     slot_targets: Dict[str, int]
     features: List[str]
-    pools: Dict[str, Tuple[int, str]]
+    pools: Dict[str, "Pool"]
     spell_counts: Dict[str, Optional[int]]
     exp_required_for_next_level: int
     choice_points: List[Dict[str, Any]] = field(default_factory=list)
@@ -265,7 +417,8 @@ def settle(sheet: Dict[str, Any], new_level: int) -> Settled:
     return Settled(
         cls=cls, new_level=new_level, proficiency_bonus=proficiency_bonus(new_level),
         hp_gain_fixed=fixed_hp_gain(cls), hit_die=hit_die(cls), slot_targets=slot_maxima(cls, new_level),
-        features=features_for(cls, subclass, new_level), pools=pool_sizes(cls, new_level), subclass=subclass,
+        features=features_for(cls, subclass, new_level), pools=use_pools_at(cls, new_level, sheet.get("abilities")),
+        subclass=subclass,
         spell_counts=spell_counts(cls, new_level),
         exp_required_for_next_level=xp_threshold(new_level + 1) if new_level < 20 else xp_threshold(20),
         choice_points=choice_points(sheet, cls, new_level),

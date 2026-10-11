@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.effects.clock import DAYS_PER_MONTH, SECONDS_PER_DAY
-from core.nql import item_catalog, srd_stats, stats
+from core.nql import class_conditions, item_catalog, srd_stats, stats
 
 EQUIPMENT_VERSION = "nql-equipment-v1"
 # Typed values an item effect may use to name armor class as its target. This
@@ -39,6 +39,15 @@ TEMP_HP_RESOURCE = "temp-hp"
 TEMP_HP_MAX = 1_000_000_000
 DEFENSE_STYLE_FEATURE = "Fighting Style: Defense"
 DEFENSE_STYLE_CONDITION = "feature:defense-style"
+# NUM-H3c: SRD 5.2.1 Archery ("+2 bonus to attack rolls you make with Ranged
+# weapons"): one hit term on every ranged (ammunition) attack of a ported
+# weapon, gated on this Condition, which the exact classFeatures name gives.
+# Every character declares the amount as a stat, since a term names a stat.
+ARCHERY_STYLE_FEATURE = "Fighting Style: Archery"
+ARCHERY_STYLE_CONDITION = "feature:archery-style"
+ARCHERY_STAT = "bonus:archery"
+ARCHERY_BONUS = 2
+ARCHERY_TERM = ' term stat "%s" offset 0 divide 1 requires "%s";' % (ARCHERY_STAT, ARCHERY_STYLE_CONDITION)
 # Temporary effects (E12): a live classifier or combat-engine effect whose
 # armor class or maximum hit point modifiers the engine holds is marked
 # engineOwned on the sheet; its numbers are then inside the stored armorClass
@@ -49,6 +58,18 @@ DEFENSE_STYLE_CONDITION = "feature:defense-style"
 EFFECT_ENGINE_OWNED = "engineOwned"
 EFFECT_EXPIRES_TICK = "expiresTick"
 EFFECT_AUTHORS = ("engine", "classifier")
+
+# Weapon definitions (NUM-H3a, srd-item-catalog/4 on NQL dafd508): the
+# Martial Arts die by Condition type, declared by data/srd/attack_features.nql.
+# A Monk weapon's attacks name these; genesis declares no instance of them yet.
+MARTIAL_ARTS_CONDITION = "feature:martial-arts"
+MARTIAL_ARTS_DICE = ((6, MARTIAL_ARTS_CONDITION), (8, "feature:martial-arts-d8"),
+                     (10, "feature:martial-arts-d10"), (12, "feature:martial-arts-d12"))
+UNARMORED_GATE = ' unless slot "body" unless slot "shield"'
+WEAPON_ABILITY_TERM = 'term stat "%s" offset -10 divide 2;'
+# The proficiency bonus as a term: a derived stat cannot feed another recipe,
+# so the term reads the level fact as srd-stats' saves do, (level + 7) / 4.
+WEAPON_PROFICIENCY_TERM = 'term stat "level" offset 7 divide 4 requires %s;'
 
 _ARMOR_TRAINING = {
     "light": "training:light",
@@ -69,6 +90,14 @@ class Genesis:
     content_ids: Dict[str, Dict[int, str]] = field(default_factory=dict)   # storage id -> contents index -> item id
     effect_names: Dict[str, str] = field(default_factory=dict)            # condition instance id -> effect name
     gaps: List[str] = field(default_factory=list)
+    # NUM-H3a: item id -> character id for an equipped catalog weapon the hand
+    # rule declared carried. Its sheet row stays equipped: a write that reads
+    # the engine's wearer back keeps the row's flag (no sheet change).
+    carried: Dict[str, str] = field(default_factory=dict)
+    # NUM-H3b: observations that do not bear on defense (an off-vocabulary
+    # weapon proficiency, a multiclass sheet's Martial Arts die or second
+    # Unarmored Defense). Unlike gaps, they never stop an AC projection.
+    notes: List[str] = field(default_factory=list)
 
 
 ABILITY_NAMES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
@@ -558,6 +587,10 @@ def _has_defense_style(sheet: Dict[str, Any]) -> bool:
     return any(f.get("name") == DEFENSE_STYLE_FEATURE for f in sheet.get("classFeatures") or [] if isinstance(f, dict))
 
 
+def _has_archery_style(sheet: Dict[str, Any]) -> bool:
+    return any(f.get("name") == ARCHERY_STYLE_FEATURE for f in sheet.get("classFeatures") or [] if isinstance(f, dict))
+
+
 def _armor_definition(def_id: str, entry: Dict[str, Any], gaps: List[str]) -> Optional[str]:
     """One immutable definition per armor entry, from its typed fields only."""
     category = entry.get("armor_category")
@@ -612,10 +645,98 @@ def ac_effect_lines(iid: str, entry: Dict[str, Any]) -> List[str]:
     return out
 
 
+def weapon_proficiency_condition(entry: Dict[str, Any]) -> str:
+    """prof:weapon:<slug>, the Condition type a catalog weapon's attacks name
+    for proficiency; a magic weapon uses its base weapon's (``weapon_base``)."""
+    return "prof:weapon:" + str(entry.get("weapon_base") or entry["id"]).split("/", 1)[1]
+
+
+def _monk_weapon(entry: Dict[str, Any], rules: List[Dict[str, Any]]) -> bool:
+    """True when one of the Monk's typed rules (category, kind, optional
+    property_any) matches the weapon block."""
+    weapon = entry["weapon"]
+    names = {p["name"] for p in weapon["properties"]}
+    return any(r.get("category") == weapon["category"] and r.get("kind") == weapon["kind"]
+               and (not r.get("property_any") or names & set(r["property_any"])) for r in rules)
+
+
+def _martial_arts_upgrades(indent: str) -> str:
+    return "".join("%sor dice 1 sides %d requires %s%s\n" % (indent, sides, _q(kind), UNARMORED_GATE)
+                   for sides, kind in MARTIAL_ARTS_DICE)
+
+
+def _weapon_profile(mode: Dict[str, Any], ability: str) -> str:
+    if mode["attack"] == "melee":
+        return "melee reach %d stat %s;" % (mode["reach"], _q(ability))
+    reach = mode["range"]
+    if mode["attack"] == "thrown":
+        return "thrown normal %d maximum %d stat %s;" % (reach["normal"], reach["long"], _q(ability))
+    return "ranged normal %d maximum %d stat %s ammunition from %s;" % (
+        reach["normal"], reach["long"], _q(ability), _q(mode["ammunition_type"]))
+
+
+def _weapon_attack(attack_id: str, name: str, mode: Dict[str, Any], ability: str, bonus: int,
+                   prof: str, gate: str, monk: bool) -> str:
+    damage = mode["damage"]
+    hit = "constant %d; %s %s" % (bonus, WEAPON_ABILITY_TERM % ability, WEAPON_PROFICIENCY_TERM % _q(prof))
+    if mode["attack"] == "ranged":
+        hit += ARCHERY_TERM
+    if "flat" in damage:
+        roll = "damage %s flat { constant %d; %s }" % (_q(damage["kind"]), damage["flat"] + bonus, WEAPON_ABILITY_TERM % ability)
+    else:
+        roll = "damage %s dice %d sides %d { constant %d; %s }" % (
+            _q(damage["kind"]), damage["count"], damage["sides"], bonus, WEAPON_ABILITY_TERM % ability)
+    return ("   attack %s named %s%s {\n    hit { %s }\n    %s\n%s    %s\n   }\n"
+            % (_q(attack_id), _q(name), gate, hit, roll, _martial_arts_upgrades("     ") if monk else "",
+               _weapon_profile(mode, ability)))
+
+
+def _weapon_definition(entry: Dict[str, Any], monk_rules: List[Dict[str, Any]]) -> str:
+    """One immutable definition per catalog weapon, from its typed weapon block
+    (the pack's catalog_equipment.weapon_definition, ported): a mode per hand
+    use, with an attack per ability for each attack mode. A Monk weapon's
+    attacks take the Martial Arts die as upgrades, and a mode without a
+    Dexterity attack gains one gated on Martial Arts. Raises ValueError on a
+    block the engine cannot take (two hand counts for one mode, an attack mode
+    that is not an engine grant)."""
+    weapon = entry["weapon"]
+    bonus = (entry.get("magic_bonus") or {}).get("attack", 0)
+    prof = weapon_proficiency_condition(entry)
+    monk = _monk_weapon(entry, monk_rules)
+    modes: Dict[str, Dict[str, Any]] = {}
+    for mode in weapon["attack_modes"]:
+        modes.setdefault(mode["mode"], {"hands": mode["hands"], "attacks": []})
+        if modes[mode["mode"]]["hands"] != mode["hands"]:
+            raise ValueError("%s: mode %s with two hand counts" % (entry["id"], mode["mode"]))
+        if mode["engine"] != "shared":
+            raise ValueError("%s: attack mode %s is not an engine grant" % (entry["id"], mode["attack"]))
+        abilities = list(mode["abilities"])
+        gated = ["dexterity"] if monk and "dexterity" not in abilities else []
+        for ability in abilities + gated:
+            attack_id = "%s-%s" % (mode["attack"], ability)
+            parts = (([] if mode["attack"] == "melee" else [mode["attack"]]) + [ability.capitalize()]
+                     + (["two-handed"] if mode["mode"] == "two-handed" else [])
+                     + (["Martial Arts"] if ability in gated else []))
+            label = "%s (%s)" % (entry["name"], ", ".join(parts))
+            gate = (" requires %s%s" % (_q(MARTIAL_ARTS_CONDITION), UNARMORED_GATE)) if ability in gated else ""
+            modes[mode["mode"]]["attacks"].append(_weapon_attack(attack_id, label, mode, ability, bonus, prof, gate, monk))
+    text = ' definition %s named %s {\n  description "Weapon.";\n  default "held";\n' % (_q(entry["equipment"]), _q(entry["name"]))
+    for mode_id, mode in modes.items():
+        text += '  mode %s {\n   occupy "hand" by %d;\n%s  }\n' % (_q(mode_id), mode["hands"], "".join(mode["attacks"]))
+    return text + " }\n"
+
+
 def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: bool,
                definitions: List[str], gaps: List[str], cid: str,
-               charged: Optional[Tuple[List[str], set]] = None) -> Tuple[str, Optional[str]]:
-    """One item declaration. Returns (line, mode-if-held).
+               charged: Optional[Tuple[List[str], set]] = None,
+               hands_free: Optional[int] = None,
+               carried: Optional[Dict[str, str]] = None) -> Tuple[str, Optional[str], int]:
+    """One item declaration. Returns (line, mode-if-held, hands it holds).
+
+    ``hands_free`` (NUM-H3a) is the hands left for an equipped catalog weapon,
+    whose held mode states its own hand count: one that would overfill them is
+    declared carried (custody kept, not worn), with a gap naming it, and
+    recorded in ``carried``.
 
     ``charged`` is (item type lines, type ids already used) for the world; a
     non-catalog row with an acceptable ``charges`` object (charges_fields) is
@@ -653,6 +774,13 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
         if worn and quantity not in (None, 1):
             gaps.append(f"{cid}: {entry.get('item_name')!r} is equipped with quantity {quantity}; the engine wears exactly one, item left unworn")
             worn = False
+        hands = item_catalog.held_hands(catalog) if mode == "held" else 0
+        if worn and hands_free is not None and mode == "held" and catalog.get("kind") == "weapon" and hands > hands_free:
+            gaps.append(f"{cid}: {entry.get('item_name')!r} ({catalog['id']}) is equipped but holds in {hands} hands "
+                        f"and {max(hands_free, 0)} are free; declared carried, not worn")
+            worn = False
+            if carried is not None:
+                carried[iid] = cid
         fields = [f"owner {_q(owner)};", custody]
         if worn:
             fields.append(f"wearer {_q(cid)};")
@@ -661,7 +789,8 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
             fields.append(f"quantity {quantity};")
         if clause:
             fields.append(clause)
-        return f"item {_q(iid)} from {_q(catalog['id'])} {{ {' '.join(fields)} }}", (mode if worn else None)
+        return (f"item {_q(iid)} from {_q(catalog['id'])} {{ {' '.join(fields)} }}", (mode if worn else None),
+                (hands if worn and mode == "held" else 0))
     if catalog_gap:
         gaps.append(f"{cid}: {entry.get('item_name')!r} {catalog_gap}; declared from its own fields")
     # A row awaiting its mint keeps its charges object for the mint, but it is
@@ -702,7 +831,8 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
             if quantity is not None and quantity != 1:
                 fields.append(f"quantity {quantity};")
             fields.append(charge_state(entry, current, maximum, rule is not None, gaps, label))
-            return f"item {_q(iid)} from {_q(type_id)} {{ {' '.join(fields)} }}", (mode if worn else None)
+            return (f"item {_q(iid)} from {_q(type_id)} {{ {' '.join(fields)} }}", (mode if worn else None),
+                    (1 if worn and mode == "held" else 0))
     if ac_effect_lines(iid, entry) and item_type not in ("armor", "weapon"):
         # An item with a while-worn defense effect must be a typed worn item.
         definition, mode = "gear:worn", "worn"
@@ -733,7 +863,8 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
         fields.append(f"mode {_q(mode)};")
     if quantity is not None and quantity != 1:
         fields.append(f"quantity {quantity};")
-    return f"item {_q(iid)} named {_q(entry['item_name'])} {{ {' '.join(fields)} }}", (mode if worn else None)
+    return (f"item {_q(iid)} named {_q(entry['item_name'])} {{ {' '.join(fields)} }}", (mode if worn else None),
+            (1 if worn and mode == "held" else 0))
 
 
 DAMAGE_TRAITS_LAW = 'attacks { defense "defense"; health "hp"; die 20; miss 1; critical 20; critical dice 2; }'
@@ -789,7 +920,11 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     # carry armor it is not trained for (a shield handed to an untrained
     # companion). A character gets an instance only when the sheet lists the
     # proficiency or the exact feature name.
-    condition_types: List[str] = [DEFENSE_STYLE_CONDITION]
+    condition_types: List[str] = [DEFENSE_STYLE_CONDITION, ARCHERY_STYLE_CONDITION]
+    # NUM-H3b: the Unarmored Defense types the defense derive's terms require.
+    for cond in class_conditions.condition_types():
+        if cond not in condition_types:
+            condition_types.append(cond)
     for cond in _ARMOR_TRAINING.values():
         if cond not in condition_types:
             condition_types.append(cond)
@@ -804,11 +939,31 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
                                  dict(catalog_armor["neq_armor"], item_name=catalog_armor.get("name", "")), gaps)
         if text is not None:
             definitions.append(text)
+    # NUM-H3a: the pack's weapon types (srd-item-catalog/4) name gear:srd/<slug>;
+    # one definition each from the entry's typed weapon block, and the
+    # proficiency Condition type its attacks name. No character gets an
+    # instance here, so no grant gains proficiency or a Monk die (NUM-H3b).
+    monk_rules = item_catalog.monk_weapon_rules()
+    for catalog_weapon in item_catalog.weapon_entries():
+        try:
+            text = _weapon_definition(catalog_weapon, monk_rules)
+        except (KeyError, TypeError, ValueError) as error:
+            gaps.append(f"catalog weapon {catalog_weapon.get('id')!r} has no engine definition: {error}")
+            continue
+        definitions.append(text)
+        prof = weapon_proficiency_condition(catalog_weapon)
+        if prof not in condition_types:
+            condition_types.append(prof)
+    # NUM-H3b: per-character instances of the pack's types need the pack's
+    # weapon definitions and attack_features.nql in this world.
+    with_pack = bool(item_catalog.weapon_entries()) and bool(item_catalog.features_source().strip())
+    notes: List[str] = []
     items: List[str] = []
     effects: List[str] = []
     effect_types: List[str] = []
     effect_names: Dict[str, str] = {}
     all_ids: set = set()
+    carried: Dict[str, str] = {}
     # Item charges (H1): one item type per charged sheet row, declared after the pack.
     charged: Tuple[List[str], set] = ([], set())
 
@@ -839,7 +994,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
         # at its base; the engine derives the totals (core/nql/srd_stats.py).
         lines.append(
             f"character {_q(cid)} named {_q(sheet.get('name', ''))} at {_q(loc)} {{\n"
-            f' stat "dexterity" = {dex};\n stat "defense" = 10;\n'
+            f' stat "dexterity" = {dex};\n stat "defense" = 10;\n stat {_q(ARCHERY_STAT)} = {ARCHERY_BONUS};\n'
             + "\n".join(stats.stat_lines(sheet, gaps)) + "\n"
             + "\n".join(resources) + "\n"
             + ("".join(" %s\n" % line for line in _trait_lines(sheet)) if damage_traits else "")
@@ -862,12 +1017,28 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
             conditions.append(
                 f"condition {_q(DEFENSE_STYLE_CONDITION + ':' + cid.split(':', 1)[1])} of {_q(DEFENSE_STYLE_CONDITION)} to {_q(cid)};"
             )
+        if _has_archery_style(sheet):
+            conditions.append(
+                f"condition {_q(ARCHERY_STYLE_CONDITION + ':' + cid.split(':', 1)[1])} of {_q(ARCHERY_STYLE_CONDITION)} to {_q(cid)};"
+            )
+        # NUM-H3b: Unarmed Strike, weapon proficiency, the Monk's Martial Arts die
+        # and Unarmored Defense, from the sheet's typed class, level and
+        # proficiencies (core/nql/class_conditions.py).
+        for kind in class_conditions.instances(sheet, notes, cid, with_pack):
+            if kind.startswith("prof:weapon:") and kind not in condition_types:
+                continue  # no catalog weapon declares this type in this world
+            conditions.append(f"condition {_q(kind + ':' + cid.split(':', 1)[1])} of {_q(kind)} to {_q(cid)};")
         types, instances = _effect_lines(sheet, cid, gaps, effect_names, clock_tick)
         effect_types.extend(types)
         conditions.extend(instances)
         ids: Dict[int, str] = {}
         hands = 0
         scope = cid.split(":", 1)[1]
+        declared: Dict[int, Tuple[str, List[str]]] = {}
+        # NUM-H3a: an equipped catalog weapon is declared after every other row,
+        # so the hands it may take are what the shield and other held items
+        # leave; the world keeps the sheet's row order.
+        weapons_last: List[Tuple[int, str, Dict[str, Any]]] = []
         for index, entry in enumerate(sheet.get("equipment") or []):
             if not isinstance(entry, dict) or not entry.get("item_name"):
                 gaps.append(f"{cid}: equipment[{index}] has no item_name; skipped")
@@ -878,12 +1049,23 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
                 continue
             all_ids.add(iid)
             ids[index] = iid
-            line, held = _item_line(iid, entry, cid, f"custody character {_q(cid)};",
-                                    entry.get("equipped") is True, definitions, gaps, cid, charged)
-            items.append(line)
-            effects.extend(ac_effect_lines(iid, entry))
-            if held == "held":
-                hands += 1
+            catalog = item_catalog.row_entry(entry)[0]
+            if entry.get("equipped") is True and catalog is not None and catalog.get("kind") == "weapon":
+                weapons_last.append((index, iid, entry))
+                continue
+            line, _, held_hands = _item_line(iid, entry, cid, f"custody character {_q(cid)};",
+                                             entry.get("equipped") is True, definitions, gaps, cid, charged)
+            declared[index] = (line, ac_effect_lines(iid, entry))
+            hands += held_hands
+        for index, iid, entry in weapons_last:
+            line, _, held_hands = _item_line(iid, entry, cid, f"custody character {_q(cid)};",
+                                             True, definitions, gaps, cid, charged, hands_free=2 - hands,
+                                             carried=carried)
+            declared[index] = (line, ac_effect_lines(iid, entry))
+            hands += held_hands
+        for index in sorted(declared):
+            items.append(declared[index][0])
+            effects.extend(declared[index][1])
         if hands > 2:
             gaps.append(f"{cid}: {hands} held items equipped; the engine allows two hands, genesis will be refused")
         item_ids[cid] = ids
@@ -923,7 +1105,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
                 break
             all_ids.add(iid)
             ids[index] = iid
-            line, _ = _item_line(iid, entry, owner, f"custody item {_q(conid)};", False, definitions, gaps, owner, charged)
+            line, _, _ = _item_line(iid, entry, owner, f"custody item {_q(conid)};", False, definitions, gaps, owner, charged)
             items.append(line)
         content_ids[sid] = ids
 
@@ -953,7 +1135,10 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     lines.extend(conditions)
     lines.append(f"equipment {_q(EQUIPMENT_VERSION)} {{")
     lines.append(' slot "hand" capacity 2;\n slot "body" capacity 1;\n slot "shield" capacity 1;')
-    lines.append(' derive stat "defense" { term stat "dexterity" offset -10 divide 2; }')
+    # NUM-H3b: Unarmored Defense terms from progression.json ac_formulas, gated
+    # on the class Condition and on the slots the formula excludes.
+    lines.append(' derive stat "defense" { term stat "dexterity" offset -10 divide 2;'
+                 + class_conditions.defense_terms() + ' }')
     lines.append(srd_stats.DERIVE_RULES.rstrip("\n"))
     lines.append(srd_stats.XP_RULES.rstrip("\n"))
     lines.extend(d.rstrip("\n") for d in definitions)
@@ -965,9 +1150,15 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     pack = item_catalog.pack_source().rstrip("\n")
     if pack:
         lines.append(pack)
+        # NUM-H3a: the Condition types the weapon definitions name (Unarmed
+        # Strike, the Martial Arts dice), part of the same pack.
+        features = item_catalog.features_source().rstrip("\n")
+        if features:
+            lines.append(features)
     lines.extend(charged[0])
     return Genesis(source="\n".join(lines) + "\n", location=loc, character_ids=character_ids, item_ids=item_ids,
-                   container_ids=container_ids, content_ids=content_ids, effect_names=effect_names, gaps=gaps)
+                   container_ids=container_ids, content_ids=content_ids, effect_names=effect_names, gaps=gaps,
+                   carried=carried, notes=notes)
 
 
 def expected_armor_class(sheet: Dict[str, Any]) -> Tuple[Optional[int], List[str]]:

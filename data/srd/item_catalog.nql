@@ -4,266 +4,266 @@ item type "itemdef:srd/club" named "Club" {
  description "Simple Melee weapon. Damage: 1d4 Bludgeoning. Properties: Light. Mastery: Slow.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/club";
  price "silver" 1 per 1;
 }
 item type "itemdef:srd/dagger" named "Dagger" {
  description "Simple Melee weapon. Damage: 1d4 Piercing. Properties: Finesse, Light, Thrown (Range 20/60). Mastery: Nick.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/dagger";
  price "gold" 2 per 1;
 }
 item type "itemdef:srd/greatclub" named "Greatclub" {
  description "Simple Melee weapon. Damage: 1d8 Bludgeoning. Properties: Two-Handed. Mastery: Push.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/greatclub";
  price "silver" 2 per 1;
 }
 item type "itemdef:srd/handaxe" named "Handaxe" {
  description "Simple Melee weapon. Damage: 1d6 Slashing. Properties: Light, Thrown (Range 20/60). Mastery: Vex.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/handaxe";
  price "gold" 5 per 1;
 }
 item type "itemdef:srd/javelin" named "Javelin" {
  description "Simple Melee weapon. Damage: 1d6 Piercing. Properties: Thrown (Range 30/120). Mastery: Slow.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/javelin";
  price "silver" 5 per 1;
 }
 item type "itemdef:srd/light-hammer" named "Light Hammer" {
  description "Simple Melee weapon. Damage: 1d4 Bludgeoning. Properties: Light, Thrown (Range 20/60). Mastery: Nick.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/light-hammer";
  price "gold" 2 per 1;
 }
 item type "itemdef:srd/mace" named "Mace" {
  description "Simple Melee weapon. Damage: 1d6 Bludgeoning. Properties: -. Mastery: Sap.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/mace";
  price "gold" 5 per 1;
 }
 item type "itemdef:srd/quarterstaff" named "Quarterstaff" {
  description "Simple Melee weapon. Damage: 1d6 Bludgeoning. Properties: Versatile (1d8). Mastery: Topple.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/quarterstaff";
  price "silver" 2 per 1;
 }
 item type "itemdef:srd/sickle" named "Sickle" {
  description "Simple Melee weapon. Damage: 1d4 Slashing. Properties: Light. Mastery: Nick.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/sickle";
  price "gold" 1 per 1;
 }
 item type "itemdef:srd/spear" named "Spear" {
  description "Simple Melee weapon. Damage: 1d6 Piercing. Properties: Thrown (Range 20/60), Versatile (1d8). Mastery: Sap.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/spear";
  price "gold" 1 per 1;
 }
 item type "itemdef:srd/dart" named "Dart" {
  description "Simple Ranged weapon. Damage: 1d4 Piercing. Properties: Finesse, Thrown (Range 20/60). Mastery: Vex.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/dart";
  price "copper" 5 per 1;
 }
 item type "itemdef:srd/light-crossbow" named "Light Crossbow" {
  description "Simple Ranged weapon. Damage: 1d8 Piercing. Properties: Ammunition (Range 80/320; Bolt), Loading, Two-Handed. Mastery: Slow.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/light-crossbow";
  price "gold" 25 per 1;
 }
 item type "itemdef:srd/shortbow" named "Shortbow" {
  description "Simple Ranged weapon. Damage: 1d6 Piercing. Properties: Ammunition (Range 80/320; Arrow), Two-Handed. Mastery: Vex.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/shortbow";
  price "gold" 25 per 1;
 }
 item type "itemdef:srd/sling" named "Sling" {
  description "Simple Ranged weapon. Damage: 1d4 Bludgeoning. Properties: Ammunition (Range 30/120; Bullet). Mastery: Slow.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/sling";
  price "silver" 1 per 1;
 }
 item type "itemdef:srd/battleaxe" named "Battleaxe" {
  description "Martial Melee weapon. Damage: 1d8 Slashing. Properties: Versatile (1d10). Mastery: Topple.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/battleaxe";
  price "gold" 10 per 1;
 }
 item type "itemdef:srd/flail" named "Flail" {
  description "Martial Melee weapon. Damage: 1d8 Bludgeoning. Properties: -. Mastery: Sap.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/flail";
  price "gold" 10 per 1;
 }
 item type "itemdef:srd/glaive" named "Glaive" {
  description "Martial Melee weapon. Damage: 1d10 Slashing. Properties: Heavy, Reach, Two-Handed. Mastery: Graze.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/glaive";
  price "gold" 20 per 1;
 }
 item type "itemdef:srd/greataxe" named "Greataxe" {
  description "Martial Melee weapon. Damage: 1d12 Slashing. Properties: Heavy, Two-Handed. Mastery: Cleave.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/greataxe";
  price "gold" 30 per 1;
 }
 item type "itemdef:srd/greatsword" named "Greatsword" {
  description "Martial Melee weapon. Damage: 2d6 Slashing. Properties: Heavy, Two-Handed. Mastery: Graze.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/greatsword";
  price "gold" 50 per 1;
 }
 item type "itemdef:srd/halberd" named "Halberd" {
  description "Martial Melee weapon. Damage: 1d10 Slashing. Properties: Heavy, Reach, Two-Handed. Mastery: Cleave.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/halberd";
  price "gold" 20 per 1;
 }
 item type "itemdef:srd/lance" named "Lance" {
  description "Martial Melee weapon. Damage: 1d10 Piercing. Properties: Heavy, Reach, Two-Handed (unless mounted). Mastery: Topple.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/lance";
  price "gold" 10 per 1;
 }
 item type "itemdef:srd/longsword" named "Longsword" {
  description "Martial Melee weapon. Damage: 1d8 Slashing. Properties: Versatile (1d10). Mastery: Sap.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/longsword";
  price "gold" 15 per 1;
 }
 item type "itemdef:srd/maul" named "Maul" {
  description "Martial Melee weapon. Damage: 2d6 Bludgeoning. Properties: Heavy, Two-Handed. Mastery: Topple.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/maul";
  price "gold" 10 per 1;
 }
 item type "itemdef:srd/morningstar" named "Morningstar" {
  description "Martial Melee weapon. Damage: 1d8 Piercing. Properties: -. Mastery: Sap.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/morningstar";
  price "gold" 15 per 1;
 }
 item type "itemdef:srd/pike" named "Pike" {
  description "Martial Melee weapon. Damage: 1d10 Piercing. Properties: Heavy, Reach, Two-Handed. Mastery: Push.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/pike";
  price "gold" 5 per 1;
 }
 item type "itemdef:srd/rapier" named "Rapier" {
  description "Martial Melee weapon. Damage: 1d8 Piercing. Properties: Finesse. Mastery: Vex.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/rapier";
  price "gold" 25 per 1;
 }
 item type "itemdef:srd/scimitar" named "Scimitar" {
  description "Martial Melee weapon. Damage: 1d6 Slashing. Properties: Finesse, Light. Mastery: Nick.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/scimitar";
  price "gold" 25 per 1;
 }
 item type "itemdef:srd/shortsword" named "Shortsword" {
  description "Martial Melee weapon. Damage: 1d6 Piercing. Properties: Finesse, Light. Mastery: Vex.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/shortsword";
  price "gold" 10 per 1;
 }
 item type "itemdef:srd/trident" named "Trident" {
  description "Martial Melee weapon. Damage: 1d8 Piercing. Properties: Thrown (Range 20/60), Versatile (1d10). Mastery: Topple.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/trident";
  price "gold" 5 per 1;
 }
 item type "itemdef:srd/warhammer" named "Warhammer" {
  description "Martial Melee weapon. Damage: 1d8 Bludgeoning. Properties: Versatile (1d10). Mastery: Push.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/warhammer";
  price "gold" 15 per 1;
 }
 item type "itemdef:srd/war-pick" named "War Pick" {
  description "Martial Melee weapon. Damage: 1d8 Piercing. Properties: Versatile (1d10). Mastery: Sap.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/war-pick";
  price "gold" 5 per 1;
 }
 item type "itemdef:srd/whip" named "Whip" {
  description "Martial Melee weapon. Damage: 1d4 Slashing. Properties: Finesse, Reach. Mastery: Slow.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/whip";
  price "gold" 2 per 1;
 }
 item type "itemdef:srd/blowgun" named "Blowgun" {
  description "Martial Ranged weapon. Damage: 1 Piercing. Properties: Ammunition (Range 25/100; Needle), Loading. Mastery: Vex.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/blowgun";
  price "gold" 10 per 1;
 }
 item type "itemdef:srd/hand-crossbow" named "Hand Crossbow" {
  description "Martial Ranged weapon. Damage: 1d6 Piercing. Properties: Ammunition (Range 30/120; Bolt), Light, Loading. Mastery: Vex.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/hand-crossbow";
  price "gold" 75 per 1;
 }
 item type "itemdef:srd/heavy-crossbow" named "Heavy Crossbow" {
  description "Martial Ranged weapon. Damage: 1d10 Piercing. Properties: Ammunition (Range 100/400; Bolt), Heavy, Loading, Two-Handed. Mastery: Push.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/heavy-crossbow";
  price "gold" 50 per 1;
 }
 item type "itemdef:srd/longbow" named "Longbow" {
  description "Martial Ranged weapon. Damage: 1d8 Piercing. Properties: Ammunition (Range 150/600; Arrow), Heavy, Two-Handed. Mastery: Slow.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/longbow";
  price "gold" 50 per 1;
 }
 item type "itemdef:srd/musket" named "Musket" {
  description "Martial Ranged weapon. Damage: 1d12 Piercing. Properties: Ammunition (Range 40/120; Bullet), Loading, Two-Handed. Mastery: Slow.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/musket";
  price "gold" 500 per 1;
 }
 item type "itemdef:srd/pistol" named "Pistol" {
  description "Martial Ranged weapon. Damage: 1d10 Piercing. Properties: Ammunition (Range 30/90; Bullet), Loading. Mastery: Vex.";
  kind "weapon";
  magical false; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/pistol";
  price "gold" 250 per 1;
 }
 item type "itemdef:srd/padded-armor" named "Padded Armor" {
@@ -1118,7 +1118,7 @@ item type "itemdef:srd/dagger-of-venom" named "Dagger of Venom" {
  description "You gain a +1 bonus to attack rolls and damage rolls made with this magic weapon. You can take a Bonus Action to magically coat the blade with poison. The poison remains for 1 minute or until an attack using this weapon hits a creature. That creature must succeed on a DC 15 Constitution saving throw or take 2d10 Poison damage and have the Poisoned condition for 1 minute. The weapon can't be used this way again until the next dawn.";
  kind "weapon";
  magical true; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/dagger-of-venom";
  charges 1;
  recharge every 86400 at 21600 all;
 }
@@ -1165,7 +1165,7 @@ item type "itemdef:srd/hammer-of-thunderbolts" named "Hammer of Thunderbolts" {
  description "You gain a +1 bonus to attack rolls and damage rolls made with this magic weapon. The weapon has 5 charges. You can expend 1 charge and make a ranged attack with the weapon, hurling it as if it had the Thrown property with a normal range of 20 feet and a long range of 60 feet. If the attack hits, the weapon unleashes a thunderclap audible out to 300 feet. The target and every creature within 30 feet of it other than you must succeed on a DC 17 Constitution saving throw or have the Stunned condition until the end of your next turn. Immediately after hitting or missing, the weapon flies back to your hand. The weapon regains 1d4 + 1 expended charges daily at dawn. Giant's Bane. While you are attuned to the weapon and wearing either a Belt of Giant Strength or Gauntlets of Ogre Power to which you are also attuned, you gain the following benefits: Giants' Bane. When you roll a 20 on the d20 for an attack roll made with this weapon against a Giant, the creature must succeed on a DC 17 Constitution saving throw or die. Might of Giants. The Strength score bestowed by your Belt of Giant Strength or Gauntlets of Ogre Power increases by 4, to a maximum of 30.";
  kind "weapon";
  magical true; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/hammer-of-thunderbolts";
  charges 5;
  recharge every 86400 at 21600 dice 1 sides 4 plus 1;
 }
@@ -1189,7 +1189,7 @@ item type "itemdef:srd/javelin-of-lightning" named "Javelin of Lightning" {
  description "Each time you make an attack roll with this magic weapon and hit, you can have it deal Lightning damage instead of Piercing damage. Lightning Bolt. When you throw this weapon at a target no farther than 120 feet from you, you can forgo making a ranged attack roll and instead turn the weapon into a bolt of lightning. This bolt forms a 5-foot-wide Line between you and the target. The target and each other creature in the Line (excluding you) makes a DC 13 Dexterity saving throw, taking 4d6 Lightning damage on a failed save or half as much damage on a successful one. Immediately after dealing this damage, the weapon reappears in your hand. This property can't be used again until the next dawn.";
  kind "weapon";
  magical true; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/javelin-of-lightning";
  charges 1;
  recharge every 86400 at 21600 all;
 }
@@ -1197,7 +1197,7 @@ item type "itemdef:srd/luck-blade" named "Luck Blade" {
  description "You gain a +1 bonus to attack rolls and damage rolls made with this magic weapon. While the weapon is on your person, you also gain a +1 bonus to saving throws. Luck. If the weapon is on your person, you can call on its luck (no action required) to reroll one failed D20 Test if you don't have the Incapacitated condition. You must use the second roll. Once used, this property can't be used again until the next dawn. Wish. The weapon has 1d3 charges. While holding it, you can expend 1 charge and cast Wish from it. Once used, this property can't be used again until the next dawn. The weapon loses this property if it has no charges.";
  kind "weapon";
  magical true; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/luck-blade";
  charges 3;
  initial dice 1 sides 3;
 }
@@ -1205,7 +1205,7 @@ item type "itemdef:srd/mace-of-terror" named "Mace of Terror" {
  description "This magic weapon has 3 charges and regains 1d3 expended charges daily at dawn. While holding the weapon, you can take a Magic action and expend 1 charge to release a wave of terror from it. Each creature of your choice within 30 feet of you must succeed on a DC 15 Wisdom saving throw or have the Frightened condition for 1 minute. While Frightened in this way, a creature must spend its turns trying to move as far away from you as it can, and it can't make Opportunity Attacks. For its action, it can use only the Dash action or try to escape from an effect that prevents it from moving. If it has nowhere it can move, the creature can take the Dodge action. At the end of each of its turns, a creature repeats the save, ending the effect on itself on a success.";
  kind "weapon";
  magical true; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/mace-of-terror";
  charges 3;
  recharge every 86400 at 21600 dice 1 sides 3;
 }
@@ -1221,7 +1221,7 @@ item type "itemdef:srd/nine-lives-stealer" named "Nine Lives Stealer" {
  description "You gain a +2 bonus to attack rolls and damage rolls made with this magic weapon. Life Stealing. The weapon has 1d8 + 1 charges. When you attack a creature that has fewer than 100 Hit Points with this weapon and roll a 20 on the d20 for the attack roll, the creature must succeed on a DC 15 Constitution saving throw or be slain instantly as the sword tears its life force from its body. Constructs and Undead succeed on the save automatically. The weapon loses 1 charge if the creature is slain. When the weapon has no charges remaining, it loses this property.";
  kind "weapon";
  magical true; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/nine-lives-stealer";
  charges 9;
  initial dice 1 sides 8 plus 1;
 }
@@ -1484,7 +1484,7 @@ item type "itemdef:srd/thunderous-greatclub" named "Thunderous Greatclub" {
  description "While you are attuned to this magic weapon, your Strength is 20 unless your Strength is already equal to or greater than that score. The weapon deals an extra 1d8 Thunder damage to any creature it hits and an extra 3d8 Thunder damage to objects it hits that aren't being worn or carried. The weapon has the following additional properties. Clap of Thunder. As a Magic action, you can strike the weapon against a hard surface to create a loud clap of thunder audible out to 300 feet. You also create a 30-foot Cone of thunderous energy. Each creature in the Cone must succeed on a DC 15 Strength saving throw or have the Prone condition. Nonmagical objects in the Cone that aren't being worn or carried take 3d8 Thunder damage. Earthquake. As a Magic action, you can strike the weapon against the ground to create an intense seismic disturbance in a 50-foot-radius circle centered on the point of impact. Structures in contact with the ground in that area take 50 Bludgeoning damage, and each creature on the ground in that area must succeed on a DC 20 Dexterity saving throw or have the Prone condition. If that creature is also concentrating, it must succeed on a DC 20 Constitution saving throw, or its Concentration is broken. In addition, you can cause a 30-foot-deep, 10-foot-wide fissure to open up on the ground anywhere in the area. Any creature on a spot where the fissure opens must make a DC 20 Dexterity saving throw, falling into the fissure on a failed save or moving with the fissure's edge on a successful one. Any structure on a spot where the fissure opens collapses into the fissure. Once you use this property, it can't be used again until the next dawn.";
  kind "weapon";
  magical true; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/thunderous-greatclub";
  charges 1;
  recharge every 86400 at 21600 all;
 }
@@ -1492,7 +1492,7 @@ item type "itemdef:srd/trident-of-fish-command" named "Trident of Fish Command" 
  description "This magic weapon has 3 charges, and it regains 1d3 expended charges daily at dawn. While you carry it, you can expend 1 charge to cast Dominate Beast (save DC 15) from it on a Beast that has a Swim Speed.";
  kind "weapon";
  magical true; consumable false;
- equipment "gear:held";
+ equipment "gear:srd/trident-of-fish-command";
  charges 3;
  recharge every 86400 at 21600 dice 1 sides 3;
 }

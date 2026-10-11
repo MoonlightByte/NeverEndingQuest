@@ -125,6 +125,14 @@ def take_player_rolls(read: Callable[[str], str]) -> List[str]:
             continue
         line = checks.describe(result) + (f" [{entry['reason']}]" if entry.get("reason") else "")
         checks_state.complete_pending(entry, line)
+        # The rules command is not ordinary chat input. Publish its accepted
+        # dice separately as the player's reply, including engine-rolled dice,
+        # before the next DM narration. Keep totals/mechanics in the DM context.
+        if result.ok and result.faces:
+            from web.shared_state import emit_player_output
+            dice = [f"{face} on a d20" for face in result.faces]
+            rolled = " and ".join(dice)
+            emit_player_output({'type': 'user-input', 'content': f"I rolled {rolled}."})
         info(f"CHECK: {line}", category="character_updates")
         completed.append(line)
 
@@ -159,8 +167,9 @@ def check_results_note(turn_marker=None) -> str:
         LAST_NOTE = ""
         return ""
     LAST_NOTE = ("\nCHECK RESULTS (the rules engine scored the attempts you left unresolved last turn; open this response by narrating "
-                 "each outcome, then answer the new input; never re-roll or re-add): " + " | ".join(lines) + "\n"
-                 + "".join(read_note(line) for line in lines))
+                 "each outcome in story terms, then answer the new input; never re-roll or re-add; the player already sees "
+                 "these numbers on the dice receipt, so do not restate dice, bonus, total, DC or margin): "
+                 + " | ".join(lines) + "\n" + "".join(read_note(line) for line in lines))
     return LAST_NOTE
 
 
@@ -169,8 +178,10 @@ def validation_context() -> str:
     if not LAST_NOTE:
         return ""
     return ("The Dungeon Master Note for this turn carried the rules engine's scored check results below. The candidate "
-            "is REQUIRED to narrate these outcomes as settled facts (dice, bonus, total and margin are the engine's, not "
-            "the DM's arithmetic); a candidate that calls such a check pending or unresolved, or asks for its dice again, "
-            "is invalid. Numbers the player typed in chat are not dice; only these lines are. A READ line governs how its "
-            "read is narrated: a candidate in which an NPC confesses, explains or names what they are hiding in answer to "
-            "that read is invalid." + LAST_NOTE)
+            "is REQUIRED to narrate each outcome (success or failure and what it means in the scene) as a settled fact; "
+            "a candidate that calls such a check pending or unresolved, contradicts its success or failure, or asks for "
+            "its dice again, is invalid. The dice, bonus, total, DC and margin are the engine's and the player already "
+            "sees them on the dice receipt: do NOT require the narration to state any of these numbers, and do not reject "
+            "a candidate for leaving them out. Numbers the player typed in chat are not dice; only these lines are. A READ "
+            "line governs how its read is narrated: a candidate in which an NPC confesses, explains or names what they are "
+            "hiding in answer to that read is invalid." + LAST_NOTE)

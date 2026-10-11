@@ -940,7 +940,7 @@ def ai_character_interview(conversation, module):
                                 "status": "already applied by the game to the candidate sheet under review",
                                 "meaning": ("These normalization notes describe the candidate, not author requirements "
                                             "or player approval. Check narration against the candidate and still reject "
-                                            "unsupported mechanics or lost choices. A kept HP maximum is not rules-verified."),
+                                            "unsupported mechanics or lost choices."),
                                 "changes": mechanics,
                             }
                     review = _review_startup_response(
@@ -1591,13 +1591,212 @@ def validate_character(character_data):
     except Exception as e:
         return False, f"Validation error: {str(e)}"
 
-STARTING_HIT_DIE = {
-    "barbarian": 12, "fighter": 10, "paladin": 10, "ranger": 10,
-    "bard": 8, "cleric": 8, "druid": 8, "monk": 8, "rogue": 8, "warlock": 8,
-    "sorcerer": 6, "wizard": 6,
-}
-TOUGH_FEAT = "tough"
 DWARVEN_TOUGHNESS_TRAIT = "dwarven toughness"
+
+
+def _level_one_hit_die(class_name):
+    """The class's level-1 hit point base (its hit die maximum) from the SRD
+    progression tables, data/srd/progression.json; None for an unknown class."""
+    from core.leveling import tables
+    entry = (tables.tables().get("classes") or {}).get(str(class_name).strip().casefold())
+    value = entry.get("hp_at_first_level_base") if isinstance(entry, dict) else None
+    return value if type(value) is int and value > 0 else None
+
+
+FIGHTING_STYLE_FEATURE = "fighting style"
+
+
+def _fighting_style_texts():
+    """The SRD Fighting Style feats named by data/srd/choices.json feats[]
+    (category "Fighting Style"), as casefolded name -> (name, text); the text is
+    the startup origins file's fighting_style_feats entry of that name."""
+    from core.leveling import choices, tables
+    origins = safe_json_load(os.path.join(os.path.dirname(os.path.dirname(tables._DATA)),
+                                          os.path.basename(ORIGINS_FILE))) or {}
+    texts = {str(feat.get("name", "")).strip().casefold(): feat.get("text", "")
+             for feat in origins.get("fighting_style_feats") or [] if isinstance(feat, dict)}
+    out = {}
+    for feat in choices.data().get("feats") or []:
+        if isinstance(feat, dict) and feat.get("category") == "Fighting Style" and feat.get("name"):
+            key = str(feat["name"]).strip().casefold()
+            out[key] = (feat["name"], texts.get(key, ""))
+    return out
+
+
+def _fighting_styles_allowed(class_name, level):
+    """How many Fighting Style features the class has gained by this level, from
+    the progression tables' features_by_level; 0 for an unknown class."""
+    from core.leveling import tables
+    entry = (tables.tables().get("classes") or {}).get(str(class_name).strip().casefold())
+    by_level = entry.get("features_by_level") if isinstance(entry, dict) else None
+    if not isinstance(by_level, dict) or type(level) is not int:
+        return 0
+    return sum(1 for n in range(1, level + 1) for feature in by_level.get(str(n), [])
+               if str(feature).strip().casefold() == FIGHTING_STYLE_FEATURE)
+
+
+def _fighting_style_named(name, styles):
+    """The style an entry's exact name records ("Defense", "Fighting Style: Defense"
+    or "Fighting Style (Defense)") as a casefolded key; "" for a Fighting Style name
+    that records no typed style; None for any other entry."""
+    text = str(name or "").strip()
+    if text.casefold() in styles:
+        return text.casefold()
+    if not text.casefold().startswith(FIGHTING_STYLE_FEATURE):
+        return None
+    rest = text[len(FIGHTING_STYLE_FEATURE):].strip()
+    if rest.startswith(":"):
+        rest = rest[1:]
+    elif rest.startswith("(") and rest.endswith(")"):
+        rest = rest[1:-1]
+    elif rest:
+        return None
+    rest = rest.strip().casefold()
+    return rest if rest in styles else ""
+
+
+def _canonicalize_fighting_style(character, provenance=None):
+    """Record a new character's chosen Fighting Style the way level-up writes it:
+    one classFeatures entry "Fighting Style: <name>" (#569). The engine grants
+    Defense's +1 only for that exact name (core.nql.genesis). Entries are matched
+    by exact name, never by description; the entries recording the chosen style
+    are replaced by that one entry. A style the class has not gained by its
+    level, more styles than it has gained, or a name recording no typed style is
+    left as written and noted for the reviewer."""
+    notes = []
+    styles = _fighting_style_texts()
+    found = []
+    for field in ("classFeatures", "feats"):
+        for index, entry in enumerate(character.get(field) or []):
+            if not isinstance(entry, dict):
+                continue
+            key = _fighting_style_named(entry.get("name"), styles)
+            if key:
+                found.append((field, index, key))
+            elif key == "":
+                notes.append(f"{field} {entry.get('name')!r} records no SRD 5.2.1 Fighting Style; "
+                             "left as written, not applied")
+    chosen = sorted({key for _, _, key in found})
+    if not chosen:
+        return notes
+    class_name = character.get("class")
+    level = character.get("level")
+    allowed = _fighting_styles_allowed(class_name, level)
+    sources = [f"{field} {character[field][index].get('name')!r}" for field, index, _ in found]
+    record = {
+        "source": "utils.startup_wizard._canonicalize_fighting_style",
+        "style": None, "moved_from": [], "left_as_written": [],
+        "policy": ("One classFeatures entry 'Fighting Style: <name>' per chosen SRD style, as level-up "
+                   "writes it; untyped or surplus entries are left and noted."),
+    }
+    if provenance is not None:
+        provenance["fighting_style"] = record
+    names = ", ".join(styles[key][0] for key in chosen)
+    if allowed < 1:
+        record["left_as_written"] = sources
+        notes.append(f"Fighting Style {names} is listed, but {class_name} level {level} has no "
+                     "Fighting Style feature; left as written, not applied")
+        return notes
+    if len(chosen) > allowed:
+        record["left_as_written"] = sources
+        notes.append(f"Fighting Styles {names} listed; {class_name} level {level} has {allowed}; "
+                     "left as written, not applied")
+        return notes
+    name, text = styles[chosen[0]]
+    canonical = f"Fighting Style: {name}"
+    record["style"] = name
+    field, index, _ = found[0]
+    if len(found) == 1 and field == "classFeatures" and character[field][index].get("name") == canonical:
+        return notes
+    entry = {"name": canonical, "description": text,
+             "source": character[field][index].get("source") or f"{class_name} level {level}"}
+    drop = {(f, i) for f, i, _ in found}
+    for each in ("classFeatures", "feats"):
+        if not isinstance(character.get(each), list):
+            continue
+        kept = []
+        for i, item in enumerate(character[each]):
+            if (each, i) == (field, index) and each == "classFeatures":
+                kept.append(entry)
+            elif (each, i) not in drop:
+                kept.append(item)
+        character[each] = kept
+    if field != "classFeatures":
+        character.setdefault("classFeatures", []).append(entry)
+    record["moved_from"] = sources
+    notes.append(f"{canonical} set in classFeatures (was {', '.join(sources)})")
+    return notes
+
+
+def _usage_text(usage):
+    """A use pool's usage for a mechanics note, e.g. "2/2 shortRest (a Short Rest regains 1)"."""
+    if not isinstance(usage, dict):
+        return repr(usage)
+    text = f"{usage.get('current')}/{usage.get('max')} {usage.get('refreshOn')}"
+    if usage.get("shortRestRegain") is not None:
+        text += f" (a Short Rest regains {usage['shortRestRegain']})"
+    return text
+
+
+def _level_one_pools_and_slots(character, provenance=None):
+    """A new level-1 character's feature use pools and spell slots from the SRD
+    progression tables, data/srd/progression.json use_pools and spell or pact
+    slots (#704). Each pool the class has at level 1 is set full on the
+    classFeatures entry that names it (the name before any parenthesis, as
+    level-up matches pools); a pool whose feature the sheet does
+    not list is noted for the reviewer, not invented. Spell slots are set
+    exactly to the class's level-1 slots. A sheet that is not level 1 or not an
+    SRD class is unchanged."""
+    from core.leveling import tables
+    notes = []
+    if not isinstance(character, dict) or character.get("level") != 1:
+        return notes
+    cls = tables.class_key(character)
+    if cls is None:
+        return notes
+    pools = tables.use_pools_at(cls, 1, character.get("abilities"))
+    slots = tables.slot_maxima(cls, 1)
+    record = {
+        "source": "utils.startup_wizard._level_one_pools_and_slots",
+        "tables": "data/srd/progression.json use_pools, spell_slots_by_level, pact_slots_by_level",
+        "pools": {}, "slots": {level: n for level, n in slots.items() if n}, "missing_features": [],
+        "policy": ("Level-1 pools set full on the classFeatures entry that names them; spell slots set "
+                   "exactly to the class table; a missing pool feature is noted, not invented."),
+    }
+    if provenance is not None:
+        provenance["use_pools"] = record
+    features = character.get("classFeatures") if isinstance(character.get("classFeatures"), list) else []
+    for name, pool in pools.items():
+        entry = tables.pool_feature(features, name)
+        if entry is None:
+            record["missing_features"].append(name)
+            notes.append(f"{name}: no classFeatures entry of that name; its level-1 use pool "
+                         f"({_usage_text(pool.usage())}) is not set")
+            continue
+        usage = pool.usage()
+        record["pools"][entry["name"]] = usage
+        if entry.get("usage") != usage:
+            notes.append(f"{entry['name']} usage {_usage_text(entry.get('usage'))} -> {_usage_text(usage)} "
+                         "(SRD level 1)")
+            entry["usage"] = usage
+    casting = character.get("spellcasting")
+    if not isinstance(casting, dict):
+        if record["slots"]:
+            notes.append(f"{character.get('class')} level 1 has spell slots {record['slots']}, but the sheet "
+                         "has no spellcasting object; slots not set")
+        return notes
+    current = casting.get("spellSlots") if isinstance(casting.get("spellSlots"), dict) else {}
+    # A slot level the sheet does not list counts as none; only a listed level
+    # that differs, or a level the table grants, is written.
+    target = {level: {"current": n, "max": n} for level, n in slots.items()
+              if n or (level in current and current[level] != {"current": 0, "max": 0})}
+    changed = [f"{level} {(current.get(level) or {}).get('current', 0)}/{(current.get(level) or {}).get('max', 0)}"
+               f" -> {slot['max']}/{slot['max']}" for level, slot in target.items() if current.get(level) != slot]
+    if changed:
+        casting["spellSlots"] = dict(current, **target)
+        notes.append(f"spellSlots {', '.join(changed)} (SRD level 1)")
+    return notes
+
 
 
 def _normalize_shield_defense(item):
@@ -1627,12 +1826,14 @@ def _typed_entry_count(entries, name):
 
 def expected_starting_hit_points(character):
     """SRD 5.2.1 level-1 hit point maximum from the sheet's typed facts, with
-    the terms that make it up; (None, []) when the sheet is not level 1 or its
-    class or Constitution is unknown."""
+    the terms that make it up: the class's hit die maximum from the progression
+    tables, the Constitution modifier and Dwarven Toughness (minimum 1). SRD 5.2.1
+    has no Tough feat, so a feats entry adds nothing. (None, []) when the sheet
+    is not level 1 or its class or Constitution is unknown."""
     if not isinstance(character, dict) or character.get("level") != 1:
         return None, []
     class_name = str(character.get("class", "")).strip()
-    die = STARTING_HIT_DIE.get(class_name.casefold())
+    die = _level_one_hit_die(class_name)
     abilities = character.get("abilities") if isinstance(character.get("abilities"), dict) else {}
     con = abilities.get("constitution")
     if die is None or type(con) is not int:
@@ -1640,10 +1841,6 @@ def expected_starting_hit_points(character):
     con_mod = (con - 10) // 2
     terms = [f"{class_name} d{die} maximum {die}", f"Constitution {con} ({con_mod:+d})"]
     expected = die + con_mod
-    tough = _typed_entry_count(character.get("feats"), TOUGH_FEAT)
-    if tough:
-        expected += 2 * tough
-        terms.append(f"Tough feat (+{2 * tough})")
     dwarven = _typed_entry_count(character.get("racialTraits"), DWARVEN_TOUGHNESS_TRAIT)
     if dwarven:
         expected += dwarven
@@ -1654,11 +1851,16 @@ def expected_starting_hit_points(character):
 def startup_mechanics(character, *, provenance=None):
     """Derive a new character's engine-owned and SRD-derived numbers.
 
-    Armor class comes from the engine's defense explanation, the same
-    projection every later write applies (#531). The level-1 hit point
-    maximum is the SRD derivation from typed facts: hit die, Constitution,
-    Tough feat entries, Dwarven Toughness (#532). A lower maximum is raised,
-    never reduced; current hit points follow only for an uninjured hero.
+    The level-1 hit point maximum is set exactly to the SRD derivation from
+    typed facts: hit die maximum, Constitution, Dwarven Toughness (#532, #570).
+    An authored value that differs is overwritten and noted, and current hit
+    points start at that maximum. It is set before the engine projection, so
+    the projection's status carries the committed maximum (#696). A chosen
+    Fighting Style is then recorded as level-up writes it, one classFeatures
+    entry "Fighting Style: <name>", so the projection sees it (#569), and its
+    level-1 use pools and spell slots come from the class tables (#704). Armor class
+    comes from the engine's defense explanation, the same projection every
+    later write applies (#531).
     Returns the sheet and the notes of what changed (also logged), which the
     startup reviewer receives as committed facts. When provenance is supplied,
     retain successful projection output even if these scalar notes are empty.
@@ -1667,7 +1869,30 @@ def startup_mechanics(character, *, provenance=None):
     if not isinstance(character, dict):
         return character, notes
     name = character.get("name", "Unknown")
-    from core.nql import armor_class, stats
+    expected, terms = expected_starting_hit_points(character)
+    if provenance is not None and expected is not None:
+        provenance["hit_points"] = {
+            "source": "utils.startup_wizard.expected_starting_hit_points",
+            "expected_maximum": expected, "terms": terms,
+            "policy": "Set exactly to the SRD level-1 derivation; a differing authored value is overwritten and noted.",
+        }
+    if expected is not None:
+        breakdown = " + ".join(terms)
+        current_max = character.get("maxHitPoints")
+        current = character.get("hitPoints")
+        if current_max != expected:
+            notes.append(f"maxHitPoints {current_max} -> {expected} (SRD level 1: {breakdown})")
+        if current != expected:
+            notes.append(f"hitPoints {current} -> {expected} (a new level-1 hero starts at its maximum)")
+        character["maxHitPoints"] = expected
+        character["hitPoints"] = expected
+    notes.extend(_canonicalize_fighting_style(character, provenance))
+    notes.extend(_level_one_pools_and_slots(character, provenance))
+    from core.nql import armor_class, startup_rows, stats
+    # NUM-H3c: exact-name catalog rows (HQ4), then the hand rule's carried rows
+    # unequipped, before the projection reads the equipment.
+    typed, untyped = startup_rows.type_catalog_rows(character)
+    notes.extend(startup_rows.release_carried(character, armor_class.PROJECTION_LOCATION))
     projection = armor_class.project(character)
     if provenance is not None:
         provenance["engine_projection"] = {
@@ -1710,24 +1935,21 @@ def startup_mechanics(character, *, provenance=None):
     else:
         warning(f"[Startup Mechanics] {name}: armorClass left as written: {projection.reason}",
                 category="character_validation")
-    expected, terms = expected_starting_hit_points(character)
-    if provenance is not None and expected is not None:
-        provenance["hit_points"] = {
-            "source": "utils.startup_wizard.expected_starting_hit_points",
-            "expected_maximum": expected, "terms": terms,
-            "policy": "Raise missing/low maxima; preserve higher maxima. Preserved is not rules-verified.",
-        }
-    if expected is not None:
-        current_max = character.get("maxHitPoints")
-        current = character.get("hitPoints")
-        breakdown = " + ".join(terms)
-        if type(current_max) is not int or current_max < expected:
-            if type(current_max) is not int or current == current_max:
-                character["hitPoints"] = expected
-            character["maxHitPoints"] = expected
-            notes.append(f"maxHitPoints {current_max} -> {expected} (SRD level 1: {breakdown})")
-        elif current_max > expected:
-            notes.append(f"maxHitPoints {current_max} kept above the SRD level-1 derivation {expected} ({breakdown})")
+    # NUM-H3c: attack rows from the engine's grants; the author's rows stay
+    # when the engine is unavailable.
+    not_usable_now = []
+    rows, with_items, reason = startup_rows.attack_rows(character, armor_class.PROJECTION_LOCATION,
+                                                        not_usable_now=not_usable_now)
+    report = {"source": "core.nql.startup_rows", "typed_equipment": typed, "untyped_equipment": untyped,
+              "item_rows": with_items}
+    if rows is None:
+        report["reason"] = reason
+        warning(f"[Startup Mechanics] {name}: attack rows left as written: {reason}", category="character_validation")
+    else:
+        report.update(startup_rows.merge_attack_rows(character, rows, with_items))
+        report["not_usable_now"] = not_usable_now
+    if provenance is not None:
+        provenance["engine_rows"] = report
     for note in notes:
         info(f"[Startup Mechanics] {name}: {note}", category="character_validation")
     return character, notes

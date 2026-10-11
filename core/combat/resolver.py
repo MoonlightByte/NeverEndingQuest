@@ -28,7 +28,9 @@ from copy import deepcopy
 from core.combat.attacks import (
     attack_sequence,
     executable_attack_names,
+    FLAT_DAMAGE_DICE,
     is_executable_attack,
+    is_flat_attack,
 )
 from core.effects.effective import effective_sheet, modifier_total
 from core.effects.lifecycle import (
@@ -125,8 +127,11 @@ class DeterministicRollSource(object):
         return list(self._pools.get(die) or [])[:max(0, int(count))]
 
 
-def parse_dice(expression):
-    """'2d6+3' -> (count, sides, modifier). Raises ValueError on junk."""
+def parse_dice(expression, flat_ok=False):
+    """'2d6+3' -> (count, sides, modifier). Raises ValueError on junk.
+    With ``flat_ok``, exactly "flat" (a flat-damage row, NUM-H3c) is (0, 0, 0)."""
+    if flat_ok and str(expression or "").strip() == FLAT_DAMAGE_DICE:
+        return 0, 0, 0
     match = _DICE_RE.match(str(expression or ""))
     if not match:
         raise ValueError("Unparseable dice expression: %r" % expression)
@@ -1034,6 +1039,18 @@ def _warn_rider(actor, entry, reason):
         pass
 
 
+def _warn_hands(actor, entry, error):
+    try:
+        from utils.enhanced_logger import warning as _warning
+        _warning(
+            "NUM-B: %s %s swing stands with no hands record (%s: %s)"
+            % ((actor or {}).get("name"), entry.get("name"), type(error).__name__, error),
+            category="combat_events",
+        )
+    except Exception:
+        pass
+
+
 def _warn_engine(sheet, signed, reason):
     try:
         from utils.enhanced_logger import warning as _warning
@@ -1235,7 +1252,7 @@ def _engine_swing(rolls, entry, sheet, to_hit, mode, faces, target_ac, target, t
     from core.nql import attacks
 
     try:
-        count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"))
+        count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"), flat_ok=True)
     except ValueError:
         return None
     peek = getattr(rolls, "peek", None)
@@ -1404,7 +1421,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
         raw_damage = 0
         damage_traits = []
         if hit:
-            count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"))
+            count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"), flat_ok=True)
             if critical:
                 count *= 2
             damage_rolls = [
@@ -1664,6 +1681,21 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
                         record["engine"] = False
                 event["resources"].append(record)
                 break
+    # NUM-B (owner BQ1-BQ3): the swing stands. The engine's option for the swung
+    # row is recorded on the event, and a carried weapon that fits is drawn
+    # (applied by apply_resolution from the record, so a replay matches).
+    if (swings and selected_entry and actor.get("type") in ("player", "npc")
+            and isinstance((characters or {}).get(actor.get("name")), dict)):
+        from core.nql import hands
+        try:
+            hands_record = hands.after_swing(sheet, selected_entry.get("name"))
+        except Exception as exc:
+            # Fail forward: the swing is already resolved; it stands with no record.
+            hands_record = None
+            _warn_hands(actor, selected_entry, exc)
+        if hands_record is not None:
+            hands_record["owner"] = actor.get("name")
+            event["hands"] = hands_record
     return resolution
 
 
@@ -1693,6 +1725,10 @@ def player_weapon_attack_entry(encounter, characters, intent):
     sheet = _raw_combatant_sheet(encounter, characters, actor)
     entry = _find_action(sheet, intent.get("ability"))
     if not isinstance(entry, dict) or entry.get("type") != "melee" or not is_executable_attack(entry):
+        return None
+    if is_flat_attack(entry):
+        # NUM-H3c: a flat row has no damage dice for the player to roll; the
+        # resolver scores it through the engine instead.
         return None
     sequence = attack_sequence(
         sheet,
@@ -3871,6 +3907,17 @@ def apply_resolution(encounter, characters, resolution):
             sheet["temporaryHitPoints"] = max(0, delta["temporaryHitPoints"])
         if "status" in delta:
             sheet["status"] = delta["status"]
+
+    # NUM-B: a weapon drawn after a swing (BQ1); the record holds the absolute value.
+    hands = event.get("hands")
+    draw = hands.get("draw") if isinstance(hands, dict) else None
+    if isinstance(draw, dict):
+        sheet = new_characters.get(hands.get("owner"))
+        rows = sheet.get("equipment") if isinstance(sheet, dict) else None
+        index = draw.get("index")
+        if (isinstance(rows, list) and type(index) is int and 0 <= index < len(rows)
+                and isinstance(rows[index], dict) and rows[index].get("item_name") == draw.get("item_name")):
+            rows[index]["equipped"] = draw.get("equippedAfter") is True
 
     for resource in event.get("resources", []) or []:
         sheet = new_characters.get(resource.get("owner"))

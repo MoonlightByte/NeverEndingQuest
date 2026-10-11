@@ -147,7 +147,7 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
             entry["quantity"] = item.get("quantity", 1) if type(item.get("quantity")) is int else 1
             if equipped_default is not None:
                 entry["equipped"] = equipped_default
-            elif item.get("wearer") != cid and entry.get("equipped") is True:
+            elif item.get("wearer") != cid and entry.get("equipped") is True and world.carried.get(iid) != cid:
                 entry["equipped"] = False
             out.append(entry)
         return out

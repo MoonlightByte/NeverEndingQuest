@@ -132,14 +132,14 @@ Startup integration publishes a dropped-in or stubbed module registry-only throu
 
 ## Flow
 
-1. `createNewModule` validates its action and takes the module-refresh lock.
+1. `createNewModule` validates its action. It does not hold the module-refresh lock around the build (issue #708).
 2. `_resolve_module_creation_spec` uses complete explicit inputs directly; otherwise T030 fills missing values.
-3. The publisher allocates the final name and invokes the build in `modules/.module_build_<uuid>/<name>`.
+3. Under the module-refresh lock (refused after 5 s, before anything is spent), the publisher reserves the final name and creates `modules/.module_build_<uuid>/<name>`. A name inside any `.module_build_*` workspace counts as taken, so overlapping builds get distinct names and a crashed build's leftover costs the next build of that name a `_vN` suffix. The lock is then released and the build generates into the workspace (steps 4-7) without it, so Save, Load and travel do not wait for its model calls. Lock waits inside the build (NPC reconciliation's snapshot and commit, and step 8) wait with the interruptible module-refresh waiter instead of refusing; T088 runs between them with no lock held.
 4. The compatible builder creates party context/directories, asks T031 for the overview, builds areas and locations through T022-T027 as required, builds area plots with T036/T037, asks T028 for the unified plot, finalizes cross-area links in code, builds NPCs/monsters through T035/T034 as required, reconciles identities with T088, validates, and may run T104 coherence.
 5. T029 and T032/T033 are adjacent generation/stitching capabilities; they are not unconditional steps in every create run.
 6. The optional story-first branch runs T098 outline, T099 area binding, T100 plot derivation, T101 NPC repair, T102 hardening, and T103 creature compilation, retaining T026 location fill. At this revision it is config/env gated and defaults off; model-limitation failure retries once with a fresh compatible candidate.
 7. The builder confirms the candidate stayed at the assigned path and ensures `module_plot` exists.
-8. The stitcher operates only on hidden files, resolves IDs against the live registry, creates travel narration and exact registry bytes, and requires `safety.allows_integration`.
+8. Under the module-refresh lock again, the stitcher operates only on hidden files, resolves IDs against the live registry, creates travel narration and exact registry bytes, and requires `safety.allows_integration`; then the module declaration is written. This step still holds the lock across its model calls: T032 and T033 for an in-game build, and T123 when a declaration is written, so it can hold the lock for up to three calls. Steps 8-10 stay serialized.
 9. The publisher fsyncs the candidate/workspace, proves the final path is still absent, and atomically renames the directory into place.
 10. After publication, parent-directory sync, registry write retry, and workspace cleanup are advisory and best effort. No post-commit failure may turn the published module into an error result.
 11. A cross-module transition durably stages a prepared completion intent before party publication and marks it ready only after the destination is proven.
@@ -154,7 +154,7 @@ Startup integration publishes a dropped-in or stubbed module registry-only throu
 - Build state lives in `modules/.module_build_<uuid>/`, the final module directory, `world_registry.json`, and the generated module files.
 - Candidate files may be replaced independently while hidden. The directory `os.replace` is the sole live-publication commit; registry publication is intentionally outside it.
 - Completion state includes the tracker, durable completion intents, per-module `.work.json`, completion receipts, campaign `pending.json`, conversation archives, module summaries, and `campaign.json`.
-- The module-refresh lock protects build/registry preparation. The party-transition lock orders destination publication and intents. Per-module completion and campaign transaction locks order summary recovery and commit.
+- The module-refresh lock protects the name reservation and the publication (registry preparation, rename, registry write), not generation. The party-transition lock orders destination publication and intents. Per-module completion and campaign transaction locks order summary recovery and commit.
 - T038 and T039 run before the final campaign commit lock; no provider wait is held under that lock.
 - Campaign pending state contains all target preimages. A failed multi-file projection moves to rollback-required and restores them.
 - The lifecycle epoch prevents a completion from an obsolete Load/Reset timeline from committing.
@@ -165,14 +165,14 @@ Startup integration publishes a dropped-in or stubbed module registry-only throu
 
 ## Load-bearing seams
 
-1. `core/ai/action_handler.py:4578-4913` - create action, lock, builder call, and result.
-2. `core/generators/module_builder.py:132-214` - shared build boundary and fresh fallback candidate.
-3. `core/generators/module_builder.py:648-802` - compatible builder stage order.
-4. `core/generators/module_builder.py:3076-3202` - explicit/T030 spec authority and branch selection.
-5. `core/generators/module_builder.py:2184-2287` - final context, T088, and validation.
-6. `core/generators/module_builder.py:2670-2734` - code-owned cross-area links.
+1. `core/ai/action_handler.py:4578-4915` - create action, builder call (the build takes the lock itself), busy refusal, and result.
+2. `core/generators/module_builder.py:133-278` - shared build boundary (locked reserve, unlocked generation, locked publish through the waiter) and fresh fallback candidate.
+3. `core/generators/module_builder.py:712-866` - compatible builder stage order.
+4. `core/generators/module_builder.py:3153-3279` - explicit/T030 spec authority and branch selection.
+5. `core/generators/module_builder.py:2248-2357` - final context, T088 (outside the lock), and validation.
+6. `core/generators/module_builder.py:2747-2811` - code-owned cross-area links.
 7. `core/generators/module_stitcher.py:3002-3175` (`build_publication_registry_bytes`) - hidden-candidate safety and registry bytes.
-8. `utils/module_publish.py:283-392` - hidden workspace and atomic directory publication.
+8. `utils/module_publish.py:315-483` - name reservation, hidden workspace, and atomic directory publication.
 9. `core/managers/campaign_manager.py:2253-2436` - intent-before-transition publication.
 10. `core/managers/campaign_manager.py:2521-2957` - prepared/ready intent lifecycle and ordered drain.
 11. `core/managers/campaign_manager.py:3145-3710` - archive, T038/T039, recovery, and transactional commit.
