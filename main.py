@@ -8676,14 +8676,14 @@ def check_all_modules_plot_completion():
             except Exception as e:
                 error(f"FAILURE: Error checking root area files for {item}", exception=e, category="module_management")
             
-            # Check areas/ subdirectory (new structure)
+            # Check areas/ subdirectory (new structure). #310: a JSON here is an
+            # area by the module's own layout, whatever its name's length.
             areas_subdir = os.path.join(module_path, 'areas')
             if os.path.exists(areas_subdir) and os.path.isdir(areas_subdir):
                 try:
                     subdir_area_files = [f for f in os.listdir(areas_subdir) 
                                        if os.path.isfile(os.path.join(areas_subdir, f)) 
                                        and f.endswith('.json') 
-                                       and len(f.split('.')[0]) <= 7  # Area codes
                                        and not f.startswith('map_') 
                                        and not f.startswith('plot_')
                                        and not f.startswith('party_')
