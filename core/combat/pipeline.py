@@ -157,6 +157,24 @@ def _record_character_state_after(event, before, after):
         event.pop("characterStateAfter", None)
 
 
+def _record_draw_applied(event, after):
+    """NUM-B2: record on the staged event whether the swing's draw (NUM-B,
+    BQ1) landed on the owner's sheet, by the guard apply_resolution uses. The
+    narrator states a draw only when it did."""
+    hands = event.get("hands")
+    draw = hands.get("draw") if isinstance(hands, dict) else None
+    if not isinstance(draw, dict):
+        return
+    sheet = (after or {}).get(hands.get("owner"))
+    rows = sheet.get("equipment") if isinstance(sheet, dict) else None
+    index = draw.get("index")
+    draw["applied"] = bool(
+        isinstance(rows, list) and type(index) is int and 0 <= index < len(rows)
+        and isinstance(rows[index], dict) and rows[index].get("item_name") == draw.get("item_name")
+        and rows[index].get("equipped") is True
+    )
+
+
 def resolve_effect_clock_window(encounter, characters, pending_turn):
     """Build one provider-free event when no living combatant can act."""
     if not isinstance(pending_turn, dict) or pending_turn.get("clockOnly") is not True:
@@ -503,6 +521,7 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             before_characters,
             next_characters,
         )
+        _record_draw_applied(resolution["event"], next_characters)
         snapshot_problems = validate_event(resolution.get("event"))
         if snapshot_problems:
             raise CombatIntentError(
