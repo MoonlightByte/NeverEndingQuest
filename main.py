@@ -8069,6 +8069,36 @@ def _travel_recovery_pending():
     return True
 
 
+def _startup_travel_followup_failed(recovery_scope, exc):
+    """Startup finished an interrupted journey but could not reload after it (#211).
+
+    While the journey's marker is still pending, the travel-recovery authority
+    shows its own Load/Reset/Quit choice, so nothing is added here. Once the
+    journey is finished the player gets one line, naming an unreadable active
+    module as #448 does: the terminal pauses on the shared menu, cancelling
+    waiting recovery saves as _wait_for_travel_control does, and the web
+    session ends cleanly (as #448).
+    """
+    if _travel_recovery_pending():
+        return None
+    if isinstance(exc, ActiveModuleUnavailable):
+        line = str(exc)
+    else:
+        line = (
+            "The interrupted journey was finished, but the game could not reload "
+            "afterwards. Gameplay is paused."
+        )
+    display_dm_narration(line, channel="system")
+    if hasattr(sys.stdin, "queue"):
+        return None
+    from updates.save_game_manager import SaveGameManager
+
+    choice = _terminal_recovery_menu(SaveGameManager())
+    if recovery_scope is not None:
+        recovery_scope.request_supersession(choice.kind)
+    raise choice
+
+
 def _wait_for_travel_control(scope):
     from utils.capture.live_provider_call import _interruptible_wait
 
@@ -8617,7 +8647,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 return
             if travel_was_recovered:
                 party_tracker_data = load_json_file("party_tracker.json")
-                module_name = party_tracker_data.get("module", "").replace(" ", "_")
+                # An unreadable tracker is named by ActiveModuleUnavailable (#448) (#211).
+                module_name = str((party_tracker_data or {}).get("module") or "").replace(" ", "_")
                 path_manager = ModulePathManager(module_name)
                 location_graph = LocationGraph()
                 location_graph.load_module_data()
@@ -8683,7 +8714,7 @@ def _main_game_loop(startup_authority, turn_authority):
                 exception=transition_recovery_exc,
                 category="location_transitions",
             )
-            return
+            return _startup_travel_followup_failed(recovery_scope, transition_recovery_exc)
     
     # Load validation prompt for both paths - needed in main loop
     validation_prompt_text = load_validation_prompt()
