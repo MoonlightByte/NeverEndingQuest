@@ -62,6 +62,24 @@ def _projected(sheet: Dict[str, Any]) -> Dict[str, Any]:
     return sheet
 
 
+def _refresh_attack_rows(sheet: Dict[str, Any], response: Dict[str, Any]) -> None:
+    """Item C: the sheet's engine attack rows from the weapon purchase's own views (built after the purchase
+    executes, so they hold the new weapon). Never fatal: without the views the rows stay as they are."""
+    from core.nql import startup_rows
+    try:
+        if not isinstance(response.get("attack_options"), list):
+            reason = "the engine returned no attack_options view"
+        else:
+            rows, _ = startup_rows.rows_from_response(response)
+            trial = dict(sheet)
+            startup_rows.refresh_merge(trial, rows)
+            sheet["attacksAndSpellcasting"] = trial["attacksAndSpellcasting"]
+            return
+    except Exception as error:
+        reason = f"{type(error).__name__}: {error}"
+    warning(f"ACQUIRE: {sheet.get('name')} attack rows not refreshed ({reason})", category="storage_operations")
+
+
 def _ammunition_row(sheet: Dict[str, Any], name: str) -> Optional[Dict[str, Any]]:
     for row in sheet.get("ammunition") or []:
         if isinstance(row, dict) and str(row.get("name", "")).casefold() == name.casefold():
@@ -162,8 +180,16 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
                         "item_definitions": [entry["id"]]}
             if rule is not None and not ammunition:
                 document["item_charges"] = [iid]
+            weapon = entry.get("kind") == "weapon"
+            if weapon:
+                # Item C: the same call returns the attack views for the engine rows; 0 extra calls.
+                document["equipment"] = [cid]
+                document["attack_options"] = [cid]
             try:
                 response = apply.call(document)
+                if weapon and not response.get("ok") and response.get("phase") == "input":
+                    # An older engine refuses the views at input: today's document; the rows stay as they are.
+                    response = apply.call({k: v for k, v in document.items() if k not in ("equipment", "attack_options")})
             except apply.EngineUnavailable as error:
                 return {"success": False, "error": f"rules engine unavailable: {error}"}
             if not response.get("ok"):
@@ -208,6 +234,8 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
                     row["charges"] = {"max": view["max"]}
                     store_view(row["charges"], view, row.get("quantity", 1))
                 working.setdefault("equipment", []).append(row)
+                if weapon:
+                    _refresh_attack_rows(working, response)
                 landed = f"{quantity} {entry['name']}"
                 if rule is not None:
                     landed += f" ({row['charges']['current']} of {row['charges']['max']} charges)"
