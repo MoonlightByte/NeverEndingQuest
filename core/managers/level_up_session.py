@@ -390,6 +390,11 @@ class LevelUpSession:
         casting = sheet.get("spellcasting") if isinstance(sheet.get("spellcasting"), dict) else None
         if casting:
             spell_changes: Dict[str, Any] = {}
+            # Pact slots move as one set to the new level's slot level (#704,
+            # H4-Q4 a); the growth below then finds the table's count in place.
+            pact = copy.deepcopy(casting.get("spellSlots")) if isinstance(casting.get("spellSlots"), dict) else None
+            if pact is not None and tables.move_pact_slots(pact, cls, s.new_level):
+                spell_changes["spellSlots"] = pact
             if isinstance(self._choices.get("prepared_spells"), list):
                 spell_changes["preparedSpells"] = list(self._choices["prepared_spells"])
             if isinstance(self._choices.get("cantrips"), list):

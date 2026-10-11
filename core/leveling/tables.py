@@ -149,6 +149,49 @@ def slot_maxima(cls: str, level: int) -> Dict[str, int]:
     return out
 
 
+def pact_slot_set(cls: str, level: int) -> Optional[Tuple[str, int]]:
+    """A pact caster's slots at ``level`` as one set, (levelN, count); None for other classes."""
+    pact = tables()["classes"][cls].get("pact_slots_by_level")
+    if not pact:
+        return None
+    row = pact[str(level)]
+    return f"level{int(row['slot_level'])}", int(row["slots"])
+
+
+def move_pact_slots(slots: Dict[str, Any], cls: str, level: int) -> List[str]:
+    """Write a pact caster's slots as one set, in place (#704, H4-Q4 a).
+
+    Pact slots change slot level as the class advances (level 1, then 2 from
+    Warlock 3, ...), so the set is moved, not grown beside the old level: the
+    table's level gets the table's count, every other level's maximum becomes 0,
+    and the unspent slots move with the set (capped at the count), so no level
+    keeps a current above its maximum. Returns one note per level changed."""
+    target = pact_slot_set(cls, level)
+    if target is None or not isinstance(slots, dict):
+        return []
+    key, count = target
+    notes: List[str] = []
+    carried = 0
+    for other in sorted(slots):
+        slot = slots[other]
+        if other == key or not isinstance(slot, dict):
+            continue
+        maximum = slot.get("max") if type(slot.get("max")) is int else 0
+        current = slot.get("current") if type(slot.get("current")) is int else 0
+        if maximum or current:
+            carried += current
+            slot.update({"current": 0, "max": 0})
+            notes.append(f"spellSlots {other} {current}/{maximum} -> 0/0 (pact slots are {key} at "
+                         f"{cls.capitalize()} level {level})")
+    slot = slots.get(key) if isinstance(slots.get(key), dict) else {}
+    maximum = slot.get("max") if type(slot.get("max")) is int else 0
+    current = slot.get("current") if type(slot.get("current")) is int else 0
+    moved = {"current": min(current + carried, count), "max": count}
+    if (current, maximum) != (moved["current"], moved["max"]):
+        notes.append(f"spellSlots {key} {current}/{maximum} -> {moved['current']}/{count} (SRD "
+                     f"{cls.capitalize()} level {level} pact slots)")
+        slots[key] = dict(slot, **moved)
+    return notes
 
 
 def hit_die(cls: str) -> int:
@@ -239,6 +282,58 @@ def pool_feature(features: Any, name: str) -> Optional[Dict[str, Any]]:
     return next((f for f in features or [] if isinstance(f, dict) and pool_key(f.get("name", "")) == pool_key(name)),
                 None)
 
+
+def raise_to_tables(sheet: Dict[str, Any]) -> List[str]:
+    """Raise a saved hero's use pools and spell slots that sit below the class
+    table for its level, in place; returns one note per change (#704, H4-Q1).
+
+    Raise only: a ``max`` below the table is set to the table, a table pool's
+    feature (matched by ``pool_key``) with no usage gets one, and a slot level
+    the table grants is added. ``current`` is never changed (an added pool or
+    slot starts at 0 until the next rest refills it) and nothing is lowered. A pool whose maximum
+    follows an ability is resolved at startup and level-up only (H4-Q2), so here
+    it only gains a missing usage. Pact slots are written as one set by
+    ``move_pact_slots``, the one place this step lowers a maximum (H4-Q4 a). A
+    sheet without an SRD class and a level is unchanged."""
+    notes: List[str] = []
+    cls = class_key(sheet)
+    level = sheet.get("level")
+    if cls is None or type(level) is not int or not 1 <= level <= 20:
+        return notes
+    features = sheet.get("classFeatures") if isinstance(sheet.get("classFeatures"), list) else []
+    for name, pool in use_pools_at(cls, level, sheet.get("abilities")).items():
+        feature = pool_feature(features, name)
+        if feature is None:
+            continue
+        usage = feature.get("usage")
+        if not isinstance(usage, dict):
+            feature["usage"] = pool.usage(0)
+            notes.append(f"{feature['name']} usage added: 0/{pool.max} {pool.refresh_on} (SRD {sheet.get('class')} "
+                         f"level {level})")
+        elif not pool.follows_ability and (type(usage.get("max")) is not int or usage["max"] < pool.max):
+            notes.append(f"{feature['name']} max {usage.get('max')!r} -> {pool.max} (SRD {sheet.get('class')} "
+                         f"level {level})")
+            usage["max"] = pool.max
+    casting = sheet.get("spellcasting")
+    slots = casting.get("spellSlots") if isinstance(casting, dict) else None
+    if not isinstance(slots, dict):
+        return notes
+    if pact_slot_set(cls, level) is not None:
+        return notes + move_pact_slots(slots, cls, level)
+    for slot_level, n in slot_maxima(cls, level).items():
+        slot = slots.get(slot_level)
+        if not n or (isinstance(slot, dict) and type(slot.get("max")) is int and slot["max"] >= n):
+            continue
+        if isinstance(slot, dict):
+            notes.append(f"spellSlots {slot_level} max {slot.get('max')!r} -> {n} (SRD {sheet.get('class')} "
+                         f"level {level})")
+            slot["max"] = n
+            if type(slot.get("current")) is not int:
+                slot["current"] = 0
+        else:
+            slots[slot_level] = {"current": 0, "max": n}
+            notes.append(f"spellSlots {slot_level} added: 0/{n} (SRD {sheet.get('class')} level {level})")
+    return notes
 
 
 def spell_counts(cls: str, level: int) -> Dict[str, Optional[int]]:
