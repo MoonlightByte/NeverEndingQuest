@@ -4515,11 +4515,30 @@ Focus on story outcomes, character development, and decisions that will matter i
         if completed_module in target['availableModules']:
             target['availableModules'].remove(completed_module)
         
-        # Add newly unlocked modules
+        # Add newly unlocked modules. The names are model-written (T039, or
+        # the party tracker in the local fallback), so only a joined module
+        # is added, by its registry id (#746, the #720 rule). Spaces read as
+        # underscores, as the module snapshot reads them. An unreadable
+        # registry adds nothing; the next refresh lists every joined module.
+        from core.generators.module_stitcher import ModuleStitcher
+
+        try:
+            registry = safe_json_load(
+                os.path.join(os.path.dirname(self.campaign_file), "world_registry.json")
+            )
+        except (OSError, ValueError):
+            registry = None
         unlocked = summary.get('unlockedModules', [])
-        for module in unlocked:
-            if module not in target['availableModules']:
-                target['availableModules'].append(module)
+        for module in unlocked if isinstance(unlocked, list) else []:
+            module_id = module.strip().replace(" ", "_") if isinstance(module, str) else ""
+            if not module_id or not ModuleStitcher.is_joined_registry_module(registry, module_id):
+                debug(
+                    f"STATE_CHANGE: unlocked module {module!r} is not a joined module; not added",
+                    category="module_management",
+                )
+                continue
+            if module_id not in target['availableModules']:
+                target['availableModules'].append(module_id)
     
     def _archive_conversation_history(
         self,
