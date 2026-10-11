@@ -7662,15 +7662,21 @@ def process_ai_response(
             "retryable": False,
         }
     except json.JSONDecodeError as e:
-        print(f"Error: Unable to parse AI response as JSON: {e}")
-        print(f"Problematic response: {response}")
-        sanitized_response = sanitize_text(response)
-        display_dm_narration(sanitized_response)
-        # Even in error case, append to history
-        assistant_message = {"role": "assistant", "content": response}
-        conversation_history.append(assistant_message)
-        save_conversation_history(conversation_history)
-        return assistant_message
+        # The model reply was parsed before this try (#621), so a
+        # JSONDecodeError here comes from a game file or helper read while
+        # applying it. It ends the turn like any other action failure.
+        error(
+            "FAILURE: Response processing hit unreadable JSON outside the "
+            "model reply",
+            exception=e,
+            category="action_processing",
+        )
+        return _handle_ordinary_action_failure(
+            {"status": "error", "success": False},
+            response,
+            None,
+            conversation_history,
+        )
     finally:
         response_fences.close()
 
