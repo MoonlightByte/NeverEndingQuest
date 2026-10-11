@@ -1864,7 +1864,9 @@ def startup_mechanics(character, *, provenance=None):
                 category="character_validation")
     # NUM-H3c: attack rows from the engine's grants; the author's rows stay
     # when the engine is unavailable.
-    rows, with_items, reason = startup_rows.attack_rows(character, armor_class.PROJECTION_LOCATION)
+    not_usable_now = []
+    rows, with_items, reason = startup_rows.attack_rows(character, armor_class.PROJECTION_LOCATION,
+                                                        not_usable_now=not_usable_now)
     report = {"source": "core.nql.startup_rows", "typed_equipment": typed, "untyped_equipment": untyped,
               "item_rows": with_items}
     if rows is None:
@@ -1872,8 +1874,7 @@ def startup_mechanics(character, *, provenance=None):
         warning(f"[Startup Mechanics] {name}: attack rows left as written: {reason}", category="character_validation")
     else:
         report.update(startup_rows.merge_attack_rows(character, rows, with_items))
-        if report["replaced"]:
-            notes.append(f"attacksAndSpellcasting: engine rows {report['written']} replace author rows {report['replaced']}")
+        report["not_usable_now"] = not_usable_now
     if provenance is not None:
         provenance["engine_rows"] = report
     for note in notes:

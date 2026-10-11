@@ -250,6 +250,9 @@ Fields named in engine_projection.engine_owned_fields are engine-written: never
 an author change, even when absent from authored_proposal.
 Attack rows listed in normalization_provenance.engine_rows.written are engine
 output, like the AC entries: never an author change or a reason to reject.
+engine_rows.replaced names the author rows they took the place of.
+engine_rows.not_usable_now names carried-mode rows whose hands are taken now;
+the row stays, and drawing the weapon is a story or equipment action.
 damageDice "flat" means no damage dice: the row deals its damageBonus as a
 flat total, as an SRD Unarmed Strike does (1 + Strength modifier).
 engine_rows.untyped_equipment lists weapon and armor rows the catalog did not

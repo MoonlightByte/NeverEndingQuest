@@ -17,9 +17,14 @@
 - ``attack_rows``: the engine's attack grants become ``attacksAndSpellcasting``
   rows, one per weapon (and mode) and attack kind, the best grant winning.
   Condition grants (Unarmed Strike, Martial Arts) come from the ``equipment``
-  view; item grants only from the ``attack_options`` view (NUM-P3), which
-  lists carried weapons and every mode. With an engine that has no such view,
-  no item rows are written and the author's stay.
+  view; item grants only from the ``attack_options`` view (NUM-P3, engine
+  7f6f948), which lists carried weapons and every mode. An older engine
+  refuses the field at input; the request is then sent without it, no item
+  rows are written and the author's stay.
+  A carried option's row says how many hands it needs, and whether it is
+  usable now, from the equipment view's typed slot occupancy: slots in use,
+  less the item's own worn mode, plus the option's, within capacity. The view
+  reports slots and does not enforce them (NUM-P3), so the host marks it.
 - ``merge_attack_rows``: engine rows replace the author's melee and ranged
   rows of the same names; every other row stays and is reported.
 
@@ -121,7 +126,22 @@ def _term_label(term: Dict[str, Any]) -> str:
     return stat.capitalize() if stat in _ABILITIES else stat
 
 
-def _describe(grant: Dict[str, Any]) -> str:
+def _slot_text(slots: List[Dict[str, Any]]) -> str:
+    return ", ".join("%s %d" % (s.get("slot"), int(s.get("amount") or 0)) for s in slots or [])
+
+
+def _usable_now(option: Dict[str, Any], own: List[Dict[str, Any]], occupancy: Dict[str, Tuple[int, int]]) -> bool:
+    """True when the option's slots fit beside what is worn now, the item's own worn mode set aside."""
+    freed = {str(s.get("slot")): int(s.get("amount") or 0) for s in own or []}
+    for need in option.get("slots") or []:
+        slot = str(need.get("slot"))
+        used, capacity = occupancy.get(slot, (0, 0))
+        if used - freed.get(slot, 0) + int(need.get("amount") or 0) > capacity:
+            return False
+    return True
+
+
+def _describe(grant: Dict[str, Any], use: str = "") -> str:
     parts = []
     recipe = grant.get("hit_recipe") or {}
     if recipe.get("base"):
@@ -130,7 +150,7 @@ def _describe(grant: Dict[str, Any]) -> str:
         exact = str(term.get("exact"))
         if term.get("active") is True and exact.lstrip("-").isdigit() and int(exact) != 0:
             parts.append("%+d %s" % (int(exact), _term_label(term)))
-    return "Engine attack (NUM-H3c): to hit %s." % (", ".join(parts) or "+0")
+    return "Engine attack (NUM-H3c): to hit %s.%s" % (", ".join(parts) or "+0", use)
 
 
 def _dice(grant: Dict[str, Any]) -> str:
@@ -138,7 +158,7 @@ def _dice(grant: Dict[str, Any]) -> str:
     return FLAT_DAMAGE_DICE if (count, sides) == (0, 0) else "%dd%d" % (count, sides)
 
 
-def _row(grant: Dict[str, Any]) -> Dict[str, Any]:
+def _row(grant: Dict[str, Any], use: str = "") -> Dict[str, Any]:
     return {
         "name": str(grant.get("name") or ""),
         "attackBonus": int(grant.get("to_hit") or 0),
@@ -146,7 +166,7 @@ def _row(grant: Dict[str, Any]) -> Dict[str, Any]:
         "damageBonus": int(grant.get("damage_bonus") or 0),
         "damageType": str(grant.get("damage_kind") or ""),
         "type": _kind(grant),
-        "description": _describe(grant),
+        "description": _describe(grant, use),
     }
 
 
@@ -159,32 +179,55 @@ def _best(groups: Dict[Tuple[str, ...], List[Dict[str, Any]]]) -> List[Dict[str,
     return out
 
 
-def attack_rows(character: Dict[str, Any], location: str, *,
-                binary: Optional[str] = None) -> Tuple[Optional[List[Dict[str, Any]]], bool, str]:
-    """(rows, item rows included, reason). rows is None when the engine was unavailable or refused."""
+def attack_rows(character: Dict[str, Any], location: str, *, binary: Optional[str] = None,
+                not_usable_now: Optional[List[str]] = None) -> Tuple[Optional[List[Dict[str, Any]]], bool, str]:
+    """(rows, item rows included, reason). rows is None when the engine was unavailable or refused.
+    Names of carried-mode rows whose slots are taken now are appended to ``not_usable_now``."""
     world = genesis.build_world([copy.deepcopy(character)], location)
     cid = genesis.character_id(character)
     request: Dict[str, Any] = {"world": world.source, "world_name": "genesis.nql", "equipment": [cid]}
     try:
-        response = apply.call(request, binary=binary)
+        response = apply.call(dict(request, attack_options=[cid]), binary=binary)
+        if not response.get("ok") and response.get("phase") == "input":
+            response = apply.call(request, binary=binary)
     except apply.EngineUnavailable as error:
         return None, False, str(error)
     if not response.get("ok"):
         return None, False, "engine refused the world at %s" % response.get("phase")
     groups: Dict[Tuple[str, ...], List[Dict[str, Any]]] = {}
+    occupancy: Dict[str, Tuple[int, int]] = {}
     for view in response.get("equipment") or []:
+        for slot in view.get("slots") or []:
+            occupancy[str(slot.get("slot"))] = (int(slot.get("used") or 0), int(slot.get("capacity") or 0))
         for grant in view.get("attacks") or []:
             origin = grant.get("origin") or {}
             if isinstance(grant, dict) and origin.get("condition"):
                 groups.setdefault(("condition", origin["condition"], _kind(grant)), []).append(grant)
     options = response.get("attack_options")
     with_items = isinstance(options, list)
+    uses: Dict[Tuple[str, ...], Tuple[str, bool]] = {}
     for view in options or []:
+        worn = {str(o.get("item")): o.get("slots") for o in view.get("options") or [] if o.get("worn") is True}
         for option in view.get("options") or []:
+            item = str(option.get("item"))
+            if option.get("worn") is True:
+                use, usable = " In hand.", True
+            else:
+                usable = _usable_now(option, worn.get(item) or [], occupancy)
+                use = " Carried mode: needs %s%s." % (_slot_text(option.get("slots")),
+                                                    "" if usable else "; not usable now, the slots are taken")
             for grant in option.get("grants") or []:
                 if isinstance(grant, dict):
-                    groups.setdefault(("item", str(option.get("item")), str(option.get("mode")), _kind(grant)), []).append(grant)
-    return [_row(g) for g in _best(groups)], with_items, ""
+                    key = ("item", item, str(option.get("mode")), _kind(grant))
+                    groups.setdefault(key, []).append(grant)
+                    uses[key] = (use, usable)
+    rows = []
+    for key, grant in zip(groups, _best(groups)):
+        use, usable = uses.get(key, ("", True))
+        rows.append(_row(grant, use))
+        if not usable and not_usable_now is not None:
+            not_usable_now.append(rows[-1]["name"])
+    return rows, with_items, ""
 
 
 def owned_weapon_names(character: Dict[str, Any]) -> List[str]:
