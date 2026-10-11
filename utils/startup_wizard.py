@@ -1815,7 +1815,11 @@ def startup_mechanics(character, *, provenance=None):
         character["maxHitPoints"] = expected
         character["hitPoints"] = expected
     notes.extend(_canonicalize_fighting_style(character, provenance))
-    from core.nql import armor_class, stats
+    from core.nql import armor_class, startup_rows, stats
+    # NUM-H3c: exact-name catalog rows (HQ4), then the hand rule's carried rows
+    # unequipped, before the projection reads the equipment.
+    typed, untyped = startup_rows.type_catalog_rows(character)
+    notes.extend(startup_rows.release_carried(character, armor_class.PROJECTION_LOCATION))
     projection = armor_class.project(character)
     if provenance is not None:
         provenance["engine_projection"] = {
@@ -1858,6 +1862,20 @@ def startup_mechanics(character, *, provenance=None):
     else:
         warning(f"[Startup Mechanics] {name}: armorClass left as written: {projection.reason}",
                 category="character_validation")
+    # NUM-H3c: attack rows from the engine's grants; the author's rows stay
+    # when the engine is unavailable.
+    rows, with_items, reason = startup_rows.attack_rows(character, armor_class.PROJECTION_LOCATION)
+    report = {"source": "core.nql.startup_rows", "typed_equipment": typed, "untyped_equipment": untyped,
+              "item_rows": with_items}
+    if rows is None:
+        report["reason"] = reason
+        warning(f"[Startup Mechanics] {name}: attack rows left as written: {reason}", category="character_validation")
+    else:
+        report.update(startup_rows.merge_attack_rows(character, rows, with_items))
+        if report["replaced"]:
+            notes.append(f"attacksAndSpellcasting: engine rows {report['written']} replace author rows {report['replaced']}")
+    if provenance is not None:
+        provenance["engine_rows"] = report
     for note in notes:
         info(f"[Startup Mechanics] {name}: {note}", category="character_validation")
     return character, notes
