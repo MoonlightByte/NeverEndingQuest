@@ -1039,6 +1039,18 @@ def _warn_rider(actor, entry, reason):
         pass
 
 
+def _warn_hands(actor, entry, error):
+    try:
+        from utils.enhanced_logger import warning as _warning
+        _warning(
+            "NUM-B: %s %s swing stands with no hands record (%s: %s)"
+            % ((actor or {}).get("name"), entry.get("name"), type(error).__name__, error),
+            category="combat_events",
+        )
+    except Exception:
+        pass
+
+
 def _warn_engine(sheet, signed, reason):
     try:
         from utils.enhanced_logger import warning as _warning
@@ -1675,7 +1687,12 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
     if (swings and selected_entry and actor.get("type") in ("player", "npc")
             and isinstance((characters or {}).get(actor.get("name")), dict)):
         from core.nql import hands
-        hands_record = hands.after_swing(sheet, selected_entry.get("name"))
+        try:
+            hands_record = hands.after_swing(sheet, selected_entry.get("name"))
+        except Exception as exc:
+            # Fail forward: the swing is already resolved; it stands with no record.
+            hands_record = None
+            _warn_hands(actor, selected_entry, exc)
         if hands_record is not None:
             hands_record["owner"] = actor.get("name")
             event["hands"] = hands_record
