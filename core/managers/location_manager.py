@@ -104,31 +104,6 @@ def _transition_destination_facts(new_location_info, *, area_id, area_name):
     return facts
 
 
-def _build_transition_narration_prompt(
-    new_location_info,
-    *,
-    area_id,
-    area_name,
-    storage_description="",
-):
-    """Build a destination-grounded T013 prompt from verified location data."""
-    facts = _transition_destination_facts(
-        new_location_info, area_id=area_id, area_name=area_name
-    )
-
-    return (
-        "Narrate the party's immediate arrival at the destination. Use only "
-        "the supplied destination facts; do not invent technology, named "
-        "characters, creatures, hazards, history, or changes to game state. "
-        "Do not resolve or trigger an encounter. If the supplied facts are "
-        "sparse, keep the narration brief rather than filling gaps. Treat "
-        "adventureSummary as already disclosed history from earlier visits: "
-        "use it for continuity, but do not replay it as a new current event."
-        "\n\nDESTINATION FACTS:\n"
-        + json.dumps(facts, ensure_ascii=False, sort_keys=True)
-        + storage_description
-    )
-
 def get_storage_at_location(location_id):
     """Get all player storage containers at a specific location"""
     try:
@@ -472,18 +447,6 @@ def handle_location_transition(
         }
 
         # The parent game thread owns every later proposal and commit (v2 travel).
-        storage_containers = get_storage_at_location(new_location)
-        storage_description = format_storage_description(storage_containers)
-        transition_context["transition_prompt"] = _build_transition_narration_prompt(
-            new_location_info,
-            area_id=new_area_id_for_conditions or current_area_id,
-            area_name=(
-                new_area_data.get("areaName", "Unknown Area")
-                if new_area_data
-                else current_area
-            ),
-            storage_description=storage_description,
-        )
         return transition_context
     else:
         error(f"FAILURE: Could not find information for current location: {current_location}", category="location_transitions")

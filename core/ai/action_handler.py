@@ -70,7 +70,6 @@ from utils.capture.live_provider_call import (
 )
 from utils.provider_errors import classify_provider_error
 from core.combat.invocation import InvocationSupersededError
-register_callsite("T013", "core/ai/action_handler.py", 1255)
 register_callsite("T012", "core/ai/action_handler.py", 676)
 import config
 from core.managers.location_manager import get_location_data
@@ -4214,12 +4213,10 @@ def process_action(
         transition_context = (
             transition_result if isinstance(transition_result, dict) else None
         )
-        transition_prompt = (
-            transition_context.get("transition_prompt")
-            if transition_context is not None
-            else transition_result
-        )
-        if transition_prompt and transition_checkpoint is not None:
+        # handle_location_transition returns its context dict only when the
+        # party moved (#773).
+        movement_committed = transition_context is not None
+        if movement_committed and transition_checkpoint is not None:
             with _party_module_transition_lock():
                 current_checkpoint = load_current_transition_checkpoint(
                     transition_id
@@ -4235,7 +4232,7 @@ def process_action(
             from core.nql import travel
             travel.realign(current_checkpoint)
 
-        if transition_prompt and transition_context is not None:
+        if movement_committed:
             reconciliation_status = resolve_current_transition_reconciliation(
                 transition_id, transition_context
             )
@@ -4258,10 +4255,9 @@ def process_action(
             )
             transition_context["departure_summary"] = departure_summary
 
-        if transition_prompt:
+        if movement_committed:
             info("SUCCESS: Location movement and departure state committed", category="location_transitions")
             response_data = {
-                "transition_prompt": transition_prompt,
                 "departure_summary": transition_context.get("departure_summary"),
             }
             if transition_checkpoint is not None:
