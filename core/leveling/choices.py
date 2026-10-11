@@ -74,7 +74,19 @@ def _held_feats(sheet: Dict[str, Any]) -> List[str]:
 
 
 def _skill_multipliers(sheet: Dict[str, Any]) -> Dict[str, int]:
-    """{skill key: 0, 1 or 2} read back from the stored bonuses (proficiency times)."""
+    """{skill key: 0, 1 or 2}. A dict of stored bonuses is read back as proficiency
+    times; a list names the proficient skills, and the typed expertise field marks
+    expertise (#769)."""
+    if isinstance(sheet.get("skills"), list):
+        from core.nql import stats
+        times: Dict[str, int] = {}
+        for name in sheet["skills"]:
+            sid = stats.skill_id(name)
+            if sid:
+                times[sid.replace("-", "_")] = 1
+        for sid in stats.expertise_of(sheet)[0]:
+            times[sid.replace("-", "_")] = 2
+        return times
     pb = sheet.get("proficiencyBonus") if type(sheet.get("proficiencyBonus")) is int else tables.proficiency_bonus(sheet.get("level", 1))
     out: Dict[str, int] = {}
     for skill, bonus in (sheet.get("skills") or {}).items():

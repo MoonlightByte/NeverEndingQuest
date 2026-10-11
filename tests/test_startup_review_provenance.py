@@ -351,9 +351,10 @@ def test_pools_and_slots_are_set_only_on_level_one_sheets(wizard, authored):
     assert result["spellcasting"]["spellSlots"] == before["spellcasting"]["spellSlots"]
 
 
-def _level_up(sheet, new_level, monkeypatch, tmp_path):
+def _level_up(sheet, new_level, monkeypatch, tmp_path, choices=None):
     """Commit one level-up through the real session commit, with the tables'
-    settled facts and no agent; returns the sheet the session would write."""
+    settled facts, the given choices and no agent; returns the sheet the session
+    would write."""
     from core.leveling import tables
     from core.managers import level_up_session
     import updates.update_character_info as character_info
@@ -365,6 +366,7 @@ def _level_up(sheet, new_level, monkeypatch, tmp_path):
     session._sheet = sheet
     session._path = str(tmp_path / f"{sheet['name'].lower()}.json")
     session._settled = tables.settle(sheet, new_level)
+    session._choices = dict(choices or {})
     turn = session._commit("")
     assert len(written) == 1, turn
     return written[0]
@@ -417,13 +419,97 @@ def test_warlock_level_up_moves_pact_slots_as_one_set(wizard, authored, monkeypa
     sheet["level"] = level
     sheet["experience_points"] = tables.xp_threshold(level + 1)
     sheet["spellcasting"]["spellSlots"].update(before)
-    # The schema's legacy object form: level-up's skill-filtered choice points
-    # (Eldritch Invocations) do not read the list form yet, a separate defect.
-    sheet["skills"] = {}
     leveled = _level_up(sheet, level + 1, monkeypatch, tmp_path)
     assert {k: v for k, v in leveled["spellcasting"]["spellSlots"].items() if v["max"] or v["current"]} == after
     from core.nql import armor_class
     assert armor_class.project(leveled).applied
+
+
+# ---- #769: level-up reads and writes list-form skills ------------------------
+# Startup writes skills as a list of proficient names (the schema's recommended
+# form); expertise is the typed "expertise" field.
+
+def _expertise_point(sheet, new_level):
+    from core.leveling import tables
+    return next(p for p in tables.settle(sheet, new_level).choice_points if p.get("kind") == "expertise")
+
+
+@pytest.mark.parametrize("expertise, offered", [
+    (None, ["Athletics", "Intimidation", "Perception", "Survival"]),
+    (["Perception"], ["Athletics", "Intimidation", "Survival"]),
+])
+def test_list_form_skills_offer_expertise_in_proficient_skills(wizard, authored, expertise, offered):
+    sheet = _as_class(authored["character"], "Bard", None)
+    assert sheet["skills"] == ["Athletics", "Intimidation", "Perception", "Survival"]
+    if expertise is not None:
+        sheet["expertise"] = expertise
+    assert sorted(_expertise_point(sheet, 2)["options"]) == offered
+
+
+def test_list_form_expertise_round_trip_keeps_every_skill(wizard, authored, monkeypatch, tmp_path):
+    from core.leveling import tables
+    from core.nql import armor_class, stats
+    sheet = _as_class(authored["character"], "Bard", None)
+    sheet["experience_points"] = tables.xp_threshold(2)
+    point = _expertise_point(sheet, 2)
+    leveled = _level_up(sheet, 2, monkeypatch, tmp_path, {point["id"]: ["Perception", "Athletics"]})
+    assert leveled["skills"] == ["Athletics", "Intimidation", "Perception", "Survival"]
+    assert leveled["expertise"] == ["Perception", "Athletics"]
+    projection = armor_class.project(leveled)
+    assert projection.applied
+    totals = stats.totals(projection.status)
+    wisdom = tables.modifier(leveled["abilities"]["wisdom"])
+    strength = tables.modifier(leveled["abilities"]["strength"])
+    pb = tables.proficiency_bonus(2)
+    assert totals["skill:perception"] == wisdom + 2 * pb
+    assert totals["skill:athletics"] == strength + 2 * pb
+    assert totals["skill:survival"] == wisdom + pb
+
+
+def test_list_form_new_skill_is_appended_once(wizard, authored, monkeypatch, tmp_path):
+    # The commit's write path, given picks directly (the offered options are
+    # checked before the commit): a skill not yet listed is appended in its
+    # display form, and a second spelling of a listed skill adds nothing.
+    from core.leveling import tables
+    sheet = _as_class(authored["character"], "Bard", None)
+    sheet["skills"] = ["Athletics", "Sleight of Hand"]
+    sheet["experience_points"] = tables.xp_threshold(2)
+    point = _expertise_point(sheet, 2)
+    leveled = _level_up(sheet, 2, monkeypatch, tmp_path, {point["id"]: ["sleight_of_hand", "stealth"]})
+    assert leveled["skills"] == ["Athletics", "Sleight of Hand", "Stealth"]
+    assert leveled["expertise"] == ["Sleight of Hand", "Stealth"]
+
+
+def test_list_form_skills_survive_consecutive_level_ups(wizard, authored, monkeypatch, tmp_path):
+    # Each level-up starts from the sheet the last one wrote: a level with no
+    # skill choice leaves the list and expertise as they were, and the next
+    # Expertise menu (Bard 9) does not offer the skills already taken.
+    import copy
+    from core.leveling import tables
+    sheet = _as_class(authored["character"], "Bard", None)
+    sheet["experience_points"] = tables.xp_threshold(2)
+    point = _expertise_point(sheet, 2)
+    two = _level_up(sheet, 2, monkeypatch, tmp_path, {point["id"]: ["Perception", "Athletics"]})
+    two["experience_points"] = tables.xp_threshold(3)
+    three = _level_up(copy.deepcopy(two), 3, monkeypatch, tmp_path)
+    assert three["level"] == 3
+    assert three["skills"] == ["Athletics", "Intimidation", "Perception", "Survival"]
+    assert three["expertise"] == ["Perception", "Athletics"]
+    three["level"], three["experience_points"] = 8, tables.xp_threshold(9)
+    point = _expertise_point(three, 9)
+    assert sorted(point["options"]) == ["Intimidation", "Survival"]
+    nine = _level_up(three, 9, monkeypatch, tmp_path, {point["id"]: ["Intimidation", "Survival"]})
+    assert nine["skills"] == ["Athletics", "Intimidation", "Perception", "Survival"]
+    assert nine["expertise"] == ["Perception", "Athletics", "Intimidation", "Survival"]
+
+
+def test_legacy_dict_skills_read_as_before(wizard, authored):
+    from core.leveling import choices
+    sheet = authored["character"]
+    sheet["skills"] = {"Athletics": 5, "Perception": 5, "Survival": 3}
+    sheet["proficiencyBonus"] = 2
+    # Wis 13 (+1): Perception 5 = 1 + 2 x 2 is expertise; Survival 3 = 1 + 2 is proficient.
+    assert choices._skill_multipliers(sheet) == {"athletics": 1, "perception": 2, "survival": 1}
 
 
 def _rest(sheet, kind):
