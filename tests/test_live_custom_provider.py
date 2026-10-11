@@ -17,9 +17,13 @@ import time
 import pytest
 
 ROOT = Path(os.environ.get("NEQ_PROVIDER_TEST_ROOT", Path(__file__).resolve().parents[1]))
+# The parallel case's handler waits up to OVERLAP_SECONDS for the other provider
+# child; the worker timeout leaves 30 s beyond that for start-up on a loaded machine.
+OVERLAP_SECONDS = 60
+WORKER_TIMEOUT = OVERLAP_SECONDS + 30
 
 
-def _run_fixture_worker(command, *, cwd, env, timeout=25):
+def _run_fixture_worker(command, *, cwd, env, timeout=WORKER_TIMEOUT):
     """Contain this fixture's descendants, including on timeout/Ctrl-C.
 
     subprocess.run(timeout=...) only kills the direct worker. Its provider
@@ -100,14 +104,22 @@ def handler(request):
     record = {"url": str(request.url), "body": body,
               "auth_matches": auth in ("Bearer fixture-token", "fixture-token"),
               "pid": __import__('os').getpid()}
-    with Path("http-requests.jsonl").open("a") as f:
-        f.write(json.dumps(record) + "\n")
-    calls = len(Path("http-requests.jsonl").read_text().splitlines())
+    # One file per request: concurrent appends to a shared file can lose a record on Windows.
+    Path("http-requests").mkdir(exist_ok=True)
+    calls = 0
+    while True:
+        calls += 1
+        try:
+            with Path("http-requests", "%d.json" % calls).open("x") as f:
+                f.write(json.dumps(record))
+            break
+        except FileExistsError:
+            pass
     if plan.get('overlap'):
         import time, os
         Path('overlap').mkdir(exist_ok=True)
         Path('overlap',str(os.getpid())).touch()
-        deadline=time.monotonic()+5
+        deadline=time.monotonic()+plan['overlap']
         while len(list(Path('overlap').iterdir()))<2 and time.monotonic()<deadline:
             time.sleep(0.01)
         assert len(list(Path('overlap').iterdir()))==2, 'Provider calls were serialized'
@@ -177,16 +189,17 @@ def spawn(*a,**k):
     return p
 live.subprocess.Popen=spawn
 live._interruptible_wait=lambda seconds,*a,**k:original_wait(min(seconds,0.02),*a,**k)
+requested=lambda:Path('http-requests').is_dir() and any(Path('http-requests').iterdir())
 if scenario.get('authority')=='before':
     authority=lambda:False
 elif scenario.get('authority')=='after':
-    authority=lambda:not Path('http-requests.jsonl').exists()
+    authority=lambda:not requested()
 else:
     authority=lambda:True
 
 def cancel():
     deadline=time.monotonic()+10
-    while not Path('http-requests.jsonl').exists() and time.monotonic()<deadline:time.sleep(0.01)
+    while not requested() and time.monotonic()<deadline:time.sleep(0.01)
     scope.request_supersession('reset')
 if scenario.get('cancel'):
     threading.Thread(target=cancel,daemon=True).start()
@@ -303,14 +316,16 @@ def run_case(tmp_path, installed_openai_sdk):
                    PYTHONDONTWRITEBYTECODE='1',PYTHONNOUSERSITE='1',
                    NEQ_MULTI_MODEL_CAPTURE='0',NEQ_MODEL_EVAL_PRIMARY='')
         proc=_run_fixture_worker([sys.executable,str(tmp_path/'worker.py')],
-                                 cwd=tmp_path,env=env,timeout=25)
+                                 cwd=tmp_path,env=env,timeout=WORKER_TIMEOUT)
         assert proc.returncode==0, proc.stderr
         assert 'fixture-token' not in proc.stdout + proc.stderr
-        for request in [json.loads(line) for line in (tmp_path/'http-requests.jsonl').read_text().splitlines()] if (tmp_path/'http-requests.jsonl').exists() else []:
+        records=sorted((tmp_path/'http-requests').glob('*.json'),key=lambda path:int(path.stem)) if (tmp_path/'http-requests').is_dir() else []
+        requests=[json.loads(path.read_text()) for path in records]
+        for request in requests:
             assert '_request_local_endpoint' not in request['body']
         result=json.loads((tmp_path/'result.json').read_text())
-        requests=[json.loads(line) for line in (tmp_path/'http-requests.jsonl').read_text().splitlines()] if (tmp_path/'http-requests.jsonl').exists() else []
         result['http_requests']=requests
+        result['fixture_dir']=str(tmp_path)
         result['usage_rows']=[row for row in result['usage_rows'] if 'total_tokens' in row]
         assert result['children_reaped']
         assert result['global_scope_untouched']
@@ -492,11 +507,12 @@ def test_completed_response_after_supersession_is_not_counted(run_case):
 
 
 def test_independent_provider_calls_remain_parallel(run_case):
-    result=run_case({'parallel':True},{'overlap':True})
+    result=run_case({'parallel':True},{'overlap':OVERLAP_SECONDS})
     assert result['kind']=='success',result
     assert result['answers']==['{"ok":true}','{"ok":true}']
     assert result['children']==2
-    assert len({r['pid'] for r in result['http_requests']})==2
+    assert len(result['http_requests'])==2, result['fixture_dir']
+    assert len({r['pid'] for r in result['http_requests']})==2, result['fixture_dir']
     assert len(result['usage_rows'])==2
 
 
