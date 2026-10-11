@@ -183,8 +183,10 @@ def _validate_plot_themes(value: Any) -> str:
         raise ModuleCreationContractError("plot_themes must be useful non-empty text")
     normalized = " ".join(value.strip().split())
     words = _word_count(normalized)
-    if not 3 <= words <= 40:
-        raise ModuleCreationContractError("plot_themes must contain 3 to 40 words")
+    # #347: no upper bound. A word count over model-written prose is not a
+    # contract; only the floor (useful text) and the goal shape are checked.
+    if words < 3:
+        raise ModuleCreationContractError("plot_themes must contain at least 3 words")
 
     # Prompts request comma/semicolon-separated concrete goals.  Counting those
     # explicit separators is deterministic while avoiding guesses about every
