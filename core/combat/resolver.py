@@ -549,11 +549,11 @@ def validate_intent(encounter, characters, intent, strict=None):
                     legalActions=[n for n in executable_attack_names(sheet)
                                   if not _recharge_spent(actor, n)],
                     retryable=True, recharging=entry.get("name"))
-            if entry.get("type") == "ranged" and _ammo_quantity(sheet) == 0:
+            if _spends_ammunition(entry) and _ammo_quantity(sheet) == 0:
                 return False, Rejection(
                     reason="%s has no ammunition left" % actor.get("name"),
                     legalActions=[n for n in _known_actions(sheet)
-                                  if (_find_action(sheet, n) or {}).get("type") != "ranged"],
+                                  if not _spends_ammunition(_find_action(sheet, n))],
                     retryable=True)
         return True, None
 
@@ -567,6 +567,12 @@ def validate_intent(encounter, characters, intent, strict=None):
     # Player creativity: pass through for DM adjudication; bounds are
     # enforced at apply time, not by whitelist.
     return True, None
+
+
+def _spends_ammunition(entry):
+    """#801: a ranged row shoots ammunition; a row typed ``thrown`` (the engine's
+    thrown grant, startup_rows) is its own projectile and spends none."""
+    return isinstance(entry, dict) and entry.get("type") == "ranged" and entry.get("thrown") is not True
 
 
 def _ammo_quantity(sheet, name=None):
@@ -1358,7 +1364,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
     for swing_number, entry in enumerate(attack_entries, start=1):
         if target is None or hp_after <= 0:
             break
-        if entry.get("type") == "ranged" and ranged_swings >= _ammo_quantity(sheet):
+        if _spends_ammunition(entry) and ranged_swings >= _ammo_quantity(sheet):
             continue
         attack_bonus = int(entry.get("attackBonus", 0) or 0) + modifier_total(
             sheet, "attackRolls"
@@ -1607,7 +1613,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
         if rider_result is not None:
             swing["rider"] = rider_result
         swings.append(swing)
-        if entry.get("type") == "ranged":
+        if _spends_ammunition(entry):
             ranged_swings += 1
 
     event["outcome"]["swings"] = swings
