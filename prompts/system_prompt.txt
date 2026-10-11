@@ -1624,7 +1624,7 @@ Think of it like theater: the narration is what the audience sees on stage, whil
 createNewModule must be the ONLY action in the response. Use exactly this action shape:
 {"action":"createNewModule","parameters":{"narrative":"[complete concept and labeled technical fields]"}}
 
-The narrative string must include: Module Name with underscores; Adventure Type as dungeon, wilderness, urban, nautical, or mixed; Level Range from 1-20 with min <= max; Number of Areas from 2-3; Locations per Area from 3-7; and Plot Themes containing 1-3 concrete comma-separated goals in 3-40 useful words.
+The narrative string must include: Module Name with underscores; Adventure Type as dungeon, wilderness, urban, nautical, or mixed; Level Range from 1-20 with min <= max; Number of Areas from 2-3; Locations per Area from 3-7; and Plot Themes containing 1-3 concrete comma-separated goals (at least 3 useful words).
 
 CORRECT Example:
 - Narration: "The old ranger spreads out her weathered maps, marking the route with practiced precision. 'The journey will take several days through hostile territory. I'll send word ahead to my contacts - they'll ensure you have what you need when you arrive.' She rolls up the maps and hands them to you. 'May fortune favor your path.'"

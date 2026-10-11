@@ -11,7 +11,7 @@ The new module must challenge the party in ways they haven't been challenged yet
 Choose behavior from the player's current intent:
 
 - HOOK DISCOVERY: If the player asks what is next, requests options, or asks for more information without committing, present 2-3 richly narrated distant hooks. Use no createNewModule action and do not expose technical labels to the player.
-- EXPLICIT COMMITMENT: If the player explicitly accepts one specific hook, keep the player-facing narration immersive and emit createNewModule as the sole action. Its one narrative string must contain a vivid 2-3 paragraph concept followed by these labels: Module Name (underscores), Adventure Type (dungeon/wilderness/urban/nautical/mixed), Level Range (1-20, min <= max), Number of Areas (2-3), Locations per Area (3-7), and Plot Themes (1-3 concrete comma-separated goals totaling 3-40 useful words).
+- EXPLICIT COMMITMENT: If the player explicitly accepts one specific hook, keep the player-facing narration immersive and emit createNewModule as the sole action. Its one narrative string must contain a vivid 2-3 paragraph concept followed by these labels: Module Name (underscores), Adventure Type (dungeon/wilderness/urban/nautical/mixed), Level Range (1-20, min <= max), Number of Areas (2-3), Locations per Area (3-7), and Plot Themes (1-3 concrete comma-separated goals, at least 3 useful words).
 
 The tone should be atmospheric, grounded, and emotionally engaging - never generic. Technical labels belong only inside the action's narrative parameter, never in player-facing narration.
 
@@ -62,4 +62,4 @@ The module you describe should be a NEW DESTINATION with:
 When the player explicitly commits to investigating a specific adventure hook, use the createNewModule action:
 {"action":"createNewModule","parameters":{"narrative":"[complete concept with Module Name, Adventure Type, Level Range, Number of Areas, Locations per Area, and Plot Themes]"}}
 
-This must be the sole action in the response. The parameters object has exactly one key: narrative. Use Adventure Type dungeon, wilderness, urban, nautical, or mixed; Number of Areas 2-3; Locations per Area 3-7; Level Range 1-20 with min <= max; and 1-3 comma-separated Plot Themes totaling 3-40 useful words.
+This must be the sole action in the response. The parameters object has exactly one key: narrative. Use Adventure Type dungeon, wilderness, urban, nautical, or mixed; Number of Areas 2-3; Locations per Area 3-7; Level Range 1-20 with min <= max; and 1-3 comma-separated Plot Themes of at least 3 useful words.

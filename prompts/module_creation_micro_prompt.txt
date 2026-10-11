@@ -31,7 +31,7 @@
     - Level Range: [X-Y]
     - Number of Areas: [N]
     - Locations per Area: [N]
-    - Plot Themes: [1-3 concrete comma-separated goals; 3-40 useful words]
+    - Plot Themes: [1-3 concrete comma-separated goals; at least 3 useful words]
   
   CORRECT:
     narration: "The old ranger spreads out weathered maps. 'The journey will take several days through hostile territory.'"
