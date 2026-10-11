@@ -191,7 +191,7 @@ class LevelUpSession:
             "settled_by_the_rules": {
                 "proficiency_bonus": s.proficiency_bonus, "hit_die": f"d{s.hit_die}", "fixed_hp_gain": s.hp_gain_fixed,
                 "new_features": s.features, "spell_slots_max": {k: v for k, v in s.slot_targets.items() if v},
-                "pools": {k: v[0] for k, v in s.pools.items()}, "cantrips_known": s.spell_counts["cantrips"],
+                "pools": {k: v.max for k, v in s.pools.items()}, "cantrips_known": s.spell_counts["cantrips"],
                 "prepared_spells": s.spell_counts["prepared"],
             },
             "choice_points": points,
@@ -346,7 +346,11 @@ class LevelUpSession:
         if self._choices.get("subclass"):
             # the chosen subclass's features at this level join the gained list
             s.features = tables.features_for(cls, chosen_subclass, s.new_level)
-        # 2. features: new ones with the agent's text, pools resized from the table
+        # 2. features: new ones with the agent's text, pools resized from the table.
+        # A pool's maximum can follow an ability (Bardic Inspiration: Charisma), so
+        # the pools are read with the scores after this level's increase; the rest
+        # that refreshes a pool is the table row in effect at the new level (#704).
+        pools = tables.use_pools_at(cls, s.new_level, abilities)
         existing = {f.get("name"): f for f in sheet.get("classFeatures") or [] if isinstance(f, dict)}
         # A pool's feature may carry a suffix on the sheet ("Channel Divinity (2/rest)"):
         # match on the name before any parenthesis, case-insensitively.
@@ -362,19 +366,23 @@ class LevelUpSession:
                 continue
             entry = {"name": name, "description": self._features_text.get(name, f"{name} (gained at level {s.new_level})."),
                      "source": f"{sheet.get('class')} level {s.new_level}"}
-            if name in s.pools:
-                entry["usage"] = {"current": s.pools[name][0], "max": s.pools[name][0], "refreshOn": s.pools[name][1]}
+            pool = next((p for key, p in pools.items() if tables.pool_key(key) == tables.pool_key(name)), None)
+            if pool is not None:
+                entry["usage"] = pool.usage()
             feature_updates.append(entry)
-        for name, (size, refresh) in s.pools.items():
+        for name, pool in pools.items():
             feature = existing.get(stored_name(name))
             if feature is None:
                 continue
             name = feature.get("name")
-            usage = feature.get("usage") if isinstance(feature.get("usage"), dict) else {"current": size, "refreshOn": refresh}
-            if usage.get("max") != size:
-                grown = size - (usage.get("max") if type(usage.get("max")) is int else 0)
-                feature_updates.append({"name": name, "usage": {"current": min(size, (usage.get("current") or 0) + max(0, grown)),
-                                                                 "max": size, "refreshOn": usage.get("refreshOn", refresh)}})
+            usage = feature.get("usage") if isinstance(feature.get("usage"), dict) else {}
+            stored_max = usage.get("max") if type(usage.get("max")) is int else 0
+            current = usage.get("current") if type(usage.get("current")) is int else stored_max
+            # Uses grow by what the maximum grew; refreshOn and shortRestRegain are
+            # rewritten from the new level's row even when the maximum is unchanged.
+            updated = pool.usage(min(pool.max, current + max(0, pool.max - stored_max)))
+            if updated != usage:
+                feature_updates.append({"name": name, "usage": updated})
         feature_updates.extend(extra_features)
         if feature_updates:
             changes["classFeatures"] = feature_updates
@@ -382,6 +390,11 @@ class LevelUpSession:
         casting = sheet.get("spellcasting") if isinstance(sheet.get("spellcasting"), dict) else None
         if casting:
             spell_changes: Dict[str, Any] = {}
+            # Pact slots move as one set to the new level's slot level (#704,
+            # H4-Q4 a); the growth below then finds the table's count in place.
+            pact = copy.deepcopy(casting.get("spellSlots")) if isinstance(casting.get("spellSlots"), dict) else None
+            if pact is not None and tables.move_pact_slots(pact, cls, s.new_level):
+                spell_changes["spellSlots"] = pact
             if isinstance(self._choices.get("prepared_spells"), list):
                 spell_changes["preparedSpells"] = list(self._choices["prepared_spells"])
             if isinstance(self._choices.get("cantrips"), list):

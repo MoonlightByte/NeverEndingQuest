@@ -272,7 +272,9 @@ def apply_deltas(sheet: Dict[str, Any], updates: Dict[str, Any], **kwargs: Any) 
 
 
 # ---------------------------------------------------------------------------
-# Rests (E9): the engine restores pools to their maximum; nothing is computed.
+# Rests (E9): the engine restores pools to their maximum, or for a pool a Short
+# Rest only partly refills (usage.shortRestRegain), heals it by that many uses,
+# capped at the maximum by the engine; nothing is computed.
 # ---------------------------------------------------------------------------
 REST_KINDS = ("short", "long")
 # usage.refreshOn values that a rest of each kind refills. A long rest refills
@@ -303,26 +305,30 @@ def _class_names(sheet: Dict[str, Any]) -> List[str]:
     return [str(n).strip().lower() for n in names if isinstance(n, str) and n.strip()]
 
 
-def rest_lines(sheet: Dict[str, Any], kind: str, gaps: List[str]) -> List[Tuple[str, str]]:
-    """(resource id, sheet-facing label) the rest restores for this sheet."""
+def rest_lines(sheet: Dict[str, Any], kind: str, gaps: List[str]) -> List[Tuple[str, str, Optional[int]]]:
+    """(resource id, sheet-facing label, uses regained) the rest refills for this sheet.
+    Uses regained is None for a full restore; a Short Rest regains only
+    ``usage.shortRestRegain`` uses of a pool that carries it (#704, HQ6)."""
     cid = genesis.character_id(sheet)
     declared = {rid for rid, _, _ in genesis.pool_resources(sheet, gaps)}
     out: List[Tuple[str, str]] = []
     if kind == "long" and "hp" in declared:
-        out.append(("hp", "hit points"))
+        out.append(("hp", "hit points", None))
     if kind == "long" and TEMP_HP in declared:
-        out.append((TEMP_HP, "temporary hit points (cleared)"))
+        out.append((TEMP_HP, "temporary hit points (cleared)", None))
     slots_refill = kind == "long" or any(c in SHORT_REST_SLOT_CLASSES for c in _class_names(sheet))
     if slots_refill:
         for rid in sorted(r for r in declared if r.startswith("slot:")):
-            out.append((rid, f"level {rid[5:]} spell slots"))
+            out.append((rid, f"level {rid[5:]} spell slots", None))
     for name, feature in _feature_pools(sheet):
         rid = genesis.feature_resource_id(name)
         if rid not in declared:
             continue
         refresh = feature["usage"].get("refreshOn")
         if kind == "long" or refresh in SHORT_REST_REFRESH:
-            out.append((rid, f"{name} uses"))
+            regain = feature["usage"].get("shortRestRegain")
+            partial = kind == "short" and type(regain) is int and regain > 0
+            out.append((rid, f"{name} uses", regain if partial else None))
     return out
 
 
@@ -331,7 +337,9 @@ def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", re
     """Refill every pool the rest recovers on every sheet, one engine request.
 
     The engine's ``restore`` sets a pool to its maximum; a pool already full is
-    a no-op. All sheets are rebuilt from the engine's values together.
+    a no-op. A Short Rest's partial regain is ``heal ... by n``, which the engine
+    caps at the maximum and never refuses. All sheets are rebuilt from the
+    engine's values together.
     """
     if kind not in REST_KINDS:
         return RestOutcome(False, reason=f"unknown rest kind {kind!r}; use short or long")
@@ -347,7 +355,8 @@ def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", re
     labels: Dict[str, List[Tuple[str, str]]] = {}
     for sheet, cid in zip(sheets, ids):
         labels[cid] = rest_lines(sheet, kind, gaps)
-        actions.extend(f'restore {_q(cid)} resource {_q(rid)};' for rid, _ in labels[cid])
+        actions.extend(f'heal {_q(cid)} resource {_q(rid)} by {regain};' if regain else
+                       f'restore {_q(cid)} resource {_q(rid)};' for rid, _, regain in labels[cid])
         level = stats.exhaustion_level(sheet, gaps)
         if kind == "long" and level > 0:
             # SRD: a Long Rest removes one level of exhaustion (the highest instance).
@@ -378,7 +387,7 @@ def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", re
         if problem:
             return RestOutcome(False, reason=problem, gaps=gaps)
         after = {rid: cur for rid, cur, _ in genesis.pool_resources(sheet, [])}
-        restored[str(sheet.get("name"))] = [label for rid, label in labels[cid] if after.get(rid) != before.get(rid)]
+        restored[str(sheet.get("name"))] = [label for rid, label, _ in labels[cid] if after.get(rid) != before.get(rid)]
         level_after = stats.exhaustion_level(sheet, [])
         if level_after != level_before:
             restored[str(sheet.get("name"))].append(f"exhaustion level {level_before} -> {level_after}")

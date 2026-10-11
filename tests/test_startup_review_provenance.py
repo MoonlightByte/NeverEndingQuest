@@ -20,10 +20,15 @@ ROOT = Path(os.environ.get("NEQ_STARTUP_TEST_ROOT", Path(__file__).resolve().par
 FIXTURE = Path(__file__).parent / "fixtures" / "startup-authored-alden.json"
 CAPTURED_STYLE_NOTE = ("Fighting Style: Defense set in classFeatures "
                        "(was classFeatures 'Fighting Style (Defense)')")
+SECOND_WIND_NOTE = "Second Wind usage None -> 2/2 shortRest (a Short Rest regains 1) (SRD level 1)"
 
 
 def _style_entries(sheet):
     return [f["name"] for f in sheet.get("classFeatures") or [] if f["name"].startswith("Fighting Style")]
+
+
+def _usage(sheet, name):
+    return next(f for f in sheet["classFeatures"] if f["name"] == name).get("usage")
 
 
 @pytest.fixture
@@ -90,9 +95,12 @@ def test_captured_author_replays_through_real_normalization(wizard, authored):
     from core.nql import stats
     totals = stats.totals(engine["status"])
     assert totals["save:constitution"] == candidate["character"]["savingThrowBonuses"]["constitution"]
+    # #704: the captured Second Wind "usage": null gets its level-1 pool.
+    assert _usage(candidate["character"], "Second Wind") == {"current": 2, "max": 2, "refreshOn": "shortRest",
+                                                              "shortRestRegain": 1}
     notes = provenance["mechanics_notes"]
-    assert len(notes) == 2 and notes[0] == CAPTURED_STYLE_NOTE
-    assert notes[1].startswith("armorClass 18 -> 19 (engine defense:")
+    assert notes[:2] == [CAPTURED_STYLE_NOTE, SECOND_WIND_NOTE] and len(notes) == 3
+    assert notes[2].startswith("armorClass 18 -> 19 (engine defense:")
     # Repeated projection, including a sheet already carrying identical totals.
     repeated, repeated_provenance = wizard._prepare_startup_proposal(authored)
     stable, stable_provenance = wizard._prepare_startup_proposal(candidate)
@@ -270,6 +278,240 @@ def test_saved_old_shape_style_projects_as_before(wizard, authored):
     assert hero == before
     assert projection.applied and projection.armor_class == 18
 
+# ---- #704: use pools and spell slots from the class tables -------------------
+# Expected values are the SRD 5.2.1 class tables, written out by hand.
+
+def _pool(current, maximum, refresh, regain=None):
+    usage = {"current": current, "max": maximum, "refreshOn": refresh}
+    if regain is not None:
+        usage["shortRestRegain"] = regain
+    return usage
+
+
+def _as_class(sheet, cls, features, **abilities):
+    sheet["class"] = cls
+    sheet["abilities"].update(abilities)
+    if features is not None:
+        sheet["classFeatures"] = [{"name": name, "description": "typed", "source": f"{cls} level 1",
+                                   "usage": usage} for name, usage in features]
+    return sheet
+
+
+@pytest.mark.parametrize("cls, abilities, pools, slots", [
+    ("Fighter", {}, {"Second Wind": _pool(2, 2, "shortRest", 1)}, {}),
+    ("Barbarian", {}, {"Rage": _pool(2, 2, "shortRest", 1)}, {}),
+    ("Bard", {"charisma": 8}, {"Bardic Inspiration": _pool(1, 1, "longRest")}, {"level1": 2}),
+    ("Bard", {"charisma": 16}, {"Bardic Inspiration": _pool(3, 3, "longRest")}, {"level1": 2}),
+    ("Paladin", {}, {"Lay On Hands": _pool(5, 5, "longRest")}, {"level1": 2}),
+    ("Ranger", {}, {"Favored Enemy": _pool(2, 2, "longRest")}, {"level1": 2}),
+    ("Sorcerer", {}, {"Innate Sorcery": _pool(2, 2, "longRest")}, {"level1": 2}),
+    ("Wizard", {}, {"Arcane Recovery": _pool(1, 1, "longRest")}, {"level1": 2}),
+    ("Warlock", {}, {}, {"level1": 1}),
+])
+def test_level_one_pools_and_slots_come_from_the_tables(wizard, authored, cls, abilities, pools, slots):
+    sheet = authored["character"]
+    if cls == "Fighter":
+        sheet["abilities"].update(abilities)
+    else:
+        _as_class(sheet, cls, [(name, None) for name in pools], **abilities)
+    candidate, provenance = wizard._prepare_startup_proposal(authored)
+    committed = candidate["character"]
+    assert {name: _usage(committed, name) for name in pools} == pools
+    assert {k: v for k, v in committed["spellcasting"]["spellSlots"].items() if v["max"]} == {
+        level: {"current": n, "max": n} for level, n in slots.items()}
+    assert provenance["use_pools"]["pools"] == pools
+    assert provenance["use_pools"]["slots"] == slots
+    assert provenance["use_pools"]["missing_features"] == []
+    # The engine projection the reviewer sees declares the same pools and slots.
+    resources = provenance["engine_projection"]["status"]["resources"]
+    for level, n in slots.items():
+        assert resources[f"slot:{level[5:]}"]["maximum"] == n
+    # Projecting the committed sheet again changes nothing.
+    again, _ = wizard._prepare_startup_proposal(candidate)
+    assert again == candidate
+
+
+def test_missing_pool_feature_is_noted_not_invented(wizard, authored):
+    _as_class(authored["character"], "Barbarian", [("Unarmored Defense", None)])
+    candidate, provenance = wizard._prepare_startup_proposal(authored)
+    assert [f["name"] for f in candidate["character"]["classFeatures"]] == ["Unarmored Defense"]
+    assert provenance["use_pools"]["missing_features"] == ["Rage"]
+    assert ("Rage: no classFeatures entry of that name; its level-1 use pool (2/2 shortRest "
+            "(a Short Rest regains 1)) is not set") in provenance["mechanics_notes"]
+
+
+def test_pools_and_slots_are_set_only_on_level_one_sheets(wizard, authored):
+    sheet = _as_class(copy.deepcopy(authored["character"]), "Wizard", [("Arcane Recovery", None)])
+    sheet["level"] = 2
+    before = copy.deepcopy(sheet)
+    provenance = {}
+    result, notes = wizard.startup_mechanics(sheet, provenance=provenance)
+    assert "use_pools" not in provenance
+    assert _usage(result, "Arcane Recovery") is None
+    assert result["spellcasting"]["spellSlots"] == before["spellcasting"]["spellSlots"]
+
+
+def _level_up(sheet, new_level, monkeypatch, tmp_path):
+    """Commit one level-up through the real session commit, with the tables'
+    settled facts and no agent; returns the sheet the session would write."""
+    from core.leveling import tables
+    from core.managers import level_up_session
+    import updates.update_character_info as character_info
+    written = []
+    monkeypatch.setattr(character_info, "commit_character_sheet",
+                        lambda path, after, **kwargs: written.append(copy.deepcopy(after)))
+    monkeypatch.setattr(character_info, "create_character_backup", lambda path: None)
+    session = level_up_session.LevelUpSession(sheet["name"], sheet["level"], new_level)
+    session._sheet = sheet
+    session._path = str(tmp_path / f"{sheet['name'].lower()}.json")
+    session._settled = tables.settle(sheet, new_level)
+    turn = session._commit("")
+    assert len(written) == 1, turn
+    return written[0]
+
+
+@pytest.mark.parametrize("cls, level, abilities, before, after", [
+    # Action Surge is gained; a Short Rest refills it, so it has no regain field.
+    ("Fighter", 1, {}, [("Second Wind", _pool(1, 2, "shortRest", 1))],
+     {"Second Wind": _pool(1, 2, "shortRest", 1), "Action Surge (one use)": _pool(1, 1, "shortRest")}),
+    # Lay On Hands grows by 5 (current too); Channel Divinity regains one on a Short Rest.
+    ("Paladin", 2, {}, [("Lay On Hands", _pool(4, 10, "longRest")), ("Paladin's Smite", _pool(1, 1, "longRest"))],
+     {"Lay On Hands": _pool(9, 15, "longRest"), "Paladin's Smite": _pool(1, 1, "longRest"),
+      "Channel Divinity": _pool(2, 2, "shortRest", 1)}),
+    # Font of Inspiration: same maximum, now refilled by a Short Rest.
+    ("Bard", 4, {"charisma": 16}, [("Bardic Inspiration", _pool(1, 3, "longRest"))],
+     {"Bardic Inspiration": _pool(1, 3, "shortRest")}),
+    ("Fighter", 10, {}, [("Second Wind", _pool(4, 4, "shortRest", 1)), ("Action Surge", _pool(1, 1, "shortRest")),
+                         ("Indomitable", _pool(1, 1, "longRest"))],
+     {"Second Wind": _pool(4, 4, "shortRest", 1), "Action Surge": _pool(1, 1, "shortRest"),
+      "Indomitable": _pool(1, 1, "longRest")}),
+    # A Rage saved with the old longRest refresh is corrected at its next level-up.
+    ("Barbarian", 1, {}, [("Rage", _pool(2, 2, "longRest"))], {"Rage": _pool(2, 2, "shortRest", 1)}),
+    # Charisma dropped since level 1: the maximum follows it down and current is
+    # clamped, since the engine refuses a current above the maximum.
+    ("Bard", 5, {"charisma": 12}, [("Bardic Inspiration", _pool(3, 3, "shortRest"))],
+     {"Bardic Inspiration": _pool(1, 1, "shortRest")}),
+])
+def test_level_up_writes_pools_from_the_tables(wizard, authored, monkeypatch, tmp_path,
+                                               cls, level, abilities, before, after):
+    from core.leveling import tables
+    sheet = _as_class(authored["character"], cls, before, **abilities)
+    sheet["level"] = level
+    sheet["experience_points"] = tables.xp_threshold(level + 1)
+    leveled = _level_up(sheet, level + 1, monkeypatch, tmp_path)
+    assert leveled["level"] == level + 1
+    assert {name: _usage(leveled, name) for name in after} == after
+    from core.nql import armor_class
+    assert armor_class.project(leveled).applied  # the engine's genesis accepts every pool
+
+
+@pytest.mark.parametrize("level, before, after", [
+    (1, {"level1": {"current": 1, "max": 1}}, {"level1": {"current": 1, "max": 2}}),
+    (2, {"level1": {"current": 2, "max": 2}}, {"level2": {"current": 2, "max": 2}}),
+    (4, {"level2": {"current": 0, "max": 2}}, {"level3": {"current": 0, "max": 2}}),
+])
+def test_warlock_level_up_moves_pact_slots_as_one_set(wizard, authored, monkeypatch, tmp_path, level, before, after):
+    # H4-Q4 (a): Warlock pact slots are level 1 at Warlock 1-2, level 2 at 3-4, level 3 at 5-6.
+    from core.leveling import tables
+    sheet = _as_class(authored["character"], "Warlock", None)
+    sheet["level"] = level
+    sheet["experience_points"] = tables.xp_threshold(level + 1)
+    sheet["spellcasting"]["spellSlots"].update(before)
+    # The schema's legacy object form: level-up's skill-filtered choice points
+    # (Eldritch Invocations) do not read the list form yet, a separate defect.
+    sheet["skills"] = {}
+    leveled = _level_up(sheet, level + 1, monkeypatch, tmp_path)
+    assert {k: v for k, v in leveled["spellcasting"]["spellSlots"].items() if v["max"] or v["current"]} == after
+    from core.nql import armor_class
+    assert armor_class.project(leveled).applied
+
+
+def _rest(sheet, kind):
+    from core.nql import resources
+    outcome = resources.rest([sheet], kind)
+    assert outcome.ok, outcome.reason
+    return outcome.sheets[0], outcome.restored[sheet["name"]]
+
+
+def test_short_rest_regains_one_second_wind_and_long_rest_refills(wizard, authored):
+    sheet = authored["character"]
+    next(f for f in sheet["classFeatures"] if f["name"] == "Second Wind")["usage"] = _pool(0, 2, "shortRest", 1)
+    seen = []
+    for kind in ("short", "short", "short"):
+        sheet, restored = _rest(sheet, kind)
+        seen.append((_usage(sheet, "Second Wind")["current"], restored))
+    assert seen == [(1, ["Second Wind uses"]), (2, ["Second Wind uses"]), (2, [])]
+    next(f for f in sheet["classFeatures"] if f["name"] == "Second Wind")["usage"]["current"] = 0
+    sheet, restored = _rest(sheet, "long")
+    assert _usage(sheet, "Second Wind") == _pool(2, 2, "shortRest", 1) and "Second Wind uses" in restored
+
+
+def test_short_rest_refills_a_pool_without_a_regain_and_pact_slots(wizard, authored):
+    sheet = _as_class(authored["character"], "Warlock", [("Magical Cunning", _pool(0, 3, "shortRest"))])
+    sheet["spellcasting"]["spellSlots"]["level1"] = {"current": 0, "max": 1}
+    sheet, restored = _rest(sheet, "short")
+    assert _usage(sheet, "Magical Cunning") == _pool(3, 3, "shortRest")
+    assert sheet["spellcasting"]["spellSlots"]["level1"] == {"current": 1, "max": 1}
+    assert restored == ["level 1 spell slots", "Magical Cunning uses"]
+
+
+def test_saved_hero_below_the_table_is_raised_on_its_next_write(wizard, authored):
+    # H4-Q1 (A): raise only, current untouched, journaled; the next rest refills.
+    from core.validation.character_validator import AICharacterValidator
+    hero = _as_class(copy.deepcopy(authored["character"]), "Wizard", [("Arcane Recovery", None)])
+    validator = AICharacterValidator()
+    raised = validator._raise_pools_to_tables(hero)
+    assert _usage(hero, "Arcane Recovery") is None  # the caller's sheet is not mutated
+    assert _usage(raised, "Arcane Recovery") == _pool(0, 1, "longRest")
+    assert raised["spellcasting"]["spellSlots"]["level1"] == {"current": 0, "max": 2}
+    assert validator.corrections_made == ["Arcane Recovery usage added: 0/1 longRest (SRD Wizard level 1)",
+                                          "spellSlots level1 max 0 -> 2 (SRD Wizard level 1)"]
+    rested, _ = _rest(raised, "long")
+    assert _usage(rested, "Arcane Recovery") == _pool(1, 1, "longRest")
+    assert rested["spellcasting"]["spellSlots"]["level1"] == {"current": 2, "max": 2}
+    assert validator._raise_pools_to_tables(rested) is rested
+
+
+def test_raise_never_lowers_and_leaves_ability_pools_to_level_up(wizard, authored):
+    from core.leveling import tables
+    from core.validation.character_effects_validator import AICharacterEffectsValidator
+    above = copy.deepcopy(authored["character"])
+    next(f for f in above["classFeatures"] if f["name"] == "Second Wind")["usage"] = _pool(1, 5, "shortRest", 1)
+    before = copy.deepcopy(above)
+    assert tables.raise_to_tables(above) == [] and above == before
+    # H4-Q2 (A): a Charisma rise does not move Bardic Inspiration until level-up.
+    bard = _as_class(copy.deepcopy(authored["character"]), "Bard", [("Bardic Inspiration", _pool(1, 1, "longRest"))],
+                     charisma=16)
+    bard["spellcasting"]["spellSlots"]["level1"] = {"current": 2, "max": 2}
+    before = copy.deepcopy(bard)
+    assert tables.raise_to_tables(bard) == [] and bard == before
+    # A pool feature written with a suffix is matched as level-up matches it.
+    cleric = _as_class(copy.deepcopy(authored["character"]), "Cleric",
+                       [("Channel Divinity (2/rest)", _pool(1, 1, "shortRest"))])
+    cleric["level"] = 2
+    assert tables.raise_to_tables(cleric)[0] == "Channel Divinity (2/rest) max 1 -> 2 (SRD Cleric level 2)"
+    assert _usage(cleric, "Channel Divinity (2/rest)") == _pool(1, 2, "shortRest")
+    # H4-Q4 (a): a stale Warlock 3's pact slots move to level 2 as one set; they
+    # are not raised beside the level 1 slots (4 slots).
+    warlock = _as_class(copy.deepcopy(authored["character"]), "Warlock", None)
+    warlock["level"] = 3
+    warlock["spellcasting"]["spellSlots"]["level1"] = {"current": 1, "max": 2}
+    assert tables.raise_to_tables(warlock) == [
+        "spellSlots level1 1/2 -> 0/0 (pact slots are level2 at Warlock level 3)",
+        "spellSlots level2 0/0 -> 1/2 (SRD Warlock level 3 pact slots)"]
+    assert {k: v for k, v in warlock["spellcasting"]["spellSlots"].items() if v["max"]} == {
+        "level2": {"current": 1, "max": 2}}
+    assert tables.raise_to_tables(warlock) == []
+    # The effects validator runs the same step before its AC projection.
+    short = _as_class(copy.deepcopy(authored["character"]), "Sorcerer", [("Innate Sorcery", _pool(1, 1, "longRest"))])
+    effects = AICharacterEffectsValidator()
+    effects.corrections_made = []
+    corrected = effects.calculate_equipment_effects(short)
+    assert _usage(corrected, "Innate Sorcery") == _pool(1, 2, "longRest")
+    assert "Innate Sorcery max 1 -> 2 (SRD Sorcerer level 1)" in effects.corrections_made
+    assert "spellSlots level1 max 0 -> 2 (SRD Sorcerer level 1)" in effects.corrections_made
+
+
 def run_interview(wizard, authored, monkeypatch, *, review, stop_after_rejection=False):
     from utils.capture.live_provider_call import LiveProviderSuperseded
     proposal = copy.deepcopy(authored)
@@ -310,9 +552,11 @@ def test_actual_interview_reviews_both_sources_and_publishes_canonical(wizard, a
         assert payload["proposal"]["character"]["equipment_effects"]
         assert payload["proposal"]["character"]["savingThrowBonuses"]
         assert payload["normalization_provenance"]["engine_projection"]["applied"]
-        # The reviewer receives the Fighting Style move and its AC result as committed facts.
+        # The reviewer receives the Fighting Style move, the Second Wind pool and
+        # the AC result as committed facts.
         changes = payload["committed_facts"]["startup_mechanics"]["changes"]
-        assert changes[0] == CAPTURED_STYLE_NOTE and changes[1].startswith("armorClass 18 -> 19")
+        assert changes[:2] == [CAPTURED_STYLE_NOTE, SECOND_WIND_NOTE]
+        assert changes[2].startswith("armorClass 18 -> 19")
         return {"version": 1, "accepted": True, "feedback": "Both sources reviewed.",
                 "needs_player_clarification": False}
 
