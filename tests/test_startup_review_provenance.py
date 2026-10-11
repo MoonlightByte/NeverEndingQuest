@@ -18,6 +18,12 @@ import pytest
 
 ROOT = Path(os.environ.get("NEQ_STARTUP_TEST_ROOT", Path(__file__).resolve().parents[1]))
 FIXTURE = Path(__file__).parent / "fixtures" / "startup-authored-alden.json"
+CAPTURED_STYLE_NOTE = ("Fighting Style: Defense set in classFeatures "
+                       "(was classFeatures 'Fighting Style (Defense)')")
+
+
+def _style_entries(sheet):
+    return [f["name"] for f in sheet.get("classFeatures") or [] if f["name"].startswith("Fighting Style")]
 
 
 @pytest.fixture
@@ -70,18 +76,23 @@ def test_captured_author_replays_through_real_normalization(wizard, authored):
     assert "savingThrowBonuses" not in authored["character"]
     candidate, provenance = wizard._prepare_startup_proposal(authored)
     assert authored == original
-    assert candidate["character"]["armorClass"] == 18
+    # #569: the captured "Fighting Style (Defense)" is committed as level-up
+    # writes it, so the engine grants Defense's +1 (Chain Mail 16 + Shield 2 + 1).
+    assert candidate["character"]["armorClass"] == 19
+    assert _style_entries(candidate["character"]) == ["Fighting Style: Defense"]
     assert candidate["character"]["maxHitPoints"] == 12
     assert candidate["character"]["equipment_effects"]
     assert candidate["character"]["savingThrowBonuses"]["constitution"] == 4
     engine = provenance["engine_projection"]
     assert engine["applied"] is True
-    assert engine["armorClass"] == 18
+    assert engine["armorClass"] == 19
     assert engine["equipment_effects"]["entries"] == candidate["character"]["equipment_effects"]
     from core.nql import stats
     totals = stats.totals(engine["status"])
     assert totals["save:constitution"] == candidate["character"]["savingThrowBonuses"]["constitution"]
-    assert provenance["mechanics_notes"] == []
+    notes = provenance["mechanics_notes"]
+    assert len(notes) == 2 and notes[0] == CAPTURED_STYLE_NOTE
+    assert notes[1].startswith("armorClass 18 -> 19 (engine defense:")
     # Repeated projection, including a sheet already carrying identical totals.
     repeated, repeated_provenance = wizard._prepare_startup_proposal(authored)
     stable, stable_provenance = wizard._prepare_startup_proposal(candidate)
@@ -179,6 +190,86 @@ def test_existing_hero_is_never_rederived(wizard, authored, monkeypatch, tmp_pat
     assert wizard._use_existing_startup_character([], "Test_Module", {"path": str(path)}) == hero["name"]
     assert commits == [hero]
 
+
+@pytest.mark.parametrize("variant, was", [
+    ("captured", "classFeatures 'Fighting Style (Defense)'"),
+    ("canonical", None),
+    ("feat_name", "feats 'Defense'"),
+    ("feat_labelled", "feats 'Fighting Style: Defense'"),
+    ("double_write", "classFeatures 'Fighting Style (Defense)', feats 'Defense'"),
+])
+def test_chosen_fighting_style_is_committed_as_level_up_writes_it(wizard, authored, variant, was):
+    # #569: the engine grants Defense's +1 only for "Fighting Style: Defense". The
+    # entries recording the style are replaced by that one entry, never kept beside it.
+    sheet = authored["character"]
+    assert sheet["classFeatures"][0]["name"] == "Fighting Style (Defense)"
+    if variant == "canonical":
+        sheet["classFeatures"][0]["name"] = "Fighting Style: Defense"
+    elif variant in ("feat_name", "feat_labelled"):
+        moved = sheet["classFeatures"].pop(0)
+        moved["name"] = "Defense" if variant == "feat_name" else "Fighting Style: Defense"
+        sheet["feats"] = [moved]
+    elif variant == "double_write":
+        sheet["feats"] = [{"name": "Defense", "description": "Fighting Style feat.", "source": "Fighter level 1"}]
+    candidate, provenance = wizard._prepare_startup_proposal(authored)
+    committed = candidate["character"]
+    assert _style_entries(committed) == ["Fighting Style: Defense"]
+    assert "Second Wind" in [f["name"] for f in committed["classFeatures"]]
+    assert committed.get("feats", []) == []
+    assert committed["armorClass"] == provenance["engine_projection"]["armorClass"] == 19
+    assert provenance["fighting_style"]["style"] == "Defense"
+    style_notes = [note for note in provenance["mechanics_notes"] if "Fighting Style" in note]
+    assert style_notes == ([] if was is None else [f"Fighting Style: Defense set in classFeatures (was {was})"])
+
+
+def test_archery_is_committed_without_an_armor_class_bonus(wizard, authored):
+    authored["character"]["classFeatures"][0]["name"] = "Fighting Style (Archery)"
+    candidate, provenance = wizard._prepare_startup_proposal(authored)
+    committed = candidate["character"]
+    assert _style_entries(committed) == ["Fighting Style: Archery"]
+    assert committed["classFeatures"][0]["description"].startswith("You gain a +2 bonus to attack rolls")
+    assert committed["armorClass"] == 18
+
+
+@pytest.mark.parametrize("variant, note", [
+    ("unknown", "classFeatures 'Fighting Style (Protection)' records no SRD 5.2.1 Fighting Style; "
+                "left as written, not applied"),
+    ("two_styles", "Fighting Styles Archery, Defense listed; Fighter level 1 has 1; left as written, not applied"),
+    ("paladin", "Fighting Style Defense is listed, but Paladin level 1 has no Fighting Style feature; "
+                "left as written, not applied"),
+])
+def test_untyped_surplus_or_ineligible_style_is_left_and_noted(wizard, authored, variant, note):
+    sheet = authored["character"]
+    if variant == "unknown":
+        sheet["classFeatures"][0]["name"] = "Fighting Style (Protection)"
+    elif variant == "two_styles":
+        sheet["feats"] = [{"name": "Archery", "description": "Fighting Style feat.", "source": "Fighter level 1"}]
+    else:
+        # Paladins gain Fighting Style at level 2.
+        sheet["class"] = "Paladin"
+    authored_features = [f["name"] for f in sheet["classFeatures"]]
+    authored_feats = [f["name"] for f in sheet.get("feats", [])]
+    candidate, provenance = wizard._prepare_startup_proposal(authored)
+    committed = candidate["character"]
+    assert [f["name"] for f in committed["classFeatures"]] == authored_features
+    assert [f["name"] for f in committed.get("feats", [])] == authored_feats
+    assert committed["armorClass"] == 18
+    assert [n for n in provenance["mechanics_notes"] if "Fighting Style" in n] == [note]
+    if variant != "unknown":
+        assert provenance["fighting_style"]["style"] is None
+        assert provenance["fighting_style"]["left_as_written"]
+
+
+def test_saved_old_shape_style_projects_as_before(wizard, authored):
+    # Existing heroes are untouched: genesis matching stays exact, so a saved
+    # "Fighting Style (Defense)" sheet projects as it did before #569.
+    from core.nql import armor_class
+    hero = copy.deepcopy(authored["character"])
+    before = copy.deepcopy(hero)
+    projection = armor_class.project(hero)
+    assert hero == before
+    assert projection.applied and projection.armor_class == 18
+
 def run_interview(wizard, authored, monkeypatch, *, review, stop_after_rejection=False):
     from utils.capture.live_provider_call import LiveProviderSuperseded
     proposal = copy.deepcopy(authored)
@@ -219,7 +310,9 @@ def test_actual_interview_reviews_both_sources_and_publishes_canonical(wizard, a
         assert payload["proposal"]["character"]["equipment_effects"]
         assert payload["proposal"]["character"]["savingThrowBonuses"]
         assert payload["normalization_provenance"]["engine_projection"]["applied"]
-        assert "startup_mechanics" not in payload["committed_facts"]  # scalar notes are empty
+        # The reviewer receives the Fighting Style move and its AC result as committed facts.
+        changes = payload["committed_facts"]["startup_mechanics"]["changes"]
+        assert changes[0] == CAPTURED_STYLE_NOTE and changes[1].startswith("armorClass 18 -> 19")
         return {"version": 1, "accepted": True, "feedback": "Both sources reviewed.",
                 "needs_player_clarification": False}
 

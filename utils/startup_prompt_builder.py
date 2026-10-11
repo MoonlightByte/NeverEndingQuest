@@ -77,7 +77,9 @@ def build_startup_rules_reference():
             "\"source\": \"<background> background (SRD 5.2.1)\"}, and set backgroundFeature to exactly "
             "{\"name\": \"Origin feat: <feat name>\", \"description\": \"<the same text>\", "
             "\"source\": \"<background> background (SRD 5.2.1)\"}. Other feats, such as a Human's "
-            "Versatile Origin feat or a Fighting Style feat, also go in feats with their source."),
+            "Versatile Origin feat, also go in feats with their source. A chosen Fighting Style goes in "
+            "classFeatures, not feats, as {\"name\": \"Fighting Style: <style name>\", \"description\": "
+            "\"<its text here>\", \"source\": \"<class> level <level>\"}, the name level-up writes."),
         "background_ability_scores_rule": origins["background_ability_scores_rule"],
         "backgrounds": origins["backgrounds"],
         "species": origins["species"],
