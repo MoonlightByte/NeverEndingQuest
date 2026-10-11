@@ -159,7 +159,7 @@ def _dice(grant: Dict[str, Any]) -> str:
 
 
 def _row(grant: Dict[str, Any], use: str = "") -> Dict[str, Any]:
-    return {
+    row = {
         "name": str(grant.get("name") or ""),
         "attackBonus": int(grant.get("to_hit") or 0),
         "damageDice": _dice(grant),
@@ -168,6 +168,11 @@ def _row(grant: Dict[str, Any], use: str = "") -> Dict[str, Any]:
         "type": _kind(grant),
         "description": _describe(grant, use),
     }
+    if isinstance(grant.get("thrown"), dict):
+        # #801: a thrown grant stays a "ranged" row (range, the prone rule) and is
+        # marked thrown, so the resolver never spends or requires ammunition for it.
+        row["thrown"] = True
+    return row
 
 
 def _best(groups: Dict[Tuple[str, ...], List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
