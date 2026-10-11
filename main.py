@@ -4720,7 +4720,10 @@ def _set_unreadable_legacy_journal_aside(checkpoint, target):
         action_handler._write_location_transition_checkpoint(checkpoint)
 
     action_handler._read_journal_setting_aside(
-        LEGACY_JOURNAL_ASIDE_TAIL, before_rename=rebase, after_failed_rename=restore
+        LEGACY_JOURNAL_ASIDE_TAIL,
+        before_rename=rebase,
+        after_failed_rename=restore,
+        after_rename=action_handler.mark_upgrade_journal_replaced,
     )
 
 
@@ -4798,7 +4801,8 @@ def check_and_process_location_transitions(conversation_history, party_tracker_d
     # An unreadable journal is set aside (bytes kept), never overwritten or
     # read as a raise (#636, D-636-13); the repair then starts it afresh.
     journal_value = action_handler._read_journal_setting_aside(
-        LEGACY_JOURNAL_ASIDE_TAIL
+        LEGACY_JOURNAL_ASIDE_TAIL,
+        after_rename=action_handler.mark_upgrade_journal_replaced,
     )
     journal_target_before = {
         "path": "journal.json",
