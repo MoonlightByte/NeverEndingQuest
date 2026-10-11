@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.effects.clock import DAYS_PER_MONTH, SECONDS_PER_DAY
-from core.nql import item_catalog, srd_stats, stats
+from core.nql import class_conditions, item_catalog, srd_stats, stats
 
 EQUIPMENT_VERSION = "nql-equipment-v1"
 # Typed values an item effect may use to name armor class as its target. This
@@ -85,6 +85,10 @@ class Genesis:
     # rule declared carried. Its sheet row stays equipped: a write that reads
     # the engine's wearer back keeps the row's flag (no sheet change).
     carried: Dict[str, str] = field(default_factory=dict)
+    # NUM-H3b: observations that do not bear on defense (an off-vocabulary
+    # weapon proficiency, a multiclass sheet's Martial Arts die or second
+    # Unarmored Defense). Unlike gaps, they never stop an AC projection.
+    notes: List[str] = field(default_factory=list)
 
 
 ABILITY_NAMES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
@@ -902,6 +906,10 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     # companion). A character gets an instance only when the sheet lists the
     # proficiency or the exact feature name.
     condition_types: List[str] = [DEFENSE_STYLE_CONDITION]
+    # NUM-H3b: the Unarmored Defense types the defense derive's terms require.
+    for cond in class_conditions.condition_types():
+        if cond not in condition_types:
+            condition_types.append(cond)
     for cond in _ARMOR_TRAINING.values():
         if cond not in condition_types:
             condition_types.append(cond)
@@ -931,6 +939,10 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
         prof = weapon_proficiency_condition(catalog_weapon)
         if prof not in condition_types:
             condition_types.append(prof)
+    # NUM-H3b: per-character instances of the pack's types need the pack's
+    # weapon definitions and attack_features.nql in this world.
+    with_pack = bool(item_catalog.weapon_entries()) and bool(item_catalog.features_source().strip())
+    notes: List[str] = []
     items: List[str] = []
     effects: List[str] = []
     effect_types: List[str] = []
@@ -990,6 +1002,13 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
             conditions.append(
                 f"condition {_q(DEFENSE_STYLE_CONDITION + ':' + cid.split(':', 1)[1])} of {_q(DEFENSE_STYLE_CONDITION)} to {_q(cid)};"
             )
+        # NUM-H3b: Unarmed Strike, weapon proficiency, the Monk's Martial Arts die
+        # and Unarmored Defense, from the sheet's typed class, level and
+        # proficiencies (core/nql/class_conditions.py).
+        for kind in class_conditions.instances(sheet, notes, cid, with_pack):
+            if kind.startswith("prof:weapon:") and kind not in condition_types:
+                continue  # no catalog weapon declares this type in this world
+            conditions.append(f"condition {_q(kind + ':' + cid.split(':', 1)[1])} of {_q(kind)} to {_q(cid)};")
         types, instances = _effect_lines(sheet, cid, gaps, effect_names, clock_tick)
         effect_types.extend(types)
         conditions.extend(instances)
@@ -1097,7 +1116,10 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     lines.extend(conditions)
     lines.append(f"equipment {_q(EQUIPMENT_VERSION)} {{")
     lines.append(' slot "hand" capacity 2;\n slot "body" capacity 1;\n slot "shield" capacity 1;')
-    lines.append(' derive stat "defense" { term stat "dexterity" offset -10 divide 2; }')
+    # NUM-H3b: Unarmored Defense terms from progression.json ac_formulas, gated
+    # on the class Condition and on the slots the formula excludes.
+    lines.append(' derive stat "defense" { term stat "dexterity" offset -10 divide 2;'
+                 + class_conditions.defense_terms() + ' }')
     lines.append(srd_stats.DERIVE_RULES.rstrip("\n"))
     lines.append(srd_stats.XP_RULES.rstrip("\n"))
     lines.extend(d.rstrip("\n") for d in definitions)
@@ -1117,7 +1139,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     lines.extend(charged[0])
     return Genesis(source="\n".join(lines) + "\n", location=loc, character_ids=character_ids, item_ids=item_ids,
                    container_ids=container_ids, content_ids=content_ids, effect_names=effect_names, gaps=gaps,
-                   carried=carried)
+                   carried=carried, notes=notes)
 
 
 def expected_armor_class(sheet: Dict[str, Any]) -> Tuple[Optional[int], List[str]]:
