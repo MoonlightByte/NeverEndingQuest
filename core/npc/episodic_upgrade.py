@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence
 
 from core.npc.episode_backfill import (
@@ -70,6 +71,54 @@ def _write_marker(doc: Mapping[str, Any], path: str = MARKER_PATH) -> None:
             path=path,
             detail=type(error).__name__,
         )
+
+
+def mark_journal_replaced(aside_name: str, path: str = MARKER_PATH) -> bool:
+    """Note on an in-progress upgrade that journal.json was set aside (#653).
+
+    The upgrade's cursor counts positions in the chronicle it was reading; a
+    fresh chronicle reuses those positions, so the journal phase must not
+    resume on it. Only the callers that start a new chronicle call this.
+    Never raises: a failure leaves the cursor as it was and play goes on.
+    """
+    try:
+        marker = read_marker(path)
+        if not (is_valid_marker(marker) and marker.get("status") == "in_progress"):
+            return False
+        if marker.get("journalReplaced"):
+            return True
+        marker["journalReplaced"] = {
+            "at": datetime.now(timezone.utc).isoformat(),
+            "previousNextIndex": marker.get("journalNextIndex"),
+            "asideFile": str(aside_name),
+        }
+        _write_marker(marker, path)
+    except Exception as error:  # noqa: BLE001 - marker failure never breaks the game
+        _LOGGER.warning(
+            "episodic upgrade marker could not note the replaced journal: %r", error
+        )
+        return False
+    return True
+
+
+def _keep_journal_replaced(marker: Dict[str, Any], path: str) -> None:
+    """Carry a journalReplaced written on disk since this run read the marker."""
+    if marker.get("journalReplaced"):
+        return
+    try:
+        on_disk = read_marker(path)
+    except Exception:  # noqa: BLE001 - an unreadable marker is rewritten below
+        return
+    replaced = on_disk.get("journalReplaced")
+    # Only a key written for this run's own upgrade version counts: a later
+    # UPGRADE_VERSION starts afresh and must not inherit an older marker's note.
+    if isinstance(replaced, dict) and on_disk.get("version") == marker.get("version"):
+        marker["journalReplaced"] = replaced
+
+
+def _write_run_marker(marker: Dict[str, Any], path: str) -> None:
+    _keep_journal_replaced(marker, path)
+    _write_marker(marker, path)
 
 
 def is_complete(marker: Mapping[str, Any]) -> bool:
@@ -215,7 +264,7 @@ def backfill_campaign(
 
     # The cursor exists before the first paid call. A failed marker write is loud but
     # never blocks play; stable episode coordinates keep any replay idempotent.
-    _write_marker(marker, marker_path)
+    _write_run_marker(marker, marker_path)
 
     emit("start", 0, 0, "recovering companion memories")
 
@@ -224,7 +273,15 @@ def backfill_campaign(
     journal = journal if isinstance(journal, dict) else {"entries": []}
     start_index = int(marker.get("journalNextIndex", 0))
     total_entries = len(journal.get("entries") or [])
-    if start_index < total_entries:
+    if marker.get("journalReplaced"):
+        # The chronicle this cursor counted was set aside; its remaining entries
+        # cannot be read, and the new one was recorded live as it was played.
+        _LOGGER.warning(
+            "the chronicle the companion-memory upgrade was reading was set aside; "
+            "its remaining entries cannot be recovered; continuing with the "
+            "campaign summaries"
+        )
+    elif start_index < total_entries:
         committed_before_journal = committed
 
         def checkpoint_journal(next_index: int, journal_committed: int) -> None:
@@ -233,7 +290,7 @@ def backfill_campaign(
                 "journalNextIndex": next_index,
                 "committed": committed_before_journal + journal_committed,
             })
-            _write_marker(marker, marker_path)
+            _write_run_marker(marker, marker_path)
 
         report = backfill_from_journal(
             journal, party_tracker_data,
@@ -261,7 +318,7 @@ def backfill_campaign(
             marker["lastFailure"] = report["failure"]
         else:
             marker.pop("lastFailure", None)
-        _write_marker(marker, marker_path)
+        _write_run_marker(marker, marker_path)
         if report["next_index"] < total_entries:
             _LOGGER.warning(
                 "companion memory repair halted at journal entry %d; will resume",
@@ -294,7 +351,7 @@ def backfill_campaign(
                     "committed": committed_before_summaries + summary_committed,
                 })
                 marker.pop("summaryLastFailure", None)
-                _write_marker(marker, marker_path)
+                _write_run_marker(marker, marker_path)
 
             sreport = backfill_from_summaries(
                 summaries, party_tracker_data,
@@ -322,7 +379,7 @@ def backfill_campaign(
                 marker["summaryLastFailure"] = sreport["failure"]
             else:
                 marker.pop("summaryLastFailure", None)
-            _write_marker(marker, marker_path)
+            _write_run_marker(marker, marker_path)
             if sreport["next_index"] < len(summaries):
                 _LOGGER.warning(
                     "companion memory repair halted at campaign summary %d; will resume",
@@ -346,7 +403,7 @@ def backfill_campaign(
 
     marker["status"] = "complete"
     marker.pop("lastFailure", None)
-    _write_marker(marker, marker_path)
+    _write_run_marker(marker, marker_path)
     emit("complete", total_entries, total_entries, "companions remember the journey")
     return {"status": "complete", "committed": committed}
 

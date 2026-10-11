@@ -327,7 +327,9 @@ def _write_location_transition_checkpoint(checkpoint):
     safe_json_dump(checkpoint, PENDING_LOCATION_TRANSITION_FILE)
 
 
-def _read_journal_setting_aside(tail, before_rename=None, after_failed_rename=None):
+def _read_journal_setting_aside(
+    tail, before_rename=None, after_failed_rename=None, after_rename=None
+):
     """Read journal.json, setting an unreadable one aside (then None).
 
     The chronicle is play history, not a rule input: an unreadable one
@@ -337,7 +339,7 @@ def _read_journal_setting_aside(tail, before_rename=None, after_failed_rename=No
     and read again (D-303-2); if the set-aside itself is refused, the parse
     error stands as before. `before_rename` runs just before the rename and
     `after_failed_rename` first when it fails, so a caller's own record can
-    bracket the rename alone. A journal that parses but fails its schema
+    bracket the rename alone; `after_rename(aside)` runs once it succeeded. A journal that parses but fails its schema
     counts as unreadable, since every departure would refuse it (#633)."""
     from utils.transient_filesystem import is_transient_filesystem_error
     from utils.capture.live_provider_call import (
@@ -376,6 +378,15 @@ def _read_journal_setting_aside(tail, before_rename=None, after_failed_rename=No
                     % (exc, aside) + tail,
                     category="location_transitions",
                 )
+                if after_rename is not None:
+                    try:
+                        after_rename(aside)
+                    except Exception as note_exc:
+                        warning(
+                            "TRAVEL: could not note the set-aside chronicle for the "
+                            "companion-memory upgrade: %s" % note_exc,
+                            category="location_transitions",
+                        )
                 journal = None
                 break
         except OSError as exc:
@@ -385,6 +396,17 @@ def _read_journal_setting_aside(tail, before_rename=None, after_failed_rename=No
             0.25, get_live_provider_scope(), "Reading the chronicle..."
         )
     return journal
+
+
+def mark_upgrade_journal_replaced(aside):
+    """Tell an in-progress companion-memory upgrade its chronicle was replaced.
+
+    Passed as `after_rename` only by the callers that start a new chronicle
+    (#653); the departure-marker recovery rebuilds the same one and does not.
+    """
+    from core.npc.episodic_upgrade import mark_journal_replaced
+
+    mark_journal_replaced(aside)
 
 
 def _new_current_transition_checkpoint(
@@ -428,7 +450,8 @@ def _new_current_transition_checkpoint(
             break
     origin_segment = persisted_history[segment_start:]
     journal = _read_journal_setting_aside(
-        "and the chronicle starts again from the next recorded departure"
+        "and the chronicle starts again from the next recorded departure",
+        after_rename=mark_upgrade_journal_replaced,
     )
     journal_entries = (
         journal.get("entries", [])
@@ -1094,6 +1117,7 @@ def resolve_current_transition_departure(operation_id, transition_context):
             % (commit_record["journal_entry_after"].get("location"), staged_index),
             before_rename=lambda: rebase(0),
             after_failed_rename=lambda: rebase(staged_index),
+            after_rename=mark_upgrade_journal_replaced,
         )
     except OSError:
         pass
