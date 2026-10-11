@@ -666,7 +666,7 @@ def resolve_cross_module_target_projection(target_module, parameters):
                 raise OSError(errno.EAGAIN if busy else errno.EIO, "Target module records could not be verified")
             raise ValueError("Target module has no live destination records")
         default_location_id, default_location_name, default_area_id, default_area_name = (
-            get_module_starting_location(target_module)
+            get_module_starting_location(target_module, snapshot=snapshot)
         )
         supplied = {
             "currentAreaId": str(default_area_id),
@@ -3151,8 +3151,11 @@ def _cache_module_starting_location(
         safe_json_dump(world_registry, registry_path)
         return True
 
-def get_module_starting_location(module_name: str) -> tuple:
-    """Get the starting location for a module using AI analysis with caching"""
+def get_module_starting_location(module_name: str, snapshot=None) -> tuple:
+    """Get the starting location for a module using AI analysis with caching.
+
+    snapshot: the module's build_active_module_snapshot, when the caller
+    already holds it; a model-chosen start is checked against it (#308)."""
     try:
         # The entry the module declares, when it resolves in its area files,
         # comes before a cached or model-chosen one.
@@ -3241,10 +3244,25 @@ def get_module_starting_location(module_name: str) -> tuple:
             warning(f"FILE_OP: Could not load plot data: {e}", category="file_operations")
         
         # Use AI to determine starting location
-        starting_location = _ai_analyze_starting_location(module_analysis_data)
-        
-        # Cache the result in world registry
-        if starting_location and world_registry:
+        starting_location, chosen_by = _ai_analyze_starting_location(module_analysis_data)
+        if chosen_by == "model":
+            resolved, reason = _resolved_model_start(module_name, starting_location, snapshot)
+            if resolved is None:
+                fallback = _get_fallback_starting_location(module_analysis_data)
+                warning(f"STARTING_LOCATION: the model's start {starting_location[2]}:{starting_location[0]} "
+                        f"for {module_name} {reason}; using {fallback[2]}:{fallback[0]} for this entry, "
+                        f"not cached", category="module_loading")
+                starting_location, chosen_by = fallback, "fallback"
+            else:
+                starting_location = resolved
+        else:
+            warning(f"STARTING_LOCATION: start analysis failed for {module_name}; using "
+                    f"{starting_location[2]}:{starting_location[0]} for this entry, not cached",
+                    category="module_loading")
+
+        # Cache only a start the model chose and the resolver accepts (#308):
+        # a fallback is used once, and the model is asked again next entry.
+        if chosen_by == "model" and world_registry:
             try:
                 cached = _cache_module_starting_location(
                     module_name,
@@ -3278,8 +3296,29 @@ def get_module_starting_location(module_name: str) -> tuple:
             return real
         return ("A01", "Unknown Location", "AREA001", "Unknown Area")
 
+def _resolved_model_start(module_name, start, snapshot=None):
+    """(start, None) as the transition resolver would accept it: the
+    location is a valid node of the module's snapshot, and the area and names
+    come from that node. (None, reason) when it does not resolve or the
+    snapshot cannot be read (#308)."""
+    if snapshot is None:
+        try:
+            from utils.path_encounter_analyzer import build_active_module_snapshot
+            snapshot = build_active_module_snapshot(module_name)
+        except OSError as exc:
+            return None, f"could not be checked ({exc})"
+    location_id = str(start[0])
+    node = (snapshot.get("nodes") or {}).get(location_id)
+    if node is None or location_id in (snapshot.get("invalid_location_ids") or ()):
+        return None, "is not a valid location of the module"
+    return (node["location_id"], node["location_name"], node["area_id"], node["area_name"]), None
+
+
 def _ai_analyze_starting_location(module_data: dict) -> tuple:
-    """Use AI to analyze module data and determine the best starting location"""
+    """Use AI to analyze module data and determine the best starting location.
+
+    Returns (start, "model") for the model's answer and (start, "fallback")
+    for the first-location fallback (#308)."""
     try:
         system_prompt = """You are an expert 5th edition adventure module analyst. Analyze the provided module data to determine the most logical starting location for player characters entering this adventure module.
 
@@ -3384,7 +3423,7 @@ Determine the most logical starting location based on adventure flow, area types
                     result['locationName'],
                     result['areaId'], 
                     result['areaName']
-                )
+                ), "model"
             else:
                 print(f"ERROR: AI response missing required fields: {result}")
                 
@@ -3394,11 +3433,11 @@ Determine the most logical starting location based on adventure flow, area types
         
         # Fallback to first area/location if AI analysis fails
         print("WARNING: AI analysis failed, falling back to first available location")
-        return _get_fallback_starting_location(module_data)
+        return _get_fallback_starting_location(module_data), "fallback"
         
     except Exception as e:
         print(f"ERROR: AI starting location analysis failed: {e}")
-        return _get_fallback_starting_location(module_data)
+        return _get_fallback_starting_location(module_data), "fallback"
 
 def _get_fallback_starting_location(module_data: dict) -> tuple:
     """Fallback method to get first available location if AI analysis fails"""
