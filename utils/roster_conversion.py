@@ -1028,6 +1028,18 @@ def run(root, out, binary=None, modules=None, lower=(), overrides=None):
     actions = [a for d in decisions for a in d.actions]
     live, requests = run_engine(binary, world, places, actions)
     problems = verify(decisions, live)
+    try:
+        write_outputs(out, game, lower, seed_list, decisions, unapplied, notes, world, requests, live, problems)
+    except Exception as exc:
+        # The report is for review; the document the engine made is the
+        # result, so a report that cannot be written does not lose it (#741).
+        from utils.enhanced_logger import warning
+        warning("ROSTER: the conversion report could not be written to %s (%s); the converted document "
+                "is used and play continues" % (out, exc), category="location_transitions")
+    return problems, live, decisions
+
+
+def write_outputs(out, game, lower, seed_list, decisions, unapplied, notes, world, requests, live, problems):
     os.makedirs(out, exist_ok=True)
     with open(os.path.join(out, "seed.nql"), "w", encoding="ascii", errors="backslashreplace") as f:
         f.write(world)
@@ -1040,7 +1052,6 @@ def run(root, out, binary=None, modules=None, lower=(), overrides=None):
         json.dump({"decisions": [d.row() for d in decisions], "unapplied": unapplied, "notes": notes, "problems": problems}, f, indent=1)
     with open(os.path.join(out, "report.md"), "w", encoding="ascii") as f:
         f.write(report(game, lower, seed_list, decisions, unapplied, notes, live, problems))
-    return problems, live, decisions
 
 
 def main(argv=None):
