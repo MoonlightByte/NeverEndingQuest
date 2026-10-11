@@ -114,7 +114,8 @@ except:
 
 # Import other necessary modules (config is now patched)
 from core.managers.combat_manager import (
-    combat_record_exit_kind, run_combat_simulation, render_combat_record_marker,
+    combat_record_exit_kind, combat_record_xp_receipt, run_combat_simulation,
+    render_combat_record_marker,
 )
 from core.combat.down_scene import (
     MAIN_DOWN_BANNER,
@@ -5893,10 +5894,10 @@ def _complete_committed_module_followup_in_scope(
         return fallback
 
 
-def _agentic_post_combat_narration_pass(party_tracker_data):
-    """Return whether this response follows an agentic authoritative commit."""
+def _agentic_post_combat_encounter(party_tracker_data):
+    """Return the agentic encounter this response follows, or None."""
     if not getattr(process_ai_response, "_just_finished_combat", False):
-        return False
+        return None
     # One combat-return path recurses before the caller's in-memory tracker is
     # refreshed.  The committed tracker on disk is authoritative at this
     # boundary; otherwise a valid post-combat echo can bypass this gate.
@@ -5906,15 +5907,66 @@ def _agentic_post_combat_narration_pass(party_tracker_data):
     world = (party_tracker_data or {}).get("worldConditions") or {}
     encounter_id = world.get("lastCompletedEncounter")
     if not encounter_id:
-        return False
+        return None
     encounter = safe_json_load(
         os.path.join("modules", "encounters", "encounter_%s.json" % encounter_id)
     )
-    return (
+    if (
         isinstance(encounter, dict)
         and ((encounter.get("combatState") or {}).get("pipelineMode") == "agentic")
         and ((encounter.get("combatState") or {}).get("phase") == "complete")
-    )
+    ):
+        return encounter
+    return None
+
+
+def _agentic_post_combat_narration_pass(party_tracker_data):
+    """Return whether this response follows an agentic authoritative commit."""
+    return _agentic_post_combat_encounter(party_tracker_data) is not None
+
+
+def _agentic_post_combat_xp_receipt(encounter):
+    """The encounter's typed combat XP receipt {member: amount} (#726), or {}."""
+    completion = ((encounter or {}).get("combatState") or {}).get("completion")
+    receipt = completion.get("appliedRewards") if isinstance(completion, dict) else None
+    return receipt if isinstance(receipt, dict) else {}
+
+
+def _agentic_post_combat_xp_echo(action, xp_receipt):
+    """Return whether an award repeats this fight's combat XP exactly (#726).
+
+    Combat already awarded each member the amount its receipt lists. An
+    awardExperience in the automatic post-combat pass is that award again only
+    when it names the same member (by the award's own character resolution)
+    and carries the same amount; any other award, such as quest XP, runs.
+    """
+    if not (
+        isinstance(action, dict)
+        and action.get("action") == "awardExperience"
+        and xp_receipt
+    ):
+        return False
+    from core.managers.effects_runtime import _resolve_character
+    from core.nql import experience
+
+    parameters = action.get("parameters") or {}
+    amount = experience.normalize_amount(parameters.get("amount"))
+    name = str(parameters.get("characterName") or "").strip()
+    if amount is None or not name:
+        return False
+    try:
+        award_path = os.path.abspath(_resolve_character(name)[2])
+    except Exception:
+        return False
+    for member, received in xp_receipt.items():
+        if received != amount:
+            continue
+        try:
+            if os.path.abspath(_resolve_character(member)[2]) == award_path:
+                return True
+        except Exception:
+            continue
+    return False
 
 
 def _agentic_post_combat_engine_echo(action):
@@ -7323,13 +7375,20 @@ def process_ai_response(
             debug(f"DEBUG:   Action {i+1}: {action.get('action', 'unknown')}", category="character_updates")
         
         # Filter committed combat echoes without changing accepted action order.
-        if any(action.get("action") == "updateCharacterInfo" for action in actions) and _agentic_post_combat_narration_pass(
-            party_tracker_data
+        post_combat_encounter = None
+        if any(
+            action.get("action") in ("updateCharacterInfo", "awardExperience")
+            for action in actions
         ):
+            post_combat_encounter = _agentic_post_combat_encounter(party_tracker_data)
+        if post_combat_encounter is not None:
+            xp_receipt = _agentic_post_combat_xp_receipt(post_combat_encounter)
             retained_actions = []
             dropped_actions = []
             for action in actions:
-                if _agentic_post_combat_engine_echo(action):
+                if _agentic_post_combat_engine_echo(action) or _agentic_post_combat_xp_echo(
+                    action, xp_receipt
+                ):
                     dropped_actions.append(action)
                     debug(
                         "STATE_CHANGE: Ignoring an agentic post-combat "
@@ -9399,6 +9458,7 @@ def _main_game_loop(startup_authority, turn_authority):
             combat_summary_message = render_combat_record_marker(
                 "Combat Summary: " + dialogue_summary,
                 combat_record_exit_kind(active_encounter_id),
+                combat_record_xp_receipt(active_encounter_id),
             )
             conversation_history.append({"role": "user", "content": combat_summary_message})
             debug("STATE_CHANGE: Appended combat summary to main history after resumed session.", category="session_management")
