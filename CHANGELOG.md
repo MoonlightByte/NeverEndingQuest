@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - In a fight, after a character swings a weapon, the fight event now records the engine's view of that character's hands, and a carried weapon that fits a free hand in its default grip is drawn, so it is in hand for the next turn (NUM-B, Refs #193). The swing itself is never refused or changed. A thrown weapon, a stack such as eight javelins, a grip other than the default, or hands that are full is recorded but not drawn. When a weapon is drawn this way, the fight narration now says so ("draws the dagger and attacks"); nothing else about the hands reaches the narration (NUM-B2).
 
+### Changed
+- Unused summary code in `core/ai/cumulative_summary.py`, seven functions left from an older summary pipeline that nothing called, was removed, and model-call capture records now give the right source lines for its two remaining AI calls (T018, T019) (#798). Gameplay, summaries and saves are unchanged.
+
 ### Fixed
 - When another program on your computer (an antivirus scan, a sync client such as OneDrive, or a program that locks files) holds a game file the game is saving, the game no longer waits in silence: after two seconds it says which file it is waiting for and that closing that program lets it continue, and it still never gives up the save. If another save has already stopped the game because a file is read-only, a waiting save now stops too instead of waiting forever (#653).
 - When the game cannot read which module the party is in (party_tracker.json missing, unreadable, or without a module), it no longer silently uses Keep_of_Doom, which could read another adventure's files and write game files into its folder (#448). It waits briefly if another process has the file locked; if the file still cannot be read, it shows one line naming the cause: the terminal pauses on the load / reset / quit menu, and the web session ends cleanly.
