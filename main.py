@@ -9461,7 +9461,7 @@ def _main_game_loop(startup_authority, turn_authority):
             if isinstance(post_combat_result, dict) and post_combat_result.get("status") in {
                 "provider_error", "travel_content_unavailable", "review_exhausted",
             }:
-                display_dm_narration(post_combat_result["player_message"])
+                display_dm_narration(_followup_failure_message(post_combat_result))
             if (
                 isinstance(post_combat_result, dict)
                 and (
@@ -10516,7 +10516,7 @@ def _main_game_loop(startup_authority, turn_authority):
             }:
                 # Only the new followup was refused. Its accepted parent beat
                 # remains committed; ordinary end-of-turn cleanup still runs.
-                display_dm_narration(final_result["player_message"])
+                display_dm_narration(_followup_failure_message(final_result))
 
             # After processing, we only need to check for control flow signals.
             # Everything else (including history updates) has been handled by process_ai_response.
@@ -10852,6 +10852,21 @@ _DM_REVIEW_EXHAUSTED_MESSAGE = (
     "Nothing in your game was changed. The DM could not settle a response "
     "for that action. You can try it again one step at a time."
 )
+# #735: a follow-up review's failure, shown after an earlier beat of the turn
+# may already have committed (so "Nothing in your game was changed" is false).
+_FOLLOWUP_NOT_APPLIED_MESSAGE = (
+    "That last response could not be completed, so it was not applied. "
+    "You can try that action again."
+)
+
+
+def _followup_failure_message(result):
+    """The line a failed follow-up result shows the player (#735)."""
+    if result.get("status") == "review_exhausted":
+        return _FOLLOWUP_NOT_APPLIED_MESSAGE
+    return result.get("player_message") or _FOLLOWUP_NOT_APPLIED_MESSAGE
+
+
 # #488: the fact a misordered travel draft lacks. Code checks only the order.
 _TRAVEL_ORDER_FACT = (
     "Only the travel's own bookkeeping (such as updateTime) may follow it; "
