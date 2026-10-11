@@ -8030,6 +8030,13 @@ class _TravelRecoveryControl(BaseException):
         super().__init__(kind)
 
 
+class WebRecoveryPause:
+    """Returned to the web loop: hold the page on Load / Reset / Exit (#806)."""
+
+    def __init__(self, message):
+        self.message = message
+
+
 def _terminal_recovery_menu(manager):
     """Shared control-only menu for interrupted travel and failed Load."""
     while True:
@@ -8077,20 +8084,22 @@ def _startup_travel_followup_failed(recovery_scope, exc):
     journey is finished the player gets one line, naming an unreadable active
     module as #448 does: the terminal pauses on the shared menu, cancelling
     waiting recovery saves as _wait_for_travel_control does, and the web
-    session ends cleanly (as #448).
+    pauses on Load / Reset / Exit (#806).
     """
     if _travel_recovery_pending():
         return None
     if isinstance(exc, ActiveModuleUnavailable):
-        line = str(exc)
+        cause = line = str(exc)
     else:
-        line = (
+        cause = (
             "The interrupted journey was finished, but the game could not reload "
-            "afterwards. Gameplay is paused."
+            "afterwards."
         )
+        line = cause + " Gameplay is paused."
     display_dm_narration(line, channel="system")
     if hasattr(sys.stdin, "queue"):
-        return None
+        # The web pause adds its own "Gameplay is paused." sentence.
+        return WebRecoveryPause(cause)
     from updates.save_game_manager import SaveGameManager
 
     choice = _terminal_recovery_menu(SaveGameManager())
@@ -8322,7 +8331,7 @@ def main_game_loop():
     except ActiveModuleUnavailable as exc:
         # The active module could not be read, and no other module is used.
         # Tell the player once; the terminal pauses on the shared menu, the
-        # web session ends cleanly (issue #448).
+        # web pauses on Load / Reset / Exit (issues #448, #806).
         scope = get_live_turn_scope()
         if scope is not None:
             finish_live_turn_scope(scope)
@@ -8330,7 +8339,7 @@ def main_game_loop():
         warning(f"ACTIVE MODULE: {exc}", category="session_management")
         display_dm_narration(str(exc), channel="system")
         if hasattr(sys.stdin, "queue"):
-            return
+            return WebRecoveryPause(str(exc))
         from updates.save_game_manager import SaveGameManager
         return _terminal_recovery_menu(SaveGameManager())
     except BaseException:
