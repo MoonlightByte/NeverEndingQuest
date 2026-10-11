@@ -117,7 +117,10 @@ mastery and level-1 class choice facts, and follow its sheet_representation.
 SRD 5.2.1 backgrounds have no background features from older editions.
 After the player approves the whole current build, the next step is
 finalize_character with the full sheet: fill derived values (hit points, armor
-class, modifiers, proficiency bonus) from the approved choices. If a real player
+class, modifiers, proficiency bonus) from the approved choices. Code and the
+rules engine then set level-1 hit points, armor class and engine attack rows,
+so name weapons and armor exactly as the catalog does (Longsword, Chain Mail,
+Shield) and mark equipped only what is in hand or worn. If a real player
 choice is still open, such as a gaming set or a skill pick, ask only that once
 and keep everything approved; never invent a player choice.
 When the player delegates open choices to you, decide each one and present a
@@ -245,6 +248,15 @@ are engine output, even when armorClass and hit points did not change. Do not
 attribute those additions to the author or demand their removal on retry.
 Fields named in engine_projection.engine_owned_fields are engine-written: never
 an author change, even when absent from authored_proposal.
+Attack rows listed in normalization_provenance.engine_rows.written are engine
+output, like the AC entries: never an author change or a reason to reject.
+engine_rows.replaced names the author rows they took the place of.
+engine_rows.not_usable_now names carried-mode rows whose hands are taken now;
+the row stays, and drawing the weapon is a story or equipment action.
+damageDice "flat" means no damage dice: the row deals its damageBonus as a
+flat total, as an SRD Unarmed Strike does (1 + Strength modifier).
+engine_rows.untyped_equipment lists weapon and armor rows the catalog did not
+type; equipment notes in mechanics_notes are code changes, not author claims.
 An unavailable or incomplete projection does not certify fields as engine output.
 Still check actual typed equipment/features, approved choices, schema, arithmetic,
 and narration against the canonical candidate. Provenance is not whole-build

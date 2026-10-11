@@ -12,6 +12,10 @@ DEFAULT_UNKNOWN_MULTIATTACK_SWINGS = 2
 _DAMAGE_DICE = re.compile(
     r"^\s*[1-9]\d*d(?:4|6|8|10|12|20|100)(?:\s*[+-]\s*\d+)?\s*$", re.I
 )
+# Flat damage (NUM-H3c): an engine row such as Unarmed Strike writes "flat" with
+# its whole damage in damageBonus. ("0d0" stays the no-roll marker of monster
+# save, trait and Multiattack entries, which are not executable attacks.)
+FLAT_DAMAGE_DICE = "flat"
 
 
 def action_entries(sheet):
@@ -34,7 +38,12 @@ def is_executable_attack(entry):
     """True only when code has enough persisted data to roll attack and damage."""
     if not isinstance(entry, dict) or is_multiattack_marker(entry):
         return False
-    return bool(_DAMAGE_DICE.fullmatch(str(entry.get("damageDice") or "")))
+    return bool(_DAMAGE_DICE.fullmatch(str(entry.get("damageDice") or ""))) or is_flat_attack(entry)
+
+
+def is_flat_attack(entry):
+    """True for a flat-damage row: damageDice exactly "flat"."""
+    return isinstance(entry, dict) and str(entry.get("damageDice") or "").strip() == FLAT_DAMAGE_DICE
 
 
 def executable_attack_names(sheet):

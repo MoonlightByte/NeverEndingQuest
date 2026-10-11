@@ -28,7 +28,9 @@ from copy import deepcopy
 from core.combat.attacks import (
     attack_sequence,
     executable_attack_names,
+    FLAT_DAMAGE_DICE,
     is_executable_attack,
+    is_flat_attack,
 )
 from core.effects.effective import effective_sheet, modifier_total
 from core.effects.lifecycle import (
@@ -125,8 +127,11 @@ class DeterministicRollSource(object):
         return list(self._pools.get(die) or [])[:max(0, int(count))]
 
 
-def parse_dice(expression):
-    """'2d6+3' -> (count, sides, modifier). Raises ValueError on junk."""
+def parse_dice(expression, flat_ok=False):
+    """'2d6+3' -> (count, sides, modifier). Raises ValueError on junk.
+    With ``flat_ok``, exactly "flat" (a flat-damage row, NUM-H3c) is (0, 0, 0)."""
+    if flat_ok and str(expression or "").strip() == FLAT_DAMAGE_DICE:
+        return 0, 0, 0
     match = _DICE_RE.match(str(expression or ""))
     if not match:
         raise ValueError("Unparseable dice expression: %r" % expression)
@@ -1235,7 +1240,7 @@ def _engine_swing(rolls, entry, sheet, to_hit, mode, faces, target_ac, target, t
     from core.nql import attacks
 
     try:
-        count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"))
+        count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"), flat_ok=True)
     except ValueError:
         return None
     peek = getattr(rolls, "peek", None)
@@ -1404,7 +1409,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
         raw_damage = 0
         damage_traits = []
         if hit:
-            count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"))
+            count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"), flat_ok=True)
             if critical:
                 count *= 2
             damage_rolls = [
@@ -1693,6 +1698,10 @@ def player_weapon_attack_entry(encounter, characters, intent):
     sheet = _raw_combatant_sheet(encounter, characters, actor)
     entry = _find_action(sheet, intent.get("ability"))
     if not isinstance(entry, dict) or entry.get("type") != "melee" or not is_executable_attack(entry):
+        return None
+    if is_flat_attack(entry):
+        # NUM-H3c: a flat row has no damage dice for the player to roll; the
+        # resolver scores it through the engine instead.
         return None
     sequence = attack_sequence(
         sheet,
