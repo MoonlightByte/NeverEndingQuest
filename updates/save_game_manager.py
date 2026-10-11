@@ -1019,7 +1019,7 @@ class SaveGameManager:
                                 cache_available = False
                                 try:
                                     try:
-                                        atomic_writer.acquire_lock(cache_path)
+                                        atomic_writer.acquire_lock(cache_path, wait_reporter=wait_reporter)
                                         cache_available = True
                                     except OSError as exc:
                                         # acquire_lock retries typed busy errors;
@@ -1340,7 +1340,7 @@ class SaveGameManager:
                             boundary_clean = previous_clean
                             with message_cache_lock:
                                 cache_path = "modules/conversation_history/game_interface_cache.json"
-                                atomic_writer.acquire_lock(cache_path)
+                                atomic_writer.acquire_lock(cache_path, wait_reporter=wait_reporter)
                                 try:
                                     restore_outcome = self._restore_save_game_locked(
                                         save_folder, previous_clean=previous_clean
