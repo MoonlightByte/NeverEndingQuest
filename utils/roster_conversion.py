@@ -577,25 +577,45 @@ def convert(game, lower=(), overrides=None):
         by_place[(s.module, s.loc)].append(s)
     fought = collections.defaultdict(list)  # seed id -> [(encounter, outcome or None, guess)]
     unapplied = []
+    # A record the rules cannot read is left out on its own; the other fights
+    # on record still convert (#741).
+    failed = []
     for loc_id, _, enc_id, data in game.encounters:
         mods = homes.get(loc_id, [])
-        enemies = [c for c in data.get("creatures", []) or [] if c.get("type") == "enemy"]
+        creatures = data.get("creatures") if isinstance(data, dict) else None
+        if not isinstance(creatures, list):
+            creatures = []
+            if not isinstance(data, dict) or data.get("creatures") is not None:
+                failed.append("encounter %s: no list of creatures" % enc_id)
+        if any(not isinstance(c, dict) for c in creatures):
+            failed.append("encounter %s: %d creatures that are not records" % (enc_id, sum(1 for c in creatures if not isinstance(c, dict))))
+        enemies = [c for c in creatures if isinstance(c, dict) and c.get("type") == "enemy"]
         if len(mods) != 1:
             why = "place %s is %s" % (loc_id, "in no converted module" if not mods else "in several modules: " + ", ".join(mods))
             unapplied += [{"encounter": enc_id, "enemy": c.get("name"), "why": why} for c in enemies]
             continue
         for c in enemies:
-            match = [s for s in by_place[(mods[0], loc_id)] if key(s.name) == key(base_name(c.get("name")))]
+            try:
+                match = [s for s in by_place[(mods[0], loc_id)] if key(s.name) == key(base_name(c.get("name")))]
+                if match:
+                    outcome, guess = beaten(c, data)
+            except Exception as exc:
+                failed.append("encounter %s enemy %r: %s" % (enc_id, c.get("name"), exc))
+                unapplied.append({"encounter": enc_id, "enemy": str(c.get("name")), "why": "unreadable (%s)" % exc})
+                continue
             if not match:
                 unapplied.append({"encounter": enc_id, "enemy": c.get("name"), "why": "no authored entry of that name at %s/%s" % (mods[0], loc_id)})
                 continue
-            outcome, guess = beaten(c, data)
             fought[match[0].id].append((enc_id, outcome, guess))
 
     played = {}  # (module, loc) -> {field: [entries]}
     for m in game.modules:
         for loc_id, (_, loc) in game.played[m].items():
-            played[(m, loc_id)] = {f: [e for e in loc.get(f) or [] if isinstance(e, dict) and (e.get("name") or "").strip()] for f in ("monsters", "npcs")}
+            played[(m, loc_id)] = {f: [e for e in loc.get(f) or [] if isinstance(e, dict) and isinstance(e.get("name"), str) and e["name"].strip()] for f in ("monsters", "npcs")}
+            for f in ("monsters", "npcs"):
+                odd = [e for e in loc.get(f) or [] if isinstance(e, dict) and e.get("name") is not None and not isinstance(e.get("name"), str)]
+                if odd:
+                    failed.append("%s/%s %s: %d entries with a name that is not text" % (m, loc_id, f, len(odd)))
     claimed = collections.defaultdict(set)  # (module, loc, field) -> indexes matched to a seed
 
     # Every seed takes its own entry at its own place: first in its own list,
@@ -621,12 +641,17 @@ def convert(game, lower=(), overrides=None):
     decisions, made = [], {}
     for s in seed_list:
         twin = next((made[t.id] for t in by_place[(s.module, s.loc)] if t.kind == "creatures" and t.id in made and key(t.name) == key(s.name)), None)
-        if s.kind == "creatures":
-            d = monster_decision(game, s, fought.get(s.id, []), own[s.id], persons)
-        elif twin is not None:
-            d = twin_decision(s, twin)
-        else:
-            d = npc_decision(game, s, fought.get(s.id, []), own[s.id], persons, played, claimed)
+        try:
+            if s.kind == "creatures":
+                d = monster_decision(game, s, fought.get(s.id, []), own[s.id], persons)
+            elif twin is not None:
+                d = twin_decision(s, twin)
+            else:
+                d = npc_decision(game, s, fought.get(s.id, []), own[s.id], persons, played, claimed)
+        except Exception as exc:
+            failed.append("%s: %s" % (s.id, exc))
+            d = Decision(s.id, s.name, s.place, "0", "could not be decided: as authored")
+            d.flags.append("decision")
         made[s.id] = d
         if s.id in crossed:
             d.flags.append("listed among the %s in play" % ("NPCs" if s.kind == "creatures" else "monsters"))
@@ -691,6 +716,13 @@ def convert(game, lower=(), overrides=None):
     here = wc.get("currentLocationId")
     if here and module in game.masters and here not in game.masters[module]:
         notes.append(("party", "the party tracker says %s in %s, but %s is not a place of %s; it is a place of %s" % (here, module, here, module, ", ".join(homes.get(here, [])) or "no converted module")))
+    for text in failed:
+        notes.append(("unreadable", text))
+    if failed:
+        from utils.enhanced_logger import warning
+        warning("ROSTER: the conversion left out what it could not read (%d: %s); those places keep their "
+                "authored roster and the other fights on record are kept" % (len(failed), "; ".join(failed[:3]) + ("; ..." if len(failed) > 3 else "")),
+                category="location_transitions")
     return seed_list, decisions, unapplied, notes
 
 
@@ -963,7 +995,8 @@ RULE_NAMES = collections.OrderedDict([
     ("4", "party member listed at a place: dropped"),
     ("5", "NPC in the played file: present"), ("6", "NPC gone: present again"),
     ("6j", "NPC shares a party name: joined"), ("6m", "NPC listed elsewhere: moved"),
-    ("7", "NPC in play, not authored: created, or one occupant"), ("7m", "monster in play, not authored: created")])
+    ("7", "NPC in play, not authored: created, or one occupant"), ("7m", "monster in play, not authored: created"),
+    ("0", "could not be decided: as authored")])
 
 
 def report(game, lower, seed_list, decisions, unapplied, notes, live, problems):
