@@ -39,6 +39,15 @@ TEMP_HP_RESOURCE = "temp-hp"
 TEMP_HP_MAX = 1_000_000_000
 DEFENSE_STYLE_FEATURE = "Fighting Style: Defense"
 DEFENSE_STYLE_CONDITION = "feature:defense-style"
+# NUM-H3c: SRD 5.2.1 Archery ("+2 bonus to attack rolls you make with Ranged
+# weapons"): one hit term on every ranged (ammunition) attack of a ported
+# weapon, gated on this Condition, which the exact classFeatures name gives.
+# Every character declares the amount as a stat, since a term names a stat.
+ARCHERY_STYLE_FEATURE = "Fighting Style: Archery"
+ARCHERY_STYLE_CONDITION = "feature:archery-style"
+ARCHERY_STAT = "bonus:archery"
+ARCHERY_BONUS = 2
+ARCHERY_TERM = ' term stat "%s" offset 0 divide 1 requires "%s";' % (ARCHERY_STAT, ARCHERY_STYLE_CONDITION)
 # Temporary effects (E12): a live classifier or combat-engine effect whose
 # armor class or maximum hit point modifiers the engine holds is marked
 # engineOwned on the sheet; its numbers are then inside the stored armorClass
@@ -578,6 +587,10 @@ def _has_defense_style(sheet: Dict[str, Any]) -> bool:
     return any(f.get("name") == DEFENSE_STYLE_FEATURE for f in sheet.get("classFeatures") or [] if isinstance(f, dict))
 
 
+def _has_archery_style(sheet: Dict[str, Any]) -> bool:
+    return any(f.get("name") == ARCHERY_STYLE_FEATURE for f in sheet.get("classFeatures") or [] if isinstance(f, dict))
+
+
 def _armor_definition(def_id: str, entry: Dict[str, Any], gaps: List[str]) -> Optional[str]:
     """One immutable definition per armor entry, from its typed fields only."""
     category = entry.get("armor_category")
@@ -666,6 +679,8 @@ def _weapon_attack(attack_id: str, name: str, mode: Dict[str, Any], ability: str
                    prof: str, gate: str, monk: bool) -> str:
     damage = mode["damage"]
     hit = "constant %d; %s %s" % (bonus, WEAPON_ABILITY_TERM % ability, WEAPON_PROFICIENCY_TERM % _q(prof))
+    if mode["attack"] == "ranged":
+        hit += ARCHERY_TERM
     if "flat" in damage:
         roll = "damage %s flat { constant %d; %s }" % (_q(damage["kind"]), damage["flat"] + bonus, WEAPON_ABILITY_TERM % ability)
     else:
@@ -905,7 +920,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     # carry armor it is not trained for (a shield handed to an untrained
     # companion). A character gets an instance only when the sheet lists the
     # proficiency or the exact feature name.
-    condition_types: List[str] = [DEFENSE_STYLE_CONDITION]
+    condition_types: List[str] = [DEFENSE_STYLE_CONDITION, ARCHERY_STYLE_CONDITION]
     # NUM-H3b: the Unarmored Defense types the defense derive's terms require.
     for cond in class_conditions.condition_types():
         if cond not in condition_types:
@@ -979,7 +994,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
         # at its base; the engine derives the totals (core/nql/srd_stats.py).
         lines.append(
             f"character {_q(cid)} named {_q(sheet.get('name', ''))} at {_q(loc)} {{\n"
-            f' stat "dexterity" = {dex};\n stat "defense" = 10;\n'
+            f' stat "dexterity" = {dex};\n stat "defense" = 10;\n stat {_q(ARCHERY_STAT)} = {ARCHERY_BONUS};\n'
             + "\n".join(stats.stat_lines(sheet, gaps)) + "\n"
             + "\n".join(resources) + "\n"
             + ("".join(" %s\n" % line for line in _trait_lines(sheet)) if damage_traits else "")
@@ -1001,6 +1016,10 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
         if _has_defense_style(sheet):
             conditions.append(
                 f"condition {_q(DEFENSE_STYLE_CONDITION + ':' + cid.split(':', 1)[1])} of {_q(DEFENSE_STYLE_CONDITION)} to {_q(cid)};"
+            )
+        if _has_archery_style(sheet):
+            conditions.append(
+                f"condition {_q(ARCHERY_STYLE_CONDITION + ':' + cid.split(':', 1)[1])} of {_q(ARCHERY_STYLE_CONDITION)} to {_q(cid)};"
             )
         # NUM-H3b: Unarmed Strike, weapon proficiency, the Monk's Martial Arts die
         # and Unarmored Defense, from the sheet's typed class, level and
