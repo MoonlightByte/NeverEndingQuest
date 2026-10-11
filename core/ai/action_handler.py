@@ -3271,17 +3271,29 @@ def get_module_starting_location(module_name: str, snapshot=None) -> tuple:
         if chosen_by == "model":
             resolved, reason = _resolved_model_start(module_name, starting_location, snapshot)
             if resolved is None:
-                fallback = _get_fallback_starting_location(module_analysis_data)
-                warning(f"STARTING_LOCATION: the model's start {starting_location[2]}:{starting_location[0]} "
-                        f"for {module_name} {reason}; using {fallback[2]}:{fallback[0]} for this entry, "
-                        f"not cached", category="module_loading")
-                starting_location, chosen_by = fallback, "fallback"
+                why = (f"the model's start {starting_location[2]}:{starting_location[0]} "
+                       f"for {module_name} {reason}")
+                starting_location = _get_fallback_starting_location(module_analysis_data)
+                chosen_by = "fallback"
             else:
                 starting_location = resolved
         else:
-            warning(f"STARTING_LOCATION: start analysis failed for {module_name}; using "
-                    f"{starting_location[2]}:{starting_location[0]} for this entry, not cached",
-                    category="module_loading")
+            why = f"start analysis failed for {module_name}"
+        if chosen_by == "fallback":
+            # The fallback is code's own substitute, so it must be a start the
+            # resolver accepts: checked against the snapshot, else the first
+            # valid node (#821).
+            replaced = ""
+            if snapshot is not None:
+                checked, _ = _resolved_model_start(module_name, starting_location, snapshot)
+                if checked is None:
+                    checked = _first_valid_snapshot_start(snapshot)
+                    if checked is not None:
+                        replaced = (f" (the first-area fallback {starting_location[2]}:{starting_location[0]} "
+                                    f"is not a valid location of the module)")
+                starting_location = checked or starting_location
+            warning(f"STARTING_LOCATION: {why}; using {starting_location[2]}:{starting_location[0]} "
+                    f"for this entry, not cached{replaced}", category="module_loading")
 
         # Cache only a start the model chose and the resolver accepts (#308):
         # a fallback is used once, and the model is asked again next entry.
@@ -3335,6 +3347,16 @@ def _resolved_model_start(module_name, start, snapshot=None):
     if node is None or location_id in (snapshot.get("invalid_location_ids") or ()):
         return None, "is not a valid location of the module"
     return (node["location_id"], node["location_name"], node["area_id"], node["area_name"]), None
+
+
+def _first_valid_snapshot_start(snapshot):
+    """The first valid node of the snapshot, in its own order, as a start
+    tuple; None when it has no valid node (#821)."""
+    invalid = set(snapshot.get("invalid_location_ids") or ())
+    for node in (snapshot.get("nodes") or {}).values():
+        if node["location_id"] not in invalid:
+            return (node["location_id"], node["location_name"], node["area_id"], node["area_name"])
+    return None
 
 
 def _ai_analyze_starting_location(module_data: dict) -> tuple:
