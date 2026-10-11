@@ -480,6 +480,29 @@ def test_list_form_new_skill_is_appended_once(wizard, authored, monkeypatch, tmp
     assert leveled["expertise"] == ["Sleight of Hand", "Stealth"]
 
 
+def test_list_form_skills_survive_consecutive_level_ups(wizard, authored, monkeypatch, tmp_path):
+    # Each level-up starts from the sheet the last one wrote: a level with no
+    # skill choice leaves the list and expertise as they were, and the next
+    # Expertise menu (Bard 9) does not offer the skills already taken.
+    import copy
+    from core.leveling import tables
+    sheet = _as_class(authored["character"], "Bard", None)
+    sheet["experience_points"] = tables.xp_threshold(2)
+    point = _expertise_point(sheet, 2)
+    two = _level_up(sheet, 2, monkeypatch, tmp_path, {point["id"]: ["Perception", "Athletics"]})
+    two["experience_points"] = tables.xp_threshold(3)
+    three = _level_up(copy.deepcopy(two), 3, monkeypatch, tmp_path)
+    assert three["level"] == 3
+    assert three["skills"] == ["Athletics", "Intimidation", "Perception", "Survival"]
+    assert three["expertise"] == ["Perception", "Athletics"]
+    three["level"], three["experience_points"] = 8, tables.xp_threshold(9)
+    point = _expertise_point(three, 9)
+    assert sorted(point["options"]) == ["Intimidation", "Survival"]
+    nine = _level_up(three, 9, monkeypatch, tmp_path, {point["id"]: ["Intimidation", "Survival"]})
+    assert nine["skills"] == ["Athletics", "Intimidation", "Perception", "Survival"]
+    assert nine["expertise"] == ["Perception", "Athletics", "Intimidation", "Survival"]
+
+
 def test_legacy_dict_skills_read_as_before(wizard, authored):
     from core.leveling import choices
     sheet = authored["character"]
