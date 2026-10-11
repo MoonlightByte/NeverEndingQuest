@@ -398,7 +398,10 @@ training/
 debug/
 
 # Dynamic game content - generated during gameplay for unique campaigns
-modules/*/monsters/
+modules/*/monsters/*
+# Authored stat blocks that ship with a core module (never regenerated)
+!modules/*/monsters/.gitkeep
+!modules/The_Thornwood_Watch/monsters/bandit_captain_gorvek.json
 modules/*/encounters/
 
 # Campaign archives and summaries - keep local, don't commit to repository

@@ -4301,7 +4301,7 @@ def process_action(
         # handle_location_transition returns its context dict only when the
         # party moved (#773).
         movement_committed = transition_context is not None
-        if movement_committed and transition_checkpoint is not None:
+        if movement_committed:
             with _party_module_transition_lock():
                 current_checkpoint = load_current_transition_checkpoint(
                     transition_id
@@ -4317,7 +4317,6 @@ def process_action(
             from core.nql import travel
             travel.realign(current_checkpoint)
 
-        if movement_committed:
             reconciliation_status = resolve_current_transition_reconciliation(
                 transition_id, transition_context
             )
@@ -4340,28 +4339,21 @@ def process_action(
             )
             transition_context["departure_summary"] = departure_summary
 
-        if movement_committed:
             info("SUCCESS: Location movement and departure state committed", category="location_transitions")
             response_data = {
                 "departure_summary": transition_context.get("departure_summary"),
             }
-            if transition_checkpoint is not None:
-                response_data["location_transition_id"] = transition_checkpoint[
-                    "operation_id"
-                ]
+            response_data["location_transition_id"] = transition_checkpoint[
+                "operation_id"
+            ]
             return create_return(needs_update=True, response_data=response_data)
-             # After transition, the current_location_data in the main loop might be stale.
-            # We need to ensure the AI response processing uses the *new* location data.
-            # This might require process_ai_response to reload location data or for main_game_loop to handle it.
-            # For now, let's assume the main loop will reload it before the next AI call.
         else:
-            if transition_checkpoint is not None:
-                authoritative_after = safe_json_load("party_tracker.json") or {}
-                after_location = authoritative_after.get(
-                    "worldConditions", {}
-                ).get("currentLocationId")
-                if str(after_location or "") == str(current_location_id):
-                    _remove_location_transition_checkpoint()
+            authoritative_after = safe_json_load("party_tracker.json") or {}
+            after_location = authoritative_after.get(
+                "worldConditions", {}
+            ).get("currentLocationId")
+            if str(after_location or "") == str(current_location_id):
+                _remove_location_transition_checkpoint()
             print("ERROR: Failed to handle location transition")
             # Create error message for the AI DM
             error_message = f"""SYSTEM ERROR: Location Transition Failed
