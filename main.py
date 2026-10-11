@@ -8753,23 +8753,6 @@ def _main_game_loop(startup_authority, turn_authority):
                 "activeCombatEncounter"
             ) == active_encounter_id
         )
-        if not combat_still_active and _post_combat_world(party_tracker_data) is None:
-            # Without the party's location the story cannot go on, and
-            # no narration is asked for (#444). The #448 shape.
-            error(
-                "FAILURE: party_tracker.json has no readable location after "
-                "the resumed fight",
-                category="session_management",
-            )
-            display_dm_narration(
-                "The party's location could not be read after the fight, so "
-                "the story cannot continue from here. Gameplay is paused.",
-                channel="system",
-            )
-            if hasattr(sys.stdin, "queue"):
-                return
-            from updates.save_game_manager import SaveGameManager
-            return _terminal_recovery_menu(SaveGameManager())
         if combat_still_active:
             recovery = _active_combat_recovery(party_tracker_data)
             if recovery:
@@ -8829,6 +8812,25 @@ def _main_game_loop(startup_authority, turn_authority):
             # The engine's location record for the resumed fight (P4-c).
             from core.nql import occupants as _occupants
             _occupants.resolve_combat(active_encounter_id)
+
+        if not combat_still_active and _post_combat_world(party_tracker_data) is None:
+            # The fight's record is kept above. Without the party's location
+            # the story cannot go on, so no narration is asked for (#444).
+            # The #448 shape; the travel-recovery scope has already closed.
+            error(
+                "FAILURE: party_tracker.json has no readable location after "
+                "the resumed fight",
+                category="session_management",
+            )
+            display_dm_narration(
+                "The party's location could not be read after the fight, so "
+                "the story cannot continue from here. Gameplay is paused.",
+                channel="system",
+            )
+            if hasattr(sys.stdin, "queue"):
+                return
+            from updates.save_game_manager import SaveGameManager
+            return _terminal_recovery_menu(SaveGameManager())
 
         # ** CRITICAL FIX: Get a new AI response for post-combat narration **
         # This makes the resumed flow behave exactly like the normal flow.
