@@ -7365,7 +7365,21 @@ def process_ai_response(
         # If not a transition or levelup, proceed with normal processing
         narration = parsed_response.get("narration", "")
         sanitized_narration = sanitize_text(narration)
-        display_dm_narration(sanitized_narration)
+        # A reply whose only action is createNewModule narrates a module that
+        # does not exist yet, so its narration is held, as a transition holds
+        # its departure narration (#182). A published build is narrated by the
+        # DM's post-publish follow-up; a failed build shows only its system
+        # line. The stored reply leaves out the narration that was not shown.
+        if (
+            len(actions) == 1
+            and isinstance(actions[0], dict)
+            and actions[0].get("action") == action_handler.ACTION_CREATE_NEW_MODULE
+        ):
+            held_reply = dict(parsed_response)
+            held_reply["narration"] = ""
+            response = json.dumps(held_reply)
+        else:
+            display_dm_narration(sanitized_narration)
 
         actions_processed = False
         
