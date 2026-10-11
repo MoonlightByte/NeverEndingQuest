@@ -589,19 +589,19 @@ def _message_cache_matches(message):
                 atomic_writer.release_lock(MESSAGE_CACHE_FILE)
     return False
 
-def add_to_message_cache(message, *, commit_guard=None):
-    """Add a message once; stable IDs deduplicate replayable safe output."""
+def _cache_message(message, *, commit_guard=None):
+    """Cache a message once: "added", "duplicate", "paused", "rejected" or "failed" (#710)."""
     if not isinstance(message, dict):
-        return False
+        return "rejected"
     message_id = message.get("message_id")
     if message_id is not None and (
         not isinstance(message_id, str) or not message_id.strip()
     ):
-        return False
+        return "rejected"
     cacheable = message.get('type') in ['narration', 'user-input']
     cacheable = cacheable or message_id is not None
     if not cacheable:
-        return False
+        return "rejected"
     if message_id is None:
         # Cache/live/reconnect delivery must carry one identity. Mutating the
         # payload is intentional: the same ID is persisted and emitted live.
@@ -611,7 +611,7 @@ def add_to_message_cache(message, *, commit_guard=None):
         from utils.file_operations import atomic_writer, safe_write_json
 
         if _web_gameplay_paused():
-            return False
+            return "paused"
 
         acquired = False
         try:
@@ -624,7 +624,7 @@ def add_to_message_cache(message, *, commit_guard=None):
                 with open(MESSAGE_CACHE_FILE, 'r', encoding='utf-8') as handle:
                     durable = json.load(handle)
                 if not isinstance(durable, list):
-                    return False
+                    return "failed"
                 base = durable[-MESSAGE_CACHE_SIZE:]
             else:
                 base = []
@@ -636,7 +636,7 @@ def add_to_message_cache(message, *, commit_guard=None):
                 with commit_guard() if commit_guard is not None else nullcontext():
                     message_cache.clear()
                     message_cache.extend(base)
-                return False
+                return "duplicate"
             candidate = (base + [dict(message)])[-MESSAGE_CACHE_SIZE:]
             # The cache is not game state: a read-only cache fails this write
             # instead of stopping the game, and it still runs after a save
@@ -649,30 +649,44 @@ def add_to_message_cache(message, *, commit_guard=None):
                 commit_guard=commit_guard,
                 on_read_only="fail",
             ):
-                return False
+                return "failed"
             with commit_guard() if commit_guard is not None else nullcontext():
                 message_cache.clear()
                 message_cache.extend(candidate)
         except LiveProviderSuperseded:
             raise
         except Exception:
-            return False
+            return "failed"
         finally:
             if acquired:
                 atomic_writer.release_lock(MESSAGE_CACHE_FILE)
-    return True
+    return "added"
+
+
+def add_to_message_cache(message, *, commit_guard=None):
+    """Add a message once; stable IDs deduplicate replayable safe output."""
+    return _cache_message(message, commit_guard=commit_guard) == "added"
 
 
 def _queue_safe_player_output(message, *, commit_guard=None):
     """Route normalized player output through the existing web game queue."""
     try:
         payload = dict(message)
-        if not add_to_message_cache(payload, commit_guard=commit_guard):
+        status = _cache_message(payload, commit_guard=commit_guard)
+        if status == "duplicate":
             # Stable-ID replay is successful when the exact message already
             # exists in the durable cache; do not enqueue a duplicate.
             matches = _message_cache_matches(payload)
             with commit_guard() if commit_guard is not None else nullcontext():
                 return matches
+        if status in ("paused", "rejected"):
+            return False
+        if status == "failed":
+            # The cache only replays output after a reload; a failed write must
+            # not hide the card. Show it once, live, as delivered (#710).
+            warning(f"MESSAGE_CACHE: cache write failed; {payload.get('message_id')} "
+                    "delivered live only, not replayable after reload",
+                    category='web_interface')
         with commit_guard() if commit_guard is not None else nullcontext():
             game_output_queue.put_nowait(payload)
         return True

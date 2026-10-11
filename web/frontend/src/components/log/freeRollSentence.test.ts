@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import { formatFreeRolls } from './DiceStrip'
 const sides = [4, 6, 8, 10, 12, 20]

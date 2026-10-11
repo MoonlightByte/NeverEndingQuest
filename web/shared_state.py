@@ -67,7 +67,8 @@ def emit_player_output(message, *, commit_guard=None):
     if sink is None:
         return False
     try:
-        # ``False`` means the sink could not durably accept the message. None
+        # ``False`` means the sink did not deliver the message; True means it
+        # was shown (and cached when the frontend could record it, #710). None
         # remains a successful legacy sink result; modern sinks return True.
         if commit_guard is None:
             return sink(payload) is not False

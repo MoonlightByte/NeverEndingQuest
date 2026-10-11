@@ -28,7 +28,9 @@ from copy import deepcopy
 from core.combat.attacks import (
     attack_sequence,
     executable_attack_names,
+    FLAT_DAMAGE_DICE,
     is_executable_attack,
+    is_flat_attack,
 )
 from core.effects.effective import effective_sheet, modifier_total
 from core.effects.lifecycle import (
@@ -125,8 +127,11 @@ class DeterministicRollSource(object):
         return list(self._pools.get(die) or [])[:max(0, int(count))]
 
 
-def parse_dice(expression):
-    """'2d6+3' -> (count, sides, modifier). Raises ValueError on junk."""
+def parse_dice(expression, flat_ok=False):
+    """'2d6+3' -> (count, sides, modifier). Raises ValueError on junk.
+    With ``flat_ok``, exactly "flat" (a flat-damage row, NUM-H3c) is (0, 0, 0)."""
+    if flat_ok and str(expression or "").strip() == FLAT_DAMAGE_DICE:
+        return 0, 0, 0
     match = _DICE_RE.match(str(expression or ""))
     if not match:
         raise ValueError("Unparseable dice expression: %r" % expression)
@@ -1034,6 +1039,18 @@ def _warn_rider(actor, entry, reason):
         pass
 
 
+def _warn_hands(actor, entry, error):
+    try:
+        from utils.enhanced_logger import warning as _warning
+        _warning(
+            "NUM-B: %s %s swing stands with no hands record (%s: %s)"
+            % ((actor or {}).get("name"), entry.get("name"), type(error).__name__, error),
+            category="combat_events",
+        )
+    except Exception:
+        pass
+
+
 def _warn_engine(sheet, signed, reason):
     try:
         from utils.enhanced_logger import warning as _warning
@@ -1235,7 +1252,7 @@ def _engine_swing(rolls, entry, sheet, to_hit, mode, faces, target_ac, target, t
     from core.nql import attacks
 
     try:
-        count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"))
+        count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"), flat_ok=True)
     except ValueError:
         return None
     peek = getattr(rolls, "peek", None)
@@ -1404,7 +1421,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
         raw_damage = 0
         damage_traits = []
         if hit:
-            count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"))
+            count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"), flat_ok=True)
             if critical:
                 count *= 2
             damage_rolls = [
@@ -1664,6 +1681,21 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
                         record["engine"] = False
                 event["resources"].append(record)
                 break
+    # NUM-B (owner BQ1-BQ3): the swing stands. The engine's option for the swung
+    # row is recorded on the event, and a carried weapon that fits is drawn
+    # (applied by apply_resolution from the record, so a replay matches).
+    if (swings and selected_entry and actor.get("type") in ("player", "npc")
+            and isinstance((characters or {}).get(actor.get("name")), dict)):
+        from core.nql import hands
+        try:
+            hands_record = hands.after_swing(sheet, selected_entry.get("name"))
+        except Exception as exc:
+            # Fail forward: the swing is already resolved; it stands with no record.
+            hands_record = None
+            _warn_hands(actor, selected_entry, exc)
+        if hands_record is not None:
+            hands_record["owner"] = actor.get("name")
+            event["hands"] = hands_record
     return resolution
 
 
@@ -1693,6 +1725,10 @@ def player_weapon_attack_entry(encounter, characters, intent):
     sheet = _raw_combatant_sheet(encounter, characters, actor)
     entry = _find_action(sheet, intent.get("ability"))
     if not isinstance(entry, dict) or entry.get("type") != "melee" or not is_executable_attack(entry):
+        return None
+    if is_flat_attack(entry):
+        # NUM-H3c: a flat row has no damage dice for the player to roll; the
+        # resolver scores it through the engine instead.
         return None
     sequence = attack_sequence(
         sheet,
@@ -1733,10 +1769,14 @@ def open_player_weapon_attack(encounter, characters, intent, entry):
 
 
 def weapon_attack_sheet_entry(encounter, characters, record):
-    """The sheet entry the open roll phase was opened for, or None."""
+    """The sheet entry the open roll phase was opened for, or None. A spell
+    attack's phase (#672) carries its own entry, fixed when it opened."""
     actor = combatant_by_id(encounter, record.get("actorId"))
     if actor is None:
         return None
+    spell = record.get("spell")
+    if isinstance(spell, dict):
+        return {key: spell.get(key) for key in ("name", "type", "damageDice", "damageType", "attackBonus")}
     entry = _find_action(_raw_combatant_sheet(encounter, characters, actor), record.get("ability"))
     return entry if isinstance(entry, dict) else None
 
@@ -1842,6 +1882,463 @@ def resolve_player_weapon_attack(encounter, characters, intent, record, event_id
                       "source": sources.get("damage", "player")})
     event["rolls"] = rolls
     event["outcome"]["scoredBy"] = "code"
+    return resolution
+
+
+# #672: the player's cast of a spell with a typed attack record
+# (data/srd_spell_attacks.json) takes the plain swing's code-issued roll
+# phase: the d20, then the spell's damage dice on a hit. The stored intent
+# keeps the model's resources (the slot) and effects; code scores the
+# attack and the damage. Typed fields only.
+def player_spell_attack_entry(encounter, characters, intent):
+    """The roll phase's spell entry when the intent is a cast of a recorded
+    spell attack at exactly one hostile, targetable creature; None otherwise.
+    The entry fixes the damage dice (slot or character level) and the spell
+    attack bonus when the phase opens."""
+    if not isinstance(intent, dict) or intent.get("action") != "cast" or intent.get("save") is not None:
+        return None
+    attacks = intent.get("attacks")
+    if attacks is not None and not (type(attacks) is int and attacks == 1):
+        return None
+    request = intent.get("requiresPlayerInput")
+    if request is not None and not (isinstance(request, dict) and request.get("kind") == "roll"):
+        return None
+    from core.ai import srd_roll_contracts, srd_spell_attacks
+
+    status, record, phase = srd_spell_attacks.lookup(intent.get("ability"))
+    if status != "recorded" or phase is None:
+        return None
+    target_id = intent.get("targetId")
+    targets = intent.get("targets") or []
+    if not isinstance(targets, list) or len(targets) > 1:
+        return None
+    if targets:
+        listed = targets[0]
+        if not isinstance(listed, dict) or listed.get("hpDelta", 0) != 0 or type(listed.get("hpDelta", 0)) is not int:
+            return None
+        if target_id is None:
+            target_id = listed.get("combatantId")
+        elif listed.get("combatantId") != target_id:
+            return None
+    actor = combatant_by_id(encounter, intent.get("actorId"))
+    target = combatant_by_id(encounter, target_id) if isinstance(target_id, str) else None
+    if actor is None or target is None:
+        return None
+    if (not is_hostile(target) or not is_combatant_targetable(target)
+            or target.get("faction") == actor.get("faction")):
+        return None
+    effects = intent.get("effects") or []
+    if not isinstance(effects, list) or any(
+        not isinstance(op, dict) or op.get("applyOn", "always") not in SPELL_ATTACK_APPLY_ON for op in effects
+    ):
+        return None
+    sheet = _raw_combatant_sheet(encounter, characters, actor)
+    casting = sheet.get("spellcasting") if isinstance(sheet, dict) else None
+    bonus = casting.get("spellAttackBonus") if isinstance(casting, dict) else None
+    if type(bonus) is not int or not _sheet_lists_spell(casting, record["name"]):
+        return None
+    slot_level = None
+    level = None
+    if (phase.get("scaling") or {}).get("kind") == "slot_level":
+        slot_level = srd_roll_contracts._slot_level(intent, {})
+        if slot_level is None:
+            return None
+    else:
+        level = sheet.get("level") if type(sheet.get("level")) is int else None
+    dice = srd_spell_attacks.damage_dice(phase, slot_level, level)
+    if dice is None:
+        return None
+    return {
+        "name": record["name"],
+        "type": record["attack"],
+        "damageDice": "%dd%d" % dice,
+        "damageType": record["damageKind"],
+        "attackBonus": bonus + modifier_total(sheet, "spellAttackBonus"),
+        "record": record["source"],
+        "slotLevel": slot_level,
+        "characterLevel": level,
+        "targetId": target["combatantId"],
+    }
+
+
+SPELL_ATTACK_APPLY_ON = ("always", "hit")
+
+
+def _sheet_lists_spell(casting, name):
+    """True when the caster's spellcasting lists the spell (a spells level
+    list or preparedSpells), compared by the roll contracts' canonical key."""
+    from core.ai import srd_roll_contracts
+
+    key = srd_roll_contracts._canonical_key(name)
+    spells = casting.get("spells") if isinstance(casting.get("spells"), dict) else {}
+    lists = [value for value in spells.values() if isinstance(value, list)]
+    lists.append(casting.get("preparedSpells") if isinstance(casting.get("preparedSpells"), list) else [])
+    return any(
+        isinstance(entry, str) and srd_roll_contracts._canonical_key(entry) == key
+        for listed in lists for entry in listed
+    )
+
+
+def open_player_spell_attack(encounter, characters, intent, spell):
+    """The roll-phase record for a spell attack: the swing's record (mode fixed
+    now) plus the spell entry under ``spell``."""
+    entry = {"name": spell["name"], "type": spell["type"]}
+    record = open_player_weapon_attack(encounter, characters, dict(intent, targetId=spell["targetId"]), entry)
+    record["spell"] = dict(spell)
+    return record
+
+
+def spell_attack_proposal(intent, target_id, damage):
+    """The adjudicated proposal the stored intent resolves as: the model's
+    resources and effects, the code-scored damage on the one target."""
+    proposal = deepcopy(intent)
+    proposal.pop("requiresPlayerInput", None)
+    proposal["targets"] = [{"combatantId": target_id, "hpDelta": -int(damage)}]
+    return proposal
+
+
+def spell_attack_violations(encounter, characters, intent, spell):
+    """The violations the stored intent would resolve with (a hit for 0
+    damage), found before any roll is asked for; on copies, so a check
+    never changes the fight."""
+    try:
+        resolution = resolve_adjudicated(
+            deepcopy(encounter), deepcopy(characters), spell_attack_proposal(intent, spell["targetId"], 0),
+            DeterministicRollSource({}), "spell-attack-check", attack_hits={spell["targetId"]: True},
+        )
+    except (IndexError, KeyError, TypeError, ValueError) as exc:
+        return [str(exc)]
+    return list(resolution["violations"])
+
+
+def resolve_player_spell_attack(encounter, characters, intent, record, event_id, rolls):
+    """Score the player's spell attack from the typed faces on the completed
+    roll phase: the engine decides hit, miss and critical and applies the
+    target's typed damage traits to the damage dice; today's arithmetic is
+    the fallback. The stored intent then resolves through resolve_adjudicated
+    (the slot, the effects; applyOn 'hit' effects only on a hit)."""
+    from core.nql import attacks
+
+    entry = weapon_attack_sheet_entry(encounter, characters, record)
+    spell = record.get("spell") or {}
+    actor = combatant_by_id(encounter, record.get("actorId"))
+    target = combatant_by_id(encounter, record.get("targetId"))
+    if entry is None or target is None:
+        raise ValueError("the spell attack's caster or target is gone")
+    sheet = _raw_combatant_sheet(encounter, characters, actor)
+    trait_sheet = _raw_combatant_sheet(encounter, characters, target)
+    faces = record.get("faces") or {}
+    attack_faces = list(faces.get("attack") or [])
+    mode = record.get("mode")
+    critical_phase = bool(record.get("critical"))
+    total_rolled = faces.get("damage") if type(faces.get("damage")) is int else None
+    to_hit = int(entry["attackBonus"]) + modifier_total(sheet, "attackRolls")
+    ac = _combatant_ac(encounter, characters, target)
+    count, sides, _flat = parse_dice(entry["damageDice"])
+    scored = attacks.score(
+        to_hit=to_hit, count=count, sides=sides, bonus=0, damage_type=entry["damageType"], mode=mode,
+        faces=attack_faces, target_ac=ac, target_hp=int(target.get("currentHitPoints", 0) or 0),
+        target_max_hp=_combatant_max_hp(encounter, characters, target), target_sheet=trait_sheet,
+        damage=None if critical_phase else total_rolled,
+        critical_damage=total_rolled if critical_phase else None,
+    )
+    if scored.ok and (not scored.hit or scored.damage_rolled == total_rolled):
+        hit, critical, kept, total = bool(scored.hit), bool(scored.critical), int(scored.kept), int(scored.total)
+        raw_damage = scored.raw_damage if hit else 0
+        damage, traits = (int(scored.damage or 0), list(scored.traits)) if hit else (0, [])
+        engine = True
+    else:
+        try:
+            from utils.enhanced_logger import warning as _warning
+            _warning("AS: %s scored without the engine (%s)" % (
+                entry["name"], scored.reason or "damage %s, engine used %s" % (total_rolled, scored.damage_rolled)),
+                category="combat_events")
+        except Exception:
+            pass
+        kept = (max(attack_faces) if mode == "advantage"
+                else min(attack_faces) if mode == "disadvantage" else attack_faces[0])
+        total = kept + to_hit
+        critical = kept == 20
+        hit = critical or (kept != 1 and total >= ac)
+        raw_damage = max(0, total_rolled or 0) if hit else 0
+        damage, traits = _typed_damage(trait_sheet, entry["damageType"], raw_damage) if hit else (0, [])
+        engine = False
+    if hit and (total_rolled is None or critical != critical_phase):
+        # The faces scored differently from when the damage was asked for:
+        # the model rules the window from the exchanges (fail forward).
+        raise ValueError("the spell attack's damage roll does not match its hit")
+    resolution = resolve_adjudicated(
+        encounter, characters, spell_attack_proposal(intent, target["combatantId"], damage), rolls, event_id,
+        attack_hits={target["combatantId"]: hit},
+    )
+    event = resolution["event"]
+    event["intent"] = deepcopy(intent)
+    sources = record.get("sources") or {}
+    attack_rolls = []
+    for face in attack_faces:
+        roll = {"die": "d20", "value": face, "purpose": "attack", "source": sources.get("attack", "player")}
+        if mode in PLAYER_DECLARED_MODES:
+            roll["mode"] = mode
+        attack_rolls.append(roll)
+    if hit:
+        attack_rolls.append({"die": "%dd%d" % (count * (2 if critical else 1), sides), "value": total_rolled,
+                             "purpose": "damage", "source": sources.get("damage", "player")})
+    event["rolls"] = attack_rolls + list(event.get("rolls") or [])
+    spell_record = {
+        "spell": spell.get("name"), "record": spell.get("record"), "attack": spell.get("type"),
+        "toHit": to_hit, "faces": attack_faces, "kept": kept, "mode": mode, "engine": engine,
+        "damageDice": entry["damageDice"], "damageType": entry["damageType"],
+    }
+    if record.get("modeSources"):
+        spell_record["modeSources"] = list(record["modeSources"])
+    if spell.get("slotLevel") is not None:
+        spell_record["slotLevel"] = spell["slotLevel"]
+    if hit:
+        spell_record.update({"damageRolled": total_rolled, "rawDamage": raw_damage, "damage": damage})
+        if traits:
+            spell_record["damageTraits"] = traits
+    event["outcome"].update({
+        "hit": hit, "critical": critical, "attackRoll": kept, "totalAttack": total, "targetAC": ac,
+        "damage": damage, "scoredBy": "code", "spellAttack": spell_record,
+    })
+    return resolution
+
+
+# #723: the player's cast of a spell with a typed save record
+# (data/srd_spell_saves.json, #703) takes the same code-issued roll phase,
+# save first: code scores each target's save from the persisted prerolls
+# before any damage is asked for, and asks once for the spell's damage dice
+# only when a target takes damage. The stored intent keeps the model's
+# resources (the slot) and effects. Typed fields only.
+SPELL_SAVE_ACTIONS = ("cast", "ability")
+SPELL_SAVE_APPLY_ON = ("always", "failedSave", "successfulSave")
+
+
+def player_spell_save_entry(encounter, characters, intent):
+    """The roll phase's spell entry when the intent is a cast of a recorded
+    save spell at one or more listed, targetable creatures (each hpDelta 0;
+    a typed targetId with no targets listed is that one target) by a caster
+    whose sheet lists the spell and states its spell save DC; None
+    otherwise. The entry fixes the damage dice (slot or character level) and
+    the save when the phase opens."""
+    if not isinstance(intent, dict) or intent.get("action") not in SPELL_SAVE_ACTIONS:
+        return None
+    attacks = intent.get("attacks")
+    if attacks is not None and not (type(attacks) is int and attacks == 1):
+        return None
+    request = intent.get("requiresPlayerInput")
+    if request is not None and not (isinstance(request, dict) and request.get("kind") == "roll"):
+        return None
+    save = intent.get("save")
+    targets = intent.get("targets")
+    if targets in (None, []) and isinstance(intent.get("targetId"), str):
+        targets = [{"combatantId": intent["targetId"], "hpDelta": 0}]
+    if (save is not None and not isinstance(save, dict)) or not isinstance(targets, list) or not targets:
+        return None
+    target_ids = []
+    for listed in targets:
+        if not isinstance(listed, dict) or type(listed.get("hpDelta", 0)) is not int or listed.get("hpDelta", 0) != 0:
+            return None
+        listed_id = listed.get("combatantId")
+        target = combatant_by_id(encounter, listed_id) if isinstance(listed_id, str) else None
+        if target is None or not is_combatant_targetable(target):
+            return None
+        target_ids.append(target["combatantId"])
+    if len(set(target_ids)) != len(target_ids):
+        return None
+    if intent.get("targetId") is not None and intent.get("targetId") not in target_ids:
+        return None
+    effects = intent.get("effects") or []
+    if not isinstance(effects, list) or any(
+        not isinstance(op, dict) or op.get("applyOn", "always") not in SPELL_SAVE_APPLY_ON for op in effects
+    ):
+        return None
+    actor = combatant_by_id(encounter, intent.get("actorId"))
+    if actor is None:
+        return None
+    sheet = _raw_combatant_sheet(encounter, characters, actor)
+    casting = sheet.get("spellcasting") if isinstance(sheet, dict) else None
+    if not isinstance(casting, dict) or type(casting.get("spellSaveDC")) is not int or casting["spellSaveDC"] <= 0:
+        return None
+    from core.ai import srd_roll_contracts, srd_spell_saves
+
+    status, record, phase = srd_spell_saves.lookup(intent.get("ability"))
+    if status != "recorded" or phase is None or not _sheet_lists_spell(casting, record["name"]):
+        return None
+    if _stat_block_save_entry(sheet, intent.get("ability")) is not None:
+        return None
+    slot_level = None
+    level = None
+    if (phase.get("scaling") or {}).get("kind") == "slot_level":
+        slot_level = srd_roll_contracts._slot_level(intent, {})
+        if slot_level is None:
+            return None
+    else:
+        level = sheet.get("level") if type(sheet.get("level")) is int else None
+    rule = _spell_save_rule(encounter, characters, intent, save, targets, {})
+    if rule is None or rule["dice"] is None:
+        return None
+    return {
+        "name": record["name"],
+        "type": "save",
+        "damageDice": "%dd%d" % rule["dice"],
+        "damageType": rule["kind"],
+        "record": record["source"],
+        "slotLevel": slot_level,
+        "characterLevel": level,
+        "targetId": target_ids[0],
+        "targetIds": target_ids,
+        "save": {"type": rule["spec"]["type"], "dc": rule["spec"]["dc"], "success": rule["success"]},
+    }
+
+
+def spell_save_proposal(intent, target_ids, damage):
+    """The adjudicated proposal the stored intent resolves as: the model's
+    resources and effects, and the rolled total on every target of the entry
+    (the #703 save applies the record's effect to it per target)."""
+    proposal = deepcopy(intent)
+    proposal.pop("requiresPlayerInput", None)
+    listed = {entry.get("combatantId"): entry for entry in intent.get("targets") or [] if isinstance(entry, dict)}
+    proposal["targets"] = [dict(listed.get(target_id) or {"combatantId": target_id}, hpDelta=-int(damage))
+                           for target_id in target_ids]
+    return proposal
+
+
+def open_player_spell_save(encounter, characters, intent, spell, rolls):
+    """The roll-phase record for a save-first cast, or None (today's path).
+
+    The stored intent is resolved on copies with no damage, from ``rolls`` (a
+    fresh copy of the persisted preroll pool; nothing is consumed): the same
+    #703 path scores each target's save alone, and any violation (an
+    overspent slot, a bad effect) keeps today's path. The faces and verdicts
+    are persisted on the record; ``ready`` when no target takes damage."""
+    try:
+        preview = resolve_adjudicated(
+            deepcopy(encounter), deepcopy(characters), spell_save_proposal(intent, spell["targetIds"], 0), rolls,
+            "spell-save-check",
+        )
+    except (IndexError, KeyError, TypeError, ValueError):
+        return None
+    if preview["violations"]:
+        return None
+    scored = {
+        roll.get("combatantId"): roll for roll in preview["event"].get("rolls") or []
+        if roll.get("purpose") == "save" and roll.get("spell") == spell["name"]
+    }
+    save = spell["save"]
+    results = []
+    for target_id in spell["targetIds"]:
+        roll = scored.get(target_id)
+        if roll is None:
+            return None
+        target = combatant_by_id(encounter, target_id)
+        success = bool(roll.get("success"))
+        kept = roll.get("kept", roll.get("value"))
+        result = {
+            "combatantId": target_id,
+            "name": target.get("name") or target_id,
+            "faces": list(roll.get("faces") or []),
+            "kept": kept,
+            "bonus": roll.get("bonus"),
+            "total": roll.get("total") if roll.get("engine") else (kept or 0) + int(roll.get("bonus") or 0),
+            "success": success,
+            "effect": roll.get("effect") or (save["success"] if success else "full"),
+            "engine": bool(roll.get("engine")),
+        }
+        if roll.get("mode") not in (None, "normal"):
+            result["mode"] = roll["mode"]
+        results.append(result)
+    names = [result["name"] for result in results]
+    record = {
+        "actorId": intent.get("actorId"),
+        "ability": spell["name"],
+        "targetId": spell["targetId"],
+        "targetName": ", ".join(names),
+        "mode": None,
+        "modeSources": [],
+        "phase": "damage",
+        "faces": {},
+        "sources": {},
+        "spell": dict(spell, save=dict(save, results=results)),
+    }
+    if all(result["effect"] == "none" for result in results):
+        # Every target saved against a spell that does nothing on a save:
+        # no roll is asked (Q3); the window resolves with no damage.
+        record["ready"] = True
+    return record
+
+
+class _ReplayedSaveRolls(object):
+    """#723: the roll source for a save-first cast. Each target's save faces
+    are the ones persisted when the phase opened (the player saw them); the
+    persisted pool underneath still advances by the same takes, so the
+    consumption cursors are today's."""
+
+    def __init__(self, rolls, faces):
+        self._rolls = rolls
+        self._faces = {target_id: list(values) for target_id, values in faces.items()}
+
+    def take(self, die):
+        return self._rolls.take(die)
+
+    def take_for(self, die, purpose, actor_id=None, target_id=None, ability=None):
+        value = _take_roll(self._rolls, die, purpose, actor_id=actor_id, target_id=target_id, ability=ability)
+        if purpose == "save" and self._faces.get(target_id):
+            return self._faces[target_id].pop(0)
+        return value
+
+    def unreplayed(self):
+        return any(self._faces.values())
+
+    def __getattr__(self, name):
+        return getattr(self._rolls, name)
+
+
+def resolve_player_spell_save(encounter, characters, intent, record, event_id, rolls):
+    """Resolve a save-first cast from the completed roll phase: the stored
+    intent goes through resolve_adjudicated with the rolled total (0 when no
+    target takes damage) on every target, and the persisted save faces are
+    replayed, so the saves are scored once, as the player saw them."""
+    spell = record.get("spell") or {}
+    save = spell.get("save") or {}
+    results = save.get("results") or []
+    rolled = (record.get("faces") or {}).get("damage")
+    needs_damage = any(result.get("effect") != "none" for result in results)
+    if not results or (needs_damage and type(rolled) is not int):
+        raise ValueError("the save-first cast has no damage roll to apply")
+    replay = _ReplayedSaveRolls(rolls, {result["combatantId"]: result["faces"] for result in results})
+    resolution = resolve_adjudicated(
+        encounter, characters, spell_save_proposal(intent, spell.get("targetIds") or [], rolled if needs_damage else 0),
+        replay, event_id,
+    )
+    event = resolution["event"]
+    scored = {
+        roll.get("combatantId"): roll for roll in event.get("rolls") or []
+        if roll.get("purpose") == "save" and roll.get("spell") == spell.get("name")
+    }
+    for result in results:
+        roll = scored.get(result["combatantId"])
+        if roll is None or bool(roll.get("success")) != bool(result["success"]):
+            # Fail forward: the model rules the window from the exchanges.
+            raise ValueError("a save scored differently from when its phase opened")
+    if replay.unreplayed():
+        raise ValueError("a persisted save face was not taken")
+    event["intent"] = deepcopy(intent)
+    if needs_damage:
+        event["rolls"] = [{"die": spell.get("damageDice"), "value": rolled, "purpose": "damage",
+                           "source": (record.get("sources") or {}).get("damage", "player")}] + list(event["rolls"])
+    spell_record = {
+        "spell": spell.get("name"), "record": spell.get("record"), "save": save.get("type"), "dc": save.get("dc"),
+        "success": save.get("success"), "damageDice": spell.get("damageDice"), "damageType": spell.get("damageType"),
+        "targets": [{key: result[key] for key in ("combatantId", "faces", "success", "effect")} for result in results],
+    }
+    if needs_damage:
+        spell_record["damageRolled"] = rolled
+    else:
+        spell_record["noDamageRoll"] = True
+    if spell.get("slotLevel") is not None:
+        spell_record["slotLevel"] = spell["slotLevel"]
+    event["outcome"].update({"scoredBy": "code", "spellSave": spell_record})
     return resolution
 
 
@@ -2182,7 +2679,8 @@ def _warn_save(sheet, save_type, reason):
         pass
 
 
-def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_feature_heals=False):
+def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_feature_heals=False,
+                        attack_hits=None):
     """General adjudicated-outcome contract for anything beyond weapon attacks.
 
     The DM model (or player-facing DM turn) proposes MECHANICS, not state:
@@ -2206,6 +2704,10 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
     violation carrying ``featureHealLimits`` (the correction's numbers); with
     ``clamp_feature_heals`` (the corrected batch broke it again) it is
     clamped to the limit and journaled as a ``featureHeal`` normalization.
+
+    #672: ``attack_hits`` maps the target of a spell attack code scored to
+    whether it hit; an effect op with applyOn 'hit' is staged only on a hit,
+    and is a violation on any other intent.
     """
     event = {
         "eventId": event_id,
@@ -2687,7 +3189,12 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                 )
                 event.setdefault("normalizations", []).append(normalization)
         apply_on = op.get("applyOn", "always")
-        if apply_on not in ("always", "failedSave", "successfulSave"):
+        if apply_on == "hit" and attack_hits is None:
+            resolution["violations"].append(
+                "effect applyOn 'hit' is only for a spell attack code scores; use always, failedSave, or successfulSave"
+            )
+            continue
+        if apply_on not in ("always", "failedSave", "successfulSave", "hit"):
             resolution["violations"].append(
                 "effect applyOn must be always, failedSave, or successfulSave"
             )
@@ -3054,7 +3561,13 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                 "an effect on a save target requires explicit applyOn"
             )
             continue
-        if apply_on != "always":
+        if apply_on == "hit":
+            # #672: the one target of the code-scored spell attack.
+            hit_target_id = next(iter(attack_hits))
+            if not attack_hits[hit_target_id]:
+                continue
+            op["hitTargetId"] = hit_target_id
+        elif apply_on != "always":
             save_target_id = op.get("saveTargetId") or op.get("combatantId")
             if not save_target_id and op.get("owner"):
                 owner_matches = [
@@ -3394,6 +3907,17 @@ def apply_resolution(encounter, characters, resolution):
             sheet["temporaryHitPoints"] = max(0, delta["temporaryHitPoints"])
         if "status" in delta:
             sheet["status"] = delta["status"]
+
+    # NUM-B: a weapon drawn after a swing (BQ1); the record holds the absolute value.
+    hands = event.get("hands")
+    draw = hands.get("draw") if isinstance(hands, dict) else None
+    if isinstance(draw, dict):
+        sheet = new_characters.get(hands.get("owner"))
+        rows = sheet.get("equipment") if isinstance(sheet, dict) else None
+        index = draw.get("index")
+        if (isinstance(rows, list) and type(index) is int and 0 <= index < len(rows)
+                and isinstance(rows[index], dict) and rows[index].get("item_name") == draw.get("item_name")):
+            rows[index]["equipped"] = draw.get("equippedAfter") is True
 
     for resource in event.get("resources", []) or []:
         sheet = new_characters.get(resource.get("owner"))

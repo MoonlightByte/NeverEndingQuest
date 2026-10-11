@@ -281,10 +281,12 @@ class PublicationStatus(str, Enum):
 class NotJoinedCause(str, Enum):
     """Why an installed module was not joined, for the startup line."""
 
-    # A check on this module's files or content refused it. This includes
-    # local errors a check swallows (issue #639).
+    # A check on this module's files or content refused it. Module analysis
+    # and the safety validators still report their local errors here
+    # (issue #639).
     CHECK_REFUSED = "check_refused"
-    # The safety check produced no verdict (UNAVAILABLE).
+    # The safety check produced no verdict (UNAVAILABLE), or a check could
+    # not run on this machine (issue #639).
     CHECK_UNAVAILABLE = "check_unavailable"
     # Scan entry only, never a result's cause: publication was
     # INDETERMINATE and the registry on disk does not join the module
@@ -293,6 +295,11 @@ class NotJoinedCause(str, Enum):
     # Scan entry only, never a result's cause: as UNPROVEN, while the
     # registry file is read-only, so no module can join (issue #654).
     REGISTRY_READ_ONLY = "registry_read_only"
+    # Scan entry only, never a result's cause: lifecycle recovery was
+    # INDETERMINATE, so the scan joined nothing. The entry names a module
+    # that was waiting, or no module when the wait list could not be read
+    # (issue #638).
+    LIFECYCLE_INDETERMINATE = "lifecycle_indeterminate"
 
 
 @dataclass(frozen=True)
@@ -457,6 +464,14 @@ class _ModuleFilesRefused(Exception):
     """A candidate's own reset masters cannot be read for its conflict scan."""
 
 
+class _ModuleCheckCouldNotRun(_ModuleFilesRefused):
+    """A check could not run on this machine; not a property of the module (#639).
+
+    A refusal to every handler that does not ask for it by name, so only the
+    publication path changes what it reports.
+    """
+
+
 class _ModuleCheckUnavailable(ValueError):
     """The safety check produced no verdict while building registry bytes."""
 
@@ -538,7 +553,8 @@ class ModuleStitcher:
         # left unjoined: [{"module", "reason", "cause"}], where cause is a
         # NotJoinedCause value or None. A publication that could not be proven
         # is "unproven", or "registry_read_only" while the registry is
-        # read-only.
+        # read-only. A scan blocked by lifecycle recovery lists the waiting
+        # ones as "lifecycle_indeterminate".
         self.import_required = []
         self.imported = []
         self.not_joined = []
@@ -1077,6 +1093,23 @@ class ModuleStitcher:
             for area_data in areas.values()
         )
 
+    @classmethod
+    def is_joined_registry_module(
+        cls, registry: Dict[str, Any], module_name: str
+    ) -> bool:
+        """Whether the world registry has joined the module (#720).
+
+        Joined means the registry's modules table holds an entry for the
+        exact name that is not a bare stub, the rule
+        roster_conversion.world_modules uses. A module whose joining was
+        refused, never checked, or blocked by an id collision keeps only the
+        stub that startup reconciliation writes, so it is not joined.
+        """
+        modules = registry.get("modules") if isinstance(registry, dict) else None
+        if not isinstance(modules, dict) or module_name not in modules:
+            return False
+        return not cls._is_registry_stub(registry, module_name)
+
     def _prove_module_absent_from_registry_locked(
         self, module_name: str
     ) -> RegistryAbsenceResult:
@@ -1308,9 +1341,15 @@ class ModuleStitcher:
         return True, ""
 
     def _validate_required_publication_files(
-        self, module_path: str
+        self, module_path: str, *, report_local_errors: bool = False
     ) -> Tuple[bool, str]:
-        """Validate every publication-critical JSON object and area schema."""
+        """Validate every publication-critical JSON object and area schema.
+
+        With ``report_local_errors``, a check that could not run on this
+        machine (the schema library, a read error, the game's own schema)
+        raises _ModuleCheckCouldNotRun instead of returning a refusal
+        (issue #639).
+        """
         schema_dir = Path(__file__).resolve().parents[2] / "schemas"
         required_files = {
             "module_plot.json": "plot_schema.json",
@@ -1344,8 +1383,15 @@ class ModuleStitcher:
                 schema_path = schema_dir / schema_name
                 if not schema_path.exists():
                     return
-                schema = load_object(schema_path)
-                Draft7Validator.check_schema(schema)
+                try:
+                    schema = load_object(schema_path)
+                    Draft7Validator.check_schema(schema)
+                except Exception as exc:
+                    if not report_local_errors:
+                        raise
+                    raise _ModuleCheckCouldNotRun(
+                        f"Schema {schema_name} could not be used: {exc}"
+                    ) from exc
                 errors = sorted(
                     Draft7Validator(schema).iter_errors(data),
                     key=lambda item: list(item.path),
@@ -1374,8 +1420,10 @@ class ModuleStitcher:
                 try:
                     data = load_object(file_path)
                     validate_available_schema(data, schema_name, filename)
-                except (OSError, ValueError) as exc:
-                    # Publication checks a module several times; report once.
+                except (OSError, ValueError, _ModuleCheckCouldNotRun) as exc:
+                    # A schema the game cannot use does not stop it either
+                    # (issue #639). Publication checks a module several
+                    # times; report once.
                     warned = self.__dict__.setdefault("_own_tracker_warned", set())
                     if str(file_path) not in warned:
                         warned.add(str(file_path))
@@ -1416,6 +1464,14 @@ class ModuleStitcher:
                 seen_area_ids.add(area_id)
 
             return True, ""
+        except _ModuleCheckCouldNotRun:
+            raise
+        except (ImportError, OSError) as exc:
+            if report_local_errors:
+                raise _ModuleCheckCouldNotRun(
+                    f"Publication files could not be checked: {exc}"
+                ) from exc
+            return False, f"Publication file validation failed: {exc}"
         except Exception as exc:
             return False, f"Publication file validation failed: {exc}"
 
@@ -1556,6 +1612,11 @@ class ModuleStitcher:
         except (OSError, ValueError, UnicodeError, TypeError) as exc:
             if is_transient_filesystem_error(exc):
                 raise _ModuleFilesBusy(str(exc)) from exc
+            if isinstance(exc, OSError):
+                # The masters could not be read on this machine (issue #639).
+                raise _ModuleCheckCouldNotRun(
+                    f"Paired masters could not be read: {exc}"
+                ) from exc
             raise _ModuleFilesRefused(
                 f"Paired masters could not be read: {exc}"
             ) from exc
@@ -1648,8 +1709,11 @@ class ModuleStitcher:
             ), tuple(sorted(colliding_modules))
         return False, "", ()
     
-    def detect_new_modules(self) -> List[str]:
-        """Detect new modules in the modules directory"""
+    def detect_new_modules(self, *, strict: bool = False) -> List[str]:
+        """Detect new modules in the modules directory.
+
+        ``strict`` raises a failure instead of reporting no new module
+        (issue #638)."""
         try:
             detected_modules = []
             
@@ -1687,6 +1751,8 @@ class ModuleStitcher:
             return sorted(detected_modules)
             
         except Exception as e:
+            if strict:
+                raise
             print(f"Error detecting modules: {e}")
             return []
     
@@ -2517,10 +2583,17 @@ Create atmospheric travel narration that leads into this adventure."""
         except (_FdBackupError, OSError, TypeError, ValueError) as exc:
             if report_busy:
                 cause = exc
+                local = None
                 while cause is not None:
                     if is_transient_filesystem_error(cause):
                         raise _ModuleFilesBusy(str(cause)) from exc
+                    if local is None and isinstance(cause, OSError):
+                        local = cause
                     cause = cause.__cause__
+                if local is not None:
+                    # The tree could not be read on this machine; that is not
+                    # a property of the module (issue #639).
+                    raise _ModuleCheckCouldNotRun(str(local)) from exc
             return None
 
     @staticmethod
@@ -3408,6 +3481,7 @@ Create atmospheric travel narration that leads into this adventure."""
             )
 
         files_refused = ""
+        files_unchecked = False
         try:
             conflict_state, conflict_reason, conflicting_modules = (
                 self._detect_legacy_publication_conflicts(
@@ -3427,6 +3501,7 @@ Create atmospheric travel narration that leads into this adventure."""
         except _ModuleFilesRefused as exc:
             conflict_state, conflict_reason, conflicting_modules = None, "", ()
             files_refused = str(exc) or "Module reset masters could not be read"
+            files_unchecked = isinstance(exc, _ModuleCheckCouldNotRun)
         entry_valid, entry_reason = self._revalidate_publication_entry(
             module_name,
             module_path,
@@ -3442,7 +3517,8 @@ Create atmospheric travel narration that leads into this adventure."""
             )
         if files_refused:
             # Nothing has been written yet: the module's own files failed a
-            # check, so it is reported as not joined (issue #609).
+            # check, or could not be read here, so it is reported as not
+            # joined (issues #609, #639).
             return TargetedPublicationResult(
                 PublicationStatus.NOT_PUBLISHED,
                 module_name,
@@ -3450,7 +3526,11 @@ Create atmospheric travel narration that leads into this adventure."""
                 registry_absence_proven=True,
                 registry_restoration_proven=True,
                 module_restoration_proven=True,
-                cause=NotJoinedCause.CHECK_REFUSED,
+                cause=(
+                    NotJoinedCause.CHECK_UNAVAILABLE
+                    if files_unchecked
+                    else NotJoinedCause.CHECK_REFUSED
+                ),
             )
         if conflict_state is None:
             return TargetedPublicationResult(
@@ -3472,6 +3552,7 @@ Create atmospheric travel narration that leads into this adventure."""
         # The receipt is one manifest of the held tree. This path never writes
         # module files, so the failure proofs need only these hashes to tell
         # NOT_PUBLISHED from INDETERMINATE; no copy is kept (issue #565).
+        manifest_unchecked = False
         try:
             receipt_manifest = self._manifest_exact_module_guard(
                 entry_guard, report_busy=True
@@ -3484,6 +3565,10 @@ Create atmospheric travel narration that leads into this adventure."""
                 module_name,
                 _MODULE_FILES_BUSY_REASON,
             )
+        except _ModuleCheckCouldNotRun:
+            # The held tree could not be read here (issue #639).
+            receipt_manifest = None
+            manifest_unchecked = True
         if not isinstance(receipt_manifest, dict):
             backup_result = _ModuleBackupResult(
                 proven=False,
@@ -3529,14 +3614,31 @@ Create atmospheric travel narration that leads into this adventure."""
                 registry_absence_proven=True,
                 registry_restoration_proven=True,
                 module_restoration_proven=True,
-                cause=NotJoinedCause.CHECK_REFUSED,
+                cause=(
+                    NotJoinedCause.CHECK_UNAVAILABLE
+                    if manifest_unchecked
+                    else NotJoinedCause.CHECK_REFUSED
+                ),
             )
 
         registry_attempted = False
         try:
-            valid, validation_reason = self._validate_required_publication_files(
-                module_path
-            )
+            try:
+                valid, validation_reason = (
+                    self._validate_required_publication_files(
+                        module_path, report_local_errors=True
+                    )
+                )
+            except _ModuleCheckCouldNotRun as exc:
+                # The check could not run here (issue #639).
+                return self._finish_prewrite_failure(
+                    module_name,
+                    backup_dir,
+                    prior_registry,
+                    str(exc),
+                    entry_guard=entry_guard,
+                    cause=NotJoinedCause.CHECK_UNAVAILABLE,
+                )
             if not valid:
                 return self._finish_prewrite_failure(
                     module_name,
@@ -4913,10 +5015,35 @@ Respond with JSON:
                     "Module integration blocked by indeterminate lifecycle recovery",
                     category="module_integration",
                 )
+                self._note_lifecycle_blocked(recovery.reason)
                 return []
             return self._scan_and_integrate_new_modules_locked(
                 priority_module=priority_module
             )
+
+    def _note_lifecycle_blocked(self, reason) -> None:
+        """List the modules a lifecycle-blocked scan left waiting.
+
+        The scan joins nothing while recovery is INDETERMINATE (an unresolved
+        publication may be on disk), so the startup line can say so. Only the
+        modules that are waiting are listed; when the wait list cannot be
+        read, one entry without a module stands for them (issue #638).
+        """
+        self.import_required = []
+        self.imported = []
+        cause = NotJoinedCause.LIFECYCLE_INDETERMINATE.value
+        try:
+            waiting = self.detect_new_modules(strict=True)
+        except Exception as exc:
+            warning(
+                f"Modules waiting to join could not be listed: {exc}",
+                category="module_integration",
+            )
+            self.not_joined = [{"module": None, "reason": reason, "cause": cause}]
+            return
+        self.not_joined = [
+            {"module": name, "reason": reason, "cause": cause} for name in waiting
+        ]
 
     def _scan_and_integrate_new_modules_locked(
         self, priority_module: Optional[str] = None

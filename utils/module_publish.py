@@ -9,10 +9,16 @@ partial live module -- and drops the manifest-digest / publication-receipt /
 recover() machinery that wrapped it.
 
 Design (isolated single-writer per the server's per-player instance model):
-  1. Caller holds ``module_refresh_lock`` for the whole build+publish unit.
+  1. Caller holds ``module_refresh_lock`` while it reserves (steps 2-3) and
+     while it publishes (steps 4-6), but not while it generates (issue #708):
+     ``reserve_build_workspace``, then generation into the private workspace,
+     then ``publish_reserved``. ``publish_module_atomic`` still runs all three
+     inside one held lock for callers that want that.
   2. Build into ``modules/.module_build_<uuid>/<final_name>/`` via ``build_fn``.
   3. Resolve the final module name by VALUE (auto-suffix ``_v2``) -- never a
-     content digest (project ban: identity is never derived from content).
+     content digest (project ban: identity is never derived from content). A
+     name inside any ``.module_build_*`` workspace counts as taken, so builds
+     that overlap never pick the same name.
   4. Resolve area-ID conflicts and compute ``world_registry.json`` bytes on the
      hidden candidate BEFORE it is live (via ``prepare_registry_fn``).
   5. Atomic ``os.replace`` of the built dir into ``modules/<final_name>/`` -- the
@@ -83,6 +89,16 @@ class PublishResult:
     workspace_path: Path
 
 
+@dataclass(frozen=True)
+class BuildReservation:
+    """A reserved final name and the private hidden workspace that holds it."""
+
+    module_name: str
+    build_id: str
+    workspace_path: Path
+    candidate_path: Path
+
+
 # ----------------------------------------------------------------------------
 # Name validation + value-based allocation (no content digests)
 # ----------------------------------------------------------------------------
@@ -98,9 +114,25 @@ def validate_module_name(value: Any) -> str:
 
 
 def _occupied_names(modules_dir: Path) -> set:
-    """Case-folded names already live under modules/ (excludes hidden dirs)."""
+    """Case-folded names live under modules/ or reserved by a build workspace.
+
+    Generation runs outside ``module_refresh_lock`` (issue #708), so a build in
+    progress reserves its name through its hidden workspace. A crashed build's
+    leftover workspace keeps its name too: the cost is a value suffix on the
+    next build of that name. Other hidden dirs are ignored.
+    """
     occupied = set()
     for entry in os.scandir(modules_dir):
+        if entry.name.startswith(_BUILD_WORKSPACE_PREFIX):
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    for reserved in os.scandir(entry.path):
+                        occupied.add(reserved.name.casefold())
+            except OSError:
+                # Unreadable workspace: the occupancy guard at publish still
+                # refuses a name that went live meanwhile.
+                pass
+            continue
         if entry.name.startswith("."):
             continue
         occupied.add(entry.name.casefold())
@@ -292,7 +324,10 @@ def publish_module_atomic(
 
     Caller MUST already hold ``module_refresh_lock`` (this mirrors the store,
     which never acquired the lock itself so one uninterrupted scope can span
-    build and publish).
+    build and publish). A caller that should not hold the lock while it
+    generates uses ``reserve_build_workspace`` and ``publish_reserved``
+    instead (issue #708); this function is exactly those two around
+    ``build_fn``.
 
     Args:
         requested_name: the desired module name (validated; value-suffixed on
@@ -324,6 +359,32 @@ def publish_module_atomic(
         absent, but a partially copied public module is never exposed.
     """
     assert_module_refresh_lock_owned()
+    reservation = reserve_build_workspace(requested_name, modules_dir=modules_dir)
+    try:
+        # 1. Build the complete module tree into the hidden temp workspace.
+        build_fn(reservation.candidate_path, reservation.module_name)
+    except BaseException:
+        discard_reservation(reservation)
+        raise
+    return publish_reserved(
+        reservation,
+        prepare_registry_fn=prepare_registry_fn,
+        registry_filename=registry_filename,
+    )
+
+
+def reserve_build_workspace(
+    requested_name: str,
+    *,
+    modules_dir: os.PathLike | str = "modules",
+) -> BuildReservation:
+    """Reserve a final name and create its empty private build workspace.
+
+    Caller MUST hold ``module_refresh_lock``: the name is allocated against
+    the live modules and every other reservation. The caller may then release
+    the lock and generate into ``candidate_path``; nothing else writes there.
+    """
+    assert_module_refresh_lock_owned()
     modules_root = Path(modules_dir).absolute()
     modules_root.mkdir(parents=True, exist_ok=True)
 
@@ -331,12 +392,42 @@ def publish_module_atomic(
     build_id = uuid.uuid4().hex
     workspace = modules_root / f"{_BUILD_WORKSPACE_PREFIX}{build_id}"
     candidate_path = workspace / final_name
-
     try:
         candidate_path.mkdir(parents=True, mode=0o700)
-        # 1. Build the complete module tree into the hidden temp workspace.
-        build_fn(candidate_path, final_name)
+    except BaseException:
+        _cleanup_orphan_workspace(workspace)
+        raise
+    return BuildReservation(final_name, build_id, workspace, candidate_path)
 
+
+def discard_reservation(reservation: BuildReservation) -> None:
+    """Remove a reservation whose build failed. The lock is not needed: the
+    workspace is private to its build, and modules/<name> was never touched."""
+    _cleanup_orphan_workspace(reservation.workspace_path)
+
+
+def publish_reserved(
+    reservation: BuildReservation,
+    *,
+    prepare_registry_fn: Optional[Callable[[Path, str], Optional[bytes]]] = None,
+    registry_filename: str = "world_registry.json",
+) -> PublishResult:
+    """Publish a reserved, fully generated candidate (steps 4-6 of the design).
+
+    Caller MUST hold ``module_refresh_lock`` again here: the registry
+    preparation, the occupancy guard, the rename and the registry write are
+    the steps that read or publish shared module state, so they stay
+    serialized. ``prepare_registry_fn`` and the failure contract are as for
+    ``publish_module_atomic``.
+    """
+    assert_module_refresh_lock_owned()
+    workspace = reservation.workspace_path
+    modules_root = workspace.parent
+    final_name = reservation.module_name
+    build_id = reservation.build_id
+    candidate_path = reservation.candidate_path
+
+    try:
         # 2. Prepare the registry on the CANDIDATE (before it is live). Any
         #    in-place rewrite (ID conflict resolution) touches only the hidden
         #    candidate; a raise here aborts cleanly with modules/ untouched.

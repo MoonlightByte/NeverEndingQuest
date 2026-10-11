@@ -31,7 +31,7 @@ Recovered records receive once-persisted UUIDs and an explicit partial-transcrip
 notice. Empty existing cache is not missing cache. Source conversations remain
 untouched; native transient publication retries retain the candidate and IDs.
 There is no new provider call, startup authority, schema or gameplay decision.
-Seams: `web/web_interface.py:379`, `:437`, `:482`, `:3536`.
+Seams: `web/web_interface.py::_saved_narration_messages`, `::_publish_recovered_cache`, `::load_message_cache`, `::handle_start_game`.
 Policy: #193 p8-p12 and D-NPC-PARTY-3 history isolation. Full browser matrix remains
 an execution gate, not a claim made by this schematic.
 
@@ -142,21 +142,21 @@ Other historical anchors are not recertified by this note.
 
 ## Load-bearing seams
 
-1. `main.py:11422-11568` - terminal wrapper and shared-loop handoff.
-2. `main.py:8784-8869` - shared hydration, memory check, and startup attempt.
-3. `utils/startup_wizard.py:181` - orchestration, checkpoint/interview resume, and verified handoff.
-4. `utils/startup_wizard.py:399` and `:467` - isolated menu requests, dynamic module choice and missing-module continuity.
-5. `utils/startup_wizard.py:747` - independent semantic review, followed by the author/review interview loop.
-6. `utils/startup_wizard.py:1965` - approved-build commit and per-file read-back.
-7. `utils/startup_contract.py:1` and `utils/startup_prompt_builder.py:80` - narrow response/checkpoint contract and agent instructions.
+1. `main.py::main` - terminal wrapper and shared-loop handoff.
+2. `main.py::_main_game_loop` - shared hydration, memory check, and startup attempt.
+3. `utils/startup_wizard.py:182` - orchestration, checkpoint/interview resume, and verified handoff.
+4. `utils/startup_wizard.py:400` and `:468` - isolated menu requests, dynamic module choice and missing-module continuity.
+5. `utils/startup_wizard.py:748` - independent semantic review, followed by the author/review interview loop.
+6. `utils/startup_wizard.py:1972` - approved-build commit and per-file read-back.
+7. `utils/startup_contract.py:1` and `utils/startup_prompt_builder.py:96` - narrow response/checkpoint contract and agent instructions.
 8. `utils/startup_handoff_state.py:114-161` - handoff-state loading and wizard status.
-9. `utils/startup_handoff_state.py:214-352` - welcome claim and completion lifecycle.
-10. `main.py:8949-9133` - module, effects, and travel recovery before context.
-11. `main.py:9144-9330` - active-combat startup branch.
-12. `main.py:9338-9466` - authoritative context build and no-compression save.
-13. `main.py:374` and `main.py:10567` - detached generation and applicable shared membership review.
-14. `main.py:467`, `main.py:735` and `main.py:7555` - welcome acceptance, owner currentness checks and shared stale resolver.
-15. `main.py:9468-9735` - surface split, readiness marker, and first input.
+9. `utils/startup_handoff_state.py:214-356` - welcome claim and completion lifecycle.
+10. `main.py::_main_game_loop` from `travel_was_recovered = False` - module, effects, and travel recovery before context.
+11. `main.py::_main_game_loop` from `if party_tracker_data and party_tracker_data["worldConditions"].get("activeCombatEncounter"):` - active-combat startup branch.
+12. `main.py::_main_game_loop` from `# Normal game loop (when not resuming from combat)` - authoritative context build and no-compression save.
+13. `main.py::_welcome_worker_main` and `main.py::_review_fresh_membership_candidate` - detached generation and applicable shared membership review.
+14. `main.py::_apply_welcome`, `main.py::recovery_authority_current` and `main.py::resolve_retryable_ai_result` - welcome acceptance, owner currentness checks and shared stale resolver.
+15. `main.py::_main_game_loop` from `# #214 D-214-1=B: on the queue-backed input surfaces (web + headless` - surface split, readiness marker, and first input.
 
 ## Invariants
 

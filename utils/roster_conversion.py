@@ -165,7 +165,17 @@ class Game:
                 entries = doc.get("entries", []) if isinstance(doc, dict) else None
                 if not isinstance(entries, list):
                     raise ValueError("no list of entries")
-                self.journal = entries
+                # mentions() reads an entry's location and summary as text;
+                # an entry of another shape gives no evidence (#634).
+                self.journal = [e for e in entries if isinstance(e, dict)
+                                and isinstance(e.get("location"), str)
+                                and isinstance(e.get("summary") or "", str)]
+                if len(self.journal) < len(entries):
+                    from utils.enhanced_logger import warning
+                    warning("ROSTER: %d of journal.json's %d entries are not readable chronicle "
+                            "entries; they are left out of the evidence and play continues"
+                            % (len(entries) - len(self.journal), len(entries)),
+                            category="location_transitions")
             except (OSError, ValueError) as exc:
                 from utils.enhanced_logger import warning
                 warning("ROSTER: journal.json unreadable (%s); the chronicle's evidence "
@@ -279,18 +289,22 @@ class Seed:
 DECLARATION = "module_declaration.json"
 
 
-def usable_aliases(name, aliases):
+ENGINE_MAX_ALIASES = 16
+
+
+def usable_aliases(name, aliases, *, limit=ENGINE_MAX_ALIASES):
     """The aliases the engine will take for an occupant named name, in order:
     trimmed, non-empty, no control characters, at most 4096 bytes, neither
     the name nor one already kept, at most 16. The engine refuses the whole
-    world for any other alias, so the rest are dropped."""
+    world for any other alias, so the rest are dropped. limit=None keeps
+    every usable alias, for counting what the 16 leaves out (issue #647)."""
     kept = []
     for a in aliases:
         a = a.strip() if isinstance(a, str) else ""
         if (a and a != name and a not in kept and len(a.encode("utf-8")) <= 4096
                 and not any(unicodedata.category(c) == "Cc" for c in a)):
             kept.append(a)
-    return kept[:16]
+    return kept if limit is None else kept[:limit]
 
 
 def declared_start(module_dir):
@@ -405,7 +419,12 @@ def declared_beings(game, module, notes):
             notes.append(("declaration", "%s: being %r does not match the authored NPCs; derived as before" % (module, name)))
             continue
         aliases = being.get("aliases") if isinstance(being.get("aliases"), list) else []
-        homes[(home, named[home])] = usable_aliases(named[home], aliases)
+        usable = usable_aliases(named[home], aliases, limit=None)
+        if len(usable) > ENGINE_MAX_ALIASES:
+            notes.append(("aliases", "%s: being %r has %d usable aliases; the engine takes %d, so %d are "
+                          "not seeded" % (module, name, len(usable), ENGINE_MAX_ALIASES,
+                                          len(usable) - ENGINE_MAX_ALIASES)))
+        homes[(home, named[home])] = usable[:ENGINE_MAX_ALIASES]
         elsewhere.update((p, n) for p, n in named.items() if p != home)
     for item in data.get("dispositions") if isinstance(data.get("dispositions"), list) else []:
         item = item if isinstance(item, dict) else {}
@@ -567,25 +586,45 @@ def convert(game, lower=(), overrides=None):
         by_place[(s.module, s.loc)].append(s)
     fought = collections.defaultdict(list)  # seed id -> [(encounter, outcome or None, guess)]
     unapplied = []
+    # A record the rules cannot read is left out on its own; the other fights
+    # on record still convert (#741).
+    failed = []
     for loc_id, _, enc_id, data in game.encounters:
         mods = homes.get(loc_id, [])
-        enemies = [c for c in data.get("creatures", []) or [] if c.get("type") == "enemy"]
+        creatures = data.get("creatures") if isinstance(data, dict) else None
+        if not isinstance(creatures, list):
+            creatures = []
+            if not isinstance(data, dict) or data.get("creatures") is not None:
+                failed.append("encounter %s: no list of creatures" % enc_id)
+        if any(not isinstance(c, dict) for c in creatures):
+            failed.append("encounter %s: %d creatures that are not records" % (enc_id, sum(1 for c in creatures if not isinstance(c, dict))))
+        enemies = [c for c in creatures if isinstance(c, dict) and c.get("type") == "enemy"]
         if len(mods) != 1:
             why = "place %s is %s" % (loc_id, "in no converted module" if not mods else "in several modules: " + ", ".join(mods))
             unapplied += [{"encounter": enc_id, "enemy": c.get("name"), "why": why} for c in enemies]
             continue
         for c in enemies:
-            match = [s for s in by_place[(mods[0], loc_id)] if key(s.name) == key(base_name(c.get("name")))]
+            try:
+                match = [s for s in by_place[(mods[0], loc_id)] if key(s.name) == key(base_name(c.get("name")))]
+                if match:
+                    outcome, guess = beaten(c, data)
+            except Exception as exc:
+                failed.append("encounter %s enemy %r: %s" % (enc_id, c.get("name"), exc))
+                unapplied.append({"encounter": enc_id, "enemy": str(c.get("name")), "why": "unreadable (%s)" % exc})
+                continue
             if not match:
                 unapplied.append({"encounter": enc_id, "enemy": c.get("name"), "why": "no authored entry of that name at %s/%s" % (mods[0], loc_id)})
                 continue
-            outcome, guess = beaten(c, data)
             fought[match[0].id].append((enc_id, outcome, guess))
 
     played = {}  # (module, loc) -> {field: [entries]}
     for m in game.modules:
         for loc_id, (_, loc) in game.played[m].items():
-            played[(m, loc_id)] = {f: [e for e in loc.get(f) or [] if isinstance(e, dict) and (e.get("name") or "").strip()] for f in ("monsters", "npcs")}
+            played[(m, loc_id)] = {f: [e for e in loc.get(f) or [] if isinstance(e, dict) and isinstance(e.get("name"), str) and e["name"].strip()] for f in ("monsters", "npcs")}
+            for f in ("monsters", "npcs"):
+                odd = [e for e in loc.get(f) or [] if isinstance(e, dict) and e.get("name") is not None and not isinstance(e.get("name"), str)]
+                if odd:
+                    failed.append("%s/%s %s: %d entries with a name that is not text" % (m, loc_id, f, len(odd)))
     claimed = collections.defaultdict(set)  # (module, loc, field) -> indexes matched to a seed
 
     # Every seed takes its own entry at its own place: first in its own list,
@@ -611,12 +650,17 @@ def convert(game, lower=(), overrides=None):
     decisions, made = [], {}
     for s in seed_list:
         twin = next((made[t.id] for t in by_place[(s.module, s.loc)] if t.kind == "creatures" and t.id in made and key(t.name) == key(s.name)), None)
-        if s.kind == "creatures":
-            d = monster_decision(game, s, fought.get(s.id, []), own[s.id], persons)
-        elif twin is not None:
-            d = twin_decision(s, twin)
-        else:
-            d = npc_decision(game, s, fought.get(s.id, []), own[s.id], persons, played, claimed)
+        try:
+            if s.kind == "creatures":
+                d = monster_decision(game, s, fought.get(s.id, []), own[s.id], persons)
+            elif twin is not None:
+                d = twin_decision(s, twin)
+            else:
+                d = npc_decision(game, s, fought.get(s.id, []), own[s.id], persons, played, claimed)
+        except Exception as exc:
+            failed.append("%s: %s" % (s.id, exc))
+            d = Decision(s.id, s.name, s.place, "0", "could not be decided: as authored")
+            d.flags.append("decision")
         made[s.id] = d
         if s.id in crossed:
             d.flags.append("listed among the %s in play" % ("NPCs" if s.kind == "creatures" else "monsters"))
@@ -681,6 +725,13 @@ def convert(game, lower=(), overrides=None):
     here = wc.get("currentLocationId")
     if here and module in game.masters and here not in game.masters[module]:
         notes.append(("party", "the party tracker says %s in %s, but %s is not a place of %s; it is a place of %s" % (here, module, here, module, ", ".join(homes.get(here, [])) or "no converted module")))
+    for text in failed:
+        notes.append(("unreadable", text))
+    if failed:
+        from utils.enhanced_logger import warning
+        warning("ROSTER: the conversion left out what it could not read (%d: %s); those places keep their "
+                "authored roster and the other fights on record are kept" % (len(failed), "; ".join(failed[:3]) + ("; ..." if len(failed) > 3 else "")),
+                category="location_transitions")
     return seed_list, decisions, unapplied, notes
 
 
@@ -953,7 +1004,8 @@ RULE_NAMES = collections.OrderedDict([
     ("4", "party member listed at a place: dropped"),
     ("5", "NPC in the played file: present"), ("6", "NPC gone: present again"),
     ("6j", "NPC shares a party name: joined"), ("6m", "NPC listed elsewhere: moved"),
-    ("7", "NPC in play, not authored: created, or one occupant"), ("7m", "monster in play, not authored: created")])
+    ("7", "NPC in play, not authored: created, or one occupant"), ("7m", "monster in play, not authored: created"),
+    ("0", "could not be decided: as authored")])
 
 
 def report(game, lower, seed_list, decisions, unapplied, notes, live, problems):
@@ -1018,6 +1070,18 @@ def run(root, out, binary=None, modules=None, lower=(), overrides=None):
     actions = [a for d in decisions for a in d.actions]
     live, requests = run_engine(binary, world, places, actions)
     problems = verify(decisions, live)
+    try:
+        write_outputs(out, game, lower, seed_list, decisions, unapplied, notes, world, requests, live, problems)
+    except Exception as exc:
+        # The report is for review; the document the engine made is the
+        # result, so a report that cannot be written does not lose it (#741).
+        from utils.enhanced_logger import warning
+        warning("ROSTER: the conversion report could not be written to %s (%s); the converted document "
+                "is used and play continues" % (out, exc), category="location_transitions")
+    return problems, live, decisions
+
+
+def write_outputs(out, game, lower, seed_list, decisions, unapplied, notes, world, requests, live, problems):
     os.makedirs(out, exist_ok=True)
     with open(os.path.join(out, "seed.nql"), "w", encoding="ascii", errors="backslashreplace") as f:
         f.write(world)
@@ -1030,7 +1094,6 @@ def run(root, out, binary=None, modules=None, lower=(), overrides=None):
         json.dump({"decisions": [d.row() for d in decisions], "unapplied": unapplied, "notes": notes, "problems": problems}, f, indent=1)
     with open(os.path.join(out, "report.md"), "w", encoding="ascii") as f:
         f.write(report(game, lower, seed_list, decisions, unapplied, notes, live, problems))
-    return problems, live, decisions
 
 
 def main(argv=None):

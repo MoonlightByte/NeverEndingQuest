@@ -51,6 +51,13 @@ class ModuleCreationFailedError(RuntimeError):
     """
 
 
+class ModuleCreationBusyError(ModuleCreationFailedError):
+    """Raised when a build cannot reserve its name because module refresh
+    stays busy. Nothing was generated or changed (issue #708: the build no
+    longer holds the lock while it generates, so this is the one point where
+    it still refuses)."""
+
+
 class ModuleCreationCancelledError(RuntimeError):
     """Raised when the operator cancels an in-flight module build.
 

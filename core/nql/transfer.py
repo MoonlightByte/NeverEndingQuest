@@ -179,7 +179,7 @@ def transact(giver: Dict[str, Any], receiver: Dict[str, Any], item_name: str, qu
             rebuilt["quantity"] = item.get("quantity", 1) if type(item.get("quantity")) is int else 1
             if rebuilt["quantity"] <= 0:
                 continue   # depleted by a merge: its units live in the matching stack
-            if item.get("wearer") != cid and rebuilt.get("equipped") is True:
+            if item.get("wearer") != cid and rebuilt.get("equipped") is True and world.carried.get(item["id"]) != cid:
                 rebuilt["equipped"] = False
             out.append(rebuilt)
         return out

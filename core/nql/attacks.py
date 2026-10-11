@@ -87,7 +87,9 @@ def trait_lines(sheet: Any) -> List[str]:
 
 
 def dice_token(count: int, sides: int, bonus: int) -> str:
-    token = "%dd%d" % (count, sides)
+    # No dice (0, 0) is flat damage (an Unarmed Strike's 1 + Strength, NUM-H3c): the
+    # engine's `damage flat+<b>` (NQL P1a), with a rolled total of 0.
+    token = "flat" if (count, sides) == (0, 0) else "%dd%d" % (count, sides)
     if bonus > 0:
         token += "+%d" % bonus
     elif bonus < 0:
@@ -155,7 +157,8 @@ def score(*, to_hit: int, count: int, sides: int, bonus: int, damage_type: Any, 
     """One swing through the engine. With no damage total the swing is only scored."""
     from core.nql import apply
 
-    if not (1 <= int(count) <= MAX_DICE and 1 <= int(sides) <= MAX_SIDES):
+    flat = (int(count), int(sides)) == (0, 0)
+    if not flat and not (1 <= int(count) <= MAX_DICE and 1 <= int(sides) <= MAX_SIDES):
         return AttackScore(False, reason="damage dice %dd%d outside the engine's bounds" % (count, sides))
     if len(faces) != (2 if mode in MODES else 1):
         return AttackScore(False, reason="face count %d does not match mode %s" % (len(faces), mode))

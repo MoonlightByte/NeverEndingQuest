@@ -1,0 +1,30 @@
+// SRD 5.2.1 attack features, built by build_num.py (NUM-P1): Unarmed Strike and Martial Arts.
+// This work includes material from the System Reference Document 5.2.1 ("SRD 5.2.1") by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
+condition type "feature:martial-arts" { instances unique; }
+condition type "feature:martial-arts-d8" { instances unique; }
+condition type "feature:martial-arts-d10" { instances unique; }
+condition type "feature:martial-arts-d12" { instances unique; }
+condition type "srd:unarmed-strike" {
+ instances unique;
+ attack "unarmed-strike" named "Unarmed Strike" {
+  hit { constant 0; term stat "strength" offset -10 divide 2; term stat "level" offset 7 divide 4; }
+  damage "bludgeoning" flat { constant 1; term stat "strength" offset -10 divide 2; }
+  melee reach 5 stat "strength";
+ }
+ attack "martial-arts-strength" named "Unarmed Strike (Martial Arts, Strength)" requires "feature:martial-arts" unless slot "body" unless slot "shield" {
+  hit { constant 0; term stat "strength" offset -10 divide 2; term stat "level" offset 7 divide 4; }
+  damage "bludgeoning" dice 1 sides 6 { constant 0; term stat "strength" offset -10 divide 2; }
+   or dice 1 sides 8 requires "feature:martial-arts-d8" unless slot "body" unless slot "shield"
+   or dice 1 sides 10 requires "feature:martial-arts-d10" unless slot "body" unless slot "shield"
+   or dice 1 sides 12 requires "feature:martial-arts-d12" unless slot "body" unless slot "shield"
+  melee reach 5 stat "strength";
+ }
+ attack "martial-arts-dexterity" named "Unarmed Strike (Martial Arts, Dexterity)" requires "feature:martial-arts" unless slot "body" unless slot "shield" {
+  hit { constant 0; term stat "dexterity" offset -10 divide 2; term stat "level" offset 7 divide 4; }
+  damage "bludgeoning" dice 1 sides 6 { constant 0; term stat "dexterity" offset -10 divide 2; }
+   or dice 1 sides 8 requires "feature:martial-arts-d8" unless slot "body" unless slot "shield"
+   or dice 1 sides 10 requires "feature:martial-arts-d10" unless slot "body" unless slot "shield"
+   or dice 1 sides 12 requires "feature:martial-arts-d12" unless slot "body" unless slot "shield"
+  melee reach 5 stat "dexterity";
+ }
+}

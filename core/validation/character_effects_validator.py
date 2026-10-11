@@ -191,6 +191,13 @@ class AICharacterEffectsValidator:
         if len(equipment_effects) > 0:
             self.corrections_made.append(f"Calculated {len(equipment_effects)} equipment effects")
 
+        # Use pools and spell slots below the class table are raised (never
+        # lowered, current untouched) before the projection (#704).
+        from core.leveling import tables
+
+        for note in tables.raise_to_tables(character_data):
+            self.corrections_made.append(note)
+
         from core.nql import armor_class
 
         projection = armor_class.project(character_data)

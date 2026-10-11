@@ -74,14 +74,17 @@ def validate_event(event):
         if effect_op.get("op") not in ("add", "remove"):
             problems.append("effect op must be add or remove")
         if effect_op.get("applyOn", "always") not in (
-            "always", "failedSave", "successfulSave"
+            "always", "failedSave", "successfulSave", "hit"
         ):
             problems.append("effect applyOn is invalid")
         if (
-            effect_op.get("applyOn", "always") != "always"
+            effect_op.get("applyOn", "always") in ("failedSave", "successfulSave")
             and not (effect_op.get("saveTargetId") or effect_op.get("combatantId"))
         ):
             problems.append("save-gated effect requires a saveTargetId")
+        if effect_op.get("applyOn") == "hit" and not effect_op.get("hitTargetId"):
+            # #672: staged only when the code-scored spell attack hit.
+            problems.append("hit-gated effect requires a hitTargetId")
         targets = int(bool(effect_op.get("owner"))) + int(
             bool(effect_op.get("combatantId"))
         )

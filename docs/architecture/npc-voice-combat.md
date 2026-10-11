@@ -85,19 +85,19 @@ object identity is the current-authority check.
 ## Load-bearing seams
 
 1. `utils/capture/live_provider_call.py` `LiveTurnScope` (anchors moved by #284) - parent scope and supersession.
-2. `utils/capture/live_provider_call.py:248-307` - child scopes and complete-set registration.
+2. `utils/capture/live_provider_call.py:249-308` - child scopes and complete-set registration.
 3. `core/npc/voice_context.py:1417-1426` - exact combat beat ID.
 4. `core/npc/voice_service.py:713-720` - batch dispatch entry.
 5. `core/npc/voice_service.py:858-926` - parallel per-actor threads.
 6. `core/npc/voice_service.py:1019-1066` - authority recheck before merge.
 7. `core/npc/voice_service.py:1103-1150` - completion-bounded collection and progress.
 8. `core/npc/voice_context.py:39-111` - actor map and immutable projection.
-9. `core/managers/combat_manager.py:4999-5113` - dispatch, collect, envelope, T096 handoff.
-10. `core/managers/combat_orchestrator.py:116-135` - copy-once immutable envelope.
-11. `core/ai/combat_agent.py:496-555` - exact pending-actor T096 projection.
+9. `core/managers/combat_manager.py:5037-5151` - dispatch, collect, envelope, T096 handoff.
+10. `core/managers/combat_orchestrator.py:119-138` - copy-once immutable envelope.
+11. `core/ai/combat_agent.py:522-581` - exact pending-actor T096 projection.
 12. `core/managers/combat_transaction.py:897-1026` - pending-turn persistence.
 13. `core/managers/combat_state.py:1167-1189` - pending-turn to pending-delivery copy.
-14. `core/managers/combat_orchestrator.py:1015-1064` - T097 dossier delivery path.
+14. `core/managers/combat_orchestrator.py:1028-1077` - T097 dossier delivery path.
 15. `core/npc/voice_context.py:1709-1814` - accepted sidecar commit.
 
 ## Invariants
