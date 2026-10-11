@@ -60,7 +60,6 @@ except:
 
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.capture.live_provider_call import LiveProviderSuperseded, LiveProviderUnavailable
-from utils.module_path_manager import ModulePathManager
 
 
 class EffectsResponseFormatError(ValueError):
@@ -77,14 +76,6 @@ class AICharacterEffectsValidator:
         self.require_complete = bool(provider_scope is not None and provider_scope.completion_required)
         self.logger = logging.getLogger(__name__)
         self.corrections_made = []
-        # Get current module from party tracker for consistent path resolution
-        try:
-            from utils.encoding_utils import safe_json_load
-            party_tracker = safe_json_load("party_tracker.json")
-            current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
-            self.path_manager = ModulePathManager(current_module)
-        except:
-            self.path_manager = ModulePathManager()  # Fallback to reading from file
         
     def validate_and_correct_effects(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
         """
