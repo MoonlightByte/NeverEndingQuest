@@ -8862,13 +8862,14 @@ def _main_game_loop(startup_authority, turn_authority):
                 "the resumed fight",
                 category="session_management",
             )
-            display_dm_narration(
+            cause = (
                 "The party's location could not be read after the fight, so "
-                "the story cannot continue from here. Gameplay is paused.",
-                channel="system",
+                "the story cannot continue from here."
             )
+            display_dm_narration(cause + " Gameplay is paused.", channel="system")
             if hasattr(sys.stdin, "queue"):
-                return
+                # The web pause adds its own "Gameplay is paused." sentence.
+                return WebRecoveryPause(cause)
             from updates.save_game_manager import SaveGameManager
             return _terminal_recovery_menu(SaveGameManager())
 
