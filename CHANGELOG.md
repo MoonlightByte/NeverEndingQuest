@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- When the game cannot read a new module's files at startup because of a problem on your computer (a read error, a missing library), it no longer says the module's files did not pass the checks (#639). It now says the module's checks could not be finished and that it will be tried again at the next start. A module whose own files are broken is still reported as failing the checks.
 - Creating a new adventure no longer shows the DM's narration of it before the module is built (#182). The DM could narrate the party's arrival somewhere that did not exist yet, and when the build failed that narration stayed on screen and in the story. Now a published module is narrated once it exists, and a failed build shows only its notice.
 - Level-up no longer crashes, or drops skills, for a hero whose skills are stored as a list, as a new character's are: for example a Bard reaching level 2 and choosing Expertise (#769). Level-up now reads the proficient skills and Expertise from that list and adds a newly learned skill to it, instead of replacing it.
 - Campaign `availableModules` no longer changes order from one start to the next (#761). The module refresh rebuilt the list from a set whenever it had a module to add, so the order followed Python's hash seed; it now keeps the listed order and appends new modules in sorted order, as startup reconciliation does.
