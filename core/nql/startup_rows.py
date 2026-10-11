@@ -27,8 +27,12 @@
   reports slots and does not enforce them (NUM-P3), so the host marks it.
 - ``merge_attack_rows``: engine rows replace the author's melee and ranged
   rows of the same names; every other row stays and is reported.
-
-Rows are written only here, at startup: stored sheets are never rewritten.
+- ``refresh_rows`` / ``refresh_merge`` (item C): a stored sheet's engine rows
+  are rebuilt at a level-up commit and a weapon purchase. Engine rows carry
+  the typed mark ``engine: true``; a refresh drops the marked rows, then
+  applies the startup name rule (for rows written before the mark), and
+  writes the new rows first. It needs the ``attack_options`` view: without
+  it (an older engine, unavailable, refused) the rows are left as they are.
 """
 import copy
 from typing import Any, Dict, List, Optional, Tuple
@@ -167,6 +171,7 @@ def _row(grant: Dict[str, Any], use: str = "") -> Dict[str, Any]:
         "damageType": str(grant.get("damage_kind") or ""),
         "type": _kind(grant),
         "description": _describe(grant, use),
+        "engine": True,
     }
     if isinstance(grant.get("thrown"), dict):
         # #801: a thrown grant stays a "ranged" row (range, the prone rule) and is
@@ -199,6 +204,14 @@ def attack_rows(character: Dict[str, Any], location: str, *, binary: Optional[st
         return None, False, str(error)
     if not response.get("ok"):
         return None, False, "engine refused the world at %s" % response.get("phase")
+    rows, with_items = rows_from_response(response, not_usable_now)
+    return rows, with_items, ""
+
+
+def rows_from_response(response: Dict[str, Any],
+                       not_usable_now: Optional[List[str]] = None) -> Tuple[List[Dict[str, Any]], bool]:
+    """(rows, item rows included) from an engine response holding the ``equipment`` view and, when the
+    engine took it, the ``attack_options`` view."""
     groups: Dict[Tuple[str, ...], List[Dict[str, Any]]] = {}
     occupancy: Dict[str, Tuple[int, int]] = {}
     for view in response.get("equipment") or []:
@@ -232,7 +245,7 @@ def attack_rows(character: Dict[str, Any], location: str, *, binary: Optional[st
         rows.append(_row(grant, use))
         if not usable and not_usable_now is not None:
             not_usable_now.append(rows[-1]["name"])
-    return rows, with_items, ""
+    return rows, with_items
 
 
 def owned_weapon_names(character: Dict[str, Any]) -> List[str]:
@@ -264,3 +277,30 @@ def merge_attack_rows(character: Dict[str, Any], rows: List[Dict[str, Any]],
             kept.append(name)
     character["attacksAndSpellcasting"] = list(rows) + kept_rows
     return {"written": [r["name"] for r in rows], "replaced": replaced, "kept_author_rows": kept}
+
+
+def refresh_merge(character: Dict[str, Any], rows: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+    """Item C: drop the sheet's marked engine rows, then merge the new rows as startup does (C-Q2 A: the
+    startup name rule replaces unmarked rows written before the mark)."""
+    dropped = [str(r.get("name", "")) for r in character.get("attacksAndSpellcasting") or []
+               if isinstance(r, dict) and r.get("engine") is True]
+    character["attacksAndSpellcasting"] = [r for r in character.get("attacksAndSpellcasting") or []
+                                           if not (isinstance(r, dict) and r.get("engine") is True)]
+    report = merge_attack_rows(character, rows, True)
+    report["dropped_engine_rows"] = dropped
+    return report
+
+
+def refresh_rows(character: Dict[str, Any], location: str, *, binary: Optional[str] = None) -> Dict[str, Any]:
+    """Item C: rebuild the engine rows of a stored sheet in place, from one engine call. Never raises; the
+    rows are left unchanged unless the engine returned the ``attack_options`` view."""
+    try:
+        rows, with_items, reason = attack_rows(character, location, binary=binary)
+        if rows is None or not with_items:
+            return {"refreshed": False, "reason": reason or "the engine returned no attack_options view"}
+        trial = dict(character)  # all or nothing: the sheet's list is replaced only after a whole merge
+        report = refresh_merge(trial, rows)
+        character["attacksAndSpellcasting"] = trial["attacksAndSpellcasting"]
+        return dict(report, refreshed=True)
+    except Exception as error:  # fail forward: the caller's commit proceeds with the rows unchanged
+        return {"refreshed": False, "reason": "%s: %s" % (type(error).__name__, error)}
