@@ -25,7 +25,7 @@ from core.managers.level_up_manager import LevelUpTurn, _level_up_commit_guard
 from core.nql import leveling as nql_leveling
 from utils.capture.live_provider_call import get_live_turn_scope
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-from utils.enhanced_logger import debug, error, info
+from utils.enhanced_logger import debug, error, info, warning
 from utils.file_operations import safe_read_json
 from utils.module_path_manager import ModulePathManager
 
@@ -428,6 +428,13 @@ class LevelUpSession:
         if not growth.ok:
             return self._interview(f"Your level-up has not been applied: {growth.reason}. Say 'retry'.")
         after = growth.sheet
+        # Item C: the engine's attack rows follow the new level (proficiency, the Martial Arts die). One
+        # engine call, outside the locks; the rows ride in the same commit, and the level-up commits either way.
+        from core.nql import armor_class, startup_rows
+        refreshed = startup_rows.refresh_rows(after, armor_class.PROJECTION_LOCATION)
+        if not refreshed.get("refreshed"):
+            warning(f"LEVEL-UP: {self.character_name} attack rows not refreshed ({refreshed.get('reason')})",
+                    category="level_up")
         with _get_character_update_lock(os.path.basename(self._path)[:-5]), \
                 path_transaction_lock(self._path, suffix=".effects.lock", timeout_seconds=30.0) as lease:
             if lease is None:
