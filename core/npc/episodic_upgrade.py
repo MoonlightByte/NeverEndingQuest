@@ -109,8 +109,11 @@ def _keep_journal_replaced(marker: Dict[str, Any], path: str) -> None:
         on_disk = read_marker(path)
     except Exception:  # noqa: BLE001 - an unreadable marker is rewritten below
         return
-    if on_disk.get("journalReplaced"):
-        marker["journalReplaced"] = on_disk["journalReplaced"]
+    replaced = on_disk.get("journalReplaced")
+    # Only a key written for this run's own upgrade version counts: a later
+    # UPGRADE_VERSION starts afresh and must not inherit an older marker's note.
+    if isinstance(replaced, dict) and on_disk.get("version") == marker.get("version"):
+        marker["journalReplaced"] = replaced
 
 
 def _write_run_marker(marker: Dict[str, Any], path: str) -> None:
