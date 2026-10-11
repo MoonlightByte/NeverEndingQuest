@@ -224,6 +224,7 @@ def rows_from_response(response: Dict[str, Any],
     options = response.get("attack_options")
     with_items = isinstance(options, list)
     uses: Dict[Tuple[str, ...], Tuple[str, bool]] = {}
+    ranks: Dict[Tuple[str, ...], int] = {}
     for view in options or []:
         worn = {str(o.get("item")): o.get("slots") for o in view.get("options") or [] if o.get("worn") is True}
         for option in view.get("options") or []:
@@ -234,11 +235,18 @@ def rows_from_response(response: Dict[str, Any],
                 usable = _usable_now(option, worn.get(item) or [], occupancy)
                 use = " Carried mode: needs %s%s." % (_slot_text(option.get("slots")),
                                                     "" if usable else "; not usable now, the slots are taken")
+            # #814: one row per weapon type and mode. Two items of one weapon share the option's typed
+            # definition; an option without one keeps its own item's rows.
+            definition = option.get("definition")
+            owner = definition if isinstance(definition, str) and definition else item
             for grant in option.get("grants") or []:
                 if isinstance(grant, dict):
-                    key = ("item", item, str(option.get("mode")), _kind(grant))
+                    key = ("item", owner, str(option.get("mode")), _kind(grant))
                     groups.setdefault(key, []).append(grant)
-                    uses[key] = (use, usable)
+                    # The group's text is its best option's: worn, then carried and usable now, then any.
+                    rank = 0 if option.get("worn") is True else 1 if usable else 2
+                    if key not in uses or rank < ranks[key]:
+                        uses[key], ranks[key] = (use, usable), rank
     rows = []
     for key, grant in zip(groups, _best(groups)):
         use, usable = uses.get(key, ("", True))
