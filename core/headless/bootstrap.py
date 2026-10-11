@@ -177,7 +177,8 @@ def seed_character(character_file, module_name):
         update_party_tracker,
     )
     character_data = auto_fix_character_data(character_data)
-    valid, validation_error = validate_character_with_recovery(character_data)
+    valid, validation_error = validate_character_with_recovery(
+        character_data, mechanics=False)
     if not valid:
         raise BootstrapError(
             "character file %s failed schema validation: %s"
@@ -185,6 +186,21 @@ def seed_character(character_file, module_name):
     # Engine AC projection + SRD level-1 hit points, as the interview
     # applies them at finalize (#531, #532); the notes are logged there.
     character_data, _ = startup_mechanics(character_data)
+    # The starting checks read the sheet as the engine left it, in the
+    # wizard's order (#797): an authored AC the projection corrects is not
+    # refused, and a sheet still wrong after it is.
+    from utils.startup_mechanics import validate_startup_mechanics
+    valid, validation_error = validate_startup_mechanics(character_data)
+    if not valid:
+        raise BootstrapError(
+            "character file %s failed the starting mechanics check: %s"
+            % (character_file, validation_error))
+    valid, validation_error = validate_character_with_recovery(
+        character_data, mechanics=False)
+    if not valid:
+        raise BootstrapError(
+            "character file %s failed schema validation after the starting "
+            "projection: %s" % (character_file, validation_error))
     if not save_character_to_module(character_data, module_name):
         raise BootstrapError(
             "failed to save character %r into module %r"
