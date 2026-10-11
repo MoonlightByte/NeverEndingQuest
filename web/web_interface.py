@@ -4298,6 +4298,13 @@ def handle_plot_data_request(data=None):
 def handle_request_storage_data(data=None):
     """Handles a request from the client to view all player storage."""
     debug("WEB_REQUEST: Received request for storage data from client", category="web_interface")
+    if not os.path.exists("party_tracker.json"):
+        # A fresh start before the first party_tracker.json write: there is
+        # no active module and so no storage yet (issue #448). A tracker that
+        # exists but cannot be read still reports the error below.
+        debug("WEB_REQUEST: No storage yet (no party_tracker.json)", category="web_interface")
+        emit('storage_data_response', _ui_response(data, {'data': {'success': True, 'storage': [], 'count': 0}}))
+        return
     try:
         from core.managers.storage_manager import get_storage_manager
         manager = get_storage_manager()
