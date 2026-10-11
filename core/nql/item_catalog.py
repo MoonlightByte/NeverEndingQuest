@@ -119,9 +119,11 @@ def entry(catalog_id: Any) -> Optional[Dict[str, Any]]:
     return entries().get(catalog_id)
 
 
-def _armor_field(key: str, value: Any) -> Any:
+def _armor_field(key: str, value: Any, category: Any = None) -> Any:
     if key == "ac_bonus":
         return value if type(value) is int else 0
+    if key == "dex_limit" and category == "heavy" and type(value) is int and value == 0:
+        return None  # heavy armor adds no Dexterity: a limit of 0 is no limit (#764)
     return value
 
 
@@ -142,7 +144,9 @@ def row_entry(row: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional[s
         return None, f"names unknown catalog_id {catalog_id!r}"
     if found.get("kind") == "armor":
         armor = found.get("neq_armor") if isinstance(found.get("neq_armor"), dict) else {}
-        drift = [k for k in _ARMOR_FIELDS if _armor_field(k, row.get(k)) != _armor_field(k, armor.get(k))]
+        category = armor.get("armor_category")
+        drift = [k for k in _ARMOR_FIELDS
+                 if _armor_field(k, row.get(k), category) != _armor_field(k, armor.get(k), category)]
         if drift:
             return None, f"({catalog_id}) differs from its catalog type in {', '.join(drift)}"
     return found, None
