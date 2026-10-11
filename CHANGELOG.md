@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In a fight, after a character swings a weapon, the fight event now records the engine's view of that character's hands, and a carried weapon that fits a free hand in its default grip is drawn, so it is in hand for the next turn (NUM-B, Refs #193). The swing itself is never refused or changed. A thrown weapon, a stack such as eight javelins, a grip other than the default, or hands that are full is recorded but not drawn. When a weapon is drawn this way, the fight narration now says so ("draws the dagger and attacks"); nothing else about the hands reaches the narration (NUM-B2).
 
 ### Changed
+- Removed `core/ai/conversation_compression.py`, a module that could not be imported (it imported two modules missing from the repository) and that nothing used. The README's compression section now names the live `utils/compression/conversation_compressor_parallel.py`, and `model_config.py` for the `COMPRESSION_ENABLED` switch (#811).
 - Unused summary code in `core/ai/cumulative_summary.py`, seven functions left from an older summary pipeline that nothing called, was removed, and the registered source lines of its two remaining AI calls (T018, T019) were corrected (#798). Gameplay, summaries and saves are unchanged.
 
 ### Fixed
