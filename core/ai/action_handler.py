@@ -3541,6 +3541,59 @@ def _engine_request_id(invocation_claim, action_context, suffix):
     return "dm:%s:%d:%s" % (turn_id, index, suffix)
 
 
+# The turn whose fight already failed to start once (#444). It is only ever
+# compared with the current turn's id, so a value left from an earlier turn
+# is harmless.
+_last_failed_combat_turn = None
+
+# Why a fight did not start, as the DM is told it. Fixed phrases only: never
+# raw error text, and nothing parses them.
+COMBAT_START_REASONS = {
+    "builder_failed": "the combat builder failed",
+    "builder_no_encounter": "the combat builder did not save an encounter",
+    "location_unreadable": "the current location could not be loaded",
+    "combat_not_started": "the combat could not start",
+}
+
+
+def _combat_start_failed(reason, conversation_history, invocation_claim):
+    """Close a createEncounter that ended without a finished fight (#444).
+
+    The tracker decides. A fight still active there stays saved and resumes
+    at the next start, so the turn ends with the one failure line ("error").
+    When no fight was activated the DM is told once per turn and answers
+    again ("needs_response"). A second failure in the same turn, a turn with
+    no identity, or an unreadable tracker ends with the failure line, so this
+    can never loop.
+    """
+    global _last_failed_combat_turn
+    error(
+        "FAILURE: Combat did not start: %s" % COMBAT_START_REASONS[reason],
+        category="combat_processing",
+    )
+    party = safe_json_load("party_tracker.json")
+    world = party.get("worldConditions") if isinstance(party, dict) else None
+    turn_id = str(getattr(invocation_claim, "logical_invocation_id", "") or "").strip()
+    if (
+        not isinstance(world, dict)
+        or world.get("activeCombatEncounter")
+        or not turn_id
+        or turn_id == _last_failed_combat_turn
+    ):
+        return {"status": "error", "needs_update": False}
+    _last_failed_combat_turn = turn_id
+    conversation_history.append({
+        "role": "user",
+        "content": (
+            "Combat Error: the encounter you requested could not be set up "
+            "(%s), so no fight has started and nothing changed. Answer the "
+            "player's last action again without this fight; request it again "
+            "only if it still fits." % COMBAT_START_REASONS[reason]
+        ),
+    })
+    return {"status": "needs_response", "needs_update": True}
+
+
 def process_action(
     action,
     party_tracker_data,
@@ -3668,7 +3721,8 @@ def process_action(
             debug("STATE_CHANGE: Status updated to building encounter", category="combat_processing")
         except Exception as e:
             error(f"FAILURE: Could not update status for encounter building", exception=e, category="combat_processing")
-        
+
+        fight_finished = False
         try:
             print("[DEBUG ACTION_HANDLER] Calling combat_builder.py...")
             debug(f"SUBPROCESS: Sending to combat_builder.py: {json.dumps(action)}", category="combat_processing")
@@ -3735,7 +3789,9 @@ def process_action(
 
                 if reloaded_location_data is None:
                     print(f"ERROR: Failed to load location data for {current_location_id}")
-                    return # Or handle error appropriately
+                    return _combat_start_failed(
+                        "location_unreadable", conversation_history, invocation_claim
+                    )
 
                 print(f"[DEBUG ACTION_HANDLER] About to call run_combat_simulation with encounter: {encounter_id}")
                 print("[DEBUG ACTION_HANDLER] This should start INTERACTIVE turn-based combat...")
@@ -3748,7 +3804,7 @@ def process_action(
                 except Exception as e:
                     error(f"FAILURE: Could not update status for combat start", exception=e, category="combat_processing")
                 
-                dialogue_summary, updated_player_info = run_combat_simulation(
+                combat_result = run_combat_simulation(
                     encounter_id,
                     party_tracker_data,
                     reloaded_location_data,
@@ -3802,7 +3858,21 @@ def process_action(
                             ),
                         },
                     )
-                
+
+                # A quit at a combat prompt returns None and a stopped fight
+                # (None, None); neither is a finished fight (#444).
+                if not (
+                    isinstance(combat_result, tuple)
+                    and len(combat_result) == 2
+                    and isinstance(combat_result[0], str)
+                    and combat_result[0]
+                ):
+                    return _combat_start_failed(
+                        "combat_not_started", conversation_history, invocation_claim
+                    )
+                dialogue_summary, updated_player_info = combat_result
+                fight_finished = True
+
                 print(f"[DEBUG ACTION_HANDLER] Combat simulation returned. Type of result: {type(dialogue_summary)}")
                 print(f"[DEBUG ACTION_HANDLER] Dialogue summary preview: {str(dialogue_summary)[:200]}...")
 
@@ -3820,69 +3890,52 @@ def process_action(
                 else:
                     print("WARNING: Combat simulation did not return valid player info. Player file not updated.")
 
-                # Copy combat summary to main conversation history
-                print("[DEBUG ACTION_HANDLER] Loading combat conversation history...")
-                combat_history = safe_json_load("modules/conversation_history/combat_conversation_history.json")
-                print(f"[DEBUG ACTION_HANDLER] Combat history has {len(combat_history) if combat_history else 0} entries")
-                
-                combat_summary = next((entry for entry in reversed(combat_history) if entry["role"] == "assistant" and "Combat Summary:" in entry["content"]), None)
-
-                if combat_summary:
-                    print("[DEBUG ACTION_HANDLER] Found combat summary, appending to conversation history")
-                    # Add clear historical marker to prevent Combat Commitment Point confusion
-                    from core.managers.combat_manager import (
-                        combat_record_exit_kind, combat_record_xp_receipt,
-                        render_combat_record_marker,
+                # Copy combat summary to main conversation history. The fight's
+                # exit wrote exactly this line and returned its summary, so the
+                # record never comes from an earlier fight (#444).
+                print("[DEBUG ACTION_HANDLER] Appending this fight's combat summary to conversation history")
+                # Add clear historical marker to prevent Combat Commitment Point confusion
+                from core.managers.combat_manager import (
+                    combat_record_exit_kind, combat_record_xp_receipt,
+                    render_combat_record_marker,
+                )
+                modified_combat_summary = {
+                    "role": "user",
+                    "content": render_combat_record_marker(
+                        "Combat Summary: " + dialogue_summary,
+                        combat_record_exit_kind(encounter_id),
+                        combat_record_xp_receipt(encounter_id),
                     )
-                    modified_combat_summary = {
-                        "role": "user",
-                        "content": render_combat_record_marker(
-                            combat_summary["content"],
-                            combat_record_exit_kind(encounter_id),
-                            combat_record_xp_receipt(encounter_id),
-                        )
-                    }
-                    conversation_history.append(modified_combat_summary)
-                    # Import save_conversation_history from main
-                    if __name__ != "__main__":
+                }
+                conversation_history.append(modified_combat_summary)
+                # Import save_conversation_history from main
+                if __name__ != "__main__":
 
-                        sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+                    sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-                    from main import save_conversation_history
-                    save_conversation_history(conversation_history)
-                    # The engine's location record: each enemy's typed end in
-                    # the fight resolves its occupant (P4-c). Never stops play.
-                    from core.nql import occupants as _occupants
-                    _occupants.resolve_combat(encounter_id)
-                    print("[DEBUG ACTION_HANDLER] Returning with status='needs_post_combat_narration' - main loop will get follow-up from AI")
-                    print("[DEBUG ACTION_HANDLER] ========== CREATE ENCOUNTER END ==========\n")
-                    # SIGNAL-BASED ARCHITECTURE: This return value is crucial for maintaining chronological history.
-                    # When combat ends, we've already added the [COMBAT CONCLUDED...] summary to conversation_history.
-                    # This signal tells main.py to:
-                    # 1. NOT append the original createEncounter message (preventing duplication)
-                    # 2. Request a new AI response for natural post-combat narration
-                    # This ensures players get seamless transitions like Kira's dialogue after combat.
-                    return {"status": "needs_post_combat_narration"}
-                else:
-                    print("ERROR: Combat summary not found in combat conversation history")
-                    print("[DEBUG ACTION_HANDLER] ========== CREATE ENCOUNTER END WITH ERROR ==========\n")
-                    # Reset status on error
-                    try:
-                        from core.managers.status_manager import status_ready
-                        status_ready()
-                    except Exception:
-                        pass
+                from main import save_conversation_history
+                save_conversation_history(conversation_history)
+                # The engine's location record: each enemy's typed end in
+                # the fight resolves its occupant (P4-c). Never stops play.
+                from core.nql import occupants as _occupants
+                _occupants.resolve_combat(encounter_id)
+                print("[DEBUG ACTION_HANDLER] Returning with status='needs_post_combat_narration' - main loop will get follow-up from AI")
+                print("[DEBUG ACTION_HANDLER] ========== CREATE ENCOUNTER END ==========\n")
+                # SIGNAL-BASED ARCHITECTURE: This return value is crucial for maintaining chronological history.
+                # When combat ends, we've already added the [COMBAT CONCLUDED...] summary to conversation_history.
+                # This signal tells main.py to:
+                # 1. NOT append the original createEncounter message (preventing duplication)
+                # 2. Request a new AI response for natural post-combat narration
+                # This ensures players get seamless transitions like Kira's dialogue after combat.
+                return {"status": "needs_post_combat_narration"}
             else:
                 print(f"[DEBUG ACTION_HANDLER] FAILED! Encounter was not created successfully")
                 print(f"[DEBUG ACTION_HANDLER] Full stdout: {result.stdout}")
                 print(f"[DEBUG ACTION_HANDLER] Full stderr: {result.stderr}")
                 print("[DEBUG ACTION_HANDLER] ========== CREATE ENCOUNTER END WITH FAILURE ==========\n")
-                # Reset status on failure
-                try:
-                    from core.managers.status_manager import status_ready
-                    status_ready()
-                except Exception:
-                    pass
+                return _combat_start_failed(
+                    "builder_no_encounter", conversation_history, invocation_claim
+                )
 
         except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             # A read-only save stop inside the combat ends the session now,
@@ -3892,22 +3945,21 @@ def process_action(
             print(f"Error occurred while running combat_builder.py: {e}")
             print("Error output:", e.stderr)
             print("Standard output:", e.stdout)
-            # Reset status on exception
-            try:
-                from core.managers.status_manager import status_ready
-                status_ready()
-            except Exception:
-                pass
+            return _combat_start_failed(
+                "builder_failed", conversation_history, invocation_claim
+            )
         except Exception as e:
             print(f"Unexpected error occurred: {e}")
             import traceback
             traceback.print_exc()
-            # Reset status on exception
-            try:
-                from core.managers.status_manager import status_ready
-                status_ready()
-            except Exception:
-                pass
+            # This try also wraps the fight itself. After a finished fight the
+            # turn ends with the one failure line; before that, the tracker
+            # decides whether a fight is still active (#444).
+            if fight_finished:
+                return create_return(status="error", needs_update=False)
+            return _combat_start_failed(
+                "combat_not_started", conversation_history, invocation_claim
+            )
 
     elif action_type == ACTION_UPDATE_TIME:
         status_advancing_time()
