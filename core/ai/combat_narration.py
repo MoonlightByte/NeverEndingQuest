@@ -162,6 +162,17 @@ def _action_name(event):
     return "combat action"
 
 
+def _drawn_item(event):
+    """NUM-B2: the weapon drawn after the swing, once the draw landed on the
+    sheet. Owner N1/N2: nothing else of the hands record reaches the narrator."""
+    hands = event.get("hands")
+    draw = hands.get("draw") if isinstance(hands, dict) else None
+    if not isinstance(draw, dict) or draw.get("applied") is not True:
+        return None
+    name = draw.get("item_name")
+    return name.strip() if isinstance(name, str) and name.strip() else None
+
+
 def _fact_event(event, creatures, presentation=None):
     outcome = event.get("outcome") or {}
     intent = event.get("intent") or {}
@@ -222,6 +233,8 @@ def _fact_event(event, creatures, presentation=None):
         # at the start of the actor's turn (name, value, rechargesOn, recharged)
         "rechargeSpent": [spent.get("name") for spent in event.get("recharge") or [] if spent.get("name")] or None,
         "rechargeRolls": _public_copy(event.get("rechargeRolls")) if event.get("rechargeRolls") else None,
+        # NUM-B2: a carried weapon drawn after this swing (item name)
+        "drew": _drawn_item(event),
     }
     return {key: value for key, value in fact.items() if value is not None}
 
@@ -342,6 +355,7 @@ def build_scene_dossier(encounter, events, characters=None):
             for value in (
                 [row.get("name") for row in combatants]
                 + [fact.get("actionName") for fact in facts]
+                + [fact.get("drew") for fact in facts]
                 + [encounter.get("locationName"), encounter.get("location")]
             )
             if isinstance(value, str) and value.strip()
@@ -733,13 +747,15 @@ def render_committed_events(encounter, events):
         target = targets[0] if targets else None
         target_name = target.get("targetName") if isinstance(target, dict) else None
         if fact.get("kind") == "attack":
+            # NUM-B2: a committed draw is part of the swing
+            attacker = "%s draws the %s and" % (actor, fact["drew"]) if fact.get("drew") else actor
             if fact.get("hit"):
                 damage = fact.get("damage")
                 if type(damage) is not int and isinstance(target, dict):
                     delta = target.get("hpDelta")
                     damage = abs(delta) if type(delta) is int and delta < 0 else None
                 sentence = "%s attacks %s with %s and hits" % (
-                    actor,
+                    attacker,
                     target_name or "the target",
                     action,
                 )
@@ -747,7 +763,7 @@ def render_committed_events(encounter, events):
                     sentence += " for %d damage" % damage
             else:
                 sentence = "%s attacks %s with %s and misses" % (
-                    actor,
+                    attacker,
                     target_name or "the target",
                     action,
                 )
