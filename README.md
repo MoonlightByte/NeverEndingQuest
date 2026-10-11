@@ -577,14 +577,14 @@ The Advanced Token Compression System has graduated from experimental to **CORE 
 
 ### Compression Technologies
 
-#### 1. Parallel Conversation Compression (`core/ai/conversation_compression.py`)
+#### 1. Parallel Conversation Compression (`utils/compression/conversation_compressor_parallel.py`)
 The system uses advanced parallel processing to compress conversation history in real-time:
 
 - **Parallel Processing**: ThreadPoolExecutor with up to 5 workers for concurrent compression
 - **Smart Caching**: MD5 hash-based caching prevents re-compression of identical messages
 - **Selective Compression**: Preserves last 2 user messages for immediate context while compressing older history
 - **Token Reduction**: Achieves 76-82% reduction per message while maintaining narrative continuity
-- **Configuration**: Toggle system-wide with `COMPRESSION_ENABLED` flag in `config.py`
+- **Configuration**: Toggle system-wide with `COMPRESSION_ENABLED` flag in `model_config.py`
 
 **Performance Metrics:**
 - Average compression ratio: 76-82% per message
