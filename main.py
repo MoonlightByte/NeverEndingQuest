@@ -237,6 +237,21 @@ def _active_combat_recovery(party_tracker):
             else None
         ),
     }
+
+
+def _post_combat_world(party_tracker):
+    """The tracker's worldConditions when it names where the party is, else None (#444)."""
+    world = (
+        party_tracker.get("worldConditions")
+        if isinstance(party_tracker, dict)
+        else None
+    )
+    if not isinstance(world, dict):
+        return None
+    for key in ("currentAreaId", "currentLocation", "currentArea"):
+        if not world.get(key):
+            return None
+    return world
 _conversation_history_dirty = False
 _dirty_conversation_history = None
 should_inject_creation_prompt = False  # Global flag for module creation prompt injection
@@ -8717,9 +8732,15 @@ def _main_game_loop(startup_authority, turn_authority):
 
         # Call run_combat_simulation directly to get the return values
         from core.managers.combat_manager import run_combat_simulation
-        dialogue_summary, _ = run_combat_simulation(
+        # A quit at a combat prompt returns None; the fight stays active (#444).
+        combat_result = run_combat_simulation(
             active_encounter_id, party_tracker_data, location_data_resume,
             invocation_claim=startup_claim,
+        )
+        dialogue_summary = (
+            combat_result[0]
+            if isinstance(combat_result, tuple) and combat_result
+            else None
         )
         require_current_invocation(startup_claim)
 
@@ -8792,6 +8813,25 @@ def _main_game_loop(startup_authority, turn_authority):
             from core.nql import occupants as _occupants
             _occupants.resolve_combat(active_encounter_id)
 
+        if not combat_still_active and _post_combat_world(party_tracker_data) is None:
+            # The fight's record is kept above. Without the party's location
+            # the story cannot go on, so no narration is asked for (#444).
+            # The #448 shape; the travel-recovery scope has already closed.
+            error(
+                "FAILURE: party_tracker.json has no readable location after "
+                "the resumed fight",
+                category="session_management",
+            )
+            display_dm_narration(
+                "The party's location could not be read after the fight, so "
+                "the story cannot continue from here. Gameplay is paused.",
+                channel="system",
+            )
+            if hasattr(sys.stdin, "queue"):
+                return
+            from updates.save_game_manager import SaveGameManager
+            return _terminal_recovery_menu(SaveGameManager())
+
         # ** CRITICAL FIX: Get a new AI response for post-combat narration **
         # This makes the resumed flow behave exactly like the normal flow.
         if not combat_still_active:
@@ -8807,10 +8847,11 @@ def _main_game_loop(startup_authority, turn_authority):
             require_current_invocation(startup_claim)
             # Process the AI's post-combat response to get the game moving again.
             # We need to load the fresh location data for this call.
-            current_area_id_post_combat = party_tracker_data["worldConditions"]["currentAreaId"]
+            world_post_combat = _post_combat_world(party_tracker_data)
+            current_area_id_post_combat = world_post_combat["currentAreaId"]
             location_data_post_combat = location_manager.get_location_info(
-                party_tracker_data["worldConditions"]["currentLocation"],
-                party_tracker_data["worldConditions"]["currentArea"],
+                world_post_combat["currentLocation"],
+                world_post_combat["currentArea"],
                 current_area_id_post_combat
             )
             # Match the uninterrupted-combat handoff: the committed combat
