@@ -325,17 +325,24 @@ class LevelUpSession:
         if skill_times:
             from core.nql import stats as nql_stats
             skills = sheet.get("skills")
-            skills = dict(skills) if isinstance(skills, dict) else {}
+            listed = isinstance(skills, list)
+            # A list names the proficient skills and is written back whole (the
+            # merge replaces it), so it keeps every stored name (#769).
+            skills = list(skills) if listed else dict(skills) if isinstance(skills, dict) else {}
             expertise = list(sheet.get(nql_stats.EXPERTISE_FIELD) or [])
             for key, times in skill_times.items():
                 stored = next((k for k in skills if nql_stats.skill_id(k) == nql_stats.skill_id(key)), None)
                 if stored is None:
-                    skills[key] = 0  # a new proficiency; the engine writes the bonus
+                    if listed:
+                        skills.append(nql_stats._display(nql_stats.skill_id(key) or key))
+                    else:
+                        skills[key] = 0  # a new proficiency; the engine writes the bonus
                 if times == 2:
                     display = nql_stats._display(nql_stats.skill_id(key) or key)
                     if display not in expertise:
                         expertise.append(display)
-            changes["skills"] = skills
+            if not listed or skills != sheet.get("skills"):
+                changes["skills"] = skills
             if expertise != list(sheet.get(nql_stats.EXPERTISE_FIELD) or []):
                 changes[nql_stats.EXPERTISE_FIELD] = expertise
         if feats != (sheet.get("feats") or []):
