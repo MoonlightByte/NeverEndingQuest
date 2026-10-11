@@ -454,6 +454,7 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     current_frame = inspect.currentframe()
     caller_frame = current_frame.f_back if current_frame is not None else None
     runtime_line = caller_frame.f_lineno if caller_frame is not None else 0
+    runtime_file = caller_frame.f_code.co_filename if caller_frame is not None else ""
     del caller_frame
     del current_frame
 
@@ -601,7 +602,7 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
             variants = cfg.get(f"{tier}_tier_variants", [])
 
         # Get source location from registered metadata
-        meta = _CALLSITE_META.get(task_id, {})
+        meta = _callsite_meta_for(task_id, runtime_file)
         writer = _get_writer()
         writer.write_primary(
             task_id=task_id,
@@ -649,8 +650,32 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
 
 # Callsite metadata registry
 _CALLSITE_META = {}
+# Every registration per task_id, keyed by file: one task_id may have more than
+# one live callsite (T078, issue #816), and the last import must not relabel the
+# other's records.
+_CALLSITE_FILES = {}
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _path_key(path):
+    return os.path.normcase(path).replace("\\", "/")
 
 
 def register_callsite(task_id, file_path, line):
     """Register file/line metadata for a task_id. Called at module import."""
     _CALLSITE_META[task_id] = {"file": file_path, "line": line}
+    _CALLSITE_FILES.setdefault(task_id, {})[_path_key(file_path)] = _CALLSITE_META[task_id]
+
+
+def _callsite_meta_for(task_id, runtime_file):
+    """The registration of the file that made the call, else the last one."""
+    if runtime_file:
+        try:
+            relative = os.path.relpath(runtime_file, _REPO_ROOT)
+        except ValueError:  # another drive on Windows
+            relative = None
+        if relative is not None:
+            meta = _CALLSITE_FILES.get(task_id, {}).get(_path_key(relative))
+            if meta is not None:
+                return meta
+    return _CALLSITE_META.get(task_id, {})
