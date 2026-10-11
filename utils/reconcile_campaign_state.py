@@ -8,7 +8,9 @@
 
 This utility patches missing entries and removes only known hidden/system
 directory names that older reconciliation could misclassify as modules. It
-does not overwrite differing campaign values or remove unknown modules.
+does not overwrite differing campaign values or remove unknown modules from
+the registry. Campaign availableModules keeps only joined modules and the
+party's own module (#720).
 """
 
 from __future__ import annotations
@@ -163,23 +165,50 @@ def _reconcile_campaign_state_locked() -> Dict[str, Any]:
         _default_campaign_data,
         mutate_campaign_state,
     )
+    from core.generators.module_stitcher import ModuleStitcher
+
+    world_registry = _load_json_dict(WORLD_REGISTRY_FILE)
+    registry_readable = isinstance(world_registry.get("modules"), dict)
+
+    def offered_id(item: str) -> str:
+        # availableModules offers only joined modules (#720), plus the
+        # party's own module, which is never dropped. A module left unjoined
+        # still gets its registry stub below, so the refresh can retry it.
+        # A kept name is written as its registry id (#754): the exact name
+        # when the registry joins it, else the name with spaces read as
+        # underscores. "" means the name is not offered.
+        if ModuleStitcher.is_joined_registry_module(world_registry, item):
+            return item
+        normalized = _normalize_module_name(item)
+        if normalized == module_name or ModuleStitcher.is_joined_registry_module(
+            world_registry, normalized
+        ):
+            return normalized
+        return ""
 
     def merge_available_modules(fresh_campaign: Dict[str, Any]) -> bool:
         campaign_available = fresh_campaign.get("availableModules")
         changed = not isinstance(campaign_available, list)
         if not isinstance(campaign_available, list):
             campaign_available = []
-        filtered_available = [
-            item
-            for item in campaign_available
-            if not _is_system_module_name(item)
-        ]
+        # Each start also drops names an older list holds for modules that
+        # are not joined, and writes each kept name once, as its id (#754).
+        # An unreadable registry drops nothing: names are only normalized
+        # and exact repeats removed.
+        filtered_available: List[str] = []
+        for item in campaign_available:
+            if _is_system_module_name(item):
+                continue
+            item = offered_id(item) if registry_readable else _normalize_module_name(item)
+            if item:
+                _append_unique(filtered_available, item)
         if filtered_available != campaign_available:
             changed = True
         campaign_available = filtered_available
         fresh_campaign["availableModules"] = campaign_available
         for mod in canonical_modules:
-            changed = _append_unique(campaign_available, mod) or changed
+            if offered_id(mod):
+                changed = _append_unique(campaign_available, mod) or changed
         return changed
 
     campaign, campaign_changed = mutate_campaign_state(
@@ -191,7 +220,6 @@ def _reconcile_campaign_state_locked() -> Dict[str, Any]:
     if campaign_changed:
         changes.append("modules/campaign.json:availableModules")
 
-    world_registry = _load_json_dict(WORLD_REGISTRY_FILE)
     modules_map = world_registry.get("modules")
     if not isinstance(modules_map, dict):
         modules_map = {}

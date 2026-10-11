@@ -86,7 +86,7 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
             continue
         delta = _stock(new[iid]) - _stock(e)
         if delta < 0:
-            if e.get("equipped") is True and new[iid].get("equipped") is not False:
+            if e.get("equipped") is True and new[iid].get("equipped") is not False and iid not in world.carried:
                 ops.append(f"unequip {_q(iid)};")
             ops.append(f"consume {_q(iid)} from {_q(cid)} by {-delta};")
         elif delta > 0:
@@ -124,7 +124,9 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
         now = e.get("equipped") is True
         if now and not was:
             ops.append(f"equip {_q(iid)} on {_q(cid)};")
-        elif was and not now and _stock(e) >= _stock(old[iid]):
+        elif was and not now and _stock(e) >= _stock(old[iid]) and iid not in world.carried:
+            # A row the hand rule declared carried (NUM-H3a) is not worn in the
+            # engine: unequipping it changes the sheet's flag only.
             ops.append(f"unequip {_q(iid)};")
     for iid, e in created:
         if e.get("equipped") is True:
@@ -174,7 +176,7 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
         entry = copy.deepcopy(base)
         entry["nql_id"] = iid
         entry["quantity"] = stock
-        entry["equipped"] = item.get("wearer") == cid
+        entry["equipped"] = item.get("wearer") == cid or (world.carried.get(iid) == cid and base.get("equipped") is True)
         result.append(entry)
     for e in after.get("equipment") or []:
         if isinstance(e, dict) and e.get("nql_id") not in tracked and e.get("nql_id") not in old:

@@ -1,5 +1,5 @@
 {
- "schema": "srd-choices/1",
+ "schema": "srd-choices/2",
  "ruleset": "SRD 5.2.1",
  "sources": {
   "document": "System Reference Document 5.2.1 (SRD_CC_v5.2.1.pdf)",
@@ -23,7 +23,10 @@
   "recommended is the SRD's own suggestion for that pick.",
   "Evocation Savant: the Evoker gains a free Evocation spell at each class level that adds a new spell slot level after 3 (5, 7, ... 17). Whether the level 2 slots gained at Wizard level 3 also count is not stated; this file does not add one there.",
   "Starting Equipment option_details are printed text; items inside an option (for example a Musical Instrument of your choice) remain the player's pick.",
-  "Text is ASCII: curly quotes became straight ones and dashes became hyphens."
+  "Text is ASCII: curly quotes became straight ones and dashes became hyphens.",
+  "srd-choices/2 (NUM): class_traits.<class> gain saving_throws (ability names), armor_training (light, medium, heavy, shield: neq_armor's armor_category values) and weapon_proficiencies (rules: a weapon is proficient when one rule's category equals its weapon.category and, if the rule has property_any, it has one of those properties), with the printed text under printed.",
+  "NUM-P1: class_traits.monk gains monk_weapons (rules {category, kind[, property_any]}) and martial_arts: at each Monk level the host declares the Condition types listed for that level's Martial Arts die (attack_features.nql), and every character gets srd:unarmed-strike.",
+  "Starting Equipment option_items: per option, items as {catalog_id, quantity} (quantity in the item's own units: 20 Arrows is quantity 20), {choose_one: [ids]} for a printed item with several catalog forms (Holy Symbol), or {uncatalogued: text} for an item the catalog lacks (tools, instruments, the Spellbook); and coins. A Quarterstaff focus is the catalog's Staff or Wooden staff focus, which the SRD prints as also a Quarterstaff (evidence)."
  ],
  "reference_forms": [
   {
@@ -1461,6 +1464,28 @@
    "source": {
     "section": "Classes > Barbarian > Core Barbarian Traits table",
     "page": 28
+   },
+   "saving_throws": [
+    "Strength",
+    "Constitution"
+   ],
+   "armor_training": [
+    "light",
+    "medium",
+    "shield"
+   ],
+   "weapon_proficiencies": [
+    {
+     "category": "Simple"
+    },
+    {
+     "category": "Martial"
+    }
+   ],
+   "printed": {
+    "Saving Throw Proficiencies": "Strength and Constitution",
+    "Armor Training": "Light and Medium armor and Shields",
+    "Weapon Proficiencies": "Simple and Martial weapons"
    }
   },
   "bard": {
@@ -1472,6 +1497,23 @@
    "source": {
     "section": "Classes > Bard > Core Bard Traits table",
     "page": 31
+   },
+   "saving_throws": [
+    "Dexterity",
+    "Charisma"
+   ],
+   "armor_training": [
+    "light"
+   ],
+   "weapon_proficiencies": [
+    {
+     "category": "Simple"
+    }
+   ],
+   "printed": {
+    "Saving Throw Proficiencies": "Dexterity and Charisma",
+    "Armor Training": "Light armor",
+    "Weapon Proficiencies": "Simple weapons"
    }
   },
   "cleric": {
@@ -1483,6 +1525,25 @@
    "source": {
     "section": "Classes > Cleric > Core Cleric Traits table",
     "page": 36
+   },
+   "saving_throws": [
+    "Wisdom",
+    "Charisma"
+   ],
+   "armor_training": [
+    "light",
+    "medium",
+    "shield"
+   ],
+   "weapon_proficiencies": [
+    {
+     "category": "Simple"
+    }
+   ],
+   "printed": {
+    "Saving Throw Proficiencies": "Wisdom and Charisma",
+    "Armor Training": "Light and Medium armor and Shields",
+    "Weapon Proficiencies": "Simple weapons"
    }
   },
   "druid": {
@@ -1494,6 +1555,24 @@
    "source": {
     "section": "Classes > Druid > Core Druid Traits table",
     "page": 41
+   },
+   "saving_throws": [
+    "Intelligence",
+    "Wisdom"
+   ],
+   "armor_training": [
+    "light",
+    "shield"
+   ],
+   "weapon_proficiencies": [
+    {
+     "category": "Simple"
+    }
+   ],
+   "printed": {
+    "Saving Throw Proficiencies": "Intelligence and Wisdom",
+    "Armor Training": "Light armor and Shields",
+    "Weapon Proficiencies": "Simple weapons"
    }
   },
   "fighter": {
@@ -1506,6 +1585,29 @@
    "source": {
     "section": "Classes > Fighter > Core Fighter Traits table",
     "page": 47
+   },
+   "saving_throws": [
+    "Strength",
+    "Constitution"
+   ],
+   "armor_training": [
+    "light",
+    "medium",
+    "heavy",
+    "shield"
+   ],
+   "weapon_proficiencies": [
+    {
+     "category": "Simple"
+    },
+    {
+     "category": "Martial"
+    }
+   ],
+   "printed": {
+    "Saving Throw Proficiencies": "Strength and Constitution",
+    "Armor Training": "Light, Medium, and Heavy armor and Shields",
+    "Weapon Proficiencies": "Simple and Martial weapons"
    }
   },
   "monk": {
@@ -1518,6 +1620,76 @@
    "source": {
     "section": "Classes > Monk > Core Monk Traits table",
     "page": 49
+   },
+   "saving_throws": [
+    "Strength",
+    "Dexterity"
+   ],
+   "armor_training": [],
+   "weapon_proficiencies": [
+    {
+     "category": "Simple"
+    },
+    {
+     "category": "Martial",
+     "property_any": [
+      "Light"
+     ]
+    }
+   ],
+   "printed": {
+    "Saving Throw Proficiencies": "Strength and Dexterity",
+    "Armor Training": "None",
+    "Weapon Proficiencies": "Simple weapons and Martial weapons that have the Light property"
+   },
+   "monk_weapons": {
+    "rules": [
+     {
+      "category": "Simple",
+      "kind": "Melee"
+     },
+     {
+      "category": "Martial",
+      "kind": "Melee",
+      "property_any": [
+       "Light"
+      ]
+     }
+    ],
+    "evidence": "Monk weapons, which are the following: * Simple Melee weapons * Martial Melee weapons that have the Light property"
+   },
+   "martial_arts": {
+    "column": "Martial Arts",
+    "condition_types": {
+     "1d6": [
+      "feature:martial-arts"
+     ],
+     "1d8": [
+      "feature:martial-arts",
+      "feature:martial-arts-d8"
+     ],
+     "1d10": [
+      "feature:martial-arts",
+      "feature:martial-arts-d10"
+     ],
+     "1d12": [
+      "feature:martial-arts",
+      "feature:martial-arts-d12"
+     ]
+    },
+    "unless_slots": [
+     "body",
+     "shield"
+    ],
+    "evidence": [
+     "You gain the following benefits while you are unarmed or wielding only Monk weapons and you aren't wearing armor or wielding a Shield.",
+     "Martial Arts Die. You can roll 1d6 in place of the normal damage of your Unarmed Strike or Monk weapons. This die changes as you gain Monk levels, as shown in the Martial Arts column of the Monk Features table.",
+     "Dexterous Attacks. You can use your Dexterity modifier instead of your Strength modifier for the attack and damage rolls of your Unarmed Strikes and Monk weapons."
+    ],
+    "source": {
+     "section": "Classes > Monk > Monk Class Features > Level 1: Martial Arts",
+     "page": 50
+    }
    }
   },
   "paladin": {
@@ -1530,6 +1702,29 @@
    "source": {
     "section": "Classes > Paladin > Core Paladin Traits table",
     "page": 53
+   },
+   "saving_throws": [
+    "Wisdom",
+    "Charisma"
+   ],
+   "armor_training": [
+    "light",
+    "medium",
+    "heavy",
+    "shield"
+   ],
+   "weapon_proficiencies": [
+    {
+     "category": "Simple"
+    },
+    {
+     "category": "Martial"
+    }
+   ],
+   "printed": {
+    "Saving Throw Proficiencies": "Wisdom and Charisma",
+    "Armor Training": "Light, Medium, and Heavy armor and Shields",
+    "Weapon Proficiencies": "Simple and Martial weapons"
    }
   },
   "ranger": {
@@ -1542,6 +1737,28 @@
    "source": {
     "section": "Classes > Ranger > Core Ranger Traits table",
     "page": 57
+   },
+   "saving_throws": [
+    "Strength",
+    "Dexterity"
+   ],
+   "armor_training": [
+    "light",
+    "medium",
+    "shield"
+   ],
+   "weapon_proficiencies": [
+    {
+     "category": "Simple"
+    },
+    {
+     "category": "Martial"
+    }
+   ],
+   "printed": {
+    "Saving Throw Proficiencies": "Strength and Dexterity",
+    "Armor Training": "Light and Medium armor and Shields",
+    "Weapon Proficiencies": "Simple and Martial weapons"
    }
   },
   "rogue": {
@@ -1553,6 +1770,30 @@
    "source": {
     "section": "Classes > Rogue > Core Rogue Traits table",
     "page": 61
+   },
+   "saving_throws": [
+    "Dexterity",
+    "Intelligence"
+   ],
+   "armor_training": [
+    "light"
+   ],
+   "weapon_proficiencies": [
+    {
+     "category": "Simple"
+    },
+    {
+     "category": "Martial",
+     "property_any": [
+      "Finesse",
+      "Light"
+     ]
+    }
+   ],
+   "printed": {
+    "Saving Throw Proficiencies": "Dexterity and Intelligence",
+    "Armor Training": "Light armor",
+    "Weapon Proficiencies": "Simple weapons and Martial weapons that have the Finesse or Light property"
    }
   },
   "sorcerer": {
@@ -1564,6 +1805,21 @@
    "source": {
     "section": "Classes > Sorcerer > Core Sorcerer Traits table",
     "page": 64
+   },
+   "saving_throws": [
+    "Constitution",
+    "Charisma"
+   ],
+   "armor_training": [],
+   "weapon_proficiencies": [
+    {
+     "category": "Simple"
+    }
+   ],
+   "printed": {
+    "Saving Throw Proficiencies": "Constitution and Charisma",
+    "Armor Training": "None",
+    "Weapon Proficiencies": "Simple weapons"
    }
   },
   "warlock": {
@@ -1575,6 +1831,23 @@
    "source": {
     "section": "Classes > Warlock > Core Warlock Traits table",
     "page": 70
+   },
+   "saving_throws": [
+    "Wisdom",
+    "Charisma"
+   ],
+   "armor_training": [
+    "light"
+   ],
+   "weapon_proficiencies": [
+    {
+     "category": "Simple"
+    }
+   ],
+   "printed": {
+    "Saving Throw Proficiencies": "Wisdom and Charisma",
+    "Armor Training": "Light armor",
+    "Weapon Proficiencies": "Simple weapons"
    }
   },
   "wizard": {
@@ -1586,6 +1859,21 @@
    "source": {
     "section": "Classes > Wizard > Core Wizard Traits table",
     "page": 77
+   },
+   "saving_throws": [
+    "Intelligence",
+    "Wisdom"
+   ],
+   "armor_training": [],
+   "weapon_proficiencies": [
+    {
+     "category": "Simple"
+    }
+   ],
+   "printed": {
+    "Saving Throw Proficiencies": "Intelligence and Wisdom",
+    "Armor Training": "None",
+    "Weapon Proficiencies": "Simple weapons"
    }
   }
  },
@@ -1919,7 +2207,35 @@
       "section": "Classes > Barbarian > Core Barbarian Traits table",
       "page": 28
      },
-     "evidence": "Choose A or B: (A) Greataxe, 4 Handaxes, Explorer's Pack, and 15 GP; or (B) 75 GP"
+     "evidence": "Choose A or B: (A) Greataxe, 4 Handaxes, Explorer's Pack, and 15 GP; or (B) 75 GP",
+     "option_items": {
+      "A": {
+       "items": [
+        {
+         "catalog_id": "itemdef:srd/greataxe",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/handaxe",
+         "quantity": 4,
+         "printed": "4 Handaxes"
+        },
+        {
+         "catalog_id": "itemdef:srd/explorers-pack",
+         "quantity": 1
+        }
+       ],
+       "coins": {
+        "gp": 15
+       }
+      },
+      "B": {
+       "items": [],
+       "coins": {
+        "gp": 75
+       }
+      }
+     }
     },
     {
      "kind": "other_named",
@@ -2151,7 +2467,38 @@
       "section": "Classes > Bard > Core Bard Traits table",
       "page": 31
      },
-     "evidence": "Choose A or B: (A) Leather Armor, 2 Daggers, Musical Instrument of your choice, Entertainer's Pack, and 19 GP; or (B) 90 GP"
+     "evidence": "Choose A or B: (A) Leather Armor, 2 Daggers, Musical Instrument of your choice, Entertainer's Pack, and 19 GP; or (B) 90 GP",
+     "option_items": {
+      "A": {
+       "items": [
+        {
+         "catalog_id": "itemdef:srd/leather-armor",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/dagger",
+         "quantity": 2,
+         "printed": "2 Daggers"
+        },
+        {
+         "uncatalogued": "Musical Instrument of your choice"
+        },
+        {
+         "catalog_id": "itemdef:srd/entertainers-pack",
+         "quantity": 1
+        }
+       ],
+       "coins": {
+        "gp": 19
+       }
+      },
+      "B": {
+       "items": [],
+       "coins": {
+        "gp": 90
+       }
+      }
+     }
     },
     {
      "kind": "skill",
@@ -2808,7 +3155,46 @@
       "section": "Classes > Cleric > Core Cleric Traits table",
       "page": 36
      },
-     "evidence": "Choose A or B: (A) Chain Shirt, Shield, Mace, Holy Symbol, Priest's Pack, and 7 GP; or (B) 110 GP"
+     "evidence": "Choose A or B: (A) Chain Shirt, Shield, Mace, Holy Symbol, Priest's Pack, and 7 GP; or (B) 110 GP",
+     "option_items": {
+      "A": {
+       "items": [
+        {
+         "catalog_id": "itemdef:srd/chain-shirt",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/shield",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/mace",
+         "quantity": 1
+        },
+        {
+         "choose_one": [
+          "itemdef:srd/holy-symbol-amulet",
+          "itemdef:srd/holy-symbol-emblem",
+          "itemdef:srd/holy-symbol-reliquary"
+         ],
+         "printed": "Holy Symbol"
+        },
+        {
+         "catalog_id": "itemdef:srd/priests-pack",
+         "quantity": 1
+        }
+       ],
+       "coins": {
+        "gp": 7
+       }
+      },
+      "B": {
+       "items": [],
+       "coins": {
+        "gp": 110
+       }
+      }
+     }
     },
     {
      "kind": "other_named",
@@ -3350,7 +3736,47 @@
       "section": "Classes > Druid > Core Druid Traits table",
       "page": 41
      },
-     "evidence": "Choose A or B: (A) Leather Armor, Shield, Sickle, Druidic Focus (Quarterstaff), Explorer's Pack, Herbalism Kit, and 9 GP; or (B) 50 GP"
+     "evidence": "Choose A or B: (A) Leather Armor, Shield, Sickle, Druidic Focus (Quarterstaff), Explorer's Pack, Herbalism Kit, and 9 GP; or (B) 50 GP",
+     "option_items": {
+      "A": {
+       "items": [
+        {
+         "catalog_id": "itemdef:srd/leather-armor",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/shield",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/sickle",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/druidic-focus-wooden-staff",
+         "quantity": 1,
+         "printed": "Druidic Focus (Quarterstaff)",
+         "evidence": "Wooden staff (also a Quarterstaff)"
+        },
+        {
+         "catalog_id": "itemdef:srd/explorers-pack",
+         "quantity": 1
+        },
+        {
+         "uncatalogued": "Herbalism Kit"
+        }
+       ],
+       "coins": {
+        "gp": 9
+       }
+      },
+      "B": {
+       "items": [],
+       "coins": {
+        "gp": 50
+       }
+      }
+     }
     },
     {
      "kind": "other_named",
@@ -3965,7 +4391,79 @@
       "section": "Classes > Fighter > Core Fighter Traits table",
       "page": 47
      },
-     "evidence": "Choose A, B, or C: (A) Chain Mail, Greatsword, Flail, 8 Javelins, Dungeoneer's Pack, and 4 GP; (B) Studded Leather Armor, Scimitar, Shortsword, Longbow, 20 Arrows, Quiver, Dungeoneer's Pack, and 11 GP; or (C) 155 GP"
+     "evidence": "Choose A, B, or C: (A) Chain Mail, Greatsword, Flail, 8 Javelins, Dungeoneer's Pack, and 4 GP; (B) Studded Leather Armor, Scimitar, Shortsword, Longbow, 20 Arrows, Quiver, Dungeoneer's Pack, and 11 GP; or (C) 155 GP",
+     "option_items": {
+      "A": {
+       "items": [
+        {
+         "catalog_id": "itemdef:srd/chain-mail",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/greatsword",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/flail",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/javelin",
+         "quantity": 8,
+         "printed": "8 Javelins"
+        },
+        {
+         "catalog_id": "itemdef:srd/dungeoneers-pack",
+         "quantity": 1
+        }
+       ],
+       "coins": {
+        "gp": 4
+       }
+      },
+      "B": {
+       "items": [
+        {
+         "catalog_id": "itemdef:srd/studded-leather-armor",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/scimitar",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/shortsword",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/longbow",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/arrows",
+         "quantity": 20,
+         "printed": "20 Arrows"
+        },
+        {
+         "catalog_id": "itemdef:srd/quiver",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/dungeoneers-pack",
+         "quantity": 1
+        }
+       ],
+       "coins": {
+        "gp": 11
+       }
+      },
+      "C": {
+       "items": [],
+       "coins": {
+        "gp": 155
+       }
+      }
+     }
     },
     {
      "kind": "other_named",
@@ -4261,7 +4759,38 @@
       "section": "Classes > Monk > Core Monk Traits table",
       "page": 49
      },
-     "evidence": "Choose A or B: (A) Spear, 5 Daggers, Artisan's Tools or Musical Instrument chosen for the tool proficiency above, Explorer's Pack, and 11 GP; or (B) 50 GP"
+     "evidence": "Choose A or B: (A) Spear, 5 Daggers, Artisan's Tools or Musical Instrument chosen for the tool proficiency above, Explorer's Pack, and 11 GP; or (B) 50 GP",
+     "option_items": {
+      "A": {
+       "items": [
+        {
+         "catalog_id": "itemdef:srd/spear",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/dagger",
+         "quantity": 5,
+         "printed": "5 Daggers"
+        },
+        {
+         "uncatalogued": "Artisan's Tools or Musical Instrument chosen for the tool proficiency above"
+        },
+        {
+         "catalog_id": "itemdef:srd/explorers-pack",
+         "quantity": 1
+        }
+       ],
+       "coins": {
+        "gp": 11
+       }
+      },
+      "B": {
+       "items": [],
+       "coins": {
+        "gp": 50
+       }
+      }
+     }
     }
    ],
    "2": [],
@@ -4413,7 +4942,51 @@
       "section": "Classes > Paladin > Core Paladin Traits table",
       "page": 53
      },
-     "evidence": "Choose A or B: (A) Chain Mail, Shield, Longsword, 6 Javelins, Holy Symbol, Priest's Pack, and 9 GP; or (B) 150 GP"
+     "evidence": "Choose A or B: (A) Chain Mail, Shield, Longsword, 6 Javelins, Holy Symbol, Priest's Pack, and 9 GP; or (B) 150 GP",
+     "option_items": {
+      "A": {
+       "items": [
+        {
+         "catalog_id": "itemdef:srd/chain-mail",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/shield",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/longsword",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/javelin",
+         "quantity": 6,
+         "printed": "6 Javelins"
+        },
+        {
+         "choose_one": [
+          "itemdef:srd/holy-symbol-amulet",
+          "itemdef:srd/holy-symbol-emblem",
+          "itemdef:srd/holy-symbol-reliquary"
+         ],
+         "printed": "Holy Symbol"
+        },
+        {
+         "catalog_id": "itemdef:srd/priests-pack",
+         "quantity": 1
+        }
+       ],
+       "coins": {
+        "gp": 9
+       }
+      },
+      "B": {
+       "items": [],
+       "coins": {
+        "gp": 150
+       }
+      }
+     }
     },
     {
      "kind": "other_named",
@@ -4818,7 +5391,56 @@
       "section": "Classes > Ranger > Core Ranger Traits table",
       "page": 57
      },
-     "evidence": "Choose A or B: (A) Studded Leather Armor, Scimitar, Shortsword, Longbow, 20 Arrows, Quiver, Druidic Focus (sprig of mistletoe), Explorer's Pack, and 7 GP; or (B) 150 GP"
+     "evidence": "Choose A or B: (A) Studded Leather Armor, Scimitar, Shortsword, Longbow, 20 Arrows, Quiver, Druidic Focus (sprig of mistletoe), Explorer's Pack, and 7 GP; or (B) 150 GP",
+     "option_items": {
+      "A": {
+       "items": [
+        {
+         "catalog_id": "itemdef:srd/studded-leather-armor",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/scimitar",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/shortsword",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/longbow",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/arrows",
+         "quantity": 20,
+         "printed": "20 Arrows"
+        },
+        {
+         "catalog_id": "itemdef:srd/quiver",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/druidic-focus-sprig-of-mistletoe",
+         "quantity": 1,
+         "printed": "Druidic Focus (sprig of mistletoe)"
+        },
+        {
+         "catalog_id": "itemdef:srd/explorers-pack",
+         "quantity": 1
+        }
+       ],
+       "coins": {
+        "gp": 7
+       }
+      },
+      "B": {
+       "items": [],
+       "coins": {
+        "gp": 150
+       }
+      }
+     }
     },
     {
      "kind": "skill",
@@ -5329,7 +5951,55 @@
       "section": "Classes > Rogue > Core Rogue Traits table",
       "page": 61
      },
-     "evidence": "Choose A or B: (A) Leather Armor, 2 Daggers, Shortsword, Shortbow, 20 Arrows, Quiver, Thieves' Tools, Burglar's Pack, and 8 GP; or (B) 100 GP"
+     "evidence": "Choose A or B: (A) Leather Armor, 2 Daggers, Shortsword, Shortbow, 20 Arrows, Quiver, Thieves' Tools, Burglar's Pack, and 8 GP; or (B) 100 GP",
+     "option_items": {
+      "A": {
+       "items": [
+        {
+         "catalog_id": "itemdef:srd/leather-armor",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/dagger",
+         "quantity": 2,
+         "printed": "2 Daggers"
+        },
+        {
+         "catalog_id": "itemdef:srd/shortsword",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/shortbow",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/arrows",
+         "quantity": 20,
+         "printed": "20 Arrows"
+        },
+        {
+         "catalog_id": "itemdef:srd/quiver",
+         "quantity": 1
+        },
+        {
+         "uncatalogued": "Thieves' Tools"
+        },
+        {
+         "catalog_id": "itemdef:srd/burglars-pack",
+         "quantity": 1
+        }
+       ],
+       "coins": {
+        "gp": 8
+       }
+      },
+      "B": {
+       "items": [],
+       "coins": {
+        "gp": 100
+       }
+      }
+     }
     },
     {
      "kind": "skill",
@@ -5589,7 +6259,40 @@
       "section": "Classes > Sorcerer > Core Sorcerer Traits table",
       "page": 64
      },
-     "evidence": "Choose A or B: (A) Spear, 2 Daggers, Arcane Focus (crystal), Dungeoneer's Pack, and 28 GP; or (B) 50 GP"
+     "evidence": "Choose A or B: (A) Spear, 2 Daggers, Arcane Focus (crystal), Dungeoneer's Pack, and 28 GP; or (B) 50 GP",
+     "option_items": {
+      "A": {
+       "items": [
+        {
+         "catalog_id": "itemdef:srd/spear",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/dagger",
+         "quantity": 2,
+         "printed": "2 Daggers"
+        },
+        {
+         "catalog_id": "itemdef:srd/arcane-focus-crystal",
+         "quantity": 1,
+         "printed": "Arcane Focus (crystal)"
+        },
+        {
+         "catalog_id": "itemdef:srd/dungeoneers-pack",
+         "quantity": 1
+        }
+       ],
+       "coins": {
+        "gp": 28
+       }
+      },
+      "B": {
+       "items": [],
+       "coins": {
+        "gp": 50
+       }
+      }
+     }
     },
     {
      "kind": "cantrip",
@@ -6148,7 +6851,50 @@
       "section": "Classes > Warlock > Core Warlock Traits table",
       "page": 70
      },
-     "evidence": "Choose A or B: (A) Leather Armor, Sickle, 2 Daggers, Arcane Focus (orb), Book (occult lore), Scholar's Pack, and 15 GP; or (B) 100 GP"
+     "evidence": "Choose A or B: (A) Leather Armor, Sickle, 2 Daggers, Arcane Focus (orb), Book (occult lore), Scholar's Pack, and 15 GP; or (B) 100 GP",
+     "option_items": {
+      "A": {
+       "items": [
+        {
+         "catalog_id": "itemdef:srd/leather-armor",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/sickle",
+         "quantity": 1
+        },
+        {
+         "catalog_id": "itemdef:srd/dagger",
+         "quantity": 2,
+         "printed": "2 Daggers"
+        },
+        {
+         "catalog_id": "itemdef:srd/arcane-focus-orb",
+         "quantity": 1,
+         "printed": "Arcane Focus (orb)"
+        },
+        {
+         "catalog_id": "itemdef:srd/book",
+         "quantity": 1,
+         "note": "occult lore",
+         "printed": "Book (occult lore)"
+        },
+        {
+         "catalog_id": "itemdef:srd/scholars-pack",
+         "quantity": 1
+        }
+       ],
+       "coins": {
+        "gp": 15
+       }
+      },
+      "B": {
+       "items": [],
+       "coins": {
+        "gp": 100
+       }
+      }
+     }
     },
     {
      "kind": "other_named",
@@ -6793,7 +7539,44 @@
       "section": "Classes > Wizard > Core Wizard Traits table",
       "page": 77
      },
-     "evidence": "Choose A or B: (A) 2 Daggers, Arcane Focus (Quarterstaff), Robe, Spellbook, Scholar's Pack, and 5 GP; or (B) 55 GP"
+     "evidence": "Choose A or B: (A) 2 Daggers, Arcane Focus (Quarterstaff), Robe, Spellbook, Scholar's Pack, and 5 GP; or (B) 55 GP",
+     "option_items": {
+      "A": {
+       "items": [
+        {
+         "catalog_id": "itemdef:srd/dagger",
+         "quantity": 2,
+         "printed": "2 Daggers"
+        },
+        {
+         "catalog_id": "itemdef:srd/arcane-focus-staff",
+         "quantity": 1,
+         "printed": "Arcane Focus (Quarterstaff)",
+         "evidence": "Staff (also a Quarterstaff)"
+        },
+        {
+         "catalog_id": "itemdef:srd/robe",
+         "quantity": 1
+        },
+        {
+         "uncatalogued": "Spellbook"
+        },
+        {
+         "catalog_id": "itemdef:srd/scholars-pack",
+         "quantity": 1
+        }
+       ],
+       "coins": {
+        "gp": 5
+       }
+      },
+      "B": {
+       "items": [],
+       "coins": {
+        "gp": 55
+       }
+      }
+     }
     },
     {
      "kind": "other_named",

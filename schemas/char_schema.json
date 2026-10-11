@@ -217,7 +217,8 @@
             "properties": {
               "current": {"type": "integer", "minimum": 0},
               "max": {"type": "integer", "minimum": 0},
-              "refreshOn": {"type": "string", "enum": ["shortRest", "longRest", "dawn", "turn", "bonus", "action"]}
+              "refreshOn": {"type": "string", "enum": ["shortRest", "longRest", "dawn", "turn", "bonus", "action"]},
+              "shortRestRegain": {"type": "integer", "minimum": 1, "description": "Uses a Short Rest regains when it regains only some (SRD 5.2.1 'regain one expended use'); absent, a shortRest pool refills on a Short Rest."}
             },
             "required": ["current", "max", "refreshOn"]
           }

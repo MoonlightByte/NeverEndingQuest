@@ -1726,6 +1726,20 @@ class AICharacterValidator:
 
         return self.validate_and_correct_character_with_result(character_data).data
     
+    def _raise_pools_to_tables(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Raise use pool and spell slot maxima below the SRD class table (#704); journaled."""
+        from core.leveling import tables
+
+        raised = copy.deepcopy(character_data)
+        notes = tables.raise_to_tables(raised)
+        if not notes:
+            return character_data
+        name = character_data.get('name', 'Unknown')
+        for note in notes:
+            self.corrections_made.append(note)
+            info(f"[Pool Tables] {name}: {note}", category="character_validation")
+        return raised
+
     def _project_armor_class(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
         """Rewrite armorClass and the AC entries of equipment_effects from the
         engine's defense explanation. Unchanged data on any failure (logged)."""
@@ -1874,6 +1888,11 @@ class AICharacterValidator:
                 RuntimeError(f"{task_id} failed: {result.error}"),
                 repaired_data,
             )
+
+        # Use pools and spell slots below the class table for the hero's level
+        # are raised (never lowered, current untouched) before the projection,
+        # so genesis declares them at their table maximum (#704).
+        corrected_data = self._raise_pools_to_tables(corrected_data)
 
         if needs['ac']:
             # Armor class is engine-owned (core/nql): the engine explains

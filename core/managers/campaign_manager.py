@@ -1908,7 +1908,8 @@ class CampaignManager:
         (``refused_because``); ``imported`` lists the unplayed ones joined by
         renumbering; ``not_joined`` lists the installed ones publication
         refused or could not prove, with the reason and a typed ``cause``
-        (#586, #613, #608).
+        (#586, #613, #608), or the waiting ones a scan blocked by
+        INDETERMINATE lifecycle recovery did not check (#638).
         """
         with module_refresh_lock() as acquired:
             if not acquired:
@@ -1958,7 +1959,13 @@ class CampaignManager:
 
                 world_registry = stitcher.world_registry
                 if world_registry and "modules" in world_registry:
-                    world_modules = set(world_registry["modules"].keys())
+                    # Only joined modules are offered (#720); a bare stub
+                    # names a module whose joining was refused or not done.
+                    world_modules = {
+                        name
+                        for name in world_registry["modules"]
+                        if stitcher.is_joined_registry_module(world_registry, name)
+                    }
                     merge_result = {
                         "missing_modules": set(),
                         "lifecycle_changed": False,
@@ -1973,14 +1980,19 @@ class CampaignManager:
                         available = campaign.get("availableModules")
                         if not isinstance(available, list):
                             available = []
-                        current_available = set(available)
-                        missing_modules = world_modules - current_available
+                        # Keep the listed order and append new names sorted,
+                        # so the list does not follow the hash seed (#761).
+                        # An exact repeat is still written once.
+                        current_available = list(dict.fromkeys(available))
+                        missing_modules = world_modules - set(current_available)
                         merge_result["missing_modules"] = missing_modules
                         all_updates = set(newly_integrated) | missing_modules
                         if not all_updates:
                             return False
-                        current_available.update(all_updates)
-                        campaign["availableModules"] = list(current_available)
+                        for name in sorted(all_updates):
+                            if name not in current_available:
+                                current_available.append(name)
+                        campaign["availableModules"] = current_available
                         campaign["lastUpdated"] = datetime.now().isoformat()
                         return True
 
@@ -3564,6 +3576,9 @@ class CampaignManager:
             if not isinstance(updated_campaign.get(field), type(default)):
                 updated_campaign[field] = copy.deepcopy(default)
 
+        # completedModules means visited and summarized: every crossing
+        # completes the module it leaves (#747). Plot progress is tracked
+        # separately.
         if module_name not in updated_campaign["completedModules"]:
             updated_campaign["completedModules"].append(module_name)
         self._handle_module_completion_export(
@@ -4504,15 +4519,44 @@ Focus on story outcomes, character development, and decisions that will matter i
     ):
         """Update available modules based on completion"""
         target = self.campaign_data if campaign_data is None else campaign_data
-        # Remove completed module
-        if completed_module in target['availableModules']:
+        from core.generators.module_stitcher import ModuleStitcher
+
+        try:
+            registry = safe_json_load(
+                os.path.join(os.path.dirname(self.campaign_file), "world_registry.json")
+            )
+        except (OSError, ValueError):
+            registry = None
+
+        # The completed module is often just the one the party left: a
+        # crossing completes it to write the visit summary. A joined module
+        # stays offered so the party can go back (#747); only a module the
+        # registry does not join is removed. An unreadable registry removes
+        # nothing, as in startup reconciliation; the next refresh decides.
+        registry_readable = isinstance(registry, dict) and isinstance(registry.get("modules"), dict)
+        if (
+            registry_readable
+            and completed_module in target['availableModules']
+            and not ModuleStitcher.is_joined_registry_module(registry, completed_module)
+        ):
             target['availableModules'].remove(completed_module)
-        
-        # Add newly unlocked modules
+
+        # Add newly unlocked modules. The names are model-written (T039, or
+        # the party tracker in the local fallback), so only a joined module
+        # is added, by its registry id (#746, the #720 rule). Spaces read as
+        # underscores, as the module snapshot reads them. An unreadable
+        # registry adds nothing; the next refresh lists every joined module.
         unlocked = summary.get('unlockedModules', [])
-        for module in unlocked:
-            if module not in target['availableModules']:
-                target['availableModules'].append(module)
+        for module in unlocked if isinstance(unlocked, list) else []:
+            module_id = module.strip().replace(" ", "_") if isinstance(module, str) else ""
+            if not module_id or not ModuleStitcher.is_joined_registry_module(registry, module_id):
+                debug(
+                    f"STATE_CHANGE: unlocked module {module!r} is not a joined module; not added",
+                    category="module_management",
+                )
+                continue
+            if module_id not in target['availableModules']:
+                target['availableModules'].append(module_id)
     
     def _archive_conversation_history(
         self,

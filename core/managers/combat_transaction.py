@@ -1515,6 +1515,13 @@ def apply_combat_rewards(
             _write_object(path, character, "combat reward for %s" % name)
 
         completion["rewardsApplied"] = True
+        # The typed receipt of what each member was awarded (#726), kept in the
+        # same write that clears the journal, so the post-combat pass can tell
+        # an exact repeat of this award by data.
+        completion["appliedRewards"] = {
+            name: int(pending[name]["after"]) - int(pending[name]["before"])
+            for name in (character_paths or {})
+        }
         completion["pendingRewards"] = None
         _write_object(encounter_path, encounter, "combat reward receipt")
         return deepcopy(encounter)

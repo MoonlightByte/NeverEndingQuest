@@ -48,9 +48,9 @@ buffer. Already admitted output is not retroactively revoked. Main's final
 common-tail history save retains the captured callback through compression and
 context refresh; ordinary turns keep a None callback and their existing behavior.
 
-Seams: `level_up_manager.py:79`, `updates/update_character_info.py:1773`,
-`utils/encoding_utils.py:209`, `main.py:7282`, `main.py:9897`, `main.py:10044`,
-`web/web_interface.py:632`, `core/headless/protocol.py:46`.
+Seams: `core/managers/level_up_manager.py:185`, `updates/update_character_info.py:1855`,
+`utils/encoding_utils.py:209`, `main.py::_main_game_loop` at `level_up_publication_guard = level_up_session.commit_guard`, `main.py::_main_game_loop` at the first `save_conversation_history(` given `commit_guard=level_up_publication_guard`, `main.py::_main_game_loop` at `save_conversation_history(conversation_history, commit_guard=level_up_publication_guard)`,
+`web/web_interface.py::_queue_safe_player_output`, `core/headless/protocol.py:46`.
 These are source contracts, not proof of live Load/Reset/Quit timing or #116
 display-replay acceptance. Native gates remain required under #193.
 
@@ -256,18 +256,18 @@ Live Load-during-calculation and full committed-level-up continuity remain unpro
 
 ## Load-bearing seams
 
-1. `utils/capture/live_provider_call.py:184-724` - live/welcome scope authority, promotion, queues, and quiescence.
+1. `utils/capture/live_provider_call.py:185-725` - live/welcome scope authority, promotion, queues, and quiescence.
 2. `utils/capture/live_provider_call.py` `call_live_provider` (generation loop; anchors moved by #284) - child polling, reaping, universal backstop envelope, and correlation gate.
-3. `main.py:320-425` - welcome ownership and generation-only worker.
-4. `main.py:439-583` - handback ordering, attempt/lease receipt, and reconciliation.
-5. `main.py:911-1093` - input pump, teardown, welcome registration, and worker start.
-6. `main.py:10045-10060` - ordinary live scope opening.
-7. `main.py:10214-10225` - mutation boundary.
-8. `main.py:10457-10548` - superseded and normal turn terminals.
-9. `core/headless/session.py:425-1032` - headless lifecycle commands (reset/quit at :379-466) and restart.
-10. `web/web_interface.py:2965-3403` - web input and Save/Load/Reset entrants.
+3. `main.py::_WelcomeLifecycle` and `main.py::_welcome_worker_main` - welcome ownership and generation-only worker.
+4. `main.py::_finish_welcome` - handback ordering, attempt/lease receipt, and reconciliation.
+5. `main.py::service_welcome_lifecycle` - input pump, teardown, welcome registration, and worker start.
+6. `main.py::_main_game_loop` from `from utils.capture.live_provider_call import open_live_turn_scope` - ordinary live scope opening.
+7. `main.py::_main_game_loop` from `valid_response_received = True` - mutation boundary.
+8. `main.py::_main_game_loop` from the `if invocation_superseded:` that raises `InvocationSupersededError("The player turn was superseded")` - superseded and normal turn terminals.
+9. `core/headless/session.py:425-1032` - headless lifecycle commands (reset/quit at :483-539) and restart.
+10. `web/web_interface.py::handle_check_roll`, `::handle_user_input` and `::handle_action` - web input and Save/Load/Reset entrants.
 11. `updates/save_game_manager.py:175` and `updates/save_game_manager.py:497` - pending module context and essential startup history (startup candidate).
-12. `updates/save_game_manager.py:940` and `utils/file_operations.py:106` - restore rollback/absence semantics and guarded shared writer (startup candidate).
+12. `updates/save_game_manager.py:1465` and `utils/file_operations.py:106` - restore rollback/absence semantics and guarded shared writer (startup candidate).
 13. `utils/reset_campaign.py:507-547` - reset backup-before-wipe ordering.
 
 ## Invariants
