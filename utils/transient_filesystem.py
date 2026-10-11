@@ -182,6 +182,12 @@ def raise_if_save_stopped() -> None:
         raise ReadOnlySaveStop(path)
 
 
+# The waiting lines on screen now, by line, so a wait that ends after the one
+# whose line it covered restores what that one covered (#803).
+_SHOWN_LINES = {}
+_SHOWN_LINES_GUARD = threading.Lock()
+
+
 class ReplaceContention:
     """One writer's wait while another program blocks its rename (#653 item 6).
 
@@ -201,6 +207,7 @@ class ReplaceContention:
         self._next_report = None
         self._line = None
         self._previous = None
+        self._previous_owner = None
 
     def tick(self, winerror=None) -> None:
         if self._check_save_stop:
@@ -220,6 +227,13 @@ class ReplaceContention:
             "another program holds the file; still retrying",
             self._path, winerror, elapsed,
         )
+        self._show_line(
+            "Waiting to save %s: another program on this computer is using "
+            "it. Closing that program lets the game continue."
+            % os.path.basename(self._path)
+        )
+
+    def _show_line(self, line) -> None:
         try:
             # Only a live turn shows the line: outside one, nothing would clear
             # the processing flag after the write lands.
@@ -229,18 +243,18 @@ class ReplaceContention:
                 return
             from core.managers.status_manager import status_manager
 
-            line = (
-                "Waiting to save %s: another program on this computer is using "
-                "it. Closing that program lets the game continue."
-                % os.path.basename(self._path)
-            )
             # Restore what was showing before this line: a status that came in
             # since the last line is the newer one to put back.
             current = status_manager.get_status()
             if self._line is None or current[0] != self._line:
                 self._previous = current
+                with _SHOWN_LINES_GUARD:
+                    owner = _SHOWN_LINES.get(current[0])
+                self._previous_owner = owner if owner is not self else None
             status_manager.update_status(line, True)
             self._line = line
+            with _SHOWN_LINES_GUARD:
+                _SHOWN_LINES[line] = self
         except Exception:  # noqa: BLE001 - a status line never breaks a save
             pass
 
@@ -248,14 +262,72 @@ class ReplaceContention:
         line, self._line = self._line, None
         if line is None or self._previous is None:
             return
+        with _SHOWN_LINES_GUARD:
+            if _SHOWN_LINES.get(line) is self:
+                del _SHOWN_LINES[line]
+            # A covered wait that has ended too hands on what it covered.
+            previous, owner, seen = self._previous, self._previous_owner, {id(self)}
+            while owner is not None and owner._line is None and id(owner) not in seen:
+                seen.add(id(owner))
+                previous, owner = owner._previous, owner._previous_owner
         try:
             from core.managers.status_manager import status_manager
 
             if status_manager.get_status()[0] == line:
-                message, processing = self._previous
+                message, processing = previous
                 status_manager.update_status(message, processing)
         except Exception:  # noqa: BLE001 - a status line never breaks a save
             pass
+
+
+class LockContention(ReplaceContention):
+    """One writer's wait for a file lock another part of the game holds (#803).
+
+    The lock is reentrant per thread, so the holder is another thread or
+    another copy of the game open on the same folder. The wait is never given
+    up on a timer, and the lock call itself waits each step, so ``tick`` does
+    not sleep. After the same grace it logs a warning on the heartbeat; a
+    ``wait_reporter`` (Save's or Load's own waiting line) is called instead
+    of the status line, and without one a live turn shows one line. A read-only
+    stop recorded during the wait ends it only when ``check_save_stop`` is
+    set, which write_json does for its own lock.
+    """
+
+    def __init__(self, filepath, check_save_stop: bool = False, wait_reporter=None):
+        super().__init__(filepath, check_save_stop)
+        self._wait_reporter = wait_reporter
+
+    def tick(self, winerror=None) -> None:
+        if self._check_save_stop:
+            raise_if_save_stopped()
+        now = time.monotonic()
+        if self._started is None:
+            self._started = now
+            self._next_report = now + REPLACE_CONTENTION_GRACE_SECONDS
+            return
+        elapsed = now - self._started
+        if elapsed < REPLACE_CONTENTION_GRACE_SECONDS:
+            return
+        if self._wait_reporter is not None:
+            try:
+                self._wait_reporter(elapsed)
+            except Exception:  # noqa: BLE001 - a status line never breaks a save
+                pass
+        if now >= self._next_report:
+            self._next_report = now + REPLACE_CONTENTION_HEARTBEAT_SECONDS
+            self._report(elapsed, winerror)
+
+    def _report(self, elapsed, winerror) -> None:
+        _LOGGER.warning(
+            "Waiting to save %s: another part of the game has held its lock "
+            "for %.0f s; still waiting",
+            self._path, elapsed,
+        )
+        if self._wait_reporter is None:
+            self._show_line(
+                "Waiting to save %s: another part of the game is still saving it."
+                % os.path.basename(self._path)
+            )
 
 
 def retry_transient_filesystem(
