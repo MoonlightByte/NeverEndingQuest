@@ -6,7 +6,8 @@
 Everything a level-up settles without a choice comes from ``data/srd/progression.json``
 (parsed from the SRD PDF, machine-checked): eligibility, proficiency bonus, hit die and
 fixed gain, spell slot maxima, cantrip and prepared counts, the features a level grants,
-feature pool sizes from the class table columns, and the choice points the level opens.
+feature use pools (maximum and rest refresh) from the class's use_pools, and the choice
+points the level opens.
 Nothing here reads prose from a sheet and nothing here calls a model.
 
 Numbers derived from the sheet's typed fields (skill bonuses, save DC, attack bonus,
@@ -31,15 +32,6 @@ SKILL_ABILITY = {
     "performance": "charisma", "persuasion": "charisma",
 }
 ABILITY_CAP = 20
-# Class table columns that size a feature's use pool, mapped to the feature that owns the pool.
-POOL_COLUMNS = {
-    "Rages": ("Rage", "longRest"),
-    "Channel Divinity": ("Channel Divinity", "shortRest"),
-    "Focus Points": ("Monk's Focus", "shortRest"),
-    "Sorcery Points": ("Font of Magic", "longRest"),
-    "Bardic Inspiration": ("Bardic Inspiration", "longRest"),
-    "Wild Shape": ("Wild Shape", "shortRest"),
-}
 
 
 def tables() -> Dict[str, Any]:
@@ -157,6 +149,8 @@ def slot_maxima(cls: str, level: int) -> Dict[str, int]:
     return out
 
 
+
+
 def hit_die(cls: str) -> int:
     return int(str(tables()["classes"][cls]["hit_die"]).lstrip("d"))
 
@@ -169,19 +163,82 @@ def features_gained(cls: str, level: int) -> List[str]:
     return list(tables()["classes"][cls]["features_by_level"].get(str(level), []))
 
 
-def pool_sizes(cls: str, level: int) -> Dict[str, Tuple[int, str]]:
-    """{feature name: (max uses, refreshOn)} for every table column that sizes a pool at this level."""
-    columns = tables()["classes"][cls].get("table_columns") or {}
-    out: Dict[str, Tuple[int, str]] = {}
-    for column, (feature, refresh) in POOL_COLUMNS.items():
-        rows = columns.get(column)
-        if isinstance(rows, dict) and str(level) in rows:
-            value = rows[str(level)]
-            try:
-                out[feature] = (int(str(value).split()[0]), refresh)
-            except (TypeError, ValueError):
-                continue
+@dataclass(frozen=True)
+class Pool:
+    """A feature's use pool at one class level: its maximum, the rest that
+    refreshes it, and how many uses a Short Rest regains when it regains only
+    some (None: a Short Rest, if it refreshes the pool, refills it)."""
+    max: int
+    refresh_on: str
+    short_rest_regain: Optional[int] = None
+    follows_ability: bool = field(default=False, compare=False)
+
+    def usage(self, current: Optional[int] = None) -> Dict[str, Any]:
+        """The sheet's classFeatures[].usage for this pool."""
+        out: Dict[str, Any] = {"current": self.max if current is None else current, "max": self.max,
+                               "refreshOn": self.refresh_on}
+        if self.short_rest_regain is not None:
+            out["shortRestRegain"] = self.short_rest_regain
+        return out
+
+
+def _pool_maximum(maximum: Dict[str, Any], columns: Dict[str, Any], level: int,
+                  abilities: Dict[str, Any]) -> Optional[int]:
+    """A use_pools maximum resolved from its typed kind; None when it does not resolve."""
+    if "column" in maximum:
+        rows = columns.get(maximum["column"])
+        value = rows.get(str(level)) if isinstance(rows, dict) else None
+        try:
+            return int(str(value).split()[0])
+        except (TypeError, ValueError, IndexError):
+            return None
+    if "by_level" in maximum:
+        steps = [(int(at), n) for at, n in maximum["by_level"].items() if int(at) <= level]
+        return int(max(steps)[1]) if steps else None
+    if "fixed" in maximum:
+        return int(maximum["fixed"])
+    if "ability_modifier" in maximum:
+        score = (abilities or {}).get(str(maximum["ability_modifier"]).lower())
+        return max(int(maximum.get("minimum", 0)), modifier(score))
+    if "class_level_times" in maximum:
+        return int(maximum["class_level_times"]) * level
+    return None
+
+
+def use_pools_at(cls: str, level: int, abilities: Optional[Dict[str, Any]] = None) -> Dict[str, Pool]:
+    """{feature name: Pool} for every use pool the class has at ``level``. The refresh
+    is the class table's row in effect at that level (a pool's rest can change as the
+    class advances, e.g. Bardic Inspiration from level 5). A Short Rest that regains
+    "one" use is a partial regain of 1; "all" refills; none leaves a Long Rest pool."""
+    c = tables()["classes"][cls]
+    columns = c.get("table_columns") or {}
+    out: Dict[str, Pool] = {}
+    for pool in c.get("use_pools") or []:
+        if int(pool["level"]) > level:
+            continue
+        maximum = _pool_maximum(pool.get("maximum") or {}, columns, level, abilities or {})
+        if maximum is None:
+            continue
+        rows = [row for row in pool.get("refresh") or [] if int(row["from_level"]) <= level]
+        short_rest = max(rows, key=lambda row: int(row["from_level"])).get("short_rest") if rows else None
+        out[pool["feature"]] = Pool(maximum, "shortRest" if short_rest in ("one", "all") else "longRest",
+                                    1 if short_rest == "one" else None,
+                                    "ability_modifier" in (pool.get("maximum") or {}))
     return out
+
+
+def pool_key(name: Any) -> str:
+    """A feature name as pools match it: the part before any parenthesis,
+    casefolded ("Action Surge (one use)" and "Channel Divinity (2/rest)" name
+    the Action Surge and Channel Divinity pools)."""
+    return str(name).split("(")[0].strip().casefold()
+
+
+def pool_feature(features: Any, name: str) -> Optional[Dict[str, Any]]:
+    """The classFeatures entry that owns pool ``name``, or None."""
+    return next((f for f in features or [] if isinstance(f, dict) and pool_key(f.get("name", "")) == pool_key(name)),
+                None)
+
 
 
 def spell_counts(cls: str, level: int) -> Dict[str, Optional[int]]:
@@ -239,7 +296,7 @@ class Settled:
     hit_die: int
     slot_targets: Dict[str, int]
     features: List[str]
-    pools: Dict[str, Tuple[int, str]]
+    pools: Dict[str, "Pool"]
     spell_counts: Dict[str, Optional[int]]
     exp_required_for_next_level: int
     choice_points: List[Dict[str, Any]] = field(default_factory=list)
@@ -265,7 +322,8 @@ def settle(sheet: Dict[str, Any], new_level: int) -> Settled:
     return Settled(
         cls=cls, new_level=new_level, proficiency_bonus=proficiency_bonus(new_level),
         hp_gain_fixed=fixed_hp_gain(cls), hit_die=hit_die(cls), slot_targets=slot_maxima(cls, new_level),
-        features=features_for(cls, subclass, new_level), pools=pool_sizes(cls, new_level), subclass=subclass,
+        features=features_for(cls, subclass, new_level), pools=use_pools_at(cls, new_level, sheet.get("abilities")),
+        subclass=subclass,
         spell_counts=spell_counts(cls, new_level),
         exp_required_for_next_level=xp_threshold(new_level + 1) if new_level < 20 else xp_threshold(20),
         choice_points=choice_points(sheet, cls, new_level),
