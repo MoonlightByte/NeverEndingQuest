@@ -333,16 +333,26 @@ def rest_lines(sheet: Dict[str, Any], kind: str, gaps: List[str]) -> List[Tuple[
 
 
 def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", request_id: Optional[str] = None,
-         binary: Optional[str] = None) -> RestOutcome:
+         binary: Optional[str] = None, hp_heals: Optional[Dict[str, int]] = None) -> RestOutcome:
     """Refill every pool the rest recovers on every sheet, one engine request.
 
     The engine's ``restore`` sets a pool to its maximum; a pool already full is
     a no-op. A Short Rest's partial regain is ``heal ... by n``, which the engine
-    caps at the maximum and never refuses. All sheets are rebuilt from the
-    engine's values together.
+    caps at the maximum and never refuses. ``hp_heals`` (sheet name -> positive
+    amount, a Short Rest only) heals hit points in the same request: the hit
+    dice spent on the rest, rolled by the caller. All sheets are rebuilt from
+    the engine's values together.
     """
     if kind not in REST_KINDS:
         return RestOutcome(False, reason=f"unknown rest kind {kind!r}; use short or long")
+    hp_heals = {str(name): amount for name, amount in (hp_heals or {}).items()}
+    if hp_heals and kind != "short":
+        return RestOutcome(False, reason="hit dice are spent on a short rest; a long rest restores every hit point")
+    if any(type(amount) is not int or amount < 1 for amount in hp_heals.values()):
+        return RestOutcome(False, reason="a rest heal must be a positive whole number")
+    unknown = sorted(set(hp_heals) - {str(s.get("name")) for s in sheets})
+    if unknown:
+        return RestOutcome(False, reason=f"no resting character is named {', '.join(unknown)}")
     sheets = [copy.deepcopy(s) for s in sheets]
     if not sheets:
         return RestOutcome(False, reason="no one is resting")
@@ -357,6 +367,10 @@ def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", re
         labels[cid] = rest_lines(sheet, kind, gaps)
         actions.extend(f'heal {_q(cid)} resource {_q(rid)} by {regain};' if regain else
                        f'restore {_q(cid)} resource {_q(rid)};' for rid, _, regain in labels[cid])
+        heal = hp_heals.get(str(sheet.get("name")))
+        if heal:
+            labels[cid].append(("hp", "hit points (hit dice)", heal))
+            actions.append(f'heal {_q(cid)} resource "hp" by {heal};')
         level = stats.exhaustion_level(sheet, gaps)
         if kind == "long" and level > 0:
             # SRD: a Long Rest removes one level of exhaustion (the highest instance).
