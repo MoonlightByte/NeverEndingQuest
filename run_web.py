@@ -81,7 +81,11 @@ def _react_bundle_is_usable(dist):
 
 
 def _replace_frontend_file(source, target):
-    """Sharing violations are busy, not a failed installation (#193 B2)."""
+    """Sharing violations are busy, not a failed installation (#193 B2).
+
+    The wait is shown once, then once every 10 seconds (#826).
+    """
+    started = next_report = None
     while True:
         try:
             os.replace(source, target)
@@ -89,7 +93,16 @@ def _replace_frontend_file(source, target):
         except OSError as exc:
             if getattr(exc, "winerror", None) not in {32, 33}:
                 raise
-            print("[SETUP] Waiting for the browser files to become available...")
+            now = time.monotonic()
+            if started is None:
+                started, next_report = now, now + 10
+                print("[SETUP] Waiting for the browser files to become available...")
+            elif now >= next_report:
+                next_report = now + 10
+                print(
+                    "[SETUP] Still waiting for the browser files (%d s); "
+                    "another program is using them." % (now - started)
+                )
             time.sleep(0.25)
 
 
