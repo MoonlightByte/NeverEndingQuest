@@ -3778,6 +3778,10 @@ def process_action(
             SaveGameManager().create_combat_checkpoint(
                 (action.get("parameters") or {}).get("encounterSummary", "")
             )
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            # A player's Load or Exit, or a read-only save stop, ends this
+            # turn before the fight is built (#845, as below for #654).
+            raise
         except Exception as e:
             warning(f"Combat checkpoint skipped: {e}", category="save_game")
 
