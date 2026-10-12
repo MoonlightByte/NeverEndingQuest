@@ -1469,6 +1469,11 @@ def _build_initial_combat_prompt(
     # D-242 consumer 4: a party member already down at combat start.
     down_rules = down_scene_rules_from_encounter(encounter_data)
     down_block = f"\n\n{down_rules}" if down_rules else ""
+    from core.generators.combat_builder import surprise_opening_rules
+
+    surprise_rules = surprise_opening_rules(encounter_data)
+    if surprise_rules:
+        down_block += f"\n\n{surprise_rules}"
     return f"""Dungeon Master Note: Respond with valid JSON containing a 'narration' field, 'combat_round' field, and an 'actions' array. This is the start of combat, so please describe the scene and set initiative order, but don't take any actions yet. Start off by hooking the player and engaging them for the start of combat the way any world class dungeon master would.{down_block}
 
 Important Character Field Definitions:

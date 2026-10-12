@@ -699,6 +699,35 @@ def _apply_surprise(encounter, participants):
         creature["effectIncapacitated"] = True
 
 
+def surprise_opening_rules(encounter):
+    """Name the creatures that open the fight surprised (#837).
+
+    The engine already skips their round 1 turn; without this the opening
+    narration has them shouting challenges and moving before anyone acts.
+    """
+    from core.managers.combat_state import combatant_presentation_name
+
+    names = [
+        combatant_presentation_name(
+            encounter, creature.get("combatantId"), creature.get("name")
+        )
+        for creature in encounter.get("creatures", [])
+        if any(
+            isinstance(effect, dict) and effect.get("name") == SURPRISE_EFFECT_NAME
+            for effect in creature.get("activeEffects") or []
+        )
+    ]
+    if not names:
+        return ""
+    return (
+        "Surprise: " + ", ".join(names) + " did not notice the party until "
+        "this moment and lose their round 1 turn. Narrate them caught off "
+        "guard (startled, turning, scrambling for a weapon); before the party "
+        "acts they make no attack, no move and no challenge or speech."
+    )
+
+
+
 RESULT_VERSION = 1
 
 

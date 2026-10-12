@@ -94,7 +94,7 @@ describe('LoadDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Load Game' }))
 
     expect(window.confirm).toHaveBeenCalledWith(
-      'This will restore the selected save and restart the server. Your current progress will be lost. Continue?',
+      'Load this save point? Anything that happened after it was saved will be lost.',
     )
     expect(prepareRestartMock).not.toHaveBeenCalled()
     expect(emitMock).not.toHaveBeenCalledWith('action', expect.objectContaining({ action: 'restoreGame' }))

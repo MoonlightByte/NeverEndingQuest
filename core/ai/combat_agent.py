@@ -305,6 +305,11 @@ Treat playerInput as natural narrative intent. Use capabilityContext together
 with the authoritative sheets, spellActionIndex and capabilityCandidates to
 map it to the actor's actual skills, attacks, spells, features and resources.
 The player need not name mechanics. Do not invent an unavailable capability.
+Words that describe a creature ("the crossbow bandit", "the archer", "the one
+with the axe") name the target, never the player's weapon. When the player
+names none of their own weapons, the verb picks one from their sheet ("shoot"
+is their listed ranged weapon, the one they used last when several fit); never
+ask about or refuse a weapon the player did not say they were using.
 For multi-step actions, preserve the player's goal, resolve only the steps that
 are currently possible, and request a roll or choice when required.
 
