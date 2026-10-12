@@ -496,14 +496,18 @@ the actor makes more than one attack this turn, set attacks to that number.
 """ + _spell_attack_prompt() + """The PLAYER actor must always use mode='adjudicated'; never roll automatically
 for the player. Apply only rolls/results explicitly supplied in playerInput,
 or set requiresPlayerInput={kind:'roll'|'choice', prompt:'...', die:'d20',
-reason:'...', spellName:'exact spell name', phase:'typed spell phase',
+phase:'attack', reason:'...', spellName:'exact spell name',
 slotLevel:3} and leave mechanical arrays empty. For EVERY roll, die must name
 the complete unmodified dice expression (for example '2d8' for two damage dice,
 not merely 'd8'); give only the currently requested phase, accounting for any
-confirmed critical hit. Keep flat bonuses out of die and apply them once when
+confirmed critical hit. Rider dice join the main die with + after it (for
+example '1d8+1d6'). For EVERY roll, phase names that roll: a spell's typed
+phase, otherwise 'attack' (main die 1d20, or 2d20 with advantage or
+disadvantage), 'damage', 'healing', 'save' or 'check'. Keep flat bonuses out
+of die and apply them once when
 adjudicating the returned raw dice. Put the dice expression in prompt as well
 as the weapon/action name so the player knows what to roll. For a spell include
-spellName and phase, plus slotLevel when the spell was cast with a slot. Code
+spellName, plus slotLevel when the spell was cast with a slot. Code
 will pause the same turn and show that request instead of consuming it.
 One requiresPlayerInput represents exactly ONE next player roll or choice.
 Never combine two rolls or two spells in one request. For a multi-action turn,

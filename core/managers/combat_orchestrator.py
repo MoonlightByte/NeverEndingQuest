@@ -547,23 +547,7 @@ def _player_request_message(request):
         return "I need one more detail before resolving that action. What do you do?"
     prompt = request.get("prompt")
     if isinstance(prompt, str) and prompt.strip():
-        rendered = prompt.strip()
-        # Some models put the later damage die in the structured `die` field
-        # while correctly asking for the attack first in prose.  Make the
-        # primary roll explicit in both the player message and the durable
-        # fallback parser so a missing legacy requestedDie cannot flip phases.
-        if _authoritative_requested_die(request) == "d20" and not re.search(
-            r"\b(?:\d+)?d20\b", rendered, flags=re.IGNORECASE
-        ):
-            rendered = re.sub(
-                r"\broll\s+(?:a|an|your)\s+"
-                r"((?:melee|ranged|spell)\s+)?attack(?:\s+roll)?\b",
-                r"Roll d20 for the \1attack roll",
-                rendered,
-                count=1,
-                flags=re.IGNORECASE,
-            )
-        return rendered
+        return prompt.strip()
     reason = request.get("reason")
     die = request.get("die")
     if isinstance(reason, str) and reason.strip() and isinstance(die, str) and die.strip():
@@ -574,19 +558,12 @@ def _player_request_message(request):
 
 
 def _authoritative_requested_die(request):
-    """Prefer the primary d20 when a combined prompt also names damage dice."""
+    """The request's typed main die (#853): the first term of its die, so
+    "1d8+1d6" stores "1d8". Its phase is typed beside it and checked against
+    it (_validate_roll_request_phase); the request text is never read."""
     if not isinstance(request, dict):
         return None
-    structured = str(request.get("die") or "").strip().lower()
-    prompt = str(request.get("prompt") or "").strip().lower()
-    if "roll" in prompt and re.search(
-        r"\b(?:melee|ranged|spell)\s+attack(?:\s+roll)?\b|"
-        r"(?<!sneak\s)\battack\s+roll\b|"
-        r"\broll(?:\s+an?|\s+your)?\s+attack\b",
-        prompt,
-    ):
-        return "d20"
-    return structured or None
+    return str(request.get("die") or "").strip().lower().split("+", 1)[0].strip() or None
 
 
 def _composed_player_input(pending, fallback):
@@ -782,15 +759,46 @@ def _validate_player_input_request_ownership(batch, encounter):
                 )
 
 
-def _validate_single_player_input_request(batch, encounter, spell_references=None):
-    """Reject one pending request that tries to encode multiple roll phases."""
-    trusted_spell_names = {
-        str(reference.get("name") or "").strip().casefold()
-        for reference in (
-            (spell_references or {}).get("spellReferences") or {}
-        ).values()
-        if isinstance(reference, dict) and str(reference.get("name") or "").strip()
-    } if isinstance(spell_references, dict) else set()
+# #853: the labels a non-spell player roll may name; a spell names its own
+# typed phase (data/srd_spell_roll_contracts.json).
+_ROLL_PHASES = ("attack", "damage", "healing", "save", "check")
+_ROLL_TERM = re.compile(r"(\d*)d(4|6|8|10|12|20|100)")
+
+
+def _roll_die_terms(die):
+    """``[(count, sides), ...]`` for a typed die such as "1d8" or "1d8+1d6"
+    (rider dice join the main die with +, main die first), or None."""
+    terms = []
+    for part in str(die or "").strip().lower().split("+"):
+        match = _ROLL_TERM.fullmatch(part.strip())
+        if match is None:
+            return None
+        terms.append((int(match.group(1) or 1), int(match.group(2))))
+    return terms
+
+
+def _spell_phase_purpose(spell_name, phase):
+    """The typed purpose of a spell's contract phase, or None."""
+    try:
+        from core.ai import srd_roll_contracts
+
+        key = srd_roll_contracts._canonical_key(spell_name)
+        contracts = srd_roll_contracts.load_spell_roll_contracts().get("contracts") or {}
+    except Exception:
+        return None
+    contract = contracts.get(key) if key else None
+    phases = contract.get("phases") if isinstance(contract, dict) else None
+    for entry in phases if isinstance(phases, list) else []:
+        if isinstance(entry, dict) and entry.get("id") == phase:
+            return entry.get("purpose")
+    return None
+
+
+def _validate_roll_request_phase(batch, encounter):
+    """#853: a player roll request names its phase and its die as typed
+    fields, and the two agree: an attack's main die is 1d20 (2d20 with
+    advantage or disadvantage), and damage or healing never uses a d20. The
+    phase is kept casefolded. The request text is never read."""
     for intent in (batch or {}).get("intents", []) or []:
         if not isinstance(intent, dict):
             continue
@@ -803,46 +811,38 @@ def _validate_single_player_input_request(batch, encounter, spell_references=Non
             or request.get("kind") != "roll"
         ):
             continue
-        prompt = str(request.get("prompt") or "")
-        dice = {
-            value.lower().replace(" ", "")
-            for value, sides in re.findall(
-                r"\b(\d*d(4|6|8|10|12|20|100)(?:\s*[+-]\s*\d+)?)\b",
-                prompt,
-                flags=re.IGNORECASE,
-            )
-            if sides != "20"
-        }
-        spell_name = str(request.get("spellName") or "").strip().casefold()
-        single_trusted_spell = bool(
-            spell_name and spell_name in trusted_spell_names
-        )
-        prompt_spell_names = {
-            trusted_name
-            for trusted_name in trusted_spell_names
-            if re.search(
-                r"(?<!\w)%s(?!\w)" % re.escape(trusted_name),
-                prompt,
-                flags=re.IGNORECASE,
-            )
-        }
-        mentions_another_spell = bool(
-            prompt_spell_names - ({spell_name} if spell_name else set())
-        )
-        if len(dice) > 1 and (
-            not single_trusted_spell or mentions_another_spell
+        phase = request.get("phase").strip().casefold() if isinstance(request.get("phase"), str) else ""
+        if phase and request.get("phase") != phase:
+            request["phase"] = phase
+        spell = request.get("spellName").strip() if isinstance(request.get("spellName"), str) else ""
+        terms = _roll_die_terms(request.get("die"))
+        # A spell names its contract phase; a plain label keeps its own rule
+        # even with a spell named (an ambiguous contract has no phases).
+        purpose = ((_spell_phase_purpose(spell, phase) if spell else None)
+                   or (phase if phase in _ROLL_PHASES else None))
+        problem = None
+        if not phase:
+            problem = ("requiresPlayerInput roll needs phase: the spell's typed phase, "
+                       "or 'attack', 'damage', 'healing', 'save' or 'check'")
+        elif not spell and phase not in _ROLL_PHASES:
+            problem = ("requiresPlayerInput phase %r must be 'attack', 'damage', 'healing', 'save' or 'check'"
+                       % phase)
+        elif terms is None:
+            problem = ("requiresPlayerInput roll needs die: dice only, such as '1d20', '2d6' or "
+                       "'1d8+1d6' (main die first), with no flat bonus")
+        elif purpose == "attack" and (
+            terms[0][1] != 20 or terms[0][0] not in (1, 2) or any(sides == 20 for _count, sides in terms[1:])
         ):
+            problem = ("requiresPlayerInput phase %r is an attack roll: its main die must be 1d20 "
+                       "(2d20 with advantage or disadvantage), not %s" % (phase, request.get("die")))
+        elif purpose in ("damage", "healing") and any(sides == 20 for _count, sides in terms):
+            problem = "requiresPlayerInput phase %r cannot use a d20 (%s)" % (phase, request.get("die"))
+        if problem:
             raise CombatIntentError(
-                (
-                    "requiresPlayerInput combined multiple dice expressions; "
-                    "request only the earliest unresolved player roll"
-                ),
+                problem,
                 intent.get("actorId"),
-                {
-                    "multiRollRequest": sorted(dice),
-                    "spellName": request.get("spellName"),
-                    "mentionedSpells": sorted(prompt_spell_names),
-                },
+                {"rollRequest": {"phase": phase or None, "die": request.get("die"),
+                                 "spellName": spell or None}},
             )
 
 
@@ -1142,7 +1142,10 @@ def _player_roll_contract_error(pending):
         return None
     previous = exchanges[-2] if isinstance(exchanges[-2], dict) else {}
     current = exchanges[-1] if isinstance(exchanges[-1], dict) else {}
-    request = str(previous.get("dmRequest") or "")
+    # #853: a typed request (its phase stored beside the die) is checked
+    # against its stored die only; an exchange written before that keeps
+    # today's reading of its request text.
+    request = "" if isinstance(previous.get("requestedPhase"), str) else str(previous.get("dmRequest") or "")
     answer = str(current.get("playerInput") or "")
     expected_sequence = [
         int(value)
@@ -1876,6 +1879,7 @@ def execute_agentic_turn(
             pending.get("turnId"),
             roll_contract_error,
             requested_die=previous_exchange.get("requestedDie"),
+            requested_phase=previous_exchange.get("requestedPhase"),
             npc_voice_intents=immutable_voice_intents,
         )
         record_combat_diagnostic(
@@ -2032,11 +2036,7 @@ def execute_agentic_turn(
                 # The last attempt lets a genuine question through rather than
                 # leave the player's turn without an answer.
                 _validate_player_weapon_question(batch, encounter, characters, pending)
-            _validate_single_player_input_request(
-                batch,
-                encounter,
-                spell_references=spell_references,
-            )
+            _validate_roll_request_phase(batch, encounter)
             try:
                 roll_audits = _audit_batch_spell_roll_requests(
                     batch,
@@ -2162,6 +2162,7 @@ def execute_agentic_turn(
                 pending.get("turnId"),
                 player_message,
                 requested_die=_authoritative_requested_die(request),
+                requested_phase=request.get("phase") if isinstance(request, dict) else None,
                 npc_voice_intents=immutable_voice_intents,
             )
             raise CombatTurnPaused(

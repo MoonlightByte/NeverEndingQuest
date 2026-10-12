@@ -131,13 +131,8 @@ def _slot_level(intent, request):
 
 
 def _request_dice(request):
-    prompt = str((request or {}).get("prompt") or "")
-    structured = _dice_expression((request or {}).get("die"))
-    # Existing weak-model repair law: an explicit spell/attack-roll prompt is
-    # a d20 phase even when the nested die field accidentally names later damage.
-    if re.search(r"\b(?:spell\s+attack|attack\s+roll)\b", prompt, re.I):
-        return {"count": 1, "sides": 20}
-    return structured or _dice_expression(prompt)
+    """The request's typed die (#853); its prompt text is never read."""
+    return _dice_expression((request or {}).get("die"))
 
 
 def _select_phase(contract, request, actual, slot_level, character_level):
@@ -145,20 +140,10 @@ def _select_phase(contract, request, actual, slot_level, character_level):
     explicit = str((request or {}).get("phase") or "").strip()
     if explicit:
         return next((phase for phase in phases if phase.get("id") == explicit), None)
-    prompt = str((request or {}).get("prompt") or "").lower()
     if actual and actual.get("sides") == 20:
         attack = [phase for phase in phases if phase.get("purpose") == "attack"]
         if len(attack) == 1:
             return attack[0]
-    for marker, phase_id in (
-        ("later", "later_damage"),
-        ("end of", "later_damage"),
-        ("initial", "initial_damage"),
-    ):
-        if marker in prompt:
-            selected = next((phase for phase in phases if phase.get("id") == phase_id), None)
-            if selected:
-                return selected
     if len(phases) == 1:
         return phases[0]
     if actual:

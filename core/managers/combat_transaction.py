@@ -801,8 +801,10 @@ def record_pending_player_request(
     requested_die=None,
     timeout_seconds=5.0,
     npc_voice_intents=None,
+    requested_phase=None,
 ):
-    """Persist the DM's complete question beside the action it clarifies."""
+    """Persist the DM's complete question beside the action it clarifies,
+    with the typed die and (#853) the typed phase of a roll request."""
     rendered = _player_text(player_message)
     with path_transaction_lock(
         encounter_path,
@@ -823,6 +825,8 @@ def record_pending_player_request(
         die = str(requested_die or "").strip().lower()
         if re.fullmatch(r"(?:\d+)?d(?:4|6|8|10|12|20|100)", die):
             exchanges[-1]["requestedDie"] = die
+        if isinstance(requested_phase, str) and requested_phase.strip():
+            exchanges[-1]["requestedPhase"] = requested_phase.strip()
         pending["playerExchanges"] = exchanges
         existing_voice_envelope = normalize_npc_voice_intents(
             pending.get("npcVoiceIntents")
