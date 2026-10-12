@@ -426,7 +426,7 @@
         "The corruption affecting Captain Gorvek hints at the larger threat in the Northern Woods",
         "Evidence of communication with mysterious benefactors providing gold and equipment"
       ],
-      "dmInstructions": "This is the climactic encounter for the Thornwood Wilds area. The bandits will fight defensively from their fortifications. Captain Gorvek's corruption connects to the Northern Corrupted Woods storyline. Consider having him flee toward the north if the battle goes poorly, leading the party toward the final area.",
+      "dmInstructions": "This is the climactic encounter for the Thornwood Wilds area. The bandits will fight defensively from their fortifications. Captain Gorvek's corruption connects to the Northern Corrupted Woods storyline. Consider having him flee toward the north if the battle goes poorly, leading the party toward the final area. Camp layout: the Bandit Warriors sleep and eat around the Central Fire Pit; Gorvek sleeps alone in the Captain's Tent against the north palisade; the sentries hold the lookout posts outside the wall. A character who looks over or through the palisade, or down from a lookout platform, can learn this layout (see dcChecks). Gorvek's habits: paranoid and trusting no one, he walks out of the gate alone at dawn and at dusk to inspect the lookout posts, and he answers a sentry's call himself before rousing anyone. If he finds a sentry missing or dead, or a convincing bandit voice calls him out (Deception DC 13), he comes out alone with his scimitar drawn to look first. On a failed Deception he grows suspicious and stays inside, setting a warrior at the gate. Alarm: a shout, a horn, or fighting at the gate or inside the wall wakes the camp and the warriors arrive two rounds later. A fight with Gorvek alone out by the lookout oaks stays unheard unless someone shouts, blows a horn, or it lasts longer than three rounds. The weak point in the defenses (Investigation DC 12) is a stake on the north palisade sitting proud of its neighbours, just behind his tent: through its seam a character can see and hear the tent, and working the stake loose quietly takes about ten minutes and opens a gap to the tent's back wall, out of sight of the fire pit.",
       "doors": [
         {
           "name": "Palisade Gate",
@@ -453,7 +453,9 @@
       "dcChecks": [
         "Stealth DC 14: Approach the stronghold without alerting the sentries",
         "Investigation DC 12: Study the fortifications to identify weak points in the defenses",
-        "Perception DC 13: Notice the supernatural corruption affecting the bandit captain"
+        "Perception DC 13: Notice the supernatural corruption affecting the bandit captain",
+        "Perception DC 13: From a lookout platform, the palisade seam or the top of the wall, see the camp's layout: the warriors asleep or idling around the fire pit, and Gorvek's tent alone against the north palisade",
+        "Deception DC 13: Imitate a bandit's voice or signal to draw Gorvek out alone"
       ],
       "accessibility": "Fortified clearing with defensive walls and elevated positions",
       "dangerLevel": "High",
@@ -473,6 +475,10 @@
         {
           "name": "Central Fire Pit",
           "description": "A large fire pit surrounded by crude benches where the bandits gather, cook, and plan their raids."
+        },
+        {
+          "name": "Captain's Tent",
+          "description": "A patched hide tent pitched against the north palisade, well apart from the bedrolls around the fire pit. Gorvek sleeps here alone with his maps and a locked strongbox; its back wall sits a stride from the palisade stakes."
         }
       ],
       "encounters": [],

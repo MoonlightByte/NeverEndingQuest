@@ -42,8 +42,8 @@ GO_ON_TOKEN = "go on"
 COMBAT_DOWN_SINK_LINE = (
     "You are down and cannot act. Your companions and the enemies take this "
     "round on their own. Anything you send now is you at the table, speaking "
-    "to your companions - not {name} acting or speaking. Send '{token}' (or an "
-    "empty line) to let the round run. Save and Load work as always."
+    "to your companions - not {name} acting or speaking. Send '{token}' to let "
+    "the round run. Save and Load work as always."
 )
 MAIN_DOWN_SINK_LINE = (
     "You are down and cannot act. Anything you send now is you at the table, "
@@ -89,7 +89,7 @@ Table talk: everything the player types while their character is at 0 HP is the 
 
 Aftermath: if this is the aftermath after the last enemy falls and the character is still down, narrate the party turning to them, but the character stays unconscious in this beat; waking happens only through a real action on the next turn.
 
-Recovery must be a real committed action, never a narrated claim: a heal, a potion administered by an ally, or a feature in combat; Medicine to stabilize, a potion, or rest out of combat, and rest only when the scene allows it. A withdrawal is legitimate, but the fight closes only when the enemies are resolved; never narrate an escape that did not close the encounter. Surrender is not offered. Level-up waits until the character is conscious."""
+Recovery must be a real committed action, never a narrated claim: a heal, a potion administered by an ally, or a feature in combat; out of combat, an ally tending a party member at exactly 0 HP up to 1 HP with no check (an updateCharacterInfo change, never above 1 HP this way), a potion, or rest, and rest only when the scene allows it. A withdrawal is legitimate, but the fight closes only when the enemies are resolved; never narrate an escape that did not close the encounter. Surrender is not offered. Level-up waits until the character is conscious."""
 
 
 def is_go_on(text):

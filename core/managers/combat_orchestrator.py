@@ -775,6 +775,30 @@ def _validate_single_player_input_request(batch, encounter, spell_references=Non
 # the dice), takes only bare typed numbers, and scores the swing; any other
 # answer goes back to the model's adjudicated path.
 _ROLL_NUMBERS = re.compile(r"^\s*(\d{1,3})(?:[\s,]+(\d{1,3}))?\s*$")
+# #249: the browser cannot send a blank line, so "roll" asks the game to roll,
+# and its dice tray inserts a whole sentence ("I rolled a 14 on a d20.", or
+# "I rolled a 5 on a d8 and a 3 on a d8. My damage dice add up to 8.").
+_LET_THE_GAME_ROLL = {"roll", "roll for me", "you roll"}
+_TRAY_DIE = r"a (\d{1,3}) on a d(\d{1,3})"
+_TRAY_SENTENCE = re.compile(
+    r"^\s*I rolled %s(?:(?:, | and )%s)*\.(?: My damage dice add up to \d{1,4}\.)?\s*$" % (_TRAY_DIE, _TRAY_DIE),
+    re.IGNORECASE,
+)
+
+
+def _tray_faces(text, record, entry):
+    """The typed values a dice-tray sentence carries for the open phase,
+    "invalid" when its dice are not the ones asked for, None when the text is
+    not a tray sentence."""
+    if not _TRAY_SENTENCE.match(text):
+        return None
+    dice = [(int(face), int(die)) for face, die in re.findall(_TRAY_DIE, text, re.IGNORECASE)]
+    count, sides = player_weapon_attack_dice(record, entry)
+    wanted = 20 if record.get("phase") == "attack" else sides
+    if len(dice) != count or any(die != wanted or not 1 <= face <= die for face, die in dice):
+        return "invalid"
+    faces = [face for face, _die in dice]
+    return faces if record.get("phase") == "attack" else [sum(faces)]
 
 
 def _weapon_attack_prompt(record, entry):
@@ -787,7 +811,7 @@ def _weapon_attack_prompt(record, entry):
             if count == 2 else ""
         )
         what = "both results (e.g. 15 3)" if count == 2 else "the result (e.g. 15)"
-        return "%s attack against %s: roll %dd20%s and type %s, or press Enter and the game rolls." % (
+        return "%s attack against %s: roll %dd20%s and type %s, or type roll and the game rolls." % (
             record.get("ability"), record.get("targetName"), count, why, what,
         )
     spell = record.get("spell") if isinstance(record.get("spell"), dict) else {}
@@ -801,28 +825,29 @@ def _weapon_attack_prompt(record, entry):
                 str(save.get("type") or "").capitalize(), result.get("total"), save.get("dc"),
                 {"half": ", half damage", "none": ", no damage"}.get(result.get("effect"), ""),
             ))
-        return "%s: %s. Roll %dd%d for damage and type the total, or press Enter and the game rolls." % (
+        return "%s: %s. Roll %dd%d for damage and type the total, or type roll and the game rolls." % (
             record.get("ability"), "; ".join(verdicts), count, sides,
         )
     hit = (
         "critical hit" if record.get("critical")
         else "hit (%s vs AC %s)" % (record.get("attackTotal"), record.get("targetAC"))
     )
-    return "%s %s on %s: roll %dd%d for damage and type the total, or press Enter and the game rolls." % (
+    return "%s %s on %s: roll %dd%d for damage and type the total, or type roll and the game rolls." % (
         record.get("ability"), hit, record.get("targetName"), count, sides,
     )
 
 
 def _parse_weapon_roll(text, record, entry):
-    """[] for a blank line (the game rolls), the typed values when they fit
-    the open phase, "invalid" for numbers that do not, None for anything else."""
+    """[] for a blank line or "roll" (the game rolls), the typed values when
+    they fit the open phase, "invalid" for numbers that do not, None for
+    anything else."""
     if text is None:
         return None
-    if not text.strip():
+    if not text.strip() or text.strip().rstrip(".!").casefold() in _LET_THE_GAME_ROLL:
         return []
     match = _ROLL_NUMBERS.match(text)
     if not match:
-        return None
+        return _tray_faces(text, record, entry)
     values = [int(group) for group in match.groups() if group is not None]
     count, sides = player_weapon_attack_dice(record, entry)
     if record.get("phase") == "attack":
@@ -830,6 +855,21 @@ def _parse_weapon_roll(text, record, entry):
     else:
         fits = len(values) == 1 and count <= values[0] <= count * sides
     return values if fits else "invalid"
+
+
+def _roll_already_answered(pending):
+    """True when an earlier exchange this turn asked for a d20 and the player
+    has answered it."""
+    exchanges = pending.get("playerExchanges") if isinstance(pending, dict) else None
+    if not isinstance(exchanges, list):
+        return False
+    for exchange in exchanges[:-1]:
+        if not isinstance(exchange, dict):
+            continue
+        asked = "%s %s" % (exchange.get("requestedDie") or "", exchange.get("dmRequest") or "")
+        if re.search(r"(?:^|[^a-z])d20\b", asked, re.IGNORECASE):
+            return True
+    return False
 
 
 def _player_weapon_takeover(encounter, characters, pending, batch):
@@ -842,6 +882,11 @@ def _player_weapon_takeover(encounter, characters, pending, batch):
     state = encounter.get("combatState") or {}
     first = combatant_by_id(encounter, actor_ids[0]) if actor_ids else None
     if first is None or resolve_creature_controller(first, state) != "human":
+        return None
+    if _roll_already_answered(pending):
+        # #249: this turn already asked the player for a d20 (the model's own
+        # request, or a code phase that fell back) and has the answer; asking
+        # again would throw that die away, so the model keeps the window.
         return None
     intents = _ordered_intents(batch, state.get("revision"))
     intent = intents[0] if intents and isinstance(intents[0], dict) else None
@@ -961,10 +1006,10 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
     if values == "invalid":
         count, sides = player_weapon_attack_dice(record, entry)
         hint = (
-            "Type %d whole number%s between 1 and 20, or press Enter to let the game roll. "
+            "Type %d whole number%s between 1 and 20, or type roll to let the game roll. "
             % (count, "s" if count == 2 else "")
             if record.get("phase") == "attack"
-            else "Type the total of %dd%d (%d to %d), or press Enter to let the game roll. "
+            else "Type the total of %dd%d (%d to %d), or type roll to let the game roll. "
             % (count, sides, count, count * sides)
         )
         return pending, hint + record["prompt"]
