@@ -124,7 +124,7 @@ function LoadDialogBody() {
     if (!selected || busy.current || !useSession.getState().connected || !saveExists(selected)) return
     setRestoreError('')
     if (ember) setConfirmation({ kind, folder: selected })
-    else if (window.confirm(kind === 'load' ? 'This will restore the selected save and restart the server. Your current progress will be lost. Continue?' : 'Delete this save? This cannot be undone.')) {
+    else if (window.confirm(kind === 'load' ? 'Load this save point? Anything that happened after it was saved will be lost.' : 'Delete this save? This cannot be undone.')) {
       if (kind === 'load') void performLoad(selected)
       else deleteSelected(selected)
     }
@@ -200,7 +200,7 @@ function LoadDialogBody() {
         </div>
         {confirmation && <ConfirmDialog
           title={confirmation.kind === 'load' ? 'Restore Saved Game' : 'Delete Saved Game'}
-          message={confirmation.kind === 'load' ? 'This will restore the selected save and restart the server. Your current progress will be lost. Continue?' : 'Delete this save? This cannot be undone.'}
+          message={confirmation.kind === 'load' ? 'Load this save point? Anything that happened after it was saved will be lost.' : 'Delete this save? This cannot be undone.'}
           confirmLabel={confirmation.kind === 'load' ? 'Restore Game' : 'Delete Save'}
           pending={restoring} error={restoreError} disabled={!connected} onCancel={cancelConfirmation}
           onConfirm={() => confirmation.kind === 'load' ? void performLoad(confirmation.folder) : deleteSelected(confirmation.folder)}
