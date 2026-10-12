@@ -63,7 +63,7 @@ from utils.encoding_utils import (
     safe_json_dump,
     fix_corrupted_location_name
 )
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, error, set_script_name
 
 # Set script name for logging
 set_script_name(__name__)
@@ -186,29 +186,6 @@ def get_location_info(location_name, current_area, current_area_id):
         for location in area_data["locations"]:
             if location["name"] == location_name:
                 return location
-    return None
-
-def get_location_data(location_id, area_id):
-    """Get location data based on location ID and area ID"""
-    # Get current module from party tracker for consistent path resolution
-    try:
-        party_tracker = load_json_file("party_tracker.json")
-        current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else None
-        path_manager = ModulePathManager(current_module)
-    except:
-        path_manager = ModulePathManager()  # Fallback to reading from file
-    area_file = path_manager.get_area_path(area_id)
-    try:
-        with open(area_file, "r", encoding="utf-8") as file:
-            area_data = json.load(file)
-        for location in area_data["locations"]:
-            if location["locationId"] == location_id:
-                return location
-        warning(f"VALIDATION: Location {location_id} not found in {area_file}", category="location_transitions")
-    except FileNotFoundError:
-        error(f"FILE_OP: Area file {area_file} not found", category="file_operations")
-    except json.JSONDecodeError:
-        error(f"FILE_OP: Invalid JSON in {area_file}", category="file_operations")
     return None
 
 def update_world_conditions(

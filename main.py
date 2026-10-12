@@ -141,6 +141,7 @@ from core.ai.incremental_compression import IncrementalLocationCompressor
 
 # Import new manager modules
 from core.managers import location_manager
+from core.managers.current_location import current_location_data
 from utils.location_path_finder import LocationGraph
 from core.ai import action_handler
 from core.ai.cumulative_summary import (
@@ -1508,14 +1509,9 @@ def check_and_inject_return_message(conversation_history, is_combat_active=False
 
 
 def get_location_data_from_party_tracker(party_tracker_data):
-    """Build location_data using the current worldConditions from party tracker."""
-    world_conditions = (party_tracker_data or {}).get("worldConditions") or {}
-    current_area_id = world_conditions.get("currentAreaId")
-    current_location = world_conditions.get("currentLocation")
-    current_area = world_conditions.get("currentArea")
-    if not (current_area_id and current_location and current_area):
-        return None
-    return location_manager.get_location_info(current_location, current_area, current_area_id)
+    """The current location's data by currentLocationId (#448's one reader), sanitized as before."""
+    location = current_location_data(party_tracker_data, consumer="location context")
+    return sanitize_dict(location) if location is not None else None
 
 
 def generate_transition_narration(transition_prompt, party_tracker_data):
@@ -3714,13 +3710,8 @@ def validate_ai_response(
     # Load the area data with correct module
     module_name = party_tracker_data.get("module", "").replace(" ", "_")
     path_manager = ModulePathManager(module_name)
-    area_file = path_manager.get_area_path(current_area_id)
-    try:
-        with open(area_file, "r", encoding="utf-8") as file:
-            area_data = json.load(file)
-        location_data = next((loc for loc in area_data["locations"] if loc["locationId"] == current_location_id), None)
-    except (FileNotFoundError, json.JSONDecodeError):
-        location_data = None
+    # #448's one reader; unsanitized, as this prompt always read it
+    location_data = current_location_data(party_tracker_data, consumer="DM response validation")
 
     # Create the location details message
     if location_data:
@@ -8763,12 +8754,7 @@ def _main_game_loop(startup_authority, turn_authority):
         debug("STATE_CHANGE: Added combat resume tracking messages before combat restart", category="session_management")
         
         # Directly get location info for the combat manager
-        current_area_id_resume = party_tracker_data["worldConditions"]["currentAreaId"]
-        location_data_resume = location_manager.get_location_info(
-            party_tracker_data["worldConditions"]["currentLocation"],
-            party_tracker_data["worldConditions"]["currentArea"],
-            current_area_id_resume
-        )
+        location_data_resume = get_location_data_from_party_tracker(party_tracker_data)
 
         # Call run_combat_simulation directly to get the return values
         from core.managers.combat_manager import run_combat_simulation
@@ -8888,13 +8874,7 @@ def _main_game_loop(startup_authority, turn_authority):
             require_current_invocation(startup_claim)
             # Process the AI's post-combat response to get the game moving again.
             # We need to load the fresh location data for this call.
-            world_post_combat = _post_combat_world(party_tracker_data)
-            current_area_id_post_combat = world_post_combat["currentAreaId"]
-            location_data_post_combat = location_manager.get_location_info(
-                world_post_combat["currentLocation"],
-                world_post_combat["currentArea"],
-                current_area_id_post_combat
-            )
+            location_data_post_combat = get_location_data_from_party_tracker(party_tracker_data)
             # Match the uninterrupted-combat handoff: the committed combat
             # state owns HP/XP, so the immediate narration pass must not
             # reapply a model-authored echo after reconnect recovery.
@@ -9458,11 +9438,7 @@ def _main_game_loop(startup_authority, turn_authority):
         # Reload current location_data for the DM note based on party_tracker
         # This ensures location_data is fresh for each DM note construction
         current_area_id = party_tracker_data["worldConditions"]["currentAreaId"] 
-        location_data = location_manager.get_location_info( 
-            party_tracker_data["worldConditions"]["currentLocation"],
-            party_tracker_data["worldConditions"]["currentArea"],
-            current_area_id
-        )
+        location_data = get_location_data_from_party_tracker(party_tracker_data)
 
         # #602: this turn's campaign-end prompt, if any; also the validator's fact.
         module_creation_prompt = ""
