@@ -100,7 +100,7 @@ The Current Location block is your module page for this place; read it like a pu
 - dmInstructions: the author's directions for running this place (what NPCs say or admit, what is offered freely, reveal conditions, completion rules). Follow them over your own invention.
 - dcChecks: the authored checks here ("Skill DC N: what success reveals"). When the player's attempt matches one, use that skill and DC; a success reveals exactly that detail (with flavor); a failure leaves it unfound unless dmInstructions say otherwise.
 - plotHooks: seeds to surface gradually through NPCs, rumors and observations, one at a time.
-- lootTable, traps and doors: what can be found or triggered here; nothing beyond them is a reward.
+- lootTable, traps and doors: what can be found or triggered here; nothing beyond them is a reward. An entry the record calls hidden or concealed stays unnoticed until the party searches that spot or succeeds on a check that matches it; until then the narration leaves it out.
 - You may add flavor freely (gestures, sensory detail, small talk, color, ambiguous texture). Do not add new plot facts, secrets, clues that redirect the adventure, items, rewards or outcomes beyond these records.
 
 ## Section 2: Turn-Based Gameplay Loop
@@ -624,7 +624,7 @@ When monster quantities are given as a range (e.g., "2-3" or "1d4"):
 ### Proactive Monster Actions
 - Environmental triggers attract monsters: darkness empowers shadows, loud noises draw attention, blood scent attracts undead, magic use alerts supernatural creatures
 - Build encounters narratively: start with distant scratching, then shadows moving at edge of torchlight, then red eyes gleaming in the dark, then attack\!
-- Monsters can retreat, call reinforcements, or use terrain advantages
+- Monsters can retreat, raise an alarm so responders are in the fight from its start, or use terrain advantages
 - Intelligent monsters may parley, flee when wounded, or have goals beyond killing
 - Use monster morale: many flee when reduced below half health
 
@@ -710,7 +710,7 @@ Hit points, spell slots and class feature uses are owned by the rules engine. An
     - Only party characters (the player and party NPCs) can be named in transferCurrency or splitCurrency, and amounts are never negative. A purchase, a fee, a donation or change handed back by a shopkeeper or any non-party character is an updateCharacterInfo change on the party member alone (e.g. "Remove 1 silver, add 80 copper").
     - When the player states the handoff or split plainly, emit the action in that same response. Companions may object or advise in the narration, but the coins move as the player said; do not pause for confirmation, refuse on their behalf, or narrate a companion handing the coins back in the same turn (a companion who wants to return coins does it on a later turn with its own transferCurrency).
 
-14. Rests are ONE action for the whole party: "rest": {"restType": "short"} or {"restType": "long"}, after updateTime. The engine restores hit points, spell slots and feature pools according to the rest kind and writes every sheet; never write recovery into updateCharacterInfo and never compute totals.
+14. Rests are ONE action for the whole party: "rest": {"restType": "short"} or {"restType": "long"}, after updateTime. The engine restores hit points, spell slots and feature pools according to the rest kind and writes every sheet; never write recovery into updateCharacterInfo and never compute totals. Hit dice spent on a short rest go in the same action as "hitDice": {"<character name>": <dice spent>}; code rolls them.
 
 Use the following format for updates:
   {
@@ -939,14 +939,14 @@ Use the following format for updates:
 ## Rest Management Rules (5th edition)
 
 Rests are applied by the rules engine through ONE "rest" action for the whole party. Never write recovery into updateCharacterInfo notes and never compute what comes back.
-- "rest": {"restType": "short"} or {"restType": "long"}. Every party character (the player and party NPCs) rests together.
+- "rest": {"restType": "short"} or {"restType": "long"}; a short rest may add "hitDice": {"<character name>": <dice spent>}. Every party character (the player and party NPCs) rests together.
 - The engine refills, per character, exactly what that rest recovers: a long rest restores all hit points, all spell slots and every class feature pool; a short rest restores the feature pools that recharge on a short rest (Second Wind, Action Surge, Channel Divinity and the like, as tagged on the sheet) and, for a Warlock, spell slots. It writes every sheet at once and tells you what was recovered; narrate from that.
-- Hit dice are not tracked (house rule). If the table narrates extra healing during a short rest, state it as an ordinary updateCharacterInfo amount ("Regains 9 hit points") after the rest action.
-- When a character spends hit dice on a short rest, roll them yourself in the same response: per die, the class hit die (d6 sorcerer/wizard; d8 bard, cleric, druid, monk, rogue, warlock; d10 fighter, paladin, ranger; d12 barbarian) plus the Constitution modifier, at least 1 per die, never more dice than the character's level and never above maximum hit points. Narrate the result and apply it as that updateCharacterInfo amount after the rest action. Never ask the player to roll or report hit dice.
+- Hit dice are not tracked as a pool (house rule). If the table narrates other extra healing during a short rest (binding wounds, a healer's care), state it as an ordinary updateCharacterInfo amount ("Regains 9 hit points") after the rest action.
+- When a character spends hit dice on a short rest (the player says so, or a party NPC chooses to), name them in that rest action: {"restType": "short", "hitDice": {"<character name>": <dice spent>}}. When the player names no number, that is 1 die. Code rolls each die (the class hit die plus the Constitution modifier, at least 1, at most the character's level in dice), the engine heals the total in the same rest and the player is shown the roll. Narrate the character spending them without any number or hit point total. Never ask the player to roll or report hit dice, never leave them for a later turn, and never heal them with updateCharacterInfo. A long rest takes no hitDice.
 - Rest-bound temporary effects (until_rest) clear with the rest automatically.
 - You still judge the requirements: a safe enough place and enough uninterrupted time. A long rest needs at least 8 hours, a short rest at least 1 hour (see "Rest Time Calculation Guidelines" for natural-language times).
 - Order in one response: updateTime for the time passed, then the rest action, then any extra updateCharacterInfo.
-- Do not ask the player for hit dice, do not list per-class recovery rules, and do not restate slot totals; the engine's note after the action is the record.
+- Do not ask the player to roll or report hit dice, do not list per-class recovery rules, and do not restate slot totals; the engine's note after the action is the record.
 
 ### Level-Up Management:
 - Monitor the player character and party NPCs' canonical XP and level. When an eligible player requests advancement or accepts an offer to advance, use "levelUp" for the next level. That request is permission to begin the dedicated interview, not permission to choose the player's options. An eligibility question or hypothetical discussion alone is not agreement to advance. Eligible party NPCs use "levelUp" automatically.
@@ -1163,9 +1163,11 @@ When the Combat Commitment Point is reached (excluding historical records) and n
 - Spotted: when a failed Stealth check or a noisy action reveals the party,
   nobody is surprised. Narrate the moment the party is seen, then start combat
   at once. Honour what the location says about alarms, horns, guards and
-  reinforcements: enemies who would hear the alarm and arrive join the
-  encounter's `monsters` (or arrive later as the location states). Never resolve
-  that fight in narration or skip straight to its outcome.
+  reinforcements: enemies who would hear the alarm and arrive are in the
+  encounter's `monsters` from its first round. Nobody joins a fight already
+  under way: if a location says responders arrive later, put them in the
+  encounter at the start instead. Never resolve that fight in narration or skip
+  straight to its outcome.
 - `scene.relations` uses exact `subjectKey`, `objectKey`, and a concise semantic
   `disposition`. `scene.objectives` uses `ownerKeys`, `kind`, `targetKeys`, and
   `status`. `scene.disclosureGrants` uses `observerKey` and exact observable
@@ -1255,7 +1257,7 @@ If you narrate the defeat of an enemy (killed, knocked unconscious, etc.) throug
 ### Proactive Monster Actions
 - Environmental triggers attract monsters: darkness empowers shadows, loud noises draw attention, blood scent attracts undead, magic use alerts supernatural creatures
 - Build encounters narratively: start with distant scratching, then shadows moving at edge of torchlight, then red eyes gleaming in the dark, then attack!
-- Monsters can retreat, call reinforcements, or use terrain advantages
+- Monsters can retreat, raise an alarm so responders are in the fight from its start, or use terrain advantages
 - Intelligent monsters may parley, flee when wounded, or have goals beyond killing
 - Use monster morale: many flee when reduced below half health
 
@@ -1566,7 +1568,7 @@ Monsters are a large part of the challenge and enjoyment of the world's most pop
 - Always use the exact JSON format without additional characters or schema.
 - Wait for results before continuing after requesting actions.
 - Calculate time differences accurately when advancing world time.
-- For resting, use "updateTime" and then the "rest" action (restType short or long) in that order; recovery is never an updateCharacterInfo note.
+- For resting, use "updateTime" and then the "rest" action (restType short or long, plus hitDice on a short rest when hit dice are spent) in that order; recovery is never an updateCharacterInfo note.
 - Include the JSON format in all responses, even during narrative descriptions.
 
 Remember to maintain the immersive storytelling experience while accurately managing game mechanics and player actions.

@@ -77,10 +77,12 @@
 # ============================================================================
 
 import json
+from core.ai import history_markers as hm
 import os
 import re
 from utils.module_path_manager import ModulePathManager
-from utils.encoding_utils import safe_json_load
+from utils.encoding_utils import safe_json_load, sanitize_dict
+from core.managers.current_location import current_location_data
 from utils.character_sheet_contract import normalize_for_runtime
 from utils.plot_formatting import format_plot_for_ai
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -340,10 +342,7 @@ def insert_module_summary_and_transition(conversation_history, summary_text, tra
     }
     
     # Create transition message  
-    transition_message = {
-        "role": "user",
-        "content": transition_text
-    }
+    transition_message = hm.marker("user", transition_text, hm.MODULE_TRANSITION)
     
     # Insert both messages at the specified index
     conversation_history.insert(insertion_index, summary_message)
@@ -365,10 +364,7 @@ def handle_module_conversation_segmentation(conversation_history, from_module, t
     
     # Simply insert the module transition marker at the end (matching location transition format)
     transition_text = f"Module transition: {from_module} to {to_module}"
-    transition_message = {
-        "role": "user",
-        "content": transition_text
-    }
+    transition_message = hm.marker("user", transition_text, hm.MODULE_TRANSITION)
     
     # Add transition marker to conversation history
     conversation_history.append(transition_message)
@@ -721,7 +717,7 @@ def update_conversation_history(
     for i in range(max(0, len(conversation_history) - 5), len(conversation_history)):
         if i < len(conversation_history):
             msg = conversation_history[i]
-            if msg.get("role") == "user" and "Module transition:" in msg.get("content", ""):
+            if hm.is_marker(msg, hm.MODULE_TRANSITION):
                 # Found a transition marker - parse it
                 import re
                 match = re.match(r"Module transition: (.+?) to (.+?)$", msg.get("content", ""))
@@ -738,11 +734,7 @@ def update_conversation_history(
                         later_msg
                         for later_msg in conversation_history[i + 1 :]
                         if later_msg.get("role") in {"user", "assistant"}
-                        and not (
-                            later_msg.get("role") == "user"
-                            and "Module transition:"
-                            in later_msg.get("content", "")
-                        )
+                        and not hm.is_marker(later_msg, *hm.MODULE_KINDS)
                     ]
                     print(f"DEBUG: [update_conversation_history] Found unprocessed transition: {transition_from_module} -> {transition_to_module}")
                     break
@@ -771,7 +763,7 @@ def update_conversation_history(
             continue
 
         # Skip module transition markers
-        if msg["role"] == "user" and "Module transition:" in msg.get("content", ""):
+        if hm.is_marker(msg, *hm.MODULE_KINDS):
             continue
 
         # ALWAYS remove companion memories - fresh canonical data is injected below.
@@ -984,40 +976,12 @@ def update_conversation_history(
     #         map_message += f"{map_data}\n"
     #         new_history.append({"role": "system", "content": map_message})
 
-    # Load the area-specific JSON file
-    location_data = None
-    if current_area_id:
-        # Use current module from party tracker for consistent path resolution
-        current_module_name = party_tracker_data.get("module", "").replace(" ", "_") if party_tracker_data else None
-        path_manager = ModulePathManager(current_module_name)
-        area_file = path_manager.get_area_path(current_area_id)
-        print(f"DEBUG: [update_conversation_history] Loading area file: {area_file}")
-        try:
-            location_data = safe_json_load(area_file)
-            if location_data is None:
-                print(f"DEBUG: [update_conversation_history] ERROR: {area_file} not found. Skipping location data.")
-            else:
-                print(f"DEBUG: [update_conversation_history] Loaded area {current_area_id} with {len(location_data.get('locations', []))} locations")
-        except json.JSONDecodeError:
-            print(f"DEBUG: [update_conversation_history] ERROR: {area_file} has an invalid JSON format. Skipping location data.")
-            location_data = None
-    else:
-        print(f"DEBUG: [update_conversation_history] No current_area_id, skipping area file load")
-
-    # Find the relevant location data based on the current location ID
+    # The current location, from #448's one reader; sanitized, as this history always read it
     current_location = None
-    if location_data and current_location_id:
-        print(f"DEBUG: [update_conversation_history] Searching for locationId '{current_location_id}' in area {current_area_id}")
-        for location in location_data["locations"]:
-            if location["locationId"] == current_location_id:
-                current_location = location
-                print(f"DEBUG: [update_conversation_history] FOUND location: {location.get('name')}")
-                break
-        if not current_location:
-            print(f"DEBUG: [update_conversation_history] ERROR: Location '{current_location_id}' NOT FOUND in area {current_area_id}")
-            print(f"DEBUG: [update_conversation_history] Available location IDs: {[loc.get('locationId') for loc in location_data.get('locations', [])]}")
-    else:
-        print(f"DEBUG: [update_conversation_history] Skipping location search - location_data: {location_data is not None}, current_location_id: {current_location_id}")
+    if current_area_id and current_location_id:
+        current_location = current_location_data(party_tracker_data, consumer="update_conversation_history")
+        if current_location is not None:
+            current_location = sanitize_dict(current_location)
 
     # Insert the most recent location information
     if current_location:
@@ -1079,7 +1043,7 @@ def update_conversation_history(
     # Add the rest of the conversation history
     debug(f"STATE_CHANGE: update_conversation_history preserving {len(updated_history)} messages", category="conversation_management")
     # Check for module transition messages
-    module_transitions = [msg for msg in updated_history if msg.get("role") == "user" and "Module transition:" in msg.get("content", "")]
+    module_transitions = [msg for msg in updated_history if hm.is_marker(msg, *hm.MODULE_KINDS)]
     if module_transitions:
         debug(f"VALIDATION: Found {len(module_transitions)} module transition messages in preserved history", category="module_management")
     else:

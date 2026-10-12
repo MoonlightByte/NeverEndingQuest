@@ -361,6 +361,74 @@ def end_dodge(event, creature, resolution=None):
         resolution["creatureDeltas"].setdefault(creature["combatantId"], {})["dodging"] = None
 
 
+def _last_weapon_kind(row_type, thrown):
+    """#851: the lastWeaponRows slot a swung row fills, or None. A monster
+    stat-block action carries no type and a spell row is not a weapon: both
+    fill nothing."""
+    if row_type == "melee":
+        return "melee"
+    if row_type == "ranged":
+        return "thrown" if thrown is True else "ranged"
+    return None
+
+
+def _stage_last_weapon_rows(encounter, characters, resolution):
+    """#851: put the actor's lastWeaponRows into the resolution's creatureDeltas.
+    Called where an event is resolved and where a staged one is replayed, so
+    the live resolution and its replay carry the same value."""
+    last_rows = last_weapon_rows_delta(encounter, characters, resolution["event"])
+    if last_rows is not None:
+        resolution["creatureDeltas"].setdefault(last_rows[0], {})["lastWeaponRows"] = last_rows[1]
+
+
+def last_weapon_rows_delta(encounter, characters, event):
+    """#851: ``(combatantId, lastWeaponRows)`` after this event, or None.
+
+    The actor's last swung weapon row per kind (melee, ranged, thrown), read
+    from the event's typed swings, so resolve_intent, resolve_adjudicated and
+    resolution_from_event write the same value. A swing staged before
+    #851 names only its row; its type is read from the actor's sheet. The
+    record lives on the encounter combatant for this fight only.
+
+    The player's own attacks are adjudicated and carry no swings: an
+    adjudicated ``attack`` whose ability is exactly a listed row on the
+    actor's sheet records that row.
+    """
+    swings = ((event or {}).get("outcome") or {}).get("swings") or []
+    actor = combatant_by_id(encounter, (event or {}).get("actorId"))
+    if actor is None or not actor.get("combatantId"):
+        return None
+    rows = {}
+    sheet = None
+    intent = (event or {}).get("intent") or {}
+    adjudicated = ((event or {}).get("outcome") or {}).get("kind") == "adjudicated"
+    # A known attack with no swing (no ammunition left) fired nothing: no row.
+    if not swings and adjudicated and intent.get("action") == "attack" and intent.get("ability"):
+        entry = _find_action(_raw_combatant_sheet(encounter, characters, actor), intent["ability"])
+        if isinstance(entry, dict):
+            swings = [{"ability": entry.get("name"), "rowType": entry.get("type"),
+                       "thrown": entry.get("thrown") is True}]
+    for swing in swings:
+        if not isinstance(swing, dict) or not swing.get("ability"):
+            continue
+        if "rowType" in swing:
+            row_type, thrown = swing.get("rowType"), swing.get("thrown")
+        else:
+            if sheet is None:
+                sheet = _raw_combatant_sheet(encounter, characters, actor)
+            entry = _find_action(sheet, swing["ability"]) or {}
+            row_type, thrown = entry.get("type"), entry.get("thrown")
+        kind = _last_weapon_kind(row_type, thrown)
+        if kind:
+            rows[kind] = {"ability": swing["ability"], "eventId": event.get("eventId")}
+    if not rows:
+        return None
+    current = actor.get("lastWeaponRows")
+    merged = deepcopy(current) if isinstance(current, dict) else {}
+    merged.update(rows)
+    return actor["combatantId"], merged
+
+
 def _stat_block_condition_op(encounter, event_id, actor, target, entry, conditions, rounds, index):
     """A failed-save condition effect the stat block states, normalized like a model op.
 
@@ -1617,6 +1685,9 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
             "damage": damage,
             # Option 3: scored by the rules engine, or by today's arithmetic.
             "engine": scored is not None,
+            # #851: the swung row's type, read back as the actor's last weapon.
+            "rowType": entry.get("type"),
+            "thrown": entry.get("thrown") is True,
         }
         if attack_mode != "normal" or mode_sources:
             # #528: the mode, the faces it chose from and the conditions
@@ -1720,6 +1791,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
         if hands_record is not None:
             hands_record["owner"] = actor.get("name")
             event["hands"] = hands_record
+    _stage_last_weapon_rows(encounter, characters, resolution)
     return resolution
 
 
@@ -2703,6 +2775,26 @@ def _warn_save(sheet, save_type, reason):
         pass
 
 
+PERSONAL_RESOURCE_KINDS = ("spellSlot", "featureUse")
+
+
+def _sheet_can_cast(sheet):
+    """True when the sheet lists any spell or any spell slot."""
+    spellcasting = sheet.get("spellcasting") if isinstance(sheet, dict) else None
+    if not isinstance(spellcasting, dict):
+        return False
+    spells = spellcasting.get("spells")
+    if isinstance(spells, dict) and any(spells.values()):
+        return True
+    if isinstance(spells, list) and spells:
+        return True
+    slots = spellcasting.get("spellSlots")
+    for level in (slots.values() if isinstance(slots, dict) else []):
+        if isinstance(level, dict) and int(level.get("max", 0) or 0) > 0:
+            return True
+    return False
+
+
 def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_feature_heals=False,
                         attack_hits=None):
     """General adjudicated-outcome contract for anything beyond weapon attacks.
@@ -2860,6 +2952,34 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                 "combatantId": target_id,
                 "conditions": list(stated_conditions),
             })
+
+    # Playtest round 2: a companion "cast" Cure Wounds it does not know and
+    # paid with the player's slot. Slots and feature uses belong to the actor
+    # that spends them, and a sheet with no spellcasting cannot cast unless an
+    # item or feature of its own pays for it.
+    actor = combatant_by_id(encounter, proposal.get("actorId")) or {}
+    actor_name = actor.get("name")
+    actor_sheet = (characters or {}).get(actor_name) if actor_name else None
+    for record in resources:
+        if (isinstance(record, dict) and record.get("kind") in PERSONAL_RESOURCE_KINDS
+                and isinstance(record.get("owner"), str) and record.get("owner") != actor_name
+                and record.get("owner") in (characters or {})):
+            try:
+                spends = int(record.get("delta")) < 0
+            except (TypeError, ValueError):
+                spends = False
+            if spends:
+                resolution["violations"].append(
+                    "%s cannot spend %s's %s %s: an actor spends only its own slots "
+                    "and feature uses" % (actor_name, record.get("owner"), record.get("kind"), record.get("name")))
+    if (proposal.get("action") == "cast" and actor.get("type") in ("player", "npc")
+            and isinstance(actor_sheet, dict) and not _sheet_can_cast(actor_sheet)
+            and not any(isinstance(record, dict) and record.get("owner") == actor_name
+                        and record.get("kind") in ("item", "charges", "featureUse")
+                        for record in resources)):
+        resolution["violations"].append(
+            "%s has no spells or spell slots on their sheet and cannot cast; choose an "
+            "action from their own attacks, features or items" % actor_name)
 
     # Resources: validate owner/kind/name, reject overspend, and record
     # absolute before/after so a crash-replay of this event is idempotent.
@@ -3629,6 +3749,7 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
     event["effects"] = deepcopy(resolution["effectOps"])
     if stated_entry is not None and not resolution["violations"]:
         _spend_recharge(resolution, event, actor_creature, stated_entry)
+    _stage_last_weapon_rows(encounter, characters, resolution)
     return resolution
 
 
@@ -3683,6 +3804,7 @@ def resolution_from_event(encounter, characters, event):
         resolution["creatureDeltas"].setdefault(dodge["actorId"], {})["dodging"] = {
             "sinceEventId": event["eventId"]
         }
+    _stage_last_weapon_rows(encounter, characters, resolution)
     return resolution
 
 
@@ -3916,6 +4038,9 @@ def apply_resolution(encounter, characters, resolution):
                 creature["dodging"] = deepcopy(delta["dodging"])
             else:
                 creature.pop("dodging", None)
+        if isinstance(delta.get("lastWeaponRows"), dict):
+            # #851: the actor's last swung weapon row per kind (journal authority)
+            creature["lastWeaponRows"] = deepcopy(delta["lastWeaponRows"])
 
     for name, delta in (resolution.get("charDeltas") or {}).items():
         sheet = new_characters.get(name)

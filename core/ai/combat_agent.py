@@ -309,7 +309,9 @@ Words that describe a creature ("the crossbow bandit", "the archer", "the one
 with the axe") name the target, never the player's weapon. When the player
 names none of their own weapons, the verb picks one from their sheet ("shoot"
 is their listed ranged weapon, the one they used last when several fit); never
-ask about or refuse a weapon the player did not say they were using.
+ask about or refuse a weapon the player did not say they were using. "The one
+they used last" is the actor's creatures[].lastWeaponRows entry for that kind
+(melee, ranged for shots, thrown); when it is absent, pick from the sheet.
 For multi-step actions, preserve the player's goal, resolve only the steps that
 are currently possible, and request a roll or choice when required.
 

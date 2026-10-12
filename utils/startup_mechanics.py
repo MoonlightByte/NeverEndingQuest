@@ -5,6 +5,8 @@ these checks never invent choices or modify an approved sheet.
 """
 import re
 
+from core.nql.genesis import DEFENSE_STYLE_FEATURE
+
 ARMOR = {
     'padded': (11, None), 'leather': (11, None), 'studded leather': (12, None),
     'hide': (12, 2), 'chain shirt': (13, 2), 'scale mail': (14, 2),
@@ -46,11 +48,11 @@ def ordinary_starting_ac(sheet):
     base, cap = worn[0]
     modifier = (dex - 10) // 2
     ac = base + (modifier if cap is None else 0 if cap == 0 else min(modifier, cap)) + 2 * shields
-    for feature in sheet.get('classFeatures', []) or []:
-        name = str(feature.get('name', '') if isinstance(feature, dict) else feature).lower()
-        if name.strip() in ('fighting style: defense', 'defense fighting style'):
-            ac += 1
-            break
+    # Defense's +1 only for the exact classFeatures name the engine grants it
+    # for (core.nql.genesis), so this check agrees with the engine's armorClass.
+    if any(isinstance(feature, dict) and feature.get('name') == DEFENSE_STYLE_FEATURE
+           for feature in sheet.get('classFeatures', []) or []):
+        ac += 1
     return ac
 
 

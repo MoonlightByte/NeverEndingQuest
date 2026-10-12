@@ -52,6 +52,7 @@ See LICENSE file for full terms.
 # ============================================================================
 
 import copy
+from core.ai import history_markers as hm
 import json
 import hashlib
 import subprocess
@@ -72,7 +73,7 @@ from utils.provider_errors import classify_provider_error
 from core.combat.invocation import InvocationSupersededError
 register_callsite("T012", "core/ai/action_handler.py", 676)
 import config
-from core.managers.location_manager import get_location_data
+from core.managers.current_location import current_location_data
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import sanitize_text, safe_json_dump, safe_json_load
 from utils.file_operations import safe_read_json, safe_write_json
@@ -441,10 +442,7 @@ def _new_current_transition_checkpoint(
     segment_start = 0
     for index in range(len(persisted_history) - 1, -1, -1):
         message = persisted_history[index]
-        content = message.get("content", "") if isinstance(message, dict) else ""
-        if isinstance(message, dict) and message.get("role") == "user" and (
-            "Location transition:" in content or "Module transition:" in content
-        ):
+        if hm.is_marker(message, hm.LOCATION_TRANSITION, *hm.MODULE_KINDS):
             segment_start = index + 1
             break
     origin_segment = persisted_history[segment_start:]
@@ -1806,14 +1804,14 @@ def apply_current_transition_action(operation_id, action_index):
         history = safe_json_load(
             "modules/conversation_history/conversation_history.json"
         ) or []
-        marker = {
-            "role": "user",
-            "content": "Module transition: %s to %s"
-            % (source["module"], target["module"]),
-        }
+        marker = hm.marker(
+            "user",
+            "Module transition: %s to %s" % (source["module"], target["module"]),
+            hm.MODULE_TRANSITION,
+        )
         if current == source:
             transition_history = list(history)
-            if not transition_history or transition_history[-1] != marker:
+            if not transition_history or not hm.same_message(transition_history[-1], marker):
                 transition_history.append(marker)
             original, updated = CampaignManager().publish_party_module_transition(
                 source["module"],
@@ -2088,7 +2086,7 @@ def recover_pending_location_transition(party_tracker_data, conversation_history
         None,
     )
     if marker_index is None:
-        conversation_history.append({"role": "user", "content": marker})
+        conversation_history.append(hm.marker("user", marker, hm.LOCATION_TRANSITION))
         marker_index = len(conversation_history) - 1
 
     # A saved assistant message after our exact marker proves T013 completed.
@@ -3283,15 +3281,7 @@ def get_module_starting_location(module_name: str, snapshot=None) -> tuple:
             # The fallback is code's own substitute, so it must be a start the
             # resolver accepts: checked against the snapshot, else the first
             # valid node (#821).
-            replaced = ""
-            if snapshot is not None:
-                checked, _ = _resolved_model_start(module_name, starting_location, snapshot)
-                if checked is None:
-                    checked = _first_valid_snapshot_start(snapshot)
-                    if checked is not None:
-                        replaced = (f" (the first-area fallback {starting_location[2]}:{starting_location[0]} "
-                                    f"is not a valid location of the module)")
-                starting_location = checked or starting_location
+            starting_location, replaced = _checked_fallback(module_name, starting_location, snapshot)
             warning(f"STARTING_LOCATION: {why}; using {starting_location[2]}:{starting_location[0]} "
                     f"for this entry, not cached{replaced}", category="module_loading")
 
@@ -3320,15 +3310,26 @@ def get_module_starting_location(module_name: str, snapshot=None) -> tuple:
     except ReadOnlySaveStop:
         raise
     except Exception as e:
-        error(f"FAILURE: Could not get starting location for {module_name}: {e}", category="module_loading")
         # INT-H5: recover a REAL location from the module's area files rather
         # than writing placeholder IDs (A01/AREA001) that resolve to no area
-        # file and strand the player at a non-existent location.
+        # file and strand the player at a non-existent location. It is checked
+        # against the snapshot like the other fallbacks (#821).
         real = _first_real_location_from_files(module_name)
+        replaced = ""
         if real:
-            warning(f"STARTING_LOCATION: falling back to first real location "
-                    f"{real[2]}:{real[0]} for {module_name}", category="module_loading")
+            try:
+                real, replaced = _checked_fallback(module_name, real, snapshot)
+            except ReadOnlySaveStop:
+                raise
+            except Exception:
+                pass  # this route must not raise again; keep the file start
+        cause = f"looking up the start for {module_name} raised {type(e).__name__}: {e}"
+        if real:
+            error(f"STARTING_LOCATION: {cause}; using {real[2]}:{real[0]} for this entry, "
+                  f"not cached{replaced}", exception=e, category="module_loading")
             return real
+        error(f"STARTING_LOCATION: {cause}; no real location in its files, using the placeholder "
+              f"AREA001:A01", exception=e, category="module_loading")
         return ("A01", "Unknown Location", "AREA001", "Unknown Area")
 
 def _resolved_model_start(module_name, start, snapshot=None):
@@ -3357,6 +3358,23 @@ def _first_valid_snapshot_start(snapshot):
         if node["location_id"] not in invalid:
             return (node["location_id"], node["location_name"], node["area_id"], node["area_name"])
     return None
+
+
+def _checked_fallback(module_name, start, snapshot):
+    """(start, replaced) for a start code chose itself: the node when it is a
+    valid location of the snapshot, else the snapshot's first valid node, else
+    the start unchanged. replaced names the start the first valid node took
+    the place of, else "". No snapshot: (start, "") (#821)."""
+    if snapshot is None:
+        return start, ""
+    checked, _ = _resolved_model_start(module_name, start, snapshot)
+    if checked is not None:
+        return checked, ""
+    checked = _first_valid_snapshot_start(snapshot)
+    if checked is None:
+        return start, ""
+    return checked, (f" (the first-area fallback {start[2]}:{start[0]} "
+                     f"is not a valid location of the module)")
 
 
 def _ai_analyze_starting_location(module_data: dict) -> tuple:
@@ -3561,6 +3579,14 @@ def _engine_request_id(invocation_claim, action_context, suffix):
     if not turn_id or not isinstance(index, int):
         return "dm:%s:%s" % (uuid4(), suffix)
     return "dm:%s:%d:%s" % (turn_id, index, suffix)
+
+
+def _show_rest_receipt(content):
+    """Show the player the hit dice code rolled on a short rest (#840)."""
+    from web.shared_state import emit_player_output
+
+    if emit_player_output({"type": "narration", "channel": "system", "content": content}) is not True:
+        print(content)
 
 
 # The turn whose fight already failed to start once (#444). It is only ever
@@ -3778,6 +3804,10 @@ def process_action(
             SaveGameManager().create_combat_checkpoint(
                 (action.get("parameters") or {}).get("encounterSummary", "")
             )
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            # A player's Load or Exit, or a read-only save stop, ends this
+            # turn before the fight is built (#845, as below for #654).
+            raise
         except Exception as e:
             warning(f"Combat checkpoint skipped: {e}", category="save_game")
 
@@ -3854,7 +3884,7 @@ def process_action(
                 current_location_id = party_tracker_data["worldConditions"]["currentLocationId"]
                 current_area_id = party_tracker_data["worldConditions"]["currentAreaId"]
                 # Use the reloaded location data for the combat simulation
-                reloaded_location_data = get_location_data(current_location_id, current_area_id)
+                reloaded_location_data = current_location_data(party_tracker_data, consumer="combat start")
 
 
                 if reloaded_location_data is None:
@@ -5383,10 +5413,14 @@ Please use a valid location that exists in the current area ({current_area_id}) 
         try:
             from core.managers.rest_manager import execute_rest
 
-            result = execute_rest(parameters.get("restType"), party_tracker_data, conversation_history)
+            result = execute_rest(parameters.get("restType"), party_tracker_data, conversation_history,
+                                  hit_dice=parameters.get("hitDice"))
             if result.get("success"):
                 info(f"SUCCESS: {result.get('message')}", category="character_updates")
                 conversation_history.append({"role": "user", "content": f"Rest: {result.get('message')}"})
+                if result.get("hit_dice_receipts"):
+                    # #840: code rolled the hit dice; the player sees the roll.
+                    _show_rest_receipt(" ".join(result["hit_dice_receipts"]))
                 if result.get("effects_note"):
                     # process_effect_lifecycle returns a complete message
                     # ({"role": "system", "content": ...}); append it as is.
@@ -5397,7 +5431,8 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 conversation_history.append({"role": "user", "content": (
                     f"Rest Error: {result.get('error', 'the rest was refused')}. No sheet changed. Later actions from "
                     "this response have not executed. Do not repeat earlier completed actions; state the rest again "
-                    "with restType short or long, or narrate why the party cannot rest.")})
+                    "with restType short or long (hitDice only on a short rest), or narrate why the party cannot "
+                    "rest.")})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
         except (LiveProviderSuperseded, InvocationSupersededError):
@@ -5445,10 +5480,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 
                 # Insert module transition marker immediately when module change is detected
                 transition_text = f"Module transition: {current_module} to {new_module}"
-                transition_message = {
-                    "role": "user",
-                    "content": transition_text
-                }
+                transition_message = hm.marker("user", transition_text, hm.MODULE_TRANSITION)
                 transition_history = list(conversation_history)
                 transition_history.append(transition_message)
                 print(f"DEBUG: [Module Transition] Inserted transition marker: '{transition_text}'")
