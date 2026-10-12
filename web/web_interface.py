@@ -330,6 +330,24 @@ def _apply_web_restore(manager, save_folder, previous_clean):
         return RestoreOutcome('recovery_required', f'Load could not verify a clean state: {exc}')
 
 
+def _pause_web_gameplay(message):
+    """Hold the page on Load / Reset / Exit when the game cannot go on (#806).
+
+    The state a failed Load leaves: input, Start, the status line and a
+    reconnecting tab all show the pause, and Load and Reset work with no game
+    thread. Nothing is restored and the process keeps running.
+    """
+    payload = {
+        'message': message + ' Gameplay is paused. Choose Load, Reset, or Exit.',
+        'restore_outcome': 'recovery_required',
+        'can_resume': False,
+        'restart_required': False,
+    }
+    with _ui_operation_lock:
+        _ui_operations['restore'] = payload
+    emit_status_update(payload['message'], False)
+
+
 def _finish_web_restore(manager, outcome):
     global _restore_manager
     payload = {
@@ -4999,6 +5017,8 @@ def run_game_loop():
         # Run the main game
         from updates.save_game_manager import RestoreRequest
         handoff = dm_main.main_game_loop()
+        if isinstance(handoff, dm_main.WebRecoveryPause):
+            _pause_web_gameplay(handoff.message)
         if isinstance(handoff, RestoreRequest):
             previous_clean = _web_restore_state().get('can_resume') is not False
             _finish_web_restore(
