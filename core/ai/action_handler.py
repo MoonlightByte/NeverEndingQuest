@@ -3283,15 +3283,7 @@ def get_module_starting_location(module_name: str, snapshot=None) -> tuple:
             # The fallback is code's own substitute, so it must be a start the
             # resolver accepts: checked against the snapshot, else the first
             # valid node (#821).
-            replaced = ""
-            if snapshot is not None:
-                checked, _ = _resolved_model_start(module_name, starting_location, snapshot)
-                if checked is None:
-                    checked = _first_valid_snapshot_start(snapshot)
-                    if checked is not None:
-                        replaced = (f" (the first-area fallback {starting_location[2]}:{starting_location[0]} "
-                                    f"is not a valid location of the module)")
-                starting_location = checked or starting_location
+            starting_location, replaced = _checked_fallback(module_name, starting_location, snapshot)
             warning(f"STARTING_LOCATION: {why}; using {starting_location[2]}:{starting_location[0]} "
                     f"for this entry, not cached{replaced}", category="module_loading")
 
@@ -3320,15 +3312,26 @@ def get_module_starting_location(module_name: str, snapshot=None) -> tuple:
     except ReadOnlySaveStop:
         raise
     except Exception as e:
-        error(f"FAILURE: Could not get starting location for {module_name}: {e}", category="module_loading")
         # INT-H5: recover a REAL location from the module's area files rather
         # than writing placeholder IDs (A01/AREA001) that resolve to no area
-        # file and strand the player at a non-existent location.
+        # file and strand the player at a non-existent location. It is checked
+        # against the snapshot like the other fallbacks (#821).
         real = _first_real_location_from_files(module_name)
+        replaced = ""
         if real:
-            warning(f"STARTING_LOCATION: falling back to first real location "
-                    f"{real[2]}:{real[0]} for {module_name}", category="module_loading")
+            try:
+                real, replaced = _checked_fallback(module_name, real, snapshot)
+            except ReadOnlySaveStop:
+                raise
+            except Exception:
+                pass  # this route must not raise again; keep the file start
+        cause = f"looking up the start for {module_name} raised {type(e).__name__}: {e}"
+        if real:
+            error(f"STARTING_LOCATION: {cause}; using {real[2]}:{real[0]} for this entry, "
+                  f"not cached{replaced}", exception=e, category="module_loading")
             return real
+        error(f"STARTING_LOCATION: {cause}; no real location in its files, using the placeholder "
+              f"AREA001:A01", exception=e, category="module_loading")
         return ("A01", "Unknown Location", "AREA001", "Unknown Area")
 
 def _resolved_model_start(module_name, start, snapshot=None):
@@ -3357,6 +3360,23 @@ def _first_valid_snapshot_start(snapshot):
         if node["location_id"] not in invalid:
             return (node["location_id"], node["location_name"], node["area_id"], node["area_name"])
     return None
+
+
+def _checked_fallback(module_name, start, snapshot):
+    """(start, replaced) for a start code chose itself: the node when it is a
+    valid location of the snapshot, else the snapshot's first valid node, else
+    the start unchanged. replaced names the start the first valid node took
+    the place of, else "". No snapshot: (start, "") (#821)."""
+    if snapshot is None:
+        return start, ""
+    checked, _ = _resolved_model_start(module_name, start, snapshot)
+    if checked is not None:
+        return checked, ""
+    checked = _first_valid_snapshot_start(snapshot)
+    if checked is None:
+        return start, ""
+    return checked, (f" (the first-area fallback {start[2]}:{start[0]} "
+                     f"is not a valid location of the module)")
 
 
 def _ai_analyze_starting_location(module_data: dict) -> tuple:
