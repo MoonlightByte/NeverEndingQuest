@@ -23,6 +23,7 @@ from core.combat import (
 )
 from core.combat.pipeline import _intent_for_actor, _ordered_intents
 from core.combat.resolver import (
+    _action_entries,
     feature_heal_key,
     open_player_spell_attack,
     open_player_spell_save,
@@ -658,6 +659,81 @@ def _audit_batch_spell_roll_requests(batch, encounter, characters):
     return audits
 
 
+# #263: weapon words a player may use to describe an enemy ("the crossbow
+# bandit", "the one with the axe"). Plurals are matched by the pattern below.
+_WEAPON_WORDS = (
+    "battleaxe", "blowgun", "bow", "club", "crossbow", "dagger", "dart", "flail",
+    "glaive", "greataxe", "greatclub", "greatsword", "halberd", "hammer", "handaxe",
+    "javelin", "lance", "longbow", "longsword", "mace", "maul", "morningstar", "net",
+    "pike", "quarterstaff", "rapier", "scimitar", "shortbow", "shortsword", "sickle",
+    "sling", "spear", "staff", "sword", "trident", "warhammer", "whip", "axe",
+)
+
+
+def _owned_weapon_text(sheet):
+    """Lower-cased names of everything the sheet lists as an item or action."""
+    names = []
+    for item in (sheet or {}).get("equipment", []) or []:
+        if isinstance(item, dict):
+            names.append(str(item.get("item_name") or item.get("name") or ""))
+    for entry in _action_entries(sheet or {}):
+        if isinstance(entry, dict):
+            names.append(str(entry.get("name") or ""))
+    return " | ".join(names).casefold()
+
+
+def _validate_player_weapon_question(batch, encounter, characters, pending):
+    """#263: send back a player question about a weapon the player never said
+    they were using.
+
+    "I shoot the crossbow bandit" names a target. When the model asks the
+    player about (or refuses) a crossbow the sheet does not list, and the
+    player's words only used it to describe someone, the request goes back to
+    the model as a correction instead of reaching the player.
+    """
+    exchanges = pending.get("playerExchanges") if isinstance(pending, dict) else None
+    player_text = ""
+    if isinstance(exchanges, list) and exchanges and isinstance(exchanges[-1], dict):
+        player_text = str(exchanges[-1].get("playerInput") or "")
+    player_text = player_text.split("\n[Inventory Context:", 1)[0].casefold()
+    if not player_text:
+        return
+    for intent in (batch or {}).get("intents", []) or []:
+        if not isinstance(intent, dict):
+            continue
+        actor = combatant_by_id(encounter, intent.get("actorId"))
+        request = intent.get("requiresPlayerInput")
+        if (
+            not isinstance(actor, dict)
+            or not _is_human_controlled(encounter, actor)
+            or not isinstance(request, dict)
+        ):
+            continue
+        prompt = str(request.get("prompt") or "").casefold()
+        owned = _owned_weapon_text((characters or {}).get(actor.get("name")))
+        for word in _WEAPON_WORDS:
+            pattern = r"\b%s(?:e?s)?\b" % word
+            if not (re.search(pattern, prompt) and re.search(pattern, player_text)):
+                continue
+            if re.search(r"\b%s\b" % word, owned):
+                continue
+            if re.search(r"\b(?:my|own)\s+(?:\w+\s+)?%s\b" % word, player_text):
+                continue
+            if re.search(r"\bwith\s+(?:a|an)\s+(?:\w+\s+)?%s\b" % word, player_text):
+                continue
+            raise CombatIntentError(
+                (
+                    "The player did not say they are using a %s: in their words "
+                    "\"%s\" the %s describes the target. Do not ask about or refuse "
+                    "it. Choose the player's own listed weapon that fits the verb "
+                    "(shoot or fire means their ranged weapon) and resolve the action."
+                )
+                % (word, player_text.strip()[:160], word),
+                intent.get("actorId"),
+                {"retryable": True, "issue": "263"},
+            )
+
+
 def _validate_player_input_request_ownership(batch, encounter):
     """Reject high-confidence requests that ask the player for another actor's save."""
     creatures = [
@@ -801,6 +877,15 @@ def _tray_faces(text, record, entry):
     return faces if record.get("phase") == "attack" else [sum(faces)]
 
 
+_DUPLICATE_SUFFIX_RE = re.compile(r"_(\d+)\b")
+
+
+def _spoken_name(name):
+    """A combatant name as the player reads it: the engine keeps duplicate
+    monsters apart as "Bandit Sentry_2"; the request says "Bandit Sentry 2"."""
+    return _DUPLICATE_SUFFIX_RE.sub(r" \1", str(name or ""))
+
+
 def _weapon_attack_prompt(record, entry):
     """The request sentence for the open phase; also stores record["dice"]."""
     count, sides = player_weapon_attack_dice(record, entry)
@@ -812,7 +897,7 @@ def _weapon_attack_prompt(record, entry):
         )
         what = "both results (e.g. 15 3)" if count == 2 else "the result (e.g. 15)"
         return "%s attack against %s: roll %dd20%s and type %s, or type roll and the game rolls." % (
-            record.get("ability"), record.get("targetName"), count, why, what,
+            record.get("ability"), _spoken_name(record.get("targetName")), count, why, what,
         )
     spell = record.get("spell") if isinstance(record.get("spell"), dict) else {}
     if spell.get("type") == "save":
@@ -821,7 +906,7 @@ def _weapon_attack_prompt(record, entry):
         verdicts = []
         for result in save.get("results") or []:
             verdicts.append("%s %s (%s save %s vs DC %s%s)" % (
-                result.get("name"), "succeeds" if result.get("success") else "fails",
+                _spoken_name(result.get("name")), "succeeds" if result.get("success") else "fails",
                 str(save.get("type") or "").capitalize(), result.get("total"), save.get("dc"),
                 {"half": ", half damage", "none": ", no damage"}.get(result.get("effect"), ""),
             ))
@@ -833,7 +918,7 @@ def _weapon_attack_prompt(record, entry):
         else "hit (%s vs AC %s)" % (record.get("attackTotal"), record.get("targetAC"))
     )
     return "%s %s on %s: roll %dd%d for damage and type the total, or type roll and the game rolls." % (
-        record.get("ability"), hit, record.get("targetName"), count, sides,
+        record.get("ability"), hit, _spoken_name(record.get("targetName")), count, sides,
     )
 
 
@@ -1942,6 +2027,10 @@ def execute_agentic_turn(
                 if events is not None:
                     continue
             _validate_player_input_request_ownership(batch, encounter)
+            if attempt_number < max(2, int(max_intent_attempts or 3)):
+                # The last attempt lets a genuine question through rather than
+                # leave the player's turn without an answer.
+                _validate_player_weapon_question(batch, encounter, characters, pending)
             _validate_single_player_input_request(
                 batch,
                 encounter,
