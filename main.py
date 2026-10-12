@@ -142,6 +142,7 @@ from core.ai.incremental_compression import IncrementalLocationCompressor
 # Import new manager modules
 from core.managers import location_manager
 from core.managers.current_location import current_location_data
+from core.ai import history_markers as hm
 from utils.location_path_finder import LocationGraph
 from core.ai import action_handler
 from core.ai.cumulative_summary import (
@@ -2277,12 +2278,12 @@ def _resume_cross_module_root(operation_id, *, publish=True, publication=None):
     history = load_json_file(json_file) or []
     if projection == source:
         transition_history = copy.deepcopy(handoff["transition_history"])
-        marker = {
-            "role": "user",
-            "content": "Module transition: %s to %s"
-            % (source["module"], target["module"]),
-        }
-        if not transition_history or transition_history[-1] != marker:
+        marker = hm.marker(
+            "user",
+            "Module transition: %s to %s" % (source["module"], target["module"]),
+            hm.MODULE_TRANSITION,
+        )
+        if not transition_history or not hm.same_message(transition_history[-1], marker):
             transition_history.append(marker)
         from core.managers.campaign_manager import CampaignManager
 
@@ -2519,8 +2520,7 @@ def _resume_v2_location_transition(operation_id, *, publish=True, publication=No
                     1
                     for message in (load_json_file(json_file) or [])
                     if isinstance(message, dict)
-                    and message.get("role") == "user"
-                    and "Location transition:" in message.get("content", "")
+                    and hm.is_marker(message, hm.LOCATION_TRANSITION)
                 )
                 + 1
             )
@@ -2564,23 +2564,26 @@ def _resume_v2_location_transition(operation_id, *, publish=True, publication=No
             summary=checkpoint["departure_summary"]["text"],
             summary_message_id=summary_message_id,
         )
-        marker = {
-            "role": "user",
-            "content": "Location transition: %s (%s) to %s (%s)"
+        marker = hm.marker(
+            "user",
+            "Location transition: %s (%s) to %s (%s)"
             % (
                 checkpoint["origin_location_name"],
                 checkpoint["origin_location_id"],
                 world.get("currentLocation"),
                 world.get("currentLocationId"),
             ),
-        }
+            hm.LOCATION_TRANSITION,
+        )
         summary_index = next(
             i
             for i, message in enumerate(compacted)
             if isinstance(message, dict)
             and message.get("message_id") == summary_message_id
         )
-        if summary_index + 1 >= len(compacted) or compacted[summary_index + 1] != marker:
+        if summary_index + 1 >= len(compacted) or not hm.same_message(
+            compacted[summary_index + 1], marker
+        ):
             compacted.insert(summary_index + 1, marker)
         compaction.update(
             {
@@ -4729,7 +4732,7 @@ def _apply_legacy_repair_checkpoint_unlocked(checkpoint, conversation_history):
     source_index = repair["source_index"]
     if (
         source_index < len(conversation_history)
-        and conversation_history[source_index] == summary_entry
+        and hm.same_message(conversation_history[source_index], summary_entry)
     ):
         compacted = conversation_history
     else:
@@ -4808,16 +4811,17 @@ def check_and_process_location_transitions(conversation_history, party_tracker_d
         journal_entry, party_tracker_data, operation_id
     )
     summary_message_id = str(uuid4())
-    summary_entry = {
-        "role": "assistant",
-        "content": "=== LOCATION SUMMARY ===\n\n%s:\n%s\n%s"
+    summary_entry = hm.marker(
+        "assistant",
+        "=== LOCATION SUMMARY ===\n\n%s:\n%s\n%s"
         % (
             repair["leaving_location_name"],
             "-" * len(repair["leaving_location_name"] + ":"),
             enhanced_summary,
         ),
-        "message_id": summary_message_id,
-    }
+        hm.LOCATION_SUMMARY,
+        message_id=summary_message_id,
+    )
     checkpoint = {
         "version": 2,
         "kind": "legacy_repair",

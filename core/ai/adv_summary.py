@@ -14,6 +14,7 @@ See LICENSE file for full terms.
 """
 
 import copy
+from core.ai import history_markers as hm
 import json
 import os
 import sys
@@ -483,7 +484,7 @@ def trim_conversation(summary_dump):
     # Find the last 'Location transition:' message if any
     last_transition_index = -1
     for i, message in enumerate(relevant_messages):
-        if message.get('role') == 'user' and 'Location transition:' in message.get('content', ''):
+        if hm.is_marker(message, hm.LOCATION_TRANSITION):
             last_transition_index = i
     
     # Start summarizing from after the last transition, or from the beginning of relevant messages
@@ -518,7 +519,7 @@ def convert_to_dialogue(trimmed_data):
         if role == 'assistant':
             dialogue += f"Dungeon Master: {content}\n\n"
         elif role == 'user':
-            if 'Location transition:' in content: # This is a system note, not player dialogue for summary
+            if hm.is_marker(message, hm.LOCATION_TRANSITION): # This is a system note, not player dialogue for summary
                 dialogue += f"[{content}]\n\n" # Keep as a note for context if needed by summarizer
             else: # Actual player input
                 dialogue += f"Player: {content}\n\n"

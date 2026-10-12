@@ -16,6 +16,7 @@ Compresses conversation history in manageable 8-transition chunks:
 """
 
 import json
+from core.ai import history_markers as hm
 import shutil
 from core.combat.invocation import InvocationSupersededError
 from utils.capture.live_provider_call import LiveProviderSuperseded
@@ -34,9 +35,10 @@ def find_all_summaries(conversation_data):
     
     for i, message in enumerate(conversation_data):
         content = message.get('content', '')
-        if '=== LOCATION SUMMARY ===' in content:
+        kind = hm.marker_kind(message)
+        if kind in hm.SUMMARY_KINDS:
             # Check if it's an AI chronicle
-            if '[AI-Generated Chronicle Summary]' in content:
+            if kind == hm.CHRONICLE:
                 ai_chronicles.append({
                     'index': i,
                     'type': 'chronicle',
@@ -94,7 +96,7 @@ def find_compression_range(conversation_data, summaries_after_chronicle, last_ch
         # Find the location transition message after the last chronicle
         for i in range(last_chronicle_idx + 1, first_summary_idx):
             msg = conversation_data[i]
-            if msg.get('role') == 'user' and 'Location transition:' in msg.get('content', ''):
+            if hm.is_marker(msg, hm.LOCATION_TRANSITION):
                 # Start compression after this transition
                 first_summary_idx = i + 1
                 break
@@ -173,10 +175,9 @@ def chunked_compression(conversation_file="modules/conversation_history/conversa
         compressed_conversation = conversation_data.copy()
         
         # Create AI chronicle message
-        ai_chronicle_message = {
-            "role": "assistant",
-            "content": f"=== LOCATION SUMMARY ===\n\n{result['summary']}"
-        }
+        ai_chronicle_message = hm.marker(
+            "assistant", f"=== LOCATION SUMMARY ===\n\n{result['summary']}", hm.CHRONICLE
+        )
         
         # Find where to insert the chronicle
         # We want to preserve the location transition before our compression range
@@ -184,7 +185,7 @@ def chunked_compression(conversation_file="modules/conversation_history/conversa
         
         # Look backwards for a location transition message
         for i in range(first_msg_idx - 1, max(0, first_msg_idx - 5), -1):
-            if compressed_conversation[i].get('role') == 'user' and 'Location transition:' in compressed_conversation[i].get('content', ''):
+            if hm.is_marker(compressed_conversation[i], hm.LOCATION_TRANSITION):
                 # Insert after this transition
                 insert_position = i + 1
                 break
@@ -193,7 +194,7 @@ def chunked_compression(conversation_file="modules/conversation_history/conversa
         # But preserve any location transition at the end
         end_transition_idx = None
         for i in range(last_msg_idx + 1, min(len(compressed_conversation), last_msg_idx + 3)):
-            if compressed_conversation[i].get('role') == 'user' and 'Location transition:' in compressed_conversation[i].get('content', ''):
+            if hm.is_marker(compressed_conversation[i], hm.LOCATION_TRANSITION):
                 end_transition_idx = i
                 break
         

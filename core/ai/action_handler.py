@@ -52,6 +52,7 @@ See LICENSE file for full terms.
 # ============================================================================
 
 import copy
+from core.ai import history_markers as hm
 import json
 import hashlib
 import subprocess
@@ -441,10 +442,7 @@ def _new_current_transition_checkpoint(
     segment_start = 0
     for index in range(len(persisted_history) - 1, -1, -1):
         message = persisted_history[index]
-        content = message.get("content", "") if isinstance(message, dict) else ""
-        if isinstance(message, dict) and message.get("role") == "user" and (
-            "Location transition:" in content or "Module transition:" in content
-        ):
+        if hm.is_marker(message, hm.LOCATION_TRANSITION, *hm.MODULE_KINDS):
             segment_start = index + 1
             break
     origin_segment = persisted_history[segment_start:]
@@ -1806,14 +1804,14 @@ def apply_current_transition_action(operation_id, action_index):
         history = safe_json_load(
             "modules/conversation_history/conversation_history.json"
         ) or []
-        marker = {
-            "role": "user",
-            "content": "Module transition: %s to %s"
-            % (source["module"], target["module"]),
-        }
+        marker = hm.marker(
+            "user",
+            "Module transition: %s to %s" % (source["module"], target["module"]),
+            hm.MODULE_TRANSITION,
+        )
         if current == source:
             transition_history = list(history)
-            if not transition_history or transition_history[-1] != marker:
+            if not transition_history or not hm.same_message(transition_history[-1], marker):
                 transition_history.append(marker)
             original, updated = CampaignManager().publish_party_module_transition(
                 source["module"],
@@ -2088,7 +2086,7 @@ def recover_pending_location_transition(party_tracker_data, conversation_history
         None,
     )
     if marker_index is None:
-        conversation_history.append({"role": "user", "content": marker})
+        conversation_history.append(hm.marker("user", marker, hm.LOCATION_TRANSITION))
         marker_index = len(conversation_history) - 1
 
     # A saved assistant message after our exact marker proves T013 completed.
@@ -5482,10 +5480,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 
                 # Insert module transition marker immediately when module change is detected
                 transition_text = f"Module transition: {current_module} to {new_module}"
-                transition_message = {
-                    "role": "user",
-                    "content": transition_text
-                }
+                transition_message = hm.marker("user", transition_text, hm.MODULE_TRANSITION)
                 transition_history = list(conversation_history)
                 transition_history.append(transition_message)
                 print(f"DEBUG: [Module Transition] Inserted transition marker: '{transition_text}'")

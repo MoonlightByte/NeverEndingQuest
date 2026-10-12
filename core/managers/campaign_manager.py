@@ -67,6 +67,7 @@ See LICENSE file for full terms.
 # ============================================================================
 
 import copy
+from core.ai import history_markers as hm
 import hashlib
 import json
 import os
@@ -4613,16 +4614,14 @@ Focus on story outcomes, character development, and decisions that will matter i
                         )
                         continue
 
-                    if (
-                        msg.get("role") == "user"
-                        and "Module transition:" in msg.get("content", "")
-                    ):
+                    if hm.is_marker(msg, *hm.MODULE_KINDS):
                         original_content = msg["content"]
                         msg["content"] = msg["content"].replace(
                             "Module transition:",
                             "[Archived] Module transition:",
                             1,
                         )
+                        msg[hm.MARKER_FIELD] = hm.ARCHIVED_MODULE_TRANSITION
                         print(
                             "DEBUG: [Module Archive] Neutralized transition "
                             f"marker: '{original_content}' -> "
