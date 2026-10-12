@@ -72,7 +72,7 @@ from utils.provider_errors import classify_provider_error
 from core.combat.invocation import InvocationSupersededError
 register_callsite("T012", "core/ai/action_handler.py", 676)
 import config
-from core.managers.location_manager import get_location_data
+from core.managers.current_location import current_location_data
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import sanitize_text, safe_json_dump, safe_json_load
 from utils.file_operations import safe_read_json, safe_write_json
@@ -3854,7 +3854,7 @@ def process_action(
                 current_location_id = party_tracker_data["worldConditions"]["currentLocationId"]
                 current_area_id = party_tracker_data["worldConditions"]["currentAreaId"]
                 # Use the reloaded location data for the combat simulation
-                reloaded_location_data = get_location_data(current_location_id, current_area_id)
+                reloaded_location_data = current_location_data(party_tracker_data, consumer="combat start")
 
 
                 if reloaded_location_data is None:
