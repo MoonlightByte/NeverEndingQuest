@@ -943,16 +943,17 @@ def _parse_weapon_roll(text, record, entry):
 
 
 def _roll_already_answered(pending):
-    """True when an earlier exchange this turn asked for a d20 and the player
-    has answered it."""
+    """True when an earlier exchange this turn carries the typed request for a
+    d20 (``requestedDie`` "d20", "1d20" or "2d20") and the player has answered
+    it. The request text is never read (#852)."""
     exchanges = pending.get("playerExchanges") if isinstance(pending, dict) else None
     if not isinstance(exchanges, list):
         return False
     for exchange in exchanges[:-1]:
         if not isinstance(exchange, dict):
             continue
-        asked = "%s %s" % (exchange.get("requestedDie") or "", exchange.get("dmRequest") or "")
-        if re.search(r"(?:^|[^a-z])d20\b", asked, re.IGNORECASE):
+        count, marker, sides = str(exchange.get("requestedDie") or "").strip().lower().partition("d")
+        if marker and sides == "20" and (count == "" or count.isdigit()):
             return True
     return False
 
