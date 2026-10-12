@@ -575,6 +575,24 @@ def _spends_ammunition(entry):
     return isinstance(entry, dict) and entry.get("type") == "ranged" and entry.get("thrown") is not True
 
 
+def _ammunition_row_for(sheet, entry):
+    """#822: the ammunition row a ranged swing spends from. A row whose typed ``catalog_id`` equals the swung
+    row's ``ammunitionType`` (both engine definition ids) is chosen first; otherwise the first row with
+    ammunition left, as before. The first spending row of a sequence decides. Without a type the loop is the
+    earlier one; with a type, rows after the first stock are read only when their id matches."""
+    wanted = (entry or {}).get("ammunitionType")
+    typed = isinstance(wanted, str) and bool(wanted)
+    first = None
+    for item in sheet.get("ammunition", []):
+        if not isinstance(item, dict) or (first is not None and item.get("catalog_id") != wanted):
+            continue
+        if int(item.get("quantity", 0) or 0) > 0:
+            if not typed or item.get("catalog_id") == wanted:
+                return item
+            first = item
+    return first
+
+
 def _ammo_quantity(sheet, name=None):
     total = 0
     for item in (sheet or {}).get("ammunition", []):
@@ -1343,6 +1361,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
     swings = []
     total_damage = 0
     ranged_swings = 0
+    ranged_entry = None
     # CH: a party target's hit points are applied by the rules engine, one
     # request per hitting swing, on a working copy that starts from the
     # encounter's number (the commit invariant keeps sheet and creature equal).
@@ -1615,6 +1634,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
         swings.append(swing)
         if _spends_ammunition(entry):
             ranged_swings += 1
+            ranged_entry = ranged_entry or entry
 
     event["outcome"]["swings"] = swings
     event["outcome"]["hit"] = any(swing["hit"] for swing in swings)
@@ -1668,25 +1688,23 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
         _spend_recharge(resolution, event, actor, selected_entry)
     if resolution.get("effectOps"):
         event["effects"] = deepcopy(resolution["effectOps"])
-    if ranged_swings:
-        for item in sheet.get("ammunition", []):
-            if isinstance(item, dict) and int(item.get("quantity", 0) or 0) > 0:
-                before = int(item.get("quantity", 0) or 0)
-                spent = min(ranged_swings, before)
-                record = {
-                    "owner": actor.get("name"), "kind": "ammunition",
-                    "name": item.get("name"), "delta": -spent,
-                    "before": before, "after": before - spent,
-                }
-                # AM: a party archer's shots go through the engine (stock and
-                # recoverable count); monsters have no sheet row and never
-                # reach here. Engine unavailable: today's arithmetic, engine false.
-                if actor.get("type") in ("player", "npc"):
-                    answer = _engine_ammunition(sheet, item.get("name"), -spent, record)
-                    if answer is not True:
-                        record["engine"] = False
-                event["resources"].append(record)
-                break
+    item = _ammunition_row_for(sheet, ranged_entry) if ranged_swings else None
+    if item is not None:
+        before = int(item.get("quantity", 0) or 0)
+        spent = min(ranged_swings, before)
+        record = {
+            "owner": actor.get("name"), "kind": "ammunition",
+            "name": item.get("name"), "delta": -spent,
+            "before": before, "after": before - spent,
+        }
+        # AM: a party archer's shots go through the engine (stock and
+        # recoverable count); monsters have no sheet row and never
+        # reach here. Engine unavailable: today's arithmetic, engine false.
+        if actor.get("type") in ("player", "npc"):
+            answer = _engine_ammunition(sheet, item.get("name"), -spent, record)
+            if answer is not True:
+                record["engine"] = False
+        event["resources"].append(record)
     # NUM-B (owner BQ1-BQ3): the swing stands. The engine's option for the swung
     # row is recorded on the event, and a carried weapon that fits is drawn
     # (applied by apply_resolution from the record, so a replay matches).

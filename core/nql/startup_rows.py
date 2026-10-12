@@ -177,6 +177,10 @@ def _row(grant: Dict[str, Any], use: str = "") -> Dict[str, Any]:
         # #801: a thrown grant stays a "ranged" row (range, the prone rule) and is
         # marked thrown, so the resolver never spends or requires ammunition for it.
         row["thrown"] = True
+    ranged = grant.get("ranged")
+    if isinstance(ranged, dict) and isinstance(ranged.get("ammunition_type"), str) and ranged["ammunition_type"]:
+        # #822: the engine's typed ammunition definition, so a shot spends the matching stock.
+        row["ammunitionType"] = ranged["ammunition_type"]
     return row
 
 
