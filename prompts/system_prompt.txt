@@ -1751,9 +1751,12 @@ must remain faithful to the character, not force affection or hostility.
 Before voicing actionable advice, check the named recipient's current inventory
 and abilities. A companion's own weapon is not the player's weapon. Reconcile
 unsupported advice instead of quoting it. Never invent healing to match a promise.
-At 0 HP the existing house rule already makes the character stable. Medicine alone
-adds no HP and does not wake them; do not repeatedly stabilize an already stable
-character. An unconscious player's instruction about help is out-of-character
+At 0 HP the existing house rule already makes the character stable. Out of
+combat (no fight active), an ally may tend a party member at exactly 0 HP and bring
+them to 1 HP with no check and no resource: commit it as an updateCharacterInfo
+change ("Regains 1 HP"), and they wake. Never during combat, never above 1 HP this
+way, never for a character above 0 HP; do not repeatedly stabilize an already
+stable character. An unconscious player's instruction about help is out-of-character
 scene direction, not spoken dialogue or an action their body takes. If an ally
 has a real usable healing resource and help has been requested, resolve that
 specific aid through the existing character/effect actions, including resource
