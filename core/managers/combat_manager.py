@@ -220,7 +220,7 @@ from core.managers.combat_transaction import (
     store_agentic_preroll_cache,
 )
 # Import safe JSON functions
-from utils.encoding_utils import safe_json_load
+from utils.encoding_utils import safe_json_load, sanitize_dict
 from utils.file_operations import safe_write_json
 from utils.transient_filesystem import ReadOnlySaveStop, raise_if_save_stopped
 from utils.module_refresh_lock import module_refresh_lock
@@ -1900,31 +1900,31 @@ def _append_combat_encounter_to_current_area(current_location_id, new_encounter)
         current_module = authoritative_party.get("module", "")
         if not isinstance(current_module, str):
             return False
-        from utils.module_path_manager import ModulePathManager
-
-        path_manager = ModulePathManager(current_module.replace(" ", "_") or None)
         current_area_id = world_conditions.get("currentAreaId")
         if not isinstance(current_area_id, str) or not current_area_id:
             return False
-        area_file = path_manager.get_area_path(current_area_id)
+        from core.managers.current_location import NO_LOCATION, NOT_FOUND, OK, read_current_location
 
-        try:
-            area_data = safe_json_load(area_file)
-        except Exception as exc:
+        # #448's one reader: strict, so a damaged area is never written back
+        # with its bad bytes replaced (#850).
+        read = read_current_location(authoritative_party)
+        area_file = read.area_file
+        if read.status in (NOT_FOUND, NO_LOCATION):
+            warning(
+                "Combat summary area update skipped because the location "
+                "is no longer present",
+                category="encounter_setup",
+            )
+            return False
+        if read.status != OK:
             error(
-                f"FILE_OP: Failed to load area file: {area_file}",
-                exception=exc,
+                f"FILE_OP: Failed to load area file: {read.detail}",
                 category="file_operations",
             )
             return False
-        if not isinstance(area_data, dict) or not isinstance(
-            area_data.get("locations"), list
-        ):
-            error(
-                f"FILE_OP: Failed to load area file: {area_file}",
-                category="file_operations",
-            )
-            return False
+        # Sanitized as safe_json_load read it, so a healthy area is written
+        # back exactly as before; the new encounter is appended unchanged.
+        area_data = sanitize_dict(read.area)
 
         target_location = next(
             (
