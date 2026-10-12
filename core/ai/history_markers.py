@@ -1,0 +1,99 @@
+# SPDX-FileCopyrightText: 2024 MoonlightByte
+# SPDX-License-Identifier: Fair-Source-1.0
+# License: See LICENSE file in the repository root
+# This software is subject to the terms of the Fair Source License.
+
+"""The game's own marker messages in conversation history (prose sweep family 3).
+
+A marker is a history message the game writes to record an event: a location
+or module transition, a location summary, a chronicle, a rolling summary. The
+player's typed text is stored verbatim in user messages, so finding markers by
+searching for their words also finds a player who types them. Markers
+therefore carry a field naming their kind, and readers test that field.
+
+Histories saved before the field existed are read as they always were: a
+message without the field is a marker only when its role matches and its
+content STARTS with the marker's exact opening words. Every player turn starts
+with "Dungeon Master Note:", so a player's text can never match. Nothing on
+disk is rewritten. New player turns and code-written notes never carry the
+field either, so the same start rule keeps protecting them.
+
+The field stays inside the game: providers receive role and content only (the
+Responses and Gemini paths), or the message without it (Chat Completions).
+"""
+
+MARKER_FIELD = "nql_marker"
+
+LOCATION_TRANSITION = "location_transition"
+MODULE_TRANSITION = "module_transition"
+# A module transition the campaign archive neutralized ("[Archived] Module
+# transition: ..."). Returning to a module loads its archive back into
+# history, where these still bound segments and are dropped like markers.
+ARCHIVED_MODULE_TRANSITION = "archived_module_transition"
+LOCATION_SUMMARY = "location_summary"
+CHRONICLE = "chronicle"
+ROLLING_SUMMARY = "rolling_summary"
+VALIDATION_ERROR = "validation_error"
+
+SUMMARY_KINDS = (LOCATION_SUMMARY, CHRONICLE)
+MODULE_KINDS = (MODULE_TRANSITION, ARCHIVED_MODULE_TRANSITION)
+
+_CHRONICLE_TAG = "[AI-Generated Chronicle Summary]"
+_ARCHIVED_PREFIX = "[Archived] "
+# (role, opening words) of markers written before the field existed
+_LEGACY_OPENINGS = (
+    ("user", "Location transition:", LOCATION_TRANSITION),
+    ("user", "Module transition:", MODULE_TRANSITION),
+    ("user", "Error Note: Your previous response failed validation", VALIDATION_ERROR),
+    ("assistant", "=== LOCATION SUMMARY ===", LOCATION_SUMMARY),
+    ("assistant", "[SUMMARY OF EVENTS AT THIS LOCATION]", ROLLING_SUMMARY),
+)
+
+
+def marker(role, content, kind, **extra):
+    """A history message the game writes as a marker of ``kind``."""
+    message = {"role": role, "content": content}
+    message.update(extra)
+    message[MARKER_FIELD] = kind
+    return message
+
+
+def marker_kind(message):
+    """The marker kind of a history message, or None for any other message."""
+    if not isinstance(message, dict):
+        return None
+    if MARKER_FIELD in message:
+        return message[MARKER_FIELD]
+    content = message.get("content")
+    if not isinstance(content, str):
+        return None
+    role = message.get("role")
+    if role == "user" and content.startswith(_ARCHIVED_PREFIX):
+        while content.startswith(_ARCHIVED_PREFIX):
+            content = content[len(_ARCHIVED_PREFIX):]
+        if content.startswith("Module transition:"):
+            return ARCHIVED_MODULE_TRANSITION
+        return None
+    for legacy_role, opening, kind in _LEGACY_OPENINGS:
+        if role == legacy_role and content.startswith(opening):
+            if kind == LOCATION_SUMMARY and _CHRONICLE_TAG in content:
+                return CHRONICLE
+            return kind
+    return None
+
+
+def is_marker(message, *kinds):
+    """Whether ``message`` is a game marker of one of ``kinds``."""
+    return marker_kind(message) in kinds
+
+
+def same_message(a, b):
+    """Whether two history messages are equal apart from the marker field.
+
+    Recovery code checks whether a marker it is about to write is already in
+    history; one saved before the field existed must still count as present.
+    """
+    if not (isinstance(a, dict) and isinstance(b, dict)):
+        return a == b
+    strip = lambda m: {k: v for k, v in m.items() if k != MARKER_FIELD}
+    return strip(a) == strip(b) and marker_kind(a) == marker_kind(b)

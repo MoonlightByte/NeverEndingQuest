@@ -50,6 +50,7 @@
 # ============================================================================
 
 import copy
+from core.ai import history_markers as hm
 import json
 import os
 import re
@@ -206,21 +207,20 @@ def compact_with_accepted_departure_summary(
         raise ValueError("departure compaction source index is invalid")
     if not isinstance(source_entries_before, list):
         raise TypeError("departure compaction source must be a list")
-    summary_entry = {
-        "role": "assistant",
-        "content": (
-            "=== LOCATION SUMMARY ===\n\n%s:\n%s\n%s"
-            % (
-                leaving_location_name,
-                "-" * len(leaving_location_name + ":"),
-                summary,
-            )
+    summary_entry = hm.marker(
+        "assistant",
+        "=== LOCATION SUMMARY ===\n\n%s:\n%s\n%s"
+        % (
+            leaving_location_name,
+            "-" * len(leaving_location_name + ":"),
+            summary,
         ),
-        "message_id": summary_message_id,
-    }
+        hm.LOCATION_SUMMARY,
+        message_id=summary_message_id,
+    )
     if (
         source_index < len(conversation_history)
-        and conversation_history[source_index] == summary_entry
+        and hm.same_message(conversation_history[source_index], summary_entry)
     ):
         return conversation_history, summary_entry
     current_slice = conversation_history[

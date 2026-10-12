@@ -8,6 +8,7 @@ create_completion() is a thin routing layer. Callsites own their
 model and params via named config dicts in model_config.py.
 """
 import time
+from core.ai import history_markers as hm
 from uuid import uuid4
 
 from utils.openai_client import get_openai_client
@@ -900,7 +901,13 @@ def _openai_completion(messages, model, temperature, provider, response_format=_
             phase_emit, output_ceiling=output_ceiling, **kwargs,
         )
 
-    call_kwargs = {"model": model, "messages": messages}
+    # Chat Completions receives each history message as stored; the game's
+    # own marker field is not part of the provider's message shape.
+    call_kwargs = {"model": model, "messages": [
+        {k: v for k, v in message.items() if k != hm.MARKER_FIELD}
+        if isinstance(message, dict) else message
+        for message in messages
+    ]}
 
     # Temperature: pass through unless stripped by constraint enforcement
     if temperature is not None and not strip_temp:

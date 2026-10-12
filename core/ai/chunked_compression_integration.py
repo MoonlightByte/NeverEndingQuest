@@ -10,6 +10,7 @@ This module adds chunked compression checks after location transitions.
 """
 
 import json
+from core.ai import history_markers as hm
 import os
 from core.combat.invocation import InvocationSupersededError
 from utils.capture.live_provider_call import LiveProviderSuperseded
@@ -55,9 +56,9 @@ def check_and_perform_chunked_compression(conversation_file="modules/conversatio
         last_chronicle_idx = -1
         
         for i, msg in enumerate(conversation_history):
-            content = msg.get('content', '')
-            if '=== LOCATION SUMMARY ===' in content:
-                if '[AI-Generated Chronicle Summary]' in content:
+            kind = hm.marker_kind(msg)
+            if kind in hm.SUMMARY_KINDS:
+                if kind == hm.CHRONICLE:
                     last_chronicle_idx = i
                 else:
                     # Only count summaries after the last chronicle

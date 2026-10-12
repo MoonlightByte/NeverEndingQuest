@@ -77,6 +77,7 @@
 # ============================================================================
 
 import json
+from core.ai import history_markers as hm
 import os
 import re
 from utils.module_path_manager import ModulePathManager
@@ -341,10 +342,7 @@ def insert_module_summary_and_transition(conversation_history, summary_text, tra
     }
     
     # Create transition message  
-    transition_message = {
-        "role": "user",
-        "content": transition_text
-    }
+    transition_message = hm.marker("user", transition_text, hm.MODULE_TRANSITION)
     
     # Insert both messages at the specified index
     conversation_history.insert(insertion_index, summary_message)
@@ -366,10 +364,7 @@ def handle_module_conversation_segmentation(conversation_history, from_module, t
     
     # Simply insert the module transition marker at the end (matching location transition format)
     transition_text = f"Module transition: {from_module} to {to_module}"
-    transition_message = {
-        "role": "user",
-        "content": transition_text
-    }
+    transition_message = hm.marker("user", transition_text, hm.MODULE_TRANSITION)
     
     # Add transition marker to conversation history
     conversation_history.append(transition_message)
@@ -722,7 +717,7 @@ def update_conversation_history(
     for i in range(max(0, len(conversation_history) - 5), len(conversation_history)):
         if i < len(conversation_history):
             msg = conversation_history[i]
-            if msg.get("role") == "user" and "Module transition:" in msg.get("content", ""):
+            if hm.is_marker(msg, hm.MODULE_TRANSITION):
                 # Found a transition marker - parse it
                 import re
                 match = re.match(r"Module transition: (.+?) to (.+?)$", msg.get("content", ""))
@@ -739,11 +734,7 @@ def update_conversation_history(
                         later_msg
                         for later_msg in conversation_history[i + 1 :]
                         if later_msg.get("role") in {"user", "assistant"}
-                        and not (
-                            later_msg.get("role") == "user"
-                            and "Module transition:"
-                            in later_msg.get("content", "")
-                        )
+                        and not hm.is_marker(later_msg, *hm.MODULE_KINDS)
                     ]
                     print(f"DEBUG: [update_conversation_history] Found unprocessed transition: {transition_from_module} -> {transition_to_module}")
                     break
@@ -772,7 +763,7 @@ def update_conversation_history(
             continue
 
         # Skip module transition markers
-        if msg["role"] == "user" and "Module transition:" in msg.get("content", ""):
+        if hm.is_marker(msg, *hm.MODULE_KINDS):
             continue
 
         # ALWAYS remove companion memories - fresh canonical data is injected below.
@@ -1052,7 +1043,7 @@ def update_conversation_history(
     # Add the rest of the conversation history
     debug(f"STATE_CHANGE: update_conversation_history preserving {len(updated_history)} messages", category="conversation_management")
     # Check for module transition messages
-    module_transitions = [msg for msg in updated_history if msg.get("role") == "user" and "Module transition:" in msg.get("content", "")]
+    module_transitions = [msg for msg in updated_history if hm.is_marker(msg, *hm.MODULE_KINDS)]
     if module_transitions:
         debug(f"VALIDATION: Found {len(module_transitions)} module transition messages in preserved history", category="module_management")
     else:
