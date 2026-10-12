@@ -2703,6 +2703,26 @@ def _warn_save(sheet, save_type, reason):
         pass
 
 
+PERSONAL_RESOURCE_KINDS = ("spellSlot", "featureUse")
+
+
+def _sheet_can_cast(sheet):
+    """True when the sheet lists any spell or any spell slot."""
+    spellcasting = sheet.get("spellcasting") if isinstance(sheet, dict) else None
+    if not isinstance(spellcasting, dict):
+        return False
+    spells = spellcasting.get("spells")
+    if isinstance(spells, dict) and any(spells.values()):
+        return True
+    if isinstance(spells, list) and spells:
+        return True
+    slots = spellcasting.get("spellSlots")
+    for level in (slots.values() if isinstance(slots, dict) else []):
+        if isinstance(level, dict) and int(level.get("max", 0) or 0) > 0:
+            return True
+    return False
+
+
 def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_feature_heals=False,
                         attack_hits=None):
     """General adjudicated-outcome contract for anything beyond weapon attacks.
@@ -2860,6 +2880,34 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                 "combatantId": target_id,
                 "conditions": list(stated_conditions),
             })
+
+    # Playtest round 2: a companion "cast" Cure Wounds it does not know and
+    # paid with the player's slot. Slots and feature uses belong to the actor
+    # that spends them, and a sheet with no spellcasting cannot cast unless an
+    # item or feature of its own pays for it.
+    actor = combatant_by_id(encounter, proposal.get("actorId")) or {}
+    actor_name = actor.get("name")
+    actor_sheet = (characters or {}).get(actor_name) if actor_name else None
+    for record in resources:
+        if (isinstance(record, dict) and record.get("kind") in PERSONAL_RESOURCE_KINDS
+                and isinstance(record.get("owner"), str) and record.get("owner") != actor_name
+                and record.get("owner") in (characters or {})):
+            try:
+                spends = int(record.get("delta")) < 0
+            except (TypeError, ValueError):
+                spends = False
+            if spends:
+                resolution["violations"].append(
+                    "%s cannot spend %s's %s %s: an actor spends only its own slots "
+                    "and feature uses" % (actor_name, record.get("owner"), record.get("kind"), record.get("name")))
+    if (proposal.get("action") == "cast" and actor.get("type") in ("player", "npc")
+            and isinstance(actor_sheet, dict) and not _sheet_can_cast(actor_sheet)
+            and not any(isinstance(record, dict) and record.get("owner") == actor_name
+                        and record.get("kind") in ("item", "charges", "featureUse")
+                        for record in resources)):
+        resolution["violations"].append(
+            "%s has no spells or spell slots on their sheet and cannot cast; choose an "
+            "action from their own attacks, features or items" % actor_name)
 
     # Resources: validate owner/kind/name, reject overspend, and record
     # absolute before/after so a crash-replay of this event is idempotent.
