@@ -262,6 +262,23 @@ def compare_and_update(original, updates):
                 changes[key] = value
     return changes
 
+# The module author's standing directions for a place (#835). A departure
+# summary records what happened in adventureSummary and the encounter log;
+# it never rewrites these, so a past status is never served later as an
+# instruction.
+AUTHOR_OWNED_LOCATION_FIELDS = ("locationId", "name", "dmInstructions", "dcChecks")
+
+
+def preserve_author_location_fields(updated_location, location_before):
+    """Restore author-owned fields from the location as it was before T015."""
+    for field in AUTHOR_OWNED_LOCATION_FIELDS:
+        if field in location_before:
+            updated_location[field] = copy.deepcopy(location_before[field])
+        else:
+            updated_location.pop(field, None)
+    return updated_location
+
+
 def update_location_json(adventure_summary, location_info, current_area_id_from_main):
     debug_print(f"Updating location JSON for {location_info['name']} with all changes")
 
@@ -341,6 +358,7 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
         - Update 'adventureSummary' with a brief summary of what occurred at this location (2-3 sentences).
         - Modify 'description' if the location has changed significantly.
         - Preserve 'npcs' and 'monsters' exactly. Dedicated presence workflows reconcile those fields; this chronicle-derived update does not own creature placement.
+        - Preserve 'dmInstructions' and 'dcChecks' exactly. They are the module author's standing directions; what happened belongs in 'adventureSummary' and the new encounter entry, never in them.
         - Update 'resourcesAvailable', 'plotHooks', and other narrative location fields only when the accepted summary establishes a real change.
         - Create a new 'encounter' entry for this update. The encounterId should be the location's locationId (e.g., 'R01', 'R02') appended with '-E' and then the next sequential number (e.g., if locationId is 'R01' and there are 2 existing encounters, the new encounterId should be 'R01-E3'). Do NOT include the area ID prefix.
         - Adjust 'dangerLevel' if applicable.
@@ -575,6 +593,9 @@ Do NOT:
   that a search found nothing or that an item was left behind): leave a
   pending action's contents out of the summary. The place the party set out
   for may be named as their destination.
+- Record what the party did not see, learn or establish ("could not
+  determine", "was not established", "remained unknown"). Write only what
+  happened and what was learned.
 - Speculate about the future or characters’ intentions.
 - Use first-person narration or dialogue-heavy exchanges.
 - Use bullet points, headings, or formatting.
@@ -1323,6 +1344,7 @@ def prepare_departure_summary(
         updated_location[presence_field] = copy.deepcopy(
             location_before.get(presence_field, [])
         )
+    preserve_author_location_fields(updated_location, location_before)
     area_after = copy.deepcopy(area_before)
     area_after["locations"][leaving_index] = updated_location
     journal_after = build_journal_update(

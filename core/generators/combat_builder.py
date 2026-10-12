@@ -636,6 +636,7 @@ def generate_encounter(encounter_data):
     ]
     reconciled = reconcile_scene_manifest(encounter_data, canonical_snapshot)
     encounter["sceneFacts"] = reconciled["sceneFacts"]
+    _apply_surprise(encounter, reconciled["sceneFacts"]["participants"])
     ensure_combat_state(
         encounter,
         new_encounter=True,
@@ -657,6 +658,46 @@ def generate_encounter(encounter_data):
     }
 
     return encounter
+
+SURPRISE_EFFECT_NAME = "Surprised"
+
+
+def _apply_surprise(encounter, participants):
+    """Give each surprised monster a one-round incapacitating effect (#834).
+
+    5e surprise: a creature that had not noticed the threat when the fight
+    began cannot act on its first turn. The existing incapacitated-turn skip
+    consumes that round 1 turn, and the effect expires at the end of round 1
+    (its ID is not round-stamped, so the first end-of-round tick removes it).
+    """
+    from core.combat.resolver import _apply_encounter_effect_operation
+
+    surprised = {
+        item["combatantId"]
+        for item in participants
+        if item.get("surprised") and item.get("initiativeEligible")
+    }
+    for creature in encounter.get("creatures", []):
+        combatant_id = creature.get("combatantId")
+        if combatant_id not in surprised:
+            continue
+        _apply_encounter_effect_operation(
+            creature,
+            {
+                "op": "add",
+                "effect": {
+                    "effectId": f"surprise-{combatant_id}",
+                    "name": SURPRISE_EFFECT_NAME,
+                    "description": "Caught unaware: cannot move, act or react in round 1.",
+                    "incapacitates": True,
+                    "roundsRemaining": 1,
+                    "durationKind": "rounds",
+                    "tickTrigger": "end_of_round",
+                },
+            },
+        )
+        creature["effectIncapacitated"] = True
+
 
 RESULT_VERSION = 1
 
