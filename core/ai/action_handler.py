@@ -3563,6 +3563,14 @@ def _engine_request_id(invocation_claim, action_context, suffix):
     return "dm:%s:%d:%s" % (turn_id, index, suffix)
 
 
+def _show_rest_receipt(content):
+    """Show the player the hit dice code rolled on a short rest (#840)."""
+    from web.shared_state import emit_player_output
+
+    if emit_player_output({"type": "narration", "channel": "system", "content": content}) is not True:
+        print(content)
+
+
 # The turn whose fight already failed to start once (#444). It is only ever
 # compared with the current turn's id, so a value left from an earlier turn
 # is harmless.
@@ -5383,10 +5391,14 @@ Please use a valid location that exists in the current area ({current_area_id}) 
         try:
             from core.managers.rest_manager import execute_rest
 
-            result = execute_rest(parameters.get("restType"), party_tracker_data, conversation_history)
+            result = execute_rest(parameters.get("restType"), party_tracker_data, conversation_history,
+                                  hit_dice=parameters.get("hitDice"))
             if result.get("success"):
                 info(f"SUCCESS: {result.get('message')}", category="character_updates")
                 conversation_history.append({"role": "user", "content": f"Rest: {result.get('message')}"})
+                if result.get("hit_dice_receipts"):
+                    # #840: code rolled the hit dice; the player sees the roll.
+                    _show_rest_receipt(" ".join(result["hit_dice_receipts"]))
                 if result.get("effects_note"):
                     # process_effect_lifecycle returns a complete message
                     # ({"role": "system", "content": ...}); append it as is.
@@ -5397,7 +5409,8 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 conversation_history.append({"role": "user", "content": (
                     f"Rest Error: {result.get('error', 'the rest was refused')}. No sheet changed. Later actions from "
                     "this response have not executed. Do not repeat earlier completed actions; state the rest again "
-                    "with restType short or long, or narrate why the party cannot rest.")})
+                    "with restType short or long (hitDice only on a short rest), or narrate why the party cannot "
+                    "rest.")})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
         except (LiveProviderSuperseded, InvocationSupersededError):
