@@ -104,16 +104,24 @@ def reconcile_scene_manifest(parameters, canonical_snapshot):
         expires_at = proposal.get("controllerExpiresAtRevision")
         if expires_at is not None and (type(expires_at) is not int or expires_at < 0):
             raise SceneReconciliationError(f"invalid controller expiry for {key}")
+        surprised = proposal.get("surprised", False)
+        if type(surprised) is not bool:
+            raise SceneReconciliationError(f"surprised must be boolean for {key}")
+        if surprised and source["sourceKind"] != "monster":
+            raise SceneReconciliationError(
+                f"surprised applies only to monster participants, not {key}"
+            )
 
         combatant_id = source["combatantId"]
-        participants.append(
-            {
-                **source,
-                "participation": participation,
-                "initiativeEligible": proposal["initiativeEligible"],
-                "persistence": persistence,
-            }
-        )
+        participant = {
+            **source,
+            "participation": participation,
+            "initiativeEligible": proposal["initiativeEligible"],
+            "persistence": persistence,
+        }
+        if surprised:
+            participant["surprised"] = True
+        participants.append(participant)
         controllers[combatant_id] = {
             "controller": controller,
             "revision": 0,
@@ -262,6 +270,7 @@ def validate_typed_encounter_actions(response):
                 "participants, relations, objectives, and disclosureGrants arrays. "
                 "Every participant requires participantKey, participation, "
                 "initiativeEligible boolean, persistence, and controller. "
+                "A monster participant may add surprised: true (boolean). "
                 "participation is one of active, observer, hidden, unaware, departed; "
                 "persistence is one of encounter, canonical_character, "
                 "owner_gated_companion; controller is human or actor_agent. "

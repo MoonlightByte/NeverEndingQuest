@@ -3765,7 +3765,22 @@ def process_action(
                         ),
                     },
                 )
-        
+
+        # #263: one automatic save point before the fight begins (never
+        # during combat). Fail-forward: a failed checkpoint never stops it.
+        try:
+            from core.managers.status_manager import status_manager
+            status_manager.update_status("Saving a checkpoint before the fight...", is_processing=True)
+        except Exception:
+            pass
+        try:
+            from updates.save_game_manager import SaveGameManager
+            SaveGameManager().create_combat_checkpoint(
+                (action.get("parameters") or {}).get("encounterSummary", "")
+            )
+        except Exception as e:
+            warning(f"Combat checkpoint skipped: {e}", category="save_game")
+
         # Update status to lock input during encounter building
         try:
             from core.managers.status_manager import status_manager

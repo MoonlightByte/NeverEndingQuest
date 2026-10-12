@@ -137,6 +137,12 @@ APPLICATION_OWNED_REFERENCE_FILES = frozenset(
 )
 
 
+# Automatic checkpoints before combat (#263): their description prefix marks
+# them for pruning, and only the newest few are kept.
+AUTO_CHECKPOINT_PREFIX = "Auto-save before combat"
+AUTO_CHECKPOINT_KEEP = 5
+
+
 @dataclass(frozen=True)
 class RestoreRequest:
     """In-memory handoff: stop the old gameplay stack before applying a Load."""
@@ -309,6 +315,27 @@ class SaveGameManager:
         return filename.endswith((".lock", "_BU.json")) or filename in {".gitkeep", ".gitignore"}
 
     @staticmethod
+    def _module_owned_path(path):
+        """Module content an older save must never downgrade (#832).
+
+        The pristine ``*_BU.json`` masters and a module's monster stat blocks
+        ship with the module (an update can author or rebalance them); fight
+        state lives in encounters and sheets. Load keeps the installed copy
+        and takes the save's copy only when the installation has none.
+        """
+        parts = os.path.normpath(path).split(os.sep)
+        if parts[-1].endswith("_BU.json"):
+            return True
+        return (
+            len(parts) == 4 and parts[0] == "modules" and parts[2] == "monsters"
+            and parts[3].endswith(".json")
+        )
+
+    @classmethod
+    def _restore_preserves_path(cls, path):
+        return cls._restore_preserves_file(os.path.basename(path)) or cls._module_owned_path(path)
+
+    @staticmethod
     def _clear_restore_directory(directory):
         """Remove replaceable contents; propagate failures and retain held locks."""
         if not os.path.exists(directory):
@@ -319,7 +346,7 @@ class SaveGameManager:
 
         for root, directories, files in os.walk(directory, topdown=False, onerror=walk_error):
             for filename in files:
-                if SaveGameManager._restore_preserves_file(filename):
+                if SaveGameManager._restore_preserves_path(os.path.join(root, filename)):
                     continue
                 os.remove(os.path.join(root, filename))
             for name in directories:
@@ -390,6 +417,8 @@ class SaveGameManager:
                     or normalized.startswith("modules/.campaign.json.completion/")
                     or normalized == "modules/conversation_history/pending_location_transition.json"
                     or normalized == "modules/conversation_history/pending_departure_summary.json"
+                    # #832: the installed module content wins over the save's copy.
+                    or (self._module_owned_path(relative) and os.path.isfile(relative))
                 ):
                     continue
                 record(relative, recursive=True)
@@ -483,7 +512,7 @@ class SaveGameManager:
             'modules/campaign_archives', 'modules/campaign_summaries',
         )))
         for path, value in original.items():
-            if value[0] == 'file' and replaced(path) and not self._restore_preserves_file(os.path.basename(path)):
+            if value[0] == 'file' and replaced(path) and not self._restore_preserves_path(path):
                 expected[path] = ('absent', None)
         for path in ('modules/effects_state.json',
                      'journal.json',
@@ -1619,6 +1648,42 @@ class SaveGameManager:
             error_msg = f"Failed to delete save game: {str(e)}"
             error(f"FAILURE: {error_msg}", category="save_game")
             return False, error_msg
+
+    def create_combat_checkpoint(self, summary: str = "") -> Tuple[bool, str]:
+        """Save automatically just before a fight begins (#263).
+
+        Owner rule: an automatic checkpoint happens only before combat starts,
+        never during it. Fail-forward: a checkpoint that cannot be written is
+        logged and the fight goes on; nothing claims a save that was not made.
+        Only the newest AUTO_CHECKPOINT_KEEP checkpoints are kept; saves the
+        player or DM made are never pruned.
+        """
+        summary = " ".join(str(summary or "").split())
+        if len(summary) > 120:
+            summary = summary[:117].rstrip() + "..."
+        description = AUTO_CHECKPOINT_PREFIX + (": " + summary if summary else "")
+        try:
+            success, message = self.create_save_game(
+                description, "essential",
+                save_folder=datetime.now().strftime("save_%Y%m%d_%H%M%S_%f"),
+            )
+        except Exception as exc:
+            success, message = False, str(exc)
+        if not success:
+            warning(f"Combat checkpoint not saved: {message}", category="save_game")
+            return False, message
+        try:
+            checkpoints = [
+                save for save in self.list_save_games()
+                if str(save.get("description", "")).startswith(AUTO_CHECKPOINT_PREFIX)
+                and save.get("save_folder")
+            ]
+            for stale in checkpoints[AUTO_CHECKPOINT_KEEP:]:
+                self.delete_save_game(stale["save_folder"])
+        except Exception as exc:
+            warning(f"Old combat checkpoints not pruned: {exc}", category="save_game")
+        info(f"SUCCESS: Combat checkpoint saved: {description}", category="save_game")
+        return True, message
 
     def prepare_staged_delete(
         self, save_folder: str, operation_id: str

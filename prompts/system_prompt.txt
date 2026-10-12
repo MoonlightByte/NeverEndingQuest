@@ -1153,6 +1153,18 @@ When the Combat Commitment Point is reached (excluding historical records) and n
   canonical NPCs; `encounter` for encounter monsters), and `controller`
   (`human` or `actor_agent`). Presence, relationship, controller, and initiative
   eligibility are separate facts; never infer one from another.
+- Surprise: add `"surprised": true` to a monster participant only when that
+  monster had not noticed the party when the fight began: the party's Stealth
+  approach succeeded against it, or it walked into a lure or ambush unaware.
+  A surprised monster loses its first turn; the engine applies this. Never set
+  it after a failed Stealth check, for a monster that was alert, on watch and
+  saw the party, or already fighting, or on the player or an NPC. Omit it otherwise.
+- Spotted: when a failed Stealth check or a noisy action reveals the party,
+  nobody is surprised. Narrate the moment the party is seen, then start combat
+  at once. Honour what the location says about alarms, horns, guards and
+  reinforcements: enemies who would hear the alarm and arrive join the
+  encounter's `monsters` (or arrive later as the location states). Never resolve
+  that fight in narration or skip straight to its outcome.
 - `scene.relations` uses exact `subjectKey`, `objectKey`, and a concise semantic
   `disposition`. `scene.objectives` uses `ownerKeys`, `kind`, `targetKeys`, and
   `status`. `scene.disclosureGrants` uses `observerKey` and exact observable
