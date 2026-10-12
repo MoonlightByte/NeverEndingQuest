@@ -441,6 +441,26 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 event_id,
             )
         elif mode == "adjudicated":
+            target = combatant_by_id(next_encounter, intent.get("targetId"))
+            if (
+                controller != "human"
+                and intent.get("action") == "attack"
+                and target is not None
+                and target.get("combatantId") != actor_id
+                and not intent.get("targets")
+                and not intent.get("effects")
+            ):
+                # #839: a companion's or enemy's attack with no outcome spent
+                # an arrow, rolled nothing and left the narrator guessing.
+                raise CombatIntentError(
+                    "%s's attack on %s states no outcome. Declare it with mode "
+                    "'known' and the exact listed weapon/action as ability so "
+                    "code rolls it, or roll it in the ruling and give targets "
+                    "[{combatantId, hpDelta}] (hpDelta 0 on a miss)."
+                    % (actor.get("name") or actor_id, target.get("name") or target.get("combatantId")),
+                    actor_id,
+                    {"retryable": True},
+                )
             resolution = resolve_adjudicated(
                 next_encounter,
                 next_characters,

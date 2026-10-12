@@ -5998,10 +5998,11 @@ def _agentic_post_combat_engine_echo(action):
     )
 
 
+# Shown to the player (#841); the history record below carries the details.
 _AGENTIC_POST_COMBAT_DROP_NOTICE = (
-    "Character updates in this post-combat pass were not applied. Combat "
-    "committed only the changes its record lists. Re-issue a change still "
-    "wanted with the player's next action."
+    "No character sheet changed just now: the fight already settled hit "
+    "points, gear and rewards. If you still want something done, such as "
+    "tending a wound, say so in your next message."
 )
 
 
