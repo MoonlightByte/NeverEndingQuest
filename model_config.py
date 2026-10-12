@@ -933,10 +933,10 @@ DM_MAIN_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 # at reasoning > none, so the callsite passes temperature uniformly like every sibling.
 # Reusable GPT-5.6 profiles.  Task-specific names below are detached compatibility
 # aliases for older imports; canonical callsite selection lives in CALLSITE_BINDINGS.
-OPENAI_GPT56_LUNA_NONE = {"model": "gpt-5.6-luna", "reasoning_effort": "none"}
-OPENAI_GPT56_LUNA_LOW = {"model": "gpt-5.6-luna", "reasoning_effort": "low"}
-OPENAI_GPT56_LUNA_MEDIUM = {"model": "gpt-5.6-luna", "reasoning_effort": "medium"}
-OPENAI_GPT56_LUNA_HIGH = {"model": "gpt-5.6-luna", "reasoning_effort": "high"}
+OPENAI_GPT56_LUNA_NONE = {"model": "gpt-6-luna", "reasoning_effort": "none"}
+OPENAI_GPT56_LUNA_LOW = {"model": "gpt-6-luna", "reasoning_effort": "low"}
+OPENAI_GPT56_LUNA_MEDIUM = {"model": "gpt-6-luna", "reasoning_effort": "medium"}
+OPENAI_GPT56_LUNA_HIGH = {"model": "gpt-6-luna", "reasoning_effort": "high"}
 OPENAI_GPT56_TERRA_NONE = {"model": "gpt-5.6-terra", "reasoning_effort": "none"}
 OPENAI_GPT56_TERRA_LOW = {"model": "gpt-5.6-terra", "reasoning_effort": "low"}
 OPENAI_GPT56_TERRA_MEDIUM = {"model": "gpt-5.6-terra", "reasoning_effort": "medium"}
