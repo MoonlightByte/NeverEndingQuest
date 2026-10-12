@@ -17,6 +17,7 @@ scope exists; extraction failure never breaks the gameplay turn.
 """
 
 from __future__ import annotations
+from core.ai import history_markers as hm
 
 import logging
 import re
@@ -145,12 +146,9 @@ def location_close_position(
     upper = min(transition_index + 1, len(conversation_history))
     for i in range(upper):
         message = conversation_history[i]
-        content = message.get("content") if isinstance(message, Mapping) else None
         if (
             isinstance(message, Mapping)
-            and message.get("role") == "user"
-            and isinstance(content, str)
-            and "Location transition:" in content
+            and hm.is_marker(dict(message), hm.LOCATION_TRANSITION)
         ):
             count += 1
     return count
@@ -535,9 +533,7 @@ def consolidate_module_episodes(
         for i, message in enumerate(conversation_history):
             if (
                 isinstance(message, Mapping)
-                and message.get("role") == "user"
-                and isinstance(message.get("content"), str)
-                and "Location transition:" in message["content"]
+                and hm.is_marker(dict(message), hm.LOCATION_TRANSITION)
             ):
                 last_marker = i
         final_segment = [

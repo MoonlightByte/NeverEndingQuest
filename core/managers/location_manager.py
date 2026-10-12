@@ -50,6 +50,7 @@
 # ============================================================================
 
 import json
+from core.ai import history_markers as hm
 import copy
 import unicodedata
 import re
@@ -356,10 +357,7 @@ def handle_location_transition(
         start_index = 0
         for i in range(len(origin_history) - 1, -1, -1):
             msg = origin_history[i]
-            content = msg.get("content", "") if isinstance(msg, dict) else ""
-            if isinstance(msg, dict) and msg.get("role") == "user" and (
-                "Location transition:" in content or "Module transition:" in content
-            ):
+            if hm.is_marker(msg, hm.LOCATION_TRANSITION, *hm.MODULE_KINDS):
                 start_index = i + 1
                 break
         origin_history_segment = copy.deepcopy(origin_history[start_index:])
