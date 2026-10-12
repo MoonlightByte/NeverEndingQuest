@@ -4,8 +4,8 @@
   "type": "Humanoid",
   "alignment": "Neutral evil",
   "armorClass": 15,
-  "hitPoints": 18,
-  "maxHitPoints": 18,
+  "hitPoints": 27,
+  "maxHitPoints": 27,
   "speed": 30,
   "abilities": {
     "strength": 15,
