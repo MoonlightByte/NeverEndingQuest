@@ -865,6 +865,9 @@ def _prepare_startup_proposal(authored_proposal):
     valid, detail = validate_startup_mechanics(character)
     if not valid:
         raise ValueError(detail)
+    detail = _fighting_style_correction(character)
+    if detail:
+        raise ValueError(detail)
     try:
         validate(character, safe_json_load("schemas/char_schema.json"))
     except ValidationError as exc:
@@ -1077,7 +1080,8 @@ def sanitize_character_data(data):
             "\U0001F680-\U0001F6FF"  # transport & map symbols
             "\U0001F1E0-\U0001F1FF"  # flags (iOS)
             "\U00002702-\U000027B0"  # Dingbats
-            "\U000024C2-\U0001F251"
+            "\u24C2\u25AA\u25AB\u25B6\u25C0\u25FB-\u25FE\u2934\u2935\u2B05-\u2B07\u2B1B\u2B1C"  # other emoji
+            "\u2B50\u2B55\u3030\u303D\u3297\u3299\U0001F004\U0001F0CF\U0001F170-\U0001F251"  # enclosed
             "\U0001F900-\U0001F9FF"  # Supplemental Symbols and Pictographs
             "\U0001FA70-\U0001FAFF"  # Symbols and Pictographs Extended-A
             "\U00002600-\U000026FF"  # Miscellaneous Symbols
@@ -1734,6 +1738,28 @@ def _canonicalize_fighting_style(character, provenance=None):
     return notes
 
 
+def _fighting_style_correction(character):
+    """The correction for an interview sheet that records fewer Fighting Styles
+    than its class has gained by its level, counted by the exact classFeatures
+    name level-up writes ("Fighting Style: <name>"), the only one the engine
+    grants; None when the count is met or the SRD style list is unavailable.
+    The author keeps the player's choice or asks for it (#855)."""
+    styles = _fighting_style_texts()
+    allowed = _fighting_styles_allowed(character.get("class"), character.get("level"))
+    if allowed < 1 or not styles:
+        return None
+    exact = {f"Fighting Style: {name}" for name, _ in styles.values()}
+    recorded = sum(1 for entry in character.get("classFeatures") or []
+                   if isinstance(entry, dict) and entry.get("name") in exact)
+    if recorded >= allowed:
+        return None
+    names = ", ".join(sorted(name for name, _ in styles.values()))
+    return (f"{character.get('class')} level {character.get('level')} has {allowed} Fighting "
+            f"Style and the sheet records {recorded}. Keep the player's choice and record it "
+            f"as one classFeatures entry named exactly \"Fighting Style: <name>\", with <name> "
+            f"one of: {names}. If the player has not chosen one, ask them.")
+
+
 def _usage_text(usage):
     """A use pool's usage for a mechanics note, e.g. "2/2 shortRest (a Short Rest regains 1)"."""
     if not isinstance(usage, dict):
@@ -1830,6 +1856,34 @@ def _typed_entry_count(entries, name):
     return count
 
 
+def _species_hit_point_bonuses(character):
+    """The level-1 hit point bonuses a species trait grants, from the SRD
+    progression tables' hp_bonuses (data/srd/progression.json): each entry of
+    kind "species trait" whose species is the sheet's race (casefolded), at
+    per_character_level (expected_starting_hit_points runs only for a level-1
+    sheet, so the bonus is that value; never multiplied by the authored level,
+    which the schema lets be 1.0). A sheet whose race is not that species but
+    lists the trait by its exact name keeps the bonus, counted once. Without
+    the table, an exact Dwarven Toughness entry gives +1. [(name, bonus)]."""
+    from core.leveling import tables
+    race = str(character.get("race", "")).strip().casefold()
+    traits = character.get("racialTraits")
+    entries = [e for e in tables.tables().get("hp_bonuses") or [] if isinstance(e, dict)]
+    if not entries:
+        return [("Dwarven Toughness", 1)] if _typed_entry_count(traits, DWARVEN_TOUGHNESS_TRAIT) else []
+    out = []
+    for entry in entries:
+        granted = entry.get("granted_by") if isinstance(entry.get("granted_by"), dict) else {}
+        per_level = entry.get("per_character_level")
+        name = str(entry.get("name", "")).strip()
+        if granted.get("kind") != "species trait" or type(per_level) is not int or not name:
+            continue
+        if (str(granted.get("species", "")).strip().casefold() == race
+                or _typed_entry_count(traits, name.casefold())):
+            out.append((name, per_level))
+    return out
+
+
 def expected_starting_hit_points(character):
     """SRD 5.2.1 level-1 hit point maximum from the sheet's typed facts, with
     the terms that make it up: the class's hit die maximum from the progression
@@ -1847,10 +1901,9 @@ def expected_starting_hit_points(character):
     con_mod = (con - 10) // 2
     terms = [f"{class_name} d{die} maximum {die}", f"Constitution {con} ({con_mod:+d})"]
     expected = die + con_mod
-    dwarven = _typed_entry_count(character.get("racialTraits"), DWARVEN_TOUGHNESS_TRAIT)
-    if dwarven:
-        expected += dwarven
-        terms.append(f"Dwarven Toughness (+{dwarven})")
+    for name, bonus in _species_hit_point_bonuses(character):
+        expected += bonus
+        terms.append(f"{name} (+{bonus})")
     return max(1, expected), terms
 
 
