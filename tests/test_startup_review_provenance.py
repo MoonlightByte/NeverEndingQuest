@@ -242,33 +242,77 @@ def test_archery_is_committed_without_an_armor_class_bonus(wizard, authored):
     assert committed["armorClass"] == 18
 
 
-@pytest.mark.parametrize("variant, note", [
-    ("unknown", "classFeatures 'Fighting Style (Protection)' records no SRD 5.2.1 Fighting Style; "
-                "left as written, not applied"),
-    ("two_styles", "Fighting Styles Archery, Defense listed; Fighter level 1 has 1; left as written, not applied"),
-    ("paladin", "Fighting Style Defense is listed, but Paladin level 1 has no Fighting Style feature; "
-                "left as written, not applied"),
-])
-def test_untyped_surplus_or_ineligible_style_is_left_and_noted(wizard, authored, variant, note):
+def test_ineligible_style_is_left_and_noted(wizard, authored):
+    # Paladins gain Fighting Style at level 2.
+    sheet = authored["character"]
+    sheet["class"] = "Paladin"
+    authored_features = [f["name"] for f in sheet["classFeatures"]]
+    candidate, provenance = wizard._prepare_startup_proposal(authored)
+    committed = candidate["character"]
+    assert [f["name"] for f in committed["classFeatures"]] == authored_features
+    assert committed.get("feats", []) == []
+    assert committed["armorClass"] == 18
+    assert [n for n in provenance["mechanics_notes"] if "Fighting Style" in n] == [
+        "Fighting Style Defense is listed, but Paladin level 1 has no Fighting Style feature; "
+        "left as written, not applied"]
+    assert provenance["fighting_style"]["style"] is None
+    assert provenance["fighting_style"]["left_as_written"]
+
+
+@pytest.mark.parametrize("variant", ["unknown", "two_styles", "reworded", "missing"])
+def test_style_not_recorded_as_level_up_writes_it_is_sent_back(wizard, authored, variant):
+    # #855: a class that has gained a Fighting Style records it as level-up writes
+    # it, the only name the engine grants; otherwise the author gets the exact form
+    # back as a correction, never a commit without the style.
     sheet = authored["character"]
     if variant == "unknown":
         sheet["classFeatures"][0]["name"] = "Fighting Style (Protection)"
     elif variant == "two_styles":
         sheet["feats"] = [{"name": "Archery", "description": "Fighting Style feat.", "source": "Fighter level 1"}]
+    elif variant == "reworded":
+        # The ordinary-armor check follows the engine, which grants nothing for this name.
+        sheet["classFeatures"][0]["name"] = "Defense Fighting Style"
     else:
-        # Paladins gain Fighting Style at level 2.
-        sheet["class"] = "Paladin"
-    authored_features = [f["name"] for f in sheet["classFeatures"]]
-    authored_feats = [f["name"] for f in sheet.get("feats", [])]
-    candidate, provenance = wizard._prepare_startup_proposal(authored)
-    committed = candidate["character"]
-    assert [f["name"] for f in committed["classFeatures"]] == authored_features
-    assert [f["name"] for f in committed.get("feats", [])] == authored_feats
-    assert committed["armorClass"] == 18
-    assert [n for n in provenance["mechanics_notes"] if "Fighting Style" in n] == [note]
-    if variant != "unknown":
-        assert provenance["fighting_style"]["style"] is None
-        assert provenance["fighting_style"]["left_as_written"]
+        sheet["classFeatures"].pop(0)
+    with pytest.raises(ValueError) as refused:
+        wizard._prepare_startup_proposal(authored)
+    message = str(refused.value)
+    assert message.startswith("Fighter level 1 has 1 Fighting Style and the sheet records 0.")
+    assert 'named exactly "Fighting Style: <name>"' in message
+    assert "one of: Archery, Defense, Great Weapon Fighting, Two-Weapon Fighting." in message
+
+
+@pytest.mark.parametrize("race, traits, bonus", [
+    ("Dwarf", ["Dwarven Toughness"], 1),
+    ("Dwarf", ["Dwarven Toughness (Hill)"], 1),
+    ("Dwarf", [], 1),
+    ("Dwarf", ["Dwarven Toughness", "Dwarven Toughness"], 1),
+    ("Hill Dwarf", ["Dwarven Toughness"], 1),
+    # No SRD 5.2.1 species is named "Hill Dwarf" and the engine has no species
+    # hit point rule, so neither side adds the bonus without the exact trait.
+    ("Hill Dwarf", [], 0),
+    ("Hill Dwarf", ["Dwarven Toughness (Hill)"], 0),
+    ("Human", [], 0),
+])
+def test_dwarven_toughness_comes_from_the_species(wizard, authored, race, traits, bonus):
+    # #855: keyed on race against progression.json hp_bonuses; the exact trait
+    # name still counts, once.
+    sheet = copy.deepcopy(authored["character"])
+    sheet["class"], sheet["race"] = "Cleric", race
+    sheet["abilities"]["constitution"] = 12
+    sheet["racialTraits"] = [{"name": name, "description": "typed"} for name in traits]
+    maximum, terms = wizard.expected_starting_hit_points(sheet)
+    assert maximum == 8 + 1 + bonus
+    assert ("Dwarven Toughness (+1)" in terms) == bool(bonus)
+
+
+def test_sheet_text_keeps_other_scripts_and_strips_emoji(wizard):
+    # #855: only emoji are stripped; Han, kana and Hangul names are kept.
+    for text in ("\u674e\u660e", "\u3055\u304f\u3089", "\uc9c0\uc6b0", "\u0418\u0432\u0430\u043d", "Ji-woo"):
+        assert wizard.sanitize_character_data(text) == text
+    for emoji in ("\U0001F600", "\u2B50", "\U0001F004", "\U0001F170", "\U0001F201", "\u24C2", "\u2694",
+                  "\u25B6", "\u2934"):
+        assert wizard.sanitize_character_data("Kira" + emoji) == "Kira"
 
 
 def test_saved_old_shape_style_projects_as_before(wizard, authored):
