@@ -1594,103 +1594,62 @@ def _is_meaningful_character_delta(updates, schema):
     )
 
 
-def infer_requested_character_update_fields(changes):
-    """Infer only explicit, mechanically coupled T079 update categories.
+# The sheet fields an updateCharacterInfo action may declare in its typed
+# "affects" list (#855). The DM names every field its change touches; the
+# update must then return all of them, so a coupled change (a potion drunk
+# and the healing it gave) is never applied in part. Death saves are not a
+# field here: this game has no death saves.
+CHARACTER_UPDATE_AFFECTS = (
+    "currency",
+    "equipment",
+    "hitPoints",
+    "condition",
+    "spellcasting",
+    "attacksAndSpellcasting",
+)
 
-    This is deliberately narrower than general natural-language intent parsing.
-    It recognizes high-risk phrases where accepting only one part of the model's
-    delta would leave a character sheet internally inconsistent. Ambiguous
-    narration is left to the model and the existing schema validators.
+
+def character_update_affects_error(affects):
+    """The correction for a malformed "affects" parameter, or None when valid.
+
+    An absent list is valid: the update then requires no particular field.
     """
-    if not isinstance(changes, str) or not changes.strip():
+    if affects is None:
+        return None
+    allowed = ", ".join(CHARACTER_UPDATE_AFFECTS)
+    if not isinstance(affects, list) or not all(
+        isinstance(name, str) for name in affects
+    ):
+        return (
+            "updateCharacterInfo \"affects\" must be a list of sheet field names "
+            f"from: {allowed}"
+        )
+    unknown = [name for name in affects if name not in CHARACTER_UPDATE_AFFECTS]
+    if unknown:
+        return (
+            "updateCharacterInfo \"affects\" names unknown fields "
+            f"{', '.join(unknown)}; use only: {allowed}"
+        )
+    return None
+
+
+def requested_character_update_fields(affects):
+    """The top-level fields an update must return, from its declared "affects".
+
+    Nothing is inferred from the change's wording (#855): an absent list
+    requires nothing, as an update with no coupled fields always has.
+    """
+    if not isinstance(affects, list):
         return set()
-
-    text = re.sub(r"\s+", " ", changes.strip().lower())
-    required = set()
-
-    currency_amount = re.search(
-        r"\b\d+\s*(?:gp|gold|sp|silver|cp|copper|g|s|c)\b",
-        text,
-    )
-    explicit_trade = re.search(r"\btrade(?:d|s)?\b.{0,100}\bfor\b", text)
-    negated_trade = re.search(
-        r"\b(?:do|does|did)\s+not\s+trade\b|"
-        r"\b(?:don't|doesn't|didn't)\s+trade\b",
-        text,
-    )
-    if explicit_trade and currency_amount and not negated_trade:
-        required.update(("currency", "equipment"))
-
-    hp_transition = re.search(r"\bhp\s*(?:\d+\s*)?->\s*\d+\b", text)
-    if hp_transition:
-        required.add("hitPoints")
-
-    potion_consumption = re.search(
-        r"\b(?:use[ds]?|drank|drink|consum(?:e|ed|es))\s+"
-        r"(?:\d+\s+|an?\s+)?(?:healing\s+)?potion\b",
-        text,
-    )
-    if potion_consumption:
-        required.add("equipment")
-
-    shield_destroyed = (
-        re.search(
-            r"\bshield\s+(?:(?:was|is)\s+|has\s+been\s+)?"
-            r"(?:destroyed|broken|dissolved|removed|lost)\b",
-            text,
-        )
-        or re.search(
-            r"\b(?:destroyed|broken|dissolved|removed|lost)\s+(?:the\s+)?shield\b",
-            text,
-        )
-    )
-    if shield_destroyed:
-        # armorClass and equipment_effects are engine-owned (core/nql); only
-        # the equipment change itself is a required part of the delta.
-        required.add("equipment")
-
-    weapon_swap = re.search(
-        r"\b(?:swapped?|replaced|exchanged)\b.{0,100}\b"
-        r"(?:weapon|(?:short|long|great)?sword|dagger|bow|axe|mace|staff|spear|crossbow)\b",
-        text,
-    )
-    if weapon_swap:
-        required.update(("equipment", "attacksAndSpellcasting"))
-
-    poison_applied = re.search(
-        r"(?:^|[.;]\s*)poisoned\b|\b(?:became|now|is|was)\s+poisoned\b",
-        text,
-    )
-    if poison_applied:
-        required.update(("condition", "condition_affected"))
-
-    death_save_change = re.search(
-        r"\b(?:first|second|third|\d+(?:st|nd|rd|th)?)\s+death\s+save\s+"
-        r"(?:failed|succeeded|success|failure)\b",
-        text,
-    )
-    if death_save_change:
-        required.add("deathSaves")
-
-    spell_slot_change = (
-        "spell slot" in text
-        and (
-            re.search(r"\bspell slot\b.{0,80}\bcurrent\s+\d+\s*->\s*\d+\b", text)
-            or re.search(
-                r"\b(?:cast|casts|expended|expends|used|uses)\b.{0,100}\bspell slot\b",
-                text,
-            )
-        )
-    )
-    if spell_slot_change:
-        required.add("spellcasting")
-
+    required = {name for name in affects if name in CHARACTER_UPDATE_AFFECTS}
+    if "condition" in required:
+        required.add("condition_affected")
     return required
 
 
-def validate_requested_character_update_completeness(changes, updates):
-    """Return ``(is_complete, missing_fields)`` for explicit T079 requests."""
-    required = infer_requested_character_update_fields(changes)
+def validate_requested_character_update_completeness(affects, updates):
+    """Return ``(is_complete, missing_fields)`` for a declared T079 request."""
+    required = requested_character_update_fields(affects)
     present = set(updates) if isinstance(updates, dict) else set()
     for delta_key, owned_field in ENGINE_DELTA_FIELDS.items():
         if delta_key in present:
@@ -1699,28 +1658,69 @@ def validate_requested_character_update_completeness(changes, updates):
     return not missing, missing
 
 
-def build_requested_character_delta_gemini_schema(changes, character_schema):
-    """Build a strict Gemini schema for the fields this update must return."""
+# Engine-owned pools are reported as signed changes and their totals are
+# refused (_engine_owned_total), so the Gemini schema offers the delta keys and
+# never the totals. featureUseDelta is keyed by feature name, which a Gemini
+# schema cannot express, so it is not offered here.
+_GEMINI_REFUSED_TOTALS = ("hitPoints", "temporaryHitPoints", "currency")
+_GEMINI_DELTA_SCHEMAS = {
+    "hpDelta": {"type": "integer"},
+    "tempHpGrant": {"type": "integer"},
+    "currencyDelta": {
+        "type": "object",
+        "properties": {
+            coin: {"type": "integer"} for coin in ("gold", "silver", "copper")
+        },
+    },
+    "spellSlotDelta": {
+        "type": "object",
+        "properties": {
+            f"level{level}": {"type": "integer"} for level in range(1, 10)
+        },
+    },
+    "effectChange": {"type": "boolean"},
+}
+# A declared field the update must return, as the key the engine accepts.
+_GEMINI_REQUIRED_KEY = {"hitPoints": "hpDelta", "currency": "currencyDelta"}
+
+
+def build_requested_character_delta_gemini_schema(affects, character_schema):
+    """Build a Gemini schema that requires the declared fields.
+
+    Every other sheet field, the delta keys and effectChange stay available,
+    so a change that also touches an undeclared field is never cut short.
+    """
     from model_config import convert_to_gemini_schema
 
-    required_fields = sorted(infer_requested_character_update_fields(changes))
+    requested = sorted(requested_character_update_fields(affects))
+    if not requested:
+        return None
     properties = character_schema.get("properties", {})
     missing_schema_fields = [
-        field for field in required_fields if field not in properties
+        field for field in requested if field not in properties
     ]
     if missing_schema_fields:
         raise ValueError(
             "T079 requested fields are missing from character schema: "
             + ", ".join(missing_schema_fields)
         )
-    if not required_fields:
-        return None
-
+    delta_properties = {
+        field: copy.deepcopy(value)
+        for field, value in properties.items()
+        if field not in _GEMINI_REFUSED_TOTALS
+    }
+    delta_properties.update(copy.deepcopy(_GEMINI_DELTA_SCHEMAS))
+    # A declared spellcasting change may or may not be a slot: spellcasting
+    # and spellSlotDelta are both offered and the completeness gate requires
+    # one of them.
+    required_fields = sorted(
+        _GEMINI_REQUIRED_KEY.get(field, field)
+        for field in requested
+        if field != "spellcasting"
+    )
     delta_schema = {
         "type": "object",
-        "properties": {
-            field: copy.deepcopy(properties[field]) for field in required_fields
-        },
+        "properties": delta_properties,
         "required": required_fields,
     }
     return convert_to_gemini_schema(delta_schema, preserve_required=True)
@@ -1860,6 +1860,7 @@ def update_character_info(
     action_context=None,
     *,
     commit_guard=None,
+    affects=None,
 ):
     """Run one complete character update transaction under a per-file lock."""
     lock = _get_character_update_lock(character_name, character_role)
@@ -1890,6 +1891,7 @@ def update_character_info(
                     action_context=action_context,
                     structural_reissue=commit_guard is not None,
                     commit_guard=commit_guard,
+                    affects=affects,
                 )
             return _update_character_info_unlocked(
                 character_name,
@@ -1899,6 +1901,7 @@ def update_character_info(
                 action_context=action_context,
                 structural_reissue=commit_guard is not None,
                 commit_guard=commit_guard,
+                affects=affects,
             )
 
 
@@ -1912,6 +1915,7 @@ def _update_character_info_unlocked(
     action_context=None,
     *,
     commit_guard=None,
+    affects=None,
 ):
     """
     Unified function to update character information for both players and NPCs
@@ -2412,7 +2416,7 @@ Character Role: {character_role}
             config.CHAR_UPDATE_GEMINI_FLASHLITE_LOW
         )
         requested_delta_schema = build_requested_character_delta_gemini_schema(
-            changes,
+            affects,
             schema,
         )
         if requested_delta_schema is not None:
@@ -2622,7 +2626,7 @@ Character Role: {character_role}
                 )
 
             is_complete, missing_fields = validate_requested_character_update_completeness(
-                changes,
+                affects,
                 updates,
             )
             if not is_complete:

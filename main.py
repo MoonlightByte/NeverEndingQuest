@@ -135,7 +135,10 @@ from core.ai.conversation_utils import (
     update_conversation_history,
     update_character_data,
 )
-from updates.update_character_info import update_character_info
+from updates.update_character_info import (
+    character_update_affects_error,
+    update_character_info,
+)
 from core.managers.level_up_manager import LevelUpSession # Add this line
 from core.ai.incremental_compression import IncrementalLocationCompressor
 
@@ -3313,6 +3316,18 @@ def validate_json_structure(response_text, *, party_tracker_data=None):
             )
         elif structure_issues:
             return False, None, f"Structure errors: {'; '.join(structure_issues)}"
+
+        # A character update's typed field list is corrected here, before any
+        # action runs or is deferred past a move (#855).
+        for action in parsed["actions"]:
+            if action.get("action") != "updateCharacterInfo":
+                continue
+            parameters = action.get("parameters")
+            if not isinstance(parameters, dict):
+                continue
+            affects_error = character_update_affects_error(parameters.get("affects"))
+            if affects_error:
+                return False, None, affects_error
 
         if party_tracker_data is not None:
             world = party_tracker_data.get("worldConditions", {})
