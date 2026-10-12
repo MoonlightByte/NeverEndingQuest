@@ -83,4 +83,10 @@ def resolve_media_path(media_type, filename, current_module, modules_dir,
         path = resolve_file_within(base, filename)
         if path is not None:
             return path
+    if media_type == "npcs":
+        # A named villain the module authors as a monster (Bandit Captain
+        # Gorvek) keeps his portrait under media/monsters, but he is listed
+        # among a place's people, so the screen asks for an NPC portrait.
+        return resolve_media_path("monsters", filename, current_module,
+                                  modules_dir, static_media_dir)
     return None

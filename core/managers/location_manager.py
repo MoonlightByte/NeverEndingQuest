@@ -55,6 +55,7 @@ import unicodedata
 import re
 import traceback
 from utils.module_path_manager import ModulePathManager
+from core.managers.current_location import MISSING, OK, UNREADABLE, read_current_location
 import core.ai.cumulative_summary as cumulative_summary
 from utils.encoding_utils import (
     sanitize_text,
@@ -257,24 +258,26 @@ def handle_location_transition(
         current_module = party_tracker.get("module", "").replace(" ", "_")
         path_manager = ModulePathManager(current_module)
         current_area_file = path_manager.get_area_path(current_area_id)
-        current_area_data = load_json_file(current_area_file)
-
-        if current_area_data and "locations" in current_area_data:
-            # Find current location info 
-            current_location_info = None
-            for loc in current_area_data["locations"]:
-                if loc["name"] == current_location or loc["locationId"] == current_location:
-                    current_location_info = loc
-                    break
-                    
-            if current_location_info:
-                debug(f"VALIDATION: Current location identified: {current_location_info['name']} (ID: {current_location_info['locationId']})", category="location_transitions")
-            else:
-                error(f"VALIDATION: Current location '{current_location}' not found in area data", category="location_transitions")
-                return None
-        else:
-            error(f"FILE_OP: Failed to load current area data from {current_area_file}", category="file_operations")
+        # The origin is #448's one reader: strict, by currentLocationId (#850)
+        origin = read_current_location(party_tracker)
+        if origin.status in (MISSING, UNREADABLE):
+            error(f"FILE_OP: Failed to load current area data: {origin.detail}", category="file_operations")
             return None
+        if origin.status != OK or origin.area_id != current_area_id:
+            reason = origin.detail or f"the tracker's area is {origin.area_id}"
+            error(f"VALIDATION: Current location '{current_location}' not found in area data ({reason})", category="location_transitions")
+            return None
+        # Sanitized as load_json_file read it, so the origin text is unchanged
+        current_area_data = sanitize_dict(origin.area)
+        current_location_info = next(
+            (loc for loc in current_area_data["locations"]
+             if isinstance(loc, dict) and loc.get("locationId") == origin.location_id),
+            None,
+        )
+        if current_location_info is None:
+            error(f"VALIDATION: Current location '{current_location}' not found in area data", category="location_transitions")
+            return None
+        debug(f"VALIDATION: Current location identified: {current_location_info.get('name')} (ID: {current_location_info.get('locationId')})", category="location_transitions")
 
         # The new_location parameter is now always a specific location ID.
         # We just need to find which area it belongs to.

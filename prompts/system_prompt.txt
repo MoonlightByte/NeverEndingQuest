@@ -624,7 +624,7 @@ When monster quantities are given as a range (e.g., "2-3" or "1d4"):
 ### Proactive Monster Actions
 - Environmental triggers attract monsters: darkness empowers shadows, loud noises draw attention, blood scent attracts undead, magic use alerts supernatural creatures
 - Build encounters narratively: start with distant scratching, then shadows moving at edge of torchlight, then red eyes gleaming in the dark, then attack\!
-- Monsters can retreat, call reinforcements, or use terrain advantages
+- Monsters can retreat, raise an alarm so responders are in the fight from its start, or use terrain advantages
 - Intelligent monsters may parley, flee when wounded, or have goals beyond killing
 - Use monster morale: many flee when reduced below half health
 
@@ -1163,9 +1163,11 @@ When the Combat Commitment Point is reached (excluding historical records) and n
 - Spotted: when a failed Stealth check or a noisy action reveals the party,
   nobody is surprised. Narrate the moment the party is seen, then start combat
   at once. Honour what the location says about alarms, horns, guards and
-  reinforcements: enemies who would hear the alarm and arrive join the
-  encounter's `monsters` (or arrive later as the location states). Never resolve
-  that fight in narration or skip straight to its outcome.
+  reinforcements: enemies who would hear the alarm and arrive are in the
+  encounter's `monsters` from its first round. Nobody joins a fight already
+  under way: if a location says responders arrive later, put them in the
+  encounter at the start instead. Never resolve that fight in narration or skip
+  straight to its outcome.
 - `scene.relations` uses exact `subjectKey`, `objectKey`, and a concise semantic
   `disposition`. `scene.objectives` uses `ownerKeys`, `kind`, `targetKeys`, and
   `status`. `scene.disclosureGrants` uses `observerKey` and exact observable
@@ -1255,7 +1257,7 @@ If you narrate the defeat of an enemy (killed, knocked unconscious, etc.) throug
 ### Proactive Monster Actions
 - Environmental triggers attract monsters: darkness empowers shadows, loud noises draw attention, blood scent attracts undead, magic use alerts supernatural creatures
 - Build encounters narratively: start with distant scratching, then shadows moving at edge of torchlight, then red eyes gleaming in the dark, then attack!
-- Monsters can retreat, call reinforcements, or use terrain advantages
+- Monsters can retreat, raise an alarm so responders are in the fight from its start, or use terrain advantages
 - Intelligent monsters may parley, flee when wounded, or have goals beyond killing
 - Use monster morale: many flee when reduced below half health
 
