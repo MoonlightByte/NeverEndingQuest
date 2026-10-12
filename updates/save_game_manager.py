@@ -137,9 +137,11 @@ APPLICATION_OWNED_REFERENCE_FILES = frozenset(
 )
 
 
-# Automatic checkpoints before combat (#263): their description prefix marks
-# them for pruning, and only the newest few are kept.
+# Automatic checkpoints before combat (#263). The typed metadata marker
+# (#845) alone selects them for pruning, and only the newest few are kept;
+# the description prefix is display text only.
 AUTO_CHECKPOINT_PREFIX = "Auto-save before combat"
+AUTO_CHECKPOINT_KIND = "pre_combat"
 AUTO_CHECKPOINT_KEEP = 5
 
 
@@ -904,7 +906,13 @@ class SaveGameManager:
                 return False, "listed state schema version differs"
         return True, ""
 
-    def generate_save_metadata(self, description: str = "", save_mode: str = "essential") -> Dict[str, Any]:
+    def generate_save_metadata(
+        self,
+        description: str = "",
+        save_mode: str = "essential",
+        *,
+        auto_checkpoint: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Generate metadata for a save game"""
         timestamp = datetime.now()
         
@@ -962,6 +970,9 @@ class SaveGameManager:
             },
             "state_manifest": self._state_manifest_for_root(),
         }
+        if auto_checkpoint is not None:
+            # #845: the typed marker that alone makes a save prunable.
+            metadata["auto_checkpoint"] = auto_checkpoint
 
         return metadata
     
@@ -971,6 +982,7 @@ class SaveGameManager:
         save_mode: str = "essential",
         *,
         save_folder: Optional[str] = None,
+        auto_checkpoint: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """Settle completion outside snapshot locks; recheck at the boundary."""
         from core.managers.campaign_manager import (
@@ -998,6 +1010,7 @@ class SaveGameManager:
                     if settled and not outcome["blocked"]:
                         return self._create_save_at_boundary(
                             description, save_mode, save_folder=save_folder,
+                            auto_checkpoint=auto_checkpoint,
                         )
                 except _CampaignCompletionActive:
                     # New work appeared after settlement. Release and follow it.
@@ -1021,6 +1034,7 @@ class SaveGameManager:
         save_mode: str = "essential",
         *,
         save_folder: Optional[str] = None,
+        auto_checkpoint: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """Take one verified snapshot, or release its locks for settlement."""
         from core.managers.campaign_manager import _CampaignCompletionActive
@@ -1086,6 +1100,7 @@ class SaveGameManager:
                                         description,
                                         save_mode,
                                         save_folder=save_folder,
+                                        auto_checkpoint=auto_checkpoint,
                                         _cache_available=cache_available,
                                     )
                                 finally:
@@ -1111,6 +1126,7 @@ class SaveGameManager:
         save_mode: str = "essential",
         *,
         save_folder: Optional[str] = None,
+        auto_checkpoint: Optional[str] = None,
         _cache_available: bool = True,
     ) -> Tuple[bool, str]:
         """
@@ -1150,7 +1166,9 @@ class SaveGameManager:
             info(f"FILE_OP: Created save directory: {save_path}", category="save_game")
             
             # Generate and save metadata
-            metadata = self.generate_save_metadata(description, save_mode)
+            metadata = self.generate_save_metadata(
+                description, save_mode, auto_checkpoint=auto_checkpoint
+            )
             metadata_path = f"{save_path}/save_metadata.json"
             if not safe_write_json(
                 metadata_path, metadata, create_backup=False
@@ -1655,9 +1673,14 @@ class SaveGameManager:
         Owner rule: an automatic checkpoint happens only before combat starts,
         never during it. Fail-forward: a checkpoint that cannot be written is
         logged and the fight goes on; nothing claims a save that was not made.
-        Only the newest AUTO_CHECKPOINT_KEEP checkpoints are kept; saves the
-        player or DM made are never pruned.
+        A player's Load or Exit (LiveProviderSuperseded) and a read-only save
+        stop (#654) are not failures to swallow: they end the turn now (#845).
+        Only the newest AUTO_CHECKPOINT_KEEP checkpoints are kept, chosen by
+        the typed auto_checkpoint marker; a save without it, made by the
+        player, the DM or an older build, is never pruned.
         """
+        from utils.capture.live_provider_call import LiveProviderSuperseded
+
         summary = " ".join(str(summary or "").split())
         if len(summary) > 120:
             summary = summary[:117].rstrip() + "..."
@@ -1666,16 +1689,22 @@ class SaveGameManager:
             success, message = self.create_save_game(
                 description, "essential",
                 save_folder=datetime.now().strftime("save_%Y%m%d_%H%M%S_%f"),
+                auto_checkpoint=AUTO_CHECKPOINT_KIND,
             )
+        except LiveProviderSuperseded:
+            raise
         except Exception as exc:
             success, message = False, str(exc)
         if not success:
+            # The save may have met the read-only stop first and reported it
+            # as (False, msg); the recorded stop still ends the session now.
+            raise_if_save_stopped()
             warning(f"Combat checkpoint not saved: {message}", category="save_game")
             return False, message
         try:
             checkpoints = [
                 save for save in self.list_save_games()
-                if str(save.get("description", "")).startswith(AUTO_CHECKPOINT_PREFIX)
+                if save.get("auto_checkpoint") == AUTO_CHECKPOINT_KIND
                 and save.get("save_folder")
             ]
             for stale in checkpoints[AUTO_CHECKPOINT_KEEP:]:
