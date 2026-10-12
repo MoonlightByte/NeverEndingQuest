@@ -220,9 +220,10 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
                 if row is not None:
                     row["quantity"] = int(created.get("quantity", 0))
                 else:
+                    # #822: a new row keeps the catalog's typed id; a top-up (found by name) is left as it is.
                     working.setdefault("ammunition", []).append(
                         {"name": entry["name"], "quantity": int(created.get("quantity", quantity)),
-                         "description": entry.get("description", "")})
+                         "description": entry.get("description", ""), "catalog_id": entry["id"]})
                 landed = f"{created.get('quantity', quantity)} {entry['name']} in the ammunition stock"
             else:
                 row = acquisition.row_from_views(created, definition, entry)
