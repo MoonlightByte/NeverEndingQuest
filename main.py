@@ -6000,9 +6000,9 @@ def _agentic_post_combat_engine_echo(action):
 
 # Shown to the player (#841); the history record below carries the details.
 _AGENTIC_POST_COMBAT_DROP_NOTICE = (
-    "No character sheet changed just now: the fight already settled hit "
-    "points, gear and rewards. If you still want something done, such as "
-    "tending a wound, say so in your next message."
+    "Those character sheet changes were not made: the fight already applied "
+    "its damage, spent ammunition and combat XP. If you want to take loot or "
+    "do something else, such as tending a wound, say so in your next message."
 )
 
 
