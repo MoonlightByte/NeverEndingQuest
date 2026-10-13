@@ -41,6 +41,14 @@ class EffectsRuntimeError(RuntimeError):
     """A declarative effect operation could not be completed safely."""
 
 
+class CharacterProposalDropped(EffectsRuntimeError):
+    """T079 gave no usable required proposal within its bounded tries (#855)."""
+
+    def __init__(self, owner):
+        super().__init__("required character proposal was not prepared")
+        self.owner = owner
+
+
 def _resolve_character(character_name):
     party = safe_json_load("party_tracker.json") or {}
     resolved = character_name
@@ -341,7 +349,7 @@ def prepare_character_update(character_name, changes, party_tracker_data=None, a
         affects=affects,
     )
     if not isinstance(receipt, dict):
-        raise EffectsRuntimeError("required character proposal was not prepared")
+        raise CharacterProposalDropped(resolved)
     try:
         from core.validation.character_validator import AICharacterValidator
 

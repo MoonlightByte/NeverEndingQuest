@@ -2468,7 +2468,9 @@ Character Role: {character_role}
     # the attempt bound) is reported to the caller as a refusal, not accepted
     # as "no change".
     last_engine_refusal = None
-    while structural_reissue or bounded_failure_count < bounded_failure_limit:
+    # A required travel proposal (structural_reissue) gets the same bounded
+    # tries; its caller then drops it and the travel goes on (#855).
+    while bounded_failure_count < bounded_failure_limit:
         try:
             if commit_guard is not None:
                 with commit_guard():
