@@ -303,77 +303,26 @@ def detect_character_role(character_name):
 
 def fuzzy_match_character_name(input_name, party_tracker_data):
     """
-    Try to find a character using fuzzy matching logic.
-    Returns the correct character name if found, None otherwise.
-    """
-    input_lower = input_name.lower().strip()
-    
-    # Check party members (exact match first)
-    for member in party_tracker_data.get("partyMembers", []):
-        if member.lower() == input_lower:
-            return member
-    
-    # Check party NPCs (exact match first)
-    for npc in party_tracker_data.get("partyNPCs", []):
-        npc_name = npc.get("name", "")
-        if npc_name.lower() == input_lower:
-            return npc_name
-    
-    # Try partial matches for party NPCs (e.g., "kira" matches "Scout Kira")
-    for npc in party_tracker_data.get("partyNPCs", []):
-        npc_name = npc.get("name", "")
-        npc_lower = npc_name.lower()
-        # Check if input is contained in the NPC name
-        if input_lower in npc_lower:
-            # debug(f"FUZZY_MATCH: Matched '{input_name}' to '{npc_name}' via partial match", category="character_updates")
-            return npc_name
-        # Check if any word in NPC name matches input
-        npc_words = npc_lower.split()
-        if input_lower in npc_words:
-            # debug(f"FUZZY_MATCH: Matched '{input_name}' to '{npc_name}' via word match", category="character_updates")
-            return npc_name
-        
-        # Check if normalized input matches part of normalized NPC name
-        # This handles cases like "ranger_thane" matching "Corrupted Ranger Thane"
-        input_normalized = input_lower.replace("_", " ")
-        if input_normalized in npc_lower:
-            # debug(f"FUZZY_MATCH: Matched '{input_name}' to '{npc_name}' via normalized partial match", category="character_updates")
-            return npc_name
-        
-        # Check each word in the normalized input against the NPC name
-        input_words = input_normalized.split()
-        for word in input_words:
-            if word in npc_lower and len(word) > 2:  # Skip very short words
-                # debug(f"FUZZY_MATCH: Matched '{input_name}' to '{npc_name}' via word '{word}'", category="character_updates")
-                return npc_name
-    
-    # Try checking character files in the module
-    try:
-        current_module = party_tracker_data.get("module", "").replace(" ", "_")
-        path_manager = ModulePathManager(current_module)
-        import glob
-        import os
-        
-        # Get all character files
-        character_files = glob.glob(os.path.join(path_manager.module_dir, "characters", "*.json"))
-        
-        for char_file in character_files:
-            try:
-                char_data = safe_read_json(char_file)
-                if char_data and "name" in char_data:
-                    char_name = char_data["name"]
-                    if char_name.lower() == input_lower:
-                        return char_name
-                    # Check partial match
-                    if input_lower in char_name.lower():
-                        # debug(f"FUZZY_MATCH: Matched '{input_name}' to '{char_name}' via file search", category="character_updates")
-                        return char_name
-            except:
-                continue
-    except Exception as e:
-        # debug(f"FUZZY_MATCH: Error searching character files: {str(e)}", category="character_updates")
-        pass
+    Resolve a name the model gave to a party character's exact name.
 
+    Only an exact match counts: case is ignored and "_" reads as a space, so
+    "scout_kira" is "Scout Kira". A near name ("Kira", "Scout Elen") is never
+    resolved to another character; it returns None and the caller reports that
+    no sheet was found (#855, family 2).
+    """
+    def key(name):
+        return " ".join(str(name or "").replace("_", " ").lower().split())
+
+    wanted = key(input_name)
+    if not wanted:
+        return None
+    for member in party_tracker_data.get("partyMembers", []) or []:
+        if isinstance(member, str) and key(member) == wanted:
+            return member
+    for npc in party_tracker_data.get("partyNPCs", []) or []:
+        npc_name = npc.get("name", "") if isinstance(npc, dict) else ""
+        if npc_name and key(npc_name) == wanted:
+            return npc_name
     return None
 
 def get_character_path(character_name, character_role=None):
