@@ -311,6 +311,10 @@ class ParallelConversationCompressor:
         """Update progress and emit event via status_manager"""
         with self.progress_lock:
             self.completed_count += 1
+            # Cache-only passes intentionally emit neither start nor complete.
+            # Emitting progress alone leaves every connected UI running forever.
+            if not getattr(self, 'needs_active_compression', False):
+                return
             # Try to use status_manager if available
             try:
                 from core.managers.status_manager import status_manager
