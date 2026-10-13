@@ -923,7 +923,10 @@ def prepare_current_transition_actions(operation_id):
                 "after": None,
             }
         elif family == "updateCharacterInfo":
-            from core.managers.effects_runtime import prepare_character_update
+            from core.managers.effects_runtime import (
+                CharacterProposalDropped,
+                prepare_character_update,
+            )
 
             party = safe_json_load("party_tracker.json") or {}
             character_name = (
@@ -934,10 +937,26 @@ def prepare_current_transition_actions(operation_id):
             changes = parameters.get("changes")
             if isinstance(changes, dict):
                 changes = json.dumps(changes)
-            receipt = prepare_character_update(
-                character_name, changes, party,
-                affects=parameters.get("affects"),
-            )
+            try:
+                receipt = prepare_character_update(
+                    character_name, changes, party,
+                    affects=parameters.get("affects"),
+                )
+            except CharacterProposalDropped as dropped:
+                # #855: no usable proposal within the bounded tries. The
+                # change is dropped, the travel goes on, and the player is
+                # told once after arrival.
+                warning(
+                    "TRAVEL: no usable sheet update for %s; dropped after "
+                    "the bounded tries, travel goes on" % dropped.owner,
+                    category="location_transitions",
+                )
+                receipt = {
+                    "kind": "updateCharacterInfo",
+                    "character_status": "dropped",
+                    "owner": dropped.owner,
+                    "message_id": str(uuid4()),
+                }
         elif family == "storageInteraction":
             from core.managers.storage_processor import process_storage_request
             from core.managers.storage_manager import StorageManager
@@ -957,13 +976,25 @@ def prepare_current_transition_actions(operation_id):
                 structural_reissue=True,
             )
             if not proposal.get("success"):
-                raise RuntimeError("required storage proposal was not accepted")
-            receipt = StorageManager(
-                ensure_storage=False
-            ).prepare_staged_operation(
-                proposal["operation"], record["operation_id"]
-            )
-            receipt["message_id"] = str(uuid4())
+                # #855: dropped like a sheet update; the travel goes on.
+                warning(
+                    "TRAVEL: no usable storage change for %s; dropped after "
+                    "the bounded tries, travel goes on" % character_name,
+                    category="location_transitions",
+                )
+                receipt = {
+                    "kind": "storageInteraction",
+                    "storage_status": "dropped",
+                    "owner": character_name,
+                    "message_id": str(uuid4()),
+                }
+            else:
+                receipt = StorageManager(
+                    ensure_storage=False
+                ).prepare_staged_operation(
+                    proposal["operation"], record["operation_id"]
+                )
+                receipt["message_id"] = str(uuid4())
         elif family == "updatePartyNPCs":
             receipt = prepare_party_npc_update(
                 parameters, record["operation_id"]
@@ -1057,6 +1088,12 @@ def _departure_projection_status(action_record):
     """
     status = str(action_record.get("status") or "pending")
     receipt = action_record.get("receipt")
+    if isinstance(receipt, dict) and "dropped" in (
+        receipt.get("character_status"),
+        receipt.get("storage_status"),
+    ):
+        # #855: dropped before movement; it is never applied on arrival.
+        return "dropped"
     if (
         status == "pending"
         and isinstance(receipt, dict)
@@ -1670,7 +1707,8 @@ def apply_current_transition_action(operation_id, action_index):
     if family == "updateCharacterInfo":
         from core.managers.effects_runtime import apply_staged_character_update
 
-        outcome = apply_staged_character_update(receipt)
+        dropped = receipt.get("character_status") == "dropped"
+        outcome = None if dropped else apply_staged_character_update(receipt)
         if outcome == "blocked_conflict":
             record["status"] = "blocked_conflict"
             checkpoint["phase"] = "blocked_conflict"
@@ -1685,23 +1723,33 @@ def apply_current_transition_action(operation_id, action_index):
                 "status": "committed",
             }
         )
+        if dropped:
+            deferred["receipts"][-1]["character_status"] = "dropped"
         if deferred["cursor"] >= len(records):
             deferred["status"] = "committed"
         _write_location_transition_checkpoint(checkpoint)
+        if dropped:
+            # After the checkpoint write: shown at most once, never again
+            # on a resume (the cursor is past this record).
+            _show_transition_notice(
+                receipt["message_id"], _DROPPED_SHEET_NOTICE % receipt["owner"]
+            )
         return "committed"
 
     if family == "storageInteraction":
         from core.managers.storage_manager import StorageManager
 
-        outcome = StorageManager.apply_staged_operation(receipt)
-        if outcome == "blocked_conflict":
-            record["status"] = "blocked_conflict"
-            checkpoint["phase"] = "blocked_conflict"
-            _write_location_transition_checkpoint(checkpoint)
-            return outcome
-        _publish_stable_transition_message(
-            receipt["message_id"], "Storage: %s" % receipt["message"]
-        )
+        dropped = receipt.get("storage_status") == "dropped"
+        if not dropped:
+            outcome = StorageManager.apply_staged_operation(receipt)
+            if outcome == "blocked_conflict":
+                record["status"] = "blocked_conflict"
+                checkpoint["phase"] = "blocked_conflict"
+                _write_location_transition_checkpoint(checkpoint)
+                return outcome
+            _publish_stable_transition_message(
+                receipt["message_id"], "Storage: %s" % receipt["message"]
+            )
         record["status"] = "committed"
         deferred["cursor"] = action_index + 1
         deferred["receipts"].append(
@@ -1711,9 +1759,15 @@ def apply_current_transition_action(operation_id, action_index):
                 "status": "committed",
             }
         )
+        if dropped:
+            deferred["receipts"][-1]["storage_status"] = "dropped"
         if deferred["cursor"] >= len(records):
             deferred["status"] = "committed"
         _write_location_transition_checkpoint(checkpoint)
+        if dropped:
+            _show_transition_notice(
+                receipt["message_id"], _DROPPED_STORAGE_NOTICE % receipt["owner"]
+            )
         return "committed"
 
     if family == "updatePartyNPCs":
@@ -3588,6 +3642,45 @@ def _show_rest_receipt(content):
 
     if emit_player_output({"type": "narration", "channel": "system", "content": content}) is not True:
         print(content)
+
+
+# Shown to the player when a travel turn drops a change it could not work out
+# (#855, the #841 voice).
+_DROPPED_SHEET_NOTICE = (
+    "%s's character sheet was not changed: the update could not be worked "
+    "out. If it still matters (for example damage taken on the road), say so "
+    "in your next message."
+)
+_DROPPED_STORAGE_NOTICE = (
+    "%s's storage change was not made: it could not be worked out. If it "
+    "still matters, say so in your next message."
+)
+
+
+def _show_transition_notice(message_id, content):
+    """Show the player one travel notice (#855).
+
+    A frontend sink gets it with its message id. A sink that rejects it gets
+    no console copy: its stdout scraper would show an untracked duplicate
+    (the combat_manager pattern). Only a plain terminal, with no sink, prints.
+    """
+    from web.shared_state import emit_player_output, has_player_output_sink
+
+    has_sink = has_player_output_sink()
+    if emit_player_output({
+        "type": "narration",
+        "channel": "system",
+        "content": content,
+        "message_id": message_id,
+    }) is True:
+        return
+    if has_sink:
+        warning(
+            "TRAVEL: the frontend did not accept the travel notice",
+            category="location_transitions",
+        )
+        return
+    print(content)
 
 
 # The turn whose fight already failed to start once (#444). It is only ever

@@ -283,15 +283,16 @@ For "What's in our storage here?":
     ) -> Dict[str, Any]:
         """Process natural language storage description into validated operation with retry logic"""
         
-        max_attempts = None if structural_reissue else 3
+        # A required travel proposal (structural_reissue) gets the same 3
+        # tries; its caller then drops it and the travel goes on (#855).
+        max_attempts = 3
         original_description = description
 
         attempt = 0
-        while max_attempts is None or attempt < max_attempts:
+        while attempt < max_attempts:
             try:
                 attempt += 1
-                attempt_label = str(max_attempts) if max_attempts is not None else "unbounded"
-                debug(f"AI_CALL: Storage processing attempt {attempt} of {attempt_label}", category="storage_operations")
+                debug(f"AI_CALL: Storage processing attempt {attempt} of {max_attempts}", category="storage_operations")
                 
                 # Get game context
                 context = self._get_game_context(character_name)
@@ -346,7 +347,7 @@ For "What's in our storage here?":
                     operation = json.loads(ai_response)
                     
                 except json.JSONDecodeError as e:
-                    if max_attempts is not None and attempt >= max_attempts:
+                    if attempt >= max_attempts:
                         return {
                             "success": False,
                             "error": f"AI response was not valid JSON after {max_attempts} attempts: {e}",
@@ -363,7 +364,7 @@ For "What's in our storage here?":
                 if not is_valid:
                     warning(f"VALIDATION: Failed on attempt {attempt + 1}: {validation_error}", category="storage_operations")
                     
-                    if max_attempts is not None and attempt >= max_attempts:
+                    if attempt >= max_attempts:
                         return {
                             "success": False,
                             "error": f"Generated operation failed validation after {max_attempts} attempts: {validation_error}",
@@ -395,7 +396,7 @@ For "What's in our storage here?":
                 raise
             except Exception as e:
                 error(f"FAILURE: Storage processing exception on attempt {attempt + 1}", exception=e, category="storage_operations")
-                if max_attempts is not None and attempt >= max_attempts:
+                if attempt >= max_attempts:
                     return {
                         "success": False,
                         "error": f"Failed to process storage description after {max_attempts} attempts: {str(e)}",
