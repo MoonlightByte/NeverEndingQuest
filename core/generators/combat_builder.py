@@ -201,9 +201,10 @@ def _get_party_level():
         party_tracker = safe_json_load("party_tracker.json")
         if not party_tracker or not party_tracker.get("partyMembers"):
             return 1
+        path_manager = ModulePathManager(party_tracker.get("module", "").replace(" ", "_") or None)
         levels = []
         for character_name in party_tracker["partyMembers"]:
-            character_data = safe_json_load(f"characters/{character_name}.json")
+            character_data = safe_json_load(path_manager.get_character_path(character_name))
             if character_data:
                 levels.append(character_data.get("level", 1))
         if levels:
@@ -285,7 +286,7 @@ def load_or_create_monster(monster_type):
     except:
         path_manager = ModulePathManager()  # Fallback to reading from file
     monster_file = path_manager.get_monster_path(monster_type)
-    monster_data = load_json(monster_file)
+    monster_data = load_json(monster_file) if os.path.exists(monster_file) else None
     if not monster_data:
         print(f"[COMBAT_BUILDER] Monster file not found, creating: {monster_file}")
         warning(f"MONSTER_LOADING: Monster loading ({monster_type}) - attempting creation", category="combat_builder")

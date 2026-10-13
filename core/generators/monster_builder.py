@@ -415,10 +415,12 @@ def main():
             from utils.encoding_utils import safe_json_load
             party_tracker = safe_json_load("party_tracker.json")
             if party_tracker and party_tracker.get("partyMembers"):
+                path_manager = ModulePathManager(
+                    party_tracker.get("module", "").replace(" ", "_") or None)
                 levels = []
                 for character_name in party_tracker["partyMembers"]:
                     character_data = safe_json_load(
-                        f"characters/{character_name}.json")
+                        path_manager.get_character_path(character_name))
                     if character_data:
                         levels.append(character_data.get("level", 1))
                 if levels:
