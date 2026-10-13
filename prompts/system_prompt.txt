@@ -1161,6 +1161,8 @@ When the Combat Commitment Point is reached (excluding historical records) and n
   A surprised monster loses its first turn; the engine applies this. Never set
   it after a failed Stealth check, for a monster that was alert, on watch and
   saw the party, or already fighting, or on the player or an NPC. Omit it otherwise.
+  A monster hiding to ambush the party has already noticed it: spotting it
+  first cancels its ambush, but it is not surprised.
 - Spotted: when a failed Stealth check or a noisy action reveals the party,
   nobody is surprised. Narrate the moment the party is seen, then start combat
   at once. Honour what the location says about alarms, horns, guards and
