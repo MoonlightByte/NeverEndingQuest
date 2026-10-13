@@ -1878,6 +1878,13 @@ def _transition_narration_action_context(checkpoint):
         receipt = record.get("receipt")
         if not isinstance(action, dict) or not isinstance(receipt, dict):
             continue
+        if "dropped" in (
+            receipt.get("character_status"),
+            receipt.get("storage_status"),
+        ):
+            # #855: a change dropped before movement was not made, so it is
+            # not a fact of the turn (the player is told so on arrival).
+            continue
         fact = {
             "action": family,
             "parameters": copy.deepcopy(action.get("parameters") or {}),
