@@ -342,7 +342,8 @@ def load_or_create_npc(npc_name):
         path_manager = ModulePathManager()  # Fallback to reading from file
     # Use the formatted/normalized name for file path
     npc_file = path_manager.get_character_path(formatted_npc_name)
-    npc_data = load_json(npc_file)
+    # A sheet that does not exist yet is the normal first use, not an error.
+    npc_data = load_json(npc_file) if os.path.exists(npc_file) else None
     
     # If exact match fails, try fuzzy matching for NPCs
     if not npc_data:
@@ -427,32 +428,32 @@ def load_or_create_npc(npc_name):
     if not npc_data:
         print(f"[COMBAT_BUILDER] NPC file not found, creating: {npc_file}")
         warning(f"NPC_LOADING: NPC loading ({npc_name}) - attempting creation", category="combat_builder")
-        # Pass the normalized name to npc_builder.py
-        # Get the path to npc_builder.py relative to the current file
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        npc_builder_path = os.path.join(current_dir, "npc_builder.py")
         # Resolve party level here and pass it explicitly so npc_builder
         # does not silently fall back to "level 1-3" guidance for a
         # high-level party (bug CH-C1).
         party_level = _get_party_level()
-        result = subprocess.run(
-            [sys.executable, npc_builder_path, formatted_npc_name,
-             "--party-level", str(party_level)],
-            stdin=subprocess.DEVNULL, capture_output=True, text=True)
-        if result.returncode == 0:
+        # The builder gets the NPC's name, not its file stem, and reports the
+        # file it loaded or saved: it may clean the name (status words) and
+        # so save under another stem (#884).
+        built = None
+        try:
+            from core.generators.npc_builder import build_npc_file_with_path, load_schema
+            set_script_name("combat_builder")  # importing npc_builder renames the log prefix
+            schema = load_schema("schemas/char_schema.json")
+            if schema:
+                built = build_npc_file_with_path(
+                    npc_name, schema, npc_level=party_level, path_manager=path_manager
+                )
+        except Exception as e:
+            set_script_name("combat_builder")
+            error(f"FAILURE: NPC builder ({npc_name}) raised", exception=e, category="combat_builder")
+            built = None
+        if built:
+            npc_data, npc_file = built
             print(f"[COMBAT_BUILDER] NPC creation successful: {npc_name}")
             info(f"SUCCESS: NPC builder ({npc_name}) - PASS", category="combat_builder")
-            if os.path.exists(npc_file):
-                npc_data = load_json(npc_file)
-                if not npc_data:
-                    print(colored(f"Error: Failed to load newly created NPC data for {npc_name}", "red"))
-                    return None
-            else:
-                print(colored(f"Error: NPC file {npc_file} was not created", "red"))
-                return None
         else:
             print(f"[COMBAT_BUILDER] NPC creation failed: {npc_name}")
-            print(f"[COMBAT_BUILDER] Error output: {result.stderr}")
             error(f"FAILURE: NPC builder ({npc_name}) - FAIL", category="combat_builder")
             return None
     else:

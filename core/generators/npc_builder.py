@@ -307,7 +307,27 @@ def _active_module_path_manager():
         return ModulePathManager()
 
 
-def build_npc_file(
+def _game_relative_character_path(path, npc_name):
+    """The game-relative form of a lock record's absolute path (#884).
+
+    A record inside this game's characters/ comes back as
+    characters/<file>, the form every other character path has. One
+    written under another working directory is returned unchanged, as it
+    is loaded, and logged so the shape change is never silent.
+    """
+    if not os.path.isabs(path):
+        return path
+    if os.path.dirname(path) == os.path.abspath("characters"):
+        return "characters/" + os.path.basename(path)
+    warning(
+        f"NPC_LOADING: lock record for {npc_name} points outside this "
+        f"game's characters/ ({path})",
+        category="npc_creation",
+    )
+    return path
+
+
+def build_npc_file_with_path(
     npc_name,
     schema,
     npc_race=None,
@@ -316,7 +336,7 @@ def build_npc_file(
     npc_background=None,
     path_manager=None,
 ):
-    """Generate and save one NPC as a deduplicated target transaction."""
+    """Generate and save one NPC; return (sheet, path it was loaded or saved at), or None."""
     path_manager = path_manager or _active_module_path_manager()
     expected_name = _expected_npc_target_name(npc_name)
     logical_target = path_manager.get_character_unified_path(expected_name)
@@ -332,7 +352,7 @@ def build_npc_file(
                     "- already exists",
                     category="npc_creation",
                 )
-                return existing
+                return existing, _game_relative_character_path(candidate, npc_name)
 
         generated = generate_npc(
             npc_name,
@@ -350,13 +370,30 @@ def build_npc_file(
         existing = load_valid_generated_target(actual_target, schema)
         if existing is not None:
             transaction.remember_target(actual_target)
-            return existing
+            return existing, actual_target
         # Record the intended path before the atomic save. This closes the
         # post-replace/pre-marker crash window for cleaned NPC filenames.
         transaction.remember_target(actual_target)
         if not save_json(actual_target, generated):
             return None
-        return generated
+        return generated, actual_target
+
+
+def build_npc_file(
+    npc_name,
+    schema,
+    npc_race=None,
+    npc_class=None,
+    npc_level=None,
+    npc_background=None,
+    path_manager=None,
+):
+    """Generate and save one NPC as a deduplicated target transaction."""
+    built = build_npc_file_with_path(
+        npc_name, schema, npc_race, npc_class, npc_level, npc_background,
+        path_manager=path_manager,
+    )
+    return built[0] if built else None
 
 def main():
     # Use argparse so we can accept --party-level alongside the existing
