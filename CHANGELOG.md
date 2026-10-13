@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unused summary code in `core/ai/cumulative_summary.py`, seven functions left from an older summary pipeline that nothing called, was removed, and the registered source lines of its two remaining AI calls (T018, T019) were corrected (#798). Gameplay, summaries and saves are unchanged.
 
 ### Fixed
+- A change dropped on the road is no longer described by the journey narration (#855).
 - A turn whose chronicle sections were all already compressed no longer leaves the compression progress banner on screen; such a pass is silent again (#901).
 - A fight with a named NPC whose name carries a status word (for example "Wounded Ranger Gareth") now starts: the combat builder gives the NPC builder the NPC's name and loads the sheet it saved, and an NPC sheet already saved under the cleaned name is reused (#884).
 - A travel turn that also asked for a character sheet or storage change no longer waits forever when the model never gives a usable answer: after 3 tries the change is dropped, the travel goes on, and the player is told once that it was not made and can say so again in the next message. Before, the model was asked again without end and the turn never returned (#855).
