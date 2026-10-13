@@ -5437,7 +5437,8 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     f"Acquire Error: {result.get('error', 'the acquisition was refused')}. Nothing changed: no coins "
                     "moved and no item was added. Later actions from this response have not executed. Do not repeat "
                     "earlier completed actions; name a catalog item and a whole-lot quantity the character can pay "
-                    "for, or narrate why the purchase cannot happen."
+                    "for, or, only when no catalog item can record what the narration showed, narrate briefly why it "
+                    "changed."
                 )
                 conversation_history.append({"role": "user", "content": error_message})
                 needs_conversation_history_update = True
