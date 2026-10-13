@@ -935,7 +935,8 @@ def prepare_current_transition_actions(operation_id):
             if isinstance(changes, dict):
                 changes = json.dumps(changes)
             receipt = prepare_character_update(
-                character_name, changes, party
+                character_name, changes, party,
+                affects=parameters.get("affects"),
             )
         elif family == "storageInteraction":
             from core.managers.storage_processor import process_storage_request
@@ -4523,6 +4524,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     changes,
                     party_tracker_data,
                     action_context=action_context,
+                    affects=parameters.get("affects"),
                 )
                 debug(f"STATE_CHANGE: effects-aware character update returned {success}", category="character_updates")
                 if success:

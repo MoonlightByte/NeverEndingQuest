@@ -92,13 +92,15 @@ def update_character_with_effects(
     changes,
     party_tracker_data=None,
     action_context=None,
+    affects=None,
 ):
     """Classifier-first T078 -> T079 character update for a migrated campaign."""
     if not campaign_effects_migrated():
         # Explicit recovery fallback for campaigns whose automatic conversion
         # was blocked.  Normal converted campaigns never execute this path.
         success = update_character_info(
-            character_name, changes, action_context=action_context
+            character_name, changes, action_context=action_context,
+            affects=affects,
         )
         if success:
             from updates.update_character_effects import update_character_effects
@@ -125,22 +127,15 @@ def update_character_with_effects(
                 character_role=role,
                 managed_effect_operation=classifier,
                 action_context=action_context,
+                affects=affects,
             )
     if success and classifier.cast:
         from core.managers.concentration_runtime import record_cast
 
         record_cast(*classifier.cast)
-    if success:
-        text = str(changes).lower()
-        rest_kind = (
-            "long_rest"
-            if "long rest" in text
-            else "short_rest"
-            if "short rest" in text
-            else None
-        )
-        if rest_kind:
-            process_effect_lifecycle(rest_kind=rest_kind)
+    # Rest-bound effects end only through the typed rest action, which runs
+    # the effect lifecycle with its own kind; this update's wording never
+    # decides that a rest happened (#855).
     return success
 
 
@@ -332,7 +327,7 @@ def _end_concentration_group(matches, reason):
         end_group(group, f"ended by the DM: {reason}", except_effect_id=removed[0] if len(removed) == 1 else None)
 
 
-def prepare_character_update(character_name, changes, party_tracker_data=None):
+def prepare_character_update(character_name, changes, party_tracker_data=None, affects=None):
     """Freeze required T078/T079 output and advisory sheet corrections."""
     resolved, role, _path, sheet = _resolve_character(character_name)
     classifier = _lazy_classifier(resolved, changes, sheet, _world_scalar(party_tracker_data))
@@ -343,6 +338,7 @@ def prepare_character_update(character_name, changes, party_tracker_data=None):
         managed_effect_operation=classifier,
         prepare_only=True,
         structural_reissue=True,
+        affects=affects,
     )
     if not isinstance(receipt, dict):
         raise EffectsRuntimeError("required character proposal was not prepared")
