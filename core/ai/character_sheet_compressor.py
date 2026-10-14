@@ -157,11 +157,13 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     # proficient skills with no number. No arithmetic and no defaults here:
     # proficiency, initiative and passive perception are engine-written
     # (core/nql/stats) and print as stored.
+    # Full skill names: a three-letter cut folded Perception, Persuasion and
+    # Performance into one 'per' key (#553).
     skills_field = character.get('skills')
     if isinstance(skills_field, dict):
-        skills_out = ','.join(f"{k[:3]}:{v}" for k,v in skills_field.items())
+        skills_out = ','.join(f"{k}:{v}" for k,v in skills_field.items())
     elif isinstance(skills_field, list):
-        skills_out = ','.join(str(k)[:3].lower() for k in skills_field)
+        skills_out = ','.join(str(k).lower() for k in skills_field)
     else:
         skills_out = ''
 
@@ -172,7 +174,7 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     darkv = senses.get('darkvision') or 0
     pp = senses.get('passivePerception')
     expertise = character.get('expertise')
-    expertise_out = ','.join(str(k)[:3].lower() for k in expertise) if isinstance(expertise, list) else ''
+    expertise_out = ','.join(str(k).lower() for k in expertise) if isinstance(expertise, list) else ''
 
     langs = character.get('languages') or []
     langs_out = ','.join(langs) if isinstance(langs, list) else str(langs)

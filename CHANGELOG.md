@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed two unreachable code paths (#444). The DM-response validator in main.py no longer has a branch that normalized a draft itself: its only caller always passes the draft already normalized, and now has to. `core/validation/dm_response_validator.py` no longer has its own createEncounter shape check, a second copy of the live check in `core/combat/scene.py` that no game code ran. No game behaviour changes.
 
 ### Fixed
+- The shortened character sheet the DM reads for companions no longer folds Perception, Persuasion and Performance into one "per" skill: skills and expertise are listed by their full names (#553).
 - During character creation, a follow-up question the reviewer accepts is now shown to the player even when the reviewer also marks it as needing the player's answer, instead of being refused as an invalid review and costing the turn until the build was handed back (#887). An accepted final character that still needs the player is refused as before. The reviewer is also told that this mark is for a rejection the author cannot correct without the player.
 - Fifteen Keep of Doom loot items (potions, antitoxin, scrolls and two vials) now name a standard item or state what they do, so they can be used in play (#913).
 - Three Thornwood Watch loot items now say what they do: the explorers' two healing potions and the Hart's tears state how many hit points they restore, and the vial of alchemical fire is the standard Alchemist's Fire, so they can be used (#913).
