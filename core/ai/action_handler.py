@@ -4611,17 +4611,26 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 from updates.update_character_info import EngineRefusedChange
 
                 debug(f"STATE_CHANGE: Calling effects-aware character update for {character_name}", category="character_updates")
+                equipment_notes = []
                 success = update_character_with_effects(
                     character_name,
                     changes,
                     party_tracker_data,
                     action_context=action_context,
                     affects=parameters.get("affects"),
+                    sheet_notes=equipment_notes,
                 )
                 debug(f"STATE_CHANGE: effects-aware character update returned {success}", category="character_updates")
                 if success:
                     info("SUCCESS: Character info updated successfully", category="character_updates")
                     needs_conversation_history_update = True
+                    for note in equipment_notes:
+                        if note.get("kind") == "stackNotWorn":
+                            # #876: the engine wears one unit; the stack is carried.
+                            conversation_history.append({"role": "user", "content": (
+                                "Equipment: %r is a stack of %d; it is carried, not worn (the engine wears "
+                                "exactly one), so narrate it as carried ready, not in hand."
+                                % (note["item"], note["quantity"]))})
                 else:
                     error(f"FAILURE: Failed to update character info for {character_name}", category="character_updates")
                     print(f"ERROR: Failed to update character info for {character_name}")

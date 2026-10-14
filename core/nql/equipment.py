@@ -34,6 +34,8 @@ class EquipmentOutcome:
     reason: str = ""
     fault: Optional[Dict[str, Any]] = None
     gaps: List[str] = field(default_factory=list)
+    # Typed notes for the DM (#876): {"kind": "stackNotWorn", "item", "quantity"}.
+    notes: List[Dict[str, Any]] = field(default_factory=list)
 
 
 def _q(value: str) -> str:
@@ -47,6 +49,23 @@ def _stock(entry: Dict[str, Any]) -> int:
 def _index_by_id(sheet: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     return {e["nql_id"]: e for e in sheet.get("equipment") or []
             if isinstance(e, dict) and isinstance(e.get("nql_id"), str)}
+
+
+def _refusal_reason(before, old, new, fault):
+    """The reason for an engine E_QUANTITY refusal of an item held before and
+    after: a shortage when its stock was used or lost, otherwise the engine's
+    own typed rule (``expected``/``actual``). None keeps the engine's text."""
+    iid = str(fault.get("subject") or "")
+    if iid not in old or iid not in new:
+        return None
+    name = old[iid].get("item_name", iid)
+    have = _stock(old[iid])
+    want = have - _stock(new[iid])
+    if want > 0:
+        return f"{before.get('name')} has {have} of {name!r} and cannot use or lose {want} (not enough stock)"
+    if fault.get("expected") is None or fault.get("actual") is None:
+        return None
+    return f"{name} cannot be equipped: the engine allows {fault['expected']} ({fault['actual']} held)"
 
 
 def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = "sheet",
@@ -78,6 +97,7 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
     world = genesis.build_world([before], location, definition_entries=created)
     ops: List[str] = []
     gaps: List[str] = list(world.gaps)
+    notes: List[Dict[str, Any]] = []
 
     # Removed or reduced stock: consume. Increased stock: add (refill, loot, purchase).
     for iid, e in old.items():
@@ -86,7 +106,10 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
             continue
         delta = _stock(new[iid]) - _stock(e)
         if delta < 0:
-            if e.get("equipped") is True and new[iid].get("equipped") is not False and iid not in world.carried:
+            # Only a single unit can be worn (genesis leaves an equipped stack
+            # unworn), so only a stock of one is unequipped first.
+            if (e.get("equipped") is True and new[iid].get("equipped") is not False
+                    and _stock(e) == 1 and iid not in world.carried):
                 ops.append(f"unequip {_q(iid)};")
             ops.append(f"consume {_q(iid)} from {_q(cid)} by {-delta};")
         elif delta > 0:
@@ -123,8 +146,17 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
         was = old[iid].get("equipped") is True
         now = e.get("equipped") is True
         if now and not was:
+            if _stock(e) > 1:
+                # #876: the engine wears exactly one unit (the guard genesis and
+                # new items apply): the stack stays carried, unworn.
+                e["equipped"] = False
+                gaps.append(f"{cid}: {e.get('item_name')!r} is a stack of {_stock(e)}; "
+                            "the engine wears exactly one, item left unworn")
+                notes.append({"kind": "stackNotWorn", "item": e.get("item_name"), "quantity": _stock(e)})
+                continue
             ops.append(f"equip {_q(iid)} on {_q(cid)};")
-        elif was and not now and _stock(e) >= _stock(old[iid]) and iid not in world.carried:
+        elif (was and not now and _stock(old[iid]) == 1 and _stock(e) >= _stock(old[iid])
+              and iid not in world.carried):
             # A row the hand rule declared carried (NUM-H3a) is not worn in the
             # engine: unequipping it changes the sheet's flag only.
             ops.append(f"unequip {_q(iid)};")
@@ -137,7 +169,7 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
                             f"(quantity {_stock(e)} or a type without equipment); left unequipped")
 
     if not ops:
-        return EquipmentOutcome(True, equipment=after.get("equipment"), gaps=gaps)
+        return EquipmentOutcome(True, equipment=after.get("equipment"), gaps=gaps, notes=notes)
 
     try:
         response = apply.call({"world": world.source, "world_name": "equipment-genesis.nql",
@@ -152,13 +184,7 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
         detail = response.get("diagnostics") or fault or response.get("error")
         reason = f"engine refused at {response.get('phase')}: {detail}"
         if isinstance(fault, dict) and fault.get("code") == "E_QUANTITY":
-            iid = str(fault.get("subject") or "")
-            entry = old.get(iid) or new.get(iid) or {}
-            have = _stock(old[iid]) if iid in old else None
-            want = have - _stock(new[iid]) if iid in old and iid in new else None
-            if have is not None and want is not None:
-                reason = (f"{before.get('name')} has {have} of {entry.get('item_name', iid)!r} and cannot "
-                          f"use or lose {want} (not enough stock)")
+            reason = _refusal_reason(before, old, new, fault) or reason
         return EquipmentOutcome(False, operations=ops, fault=fault, reason=reason, gaps=gaps)
 
     views = {v["at"]["id"]: v["items"] for v in response.get("items_at", [])}
@@ -181,4 +207,5 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
     for e in after.get("equipment") or []:
         if isinstance(e, dict) and e.get("nql_id") not in tracked and e.get("nql_id") not in old:
             result.append(e)   # untracked by the engine (no name); keep the merged entry
-    return EquipmentOutcome(True, equipment=result, operations=ops, receipt=response.get("receipt"), gaps=gaps)
+    return EquipmentOutcome(True, equipment=result, operations=ops, receipt=response.get("receipt"), gaps=gaps,
+                            notes=notes)

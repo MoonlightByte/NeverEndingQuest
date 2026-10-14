@@ -1467,6 +1467,8 @@ def prepare_character_delta(character_data, updates, character_role, schema,
                 checks['engine_refusal'] = outcome.reason
             return updates, updated_data, checks
         updated_data['equipment'] = outcome.equipment
+        if outcome.notes:
+            checks['equipmentNotes'] = list(outcome.notes)
         for gap in outcome.gaps:
             debug(f"[Equipment Engine] {character_name}: {gap}", category="character_updates")
     updated_data = normalize_status_and_condition(updated_data, character_role)
@@ -1810,8 +1812,11 @@ def update_character_info(
     *,
     commit_guard=None,
     affects=None,
+    sheet_notes=None,
 ):
-    """Run one complete character update transaction under a per-file lock."""
+    """Run one complete character update transaction under a per-file lock.
+    ``sheet_notes`` (a list the caller owns) receives the committed update's
+    typed equipment notes (#876)."""
     lock = _get_character_update_lock(character_name, character_role)
     with lock:
         if commit_guard is not None:
@@ -1841,6 +1846,7 @@ def update_character_info(
                     structural_reissue=commit_guard is not None,
                     commit_guard=commit_guard,
                     affects=affects,
+                    sheet_notes=sheet_notes,
                 )
             return _update_character_info_unlocked(
                 character_name,
@@ -1851,6 +1857,7 @@ def update_character_info(
                 structural_reissue=commit_guard is not None,
                 commit_guard=commit_guard,
                 affects=affects,
+                sheet_notes=sheet_notes,
             )
 
 
@@ -1865,6 +1872,7 @@ def _update_character_info_unlocked(
     *,
     commit_guard=None,
     affects=None,
+    sheet_notes=None,
 ):
     """
     Unified function to update character information for both players and NPCs
@@ -2763,6 +2771,9 @@ Character Role: {character_role}
             save_result = commit_character_sheet(character_path, updated_data, commit_guard=commit_guard)
             if save_result:
                 primary_committed = True
+                if sheet_notes is not None:
+                    # #876: the committed delta's typed notes, for the caller.
+                    sheet_notes[:] = preparation_checks.get('equipmentNotes') or []
             try:
                 print(f"DEBUG: [SAVE] safe_write_json returned: {save_result}")
             except Exception as exc:
