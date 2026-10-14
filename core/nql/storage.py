@@ -94,6 +94,7 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
     stocks: Dict[str, Dict[str, Any]] = {}       # ammunition stock id -> its row (written back from the engine)
     stored_parts: Dict[str, Dict[str, Any]] = {} # ammunition stock id -> the contents entry its stored part becomes
     joined: List[str] = []                       # retrieved ids folded into an ammunition stock
+    whole: List[str] = []                        # ammunition stock ids placed whole (the row keeps 0)
     new_rows: Dict[str, Dict[str, Any]] = {}     # retrieved id -> contents entry that starts a new row
     for name, quantity in _requested_items(operation):
         if action == "store_item":
@@ -108,6 +109,8 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
                 if quantity < stock:
                     place_id = f"{aid}:part:{quantity}"
                     actions.append(f"split {_q(aid)} quantity {quantity} into {_q(place_id)} by {_q(cid)};")
+                else:
+                    whole.append(aid)
                 actions.append(f"place {_q(place_id)} from character {_q(cid)} to item {_q(conid)} by {_q(cid)};")
                 planned.append((place_id, quantity, name))
                 stocks[aid] = row
@@ -150,9 +153,12 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
                 actions.append(f"add {_q(aid)} to {_q(cid)} by {quantity};")
                 stocks[aid] = row
                 joined.append(place_id)
-            elif not any(isinstance(r, dict) and isinstance(r.get("name"), str)
-                         and genesis.ammunition_id(character, r["name"]) == genesis.ammunition_id(character, item_name)
-                         for r in character.get("ammunition") or []):
+            elif any(isinstance(r, dict) and isinstance(r.get("name"), str)
+                     and genesis.ammunition_id(character, r["name"]) == genesis.ammunition_id(character, item_name)
+                     for r in character.get("ammunition") or []):
+                return StorageOutcome(False, reason=f"{character.get('name')}'s {item_name!r} row has no whole-number quantity",
+                                      gaps=world.gaps)
+            else:
                 new_rows[place_id] = entry
     if worn:
         return StorageOutcome(False, reason="selected items are still equipped", worn_items=worn, gaps=world.gaps)
@@ -204,10 +210,23 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
     character["equipment"] = rebuild(gear, None, source_entry) + kept_untracked
     container["contents"] = rebuild(views.get(conid, []), False, {**source_entry, **stored_parts})
     char_view = {i["id"]: i for i in char_items}
+    con_view = {i["id"]: i for i in views.get(conid, [])}
+    # A stock placed whole is in the container now: its row keeps 0 and the
+    # pending count the engine moved with it (shots still out from the last
+    # fight). Every other stock, and every new row, is in the character's view.
+    held: Dict[str, Optional[Dict[str, Any]]] = {}
+    for aid in stocks:
+        placed = con_view.get(aid)
+        held[aid] = ({"quantity": 0, "recoverable": placed.get("recoverable")} if placed else None) \
+            if aid in whole else char_view.get(aid)
+    for pid in new_rows:
+        held[pid] = char_view.get(pid)
+    if any(item is None or type(item.get("quantity")) is not int for item in held.values()):
+        return StorageOutcome(False, reason="engine returned no view of the ammunition stock", gaps=world.gaps)
     for aid, row in stocks.items():
-        ammunition.write_view(row, char_view.get(aid))
+        ammunition.write_view(row, held[aid])
     for pid, entry in new_rows.items():
-        item = char_view.get(pid)
+        item = held[pid]
         row = {"name": str(entry.get("item_name")), "description": str(entry.get("description") or "")}
         if entry.get("catalog_id"):
             row["catalog_id"] = entry["catalog_id"]
