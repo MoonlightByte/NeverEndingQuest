@@ -162,20 +162,76 @@ def _scaled_dice(phase, slot_level=None, character_level=None):
     return base
 
 
-def _slot_level(intent, request):
+# The sheet's spell slot keys (spellcasting.spellSlots): level1 .. level9.
+_SLOT_KEY = re.compile(r"level([1-9])")
+
+
+def _typed_slot_level(intent, request):
+    """The typed slotLevel of the request, then of the intent, or None."""
     for source in (request, intent):
         value = source.get("slotLevel") if isinstance(source, dict) else None
         if type(value) is int and value > 0:
             return value
         if isinstance(value, str) and value.strip().isdigit():
             return int(value.strip())
+    return None
+
+
+def _spent_slot_level(intent, owner):
+    """The level of the own spell slot the intent spends (#855, F4-Q3 A): a
+    spellSlot resource of ``owner`` with an int delta below zero and a name
+    in the sheet's key form. None when there is none, or when the spent own
+    slots name different levels (F4-Q2 A)."""
+    levels = set()
+    for resource in (intent or {}).get("resources", []) or []:
+        if (not isinstance(resource, dict) or resource.get("kind") != "spellSlot"
+                or resource.get("owner") != owner or type(resource.get("delta")) is not int
+                or resource["delta"] >= 0):
+            continue
+        match = _SLOT_KEY.fullmatch(str(resource.get("name") or ""))
+        if match:
+            levels.add(int(match.group(1)))
+    return levels.pop() if len(levels) == 1 else None
+
+
+def _slot_level(intent, request, owner=None):
+    """The level a spell is scored at. With ``owner`` (the caster's sheet
+    name) the slot it spends decides, then its typed slotLevel; with no
+    owner, the typed slotLevel, then the first spellSlot resource named in
+    the sheet's key form."""
+    if owner is not None:
+        spent = _spent_slot_level(intent, owner)
+        return spent if spent is not None else _typed_slot_level(intent, request)
+    typed = _typed_slot_level(intent, request)
+    if typed is not None:
+        return typed
     for resource in (intent or {}).get("resources", []) or []:
         if not isinstance(resource, dict) or resource.get("kind") != "spellSlot":
             continue
-        match = re.search(r"(\d+)", str(resource.get("name") or ""))
+        match = _SLOT_KEY.fullmatch(str(resource.get("name") or ""))
         if match:
             return int(match.group(1))
     return None
+
+
+def slot_level_mismatch(intent, owner, sheet=None):
+    """The correction when the intent spends an own slot and also types a
+    different slotLevel (F4-Q3 A: the spent slot sets the level), or None.
+    A higher slot is offered only when ``sheet`` still holds one."""
+    spent = _spent_slot_level(intent, owner)
+    if spent is None or not isinstance(intent, dict):
+        return None
+    request = intent.get("requiresPlayerInput")
+    typed = _typed_slot_level(intent, request if isinstance(request, dict) else {})
+    if typed is None or typed == spent:
+        return None
+    message = ("slotLevel %d disagrees with the spent slot level%d: the slot spent sets the spell's level; "
+               "send slotLevel %d" % (typed, spent, spent))
+    slots = ((sheet or {}).get("spellcasting") or {}).get("spellSlots") if isinstance(sheet, dict) else None
+    held = slots.get("level%d" % typed) if isinstance(slots, dict) else None
+    if isinstance(held, dict) and type(held.get("current")) is int and held["current"] > 0:
+        message += ", or spend a level%d slot" % typed
+    return message
 
 
 def _request_dice(request):
@@ -255,7 +311,7 @@ def audit_spell_roll_request(intent, actor_sheet=None, document=None):
             "spellName": contract.get("name"),
             "reason": "No unambiguous requested dice expression was available.",
         }
-    slot_level = _slot_level(intent, request)
+    slot_level = _slot_level(intent, request, (actor_sheet or {}).get("name") or None)
     character_level = (actor_sheet or {}).get("level")
     try:
         phase = _select_phase(contract, request, actual, slot_level, character_level)

@@ -257,18 +257,6 @@ class DMResponseValidator:
                 else:
                     self.log_validation(f"Action {index} location format", True)
 
-        elif action_type == "createEncounter":
-            try:
-                from core.combat.scene import validate_scene_proposal_shape
-
-                validate_scene_proposal_shape(params)
-                self.log_validation(f"Action {index} typed scene contract", True)
-            except (ValueError, TypeError) as exc:
-                self.log_validation(
-                    f"Action {index} typed scene contract", False, str(exc)
-                )
-                errors.append(f"Action {index} (createEncounter): {exc}")
-        
         elif action_type == "updateTime":
             if "timeEstimate" in params:
                 # Validate time can be converted to number
