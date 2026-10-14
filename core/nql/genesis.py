@@ -41,6 +41,9 @@ TEMP_HP_RESOURCE = "temp-hp"
 TEMP_HP_MAX = 1_000_000_000
 DEFENSE_STYLE_FEATURE = "Fighting Style: Defense"
 DEFENSE_STYLE_CONDITION = "feature:defense-style"
+# The worn-mode member id of the style modifier in every body armor definition;
+# the engine reports it as equipment_origin.member of the +1 (core/nql/armor_class.py).
+DEFENSE_STYLE_MEMBER = "style"
 # NUM-H3c: SRD 5.2.1 Archery ("+2 bonus to attack rolls you make with Ranged
 # weapons"): one hit term on every ranged (ammunition) attack of a ported
 # weapon, gated on this Condition, which the exact classFeatures name gives.
@@ -720,7 +723,7 @@ def _armor_definition(def_id: str, entry: Dict[str, Any], gaps: List[str]) -> Op
         gaps.append(f"armor without ac_base: {name!r}; treated as a worn item with no defense")
         return None
     constant = base + bonus
-    style = f'   modifier "style" stat "defense" add 1 requires {_q(DEFENSE_STYLE_CONDITION)};\n'
+    style = f'   modifier {_q(DEFENSE_STYLE_MEMBER)} stat "defense" add 1 requires {_q(DEFENSE_STYLE_CONDITION)};\n'
     if category == "light":
         term = '   term stat "dexterity" offset -10 divide 2;\n'
     elif category == "medium":
