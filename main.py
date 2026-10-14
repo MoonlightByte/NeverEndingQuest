@@ -4284,11 +4284,15 @@ def validate_ai_response(
             category="ai_validation",
         )
 
-    # Export validation messages for debugging
-    os.makedirs("debug/api_captures", exist_ok=True)
-    with open("debug/api_captures/main_validation_messages_to_api.json", "w", encoding="utf-8") as f:
-        json.dump(validation_messages_for_diagnostics, f, indent=2, ensure_ascii=False)
-    print(f"DEBUG: [MAIN VALIDATION] Exported validation messages to debug/api_captures/main_validation_messages_to_api.json")
+    # Export validation messages for debugging. Observational only: a file
+    # that cannot be written never ends the review (#342, NEQ-PROVIDER-02).
+    try:
+        os.makedirs("debug/api_captures", exist_ok=True)
+        with open("debug/api_captures/main_validation_messages_to_api.json", "w", encoding="utf-8") as f:
+            json.dump(validation_messages_for_diagnostics, f, indent=2, ensure_ascii=False)
+        print(f"DEBUG: [MAIN VALIDATION] Exported validation messages to debug/api_captures/main_validation_messages_to_api.json")
+    except Exception as export_error:
+        warning(f"VALIDATION: debug export skipped: {export_error}", category="ai_validation")
     
     # Select per-provider validation model config
     if _val_provider == "openai":
@@ -4411,12 +4415,14 @@ def validate_ai_response(
                     "category": verdict_category
                 }
 
-                # Ensure debug/logs directory exists
-                os.makedirs("debug/logs", exist_ok=True)
-
-                with open("debug/logs/prompt_validation.json", "a", encoding="utf-8") as log_file:
-                    json.dump(log_entry, log_file)
-                    log_file.write("\n")  # Add a newline for better readability
+                # Observational only, like the export above (#342).
+                try:
+                    os.makedirs("debug/logs", exist_ok=True)
+                    with open("debug/logs/prompt_validation.json", "a", encoding="utf-8") as log_file:
+                        json.dump(log_entry, log_file)
+                        log_file.write("\n")  # Add a newline for better readability
+                except Exception as log_error:
+                    warning(f"VALIDATION: rejection log skipped: {log_error}", category="ai_validation")
 
                 return (False, reason)  # Return tuple with failure status and reason
             else:
