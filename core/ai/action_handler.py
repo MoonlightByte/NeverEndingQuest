@@ -2945,7 +2945,6 @@ def prepare_party_npc_update(parameters, operation_id):
             npc.get("level") or party_level,
             npc.get("background"),
             path_manager=path_manager,
-            structural_reissue=True,
         )
         if not isinstance(sheet, dict):
             raise RuntimeError("required NPC sheet was not accepted")

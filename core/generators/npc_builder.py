@@ -52,6 +52,8 @@ from utils.single_target_generation import (
 )
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T035", "core/generators/npc_builder.py", 185)
+from utils.capture.live_provider_call import LiveProviderSuperseded
+from core.combat.invocation import InvocationSupersededError
 
 # Token tracking import
 try:
@@ -240,6 +242,10 @@ Adhere strictly to 5e rules and the provided schema."""
                     category="npc_creation",
                 )
                 continue
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            # A superseded live turn is not a generation failure; its own
+            # handler ends the turn (#893).
+            raise
         except Exception as e:
             # Network / API failures are not retried here -- preserve the
             # original outer-Exception contract.
