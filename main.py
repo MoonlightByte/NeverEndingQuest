@@ -253,7 +253,8 @@ def _post_combat_world(party_tracker):
     )
     if not isinstance(world, dict):
         return None
-    for key in ("currentAreaId", "currentLocation", "currentArea"):
+    # currentLocationId: the key every location reader uses since #846 (#850)
+    for key in ("currentAreaId", "currentLocationId", "currentLocation", "currentArea"):
         if not world.get(key):
             return None
     return world

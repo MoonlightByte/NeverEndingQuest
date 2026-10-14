@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- After a resumed fight, a party tracker that names its area and location but has no location id now pauses the game with the "no readable location" message, as a missing name already did; the player and party panels find the people at the current location the same way as the rest of the game, so a briefly locked area file is retried and a damaged one is named in the log (#850)
 - When a level-up ends, the DM now sees how it ended (the new level and hit points, or that nothing was applied and why), not just the player; before, only the start of a level-up and the guide's questions reached the DM's history (#1044).
 - A new character or companion whose name has no letter or digit (for example "???"), or whose name matches one of the rules engine's own reserved names (Attacker, Target, Save Source, Roster Conversion), is refused with the reason, so another name is chosen; existing characters are not changed (#949).
 - A saved character with more weapons equipped than two hands can hold (Scout Elen: Longbow, Shortsword and Short Sword) is no longer refused by the rules engine, so their armor class, attack rows, damage and level-up work again; the extra one is treated as carried and the saved sheet is left as it is (Closes #960).
