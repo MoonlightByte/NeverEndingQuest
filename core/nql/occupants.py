@@ -922,6 +922,37 @@ def settle_person(live: Dict[str, Any], module: str, place: str, npc_name: str) 
     return None
 
 
+def person_identity(module: str, location_id: str, npc_name: str, *,
+                    root: str = ".") -> Optional[Dict[str, Any]]:
+    """The authored record of the present person a recruit names, for the
+    NPC builder (#534): {"name", "description", "attitude"} from the npcs
+    entry at that person's own location, as written. The person is the one
+    party_change later resolves as joined (settle_person). None when no
+    present person or authored entry matches, or there is no document or
+    engine; a reader, so the document is never created."""
+    try:
+        module = (module or "").replace(" ", "_")
+        place = place_id(module, location_id)
+        current = request(view=(place,), root=root, create=False)
+        if not current or not current.get("ok"):
+            return None
+        live = current.get("live_state") or _load(root) or {}
+        person = settle_person(live, module, place, npc_name)
+        if person is None:
+            return None
+        home = str(person.get("location") or "").split("/", 1)[-1]
+        authored = _authored_entry(_authored(root).get(module, {}).get(home), str(person.get("id") or ""))
+        if not authored:
+            return None
+        identity = {key: authored[key] for key in ("name", "description", "attitude")
+                    if isinstance(authored.get(key), str) and authored[key].strip()}
+        return identity or None
+    except Exception as exc:  # fail forward: the NPC is built without it
+        warning("OCCUPANTS: authored record for %s unavailable (%s)" % (npc_name, exc),
+                category="location_transitions")
+        return None
+
+
 def party_change(operation: str, npc_name: str, module: str, location_id: str, request_id: str,
                  *, reason: Any = None, root: str = ".") -> Optional[Dict[str, Any]]:
     """Keep a companion's occupant in step with updatePartyNPCs: an add
