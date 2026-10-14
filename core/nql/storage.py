@@ -72,7 +72,7 @@ def stored_quantity(contents: List[Dict[str, Any]], entry: Dict[str, Any]) -> An
     if not _ordinary_ammunition(entry):
         return entry.get("quantity", 1)
     return sum(_stock(e) for e in contents
-               if _ordinary_ammunition(e) and e.get("item_name") == entry.get("item_name"))
+               if _ordinary_ammunition(e) and e.get("item_name") == entry.get("item_name") and _stock(e) > 0)
 
 
 def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict[str, Any],
@@ -152,12 +152,13 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
             worn.append(name)
         # Each deposit is its own chest entry, so a retrieve of ordinary
         # ammunition draws on every ordinary entry of that name, whole entries
-        # first in contents order (#971). Anything else takes the one entry.
+        # first in contents order, an empty one skipped (#971). Anything else
+        # takes the one entry.
         parts = [(index, iid)]
         if action == "retrieve_item" and _ordinary_ammunition(entry):
             ids = world.content_ids.get(sid, {})
             parts = [(i, ids[i]) for i, e in enumerate(contents)
-                     if i in ids and _ordinary_ammunition(e) and e.get("item_name") == name]
+                     if i in ids and _ordinary_ammunition(e) and e.get("item_name") == name and _stock(e) > 0]
         stock = sum(_stock(pool[i]) for i, _ in parts)
         if quantity <= 0 or quantity > stock:
             return StorageOutcome(False, reason=f"only {stock} {name!r} available, requested {quantity}", gaps=world.gaps)
