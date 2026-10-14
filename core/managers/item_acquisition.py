@@ -87,6 +87,40 @@ def _ammunition_row(sheet: Dict[str, Any], name: str) -> Optional[Dict[str, Any]
     return None
 
 
+def catalog_check(item_name: Any, quantity: Any, price: Any = None) -> Dict[str, Any]:
+    """The checks of one acquisition that need no sheet and no purse (#878).
+
+    Returns {"entry", "quantity", "cost", "rule"} or {"error": reason}, with
+    the reasons execute_acquisition has always returned. The DM's draft is
+    checked with it before review and display; the purchase runs it again.
+    """
+    entry, reason = acquisition.find_entry(item_name)
+    if entry is None:
+        return {"error": reason}
+    if quantity in (None, ""):
+        quantity = 1
+    if type(quantity) is bool or type(quantity) is not int or quantity < 1:
+        return {"error": "quantity must be a positive whole number"}
+    stated, reason = acquisition.stated_cost(price)
+    if reason:
+        return {"error": reason}
+    if stated is None:
+        cost, reason = acquisition.lot_cost(entry, quantity)
+        if cost is None:
+            return {"error": reason}
+    else:
+        cost = stated
+        per_lot = (entry.get("price") or {}).get("units_per_lot")
+        if type(per_lot) is int and per_lot > 1 and quantity % per_lot:
+            return {"error": (f"{entry['name']} is sold in lots of {per_lot}: quantity counts single items "
+                              f"and must be {per_lot}, {2 * per_lot}, ... (one lot = quantity {per_lot})")}
+    # H2b-4: a charged catalog type (an SRD magic item) is one physical unit.
+    rule = genesis.pack_charge_rule(entry)
+    if rule is not None and quantity != 1:
+        return {"error": f"{entry['name']} is one charged item; acquire it one at a time (quantity 1)"}
+    return {"entry": entry, "quantity": quantity, "cost": cost, "rule": rule}
+
+
 def execute_acquisition(character_name: str, item_name: str, quantity: Any, price: Any = None,
                         request_id: Optional[str] = None,
                         party_tracker: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -97,36 +131,16 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
     path = _resolve(character_name)
     if path is None:
         return {"success": False, "error": f"no character sheet for {character_name!r}"}
-    entry, reason = acquisition.find_entry(item_name)
-    if entry is None:
-        return {"success": False, "error": reason}
-    if quantity in (None, ""):
-        quantity = 1
-    if type(quantity) is bool or type(quantity) is not int or quantity < 1:
-        return {"success": False, "error": "quantity must be a positive whole number"}
-    stated, reason = acquisition.stated_cost(price)
-    if reason:
-        return {"success": False, "error": reason}
-    if stated is None:
-        cost, reason = acquisition.lot_cost(entry, quantity)
-        if cost is None:
-            return {"success": False, "error": reason}
-    else:
-        cost = stated
-        per_lot = (entry.get("price") or {}).get("units_per_lot")
-        if type(per_lot) is int and per_lot > 1 and quantity % per_lot:
-            return {"success": False, "error": (f"{entry['name']} is sold in lots of {per_lot}: quantity counts single items "
-                                                f"and must be {per_lot}, {2 * per_lot}, ... (one lot = quantity {per_lot})")}
+    checked = catalog_check(item_name, quantity, price)
+    if "error" in checked:
+        return {"success": False, "error": checked["error"]}
+    entry, quantity, cost, rule = checked["entry"], checked["quantity"], checked["cost"], checked["rule"]
 
-    # H2b-4: a charged catalog type (an SRD magic item) is one physical unit;
-    # its purchase world carries the party clock (the engine anchors the new
-    # item's recharge at purchase) and, for a type that rolls dice, fresh
-    # ``dice seed`` words (the engine draws the item's seed from them). The
-    # item's charge state is stored from the engine's view.
+    # H2b-4: a charged item's purchase world carries the party clock (the
+    # engine anchors the new item's recharge at purchase) and, for a type that
+    # rolls dice, fresh ``dice seed`` words (the engine draws the item's seed
+    # from them). The item's charge state is stored from the engine's view.
     from core.managers.item_charges import _entropy, party_clock, store_view
-    rule = genesis.pack_charge_rule(entry)
-    if rule is not None and quantity != 1:
-        return {"success": False, "error": f"{entry['name']} is one charged item; acquire it one at a time (quantity 1)"}
 
     party = party_tracker or safe_json_load("party_tracker.json") or {}
     location = str((party.get("worldConditions") or {}).get("currentLocationId") or "party")
