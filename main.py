@@ -747,9 +747,15 @@ def _apply_welcome(lifecycle):
     ):
         # r9 section 3: a missed renewal attempt is retryable and never
         # discards a live owned worker. The pump re-runs this handback.
+        # Nothing was applied, so the scope leaves APPLYING too: player input
+        # in this window supersedes the welcome again, and the re-run marks
+        # APPLYING afresh after reading that supersession (#990).
         with lifecycle.lock:
             if lifecycle.phase == "APPLYING":
                 lifecycle.phase = "APPLY_PENDING"
+                with lifecycle.scope.lock:
+                    if lifecycle.scope.phase == "APPLYING":
+                        lifecycle.scope.phase = "PRE_MUTATION"
         return
     if processing_lock.get("status") != "updated":
         _remove_welcome_note(lifecycle, history)
