@@ -241,6 +241,10 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
         if isinstance(feat, dict):
             feat_name = compact(feat.get('name') or '')
             feat_desc = describe_text(feat.get('description'))
+            # A feat's own use pool (#891), shown as class features show theirs (#937)
+            usage = feat.get('usage') if isinstance(feat.get('usage'), dict) else {}
+            if type(usage.get('current')) is int and type(usage.get('max')) is int:
+                feat_name = f"{feat_name}({usage['current']}/{usage['max']})"
         else:
             feat_name, feat_desc = compact(str(feat)), ''
         feats_out_parts.append(f"{feat_name}: {feat_desc}" if feat_desc else feat_name)

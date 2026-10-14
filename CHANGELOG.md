@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - In a fight, a Second Wind that spends its use but declares no healing is sent back to be ruled again, so the use is never spent for nothing (#939).
+- A feat's own uses (Magic Initiate's free cast) now show on the DM's character sheet line, a feat use spent outside a fight is kept instead of coming back, and a sheet update can no longer refill a feat's use without a rest (#937).
 - During a level-up, a guide answer the rules refused (for example an invalid hit point method) no longer reaches the DM's history; each level-up answer now records the player's answer and the one reply the player was shown, as the start and the end of a level-up already did (#1056).
 - A new NPC is given the game's SRD 5.2.1 species and backgrounds, with ability score increases from its background, instead of an older edition's race table in the builder prompt (#1055).
 - When the game asks you to roll a spell's dice for a given spell slot level (an upcast Cure Wounds at level 2), the DM can no longer then spend a slot of a different level: it is told to spend the level your dice were rolled for, and your roll stays (Closes #942).
