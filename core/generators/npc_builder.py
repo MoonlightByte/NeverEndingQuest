@@ -54,6 +54,13 @@ from utils.capture.multi_model_capture import capture_and_fanout, register_calls
 register_callsite("T035", "core/generators/npc_builder.py", 185)
 from utils.capture.live_provider_call import LiveProviderSuperseded
 from core.combat.invocation import InvocationSupersededError
+from utils.schema_feedback import (
+    informed_retry_messages,
+    issue_paths_for_log,
+    json_correction,
+    schema_correction,
+    validation_issues,
+)
 
 # Token tracking import
 try:
@@ -189,11 +196,14 @@ Adhere strictly to 5e rules and the provided schema."""
     last_ai_response = None
     last_parsed_data = None
 
+    # A failed attempt is retried with its own reply and the validation
+    # error, rebuilt from the first request each time (#886).
+    attempt_messages = prompt_messages
     for attempt in range(_max_retries + 1):
         try:
             response = capture_and_fanout("T035", api_client.create_completion,
                 _request_provider=MODEL_PROVIDER,
-                messages=prompt_messages,
+                messages=attempt_messages,
                 model=npc_config["model"],
                 temperature=0.7,
                 **_extra)
@@ -229,18 +239,24 @@ Adhere strictly to 5e rules and the provided schema."""
                 last_validation_err = None
                 warning(
                     f"NPC build attempt {attempt + 1}/{_max_retries + 1} "
-                    f"returned invalid JSON: {str(e)}",
+                    f"returned invalid JSON at line {e.lineno} column {e.colno}",
                     category="npc_creation",
                 )
+                attempt_messages = informed_retry_messages(
+                    prompt_messages, ai_response, json_correction(e))
                 continue
             except ValidationError as e:
                 last_json_err = None
                 last_validation_err = e
+                issues = validation_issues(last_parsed_data, schema, e)
                 warning(
                     f"NPC build attempt {attempt + 1}/{_max_retries + 1} "
-                    f"failed schema validation: {str(e)}",
+                    f"failed schema validation at {issue_paths_for_log(issues)} "
+                    f"({len(issues)} issue(s))",
                     category="npc_creation",
                 )
+                attempt_messages = informed_retry_messages(
+                    prompt_messages, ai_response, schema_correction(last_parsed_data, schema, e))
                 continue
         except (LiveProviderSuperseded, InvocationSupersededError):
             # A superseded live turn is not a generation failure; its own
