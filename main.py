@@ -747,9 +747,15 @@ def _apply_welcome(lifecycle):
     ):
         # r9 section 3: a missed renewal attempt is retryable and never
         # discards a live owned worker. The pump re-runs this handback.
+        # Nothing was applied, so the scope leaves APPLYING too: player input
+        # in this window supersedes the welcome again, and the re-run marks
+        # APPLYING afresh after reading that supersession (#990).
         with lifecycle.lock:
             if lifecycle.phase == "APPLYING":
                 lifecycle.phase = "APPLY_PENDING"
+                with lifecycle.scope.lock:
+                    if lifecycle.scope.phase == "APPLYING":
+                        lifecycle.scope.phase = "PRE_MUTATION"
         return
     if processing_lock.get("status") != "updated":
         _remove_welcome_note(lifecycle, history)
@@ -3304,6 +3310,25 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
     # No changes needed
     return response_text, "All NPC names valid"
 
+class DuplicateJSONKeyError(ValueError):
+    """A DM reply repeats a name inside one JSON object (#1018)."""
+
+    def __init__(self, key):
+        super().__init__(key)
+        self.key = key
+
+
+def _reject_duplicate_json_keys(pairs):
+    # json.loads keeps only the LAST value of a repeated name, which silently
+    # dropped a reply's real actions array (#1018). Refuse at every level.
+    value = {}
+    for key, item in pairs:
+        if key in value:
+            raise DuplicateJSONKeyError(key)
+        value[key] = item
+    return value
+
+
 def validate_json_structure(response_text, *, party_tracker_data=None):
     """
     Pre-validate JSON structure before sending to AI validator.
@@ -3311,7 +3336,7 @@ def validate_json_structure(response_text, *, party_tracker_data=None):
     """
     try:
         # Parse the JSON
-        parsed = json.loads(response_text)
+        parsed = json.loads(response_text, object_pairs_hook=_reject_duplicate_json_keys)
         
         # Check top-level structure
         if not isinstance(parsed, dict):
@@ -3431,6 +3456,11 @@ def validate_json_structure(response_text, *, party_tracker_data=None):
 
         return True, validated_response, structure_message
         
+    except DuplicateJSONKeyError as e:
+        return False, None, (
+            f"Duplicate JSON key {e.key!r}: each key may appear only once per "
+            f"object; merge its values into one {e.key!r} entry"
+        )
     except json.JSONDecodeError as e:
         return False, None, f"Invalid JSON: {str(e)}"
     except Exception as e:
