@@ -2872,7 +2872,8 @@ def validate_location_transition(location_graph, current_location_id, destinatio
         return False, f"Location validation failed with exception: {str(e)}", None
 
 def update_party_npcs(party_tracker_data, operation, npc):
-    """Update NPC party members (add or remove)"""
+    """Update NPC party members (add or remove). Returns False only when an
+    add's character sheet could not be built (nothing changed), else True."""
     if operation == "add":
         # Get the correct module from party tracker
         module_name = party_tracker_data.get("module", "").replace(" ", "_")
@@ -2927,7 +2928,7 @@ def update_party_npcs(party_tracker_data, operation, npc):
                 info(f"SUCCESS: NPC profile created for {npc['name']}", category="character_updates")
             except subprocess.CalledProcessError as e:
                 error(f"FAILURE: Failed to create NPC profile for {npc['name']}: {e}", category="character_updates")
-                return
+                return False
 
         # Now we can add the NPC to the party
         # Create entry matching the party_schema.json requirements (name and role)
@@ -2969,6 +2970,7 @@ def update_party_npcs(party_tracker_data, operation, npc):
 
     safe_json_dump(party_tracker_data, "party_tracker.json")
     info(f"STATE_CHANGE: Party NPCs updated - {operation} {npc['name']}", category="character_updates")
+    return True
 
 
 def prepare_party_npc_update(parameters, operation_id):
@@ -4925,7 +4927,18 @@ Please use a valid location that exists in the current area ({current_area_id}) 
         _roster_before = [
             dict(x) for x in party_tracker_data.get("partyNPCs", [])
         ]
-        update_party_npcs(party_tracker_data, operation, npc)
+        if update_party_npcs(party_tracker_data, operation, npc) is False:
+            # The add's sheet could not be built: nothing joined. The DM is told
+            # so, as for a refused quest or storage step, and later actions of
+            # this response do not run (#534).
+            _name = str(npc.get("name") or "")
+            conversation_history.append({"role": "user", "content": (
+                f"Party Error: updatePartyNPCs add for {_name} did not complete: no character sheet could be "
+                f"built for {_name}. Nothing changed in the party roster; {_name} has not joined. Later actions "
+                f"from this response have not executed. Do not repeat earlier completed actions. Narrate that "
+                f"{_name} is not with the party yet; the player can ask again.")})
+            needs_conversation_history_update = True
+            return create_return(status="needs_response", needs_update=True)
         _roster_after = party_tracker_data.get("partyNPCs", [])
         _state_changed = _roster_after != _roster_before
         # T105: best-effort NPC-voice lifecycle hook after the roster commit.
