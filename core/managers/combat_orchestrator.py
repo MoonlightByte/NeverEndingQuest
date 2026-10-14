@@ -1415,7 +1415,9 @@ def _player_roll_contract_error(pending):
     # against its stored die only; an exchange written before that keeps
     # today's reading of its request text.
     request = "" if isinstance(previous.get("requestedPhase"), str) else str(previous.get("dmRequest") or "")
-    answer = str(current.get("playerInput") or "")
+    # The game appends its inventory notes to the player's words; their weapon
+    # dice are not the player's answer (#1008).
+    answer = str(current.get("playerInput") or "").split("\n[Inventory Context:", 1)[0]
     expected_sequence = [
         int(value)
         for value in re.findall(
