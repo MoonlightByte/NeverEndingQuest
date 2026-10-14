@@ -1207,11 +1207,21 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
         container_ids[sid] = conid
         items.append(f"item {_q(conid)} named {_q(container.get('deviceName') or sid)} {{ container true; custody location {_q(loc)}; }}")
         ids = {}
-        for index, entry in enumerate(container.get("contents") or []):
+        contents = container.get("contents") or []
+        # A stored id is kept as it is, so a minted one must not take the id
+        # another entry stores (a new split part listed ahead of an older
+        # entry would hide it, #971); it is reminted instead.
+        stored = {_entry_id(e, slug(sid), i) for i, e in enumerate(contents)
+                  if isinstance(e, dict) and str(e.get("nql_id") or "").startswith("item:")}
+        for index, entry in enumerate(contents):
             if not isinstance(entry, dict) or not entry.get("item_name"):
                 gaps.append(f"{sid}: contents[{index}] has no item_name; skipped")
                 continue
             iid = _entry_id(entry, slug(sid), index)
+            spare = index
+            while iid in stored and not str(entry.get("nql_id") or "").startswith("item:"):
+                spare += 1000
+                iid = _mint(entry, slug(sid), spare)
             if iid in all_ids:
                 gaps.append(f"{sid}: duplicate item id {iid} at contents[{index}]; skipped")
                 continue

@@ -57,6 +57,24 @@ def _find_entry(entries: List[Dict[str, Any]], ids: Dict[int, str], name: str) -
     return None, None
 
 
+def _ordinary_ammunition(entry: Any) -> bool:
+    return isinstance(entry, dict) and entry.get("item_type") == "ammunition" \
+        and not entry.get("magical") and not entry.get("effects")
+
+
+def _stock(entry: Dict[str, Any]) -> int:
+    return entry.get("quantity") if type(entry.get("quantity")) is int else 1
+
+
+def stored_quantity(contents: List[Dict[str, Any]], entry: Dict[str, Any]) -> Any:
+    """What a retrieve of ``entry`` can draw on: for ordinary ammunition the sum
+    over every ordinary entry of that name (#971), else the entry's quantity."""
+    if not _ordinary_ammunition(entry):
+        return entry.get("quantity", 1)
+    return sum(_stock(e) for e in contents
+               if _ordinary_ammunition(e) and e.get("item_name") == entry.get("item_name"))
+
+
 def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict[str, Any],
              operation: Dict[str, Any], *, request_id: Optional[str] = None,
              binary: Optional[str] = None) -> StorageOutcome:
@@ -132,34 +150,59 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
         entry = pool[index]
         if entry.get("equipped") is True:
             worn.append(name)
-        stock = entry.get("quantity") if type(entry.get("quantity")) is int else 1
+        # Each deposit is its own chest entry, so a retrieve of ordinary
+        # ammunition draws on every ordinary entry of that name, whole entries
+        # first in contents order (#971). Anything else takes the one entry.
+        parts = [(index, iid)]
+        if action == "retrieve_item" and _ordinary_ammunition(entry):
+            ids = world.content_ids.get(sid, {})
+            parts = [(i, ids[i]) for i, e in enumerate(contents)
+                     if i in ids and _ordinary_ammunition(e) and e.get("item_name") == name]
+        stock = sum(_stock(pool[i]) for i, _ in parts)
         if quantity <= 0 or quantity > stock:
             return StorageOutcome(False, reason=f"only {stock} {name!r} available, requested {quantity}", gaps=world.gaps)
-        place_id = iid
-        if quantity < stock:
-            place_id = f"{iid}:part:{quantity}"
-            actions.append(f"split {_q(iid)} quantity {quantity} into {_q(place_id)} by {_q(cid)};")
-        actions.append(f"place {_q(place_id)} from {source} to {target} by {_q(cid)};")
-        planned.append((place_id, quantity, name))
-        if action == "retrieve_item" and entry.get("item_type") == "ammunition" \
-                and not entry.get("magical") and not entry.get("effects"):
+        placed: List[Tuple[str, int]] = []
+        left = quantity
+        for i, part_id in parts:
+            if left == 0:
+                break
+            take = min(_stock(pool[i]), left)
+            place_id = part_id
+            if take < _stock(pool[i]):
+                place_id = f"{part_id}:part:{take}"
+                actions.append(f"split {_q(part_id)} quantity {take} into {_q(place_id)} by {_q(cid)};")
+            actions.append(f"place {_q(place_id)} from {source} to {target} by {_q(cid)};")
+            placed.append((place_id, take))
+            left -= take
+        planned.append((placed[0][0], quantity, name))
+        if action == "retrieve_item" and _ordinary_ammunition(entry):
             # D-366-2: ordinary ammunition rejoins the ammunition stock in the
-            # same request (consume the arrival, add to the row's stock).
+            # same request (consume each arrival, add to the row's stock).
             item_name = str(entry.get("item_name"))
             found = ammunition.declared_row(character, item_name)
+            clash = found is None and any(
+                isinstance(r, dict) and isinstance(r.get("name"), str)
+                and genesis.ammunition_id(character, r["name"]) == genesis.ammunition_id(character, item_name)
+                for r in character.get("ammunition") or [])
+            if found is None and not clash:
+                # #971: else the one row holding the same catalog ammunition
+                # under an older name (Arrow for Arrows), as a purchase does.
+                found = ammunition.declared_row_for_catalog(character, item_name, entry.get("catalog_id"))
             if found is not None:
                 aid, row = found
-                actions.append(f"consume {_q(place_id)} from {_q(cid)} by {quantity};")
-                actions.append(f"add {_q(aid)} to {_q(cid)} by {quantity};")
                 stocks[aid] = row
-                joined.append(place_id)
-            elif any(isinstance(r, dict) and isinstance(r.get("name"), str)
-                     and genesis.ammunition_id(character, r["name"]) == genesis.ammunition_id(character, item_name)
-                     for r in character.get("ammunition") or []):
+            elif clash:
                 return StorageOutcome(False, reason=f"{character.get('name')}'s {item_name!r} row has no whole-number quantity",
                                       gaps=world.gaps)
             else:
-                new_rows[place_id] = entry
+                # A new row starts from the first arrival; later ones join it.
+                aid = placed[0][0]
+                new_rows[aid] = entry
+                placed = placed[1:]
+            for place_id, take in placed:
+                actions.append(f"consume {_q(place_id)} from {_q(cid)} by {take};")
+                actions.append(f"add {_q(aid)} to {_q(cid)} by {take};")
+                joined.append(place_id)
     if worn:
         return StorageOutcome(False, reason="selected items are still equipped", worn_items=worn, gaps=world.gaps)
 
