@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.nql import ammunition, apply, genesis
+from utils.enhanced_logger import warning
 
 
 @dataclass
@@ -55,6 +56,19 @@ def _find_entry(entries: List[Dict[str, Any]], ids: Dict[int, str], name: str) -
         if isinstance(entry, dict) and entry.get("item_name") == name and index in ids:
             return index, ids[index]
     return None, None
+
+
+def _fresh_split_id(base: str, count: int, taken: set) -> str:
+    """``<base>:part:<count>``, or with a numbered tail when the world (or this
+    request) already holds that id: a chest entry keeps the id of the part it
+    came from, so a second deposit of the same count needs a new one (#1026)."""
+    candidate = f"{base}:part:{count}"
+    suffix = 1
+    while candidate in taken:
+        suffix += 1
+        candidate = f"{base}:part:{count}:{suffix}"
+    taken.add(candidate)
+    return candidate
 
 
 def _ordinary_ammunition(entry: Any) -> bool:
@@ -101,6 +115,10 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
     conid = world.container_ids.get(sid)
     if conid is None:
         return StorageOutcome(False, reason="container is not in the engine world", gaps=world.gaps)
+    taken = set(world.container_ids.values())
+    for declared in list(world.item_ids.values()) + list(world.content_ids.values()):
+        taken.update(declared.values())
+    taken.update(aid for aid, _ in genesis.ammunition_rows(character, []))
 
     # Compile the request from the typed operation. Partial stock is split first
     # (a new id under the same scope), then the whole split stock is placed.
@@ -125,7 +143,7 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
                                           gaps=world.gaps)
                 place_id = aid
                 if quantity < stock:
-                    place_id = f"{aid}:part:{quantity}"
+                    place_id = _fresh_split_id(aid, quantity, taken)
                     actions.append(f"split {_q(aid)} quantity {quantity} into {_q(place_id)} by {_q(cid)};")
                 else:
                     whole.append(aid)
@@ -170,7 +188,7 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
             take = min(_stock(pool[i]), left)
             place_id = part_id
             if take < _stock(pool[i]):
-                place_id = f"{part_id}:part:{take}"
+                place_id = _fresh_split_id(part_id, take, taken)
                 actions.append(f"split {_q(part_id)} quantity {take} into {_q(place_id)} by {_q(cid)};")
             actions.append(f"place {_q(place_id)} from {source} to {target} by {_q(cid)};")
             placed.append((place_id, take))
@@ -253,6 +271,10 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
     gear = [i for i in char_items if i["id"] not in joined and i["id"] not in new_rows]
     character["equipment"] = rebuild(gear, None, source_entry) + kept_untracked
     container["contents"] = rebuild(views.get(conid, []), False, {**source_entry, **stored_parts})
+    # An entry genesis could not declare (no name, or an id another entry
+    # stores) is not in the engine view; it is kept as it is (#1026).
+    unread = [e for i, e in enumerate(contents) if i not in world.content_ids.get(sid, {})]
+    container["contents"] += unread
     char_view = {i["id"]: i for i in char_items}
     con_view = {i["id"]: i for i in views.get(conid, [])}
     # A stock placed whole is in the container now: its row keeps 0 and the
@@ -278,6 +300,9 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
         if not isinstance(character.get("ammunition"), list):
             character["ammunition"] = []
         character["ammunition"].append(row)
+    if unread:
+        warning(f"STORAGE: {sid} keeps {len(unread)} entries the engine could not read: "
+                + "; ".join(g for g in world.gaps if g.startswith(f"{sid}:")), category="storage_operations")
     return StorageOutcome(True, character=character, container=container,
                           moved=[(name, quantity) for _, quantity, name in planned],
                           receipt=response.get("receipt"), gaps=world.gaps)
