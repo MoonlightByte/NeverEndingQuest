@@ -26,20 +26,6 @@ Spellcasting:
 -SpellSaveDC:8 + proficiency bonus + spellcasting ability modifier
 -SpellAttackBonus:proficiency bonus + spellcasting ability modifier
 
-ClassFeatures:
--Barbarian:Rage,Unarmored Defense,Reckless Attack,Danger Sense,Primal Path,Extra Attack,Fast Movement,Feral Instinct,Brutal Critical,Relentless Rage,Persistent Rage,Indomitable Might,Primal Champion
--Bard:Spellcasting,Bardic Inspiration,Jack of All Trades,Song of Rest,Bard College,Expertise,Font of Inspiration,Countercharm,Magical Secrets,Superior Inspiration
--Cleric:Spellcasting,Divine Domain,Channel Divinity,Destroy Undead,Divine Intervention
--Druid:Spellcasting,Druidic,Wild Shape,Druid Circle,Timeless Body,Beast Spells,Archdruid
--Fighter:Fighting Style,Second Wind,Action Surge,Martial Archetype,Extra Attack,Indomitable
--Monk:Unarmored Defense,Martial Arts,Ki,Unarmored Movement,Monastic Tradition,Deflect Missiles,Slow Fall,Extra Attack,Stunning Strike,Ki-Empowered Strikes,Evasion,Stillness of Mind,Purity of Body,Tongue of the Sun and Moon,Diamond Soul,Empty Body,Perfect Self
--Paladin:Divine Sense,Lay on Hands,Fighting Style,Spellcasting,Divine Smite,Divine Health,Sacred Oath,Extra Attack,Aura of Protection,Aura of Courage,Improved Divine Smite,Cleansing Touch
--Ranger:Favored Enemy,Natural Explorer,Fighting Style,Spellcasting,Ranger Archetype,Primeval Awareness,Extra Attack,Land's Stride,Hide in Plain Sight,Vanish,Feral Senses,Foe Slayer
--Rogue:Expertise,Sneak Attack,Thieves' Cant,Cunning Action,Roguish Archetype,Uncanny Dodge,Evasion,Reliable Talent,Blindsense,Slippery Mind,Elusive,Stroke of Luck
--Sorcerer:Spellcasting,Sorcerous Origin,Font of Magic,Metamagic,Sorcerous Restoration
--Warlock:Otherworldly Patron,Pact Magic,Eldritch Invocations,Pact Boon,Mystic Arcanum,Eldritch Master
--Wizard:Spellcasting,Arcane Recovery,Arcane Tradition,Spell Mastery,Signature Spells
-
 Class Spell List:Druid
 Cantrips:Druidcraft,Guidance,Mending,Poison Spray,Produce Flame,Resistance,Shillelagh,Thorn Whip
 Level1:Animal Friendship,Charm Person,Create or Destroy Water,Cure Wounds,Detect Magic,Detect Poison and Disease,Entangle,Faerie Fire,Fog Cloud,Goodberry,Healing Word,Jump,Longstrider,Purify Food and Drink,Speak with Animals,Thunderwave
@@ -125,86 +111,6 @@ Level6:Chain Lightning,Circle of Death,Contingency,Create Undead,Disintegrate,Dr
 Level7:Delayed Blast Fireball,Etherealness,Finger of Death,Forcecage,Mirage Arcane,Mordenkainen's Magnificent Mansion,Mordenkainen's Sword,Plane Shift,Prismatic Spray,Project Image,Reverse Gravity,Sequester,Simulacrum,Symbol,Teleport
 Level8:Antimagic Field,Antipathy/Sympathy,Clone,Control Weather,Demiplane,Dominate Monster,Feeblemind,Incendiary Cloud,Maze,Mind Blank,Power Word Stun,Sunburst,Telepathy
 Level9:Astral Projection,Foresight,Gate,Imprisonment,Meteor Swarm,Power Word Kill,Prismatic Wall,Shapechange,Time Stop,True Polymorph,Weird,Wish
-
-SpellSlots:FullCaster(Bard,Cleric,Druid,Sorcerer,Wizard)
-Level,1st,2nd,3rd,4th,5th,6th,7th,8th,9th
-1,2,-,-,-,-,-,-,-,-
-2,3,-,-,-,-,-,-,-,-
-3,4,2,-,-,-,-,-,-,-
-4,4,3,-,-,-,-,-,-,-
-5,4,3,2,-,-,-,-,-,-
-6,4,3,3,-,-,-,-,-,-
-7,4,3,3,1,-,-,-,-,-
-8,4,3,3,2,-,-,-,-,-
-9,4,3,3,3,1,-,-,-,-
-10,4,3,3,3,2,-,-,-,-
-11,4,3,3,3,2,1,-,-,-
-12,4,3,3,3,2,1,-,-,-
-13,4,3,3,3,2,1,1,-,-
-14,4,3,3,3,2,1,1,-,-
-15,4,3,3,3,2,1,1,1,-
-16,4,3,3,3,2,1,1,1,-
-17,4,3,3,3,2,1,1,1,1
-18,4,3,3,3,3,1,1,1,1
-19,4,3,3,3,3,2,1,1,1
-20,4,3,3,3,3,2,2,1,1
-
-SpellSlots:HalfCaster(Paladin,Ranger)
-Level,1st,2nd,3rd,4th,5th
-1,-,-,-,-,-
-2,2,-,-,-,-
-3,3,-,-,-,-
-4,3,-,-,-,-
-5,4,2,-,-,-
-6,4,2,-,-,-
-7,4,3,-,-,-
-8,4,3,-,-,-
-9,4,3,2,-,-
-10,4,3,2,-,-
-11,4,3,3,-,-
-12,4,3,3,-,-
-13,4,3,3,1,-
-14,4,3,3,1,-
-15,4,3,3,2,-
-16,4,3,3,2,-
-17,4,3,3,3,1
-18,4,3,3,3,1
-19,4,3,3,3,2
-20,4,3,3,3,2
-
-SpellSlots:Warlock
-Level,Slots,SlotLevel
-1,1,1st
-2,2,1st
-3,2,2nd
-4,2,2nd
-5,2,3rd
-6,2,3rd
-7,2,4th
-8,2,4th
-9,2,5th
-10,2,5th
-11,3,5th
-12,3,5th
-13,3,5th
-14,3,5th
-15,3,5th
-16,3,5th
-17,4,5th
-18,4,5th
-19,4,5th
-20,4,5th
-
-SpellSlots:ThirdCaster(ArcaneTrickster,EldritchKnight)
-Level,1st,2nd,3rd,4th
-3,2,-,-,-
-4,3,-,-,-
-7,4,2,-,-
-10,4,3,-,-
-13,4,3,2,-
-16,4,3,3,-
-19,4,3,3,1
-20,4,3,3,1
 
 Experience Points by Level:
 Level,XP
