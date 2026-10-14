@@ -142,6 +142,12 @@ ENGINE_ID_MAX = 256  # the engine's bound for an entity id, in bytes (#566)
 # A minted item id leaves room for its per-row charged type id
 # ("itemdef:row/" + the id after "item:", 7 bytes longer) under TYPE_KIND_MAX.
 ITEM_ID_MAX = TYPE_KIND_MAX - len("itemdef:row/") + len("item:")  # 249
+# A character's scope ends every condition instance id it holds ("<kind>:<scope>",
+# at most 36 bytes over the scope) and the engine's own event id for each "add"
+# modifier of such an instance ("condition:<len>:<instance>:<len>:<label>"). The
+# longest is a Long Rest removing exhaustion, 41 bytes over the scope; a longer
+# kind or modifier label must lower this bound (#1022).
+CHARACTER_SCOPE_MAX = ENGINE_ID_MAX - len("condition:256:state:exhaustion:6::5:speed")  # 215
 
 
 def _type_description(entry: Dict[str, Any]) -> str:
@@ -378,8 +384,9 @@ def bounded_id(prefix: str, text: str, limit: int = ENGINE_ID_MAX) -> str:
 
 
 def character_scope(name: Any) -> str:
-    """The slug a character's engine ids carry: its id after "char:"."""
-    return bounded_id("char:", slug(name))[len("char:"):]
+    """The slug a character's engine ids carry: its id after "char:", at most
+    CHARACTER_SCOPE_MAX bytes so every id it ends fits (#1022)."""
+    return bounded_id("", slug(name), CHARACTER_SCOPE_MAX)
 
 
 def character_id(sheet: Dict[str, Any]) -> str:
@@ -417,6 +424,23 @@ def bounded_item_id(iid: str, limit: int = ITEM_ID_MAX) -> str:
         room = limit - len(tail.encode("utf-8"))
     head = ":".join(parts[:-2]).encode("utf-8")[:room].decode("utf-8", errors="ignore").rstrip("-")
     return head + tail
+
+
+def ac_effect_id(iid: str, index: int) -> str:
+    """The engine id of a worn item's index-th AC effect (#1023):
+    effect:<item id after "item:">:ac:<index>. An id that fits is returned
+    unchanged; a longer one keeps its ":ac:<index>" tail and shortens the item
+    part as bounded_item_id does (scope and row index kept), or by its first
+    bytes when the item id has no scope fields."""
+    tail = ":ac:%d" % index
+    eid = "effect:" + iid.split(":", 1)[1] + tail
+    if len(eid.encode("utf-8")) <= ENGINE_ID_MAX:
+        return eid
+    room = ENGINE_ID_MAX - len(tail)
+    item = bounded_item_id(iid, room - len("effect:") + len("item:"))
+    if len(("effect:" + item.split(":", 1)[1]).encode("utf-8")) > room:
+        return bounded_id("effect:", iid.split(":", 1)[1], room) + tail
+    return "effect:" + item.split(":", 1)[1] + tail
 
 
 def _mint(entry: Dict[str, Any], scope: str, index: int) -> str:
@@ -773,19 +797,27 @@ def _armor_definition(def_id: str, entry: Dict[str, Any], gaps: List[str]) -> Op
     )
 
 
-def ac_effect_lines(iid: str, entry: Dict[str, Any]) -> List[str]:
+def ac_effect_lines(iid: str, entry: Dict[str, Any], seen: Optional[set] = None,
+                    gaps: Optional[List[str]] = None, cid: str = "") -> List[str]:
     """Worn-item defense effects from the entry's typed effects list.
 
     An effect of type "bonus" whose target names armor class and whose value is
     an integer becomes a while-worn engine effect on the item, so a ring of
-    protection counts only while worn and is explained by its item.
+    protection counts only while worn and is explained by its item. With
+    ``seen``, an effect id already in the world is a gap and is skipped (#1023).
     """
     out: List[str] = []
     for index, effect in enumerate(entry.get("effects") or []):
         if (isinstance(effect, dict) and effect.get("type") == "bonus"
                 and effect.get("target") in AC_EFFECT_TARGETS and type(effect.get("value")) is int
                 and effect["value"] != 0):
-            eid = f"effect:{iid.split(':', 1)[1]}:ac:{index}"
+            eid = ac_effect_id(iid, index)
+            if seen is not None:
+                if eid in seen:
+                    if gaps is not None:
+                        gaps.append(f"{cid}: duplicate AC effect id {eid} for {iid}; effect skipped")
+                    continue
+                seen.add(eid)
             out.append(f'effect {_q(eid)} from item {_q(iid)} on worn {_q(iid)} stat "defense" add {effect["value"]};')
     return out
 
@@ -1201,13 +1233,13 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
                 continue
             line, _, held_hands = _item_line(iid, entry, cid, f"custody character {_q(cid)};",
                                              entry.get("equipped") is True, definitions, gaps, cid, charged)
-            declared[index] = (line, ac_effect_lines(iid, entry))
+            declared[index] = (line, ac_effect_lines(iid, entry, all_ids, gaps, cid))
             hands += held_hands
         for index, iid, entry in weapons_last:
             line, _, held_hands = _item_line(iid, entry, cid, f"custody character {_q(cid)};",
                                              True, definitions, gaps, cid, charged, hands_free=2 - hands,
                                              carried=carried)
-            declared[index] = (line, ac_effect_lines(iid, entry))
+            declared[index] = (line, ac_effect_lines(iid, entry, all_ids, gaps, cid))
             hands += held_hands
         for index in sorted(declared):
             items.append(declared[index][0])
