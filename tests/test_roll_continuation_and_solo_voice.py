@@ -94,4 +94,8 @@ def test_accepted_roll_is_a_natural_player_reply_once(check_world, monkeypatch, 
     checks_runtime.take_player_rolls(lambda p: typed)
     checks_runtime.take_player_rolls(lambda p: pytest.fail("Already submitted"))
     expected = "I rolled " + " and ".join(f"{f} on a d20" for f in faces) + "."
-    output.assert_called_once_with({"type": "user-input", "content": expected})
+    sent = [call.args[0] for call in output.call_args_list]
+    # #530: the dice reply once, then the scored line once as a system card.
+    assert [m for m in sent if m["type"] == "user-input"] == [{"type": "user-input", "content": expected}]
+    assert [m["content"] for m in sent if m["type"] == "system"] == ["Resolved check"]
+    assert len(sent) == 2 and sent[0]["type"] == "user-input"

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from typing import Any, Callable, Dict, List, Optional
+from uuid import uuid4
 
 from core.managers import checks_state, roll_prompt
 from core.managers.effects_runtime import _resolve_character
@@ -98,6 +99,17 @@ def parse_faces(text: str, count: int) -> Optional[List[int]]:
     return faces
 
 
+def _show_check_receipt(content: str) -> None:
+    """Show the player the scored check at once (#530). The DM narrates it next turn without the numbers."""
+    from web.shared_state import emit_player_output, has_player_output_sink
+    has_sink = has_player_output_sink()
+    if emit_player_output({"type": "system", "content": content,
+                           "message_id": f"msg-{uuid4().hex}"}) is True:
+        return
+    if not has_sink:
+        print(content)
+
+
 def take_player_rolls(read: Callable[[str], str]) -> List[str]:
     """Persist pending checks and return their outcomes for the next narrated turn.
 
@@ -138,6 +150,8 @@ def take_player_rolls(read: Callable[[str], str]) -> List[str]:
             dice = [f"{face} on a d20" for face in result.faces]
             rolled = " and ".join(dice)
             emit_player_output({'type': 'user-input', 'content': f"I rolled {rolled}."})
+        if result.ok:
+            _show_check_receipt(checks.describe(result))
         info(f"CHECK: {line}", category="character_updates")
         completed.append(line)
 
