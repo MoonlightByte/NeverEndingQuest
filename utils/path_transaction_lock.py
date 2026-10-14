@@ -162,6 +162,14 @@ def _lock_windows_file(
                 return False
 
 
+def wait_for_windows_lock(lock_file) -> bool:
+    """Lock byte 0 of an open Windows lock file, waiting for as long as
+    another process holds it (#944); LK_LOCK gives up after ten tries.
+    Contention is retried and any other OSError raised, exactly as for
+    path_transaction_lock."""
+    return _lock_windows_file(lock_file)
+
+
 def _lock_file(lock_file, *, deadline=None, poll_seconds: float = 0.05,
                wait_callback=None, wait_started=None) -> bool:
     if os.name == "nt":

@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Two characters whose names have no Latin letter or digit (for example Korean or Cyrillic names) are no longer merged into one in the rules engine; each now gets its own engine id, and every other name keeps its id (#948).
+- Raising Constitution at level-up now raises hit points as the rules say: the new level uses the new modifier, and every earlier level gains the difference. Before, the new level used the old modifier and earlier levels gained nothing (#1045).
+- When the DM stores or takes an item, or levels a character up, without naming the character, the reply is sent back to name one from the party; before, the item moved in or out of the first party member's pack and the level-up stopped with "no sheet for None". In a fight, an HP or condition update that names no one is sent back to the combat model instead of being lost at the end of the fight (#959, #1048).
+- Handing a companion part of a stack a second time no longer fails, and an item handed over or taken from a chest can no longer share its id with one kept elsewhere (#1039).
+- On Windows, travel departure, cache, capture and generation file locks now wait for another game process instead of failing after about ten seconds (#944).
+- A fight's round summary no longer says a Great Weapon Fighting swing's damage dice "count as" the same numbers when no die rolled a 1 or 2; it still says so when one did (#941).
 - When a move's prepare step fails and its record cannot be read or removed, the player still gets the plain "the move could not be prepared" line; the record is left for recovery (#943).
 - A feat that raises an ability score at level-up (Grappler, an Epic Boon, or Ability Score Improvement named as a feat) now applies its increase; before, the feat was saved and the increase was lost. When the answer leaves the ability out, the level-up asks for it (#424).
 - An internal error while the DM's response is being checked now ends that check at once with its own message, instead of being retried five times and reported as an AI provider failure (#950).

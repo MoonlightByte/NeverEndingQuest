@@ -35,8 +35,8 @@ def _lock_file(handle: BinaryIO) -> None:
         if handle.tell() == 0:
             handle.write(b"\0")
             handle.flush()
-        handle.seek(0)
-        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+        from utils.path_transaction_lock import wait_for_windows_lock
+        wait_for_windows_lock(handle)  # no ten-try cap (#944)
     else:
         import fcntl
 

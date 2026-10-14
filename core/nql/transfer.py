@@ -171,7 +171,7 @@ def _transfer_ammunition(giver: Dict[str, Any], receiver: Dict[str, Any], gid: s
 
 def transact(giver: Dict[str, Any], receiver: Dict[str, Any], item_name: str, quantity: int, *,
              location: str = "party", request_id: Optional[str] = None,
-             binary: Optional[str] = None) -> TransferOutcome:
+             binary: Optional[str] = None, reserved: Optional[set] = None) -> TransferOutcome:
     """Move ``quantity`` of the giver's ``item_name`` to the receiver through the engine.
 
     Returns new copies of both sheets with ``equipment`` rewritten from the
@@ -212,7 +212,14 @@ def transact(giver: Dict[str, Any], receiver: Dict[str, Any], item_name: str, qu
     move_id = iid
     actions: List[str] = []
     if quantity < stock:
-        move_id = f"{iid}:part:{quantity}"
+        # The part's id is free in this world and wherever the caller read
+        # (every sheet and container, #1039); see genesis.split_id.
+        taken = set(reserved or ())
+        for declared in world.item_ids.values():
+            taken.update(declared.values())
+        for sheet in (giver, receiver):
+            taken.update(aid for aid, _ in genesis.ammunition_rows(sheet, []))
+        move_id = genesis.split_id(iid, quantity, taken)
         actions.append(f"split {_q(iid)} quantity {quantity} into {_q(move_id)} by {_q(gid)};")
     actions.append(f"transfer {_q(move_id)} from {_q(gid)} to {_q(rid)};")
     actions.append(f"place {_q(move_id)} from character {_q(gid)} to character {_q(rid)} by {_q(gid)};")

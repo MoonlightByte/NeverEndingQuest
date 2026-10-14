@@ -982,10 +982,8 @@ def prepare_current_transition_actions(operation_id):
             from core.managers.storage_processor import process_storage_request
             from core.managers.storage_manager import StorageManager
 
-            party = safe_json_load("party_tracker.json") or {}
-            character_name = parameters.get("characterName") or next(
-                iter(party.get("partyMembers", []) or []), None
-            )
+            # Never a default character (#959).
+            character_name = parameters.get("characterName")
             try:
                 if not character_name:
                     raise ValueError("storageInteraction requires a character")
@@ -5475,11 +5473,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             # Get storage description from parameters
             storage_description = parameters.get("description", "")
             character_name = parameters.get("characterName", "")
-            
-            # Fallback to party member if no character specified
-            if not character_name:
-                character_name = next((member for member in party_tracker_data["partyMembers"]), None)
-                
+            # Never a default character: a request that names none changes nothing (#959)
             if not character_name:
                 print(f"ERROR: No character name provided for storage interaction")
                 conversation_history.append({"role": "user", "content": "Storage Error: No character name provided for storage interaction. This storage step and later actions have not executed. Do not repeat earlier completed actions; use current state."})

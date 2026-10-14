@@ -3224,16 +3224,25 @@ CRITICAL: If validation fails due to wrong NPC for location, provide specific co
         # print(f"DEBUG: Traceback: {traceback.format_exc()}")
         return f"MODULE VALIDATION DATA: Error loading module data - {str(e)}"
 
+# Actions that must name their character; any one of the fields will do.
+_REQUIRED_CHARACTER_FIELDS = {
+    'updateCharacterInfo': ('characterName', 'npcName'),
+    'levelUp': ('entityName',),
+    'storageInteraction': ('characterName',),
+}
+
+
 def normalize_character_names_in_response(response_text, party_tracker_data):
     """
     Check the character names in actions before validation (#855, family 2).
     updateCharacterInfo and levelUp must name a party character; transferItem,
     transferCurrency, splitCurrency, removeEffect, awardExperience, rollCheck,
-    expendCharges and acquireItem a party character or an existing sheet,
-    exactly (case ignored, "_" read as a space). A near name
+    expendCharges, acquireItem and storageInteraction a party character or an
+    existing sheet, exactly (case ignored, "_" read as a space). A near name
     ("Kira", "Ranger Kira") is refused with the exact names, never matched to
-    another character. An updateCharacterInfo that names no character is
-    refused (#914). The response is never edited.
+    another character. An updateCharacterInfo, levelUp or storageInteraction
+    that names no character is refused (#914, #959, #1048). The response is
+    never edited.
 
     Returns:
         (normalized_response, message) or (None, error_message) if unresolvable
@@ -3271,16 +3280,19 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
             fields = (('fromCharacter', True), ('toCharacter', True))
         elif action_type == 'splitCurrency':
             fields = (('fromCharacter', True), ('toCharacters', True))
-        elif action_type in ('removeEffect', 'awardExperience', 'rollCheck', 'expendCharges', 'acquireItem'):
+        elif action_type in ('removeEffect', 'awardExperience', 'rollCheck', 'expendCharges', 'acquireItem',
+                             'storageInteraction'):
             fields = (('characterName', True),)
         else:
             continue
         params = action.get('parameters', {})
         if not isinstance(params, dict):
             continue
-        if action_type == 'updateCharacterInfo' and not params.get('characterName') and not params.get('npcName'):
-            # #914: an update that names no character is refused, never written to a default character
-            rejections.append(f"Action {i+1} (updateCharacterInfo characterName): no character named")
+        required = _REQUIRED_CHARACTER_FIELDS.get(action_type)
+        if required and not any(params.get(name) for name in required):
+            # An action that names no character is refused, never applied to a
+            # default character (#914, #959, #1048).
+            rejections.append(f"Action {i+1} ({action_type} {required[0]}): no character named")
             continue
 
         for field, sheet_allowed in fields:

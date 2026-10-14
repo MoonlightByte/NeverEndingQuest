@@ -47,8 +47,8 @@ class CaptureFileWriter:
                     if lock_file.tell() == 0:
                         lock_file.write(b"\0")
                         lock_file.flush()
-                    lock_file.seek(0)
-                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+                    from utils.path_transaction_lock import wait_for_windows_lock
+                    wait_for_windows_lock(lock_file)  # no ten-try cap (#944)
                 else:
                     import fcntl
 

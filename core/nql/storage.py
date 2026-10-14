@@ -19,12 +19,15 @@ A rejection is returned as a typed outcome with the engine's fault. The caller
 decides how to report it; nothing is written.
 """
 import copy
+import glob
+import os
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.nql import ammunition, apply, genesis, transfer
 from utils.enhanced_logger import warning
+from utils.file_operations import safe_read_json
 
 
 @dataclass
@@ -58,19 +61,6 @@ def _find_entry(entries: List[Dict[str, Any]], ids: Dict[int, str], name: str) -
     return None, None
 
 
-def _fresh_split_id(base: str, count: int, taken: set) -> str:
-    """``<base>:part:<count>``, or with a numbered tail when the world (or this
-    request) already holds that id: a chest entry keeps the id of the part it
-    came from, so a second deposit of the same count needs a new one (#1026)."""
-    candidate = f"{base}:part:{count}"
-    suffix = 1
-    while candidate in taken:
-        suffix += 1
-        candidate = f"{base}:part:{count}:{suffix}"
-    taken.add(candidate)
-    return candidate
-
-
 def _ordinary_ammunition(entry: Any) -> bool:
     return isinstance(entry, dict) and entry.get("item_type") == "ammunition" \
         and not entry.get("magical") and not entry.get("effects")
@@ -99,9 +89,23 @@ def stored_quantity(contents: List[Dict[str, Any]], entry: Dict[str, Any]) -> An
     return sum(_stock(e) for e in contents if _same_kind(entry, e) and _stock(e) > 0)
 
 
+def held_ids_on_disk(characters_dir: str = "characters", storage_file: str = "player_storage.json") -> set:
+    """Every item id the saved game holds, read as values: each sheet in
+    ``characters_dir`` (a backup, whose name has a second dot, is not a sheet)
+    and every container in ``storage_file``. A new split id is none of them
+    (#1039)."""
+    sheets = []
+    for path in sorted(glob.glob(os.path.join(characters_dir, "*.json"))):
+        if "." not in os.path.basename(path)[:-len(".json")]:
+            sheets.append(safe_read_json(path))
+    data = safe_read_json(storage_file) if os.path.exists(storage_file) else None
+    containers = data.get("playerStorage") if isinstance(data, dict) else None
+    return genesis.held_ids(sheets, containers if isinstance(containers, list) else [])
+
+
 def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict[str, Any],
              operation: Dict[str, Any], *, request_id: Optional[str] = None,
-             binary: Optional[str] = None) -> StorageOutcome:
+             binary: Optional[str] = None, reserved: Optional[set] = None) -> StorageOutcome:
     """Run one store_item or retrieve_item through the engine.
 
     ``container`` is the target container record inside ``storage`` (already
@@ -129,6 +133,11 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
     for declared in list(world.item_ids.values()) + list(world.content_ids.values()):
         taken.update(declared.values())
     taken.update(aid for aid, _ in genesis.ammunition_rows(character, []))
+    # A part travels (chest to sheet, sheet to sheet), so its id is free
+    # everywhere, not only in this world: every container in the storage
+    # record, and whatever the caller read from disk (#1039).
+    taken.update(genesis.held_ids([], storage.get("playerStorage") or []))
+    taken.update(reserved or ())
 
     # Compile the request from the typed operation. Partial stock is split first
     # (a new id under the same scope), then the whole split stock is placed.
@@ -153,7 +162,7 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
                                           gaps=world.gaps)
                 place_id = aid
                 if quantity < stock:
-                    place_id = _fresh_split_id(aid, quantity, taken)
+                    place_id = genesis.split_id(aid, quantity, taken)
                     actions.append(f"split {_q(aid)} quantity {quantity} into {_q(place_id)} by {_q(cid)};")
                 else:
                     whole.append(aid)
@@ -198,7 +207,7 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
             take = min(_stock(pool[i]), left)
             place_id = part_id
             if take < _stock(pool[i]):
-                place_id = _fresh_split_id(part_id, take, taken)
+                place_id = genesis.split_id(part_id, take, taken)
                 actions.append(f"split {_q(part_id)} quantity {take} into {_q(place_id)} by {_q(cid)};")
             actions.append(f"place {_q(place_id)} from {source} to {target} by {_q(cid)};")
             placed.append((place_id, take))
