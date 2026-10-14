@@ -103,6 +103,14 @@ class HeadlessSession:
                     "providers will fail until a key is added."))
         copied = bootstrap_mod.prepare_game_dir(
             self.game_dir, self.repo_root, module=module)
+        refreshed = [entry for entry in copied if entry.startswith("refreshed ")]
+        if refreshed:
+            self.writer.emit(
+                "system",
+                content=(
+                    "This game folder held older copies of the game's files "
+                    "and was updated from this install: %s."
+                    % ", ".join(refreshed)))
         os.chdir(self.game_dir)
         bootstrap_mod.ensure_runtime_dirs()
         if copied and self.debug:
