@@ -175,7 +175,8 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
                                                     f"{quantity} {entry['name']} (purse: {acquisition.purse_text(purse)})")}
 
             working = copy.deepcopy(sheet)
-            genesis.assign_ids(working, reserved=genesis.held_ids_on_disk())
+            held = genesis.held_ids_on_disk()  # nothing is written before the buy below
+            genesis.assign_ids(working, reserved=held)
             cid = genesis.character_id(working)
             world = genesis.build_world([working], location, clock_tick=clock, dice_seed=dice)
             for gap in world.gaps:
@@ -188,7 +189,7 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
                 lines = acquisition.coin_lines(cid, delta) + [
                     acquisition.ammunition_lines(cid, iid, entry["name"], quantity, row is not None)]
             else:
-                iid = acquisition.next_item_id(working, entry, reserved=genesis.held_ids_on_disk())
+                iid = acquisition.next_item_id(working, entry, reserved=held)
                 lines = acquisition.coin_lines(cid, delta) + [acquisition.item_line(cid, iid, entry, quantity)]
             request = request_id or f"acquire:{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
             document = {"world": world.source, "world_name": "acquire-genesis.nql",

@@ -457,17 +457,24 @@ def held_ids(sheets: List[Any], containers: List[Any]) -> set:
     """Every item id these sheets and storage containers hold, as values: each
     sheet row's stored id and ammunition stock, and each container entry's
     stored id (#1039). A row with no stored id is left out: its minted id names
-    its own sheet, and that mint steps past the ids held elsewhere (#1060)."""
+    its own sheet, and that mint steps past the ids held elsewhere (#1060).
+    An equipment, ammunition or contents value that is not a list, or a
+    container that is not an object, holds nothing: one malformed file never
+    stops another sheet's save."""
+    def rows(value):
+        return value if isinstance(value, list) else []
+
     held: set = set()
     for sheet in sheets:
         if not isinstance(sheet, dict):
             continue
-        for entry in sheet.get("equipment") or []:
+        for entry in rows(sheet.get("equipment")):
             if isinstance(entry, dict) and isinstance(entry.get("nql_id"), str):
                 held.add(bounded_item_id(entry["nql_id"], ENGINE_ID_MAX))
-        held.update(aid for aid, _ in ammunition_rows(sheet, []))
+        if isinstance(sheet.get("ammunition"), list):
+            held.update(aid for aid, _ in ammunition_rows(sheet, []))
     for container in containers:
-        for entry in (container.get("contents") or []) if isinstance(container, dict) else []:
+        for entry in rows(container.get("contents")) if isinstance(container, dict) else []:
             if isinstance(entry, dict) and isinstance(entry.get("nql_id"), str):
                 held.add(bounded_item_id(entry["nql_id"], ENGINE_ID_MAX))
     return held
