@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- When the DM stores or takes an item, or levels a character up, without naming the character, the reply is sent back to name one from the party; before, the item moved in or out of the first party member's pack and the level-up stopped with "no sheet for None". In a fight, an HP or condition update that names no one is sent back to the combat model instead of being lost at the end of the fight (#959, #1048).
 - Handing a companion part of a stack a second time no longer fails, and an item handed over or taken from a chest can no longer share its id with one kept elsewhere (#1039).
 - On Windows, travel departure, cache, capture and generation file locks now wait for another game process instead of failing after about ten seconds (#944).
 - A fight's round summary no longer says a Great Weapon Fighting swing's damage dice "count as" the same numbers when no die rolled a 1 or 2; it still says so when one did (#941).
