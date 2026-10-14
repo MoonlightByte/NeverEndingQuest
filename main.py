@@ -471,9 +471,14 @@ def _finish_welcome(lifecycle, disposition):
         lifecycle.disposition = disposition
         lifecycle.phase = "QUIESCENT"
     if disposition == "SUPERSEDED":
-        warning(
-            "INITIALIZATION: Startup welcome superseded (%s)"
-            % (lifecycle.scope.supersession or {}).get("kind"),
+        with lifecycle.scope.lock:
+            kind = (lifecycle.scope.supersession or {}).get("kind")
+        # Every recorded cause is a designed end: a control, or the player's
+        # text before the apply (refused during it since #990). Only an end
+        # with no recorded cause is worth a warning.
+        log = info if kind is not None else warning
+        log(
+            "INITIALIZATION: Startup welcome superseded (%s)" % kind,
             category="startup",
         )
     # Queued Save/Load/Reset records execute HERE on the game thread, before
