@@ -71,12 +71,39 @@ class LevelUpSession:
         self._last_turn: Optional[LevelUpTurn] = None
         self.is_player = False
         self._failures = 0
+        self._committed = False
 
     # ---- surface -------------------------------------------------------------
     def commit_guard(self):
         return _level_up_commit_guard(self._scope)
 
     def start(self) -> LevelUpTurn:
+        return self._guarded(self._start)
+
+    def handle_input(self, user_input) -> LevelUpTurn:
+        return self._guarded(lambda: self._handle_input(user_input))
+
+    def _guarded(self, step) -> LevelUpTurn:
+        """One level-up step. An unexpected error ends this level-up as a narrated
+        line instead of ending the game loop (#539); supersession and a read-only
+        save stop go through as before (#654)."""
+        from core.combat.invocation import InvocationSupersededError
+        from utils.capture.live_provider_call import LiveProviderSuperseded
+        from utils.transient_filesystem import ReadOnlySaveStop
+        try:
+            return step()
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            raise
+        except Exception as exc:
+            error(f"LEVEL-UP: {self.character_name} step failed: {exc}", exception=exc, category="level_up")
+            if self._committed:
+                return self._terminal("complete", f"{self.character_name} is now level "
+                                      f"{self._settled.new_level}; the summary could not be built.")
+            return self._terminal("not_applied", "Your level-up has not been applied: the rules could not "
+                                  f"read part of {self.character_name}'s sheet. Nothing changed; the game "
+                                  "goes on, and the level-up can be asked for again.")
+
+    def _start(self) -> LevelUpTurn:
         self._scope = get_live_turn_scope()
         module_name = str((safe_read_json("party_tracker.json") or {}).get("module", "")).replace(" ", "_")
         from updates.update_character_info import normalize_character_name
@@ -95,7 +122,7 @@ class LevelUpSession:
             self.conversation.append({"role": "user", "content": opening})
         return self._turn()
 
-    def handle_input(self, user_input) -> LevelUpTurn:
+    def _handle_input(self, user_input) -> LevelUpTurn:
         self.conversation.append({"role": "user", "content": str(user_input)})
         return self._turn()
 
@@ -462,6 +489,7 @@ class LevelUpSession:
             from updates.update_character_info import create_character_backup
             create_character_backup(self._path)
             commit_character_sheet(self._path, after, commit_guard=self.commit_guard, expected_before=sheet)
+            self._committed = True
         info(f"LEVEL-UP: {self.character_name} -> level {s.new_level} ({how}); engine ops {growth.operations}",
              category="level_up")
         summary = self._summary(after, how)
