@@ -297,10 +297,12 @@ def load_or_create_monster(monster_type):
         # process is not vulnerable to a transient party_tracker.json read
         # failure silently falling back to level 1 (bug CH-M3).
         party_level = _get_party_level()
+        from utils.encoding_utils import utf8_child_env
         result = subprocess.run(
             [sys.executable, monster_builder_path, monster_type,
              "--party-level", str(party_level)],
-            stdin=subprocess.DEVNULL, capture_output=True, text=True)
+            stdin=subprocess.DEVNULL, capture_output=True,
+            encoding="utf-8", errors="replace", env=utf8_child_env())
         if result.returncode == 0:
             print(f"[COMBAT_BUILDER] Monster creation successful: {monster_type}")
             info(f"SUCCESS: Monster builder ({monster_type}) - PASS", category="combat_builder")
