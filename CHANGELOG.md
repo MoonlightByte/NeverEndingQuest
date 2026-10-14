@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `updates/update_party_tracker.py`, a module that nothing called: it read a `party` list and an armor/weapons/other equipment shape that no party tracker or character sheet has used for a long time, so any call would have failed. Its unused import in `core/managers/combat_manager.py` and the lines naming it in `module_debugger.py` and `ARCHITECTURE.md` went with it (#470).
 
 ### Fixed
+- A turn no longer fails with "the AI provider call could not be completed" when the response checker's debug file cannot be written (a file held by another program, a read-only or full disk); the debug copy is skipped and the turn goes on (#342).
 - An empty or broken JSON file in a characters folder (for example an old 0-byte `ranger_thane_temp.json` that saves carry) no longer stops the game at startup: the effects conversion skips it and records it in its report. If the broken file is a party member's own sheet, the conversion waits instead, so that member's older effect bonuses are not dropped (#408).
 - On Windows, a hero or companion whose name uses Korean, Chinese, Japanese, Cyrillic, Greek or other non-Western letters can now start a fight, and a new monster whose description holds such letters or math symbols no longer fails to build (#895).
 - A hero or companion whose name has no Latin letters (Korean, Chinese, Japanese, Cyrillic, Greek...) now gets their own character file; two such characters no longer share one sheet or block each other (#894).
