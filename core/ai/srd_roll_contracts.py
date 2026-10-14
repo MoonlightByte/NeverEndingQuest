@@ -31,6 +31,56 @@ class SpellRollContractError(ValueError):
     """The committed SRD roll-contract data is malformed or stale."""
 
 
+_SOURCE_LOGGED = set()
+_UNAVAILABLE_LOGGED = set()
+
+
+def _log_error(message):
+    try:
+        from utils.enhanced_logger import error as _error
+        _error(message, category="combat_events")
+    except Exception:
+        pass
+
+
+@lru_cache(maxsize=1)
+def repository_sha256():
+    """sha256 of data/spell_repository.json with CRLF line endings read as LF
+    (#890: a Windows checkout may hold it CRLF; strict JSON has no raw line
+    break inside a string, so only line endings change), or None when the
+    file cannot be read."""
+    try:
+        raw = SPELL_REPOSITORY_PATH.read_bytes()
+    except OSError:
+        return None
+    return hashlib.sha256(raw.replace(b"\r\n", b"\n")).hexdigest()
+
+
+def check_source(table, metadata):
+    """#890: a derived table records the repository it was generated from.
+    A difference is a development-time freshness signal, logged once per
+    table as an error; the typed records are still used (they do not read
+    the repository at runtime). Never raises."""
+    expected = metadata.get("sourceSha256") if isinstance(metadata, dict) else None
+    actual = repository_sha256()
+    if expected == actual or table in _SOURCE_LOGGED:
+        return
+    _SOURCE_LOGGED.add(table)
+    _log_error(
+        "SRD spell table %s was generated from repository %s but data/spell_repository.json is %s; "
+        "the typed records are still used (regenerate the table)"
+        % (table, str(expected)[:12], actual[:12] if actual else "unreadable"))
+
+
+def log_unavailable(table, exc):
+    """#890: one error per table per process when it cannot be loaded."""
+    if table in _UNAVAILABLE_LOGGED:
+        return
+    _UNAVAILABLE_LOGGED.add(table)
+    _log_error("SRD spell table %s could not be loaded (%s: %s); spells fall back to the model's rolls"
+               % (table, type(exc).__name__, exc))
+
+
 @lru_cache(maxsize=1)
 def load_spell_roll_contracts():
     raw = CONTRACT_PATH.read_text(encoding="utf-8")
@@ -43,9 +93,7 @@ def load_spell_roll_contracts():
         raise SpellRollContractError("Spell-roll contract sections are invalid")
     if metadata.get("totalSpells") != len(contracts):
         raise SpellRollContractError("Spell-roll contract count is stale")
-    source_hash = hashlib.sha256(SPELL_REPOSITORY_PATH.read_bytes()).hexdigest()
-    if metadata.get("sourceSha256") != source_hash:
-        raise SpellRollContractError("Spell-roll contracts do not match the SRD repository")
+    check_source("srd_spell_roll_contracts", metadata)
     if not metadata.get("_srd_attribution"):
         raise SpellRollContractError("Spell-roll contracts lack SRD attribution")
     for key, contract in contracts.items():
@@ -114,20 +162,76 @@ def _scaled_dice(phase, slot_level=None, character_level=None):
     return base
 
 
-def _slot_level(intent, request):
+# The sheet's spell slot keys (spellcasting.spellSlots): level1 .. level9.
+_SLOT_KEY = re.compile(r"level([1-9])")
+
+
+def _typed_slot_level(intent, request):
+    """The typed slotLevel of the request, then of the intent, or None."""
     for source in (request, intent):
         value = source.get("slotLevel") if isinstance(source, dict) else None
         if type(value) is int and value > 0:
             return value
         if isinstance(value, str) and value.strip().isdigit():
             return int(value.strip())
+    return None
+
+
+def _spent_slot_level(intent, owner):
+    """The level of the own spell slot the intent spends (#855, F4-Q3 A): a
+    spellSlot resource of ``owner`` with an int delta below zero and a name
+    in the sheet's key form. None when there is none, or when the spent own
+    slots name different levels (F4-Q2 A)."""
+    levels = set()
+    for resource in (intent or {}).get("resources", []) or []:
+        if (not isinstance(resource, dict) or resource.get("kind") != "spellSlot"
+                or resource.get("owner") != owner or type(resource.get("delta")) is not int
+                or resource["delta"] >= 0):
+            continue
+        match = _SLOT_KEY.fullmatch(str(resource.get("name") or ""))
+        if match:
+            levels.add(int(match.group(1)))
+    return levels.pop() if len(levels) == 1 else None
+
+
+def _slot_level(intent, request, owner=None):
+    """The level a spell is scored at. With ``owner`` (the caster's sheet
+    name) the slot it spends decides, then its typed slotLevel; with no
+    owner, the typed slotLevel, then the first spellSlot resource named in
+    the sheet's key form."""
+    if owner is not None:
+        spent = _spent_slot_level(intent, owner)
+        return spent if spent is not None else _typed_slot_level(intent, request)
+    typed = _typed_slot_level(intent, request)
+    if typed is not None:
+        return typed
     for resource in (intent or {}).get("resources", []) or []:
         if not isinstance(resource, dict) or resource.get("kind") != "spellSlot":
             continue
-        match = re.search(r"(\d+)", str(resource.get("name") or ""))
+        match = _SLOT_KEY.fullmatch(str(resource.get("name") or ""))
         if match:
             return int(match.group(1))
     return None
+
+
+def slot_level_mismatch(intent, owner, sheet=None):
+    """The correction when the intent spends an own slot and also types a
+    different slotLevel (F4-Q3 A: the spent slot sets the level), or None.
+    A higher slot is offered only when ``sheet`` still holds one."""
+    spent = _spent_slot_level(intent, owner)
+    if spent is None or not isinstance(intent, dict):
+        return None
+    request = intent.get("requiresPlayerInput")
+    typed = _typed_slot_level(intent, request if isinstance(request, dict) else {})
+    if typed is None or typed == spent:
+        return None
+    message = ("slotLevel %d disagrees with the spent slot level%d: the slot spent sets the spell's level; "
+               "send slotLevel %d" % (typed, spent, spent))
+    slots = ((sheet or {}).get("spellcasting") or {}).get("spellSlots") if isinstance(sheet, dict) else None
+    held = slots.get("level%d" % typed) if isinstance(slots, dict) else None
+    if isinstance(held, dict) and type(held.get("current")) is int and held["current"] > 0:
+        message += ", or spend a level%d slot" % typed
+    return message
 
 
 def _request_dice(request):
@@ -167,7 +271,8 @@ def audit_spell_roll_request(intent, actor_sheet=None, document=None):
     key = _canonical_key(spell_name)
     try:
         contracts = (document or load_spell_roll_contracts()).get("contracts") or {}
-    except (OSError, TypeError, ValueError, SpellRollContractError):
+    except (OSError, TypeError, ValueError, SpellRollContractError) as exc:
+        log_unavailable("srd_spell_roll_contracts", exc)
         # Contract data is an advisory guard, never a gameplay dependency. A
         # stale/corrupt/missing generated sidecar must degrade to observable
         # unvalidated play instead of consuming the model correction budget.
@@ -206,7 +311,7 @@ def audit_spell_roll_request(intent, actor_sheet=None, document=None):
             "spellName": contract.get("name"),
             "reason": "No unambiguous requested dice expression was available.",
         }
-    slot_level = _slot_level(intent, request)
+    slot_level = _slot_level(intent, request, (actor_sheet or {}).get("name") or None)
     character_level = (actor_sheet or {}).get("level")
     try:
         phase = _select_phase(contract, request, actual, slot_level, character_level)

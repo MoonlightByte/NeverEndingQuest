@@ -927,6 +927,7 @@ def prepare_current_transition_actions(operation_id):
                 CharacterProposalDropped,
                 prepare_character_update,
             )
+            from updates.update_character_info import EngineRefusedChange
 
             party = safe_json_load("party_tracker.json") or {}
             character_name = (
@@ -957,6 +958,23 @@ def prepare_current_transition_actions(operation_id):
                     "owner": dropped.owner,
                     "message_id": str(uuid4()),
                 }
+            except EngineRefusedChange as refusal:
+                # #855: the rules engine refused the change. It is dropped,
+                # the travel goes on, and the arrival notice gives the
+                # engine's reason.
+                warning(
+                    "TRAVEL: the rules refused the sheet update for %s; "
+                    "dropped, travel goes on" % character_name,
+                    category="location_transitions",
+                )
+                receipt = {
+                    "kind": "updateCharacterInfo",
+                    "character_status": "dropped",
+                    "owner": character_name,
+                    "reason_code": "engine_refused",
+                    "engine_reason": str(refusal.reason),
+                    "message_id": str(uuid4()),
+                }
         elif family == "storageInteraction":
             from core.managers.storage_processor import process_storage_request
             from core.managers.storage_manager import StorageManager
@@ -965,40 +983,71 @@ def prepare_current_transition_actions(operation_id):
             character_name = parameters.get("characterName") or next(
                 iter(party.get("partyMembers", []) or []), None
             )
-            if not character_name:
-                raise ValueError("storageInteraction requires a character")
-            description = parameters.get("description")
-            if not isinstance(description, str) or not description.strip():
-                raise ValueError("storageInteraction requires a description")
-            proposal = process_storage_request(
-                description,
-                character_name,
-                structural_reissue=True,
-            )
-            if not proposal.get("success"):
-                # #855: dropped like a sheet update; the travel goes on.
-                warning(
-                    "TRAVEL: no usable storage change for %s; dropped after "
-                    "the bounded tries, travel goes on" % character_name,
-                    category="location_transitions",
+            try:
+                if not character_name:
+                    raise ValueError("storageInteraction requires a character")
+                description = parameters.get("description")
+                if not isinstance(description, str) or not description.strip():
+                    raise ValueError("storageInteraction requires a description")
+                proposal = process_storage_request(
+                    description,
+                    character_name,
+                    structural_reissue=True,
                 )
-                receipt = {
-                    "kind": "storageInteraction",
-                    "storage_status": "dropped",
-                    "owner": character_name,
-                    "message_id": str(uuid4()),
-                }
-            else:
+                if not proposal.get("success"):
+                    raise RuntimeError("required storage proposal was not accepted")
                 receipt = StorageManager(
                     ensure_storage=False
                 ).prepare_staged_operation(
                     proposal["operation"], record["operation_id"]
                 )
                 receipt["message_id"] = str(uuid4())
+            except _TRAVEL_PREPARE_PASSTHROUGH:
+                raise
+            except (ValueError, RuntimeError):
+                # #855: dropped like a sheet update; the travel goes on.
+                owner = character_name or "Your character"
+                warning(
+                    "TRAVEL: no usable storage change for %s; dropped after "
+                    "the bounded tries, travel goes on" % owner,
+                    category="location_transitions",
+                )
+                receipt = {
+                    "kind": "storageInteraction",
+                    "storage_status": "dropped",
+                    "owner": owner,
+                    "message_id": str(uuid4()),
+                }
         elif family == "updatePartyNPCs":
-            receipt = prepare_party_npc_update(
-                parameters, record["operation_id"]
-            )
+            try:
+                receipt = prepare_party_npc_update(
+                    parameters, record["operation_id"]
+                )
+            except _TRAVEL_PREPARE_PASSTHROUGH:
+                raise
+            except (ValueError, RuntimeError):
+                # #855: a party change that cannot be prepared (no sheet
+                # could be made, or a malformed request) is dropped and the
+                # travel goes on. A failed add is told on arrival.
+                npc = parameters.get("npc")
+                npc_name = npc.get("name") if isinstance(npc, dict) else None
+                owner = (
+                    npc_name.strip()
+                    if isinstance(npc_name, str) and npc_name.strip()
+                    else None
+                )
+                warning(
+                    "TRAVEL: no usable party change for %s; dropped, travel "
+                    "goes on" % (owner or "an unnamed NPC"),
+                    category="location_transitions",
+                )
+                receipt = {
+                    "kind": "updatePartyNPCs",
+                    "npc_status": "dropped",
+                    "operation": parameters.get("operation"),
+                    "owner": owner,
+                    "message_id": str(uuid4()),
+                }
         else:
             source_module = str(checkpoint.get("module_name") or "")
             target_module = str(parameters.get("module") or "")
@@ -1091,6 +1140,7 @@ def _departure_projection_status(action_record):
     if isinstance(receipt, dict) and "dropped" in (
         receipt.get("character_status"),
         receipt.get("storage_status"),
+        receipt.get("npc_status"),
     ):
         # #855: dropped before movement; it is never applied on arrival.
         return "dropped"
@@ -1731,9 +1781,13 @@ def apply_current_transition_action(operation_id, action_index):
         if dropped:
             # After the checkpoint write: shown at most once, never again
             # on a resume (the cursor is past this record).
-            _show_transition_notice(
-                receipt["message_id"], _DROPPED_SHEET_NOTICE % receipt["owner"]
-            )
+            if receipt.get("reason_code") == "engine_refused":
+                notice = _DROPPED_SHEET_RULES_NOTICE % (
+                    receipt["owner"], receipt.get("engine_reason") or "no reason given"
+                )
+            else:
+                notice = _DROPPED_SHEET_NOTICE % receipt["owner"]
+            _show_transition_notice(receipt["message_id"], notice)
         return "committed"
 
     if family == "storageInteraction":
@@ -1771,6 +1825,26 @@ def apply_current_transition_action(operation_id, action_index):
         return "committed"
 
     if family == "updatePartyNPCs":
+        if receipt.get("npc_status") == "dropped":
+            # #855: dropped before movement; the roster is not touched.
+            record["status"] = "committed"
+            deferred["cursor"] = action_index + 1
+            deferred["receipts"].append(
+                {
+                    "operation_id": record["operation_id"],
+                    "kind": family,
+                    "status": "committed",
+                    "npc_status": "dropped",
+                }
+            )
+            if deferred["cursor"] >= len(records):
+                deferred["status"] = "committed"
+            _write_location_transition_checkpoint(checkpoint)
+            if receipt.get("operation") == "add" and receipt.get("owner"):
+                _show_transition_notice(
+                    receipt["message_id"], _DROPPED_NPC_NOTICE % receipt["owner"]
+                )
+            return "committed"
         party = safe_json_load("party_tracker.json")
         if not isinstance(party, dict) or not isinstance(
             party.get("partyNPCs"), list
@@ -3654,6 +3728,68 @@ _DROPPED_STORAGE_NOTICE = (
     "%s's storage change was not made: it could not be worked out. If it "
     "still matters, say so in your next message."
 )
+_DROPPED_SHEET_RULES_NOTICE = (
+    "%s's character sheet was not changed: the rules did not allow it (%s). "
+    "If it still matters, say so in your next message."
+)
+_DROPPED_NPC_NOTICE = (
+    "%s did not join the party: their character sheet could not be made. If "
+    "it still matters, say so in your next message."
+)
+# Raised from a travel prepare step, these are never a dropped change: the
+# turn was superseded, the save is read-only, or the provider refused (#855).
+_TRAVEL_PREPARE_PASSTHROUGH = (
+    LiveProviderSuperseded,
+    InvocationSupersededError,
+    LiveProviderCompletedError,
+    ReadOnlySaveStop,
+)
+
+
+def _retire_unmoved_transition_checkpoint(operation_id):
+    """Remove this move's own checkpoint after its prepare step failed (#855).
+
+    Only this operation's record, with the party still at its origin (the
+    rule recovery uses for a planned move), is removed; anything else is left
+    to recovery, with one warning.
+    """
+    from core.managers.campaign_manager import _party_module_transition_lock
+
+    with _party_module_transition_lock():
+        checkpoint = safe_json_load(PENDING_LOCATION_TRANSITION_FILE)
+        party = safe_json_load("party_tracker.json")
+        world = party.get("worldConditions") if isinstance(party, dict) else None
+        if (
+            isinstance(checkpoint, dict)
+            and checkpoint.get("operation_id") == operation_id
+            and checkpoint.get("kind") == "current_transition"
+            and isinstance(world, dict)
+            and str(world.get("currentLocationId", ""))
+            == str(checkpoint.get("origin_location_id", ""))
+        ):
+            _remove_location_transition_checkpoint()
+            return True
+    warning(
+        "TRAVEL: the failed move's record was left for recovery",
+        category="location_transitions",
+    )
+    return False
+
+
+def _travel_prepare_failure(exc):
+    """The curated error for a move whose prepare step failed (#855)."""
+    response_data = {
+        "error_message": "The move could not be prepared; nothing changed.",
+        "retryable": False,
+        "transition_recovery_required": False,
+    }
+    if isinstance(exc, LiveProviderCompletedError):
+        # A provider refusal (#240): its class picks the account text the
+        # player can act on (#432), as on the direct path.
+        refusal = classify_provider_error(exc)
+        response_data["provider_refusal"] = refusal["category"]
+        response_data["provider_refusal_provider"] = refusal["provider"]
+    return response_data
 
 
 def _show_transition_notice(message_id, content):
@@ -4395,8 +4531,24 @@ def process_action(
         # Required semantic sibling proposals are frozen before movement,
         # outside the party/module mutation lock. A provider wait can
         # therefore neither hold the transition fence nor strand a
-        # partially applied player turn.
-        prepare_current_transition_actions(transition_id)
+        # partially applied player turn. A failure here ends this turn
+        # cleanly (#855): nothing has moved, so the move's own checkpoint is
+        # retired and the player gets the curated failure line.
+        try:
+            prepare_current_transition_actions(transition_id)
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            raise
+        except Exception as prepare_error:
+            error(
+                "FAILURE: travel prepare failed",
+                exception=prepare_error,
+                category="location_transitions",
+            )
+            _retire_unmoved_transition_checkpoint(transition_id)
+            return create_return(
+                status="error",
+                response_data=_travel_prepare_failure(prepare_error),
+            )
         
         # Use enhanced location manager with auto-generated area connectivity ID
         def run_location_transition():

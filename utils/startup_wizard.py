@@ -721,7 +721,7 @@ def _append_startup_rules_reference(conversation):
         warning("Startup rules reference unavailable; the interview continues without it",
                 category="startup")
         return
-    conversation.append({"role": "system", "content": json.dumps(reference, ensure_ascii=True)})
+    conversation.append({"role": "system", "content": json.dumps(reference, ensure_ascii=False)})
 
 
 def _startup_progress(conversation):
@@ -740,7 +740,7 @@ def _set_startup_progress(conversation, *, live_scope=None, **changes):
     }
     record.update(changes)
     record["latest_user_index"] = _latest_player_index(conversation)
-    conversation.append({"role": "system", "content": json.dumps(record, ensure_ascii=True)})
+    conversation.append({"role": "system", "content": json.dumps(record, ensure_ascii=False)})
     save_startup_conversation(conversation, live_scope=live_scope)
     return record
 
@@ -758,7 +758,7 @@ def _review_startup_response(conversation, proposal, committed_facts, *,
             "normalization_provenance": normalization_provenance,
             "latest_user_index": _latest_player_index(conversation),
             "committed_facts": committed_facts,
-        }, ensure_ascii=True)},
+        }, ensure_ascii=False)},
     ]
     invalid = 0
     while True:
@@ -841,6 +841,31 @@ def _drop_schema_disallowed_nulls(character):
     return character, dropped
 
 
+def _control_character_correction(value, path="character"):
+    """The correction for a sheet string holding a control character (Unicode
+    category Cc other than newline, carriage return and tab), as a model writes
+    when it spells a letter as a broken \\u escape (#874); None when there is none.
+    Nothing is stripped: the author rewrites the value as the player gave it."""
+    import unicodedata
+    if isinstance(value, str):
+        for ch in value:
+            if ch not in "\n\r\t" and unicodedata.category(ch) == "Cc":
+                return (f"{path} contains the control character U+{ord(ch):04X}; write every letter "
+                        "as itself, not as a \\u escape, exactly as the player gave it.")
+        return None
+    if isinstance(value, dict):
+        items = ((f"{path}.{key}", item) for key, item in value.items())
+    elif isinstance(value, list):
+        items = ((f"{path}[{index}]", item) for index, item in enumerate(value))
+    else:
+        return None
+    for item_path, item in items:
+        detail = _control_character_correction(item, item_path)
+        if detail:
+            return detail
+    return None
+
+
 def _prepare_startup_proposal(authored_proposal):
     """Normalize a private copy; keep authorship distinct from engine output."""
     proposal = copy.deepcopy(authored_proposal)
@@ -848,6 +873,9 @@ def _prepare_startup_proposal(authored_proposal):
     if proposal["decision"] != "finalize_character":
         return proposal, provenance
     character = sanitize_character_data(proposal["character"])
+    detail = _control_character_correction(character)
+    if detail:
+        raise ValueError(detail)
     character, dropped = _drop_schema_disallowed_nulls(character)
     if dropped:
         provenance["schema_null_drops"] = dropped
@@ -883,7 +911,7 @@ def _prepare_startup_proposal(authored_proposal):
 # persisted: a restart replays the turn with a fresh count.
 STARTUP_TURN_REJECTION_LIMIT = 4
 STARTUP_HANDBACK_NOTICE = (
-    "I could not settle a rules question for that build yet. Your choices so far "
+    "I could not finish that build yet. Your choices so far "
     "are kept and no character has been saved. Tell me what to adjust, or say "
     "continue and I will try again."
 )
@@ -902,7 +930,7 @@ def ai_character_interview(conversation, module):
         "instruction": "Continue the actual interview or begin with an identity question. "
                        "Old history is context, not proof of approval or saved state. "
                        "Follow the current startup response contract.",
-    }, ensure_ascii=True)})
+    }, ensure_ascii=False)})
     _append_startup_rules_reference(conversation)
     print("\nDungeon Master: Let's build your character together.")
     while True:
@@ -922,7 +950,7 @@ def ai_character_interview(conversation, module):
                         "notice_shown_to_player": STARTUP_HANDBACK_NOTICE,
                         "instruction": ("No proposal for the player's previous message was published or "
                                         "approved. Answer the player's next message with the retained choices."),
-                    }, ensure_ascii=True)})
+                    }, ensure_ascii=False)})
                     save_startup_conversation(conversation, live_scope=scope)
                     print(f"\nDungeon Master: {STARTUP_HANDBACK_NOTICE}")
                     break
@@ -935,7 +963,7 @@ def ai_character_interview(conversation, module):
                 request = correction_context + [{"role": "system", "content": json.dumps({
                     "latest_user_index": current_index, "committed_facts": facts,
                     "instruction": "Return the complete startup response object, not a bare sheet.",
-                }, ensure_ascii=True)}]
+                }, ensure_ascii=False)}]
                 raw = get_ai_response(request, {"type": "json_object"},
                                       persist_response=False, live_scope=scope)
                 try:
@@ -978,11 +1006,11 @@ def ai_character_interview(conversation, module):
                         "instruction": ("Propose a continue_interview question; do not finalize."
                                         if review["needs_player_clarification"]
                                         else "Correct the proposal without inventing a new player choice."),
-                    }, ensure_ascii=True)})
+                    }, ensure_ascii=False)})
                     continue
                 if scope.is_superseded():
                     raise LiveProviderSuperseded("startup review superseded")
-                conversation.append({"role": "assistant", "content": json.dumps(proposal, ensure_ascii=True)})
+                conversation.append({"role": "assistant", "content": json.dumps(proposal, ensure_ascii=False)})
                 if proposal["decision"] == "finalize_character":
                     _set_startup_progress(conversation, live_scope=scope, phase="approved",
                                           candidate=proposal["character"], character_path=None)
@@ -2284,7 +2312,7 @@ def initialize_startup_conversation():
     conversation = [{
         "role": "system",
         "content": "Guide the player through adventure selection and character creation. "
-                   "Use standard ASCII characters. Do not claim saved state without committed facts.",
+                   "Do not claim saved state without committed facts.",
     }]
     _set_startup_progress(conversation, phase="module_selection")
     return conversation
