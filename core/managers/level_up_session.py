@@ -311,7 +311,6 @@ class LevelUpSession:
         cls = s.cls
         # 1. numbers from the tables
         hp_choice = self._choices.get("hit_points") or {"method": "fixed"}
-        gain, how = tables.hp_gain(sheet, cls, hp_choice.get("method", "fixed"), hp_choice.get("roll"))
         abilities = dict(sheet.get("abilities") or {})
         feats = list(sheet.get("feats") or [])
         extra_features: List[Dict[str, Any]] = []
@@ -353,6 +352,14 @@ class LevelUpSession:
                 extra_features.append({"name": f"{label}: {', '.join(picks)}" if picks else label,
                                        "description": self._features_text.get(label, "") or f"Chosen: {', '.join(picks)}.",
                                        "source": f"{sheet.get('class')} level {s.new_level}"})
+        # #1045: this level's gain uses the Constitution after this level's increase,
+        # and a higher modifier adds the difference for every earlier level.
+        gain, how = tables.hp_gain(dict(sheet, abilities=abilities), cls, hp_choice.get("method", "fixed"),
+                                   hp_choice.get("roll"))
+        earlier = tables.con_increase_hp(sheet.get("abilities"), abilities, s.new_level - 1)
+        if earlier:
+            gain += earlier
+            how += f" + {earlier} Constitution increase (levels 1-{s.new_level - 1})"
         changes: Dict[str, Any] = {"level": s.new_level, "abilities": abilities,
                                    "exp_required_for_next_level": s.exp_required_for_next_level}
         # Facts only: level, scores, and which skills carry proficiency or
