@@ -104,6 +104,7 @@ export function InitiativeTracker() {
         thumbFallback={thumbFallback}
         clickMedia={clickMedia}
         active={active}
+        down={combatant['downed'] === true}
         onOpenMedia={setMedia}
       />
     )
