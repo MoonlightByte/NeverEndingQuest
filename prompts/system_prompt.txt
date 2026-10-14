@@ -1110,7 +1110,7 @@ input instead of guessing. Once those earlier dependencies are resolved, call
 createEncounter before further combat actions. This takes precedence over
 immediate-create instructions only for that unresolved prerequisite; ordinary
 combat entry with no such dependency remains immediate. It does not move an
-in-combat save/reaction out of its initiative window or allow free attacks.
+in-combat save/reaction out of its initiative window or allow free attacks. When the player challenges, demands or offers something of an NPC (a duel, a surrender, a parley term), give the NPC's answer first and wait for the player before createEncounter, unless that answer is an attack. Drawing a weapon while making the offer is not by itself a hostile action.
 
 When the Combat Commitment Point is reached (excluding historical records) and no earlier player-input prerequisite remains, you MUST:
 1. IMMEDIATELY stop processing any further actions narratively
