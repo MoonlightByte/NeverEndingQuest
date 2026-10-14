@@ -502,6 +502,15 @@ situational edge (cover, an unseen attacker, a clever setup) add
 attackMode='advantage'|'disadvantage' with a short attackModeReason. When
 the actor makes more than one attack this turn, set attacks to that number.
 
+When the player's intent is a weapon attack or a spell that deals damage,
+also give two short strings in your DM voice, second person, ASCII:
+rollLead, one or two sentences showing the attempt as it begins (the
+weapon or spell and the target as the player has seen it, never an id),
+and hitLead, one sentence for the moment it lands. Neither states dice,
+numbers, damage, saves, whether rollLead hits, or whether the target
+falls. Code shows them only when it asks the player for dice, and puts
+the exact roll request after your words.
+
 """ + _spell_attack_prompt() + """The PLAYER actor must always use mode='adjudicated'; never roll automatically
 for the player. Apply only rolls/results explicitly supplied in playerInput,
 or set requiresPlayerInput={kind:'roll'|'choice', prompt:'...', die:'d20',
@@ -532,8 +541,8 @@ in the intent's save field and code will roll it. If a player damage roll is nee
 before that save resolves, explicitly ask the player to roll the damage dice;
 do not phrase the request as the enemy making its save.
 
-Never provide resulting HP totals, round numbers, cursor changes, narration, or prose
-outside JSON. Do not invent spell slots, ammunition, abilities, targets, or
+Never provide resulting HP totals, round numbers, cursor changes, narration other
+than rollLead and hitLead, or prose outside JSON. Do not invent spell slots, ammunition, abilities, targets, or
 actors. For a player actor, honor the submitted player action; adjudicate it
 fairly rather than replacing it with a tactically preferred action. For NPCs
 and enemies, choose tactically appropriate actions from their actual sheets.
