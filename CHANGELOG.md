@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed two unreachable code paths (#444). The DM-response validator in main.py no longer has a branch that normalized a draft itself: its only caller always passes the draft already normalized, and now has to. `core/validation/dm_response_validator.py` no longer has its own createEncounter shape check, a second copy of the live check in `core/combat/scene.py` that no game code ran. No game behaviour changes.
 
 ### Fixed
+- On Windows, a chronicle compression that finds the compression cache held by another game process now waits for it, instead of giving up after ten seconds and sending the full history for that turn (#403).
 - Arrows, bolts and other ammunition can now be put in a chest or other storage and taken back out: stored ammunition leaves the character's ammunition count and comes back to it (#366).
 - Recruiting a companion whose character sheet could not be built no longer reads as a successful join: the DM is told the companion has not joined and the rest of that response does not run (#534).
 - A newly generated NPC is built from the game's SRD 5.2.1 class tables: the builder is given each class's current features and numbers instead of the older edition's lists, and the new sheet starts with its class's spell slots and feature uses (a level-1 Ranger is now described with Favored Enemy and Weapon Mastery instead of the older edition's Natural Explorer, and starts with two level-1 slots and its Favored Enemy uses) (#533).
