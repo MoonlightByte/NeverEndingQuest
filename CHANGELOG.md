@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - A DM reply that repeats a key (two "actions" lists) is sent back for a corrected draft instead of silently keeping only the last list, which dropped the fight a welcome-back had started (#1018).
+- A very long ammunition name or storage container id no longer makes the rules engine refuse the whole party world; over-long engine ids are shortened, and every id that already worked is unchanged (#1004).
+- Arrows taken out of a chest now join the sheet's quiver even when it is named the older way (Arrow), and a chest holding arrows from several deposits gives back up to the full amount stored (#971).
+- The concentration save after damage now shows the Bless die the game rolled, for example "rolled 13 +2 +2 (Bless 1d4, the game rolled) = 17"; before, the die was counted but not shown, so the numbers did not add up (#1014).
+- When your own action calls for a check (reading someone, searching, climbing), the game now always asks you for the roll and shows the result, instead of the DM rolling it in secret while telling you to roll (#1009).
 - A companion recruited with `"level": null` (or an empty level) is built at the party's level, as when the level is left out, not at level 1-3 (#1007).
 - A campaign whose characters folder holds a second sheet with a character's name (for example a leftover test copy) now converts its temporary effects, using the file the game itself opens for that name and leaving the copy untouched, instead of refusing at every start (#1005).
 - Generated modules keep quest ids out of place and feature names (#989). The location writer is told that names are what the player sees, so ids such as SQ004 stay in the DM's notes.

@@ -17,7 +17,7 @@ ends the spell everywhere (core/managers/concentration_runtime).
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from core.nql import stats
+from core.nql import checks, stats
 
 
 @dataclass
@@ -31,7 +31,7 @@ def _signed(value: Any) -> str:
 
 
 def save_line(sheet: Dict[str, Any], record: Dict[str, Any]) -> str:
-    """'Eirik Stonehand Constitution save to keep concentrating on Bless (12 damage, DC 10): rolled 14 +2 = 16, success by 6; Bless holds'."""
+    """'Eirik Stonehand Constitution save to keep concentrating on Bless (12 damage, DC 10): rolled 14 +2 +3 (Bless 1d4, the game rolled) = 19, success by 9; Bless holds'."""
     name = str(sheet.get("name", "?"))
     spell = (stats.concentration_of(sheet) or {}).get("name") or "the spell"
     intent = record.get("intent") or {}
@@ -45,7 +45,9 @@ def save_line(sheet: Dict[str, Any], record: Dict[str, Any]) -> str:
     dice = ", ".join(str(f) for f in faces) if faces else "?"
     shown = f"rolled {dice}" + (f" ({mode}, kept {record.get('kept')})" if mode in ("advantage", "disadvantage") else "")
     total = record.get("total")
-    arith = f"{shown} {_signed(record.get('bonus'))} = {total}"
+    # #1014: a die the engine added (Bless) is shown as the check and save lines show it.
+    added = checks.added_text(checks.added_dice(sheet, record.get("added")))
+    arith = f"{shown} {_signed(record.get('bonus'))}{added} = {total}"
     margin = record.get("margin")
     if record.get("success"):
         return f"{head}: {arith}, success by {margin}; {spell} holds"
