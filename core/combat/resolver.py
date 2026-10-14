@@ -3009,6 +3009,8 @@ def _warn_save(sheet, save_type, reason):
 
 
 PERSONAL_RESOURCE_KINDS = ("spellSlot", "featureUse")
+# #968: the spends whose refusal for the player asks the player (#671), items and ammunition included.
+PLAYER_ASK_KINDS = PERSONAL_RESOURCE_KINDS + ("item", "ammunition")
 
 
 def _sheet_can_cast(sheet):
@@ -3307,8 +3309,8 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
         if after < 0:
             resolution["violations"].append(
                 "overspend rejected: %s %s %s (%d%+d)" % (owner, kind, name, before, delta))
-            if kind in PERSONAL_RESOURCE_KINDS:
-                # #671: typed, so a player's refused spend can ask the player.
+            if kind in PLAYER_ASK_KINDS:
+                # #671, #968: typed, so a player's refused spend can ask the player.
                 resolution.setdefault("resourceRefusals", []).append(
                     {"owner": owner, "kind": kind, "name": name, "before": before, "max": cap,
                      "need": -delta, "actor": actor_name})
@@ -3325,6 +3327,10 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
             if isinstance(answer, str):
                 resolution["violations"].append(
                     "overspend rejected: %s %s %s (%s)" % (owner, kind, name, answer))
+                # #968: the engine holds less than the sheet shows; typed as above.
+                resolution.setdefault("resourceRefusals", []).append(
+                    {"owner": owner, "kind": kind, "name": name, "before": before, "max": cap,
+                     "need": -delta, "actor": actor_name, "engine": answer})
                 continue
             if answer is not True:
                 record["engine"] = False
