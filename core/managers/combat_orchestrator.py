@@ -1058,8 +1058,8 @@ def _each_die_example(count, sides):
     return " ".join(str((face - 1) % sides + 1) for face in ([1, 4, 2, 6, 3, 5] * count)[:count])
 
 
-def _weapon_attack_prompt(record, entry):
-    """The request sentence for the open phase; also stores record["dice"]."""
+def _roll_line(record, entry):
+    """The code roll request for the open phase; also stores record["dice"]."""
     count, sides = player_weapon_attack_dice(record, entry)
     record["dice"] = "%dd%d" % (count, sides)
     if record.get("phase") == "attack":
@@ -1094,6 +1094,27 @@ def _weapon_attack_prompt(record, entry):
     return "%s %s on %s: roll %dd%d for damage and type %s, or type roll and the game rolls." % (
         record.get("ability"), hit, _spoken_name(record.get("targetName")), count, sides, what,
     )
+
+
+def _roll_lead(record, key):
+    """The DM's own words for this request (#860): T096's typed rollLead or
+    hitLead on the stored intent of this actor, or "" when there is none."""
+    batch = record.get("batch") if isinstance(record.get("batch"), dict) else {}
+    for intent in batch.get("intents") or []:
+        if isinstance(intent, dict) and intent.get("actorId") == record.get("actorId"):
+            value = intent.get(key)
+            return value.strip() if isinstance(value, str) else ""
+    return ""
+
+
+def _weapon_attack_prompt(record, entry):
+    """The request the player sees: the DM's lead, if T096 wrote one, then the
+    code roll line (#860; owner ruling: the DM narrates, code keeps the dice)."""
+    line = _roll_line(record, entry)
+    spell = record.get("spell") if isinstance(record.get("spell"), dict) else {}
+    key = "hitLead" if record.get("phase") == "damage" and spell.get("type") != "save" else "rollLead"
+    lead = _roll_lead(record, key)
+    return "%s %s" % (lead, line) if lead else line
 
 
 def _parse_weapon_roll(text, record, entry):
@@ -1300,7 +1321,7 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
             else "Type the total of %dd%d (%d to %d), or type roll to let the game roll. "
             % (count, sides, count, count * sides)
         )
-        return pending, hint + record["prompt"]
+        return pending, hint + _roll_line(record, entry)
     phase = record["phase"]
     count, sides = player_weapon_attack_dice(record, entry)
     if values:

@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `merge_updates` from `core/managers/combat_manager.py`, a helper that nothing called; had anything called it, it would have replaced a character's whole equipment list with the update's list instead of changing single items (#471).
 
 ### Fixed
+- When you attack in a fight, the DM now describes your swing or spell in its own words before asking for the dice; the exact dice to roll and the option to type roll stay the same (#860).
 - An item with a very long name no longer stops the rules engine from loading the whole party (#566). Its engine id is now kept within the engine's size limit by shortening the name part, so every engine step for that party works again; ids already on a sheet stay as they are.
 - A turn no longer fails with "the AI provider call could not be completed" when the response checker's debug file cannot be written (a file held by another program, a read-only or full disk); the debug copy is skipped and the turn goes on (#342).
 - Choosing an existing character whose file has gone missing, is empty or is broken no longer ends setup; the game says the file is unavailable and asks again, and a file another program holds is waited for (#338).
