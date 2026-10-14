@@ -14,7 +14,7 @@ back are the engine's; nothing here reads prose or decides a number.
 import copy
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from core.nql import apply, genesis
 
@@ -27,6 +27,34 @@ class AmmunitionOutcome:
     reason: str = ""
     fault: Optional[Dict[str, Any]] = None
     receipt: Optional[Dict[str, Any]] = None
+
+
+def declared_row(sheet: Dict[str, Any], name: str) -> Optional[Tuple[str, Dict[str, Any]]]:
+    """(engine stock id, row) of the sheet's ammunition row for this name, or None.
+
+    Only rows genesis declares are candidates (a row whose name slugs to an
+    earlier row's id is skipped there), so the stock id is always the row's
+    own. Exact ``name`` first; otherwise a unique case-insensitive match on the
+    same typed field. Shared by transferItem (#902) and storage (#366).
+    """
+    wanted = str(name).strip()
+    rows = genesis.ammunition_rows(sheet, [])
+    for iid, row in rows:
+        if row.get("name") == wanted:
+            return iid, row
+    loose = [(iid, row) for iid, row in rows if row["name"].strip().lower() == wanted.lower()]
+    return loose[0] if len(loose) == 1 else None
+
+
+def declared_row_by_id(sheet: Dict[str, Any], iid: str) -> Optional[Dict[str, Any]]:
+    return next((row for stock, row in genesis.ammunition_rows(sheet, []) if stock == iid), None)
+
+
+def write_view(row: Dict[str, Any], item: Optional[Dict[str, Any]]) -> None:
+    """Copy the engine's view of a stock onto its row (no view: the stock left, 0)."""
+    quantity = item.get("quantity") if item and type(item.get("quantity")) is int else 0
+    pending = item.get("recoverable") if item and type(item.get("recoverable")) is int else 0
+    write_back(row, AmmunitionOutcome(True, quantity=quantity, recoverable=pending))
 
 
 def row_of(sheet: Dict[str, Any], name: str) -> Optional[Dict[str, Any]]:
