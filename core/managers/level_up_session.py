@@ -431,6 +431,23 @@ class LevelUpSession:
         if not growth.ok:
             return self._interview(f"Your level-up has not been applied: {growth.reason}. Say 'retry'.")
         after = growth.sheet
+        # #760: a saved old-shape Fighting Style is recorded as "Fighting Style: <name>" at this
+        # player-visible step, and AC is re-projected so the style's effect lands in this commit.
+        from core.leveling import fighting_style
+        style_record: Dict[str, Any] = {}
+        style_notes = fighting_style.canonicalize(after, style_record,
+                                                  source="core.managers.level_up_session._commit")
+        style_moved = bool((style_record.get("fighting_style") or {}).get("moved_from"))
+        if style_moved:
+            from core.nql import armor_class as _armor_class
+            projection = _armor_class.project(after)
+            if projection.applied:
+                after = projection.sheet
+            else:
+                warning(f"LEVEL-UP: {self.character_name} armor class not re-projected ({projection.reason})",
+                        category="level_up")
+        for note in style_notes:
+            info(f"LEVEL-UP: {self.character_name}: {note}", category="level_up")
         # Item C: the engine's attack rows follow the new level (proficiency, the Martial Arts die). One
         # engine call, outside the locks; the rows ride in the same commit, and the level-up commits either way.
         from core.nql import armor_class, startup_rows
@@ -448,6 +465,8 @@ class LevelUpSession:
         info(f"LEVEL-UP: {self.character_name} -> level {s.new_level} ({how}); engine ops {growth.operations}",
              category="level_up")
         summary = self._summary(after, how)
+        if style_moved:
+            summary += " " + style_notes[-1]
         text = (narration + " " if narration else "") + summary
         return self._terminal("complete", text)
 
