@@ -321,10 +321,16 @@ class LevelUpSession:
             point = by_id.get(cid) or {}
             kind = point.get("kind")
             if kind in ("asi_or_feat", "epic_boon"):
-                if isinstance(value, dict) and isinstance(value.get("asi"), dict):
-                    abilities, _ = tables.apply_asi(abilities, value["asi"])
-                else:
-                    name = value.get("feat") if isinstance(value, dict) else value
+                from core.leveling import choices as srd_choices
+                name = value.get("feat") if isinstance(value, dict) else value
+                increases = value.get("asi") if isinstance(value, dict) else None
+                rule = srd_choices.feat_rule(name) if name else None
+                if isinstance(increases, dict) and not name:
+                    abilities, _ = tables.apply_asi(abilities, increases)
+                elif rule is not None:
+                    # #424: the increase the feat declares (Grappler, an Epic Boon, an ASI named as a feat)
+                    abilities, _ = srd_choices.apply_feat_increase(abilities, rule, increases, name)
+                if name and name != "Ability Score Improvement":
                     feats.append({"name": name, "description": self._features_text.get(name, ""),
                                   "source": f"{sheet.get('class')} level {s.new_level}"})
                     # #891: a feat with its own use (Magic Initiate) starts full.

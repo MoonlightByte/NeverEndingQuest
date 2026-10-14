@@ -13,8 +13,8 @@ Answer with ONE JSON object and nothing else:
 
 Choice values by kind:
 - hit_points: {"method": "fixed"} or {"method": "roll", "roll": N} where N is the number the player reported for the die. Never roll for the player; if they want to roll, ask for the number.
-- asi_or_feat: {"asi": {"<ability>": 2}} or {"asi": {"<ability>": 1, "<ability>": 1}} (cap 20) or {"feat": "<feat name>"}.
-- subclass, epic_boon: "<option name>".
+- asi_or_feat: {"asi": {"<ability>": 2}} or {"asi": {"<ability>": 1, "<ability>": 1}} (cap 20) or {"feat": "<feat name>"}; a feat that raises an ability (Grappler, Ability Score Improvement, any Epic Boon) also carries "asi" with the increase it allows, e.g. {"feat": "Grappler", "asi": {"strength": 1}}.
+- subclass: "<option name>". epic_boon: {"feat": "<boon name>", "asi": {"<ability>": 1}} (cap 30).
 - cantrips, prepared_spells: a list of spell names, at most the count, chosen from the options given. For prepared_spells give the FULL prepared list (keep the current list and add, unless the player changes it).
 
 Conversation rules:

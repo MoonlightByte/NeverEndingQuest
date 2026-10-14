@@ -217,6 +217,37 @@ def _apply_filters(names: List[str], filters: List[str], sheet: Dict[str, Any]) 
     return out
 
 
+def feat_rule(name: Any) -> Optional[Dict[str, Any]]:
+    """A feat's typed ability_score_increase from the SRD feats data, or None (#424)."""
+    for feat in data().get("feats") or []:
+        if feat.get("name") == name and isinstance(feat.get("ability_score_increase"), dict):
+            return feat["ability_score_increase"]
+    return None
+
+
+def apply_feat_increase(abilities: Dict[str, Any], rule: Dict[str, Any], increases: Any,
+                        name: str) -> Tuple[Dict[str, Any], str]:
+    """(new abilities, reason if refused): the increase the feat's rule allows (#424)."""
+    allowed = {str(a).lower() for a in rule.get("abilities") or []}
+    shapes = [sorted(int(n) for n in shape) for shape in rule.get("increase_options") or []]
+    cap = int(rule.get("maximum") or tables.ABILITY_CAP)
+    need = (f"{name} also raises an ability ({', '.join(rule.get('abilities') or [])}; "
+            f"{' or '.join('+' + ' and +'.join(str(n) for n in s) for s in shapes)}; max {cap}): answer "
+            f'{{"feat": "{name}", "asi": {{"<ability>": n}}}}')
+    if not isinstance(increases, dict) or not increases \
+            or any(type(v) is not int for v in increases.values()) or sorted(increases.values()) not in shapes:
+        return abilities, need
+    out = dict(abilities)
+    for key, inc in increases.items():
+        key = str(key).lower()
+        if key not in allowed or type(out.get(key)) is not int:
+            return abilities, need
+        if out[key] + inc > cap:
+            return abilities, f"{key} cannot rise above {cap}"
+        out[key] += inc
+    return out, ""
+
+
 def data_choice_points(sheet: Dict[str, Any], cls: str, new_level: int) -> List[Dict[str, Any]]:
     """Typed choice points for this level from the SRD data, options resolved."""
     entries = ((data().get("choice_points") or {}).get(cls) or {}).get(str(new_level)) or []
@@ -254,7 +285,7 @@ def check_pick(point: Dict[str, Any], value: Any, sheet: Dict[str, Any], cls: st
     kind = point["kind"]
     options = point.get("options")
     if kind == "asi_or_feat" or kind == "epic_boon":
-        if isinstance(value, dict) and isinstance(value.get("asi"), dict):
+        if isinstance(value, dict) and isinstance(value.get("asi"), dict) and not value.get("feat"):
             if kind == "epic_boon":
                 return False, "an Epic Boon is a feat, name it"
             _, why = tables.apply_asi(dict(sheet.get("abilities") or {}), value["asi"])
@@ -264,6 +295,12 @@ def check_pick(point: Dict[str, Any], value: Any, sheet: Dict[str, Any], cls: st
             return False, "give {asi: {ability: +n}} or {feat: name}"
         if options is not None and name not in options:
             return False, f"{name!r} is not a feat this character qualifies for; options: {options}"
+        rule = feat_rule(name)
+        if rule is not None:
+            _, why = apply_feat_increase(dict(sheet.get("abilities") or {}), rule,
+                                         value.get("asi") if isinstance(value, dict) else None, name)
+            if why:
+                return False, why
         return True, ""
     if kind == "subclass":
         if not isinstance(value, str) or (options and value not in options):
