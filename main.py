@@ -3209,7 +3209,8 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
     expendCharges and acquireItem a party character or an existing sheet,
     exactly (case ignored, "_" read as a space). A near name
     ("Kira", "Ranger Kira") is refused with the exact names, never matched to
-    another character. The response is never edited.
+    another character. An updateCharacterInfo that names no character is
+    refused (#914). The response is never edited.
 
     Returns:
         (normalized_response, message) or (None, error_message) if unresolvable
@@ -3251,6 +3252,10 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
             continue
         params = action.get('parameters', {})
         if not isinstance(params, dict):
+            continue
+        if action_type == 'updateCharacterInfo' and not params.get('characterName') and not params.get('npcName'):
+            # #914: an update that names no character is refused, never written to a default character
+            rejections.append(f"Action {i+1} (updateCharacterInfo characterName): no character named")
             continue
 
         for field, sheet_allowed in fields:
