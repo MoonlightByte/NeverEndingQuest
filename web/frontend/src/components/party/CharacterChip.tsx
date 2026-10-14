@@ -68,6 +68,8 @@ export interface CharacterChipProps {
   clickMedia?: ClickMedia | undefined
   /** Current-turn highlight (initiative tracker only). */
   active?: boolean | undefined
+  /** At 0 HP but still in the fight (initiative tracker only, #245). */
+  down?: boolean | undefined
   onOpenMedia: (media: MediaSource) => void
   onOpenDetails?: (() => void) | undefined
   showVitals?: boolean
@@ -82,6 +84,7 @@ export function CharacterChip({
   thumbFallback,
   clickMedia,
   active,
+  down,
   onOpenMedia,
   onOpenDetails,
   showVitals = false,
@@ -172,6 +175,8 @@ export function CharacterChip({
 
   const variantStyle = VARIANT_STYLE[variant]
   const isActive = active === true
+  const isDown = down === true
+  const downLabel = isDown ? <small className="ember-turn-label neq-down-label">Unconscious</small> : null
   const isPartyHover = hovered && (variant === 'party-player' || variant === 'party-npc')
   const isLocationHover = hovered && variant === 'location-npc'
   const isEnemyMediaHover = hovered && variant === 'init-enemy' && clickMedia !== undefined
@@ -197,13 +202,14 @@ export function CharacterChip({
       {onOpenDetails
         ? <button type="button" className="ember-card-bio" aria-label={`${displayName} full character details`} onClick={openDetails} />
         : <EmberInspection label={`${displayName} statistics`} triggerContent={<span className="sr-only">{displayName} statistics</span>} className="ember-card-bio"><StatsTooltip stats={stats} anchor={null} inline /></EmberInspection>}
-      <div className="neq-character-chip" data-chip={variant} data-name={name} data-active={isActive ? 'true' : 'false'}>
+      <div className="neq-character-chip" data-chip={variant} data-name={name} data-active={isActive ? 'true' : 'false'} data-down={isDown ? 'true' : undefined}>
         <button ref={chipRef} type="button" className="ember-card-portrait" aria-label={`${displayName} portrait`} aria-busy={mediaPending} disabled={!clickMedia} onClick={handleClick}>
           <span className="ember-chip-portrait" aria-hidden="true" style={thumb ? { backgroundImage: cssImageUrl(thumb) } : undefined}>{!thumb && displayName.slice(0, 1)}</span>
         </button>
         <span className="ember-card-summary">
           {displayName}
-          <PartyVitals stats={stats} />
+          <PartyVitals stats={stats} down={isDown} />
+          {downLabel}
           {isActive && <small className="ember-turn-label">Your turn</small>}
           {mediaPending && <small className="ember-turn-label" role="status">Loading media…</small>}
           {mediaMissing && <small className="ember-turn-label" role="status">No media available</small>}
@@ -217,12 +223,13 @@ export function CharacterChip({
       <button
         ref={chipRef}
         type="button"
-        aria-label={displayName}
+        aria-label={isDown ? `${displayName}, unconscious` : displayName}
         aria-busy={mediaPending}
         aria-current={ember && isActive ? 'step' : undefined}
         data-chip={variant}
         data-name={name}
         data-active={isActive ? 'true' : 'false'}
+        data-down={isDown ? 'true' : undefined}
         data-media-enabled={clickMedia ? 'true' : 'false'}
         onClick={handleClick}
         onMouseEnter={handleMouseEnter}
@@ -248,6 +255,7 @@ export function CharacterChip({
             : isEnemyMediaHover
               ? { opacity: 0.8 }
               : {}),
+          ...(isDown && !ember ? { filter: 'grayscale(1)', opacity: 0.6 } : {}),
           ...(isActive
             ? { transform: 'scale(1.08)', zIndex: 5 }
             : hoverTransform
@@ -266,7 +274,8 @@ export function CharacterChip({
           }}
         >
           {displayName}
-          {ember && showVitals && <PartyVitals stats={stats} />}
+          {ember && showVitals && <PartyVitals stats={stats} down={isDown} />}
+          {downLabel}
           {ember && isActive && <small className="ember-turn-label">Your turn</small>}
           {mediaPending && <small className="ember-turn-label" role="status">Loading media…</small>}
           {mediaMissing && <small className="ember-turn-label" role="status">No media available</small>}

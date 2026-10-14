@@ -177,6 +177,9 @@
 .ember-desktop .neq-character-chip:hover > .ember-chip-portrait, .ember-desktop .neq-character-chip[data-active='true'] > .ember-chip-portrait { border-color: #d3a456; box-shadow: 0 0 8px #d78b3033; }
 .ember-desktop .neq-character-chip[data-active='true'] > span:last-child { color: #f2bd79; }
 .ember-desktop .ember-turn-label { display: block; margin-top: 5px; font: 400 14px/1.2 var(--font-body); color: var(--ember-brass); }
+.ember-desktop .ember-turn-label.neq-down-label { color: #e08a8a; }
+.ember-desktop .neq-character-chip[data-down='true'] .ember-chip-portrait { filter: grayscale(1) brightness(0.55); }
+.ember-desktop .neq-character-chip[data-down='true'] > span:last-child { color: var(--ember-muted); }
 .ember-desktop .neq-character-chip[data-chip='init-enemy'] > .ember-chip-portrait { border-color: #87452d; }
 .ember-desktop .ember-nearby-label { color: var(--ember-muted); font-size: 14px; padding-top: 6px; border-top: 1px solid var(--ember-frame); }
 .ember-desktop .neq-combat-box { flex-direction: row; gap: 8px; width: 100%; height: 36px; margin: 0 0 12px; border: 1px solid var(--ember-rule) !important; background: none !important; }

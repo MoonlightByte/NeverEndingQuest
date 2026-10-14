@@ -282,7 +282,7 @@
         "Captain's Badge (silver with onyx inlay, 15 gp value)",
         "Well-preserved longbow (neglected but functional)",
         "Guard's coinpurse with 2d10 sp and a folded love letter",
-        "Scroll of Protection from Undead",
+        "Spell Scroll of Protection from Evil and Good (level 1; only a reader who has the spell on their spell list can use it; read it to cast the spell, which wards a creature you touch against Undead, Fiends and other otherworldly creatures, without Material components; the scroll crumbles to dust once cast)",
         "Gatehouse key (unlocks any remaining doors in the gatehouse)"
       ],
       "plotHooks": [
@@ -391,7 +391,7 @@
       ],
       "lootTable": [
         "Holy symbol (silver, grants advantage on saves against the shadow relic's influence once)",
-        "Vial of blessed water (acts as potion of healing against undead damage only)",
+        "Potion of Healing (a vial of blessed water from the chapel; restores 2d4 + 2 hit points)",
         "Chaplain's journal describing the shadow relic's arrival and early influence",
         "Small silver key (opens a secret compartment beneath the altar)",
         "Knight's heart amulet (artifact connected to Sir Garran's past)"

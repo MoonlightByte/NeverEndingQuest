@@ -368,8 +368,12 @@ An adjudicated intent may contain:
   the resource, which need not be the actor: an ally administering a potion
   from the downed character's own pack lists owner as that downed character
   and name as the item exactly as that sheet lists it. Read the sheets before
-  choosing: if the actor's slot is spent and no party sheet holds the item,
-  do not declare the spell or potion at all; take a real listed action.
+  choosing: for an NPC or enemy whose slot or feature use is spent and no
+  party sheet holds the item, do not declare the spell, feature or potion at
+  all; take a real listed action. The PLAYER's spent slot or feature use is
+  never a reason to choose another action for them: set requiresPlayerInput
+  {kind:'choice', prompt} saying it cannot be used (no slot of that level or
+  no use left) and asking what they do instead.
   Every shot from a bow, crossbow, or sling in an adjudicated intent declares
   the ammunition it fires: kind 'ammunition', the ammunition name exactly as
   the shooter's sheet lists it, delta -1 per shot. Every player shot is
@@ -426,6 +430,9 @@ An adjudicated intent may contain:
   dice in the ruling and put the resulting integer in hpDelta. A heal left at
   hpDelta 0 restores nothing and still spends the slot or potion, so a
   healing spell, potion, or feature must always carry a positive hpDelta.
+  Second Wind restores 1d10 + Fighter level: on the actor's own target also
+  give rolled, the d10 face alone (the player's typed die, or your own roll
+  for an NPC fighter); code sets the heal to rolled + the Fighter level.
   The sign rule above is absolute: damage is a NEGATIVE hpDelta (a 9-point
   sword hit is hpDelta -9), healing is positive; a positive hpDelta on a
   hostile heals it. The rules engine applies the value to the sheet:

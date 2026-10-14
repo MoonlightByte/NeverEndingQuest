@@ -119,6 +119,43 @@ def entry(catalog_id: Any) -> Optional[Dict[str, Any]]:
     return entries().get(catalog_id)
 
 
+# #552: ammunition row names this game wrote before rows used the SRD catalog
+# names (T079 rule 6 and its examples, the T053 example, sheets on disk). A
+# compatibility reader for saved rows: exact casefolded value of the stored
+# name, never a pattern. It does not grow: new rows are taught catalog names.
+_LEGACY_AMMUNITION_NAMES = {
+    "arrow": "itemdef:srd/arrows",
+    "bolt": "itemdef:srd/bolts",
+    "crossbow bolt": "itemdef:srd/bolts",
+    "crossbow bolts": "itemdef:srd/bolts",
+    "sling bullet": "itemdef:srd/bullets-sling",
+    "sling bullets": "itemdef:srd/bullets-sling",
+    "needle": "itemdef:srd/needles",
+    "blowgun needle": "itemdef:srd/needles",
+    "blowgun needles": "itemdef:srd/needles",
+}
+
+
+def ammunition_entry(row: Any) -> Optional[Dict[str, Any]]:
+    """The catalog ammunition entry a sheet ammunition row holds, or None.
+
+    The row's catalog_id first; else the ammunition entry whose name
+    casefold-equals the row name; else the frozen legacy names above."""
+    if not isinstance(row, dict):
+        return None
+    typed = entry(row.get("catalog_id"))
+    if typed is not None:
+        return typed if typed.get("kind") == "ammunition" else None
+    name = str(row.get("name") or "").strip().casefold()
+    if not name:
+        return None
+    for candidate in entries().values():
+        if candidate.get("kind") == "ammunition" and str(candidate.get("name", "")).casefold() == name:
+            return candidate
+    found = entry(_LEGACY_AMMUNITION_NAMES.get(name))
+    return found if found is not None and found.get("kind") == "ammunition" else None
+
+
 def _armor_field(key: str, value: Any, category: Any = None) -> Any:
     if key == "ac_bonus":
         return value if type(value) is int else 0

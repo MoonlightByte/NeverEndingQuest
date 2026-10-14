@@ -517,9 +517,11 @@ class SaveGameManager:
             if value[0] == 'file' and replaced(path) and not self._restore_preserves_path(path):
                 expected[path] = ('absent', None)
         for path in ('modules/effects_state.json',
+                     'modules/checks_state.json',
                      'journal.json',
                      'live_state.json',
                      'live_state.json.bak',
+                     'player_storage.json',
                      'modules/conversation_history/combat_conversation_history.json',
                      'modules/conversation_history/startup_conversation.json',
                      'modules/conversation_history/game_interface_cache.json',
@@ -603,6 +605,8 @@ class SaveGameManager:
             "modules/world_registry.json",
             "modules/effects_tracker.json",
             "modules/effects_state.json",
+            # Pending checks and unreported check results belong to this save (#940).
+            "modules/checks_state.json",
             "modules/default/effects_tracker.json",
         ])
         
@@ -1538,6 +1542,9 @@ class SaveGameManager:
             # The verified backup retains these files for a failed-Load rollback.
             for optional_path in (
                 "modules/effects_state.json",
+                # An older save has no check state; never keep the current
+                # game's pending roll or results (#940).
+                "modules/checks_state.json",
                 # A save from before the first departure has no chronicle;
                 # keeping the current one would record a journey not taken.
                 "journal.json",
@@ -1547,6 +1554,9 @@ class SaveGameManager:
                 # Never saved (*.bak). Left behind, the refusal ladder could
                 # take a document with a later clock than the restored tracker.
                 "live_state.json.bak",
+                # A save from before the first storage container: its chests
+                # did not exist yet (#468).
+                "player_storage.json",
                 "modules/conversation_history/combat_conversation_history.json",
                 "modules/conversation_history/startup_conversation.json",
                 "modules/conversation_history/game_interface_cache.json",

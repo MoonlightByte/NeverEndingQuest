@@ -486,6 +486,12 @@ def _finish_welcome(lifecycle, disposition):
     global _welcome_lifecycle
     if _welcome_lifecycle is lifecycle:
         _welcome_lifecycle = None
+    if disposition in ("APPLIED", "FAILED"):
+        # The opening scene has settled: show queued library notices (#795).
+        try:
+            _flush_library_notices()
+        except Exception:
+            pass
 
 
 def _apply_welcome(lifecycle):
@@ -5366,11 +5372,67 @@ def display_dm_narration(content, channel="main", color="blue", message_id=None,
                 print(*rendered)
 
 
+def _module_display_title(module_id):
+    """A module's human title: its declared name, else the id with spaces.
+
+    The declared name is module_context.json's ``module_name`` (older modules:
+    ``campaign_name``), so punctuation such as an apostrophe survives. Never
+    raises.
+    """
+    module_id = str(module_id or "").strip()
+    fallback = module_id.replace("_", " ").strip()
+    declared = ""
+    if module_id and "/" not in module_id and "\\" not in module_id and module_id not in (".", ".."):
+        try:
+            context = safe_json_load(os.path.join("modules", module_id, "module_context.json"))
+            if isinstance(context, dict):
+                for key in ("module_name", "campaign_name"):
+                    value = context.get(key)
+                    if isinstance(value, str) and value.strip():
+                        declared = value.strip()
+                        break
+        except Exception:
+            declared = ""
+    return declared or fallback
+
+
 def _module_joined_line(imported):
-    """Plain player line for a dropped-in module joined to the world."""
-    return "%s has been joined to this world." % (
-        str(imported.get("module")).replace("_", " "),
+    """Library notice for a dropped-in module joined to the world (#795).
+
+    A module arriving in the background joins the world as a place the party
+    can travel to; it is not part of the current scene, so the line says so
+    plainly.
+    """
+    return (
+        "New adventure added to your world: %s. It is not part of your current "
+        "scene; ask the Dungeon Master to travel there when you are ready."
+        % _module_display_title(imported.get("module"))
     )
+
+
+# Library notices wait here until the opening scene has settled (#795).
+_pending_library_notices = []
+
+
+def _queue_library_notice(content):
+    if content and content not in _pending_library_notices:
+        _pending_library_notices.append(content)
+
+
+def _flush_library_notices():
+    """Show queued library notices as system cards, never as DM narration."""
+    from web.shared_state import emit_player_output
+
+    while _pending_library_notices:
+        content = _pending_library_notices.pop(0)
+        delivered = emit_player_output(
+            {"type": "system", "content": content, "message_id": "msg-%s" % uuid4().hex}
+        )
+        if delivered is not True:
+            try:
+                print("[Notice] %s" % content)
+            except UnicodeEncodeError:
+                print("[Notice] %s" % content.encode("ascii", "replace").decode("ascii"))
 
 
 def _module_label(name):
@@ -9086,8 +9148,10 @@ def _main_game_loop(startup_authority, turn_authority):
                 priority_module=str(party_tracker_data.get("module") or "").replace(" ", "_") or None
             )
             debug(f"STATE_CHANGE: startup module refresh result: {refresh_result}", category="startup")
+            # A joined module is a library notice, not story: it is shown as a
+            # system card once the opening scene settles (#795).
             for imported in refresh_result.get("imported", []):
-                display_dm_narration(_module_joined_line(imported), channel="system")
+                _queue_library_notice(_module_joined_line(imported))
             for refusal in refresh_result.get("import_required", []):
                 display_dm_narration(_module_join_refusal_line(refusal), channel="system")
             for refusal in refresh_result.get("not_joined", []):
@@ -9229,6 +9293,8 @@ def _main_game_loop(startup_authority, turn_authority):
         if _welcome_lifecycle is not None:
             _welcome_lifecycle.live_history = conversation_history
             service_welcome_lifecycle()
+        if _welcome_lifecycle is None:
+            _flush_library_notices()
 
         if needs_conversation_history_update:
             debug("STATE_CHANGE: Reloading conversation history from disk due to needs_conversation_history_update flag", category="conversation_management")

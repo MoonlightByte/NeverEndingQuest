@@ -147,7 +147,6 @@ from config import (
 )
 from updates.update_character_info import update_character_info, normalize_character_name
 import updates.update_encounter as update_encounter
-import updates.update_party_tracker as update_party_tracker
 # Import the preroll generator
 from core.generators.generate_prerolls import generate_prerolls
 from core.managers.combat_state import (
@@ -2593,24 +2592,6 @@ def _complete_agentic_combat(
         player_info = None
     return dialogue_summary, player_info
 
-
-def merge_updates(original_data, updated_data):
-    fields_to_update = ['hitPoints', 'equipment', 'attacksAndSpellcasting', 'experience_points']
-
-    for field in fields_to_update:
-        if field in updated_data:
-            if field in ['equipment', 'attacksAndSpellcasting']:
-                # For arrays, replace the entire array
-                original_data[field] = updated_data[field]
-            elif field == 'experience_points':
-                # For XP, only update if the new value is greater than the existing value
-                if updated_data[field] > original_data.get(field, 0):
-                    original_data[field] = updated_data[field]
-            else:
-                # For simple fields like hitpoints, just update the value
-                original_data[field] = updated_data[field]
-
-    return original_data
 
 # DEPRECATED: This function is no longer used and has been replaced by the new XP awarding system
 # that uses update_character_info directly with proper synchronization.

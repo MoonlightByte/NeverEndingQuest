@@ -157,11 +157,13 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     # proficient skills with no number. No arithmetic and no defaults here:
     # proficiency, initiative and passive perception are engine-written
     # (core/nql/stats) and print as stored.
+    # Full skill names: a three-letter cut folded Perception, Persuasion and
+    # Performance into one 'per' key (#553).
     skills_field = character.get('skills')
     if isinstance(skills_field, dict):
-        skills_out = ','.join(f"{k[:3]}:{v}" for k,v in skills_field.items())
+        skills_out = ','.join(f"{k}:{v}" for k,v in skills_field.items())
     elif isinstance(skills_field, list):
-        skills_out = ','.join(str(k)[:3].lower() for k in skills_field)
+        skills_out = ','.join(str(k).lower() for k in skills_field)
     else:
         skills_out = ''
 
@@ -172,7 +174,7 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     darkv = senses.get('darkvision') or 0
     pp = senses.get('passivePerception')
     expertise = character.get('expertise')
-    expertise_out = ','.join(str(k)[:3].lower() for k in expertise) if isinstance(expertise, list) else ''
+    expertise_out = ','.join(str(k).lower() for k in expertise) if isinstance(expertise, list) else ''
 
     langs = character.get('languages') or []
     langs_out = ','.join(langs) if isinstance(langs, list) else str(langs)
@@ -261,6 +263,18 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
         # parentheses, which strip_parens keys on for names).
         equip_names.append(f"{nm_qty}: {desc}" if desc else nm_qty)
     equip_out = '[' + ','.join(equip_names) + ']'
+
+    # #359: the typed ammunition rows. The full sheet prints them (AMMO) and the
+    # DM Note does not, so the compressed sheet must; an empty list is printed
+    # so "none" is a fact, not a gap.
+    ammo_parts = []
+    for row in get_list(character, 'ammunition'):
+        if isinstance(row, dict) and row.get('name'):
+            part = f"{describe_text(row['name'])} x{row.get('quantity', 0)}"
+            if type(row.get('recoverable')) is int and row['recoverable'] > 0:
+                part += f"(recoverable {row['recoverable']})"
+            ammo_parts.append(part)
+    ammo_out = '[' + ','.join(ammo_parts) + ']'
 
     # Attacks
     attacks = get_list(character, 'attacksAndSpellcasting')
@@ -361,6 +375,7 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     if isinstance(focus, dict) and focus.get('name'):
         out.append(f"CONC={focus['name']}({','.join(focus.get('targets') or []) or 'self'}; engine saves on damage, one spell at a time);")
     out.append(f"EQUIP={equip_out};")
+    out.append(f"AMMO={ammo_out};")
     out.append(f"ATK={atk_out};")
     out.append(f"SPELLCAST={spellcast_out};")
     out.append(f"SPELLS={spells_out};")

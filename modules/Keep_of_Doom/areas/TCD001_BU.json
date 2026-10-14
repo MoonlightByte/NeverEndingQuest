@@ -176,7 +176,7 @@
         "Jailer's key ring (opens cell doors in The Gaol)",
         "Blackened iron dagger (+1 against incorporeal undead)",
         "Moldering prisoner ledger with names of those who disappeared",
-        "Scroll of protection from evil (damaged, 50% chance of failure)"
+        "Spell Scroll of Protection from Evil and Good (level 1, damaged; only a reader who has the spell on their spell list can use it; when it is read, roll 1d20: on 1-10 the spell fails and the scroll crumbles to dust, otherwise the spell is cast without Material components and the scroll crumbles)"
       ],
       "plotHooks": [
         "The prisoner ledger contains entries for people not yet born, suggesting time flows strangely in the dungeons.",
@@ -494,7 +494,7 @@
       ],
       "lootTable": [
         "Guard captain's enchanted crossbow (+1 to hit and damage)",
-        "Potion of heroism (hidden in a hollow shrine base)",
+        "Potion of Heroism (hidden in a hollow shrine base; drink it as a Bonus Action to gain 10 temporary hit points and the effect of the Bless spell, both for 1 hour, no Concentration required)",
         "Duty roster with notes about the 'special prisoner' (the shadow relic) in the lowest chamber",
         "Ring of keys (opens various storage lockers in this room)",
         "Antique silver flask of potent spirits (heals 2d4+2 HP and grants advantage on fear saves for 1 hour)"
@@ -607,10 +607,10 @@
       ],
       "lootTable": [
         "Alchemist's supplies (complete kit in good condition)",
-        "Potion of necrotic resistance (cloudy purple liquid in lead vial)",
+        "Potion of Necrotic Resistance (cloudy purple liquid in a lead vial; drink it as a Bonus Action to have Resistance to Necrotic damage for 1 hour)",
         "Journal detailing shadow magic experiments conducted in the dungeons",
         "Masterwork thieves' tools (+1 to lockpicking attempts)",
-        "Small box containing 3 doses of rare antitoxin effective against magical poisons"
+        "Antitoxin (3 vials in a small box; each, drunk as a Bonus Action, gives Advantage on saving throws to avoid or end the Poisoned condition for 1 hour)"
       ],
       "plotHooks": [
         "The experimental journal details attempts to harness the shadow relic's power for protection rather than corruption\u2014Sir Garran's original intent gone awry.",
@@ -697,8 +697,8 @@
       "lootTable": [
         "Staff of Speaking with Dead (3 charges, regains 1d3 at midnight)",
         "Ancient funerary mask (advantage on saves against fear while worn)",
-        "Scroll of gentle repose",
-        "Vial of blessed silver dust (damages shadow creatures when dispersed)",
+        "Spell Scroll of Gentle Repose (level 2; only a reader who has the spell on their spell list can use it; read it to cast the spell: a corpse you touch is protected from decay and can't become Undead for 10 days; a reader who can't yet cast level 2 spells first makes a DC 12 spellcasting ability check, and on a failure the spell is lost; the scroll crumbles to dust once cast)",
+        "Vial of blessed silver dust (single use: as an action, scatter it over a 10-foot cube within 5 feet of you; each Undead, and each creature of living shadow such as a Shadow Mastiff or Shadow Hound, in it makes a DC 13 Dexterity saving throw, taking 2d6 Radiant damage on a failed save or half as much on a success)",
         "Cryptic map showing the Relic Chamber's vulnerabilities and features"
       ],
       "plotHooks": [
