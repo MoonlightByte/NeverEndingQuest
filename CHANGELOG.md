@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - The concentration save after damage now shows the Bless die the game rolled, for example "rolled 13 +2 +2 (Bless 1d4, the game rolled) = 17"; before, the die was counted but not shown, so the numbers did not add up (#1014).
+- When your own action calls for a check (reading someone, searching, climbing), the game now always asks you for the roll and shows the result, instead of the DM rolling it in secret while telling you to roll (#1009).
+- A companion recruited with `"level": null` (or an empty level) is built at the party's level, as when the level is left out, not at level 1-3 (#1007).
 - A campaign whose characters folder holds a second sheet with a character's name (for example a leftover test copy) now converts its temporary effects, using the file the game itself opens for that name and leaving the copy untouched, instead of refusing at every start (#1005).
 - Generated modules keep quest ids out of place and feature names (#989). The location writer is told that names are what the player sees, so ids such as SQ004 stay in the DM's notes.
 - A fight started by the welcome-back scene no longer ends silently when you type your first action (#990). Your input waits for the fight instead of cancelling the scene, and a combat turn stopped for an unknown reason now pauses and keeps your turn.
