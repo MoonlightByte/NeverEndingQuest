@@ -766,7 +766,7 @@ def _review_startup_response(conversation, proposal, committed_facts, *,
                               persist_response=False, live_scope=live_scope,
                               startup_phase="startup_review", task_id="T124")
         try:
-            return parse_startup_review(raw)
+            return parse_startup_review(raw, decision=proposal.get("decision"))
         except ValueError as exc:
             invalid += 1
             if attempts is not None and invalid >= attempts:
@@ -2085,7 +2085,7 @@ def startup_mechanics(character, *, provenance=None):
     from core.nql import armor_class, startup_rows, stats
     # NUM-H3c: exact-name catalog rows (HQ4), then the hand rule's carried rows
     # unequipped, before the projection reads the equipment.
-    typed, untyped = startup_rows.type_catalog_rows(character)
+    typed, untyped = startup_rows.type_catalog_rows(character, filled=notes)
     notes.extend(startup_rows.release_carried(character, armor_class.PROJECTION_LOCATION))
     projection = armor_class.project(character)
     if provenance is not None:
