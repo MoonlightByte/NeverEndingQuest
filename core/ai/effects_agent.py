@@ -90,6 +90,8 @@ abilities.dexterity, abilities.constitution, abilities.intelligence,
 abilities.wisdom, abilities.charisma, attackRolls, damageRolls, abilityChecks,
 savingThrows, savingThrow.<ability>, abilityCheck.<ability>, initiative,
 spellSaveDC, spellAttackBonus.
+A spell that adds a die (Bless: 1d4 to attack rolls and saving throws) uses
+{"stat":"attackRolls", "die":"1d4"} in place of value, never an average.
 
 Current hit points are a resource, not a derived modifier. For Aid-like effects
 that raise maximum and current HP, use a maxHitPoints modifier plus matching

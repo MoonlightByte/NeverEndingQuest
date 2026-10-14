@@ -105,6 +105,11 @@ def preserve_engine_effects(current_effects, proposed_effects):
     return retained + protected
 
 
+# #889: an added die on a modifier (Bless: 1d4 to attack rolls and saving
+# throws), held as written in place of a flat value.
+_MODIFIER_DIE = re.compile(r"[1-4]d(?:4|6|8|10|12)")
+
+
 def normalize_modifier(modifier):
     if not isinstance(modifier, dict):
         raise ValueError("effect modifier must be an object")
@@ -114,6 +119,12 @@ def normalize_modifier(modifier):
     if stat == "hitPoints":
         raise ValueError("current hitPoints cannot be a derived effect modifier")
     value = modifier.get("value")
+    die = modifier.get("die")
+    if die is not None or value is None:
+        # Exactly one of value (a whole number) or die (#889).
+        if value is not None or not isinstance(die, str) or not _MODIFIER_DIE.fullmatch(die):
+            raise ValueError("effect modifier needs value (a whole number) or die (such as 1d4)")
+        return {"stat": stat, "die": die}
     if type(value) not in (int, float):
         raise ValueError("effect modifier value must be numeric")
     if isinstance(value, float) and not value.is_integer():

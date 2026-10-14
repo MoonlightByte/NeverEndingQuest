@@ -421,6 +421,7 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                     intent,
                     weapon_attack,
                     event_id,
+                    roll_source,
                 )
         elif intent.get("action") in ("flee", "yield"):
             # Leaving the fight is the same act in either mode (#466): a

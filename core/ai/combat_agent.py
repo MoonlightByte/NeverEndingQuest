@@ -399,7 +399,7 @@ An adjudicated intent may contain:
   answer; only a count below that cost with no recharge promised, or a
   destroyed item, is a failure.
 - effects: [{op:'add', owner, effect:{name,description,roundsRemaining,
-  concentration,tickTrigger,modifiers:[{stat,value}],conditions:[],
+  concentration,tickTrigger,modifiers:[{stat,value}|{stat,die}],conditions:[],
   incapacitates:false,onApply:[],onRemove:[]}}] or
   [{op:'remove', owner, effectId:'exact persisted ID'}]. Use effectId whenever
   the current state supplies one; use name only for a legacy effect with no ID,
