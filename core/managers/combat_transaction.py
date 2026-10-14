@@ -927,6 +927,7 @@ def write_weapon_attack(
     answer=None,
     timeout_seconds=5.0,
     npc_voice_intents=None,
+    requested_phase=None,
 ):
     """Item 3: persist the code-issued roll phase, pendingTurn.weaponAttack.
 
@@ -961,6 +962,10 @@ def write_weapon_attack(
             die = str(requested_die or "").strip().lower()
             if re.fullmatch(r"(?:\d+)?d(?:4|6|8|10|12|20|100)", die):
                 exchanges[-1]["requestedDie"] = die
+            # #1008: the typed phase beside the die, as #853 stores it for a
+            # model request, so the die check never reads this wording.
+            if isinstance(requested_phase, str) and requested_phase.strip():
+                exchanges[-1]["requestedPhase"] = requested_phase.strip()
         pending["playerExchanges"] = exchanges
         if record is None:
             pending.pop("weaponAttack", None)
