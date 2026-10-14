@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- A very long ammunition name or storage container id no longer makes the rules engine refuse the whole party world; over-long engine ids are shortened, and every id that already worked is unchanged (#1004).
 - A companion recruited with `"level": null` (or an empty level) is built at the party's level, as when the level is left out, not at level 1-3 (#1007).
 - A campaign whose characters folder holds a second sheet with a character's name (for example a leftover test copy) now converts its temporary effects, using the file the game itself opens for that name and leaving the copy untouched, instead of refusing at every start (#1005).
 - Generated modules keep quest ids out of place and feature names (#989). The location writer is told that names are what the player sees, so ids such as SQ004 stay in the DM's notes.
