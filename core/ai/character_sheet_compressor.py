@@ -264,6 +264,18 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
         equip_names.append(f"{nm_qty}: {desc}" if desc else nm_qty)
     equip_out = '[' + ','.join(equip_names) + ']'
 
+    # #359: the typed ammunition rows. The full sheet prints them (AMMO) and the
+    # DM Note does not, so the compressed sheet must; an empty list is printed
+    # so "none" is a fact, not a gap.
+    ammo_parts = []
+    for row in get_list(character, 'ammunition'):
+        if isinstance(row, dict) and row.get('name'):
+            part = f"{describe_text(row['name'])} x{row.get('quantity', 0)}"
+            if type(row.get('recoverable')) is int and row['recoverable'] > 0:
+                part += f"(recoverable {row['recoverable']})"
+            ammo_parts.append(part)
+    ammo_out = '[' + ','.join(ammo_parts) + ']'
+
     # Attacks
     attacks = get_list(character, 'attacksAndSpellcasting')
     atk_parts = []
@@ -363,6 +375,7 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     if isinstance(focus, dict) and focus.get('name'):
         out.append(f"CONC={focus['name']}({','.join(focus.get('targets') or []) or 'self'}; engine saves on damage, one spell at a time);")
     out.append(f"EQUIP={equip_out};")
+    out.append(f"AMMO={ammo_out};")
     out.append(f"ATK={atk_out};")
     out.append(f"SPELLCAST={spellcast_out};")
     out.append(f"SPELLS={spells_out};")
