@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- A fight's round summary no longer says a Great Weapon Fighting swing's damage dice "count as" the same numbers when no die rolled a 1 or 2; it still says so when one did (#941).
 - A feat that raises an ability score at level-up (Grappler, an Epic Boon, or Ability Score Improvement named as a feat) now applies its increase; before, the feat was saved and the increase was lost. When the answer leaves the ability out, the level-up asks for it (#424).
 - An internal error while the DM's response is being checked now ends that check at once with its own message, instead of being retried five times and reported as an AI provider failure (#950).
 - A new NPC is given its class's SRD 5.2.1 spell list from the game's spell repository, up to the spell level it can cast, instead of an older edition's lists in the builder prompt (#1001).
