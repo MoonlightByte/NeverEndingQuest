@@ -3773,6 +3773,7 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
 
     heal_feature, heal_pool = _feature_heal_rule(encounter, characters, proposal)
     heal_formula = _feature_heal_formula(encounter, characters, proposal)
+    formula_heal_declared = False
     heal_rows = []
     for entry in targets:
         target = combatant_by_id(encounter, entry.get("combatantId"))
@@ -3794,6 +3795,7 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
             continue
         feature_heal = None
         if heal_formula is not None and hp_delta > 0 and target["combatantId"] == proposal.get("actorId"):
+            formula_heal_declared = True
             # #881: code does the arithmetic, the typed die face (rolled) plus
             # the class level; with no rolled the declared heal is held to the
             # formula's range (D-881-1 a). No violation, no extra pass.
@@ -3989,6 +3991,13 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
             resolution["charDeltas"][target["name"]] = _sheet_delta(
                 working, hp_after, status_after, target, temp_before)
 
+    if heal_formula is not None and not formula_heal_declared:
+        # #939 (#352 shape): the actor spends a formula heal but declares no
+        # heal on itself, so the use would be spent and nothing restored.
+        resolution["violations"].append(
+            "feature heal: %s spends a use but declares no heal on %s; declare it as a target on %s with "
+            "hpDelta and the d%d face in rolled, or spend nothing"
+            % (heal_formula["feature"], proposal.get("actorId"), proposal.get("actorId"), heal_formula["sides"]))
     if heal_pool is not None and not resolution.get("featureHealLimits"):
         _feature_heal_unspent(event, resolution, encounter, proposal, heal_feature, heal_rows,
                               clamp_feature_heals)
