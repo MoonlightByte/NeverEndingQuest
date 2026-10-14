@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- The concentration save after damage now shows the Bless die the game rolled, for example "rolled 13 +2 +2 (Bless 1d4, the game rolled) = 17"; before, the die was counted but not shown, so the numbers did not add up (#1014).
 - A campaign whose characters folder holds a second sheet with a character's name (for example a leftover test copy) now converts its temporary effects, using the file the game itself opens for that name and leaving the copy untouched, instead of refusing at every start (#1005).
 - Generated modules keep quest ids out of place and feature names (#989). The location writer is told that names are what the player sees, so ids such as SQ004 stay in the DM's notes.
 - A fight started by the welcome-back scene no longer ends silently when you type your first action (#990). Your input waits for the fight instead of cancelling the scene, and a combat turn stopped for an unknown reason now pauses and keeps your turn.
