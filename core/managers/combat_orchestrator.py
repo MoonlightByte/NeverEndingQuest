@@ -293,18 +293,22 @@ def _intent_correction(exc, batch=None):
             if not isinstance(refusal, dict):
                 continue
             if refusal.get("reason") == "mustUseOwner":
-                named.append("a remove op for %s uses owner %r, never combatantId."
-                             % (refusal.get("combatantId"), refusal.get("owner")))
+                # Refused before any match was tried, so the effect may be real:
+                # ask to resend it with the owner, not to drop it (review-946-r0).
+                named.append("a remove op for %s uses owner %r, never combatantId: resend it with "
+                             "owner %r and the same effect or condition."
+                             % (refusal.get("combatantId"), refusal.get("owner"), refusal.get("owner")))
             else:
                 current = ", ".join(str(name) for name in refusal.get("currentEffects") or [] if name)
                 named.append("%s has no effect or condition named %r (current effects: %s): there is "
-                             "nothing to remove." % (refusal.get("owner") or refusal.get("combatantId"),
-                                                       refusal.get("reference"), current or "none"))
+                             "nothing to remove; drop that remove op."
+                             % (refusal.get("owner") or refusal.get("combatantId"),
+                                refusal.get("reference"), current or "none"))
         if named:
             instruction += (
-                " " + " ".join(named) + " Drop that remove op and keep the rest of the action as "
-                "given. If your next batch still carries a remove op for this actor that cannot be "
-                "matched, code drops it as ruled and resolves the rest."
+                " " + " ".join(named) + " Keep the rest of the action as given. If your next "
+                "batch still carries a remove op for this actor that cannot be matched, code drops "
+                "it as ruled and resolves the rest."
             )
     if feedback.get("multiRollRequest"):
         instruction += (
