@@ -3227,7 +3227,7 @@ CRITICAL: If validation fails due to wrong NPC for location, provide specific co
 def normalize_character_names_in_response(response_text, party_tracker_data):
     """
     Check the character names in actions before validation (#855, family 2).
-    updateCharacterInfo must name a party character; transferItem,
+    updateCharacterInfo and levelUp must name a party character; transferItem,
     transferCurrency, splitCurrency, removeEffect, awardExperience, rollCheck,
     expendCharges and acquireItem a party character or an existing sheet,
     exactly (case ignored, "_" read as a space). A near name
@@ -3265,6 +3265,8 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
         # outside the party is also a valid target.
         if action_type == 'updateCharacterInfo':
             fields = (('characterName', False),)
+        elif action_type == 'levelUp':
+            fields = (('entityName', False),)
         elif action_type in ('transferItem', 'transferCurrency'):
             fields = (('fromCharacter', True), ('toCharacter', True))
         elif action_type == 'splitCurrency':
