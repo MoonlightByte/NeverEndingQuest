@@ -48,6 +48,11 @@ ARCHERY_STYLE_CONDITION = "feature:archery-style"
 ARCHERY_STAT = "bonus:archery"
 ARCHERY_BONUS = 2
 ARCHERY_TERM = ' term stat "%s" offset 0 divide 1 requires "%s";' % (ARCHERY_STAT, ARCHERY_STYLE_CONDITION)
+# #879: SRD 5.2.1 Great Weapon Fighting (treat a 1 or 2 on a damage die as a 3
+# for a Melee weapon held with two hands). The engine takes damage totals only,
+# so the swing treats the faces (core.combat.resolver.great_weapon_applies);
+# this exact classFeatures name is the only one that grants it.
+GREAT_WEAPON_STYLE_FEATURE = "Fighting Style: Great Weapon Fighting"
 # Temporary effects (E12): a live classifier or combat-engine effect whose
 # armor class or maximum hit point modifiers the engine holds is marked
 # engineOwned on the sheet; its numbers are then inside the stored armorClass
@@ -437,7 +442,8 @@ def pool_resources(sheet: Dict[str, Any], gaps: List[str]) -> List[Tuple[str, in
     """(resource id, current, max) for hit points, spell slots and feature use pools.
 
     Typed fields only: ``hitPoints``/``maxHitPoints``, ``spellcasting.spellSlots.levelN``
-    ``{current, max}`` and ``classFeatures[].usage {current, max}``. A pool the sheet
+    ``{current, max}``, ``classFeatures[].usage {current, max}`` and then
+    ``feats[].usage`` (#891; a feat whose id a class feature holds is a gap). A pool the sheet
     does not carry is simply absent; a spend against it is then a compile refusal.
     """
     cid = character_id(sheet)
@@ -460,7 +466,7 @@ def pool_resources(sheet: Dict[str, Any], gaps: List[str]) -> List[Tuple[str, in
         if p is not None:
             out.append((slot_resource_id(key), p[0], p[1]))
     seen: set = set()
-    for feature in sheet.get("classFeatures") or []:
+    for feature in list(sheet.get("classFeatures") or []) + list(sheet.get("feats") or []):
         if not isinstance(feature, dict) or not isinstance(feature.get("usage"), dict) or not feature.get("name"):
             continue
         rid = feature_resource_id(feature["name"])
@@ -585,6 +591,11 @@ def _training(sheet: Dict[str, Any]) -> List[str]:
 
 def _has_defense_style(sheet: Dict[str, Any]) -> bool:
     return any(f.get("name") == DEFENSE_STYLE_FEATURE for f in sheet.get("classFeatures") or [] if isinstance(f, dict))
+
+
+def has_great_weapon_style(sheet: Dict[str, Any]) -> bool:
+    return isinstance(sheet, dict) and any(
+        f.get("name") == GREAT_WEAPON_STYLE_FEATURE for f in sheet.get("classFeatures") or [] if isinstance(f, dict))
 
 
 def _has_archery_style(sheet: Dict[str, Any]) -> bool:

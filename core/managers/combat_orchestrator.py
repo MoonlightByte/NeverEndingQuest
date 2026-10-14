@@ -30,6 +30,7 @@ from core.combat.resolver import (
     open_player_weapon_attack,
     player_spell_attack_entry,
     player_spell_save_entry,
+    player_great_weapon,
     player_weapon_attack_dice,
     player_weapon_attack_entry,
     player_weapon_attack_score,
@@ -47,6 +48,7 @@ from core.managers.combat_state import (
 )
 from core.managers.combat_transaction import (
     CombatPreconditionChanged,
+    append_pending_game_roll,
     append_pending_player_input,
     apply_staged_turn,
     claim_turn,
@@ -546,7 +548,26 @@ def _pause_for_refused_item(encounter_path, pending, refusals, voice_intents):
     )
 
 
-def _player_request_message(request):
+# #877: said after a typed roll request, as the code-issued roll lines say it.
+_TYPED_ROLL_SENTENCE = " Type the result, or type roll and the game rolls."
+
+
+def _player_request_message(request, typed_roll=False):
+    """The text shown for the model's request; ``typed_roll`` (a roll
+    request with a typed die, #877) adds that the game can roll it."""
+    message = _request_text(request)
+    return message + _TYPED_ROLL_SENTENCE if typed_roll else message
+
+
+def _typed_roll(request):
+    """The full typed dice of a roll request ("1d8+1d6"), or None."""
+    if not isinstance(request, dict) or request.get("kind") != "roll":
+        return None
+    terms = _roll_die_terms(request.get("die"))
+    return "+".join("%dd%d" % term for term in terms) if terms else None
+
+
+def _request_text(request):
     if not isinstance(request, dict):
         return "I need one more detail before resolving that action. What do you do?"
     prompt = request.get("prompt")
@@ -798,6 +819,21 @@ def _spell_phase_purpose(spell_name, phase):
     return None
 
 
+def _roll_request_purpose(request):
+    """The typed purpose of a player roll request (#853): the spell's
+    contract phase purpose when a spell is named, else the plain label,
+    else None. The phase is read stripped and casefolded; the request text
+    is never read."""
+    if not isinstance(request, dict):
+        return None
+    phase = request.get("phase").strip().casefold() if isinstance(request.get("phase"), str) else ""
+    spell = request.get("spellName").strip() if isinstance(request.get("spellName"), str) else ""
+    # A spell names its contract phase; a plain label keeps its own rule
+    # even with a spell named (an ambiguous contract has no phases).
+    return ((_spell_phase_purpose(spell, phase) if spell else None)
+            or (phase if phase in _ROLL_PHASES else None))
+
+
 def _validate_roll_request_phase(batch, encounter):
     """#853: a player roll request names its phase and its die as typed
     fields, and the two agree: an attack's main die is 1d20 (2d20 with
@@ -820,10 +856,7 @@ def _validate_roll_request_phase(batch, encounter):
             request["phase"] = phase
         spell = request.get("spellName").strip() if isinstance(request.get("spellName"), str) else ""
         terms = _roll_die_terms(request.get("die"))
-        # A spell names its contract phase; a plain label keeps its own rule
-        # even with a spell named (an ambiguous contract has no phases).
-        purpose = ((_spell_phase_purpose(spell, phase) if spell else None)
-                   or (phase if phase in _ROLL_PHASES else None))
+        purpose = _roll_request_purpose(request)
         problem = None
         if not phase:
             problem = ("requiresPlayerInput roll needs phase: the spell's typed phase, "
@@ -855,10 +888,43 @@ def _validate_roll_request_phase(batch, encounter):
 # the dice), takes only bare typed numbers, and scores the swing; any other
 # answer goes back to the model's adjudicated path.
 _ROLL_NUMBERS = re.compile(r"^\s*(\d{1,3})(?:[\s,]+(\d{1,3}))?\s*$")
+# #879: a Great Weapon Fighting swing takes each damage die (a critical 2d6 is 4).
+_FACE_LIST = re.compile(r"^\s*\d{1,3}(?:[\s,]+\d{1,3})*\s*$")
 # #249: the browser cannot send a blank line, so "roll" asks the game to roll,
 # and its dice tray inserts a whole sentence ("I rolled a 14 on a d20.", or
 # "I rolled a 5 on a d8 and a 3 on a d8. My damage dice add up to 8.").
 _LET_THE_GAME_ROLL = {"roll", "roll for me", "you roll"}
+
+
+def _lets_the_game_roll(text):
+    """The exact words that ask the game to roll (#249, #830, #877)."""
+    return isinstance(text, str) and text.strip().rstrip(".!").casefold() in _LET_THE_GAME_ROLL
+
+
+def _game_roll_answer(pending, text):
+    """#877: the answer to the open typed roll request when the player asks
+    the game to roll it: (the sentence the DM reads, faces per die term).
+    "answered" when the last exchange already holds the game's roll and
+    the DM has not asked again (a resumed turn re-sending "roll"). None
+    for any other line, or when no typed request is open: the line then
+    goes to the DM as today."""
+    if not _lets_the_game_roll(text):
+        return None
+    exchanges = [item for item in (pending or {}).get("playerExchanges") or [] if isinstance(item, dict)]
+    if not exchanges:
+        return None
+    last = exchanges[-1]
+    if last.get("rolledBy") == "game" and not last.get("dmRequest"):
+        return "answered"
+    terms = _roll_die_terms(last.get("requestedRoll")) if last.get("dmRequest") else None
+    if not terms:
+        return None
+    rng = random.SystemRandom()
+    faces = [[rng.randint(1, sides) for _ in range(count)] for count, sides in terms]
+    parts = ["%s on the %s" % (" and ".join(str(face) for face in term_faces),
+                               "d%d" % sides if count == 1 else "%dd%d" % (count, sides))
+             for term_faces, (count, sides) in zip(faces, terms)]
+    return "The game rolled for me: %s." % " and ".join(parts), faces
 _TRAY_DIE = r"a (\d{1,3}) on a d(\d{1,3})"
 _TRAY_SENTENCE = re.compile(
     r"^\s*I rolled %s(?:(?:, | and )%s)*\.(?: My damage dice add up to \d{1,4}\.)?\s*$" % (_TRAY_DIE, _TRAY_DIE),
@@ -877,8 +943,7 @@ def _tray_faces(text, record, entry):
     wanted = 20 if record.get("phase") == "attack" else sides
     if len(dice) != count or any(die != wanted or not 1 <= face <= die for face, die in dice):
         return "invalid"
-    faces = [face for face, _die in dice]
-    return faces if record.get("phase") == "attack" else [sum(faces)]
+    return [face for face, _die in dice]
 
 
 _DUPLICATE_SUFFIX_RE = re.compile(r"_(\d+)\b")
@@ -888,6 +953,18 @@ def _spoken_name(name):
     """A combatant name as the player reads it: the engine keeps duplicate
     monsters apart as "Bandit Sentry_2"; the request says "Bandit Sentry 2"."""
     return _DUPLICATE_SUFFIX_RE.sub(r" \1", str(name or ""))
+
+
+def _wants_each_die(record, count):
+    """#879 (owner D-879-1): a Great Weapon Fighting damage roll of two or more
+    dice asks for each die; the flag was read when the damage was asked for."""
+    return (record.get("phase") == "damage" and record.get("greatWeapon") is True
+            and not isinstance(record.get("spell"), dict) and count >= 2)
+
+
+def _each_die_example(count, sides):
+    """An example of one number per die, e.g. "1 4" for 2d6, "1 4 2 6" for 4d6."""
+    return " ".join(str((face - 1) % sides + 1) for face in ([1, 4, 2, 6, 3, 5] * count)[:count])
 
 
 def _weapon_attack_prompt(record, entry):
@@ -921,8 +998,10 @@ def _weapon_attack_prompt(record, entry):
         "critical hit" if record.get("critical")
         else "hit (%s vs AC %s)" % (record.get("attackTotal"), record.get("targetAC"))
     )
-    return "%s %s on %s: roll %dd%d for damage and type the total, or type roll and the game rolls." % (
-        record.get("ability"), hit, _spoken_name(record.get("targetName")), count, sides,
+    what = ("each die (e.g. %s)" % _each_die_example(count, sides)
+            if _wants_each_die(record, count) else "the total")
+    return "%s %s on %s: roll %dd%d for damage and type %s, or type roll and the game rolls." % (
+        record.get("ability"), hit, _spoken_name(record.get("targetName")), count, sides, what,
     )
 
 
@@ -932,13 +1011,18 @@ def _parse_weapon_roll(text, record, entry):
     anything else."""
     if text is None:
         return None
-    if not text.strip() or text.strip().rstrip(".!").casefold() in _LET_THE_GAME_ROLL:
+    if not text.strip() or _lets_the_game_roll(text):
         return []
+    count, sides = player_weapon_attack_dice(record, entry)
+    if _wants_each_die(record, count):
+        if not _FACE_LIST.match(text):
+            return _tray_faces(text, record, entry)
+        values = [int(value) for value in re.findall(r"\d+", text)]
+        return values if len(values) == count and all(1 <= value <= sides for value in values) else "invalid"
     match = _ROLL_NUMBERS.match(text)
     if not match:
         return _tray_faces(text, record, entry)
     values = [int(group) for group in match.groups() if group is not None]
-    count, sides = player_weapon_attack_dice(record, entry)
     if record.get("phase") == "attack":
         fits = len(values) == count and all(1 <= value <= 20 for value in values)
     else:
@@ -962,6 +1046,22 @@ def _roll_already_answered(pending):
     return False
 
 
+def _request_is_the_swings(request):
+    """#880: True when the code-issued roll may supersede the intent's own
+    request: none, a roll with no phase, or a roll whose typed purpose is
+    the swing's attack or damage. Any other roll, or a choice, is the
+    model's to ask (Second Wind's heal before the swing)."""
+    if not request:
+        # None or an empty object: the pipeline reads both as no request.
+        return True
+    if not isinstance(request, dict) or request.get("kind") != "roll":
+        return False
+    phase = request.get("phase")
+    if not (isinstance(phase, str) and phase.strip()):
+        return True
+    return _roll_request_purpose(request) in ("attack", "damage")
+
+
 def _player_weapon_takeover(encounter, characters, pending, batch):
     """(record, entry) when the window opens with the human player's plain
     melee weapon swing, a cast of a recorded spell attack (#672) or of a
@@ -981,6 +1081,10 @@ def _player_weapon_takeover(encounter, characters, pending, batch):
     intents = _ordered_intents(batch, state.get("revision"))
     intent = intents[0] if intents and isinstance(intents[0], dict) else None
     if intent is None or intent.get("actorId") != actor_ids[0] or intent.get("mode") != "adjudicated":
+        return None
+    if not _request_is_the_swings(intent.get("requiresPlayerInput")):
+        # #880: the intent carries another roll or a choice; the model's
+        # path shows it, and the swing is asked for after it.
         return None
     entry = player_weapon_attack_entry(encounter, characters, intent)
     spell = None
@@ -1099,6 +1203,9 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
             "Type %d whole number%s between 1 and 20, or type roll to let the game roll. "
             % (count, "s" if count == 2 else "")
             if record.get("phase") == "attack"
+            else "Type each of the %dd%d dice (e.g. %s), or type roll to let the game roll. " % (
+                count, sides, _each_die_example(count, sides))
+            if _wants_each_die(record, count)
             else "Type the total of %dd%d (%d to %d), or type roll to let the game roll. "
             % (count, sides, count, count * sides)
         )
@@ -1112,9 +1219,16 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
         if phase == "attack":
             values = [roller.randint(1, 20) for _ in range(count)]
         else:
-            values = [sum(roller.randint(1, sides) for _ in range(count))]
+            values = [roller.randint(1, sides) for _ in range(count)]
         source, answer = "game", "(the game rolled %s)" % " ".join(str(v) for v in values)
-    record["faces"][phase] = values if phase == "attack" else values[0]
+    if phase == "attack":
+        record["faces"][phase] = values
+    else:
+        # #879: the total stays an int (spell and older readers); the faces are
+        # kept beside it whenever they are known (tray, game roll, each die).
+        record["faces"][phase] = sum(values)
+        if len(values) == count:
+            record["faces"]["damageFaces"] = list(values)
     record["sources"][phase] = source
     prompt = None
     requested = None
@@ -1124,6 +1238,8 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
                        "attackTotal": total, "targetAC": ac})
         if hit:
             record["phase"] = "damage"
+            if not isinstance(record.get("spell"), dict):
+                record["greatWeapon"] = player_great_weapon(encounter, characters, record, entry)
             prompt = _weapon_attack_prompt(record, entry)
             record["prompt"] = prompt
             requested = record["dice"]
@@ -1773,11 +1889,22 @@ def execute_agentic_turn(
             encounter = safe_json_load(encounter_path)
             pending = deepcopy((encounter.get("combatState") or {}).get("pendingTurn"))
         if not weapon_answered and not _all_non_player(encounter, pending.get("actorIds", [])):
-            append_pending_player_input(
-                encounter_path,
-                pending.get("turnId"),
-                player_input,
-            )
+            game_roll = _game_roll_answer(pending, player_input)
+            if isinstance(game_roll, tuple):
+                # #877: the open typed request decides that this line
+                # answers it; the game rolls its full dice.
+                append_pending_game_roll(
+                    encounter_path,
+                    pending.get("turnId"),
+                    game_roll[0],
+                    game_roll[1],
+                )
+            elif game_roll is None:
+                append_pending_player_input(
+                    encounter_path,
+                    pending.get("turnId"),
+                    player_input,
+                )
             encounter = safe_json_load(encounter_path)
             pending = deepcopy((encounter.get("combatState") or {}).get("pendingTurn"))
         persisted_voice_intents = normalize_npc_voice_intents(
@@ -1885,6 +2012,7 @@ def execute_agentic_turn(
             requested_die=previous_exchange.get("requestedDie"),
             requested_phase=previous_exchange.get("requestedPhase"),
             npc_voice_intents=immutable_voice_intents,
+            requested_roll=previous_exchange.get("requestedRoll"),
         )
         record_combat_diagnostic(
             record_type="window_outcome",
@@ -2160,7 +2288,8 @@ def execute_agentic_turn(
                 rule_references=rule_count,
                 intents=len(batch.get("intents") or []) if isinstance(batch, dict) else None,
             )
-            player_message = _player_request_message(request)
+            typed_roll = _typed_roll(request)
+            player_message = _player_request_message(request, typed_roll=typed_roll is not None)
             record_pending_player_request(
                 encounter_path,
                 pending.get("turnId"),
@@ -2168,6 +2297,7 @@ def execute_agentic_turn(
                 requested_die=_authoritative_requested_die(request),
                 requested_phase=request.get("phase") if isinstance(request, dict) else None,
                 npc_voice_intents=immutable_voice_intents,
+                requested_roll=typed_roll,
             )
             raise CombatTurnPaused(
                 "Combat resolution requires more player input",

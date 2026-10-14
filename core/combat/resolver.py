@@ -1333,8 +1333,45 @@ def _sheet_delta(working, hp_after, status_after, creature, had_temp):
     return delta
 
 
+GREAT_WEAPON_RULE = "Great Weapon Fighting"
+
+
+def great_weapon_treated(faces):
+    """SRD 5.2.1 Great Weapon Fighting: a 1 or 2 on a damage die counts as a 3."""
+    return [max(int(face), 3) for face in faces]
+
+
+def great_weapon_applies(sheet, entry):
+    """(applies, note) for one swing (#879): the sheet records exactly
+    "Fighting Style: Great Weapon Fighting", the row is melee, and the engine
+    option for the row occupies two hands. note is "" when it applies or the
+    style is absent, otherwise why it does not. Typed fields only."""
+    from core.nql import genesis, hands
+    if not genesis.has_great_weapon_style(sheet):
+        return False, ""
+    if not isinstance(entry, dict) or entry.get("type") != "melee":
+        return False, "not a melee row"
+    try:
+        held = hands.two_handed(sheet, entry.get("name"))
+    except Exception as exc:  # fail forward: the swing is scored without the style
+        held = None
+        _warn_great_weapon(entry, exc)
+    if held is None:
+        return False, "no engine row"
+    return (True, "") if held else (False, "not held in two hands")
+
+
+def _warn_great_weapon(entry, exc):
+    try:
+        from utils.enhanced_logger import warning as _warning
+        _warning("GWF: %s scored without Great Weapon Fighting (%s: %s)"
+                 % ((entry or {}).get("name"), type(exc).__name__, exc), category="combat_events")
+    except Exception:
+        pass
+
+
 def _engine_swing(rolls, entry, sheet, to_hit, mode, faces, target_ac, target, target_hp, trait_sheet,
-                  log_label=""):
+                  log_label="", treat=False):
     """Option 3: one swing scored by the rules engine (NQL X6 + X8), or None.
 
     The engine keeps the face, decides hit, miss and critical, adds the
@@ -1352,6 +1389,8 @@ def _engine_swing(rolls, entry, sheet, to_hit, mode, faces, target_ac, target, t
         return None
     peek = getattr(rolls, "peek", None)
     upcoming = peek("d%d" % sides, 2 * count) if callable(peek) else []
+    if treat:
+        upcoming = great_weapon_treated(upcoming)
     normal = sum(upcoming[:count]) if len(upcoming) >= count else None
     critical = sum(upcoming) if len(upcoming) >= 2 * count else None
     # With no damage faces ahead (the player's miss) the swing is only scored.
@@ -1418,7 +1457,7 @@ def _opened_faces(encounter, characters, actor, rolls):
     return {"bonusDice": added} if added else {}
 
 
-def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override=None, bonus_dice=None):
+def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override=None, great_weapon=None, bonus_dice=None):
     """Resolve a validated attack intent into an event + deltas.
 
     Only 'attack' (and the no-op stances) resolve mechanically here;
@@ -1531,12 +1570,20 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
             else min(attack_faces) if attack_mode == "disadvantage"
             else attack_faces[0]
         )
+        # #879: Great Weapon Fighting is read once per swing; a player's
+        # code-scored swing passes the answer stored when its damage was asked.
+        if great_weapon is not None:
+            gwf, gwf_note = bool(great_weapon), ""
+        else:
+            gwf, gwf_note = great_weapon_applies(sheet, entry)
+        if gwf or gwf_note:
+            event["outcome"]["greatWeaponFighting"] = True if gwf else gwf_note
         # Option 3: the rules engine scores the swing and its damage; today's
         # arithmetic stays the fallback (engine false on the swing).
         scored = _engine_swing(
             rolls, entry, sheet, attack_bonus, attack_mode, attack_faces, target_ac,
             target, hp_after, trait_sheet,
-            log_label="%s %s" % (actor.get("name"), entry.get("name")),
+            log_label="%s %s" % (actor.get("name"), entry.get("name")), treat=gwf,
         )
         if scored is not None:
             total, critical, hit = int(scored.total), bool(scored.critical), bool(scored.hit)
@@ -1578,12 +1625,14 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
                 )
                 for _ in range(count)
             ]
-            for value in damage_rolls:
-                event["rolls"].append(
-                    {"die": "d%d" % sides, "value": value, "purpose": "damage"}
-                )
+            treated = great_weapon_treated(damage_rolls) if gwf else damage_rolls
+            for value, used in zip(damage_rolls, treated):
+                roll_record = {"die": "d%d" % sides, "value": value, "purpose": "damage"}
+                if gwf:
+                    roll_record.update(treated=used, rule=GREAT_WEAPON_RULE)
+                event["rolls"].append(roll_record)
             if (scored is not None and scored.raw_damage is not None
-                    and scored.damage_rolled == sum(damage_rolls)):
+                    and scored.damage_rolled == sum(treated)):
                 # Option 3: the engine's damage, its traits applied.
                 raw_damage = scored.raw_damage
                 damage, damage_traits = int(scored.damage or 0), list(scored.traits)
@@ -1593,7 +1642,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
                         from utils.enhanced_logger import warning as _warning
                         _warning(
                             "AS: %s %s scored without the engine (damage faces taken %d, engine used %s)"
-                            % (actor.get("name"), entry.get("name"), sum(damage_rolls), scored.damage_rolled),
+                            % (actor.get("name"), entry.get("name"), sum(treated), scored.damage_rolled),
                             category="combat_events",
                         )
                     except Exception:
@@ -1601,7 +1650,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
                     scored = None
                 raw_damage = max(
                     0,
-                    sum(damage_rolls)
+                    sum(treated)
                     + modifier
                     + int(entry.get("damageBonus", 0) or 0)
                     + modifier_total(sheet, "damageRolls"),
@@ -2000,6 +2049,24 @@ def _split_total(total, count, sides):
     return values
 
 
+def _damage_faces(faces, count, sides, total):
+    """The typed damage faces kept on the roll record (#879), or None when they
+    are absent or do not match the dice and the total."""
+    if (not isinstance(faces, list) or len(faces) != count
+            or any(type(face) is not int or not 1 <= face <= sides for face in faces)
+            or sum(faces) != total):
+        return None
+    return list(faces)
+
+
+def player_great_weapon(encounter, characters, record, entry):
+    """Whether the player's weapon swing on ``record`` has Great Weapon Fighting
+    (#879); read once when its damage is asked for and stored on the record."""
+    actor = combatant_by_id(encounter, record.get("actorId"))
+    sheet = _raw_combatant_sheet(encounter, characters, actor)
+    return great_weapon_applies(sheet, entry)[0]
+
+
 def resolve_player_weapon_attack(encounter, characters, intent, record, event_id, roll_source=None):
     """Score the player's swing from the typed faces on the completed roll
     phase through resolve_intent (crit, natural 1, typed damage traits, the
@@ -2008,9 +2075,14 @@ def resolve_player_weapon_attack(encounter, characters, intent, record, event_id
     faces = record.get("faces") or {}
     pools = {"d20": list(faces.get("attack") or [])}
     damage_total = faces.get("damage")
+    damage_faces = None
     if type(damage_total) is int:
         count, sides = player_weapon_attack_dice(dict(record, phase="damage"), entry)
-        pools["d%d" % sides] = _split_total(damage_total, count, sides)
+        damage_faces = _damage_faces(faces.get("damageFaces"), count, sides, damage_total)
+        pools["d%d" % sides] = damage_faces or _split_total(damage_total, count, sides)
+    # #879: Great Weapon Fighting needs each die; a window saved before its faces
+    # were kept (a total only) is scored as before, without it.
+    great_weapon = record.get("greatWeapon") is True and damage_faces is not None
     scored = {
         "actorId": record.get("actorId"),
         "action": "attack",
@@ -2023,6 +2095,7 @@ def resolve_player_weapon_attack(encounter, characters, intent, record, event_id
     resolution = resolve_intent(
         encounter, characters, scored, DeterministicRollSource(pools), event_id,
         mode_override=(record.get("mode"), list(record.get("modeSources") or [])),
+        great_weapon=great_weapon,
         bonus_dice=added,
     )
     event = resolution["event"]
@@ -2032,8 +2105,15 @@ def resolve_player_weapon_attack(encounter, characters, intent, record, event_id
     rolls += [dict(r, source="game") for r in event["rolls"] if r.get("purpose") == "attackBonus"]
     if type(damage_total) is int and event["outcome"].get("hit"):
         count, sides = player_weapon_attack_dice(dict(record, phase="damage"), entry)
-        rolls.append({"die": "%dd%d" % (count, sides), "value": damage_total, "purpose": "damage",
-                      "source": sources.get("damage", "player")})
+        row = {"die": "%dd%d" % (count, sides), "value": damage_total, "purpose": "damage",
+               "source": sources.get("damage", "player")}
+        if damage_faces is not None:
+            row["faces"] = list(damage_faces)
+            if great_weapon:
+                row["facesTreated"] = great_weapon_treated(damage_faces)
+                row["value"] = sum(row["facesTreated"])
+                row["rule"] = GREAT_WEAPON_RULE
+        rolls.append(row)
     event["rolls"] = rolls
     event["outcome"]["scoredBy"] = "code"
     return resolution
@@ -2094,7 +2174,7 @@ def player_spell_attack_entry(encounter, characters, intent):
     slot_level = None
     level = None
     if (phase.get("scaling") or {}).get("kind") == "slot_level":
-        slot_level = srd_roll_contracts._slot_level(intent, {})
+        slot_level = srd_roll_contracts._slot_level(intent, {}, actor.get("name"))
         if slot_level is None:
             return None
     else:
@@ -2326,10 +2406,14 @@ def player_spell_save_entry(encounter, characters, intent):
         return None
     if _stat_block_save_entry(sheet, intent.get("ability")) is not None:
         return None
+    if srd_roll_contracts.slot_level_mismatch(intent, actor.get("name")):
+        # F4-Q3 A: never opened at the claimed level; the adjudicated
+        # path returns the mismatch to the model as a violation.
+        return None
     slot_level = None
     level = None
     if (phase.get("scaling") or {}).get("kind") == "slot_level":
-        slot_level = srd_roll_contracts._slot_level(intent, {})
+        slot_level = srd_roll_contracts._slot_level(intent, {}, actor.get("name"))
         if slot_level is None:
             return None
     else:
@@ -2514,7 +2598,8 @@ def _resource_snapshot(sheet, kind, name):
             return int(level.get("current", 0) or 0), int(level.get("max", 0) or 0)
         return None
     if kind == "featureUse":
-        for feature in (sheet or {}).get("classFeatures", []):
+        # #891: a feat's use (feats[].usage) after the class features.
+        for feature in list((sheet or {}).get("classFeatures", []) or []) + list((sheet or {}).get("feats", []) or []):
             if isinstance(feature, dict) and feature.get("name") == name:
                 usage = feature.get("usage")
                 if isinstance(usage, dict):
@@ -2728,7 +2813,10 @@ def _spell_save_rule(encounter, characters, proposal, save_spec, targets, event)
         })
     level = caster.get("level") if caster is not None else None
     dice = srd_spell_saves.damage_dice(
-        phase, srd_roll_contracts._slot_level(proposal, {}), level if type(level) is int else None,
+        phase,
+        srd_roll_contracts._slot_level(
+            proposal, {}, (combatant_by_id(encounter, proposal.get("actorId")) or {}).get("name")),
+        level if type(level) is int else None,
     ) if phase else None
     return {"name": record["name"], "spec": spec, "success": record["success"],
             "kind": record["damageKind"], "dice": dice}
@@ -3057,6 +3145,12 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
         resolution["violations"].append(
             "%s has no spells or spell slots on their sheet and cannot cast; choose an "
             "action from their own attacks, features or items" % actor_name)
+    if isinstance(actor_sheet, dict):
+        # #855 F4-Q3 A: the own slot spent sets the spell's level.
+        from core.ai import srd_roll_contracts as _contracts
+        mismatch = _contracts.slot_level_mismatch(proposal, actor_name, actor_sheet)
+        if mismatch:
+            resolution["violations"].append(mismatch)
 
     # Resources: validate owner/kind/name, reject overspend, and record
     # absolute before/after so a crash-replay of this event is idempotent.
@@ -4179,7 +4273,7 @@ def apply_resolution(encounter, characters, resolution):
                 cap = int(level.get("max", 0) or 0)
                 level["current"] = min(cap, setter(int(level.get("current", 0) or 0)))
         elif resource["kind"] == "featureUse":
-            for feature in sheet.get("classFeatures", []):
+            for feature in list(sheet.get("classFeatures", []) or []) + list(sheet.get("feats", []) or []):
                 if isinstance(feature, dict) and feature.get("name") == resource.get("name"):
                     usage = feature.get("usage")
                     if isinstance(usage, dict):
