@@ -42,6 +42,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from jsonschema import validate, ValidationError
 import config
 from core.ai import api_client
+from core.leveling import choices as class_choices
 from core.leveling import tables as class_tables
 from core.nql.legacy_loadout import RECEIPT_FIELD, migrate as repair_initial_loadout
 from utils.module_path_manager import ModulePathManager
@@ -115,9 +116,16 @@ def _srd_class_reference(npc_class, npc_level):
     level grants up to the requested level (3 when it names none), and at that
     level the class table's columns, spell slots and spell counts; once the
     level reaches the subclass level, each subclass with the features it grants
-    up to that level."""
+    up to that level; and for a caster, its SRD spell list (#1001): cantrips when
+    the class has them, then each spell level it has slots for at that level.
+    When the spell repository cannot be read, the reference has no lists."""
     level = _requested_level(npc_level) or 3
     classes = class_tables.tables()["classes"]
+    try:
+        repository = list({id(entry): entry for entry in class_choices.spells().values()}.values())
+    except Exception as e:
+        warning(f"NPC spell lists not built: {e}", category="npc_creation")
+        repository = None
     key = class_tables.class_key({"class": str(npc_class or "").strip()})
     keys = [key] if key else list(classes)
     reference = {}
@@ -135,7 +143,14 @@ def _srd_class_reference(npc_class, npc_level):
                 name: {str(n): features for n in range(1, level + 1)
                        for features in [class_tables.subclass_features(key, name, n)] if features}
                 for name in class_tables.subclass_options(key)}
-        reference[data.get("name") or key.capitalize()] = entry
+        name = data.get("name") or key.capitalize()
+        levels = ([0] if entry["spell_counts"].get("cantrips") else []) + [
+            int(slot[len("level"):]) for slot in entry["spell_slots"] if slot.startswith("level")]
+        if repository is not None and levels:
+            entry["spells"] = {str(n): sorted(spell["name"] for spell in repository
+                                              if spell.get("level") == n and name in (spell.get("classes") or []))
+                               for n in range(0 if 0 in levels else 1, max(levels) + 1)}
+        reference[name] = entry
     return {"level": level, "classes": reference}
 
 def _set_class_tables(npc_data):
@@ -210,7 +225,8 @@ def generate_npc(npc_name, schema, npc_race=None, npc_class=None, npc_level=None
         class_reference = None
     class_reference_text = "" if class_reference is None else (
         "\n\nSRD 5.2.1 CLASS REFERENCE (the game's rules tables): use these class features, the levels that grant "
-        "them and these numbers; a class feature absent here is not part of that class at that level.\n"
+        "them, these numbers and these class spell lists; a class feature absent here is not part of that class "
+        "at that level.\n"
         + json.dumps(class_reference))
 
     system_message = f"""You are an assistant that creates NPC schema JSON files from a master NPC schema template for a 5e game. Given an NPC name and optional details, create a JSON representation of the NPC's stats and abilities according to 5e rules following the NPC schema template exactly. Ensure your new NPC JSON adheres to the provided schema template. Do not include any additional properties or nested 'type' and 'value' fields. Return only the JSON content without any markdown formatting.
