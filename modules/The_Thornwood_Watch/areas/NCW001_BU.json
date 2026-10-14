@@ -308,7 +308,7 @@
       ],
       "lootTable": [
         "Antler fragment with purification magic",
-        "Vial of Hart's tears (powerful healing potion)",
+        "Vial of Hart's tears (a powerful healing draught; drink it as a Bonus Action to regain 4d4 + 4 hit points)",
         "Map to the corruption's source carved in ancient stone",
         "Blessing of the Forest Guardian (permanent boon)"
       ],
@@ -390,7 +390,7 @@
       ],
       "lootTable": [
         "Ranger's journal detailing the corruption's rapid spread",
-        "Partially corrupted healing potions (risky to use)",
+        "Potion of Healing (2 vials the explorers left behind, clouded by the corruption but still potent; each restores 2d4 + 2 hit points)",
         "Map marking the epicenter of the corruption",
         "Thane's family locket (uncorrupted, emotionally significant)"
       ],
