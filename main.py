@@ -2970,20 +2970,37 @@ def parse_json_safely(text):
     raise json.JSONDecodeError("Unable to parse JSON from the given text", text, 0)
 
 
+# T065's typed category: which of the validator's rules it applied. Counted
+# in diagnostics only; no code branches on it and it never reaches the DM.
+VALIDATION_CATEGORIES = ("none", "reference", "missing_action", "unrequested_action", "action_order",
+                         "travel", "combat", "resources", "inventory", "party", "module", "other")
+
+
 def _parse_dm_validation_verdict(response_text):
-    """Parse T065's exact semantic-validation response contract."""
+    """Parse T065's exact semantic-validation response contract.
+
+    ``valid`` (a boolean) and a nonempty ``reason`` decide, as before. At most
+    one more key is allowed: the counting-only ``category``. A category outside
+    VALIDATION_CATEGORIES, of another type, or under another key name reads
+    "unrecognized"; with no third key it is None. It never refuses a verdict.
+    """
     verdict = parse_json_safely(response_text)
     if (
         not isinstance(verdict, dict)
-        or set(verdict) != {"valid", "reason"}
+        or not {"valid", "reason"} <= set(verdict)
+        or len(verdict) > 3
         or type(verdict["valid"]) is not bool
         or not isinstance(verdict["reason"], str)
         or not verdict["reason"].strip()
     ):
         raise ValueError(
-            "T065 requires exactly a boolean valid field and nonempty reason"
+            "T065 requires a boolean valid field and nonempty reason, plus at most a category"
         )
-    return verdict["valid"], verdict["reason"].strip()
+    category = None
+    if len(verdict) == 3:
+        value = verdict.get("category")
+        category = value if isinstance(value, str) and value in VALIDATION_CATEGORIES else "unrecognized"
+    return verdict["valid"], verdict["reason"].strip(), category
 
 def create_module_validation_context(party_tracker_data, path_manager, *, module_snapshot=None):
     """Create module data context for validation system to check location/NPC references"""
@@ -3700,12 +3717,12 @@ def validate_ai_response(
     npc_voice_batch=None,
     transition_facts=None,
     invocation_claim=None,
-    normalization=None,
     review_feedback=None,
     detached_context=None,
     module_snapshot=None,
     installed_module_references="",
     *,
+    normalization,
     campaign_end,
 ):
     from core.combat.invocation import (
@@ -3727,12 +3744,6 @@ def validate_ai_response(
     elif not detached_context:
         status_validating()
 
-    if normalization is None:
-        is_normalized, normalization = _normalize_dm_candidate(
-            primary_response, party_tracker_data
-        )
-        if not is_normalized:
-            return False, normalization
     response_to_validate = normalization["candidate"]
     primary_response = normalization["original_response"]
     fixed_response = normalization["fixed_response"]
@@ -4349,7 +4360,8 @@ def validate_ai_response(
         validation_response = validation_result.choices[0].message.content.strip()
 
         try:
-            is_valid, reason = _parse_dm_validation_verdict(validation_response)
+            is_valid, reason, verdict_category = _parse_dm_validation_verdict(validation_response)
+            debug(f"VALIDATION: category {verdict_category}", category="ai_validation")
             
             # Track validation pairs for quality control
             try:
@@ -4366,6 +4378,7 @@ def validate_ai_response(
                     "validation_result": {
                         "valid": is_valid,
                         "reason": reason,
+                        "category": verdict_category,
                         "raw_response": validation_response
                     },
                     "attempt": attempt,
@@ -4388,7 +4401,8 @@ def validate_ai_response(
                 log_entry = {
                     "prompt": validation_conversation,
                     "response": validation_response,
-                    "reason": reason
+                    "reason": reason,
+                    "category": verdict_category
                 }
 
                 # Ensure debug/logs directory exists
