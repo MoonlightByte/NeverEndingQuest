@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- If saving the welcome-back hits a brief lock wait, a line you type in that moment again replaces the welcome instead of waiting behind it (#990 follow-up).
 - A DM reply that repeats a key (two "actions" lists) is sent back for a corrected draft instead of silently keeping only the last list, which dropped the fight a welcome-back had started (#1018).
 - A very long ammunition name or storage container id no longer makes the rules engine refuse the whole party world; over-long engine ids are shortened, and every id that already worked is unchanged (#1004).
 - Arrows taken out of a chest now join the sheet's quiver even when it is named the older way (Arrow), and a chest holding arrows from several deposits gives back up to the full amount stored (#971).
