@@ -366,32 +366,55 @@ def mint_reason(entry: Dict[str, Any]) -> Optional[str]:
     return catalog_charge_state(entry, rule, [], "")[1]
 
 
+def bounded_id(prefix: str, text: str, limit: int = ENGINE_ID_MAX) -> str:
+    """``prefix + text`` within ``limit`` bytes (#1004). An id that fits is
+    returned unchanged; a longer one keeps the first bytes of ``text`` that
+    fit, with trailing "-" stripped."""
+    whole = prefix + text
+    if len(whole.encode("utf-8")) <= limit:
+        return whole
+    room = limit - len(prefix.encode("utf-8"))
+    return prefix + (text.encode("utf-8")[:room].decode("utf-8", errors="ignore").rstrip("-") or "x")
+
+
+def character_scope(name: Any) -> str:
+    """The slug a character's engine ids carry: its id after "char:"."""
+    return bounded_id("char:", slug(name))[len("char:"):]
+
+
 def character_id(sheet: Dict[str, Any]) -> str:
-    return "char:" + slug(sheet.get("name", ""))
+    return "char:" + character_scope(sheet.get("name", ""))
 
 
 def location_id(location: str) -> str:
-    return "loc:" + slug(location)
+    return bounded_id("loc:", slug(location))
 
 
 def container_id(storage_id: str) -> str:
-    return "container:" + slug(storage_id)
+    return bounded_id("container:", slug(storage_id))
 
 
 def bounded_item_id(iid: str, limit: int = ITEM_ID_MAX) -> str:
     """``iid`` within ``limit`` bytes (#566). An id that fits is returned
     unchanged. A longer one keeps its last two fields (the scope and row
-    index that make it unique) and shortens the name part before them. An
-    id whose tail alone cannot fit is returned unchanged."""
+    index that make it unique) and shortens the name part before them. When
+    the tail alone cannot fit, the scope is shortened too and the index kept
+    (#1004)."""
     if len(iid.encode("utf-8")) <= limit:
         return iid
     parts = iid.split(":")
     if len(parts) < 4:
         return iid
-    tail = ":" + ":".join(parts[-2:])
+    scope, index = parts[-2], parts[-1]
+    tail = ":" + scope + ":" + index
     room = limit - len(tail.encode("utf-8"))
     if room < len("item:x"):
-        return iid
+        scope_room = limit - len("item:x") - len(("::" + index).encode("utf-8"))
+        if scope_room < 1:
+            return iid
+        scope = scope.encode("utf-8")[:scope_room].decode("utf-8", errors="ignore").rstrip("-") or "x"
+        tail = ":" + scope + ":" + index
+        room = limit - len(tail.encode("utf-8"))
     head = ":".join(parts[:-2]).encode("utf-8")[:room].decode("utf-8", errors="ignore").rstrip("-")
     return head + tail
 
@@ -401,8 +424,16 @@ def _mint(entry: Dict[str, Any], scope: str, index: int) -> str:
 
 
 def ammunition_id(sheet: Dict[str, Any], name: str) -> str:
-    """The engine stock id of one ammunition row (AM): ammo:<slug(name)>:<scope>."""
-    return f"ammo:{slug(name)}:{character_id(sheet).split(':', 1)[1]}"
+    """The engine stock id of one ammunition row (AM): ammo:<slug(name)>:<scope>.
+    Over the engine's bound, the name part is shortened, and the scope only
+    when it alone cannot fit (#1004)."""
+    scope = character_id(sheet).split(":", 1)[1]
+    iid = f"ammo:{slug(name)}:{scope}"
+    if len(iid.encode("utf-8")) <= ENGINE_ID_MAX:
+        return iid
+    if len(f"ammo:x:{scope}".encode("utf-8")) > ENGINE_ID_MAX:
+        scope = bounded_id("ammo:x:", scope)[len("ammo:x:"):]
+    return bounded_id("ammo:", slug(name), ENGINE_ID_MAX - len(":" + scope)) + ":" + scope
 
 
 def ammunition_rows(sheet: Dict[str, Any], gaps: List[str]) -> List[Tuple[str, Dict[str, Any]]]:
@@ -438,7 +469,7 @@ def assign_ids(sheet: Dict[str, Any]) -> bool:
     """Write a nql_id onto every equipment entry that lacks one. Returns True if any was added."""
     changed = False
     seen = set()
-    scope = slug(sheet.get("name", ""))
+    scope = character_scope(sheet.get("name", ""))
     for index, entry in enumerate(sheet.get("equipment") or []):
         if not isinstance(entry, dict) or not entry.get("item_name"):
             continue
@@ -1204,6 +1235,10 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
             gaps.append("storage container without id skipped")
             continue
         conid = container_id(sid)
+        if conid in container_ids.values():
+            # Two storage ids that bound to one engine id (#1004).
+            gaps.append(f"duplicate container id {conid}; second container skipped")
+            continue
         container_ids[sid] = conid
         items.append(f"item {_q(conid)} named {_q(container.get('deviceName') or sid)} {{ container true; custody location {_q(loc)}; }}")
         ids = {}
