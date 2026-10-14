@@ -386,7 +386,7 @@
           "description": "Detailed written records of movements, weather patterns, and unusual sightings maintained by the scout."
         },
         {
-          "name": "East Tower Bell (SQ001)",
+          "name": "East Tower Bell",
           "description": "One of three silver bell towers in the communication network. This tower was overgrown with magically enhanced thorny vines that have now been cleared by the party, but the bell mechanism still needs restoration to function properly."
         }
       ],
@@ -458,7 +458,7 @@
           "description": "Fresh signs of activity including footprints, drag marks, and hastily concealed evidence of recent occupation."
         },
         {
-          "name": "West Tower Bell (SQ001)",
+          "name": "West Tower Bell",
           "description": "One of three silver bell towers in the communication network. The harmonic crystal has been shattered by Malarok's agents, requiring replacement to restore the tower's function."
         }
       ],
