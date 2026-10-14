@@ -19,7 +19,6 @@ reports it and every spell keeps today's path.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from functools import lru_cache
 from pathlib import Path
@@ -64,9 +63,7 @@ def load_spell_saves():
         raise SpellSaveDataError("Spell save record count is stale")
     if not metadata.get("_srd_attribution"):
         raise SpellSaveDataError("Spell save records lack SRD attribution")
-    source_hash = hashlib.sha256(srd_roll_contracts.SPELL_REPOSITORY_PATH.read_bytes()).hexdigest()
-    if metadata.get("sourceSha256") != source_hash:
-        raise SpellSaveDataError("Spell save records do not match the SRD repository")
+    srd_roll_contracts.check_source("srd_spell_saves", metadata)
     contracts = srd_roll_contracts.load_spell_roll_contracts().get("contracts") or {}
     for key, record in records.items():
         if not isinstance(record, dict) or set(record) != RECORD_FIELDS:
@@ -100,7 +97,8 @@ def lookup(name):
     try:
         records = load_spell_saves()["saves"]
         contracts = srd_roll_contracts.load_spell_roll_contracts().get("contracts") or {}
-    except (OSError, TypeError, ValueError, srd_roll_contracts.SpellRollContractError):
+    except (OSError, TypeError, ValueError, srd_roll_contracts.SpellRollContractError) as exc:
+        srd_roll_contracts.log_unavailable("srd_spell_saves", exc)
         return "data_unavailable", None, None
     record = records.get(key)
     if not isinstance(record, dict):
