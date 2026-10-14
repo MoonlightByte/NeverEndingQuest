@@ -605,10 +605,26 @@ def _pause_for_refused_resource(encounter_path, pending, refusals, voice_intents
         count = ("%s of %s" % (refusal.get("before"), refusal.get("max"))
                  if refusal.get("max") is not None else "%s left" % refusal.get("before"))
         level = name[len("level"):] if refusal.get("kind") == "spellSlot" and name.startswith("level") else ""
+        # Review-966 F11: name the sheet the pool belongs to when it is not the
+        # actor's own. F8: a pool with some left says how much the spend needs.
+        owner = refusal.get("owner")
+        actor = refusal.get("actor")
+        other = isinstance(owner, str) and isinstance(actor, str) and owner != actor
+        before, need = refusal.get("before"), refusal.get("need")
+        short = type(before) is int and before > 0 and type(need) is int
         if level.isdigit():
-            parts.append("You have no level %s spell slot left (%s)" % (level, count))
+            who = "%s has" % owner if other else "You have"
+            if short:
+                parts.append("%s only %s level %s spell slot%s left (%s); this needs %s"
+                             % (who, before, level, "" if before == 1 else "s", count, need))
+            else:
+                parts.append("%s no level %s spell slot left (%s)" % (who, level, count))
         else:
-            parts.append("%s has no uses left (%s)" % (name, count))
+            pool = "%s's %s" % (owner, name) if other else name
+            if short:
+                parts.append("%s has only %s left (%s); this needs %s" % (pool, before, count, need))
+            else:
+                parts.append("%s has no uses left (%s)" % (pool, count))
     message = "%s. Nothing was spent. What do you do instead?" % (
         "; ".join(parts) or "That cannot be used right now")
     record_pending_player_request(

@@ -3165,7 +3165,8 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
             if kind in PERSONAL_RESOURCE_KINDS:
                 # #671: typed, so a player's refused spend can ask the player.
                 resolution.setdefault("resourceRefusals", []).append(
-                    {"owner": owner, "kind": kind, "name": name, "before": before, "max": cap})
+                    {"owner": owner, "kind": kind, "name": name, "before": before, "max": cap,
+                     "need": -delta, "actor": actor_name})
             continue
         if cap is not None:
             after = min(after, cap)
