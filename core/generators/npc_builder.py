@@ -30,6 +30,7 @@ See LICENSE-APACHE file for full terms.
 # - Batch character creation for module population
 #
 
+import copy
 import json
 import sys
 import os
@@ -41,6 +42,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from jsonschema import validate, ValidationError
 import config
 from core.ai import api_client
+from core.leveling import tables as class_tables
 from core.nql.legacy_loadout import RECEIPT_FIELD, migrate as repair_initial_loadout
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -101,6 +103,88 @@ def load_prompt(file_name):
         print(f"{RED}Error reading {file_name}: {str(e)}{RESET}")
         return None
 
+def _requested_level(npc_level):
+    """The level a request names, 1 to 20, or None."""
+    text = str(npc_level).strip() if npc_level is not None else ""
+    return int(text) if text.isdigit() and 1 <= int(text) <= 20 else None
+
+def _srd_class_reference(npc_class, npc_level):
+    """The game's SRD 5.2.1 class tables for one NPC request (#533): for the
+    requested class, or for every SRD class when the request names none, the
+    features each level grants up to the requested level (3 when it names
+    none), and at that level the class table's columns, spell slots, spell
+    counts and, once the level reaches it, the subclass options. A requested
+    class that is not an SRD class gets no reference (None)."""
+    level = _requested_level(npc_level) or 3
+    classes = class_tables.tables()["classes"]
+    requested = str(npc_class or "").strip()
+    if requested:
+        key = class_tables.class_key({"class": requested})
+        if key is None:
+            return None
+        keys = [key]
+    else:
+        keys = list(classes)
+    reference = {}
+    for key in keys:
+        data = classes[key]
+        entry = {
+            "features_by_level": {str(n): data["features_by_level"].get(str(n), []) for n in range(1, level + 1)},
+            "table_columns": {name: rows.get(str(level)) for name, rows in (data.get("table_columns") or {}).items()
+                              if isinstance(rows, dict) and str(level) in rows},
+            "spell_slots": {slot: n for slot, n in class_tables.slot_maxima(key, level).items() if n},
+            "spell_counts": {kind: n for kind, n in class_tables.spell_counts(key, level).items() if n is not None},
+        }
+        if type(data.get("subclass_level")) is int and level >= data["subclass_level"]:
+            entry["subclass_options"] = class_tables.subclass_options(key)
+        reference[data.get("name") or key.capitalize()] = entry
+    return {"level": level, "classes": reference}
+
+def _set_class_tables(npc_data):
+    """A fresh draft's spell slots and feature uses from the SRD class tables
+    (#533), as startup sets them for a new hero (#704). Each slot level the
+    class table grants at the sheet's level is set full, and each use pool
+    the class has is set full on the classFeatures entry that names it; a
+    pool whose feature the sheet does not list is logged, not invented. Slot
+    levels the table does not grant are left as written. A sheet without an
+    SRD class and a level from 1 to 20 is returned unchanged, and so is one
+    this step fails on."""
+    cls = class_tables.class_key(npc_data)
+    level = npc_data.get("level")
+    if cls is None or type(level) is not int or not 1 <= level <= 20:
+        return npc_data
+    try:
+        sheet = copy.deepcopy(npc_data)
+        notes = []
+        features = sheet.get("classFeatures") if isinstance(sheet.get("classFeatures"), list) else []
+        for name, pool in class_tables.use_pools_at(cls, level, sheet.get("abilities")).items():
+            feature = class_tables.pool_feature(features, name)
+            if feature is None:
+                notes.append(f"{name}: no classFeatures entry of that name; its use pool is not set")
+                continue
+            usage = pool.usage()
+            if feature.get("usage") != usage:
+                notes.append(f"{feature['name']} usage -> {usage['current']}/{usage['max']} {usage['refreshOn']}")
+                feature["usage"] = usage
+        granted = {slot: n for slot, n in class_tables.slot_maxima(cls, level).items() if n}
+        casting = sheet.get("spellcasting")
+        if granted and isinstance(casting, dict):
+            slots = casting.get("spellSlots") if isinstance(casting.get("spellSlots"), dict) else {}
+            for slot, n in granted.items():
+                if slots.get(slot) != {"current": n, "max": n}:
+                    notes.append(f"spellSlots {slot} -> {n}/{n}")
+                    slots[slot] = {"current": n, "max": n}
+            casting["spellSlots"] = slots
+        elif granted:
+            notes.append(f"spell slots {granted} not set: the sheet has no spellcasting object")
+    except Exception as e:
+        warning(f"NPC class tables not applied to {npc_data.get('name')}: {e}", category="npc_creation")
+        return npc_data
+    for note in notes:
+        info(f"NPC class tables ({sheet.get('name')}, SRD {sheet.get('class')} level {level}): {note}",
+             category="npc_creation")
+    return sheet
+
 def save_json(file_name, data):
     """Atomically save JSON to file via safe_write_json.
 
@@ -118,6 +202,12 @@ def generate_npc(npc_name, schema, npc_race=None, npc_class=None, npc_level=None
     system_prompt_text = load_prompt("prompts/generators/npc_builder_prompt.txt") # Renamed variable
     if not system_prompt_text:
         return None
+
+    class_reference = _srd_class_reference(npc_class, npc_level)
+    class_reference_text = "" if class_reference is None else (
+        "\n\nSRD 5.2.1 CLASS REFERENCE (the game's rules tables): use these class features, the levels that grant "
+        "them and these numbers; a class feature absent here is not part of that class at that level.\n"
+        + json.dumps(class_reference))
 
     system_message = f"""You are an assistant that creates NPC schema JSON files from a master NPC schema template for a 5e game. Given an NPC name and optional details, create a JSON representation of the NPC's stats and abilities according to 5e rules following the NPC schema template exactly. Ensure your new NPC JSON adheres to the provided schema template. Do not include any additional properties or nested 'type' and 'value' fields. Return only the JSON content without any markdown formatting.
 
@@ -147,7 +237,7 @@ RACIAL TRAITS: Include ALL racial traits as separate entries in the racialTraits
 
 Use the following rules information when creating the NPC:
 
-{system_prompt_text}
+{system_prompt_text}{class_reference_text}
 
 Adhere strictly to 5e rules and the provided schema."""
 
@@ -222,6 +312,7 @@ Adhere strictly to 5e rules and the provided schema."""
                 npc_data, _ = repair_required_ammunition_field(npc_data)
                 last_parsed_data = npc_data
                 validate(instance=npc_data, schema=schema)
+                npc_data = _set_class_tables(npc_data)
                 # A fresh AI draft is not an established player's loadout. Apply
                 # the existing saved-order, shield-first capacity repair before
                 # its first save so the first inventory delta can build a world.
