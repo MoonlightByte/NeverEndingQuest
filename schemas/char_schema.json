@@ -387,7 +387,18 @@
         "properties": {
           "name": {"type": "string"},
           "description": {"type": "string"},
-          "source": {"type": "string"}
+          "source": {"type": "string"},
+          "usage": {
+            "type": ["object", "null"],
+            "description": "#891: a feat's own use pool (Magic Initiate's level 1 spell, once per Long Rest without a slot); the same shape as classFeatures usage.",
+            "properties": {
+              "current": {"type": "integer", "minimum": 0},
+              "max": {"type": "integer", "minimum": 0},
+              "refreshOn": {"type": "string", "enum": ["shortRest", "longRest", "dawn", "turn", "bonus", "action"]},
+              "shortRestRegain": {"type": "integer", "minimum": 1}
+            },
+            "required": ["current", "max", "refreshOn"]
+          }
         },
         "required": ["name", "description"]
       }

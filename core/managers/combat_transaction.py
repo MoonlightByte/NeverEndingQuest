@@ -828,6 +828,37 @@ def append_pending_player_input(
         _write_object(encounter_path, encounter, "pending player clarification")
 
 
+def append_pending_game_roll(
+    encounter_path,
+    turn_id,
+    text,
+    faces,
+    timeout_seconds=5.0,
+):
+    """#877: durably add the game's roll for an open typed roll request: the
+    sentence the DM reads, ``rolledBy`` "game" and the faces per die term."""
+    rendered = _player_text(text)
+    with path_transaction_lock(
+        encounter_path,
+        suffix=".combat.lock",
+        timeout_seconds=timeout_seconds,
+    ) as acquired:
+        if acquired is None:
+            raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
+        encounter = _load_object(encounter_path, "encounter")
+        state = ensure_combat_state(encounter)
+        pending = state.get("pendingTurn")
+        if not isinstance(pending, dict) or pending.get("turnId") != turn_id:
+            raise CombatTransactionError("The pending player turn changed")
+        if pending.get("stage") != "intent_pending":
+            raise CombatTransactionError("The pending player turn is already staged")
+        exchanges = pending.get("playerExchanges")
+        exchanges = [item for item in exchanges if isinstance(item, dict)] if isinstance(exchanges, list) else []
+        exchanges.append({"playerInput": rendered, "rolledBy": "game", "rolledFaces": deepcopy(faces)})
+        pending["playerExchanges"] = exchanges
+        _write_object(encounter_path, encounter, "pending game roll")
+
+
 def record_pending_player_request(
     encounter_path,
     turn_id,
@@ -836,9 +867,11 @@ def record_pending_player_request(
     timeout_seconds=5.0,
     npc_voice_intents=None,
     requested_phase=None,
+    requested_roll=None,
 ):
     """Persist the DM's complete question beside the action it clarifies,
-    with the typed die and (#853) the typed phase of a roll request."""
+    with the typed die and (#853) the typed phase of a roll request, and
+    (#877) its full typed dice."""
     rendered = _player_text(player_message)
     with path_transaction_lock(
         encounter_path,
@@ -861,6 +894,9 @@ def record_pending_player_request(
             exchanges[-1]["requestedDie"] = die
         if isinstance(requested_phase, str) and requested_phase.strip():
             exchanges[-1]["requestedPhase"] = requested_phase.strip()
+        roll = str(requested_roll or "").strip().lower()
+        if re.fullmatch(r"\d*d(?:4|6|8|10|12|20|100)(?:\+\d*d(?:4|6|8|10|12|20|100))*", roll):
+            exchanges[-1]["requestedRoll"] = roll
         pending["playerExchanges"] = exchanges
         existing_voice_envelope = normalize_npc_voice_intents(
             pending.get("npcVoiceIntents")

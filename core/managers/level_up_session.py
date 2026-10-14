@@ -300,6 +300,9 @@ class LevelUpSession:
                     name = value.get("feat") if isinstance(value, dict) else value
                     feats.append({"name": name, "description": self._features_text.get(name, ""),
                                   "source": f"{sheet.get('class')} level {s.new_level}"})
+                    # #891: a feat with its own use (Magic Initiate) starts full.
+                    from core.nql.resources import add_feat_usage as _add_feat_usage
+                    _add_feat_usage({"feats": feats[-1:]})
             elif kind == "fighting_style":
                 for name in (value if isinstance(value, list) else [value]):
                     extra_features.append({"name": f"Fighting Style: {name}",

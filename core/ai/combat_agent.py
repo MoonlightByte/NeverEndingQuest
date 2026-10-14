@@ -362,7 +362,9 @@ An adjudicated intent may contain:
 - save: {type, dc, halfOnSave} when targets roll a save
 - targets: [{combatantId, hpDelta}], negative damage / positive healing
 - resources: [{owner, kind, name, delta}], using exact sheet names; kind is
-  ammunition, spellSlot, featureUse, or item. owner is the sheet that HOLDS
+  ammunition, spellSlot, featureUse, or item (a feat's use, FEAT ... uses, is
+  kind featureUse with the feat's exact name, and a spell cast with it spends
+  no spellSlot). owner is the sheet that HOLDS
   the resource, which need not be the actor: an ally administering a potion
   from the downed character's own pack lists owner as that downed character
   and name as the item exactly as that sheet lists it. Read the sheets before
@@ -507,7 +509,8 @@ disadvantage), 'damage', 'healing', 'save' or 'check'. Keep flat bonuses out
 of die and apply them once when
 adjudicating the returned raw dice. Put the dice expression in prompt as well
 as the weapon/action name so the player knows what to roll. For a spell include
-spellName, plus slotLevel when the spell was cast with a slot. Code
+spellName, plus slotLevel when the spell was cast with a slot (the level of
+the spellSlot resource it spends). Code
 will pause the same turn and show that request instead of consuming it.
 One requiresPlayerInput represents exactly ONE next player roll or choice.
 Never combine two rolls or two spells in one request. For a multi-action turn,
