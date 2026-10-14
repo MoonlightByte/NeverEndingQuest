@@ -3714,12 +3714,12 @@ def validate_ai_response(
     npc_voice_batch=None,
     transition_facts=None,
     invocation_claim=None,
-    normalization=None,
     review_feedback=None,
     detached_context=None,
     module_snapshot=None,
     installed_module_references="",
     *,
+    normalization,
     campaign_end,
 ):
     from core.combat.invocation import (
@@ -3741,12 +3741,6 @@ def validate_ai_response(
     elif not detached_context:
         status_validating()
 
-    if normalization is None:
-        is_normalized, normalization = _normalize_dm_candidate(
-            primary_response, party_tracker_data
-        )
-        if not is_normalized:
-            return False, normalization
     response_to_validate = normalization["candidate"]
     primary_response = normalization["original_response"]
     fixed_response = normalization["fixed_response"]
