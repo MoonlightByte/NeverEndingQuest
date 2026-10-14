@@ -2624,20 +2624,6 @@ def _complete_agentic_combat(
     return dialogue_summary, player_info
 
 
-# DEPRECATED: This function is no longer used and has been replaced by the new XP awarding system
-# that uses update_character_info directly with proper synchronization.
-# The new system:
-# 1. Awards XP through update_character_info with "Awarded X experience points" message
-# 2. Uses atomic file operations with proper locking
-# 3. Has XP protection to prevent reduction
-# 4. Includes comprehensive debug logging
-# Keeping this function for reference only - DO NOT USE
-def update_json_schema(ai_response, player_info, encounter_data, party_tracker_data):
-    # This old function tried to extract XP from AI responses and update characters
-    # It has been replaced by the more robust XP awarding system in the main combat loop
-    warning("DEPRECATED: update_json_schema called but is no longer used", category="xp_tracking")
-    return player_info  # Return unchanged data
-
 def generate_chat_history(conversation_history, encounter_id, archive_filename=None):
     """
     Generate a lightweight combat chat history without system messages

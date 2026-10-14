@@ -2927,7 +2927,7 @@ def update_party_npcs(party_tracker_data, operation, npc):
                             except Exception as e:
                                 warning(f"FAILURE: Could not get party level, using default: {e}", category="character_updates")
                 
-                npc_level = str(npc.get('level', default_level))
+                npc_level = str(npc.get('level') or default_level)
 
                 # Built in process, as the travel path and combat_builder build
                 # (#534), by the npc_builder.py command's argument rules: a
