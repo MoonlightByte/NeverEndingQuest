@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - In a long fight, an earlier round whose log names no initiative is now compressed like the others instead of being kept in full after its summary is refused (#1008).
+- In a fight, an answer that names your weapon (for example "I attack the spiders with my mace", or "I rolled 15" with the mace) is no longer refused with "That die does not match this action" because of the weapon notes the game adds to your words (#1008).
+- If saving the welcome-back hits a brief lock wait, a line you type in that moment again replaces the welcome instead of waiting behind it (#990 follow-up).
+- A DM reply that repeats a key (two "actions" lists) is sent back for a corrected draft instead of silently keeping only the last list, which dropped the fight a welcome-back had started (#1018).
 - A very long ammunition name or storage container id no longer makes the rules engine refuse the whole party world; over-long engine ids are shortened, and every id that already worked is unchanged (#1004).
 - Arrows taken out of a chest now join the sheet's quiver even when it is named the older way (Arrow), and a chest holding arrows from several deposits gives back up to the full amount stored (#971).
 - The concentration save after damage now shows the Bless die the game rolled, for example "rolled 13 +2 +2 (Bless 1d4, the game rolled) = 17"; before, the die was counted but not shown, so the numbers did not add up (#1014).
