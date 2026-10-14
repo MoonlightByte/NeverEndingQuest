@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - An internal error while the DM's response is being checked now ends that check at once with its own message, instead of being retried five times and reported as an AI provider failure (#950).
+- A new NPC is given its class's SRD 5.2.1 spell list from the game's spell repository, up to the spell level it can cast, instead of an older edition's lists in the builder prompt (#1001).
 - The Thornwood Watch: travel between Hermit's Refuge and Wolf's Den Cave, Wolf's Den Cave and the Ambush Site, and Scout's Watch and the Supply Depot now takes the direct path both ways; the module's maps and location index match its areas (#1033). Takes effect on a new game or Reset.
 - An unexpected error while a level-up is being set up or answered now ends that level-up with a line saying nothing was applied, and the game goes on; before, it stopped the game loop and left the busy indicator on (#539). The crash #539 reported, on skills stored as a list, was fixed by #777.
 - A level-up that names someone outside the party is now refused before the reply is accepted, and the DM is shown the exact party names to use, as for a character update (#423). Advancing more than one level at a time, or without the experience points the SRD table requires, was already refused when the level-up starts.
