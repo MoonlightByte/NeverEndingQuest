@@ -66,6 +66,7 @@ export type PlayerDataResponse =
 export interface RulesRollPrompt {
   id: string; characterName: string; label: string; faces: number;
   netMode: string; reason: string; submitted: boolean; dc?: number | null;
+  dice?: { name: string; count: number; sides: number }[];
 }
 
 export interface ClientEvents {

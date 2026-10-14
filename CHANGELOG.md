@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - A fight started by the welcome-back scene no longer ends silently when you type your first action (#990). Your input waits for the fight instead of cancelling the scene, and a combat turn stopped for an unknown reason now pauses and keeps your turn.
+- In the web player, a requested check now shows the extra die the game adds, for example "+ 1d4 Guidance (the game rolls)" when Guidance or Bless is on you (#984).
+- In a fight, when the DM corrects one combatant's action, the actions already approved earlier in the same round now stay as approved, so the round no longer loops on two companions taking turns being refused (#435).
 - The storage helper now sees a character's ammunition, so asking to store arrows no longer fails with 'Character does not have Arrows' (#366).
 - In a fight, when you use a potion or other item you have none of left, or shoot with no arrows or bolts left, the DM now tells you and asks what you do instead, instead of picking another action for you (#968). This extends the same rule for spell slots and class features (#671) to items and ammunition; nothing is spent.
 - After you roll a check the DM asked for, the result (your roll, bonus, total and the difficulty, success or failure) now shows right away under your dice, before the DM narrates what happens (#530).
