@@ -31,6 +31,56 @@ class SpellRollContractError(ValueError):
     """The committed SRD roll-contract data is malformed or stale."""
 
 
+_SOURCE_LOGGED = set()
+_UNAVAILABLE_LOGGED = set()
+
+
+def _log_error(message):
+    try:
+        from utils.enhanced_logger import error as _error
+        _error(message, category="combat_events")
+    except Exception:
+        pass
+
+
+@lru_cache(maxsize=1)
+def repository_sha256():
+    """sha256 of data/spell_repository.json with CRLF line endings read as LF
+    (#890: a Windows checkout may hold it CRLF; strict JSON has no raw line
+    break inside a string, so only line endings change), or None when the
+    file cannot be read."""
+    try:
+        raw = SPELL_REPOSITORY_PATH.read_bytes()
+    except OSError:
+        return None
+    return hashlib.sha256(raw.replace(b"\r\n", b"\n")).hexdigest()
+
+
+def check_source(table, metadata):
+    """#890: a derived table records the repository it was generated from.
+    A difference is a development-time freshness signal, logged once per
+    table as an error; the typed records are still used (they do not read
+    the repository at runtime). Never raises."""
+    expected = metadata.get("sourceSha256") if isinstance(metadata, dict) else None
+    actual = repository_sha256()
+    if expected == actual or table in _SOURCE_LOGGED:
+        return
+    _SOURCE_LOGGED.add(table)
+    _log_error(
+        "SRD spell table %s was generated from repository %s but data/spell_repository.json is %s; "
+        "the typed records are still used (regenerate the table)"
+        % (table, str(expected)[:12], actual[:12] if actual else "unreadable"))
+
+
+def log_unavailable(table, exc):
+    """#890: one error per table per process when it cannot be loaded."""
+    if table in _UNAVAILABLE_LOGGED:
+        return
+    _UNAVAILABLE_LOGGED.add(table)
+    _log_error("SRD spell table %s could not be loaded (%s: %s); spells fall back to the model's rolls"
+               % (table, type(exc).__name__, exc))
+
+
 @lru_cache(maxsize=1)
 def load_spell_roll_contracts():
     raw = CONTRACT_PATH.read_text(encoding="utf-8")
@@ -43,9 +93,7 @@ def load_spell_roll_contracts():
         raise SpellRollContractError("Spell-roll contract sections are invalid")
     if metadata.get("totalSpells") != len(contracts):
         raise SpellRollContractError("Spell-roll contract count is stale")
-    source_hash = hashlib.sha256(SPELL_REPOSITORY_PATH.read_bytes()).hexdigest()
-    if metadata.get("sourceSha256") != source_hash:
-        raise SpellRollContractError("Spell-roll contracts do not match the SRD repository")
+    check_source("srd_spell_roll_contracts", metadata)
     if not metadata.get("_srd_attribution"):
         raise SpellRollContractError("Spell-roll contracts lack SRD attribution")
     for key, contract in contracts.items():
@@ -223,7 +271,8 @@ def audit_spell_roll_request(intent, actor_sheet=None, document=None):
     key = _canonical_key(spell_name)
     try:
         contracts = (document or load_spell_roll_contracts()).get("contracts") or {}
-    except (OSError, TypeError, ValueError, SpellRollContractError):
+    except (OSError, TypeError, ValueError, SpellRollContractError) as exc:
+        log_unavailable("srd_spell_roll_contracts", exc)
         # Contract data is an advisory guard, never a gameplay dependency. A
         # stale/corrupt/missing generated sidecar must degrade to observable
         # unvalidated play instead of consuming the model correction budget.
