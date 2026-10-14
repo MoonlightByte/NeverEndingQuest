@@ -950,6 +950,20 @@ def _weapon_definition(entry: Dict[str, Any], monk_rules: List[Dict[str, Any]]) 
     return text + " }\n"
 
 
+def _hands_taken(worn: bool, mode: Optional[str], hands_free: Optional[int], iid: str, entry: Dict[str, Any],
+                 cid: str, gaps: List[str], carried: Optional[Dict[str, str]]) -> bool:
+    """#960: an equipped untyped held row (a weapon or a shield) when both hands
+    are already taken is declared carried, not worn, with a gap naming it, and
+    recorded in ``carried`` (the sheet row stays equipped). Returns ``worn``."""
+    if worn and mode == "held" and hands_free is not None and hands_free < 1:
+        gaps.append(f"{cid}: {entry.get('item_name')!r} is equipped but both hands are taken; "
+                    "declared carried, not worn")
+        if carried is not None:
+            carried[iid] = cid
+        return False
+    return worn
+
+
 def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: bool,
                definitions: List[str], gaps: List[str], cid: str,
                charged: Optional[Tuple[List[str], set]] = None,
@@ -960,7 +974,8 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
     ``hands_free`` (NUM-H3a) is the hands left for an equipped catalog weapon,
     whose held mode states its own hand count: one that would overfill them is
     declared carried (custody kept, not worn), with a gap naming it, and
-    recorded in ``carried``.
+    recorded in ``carried``. An untyped held row holds one hand; with none
+    free it is declared carried the same way (#960, _hands_taken).
 
     ``charged`` is (item type lines, type ids already used) for the world; a
     non-catalog row with an acceptable ``charges`` object (charges_fields) is
@@ -1048,6 +1063,7 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
             if worn and quantity not in (None, 1):
                 gaps.append(f"{cid}: {entry.get('item_name')!r} is equipped with quantity {quantity}; the engine wears exactly one, item left unworn")
                 worn = False
+            worn = _hands_taken(worn, mode, hands_free, iid, entry, cid, gaps, carried)
             fields = [f"owner {_q(owner)};", custody]
             if worn:
                 fields.append(f"wearer {_q(cid)};")
@@ -1078,6 +1094,7 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
     if worn and quantity not in (None, 1):
         gaps.append(f"{cid}: {entry.get('item_name')!r} is equipped with quantity {quantity}; the engine wears exactly one, item left unworn")
         worn = False
+    worn = _hands_taken(worn, mode, hands_free, iid, entry, cid, gaps, carried)
     fields = [f"owner {_q(owner)};", custody]
     if worn:
         fields.append(f"wearer {_q(cid)};")
@@ -1262,7 +1279,8 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
         declared: Dict[int, Tuple[str, List[str]]] = {}
         # NUM-H3a: an equipped catalog weapon is declared after every other row,
         # so the hands it may take are what the shield and other held items
-        # leave; the world keeps the sheet's row order.
+        # leave; the world keeps the sheet's row order. #960: an untyped held
+        # row that finds both hands taken (a saved sheet) is declared carried.
         weapons_last: List[Tuple[int, str, Dict[str, Any]]] = []
         for index, entry in enumerate(sheet.get("equipment") or []):
             if not isinstance(entry, dict) or not entry.get("item_name"):
@@ -1279,7 +1297,8 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
                 weapons_last.append((index, iid, entry))
                 continue
             line, _, held_hands = _item_line(iid, entry, cid, f"custody character {_q(cid)};",
-                                             entry.get("equipped") is True, definitions, gaps, cid, charged)
+                                             entry.get("equipped") is True, definitions, gaps, cid, charged,
+                                             hands_free=2 - hands, carried=carried)
             declared[index] = (line, ac_effect_lines(iid, entry, all_ids, gaps, cid))
             hands += held_hands
         for index, iid, entry in weapons_last:
