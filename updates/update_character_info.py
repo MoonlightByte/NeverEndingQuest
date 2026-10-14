@@ -2112,12 +2112,12 @@ Your primary goal is to generate the smallest possible valid JSON object that re
      ```
 
 6. **Standard Ammunition Names (for a NEW row only; a row already on the sheet keeps its own name exactly as listed):**
-   - "Arrows" (plural) - for bow ammunition
-   - "Crossbow bolts" (plural) - for crossbow ammunition
-   - "Sling bullets" (plural) - for sling ammunition
+   - "Arrows" - for bow ammunition
+   - "Bolts" - for crossbow ammunition
+   - "Bullets, Sling" - for sling ammunition
    - "Darts" (plural) - for thrown darts
-   - "Blowgun needles" (plural) - for blowgun ammunition
-   - Always use plural form for consistency
+   - "Needles" - for blowgun ammunition
+   - Use these exact names: they are the SRD catalog names a purchase uses, so found and bought ammunition stay one row
 
 **CRITICAL EDGE CASES:**
 - When equipment that affects AC is added, removed, equipped, or unequipped, return only the `equipment` change; the rules engine recomputes `armorClass` and `equipment_effects`. The engine refuses illegal states (two shields, three held weapons); if told a change was refused, propose a legal one.

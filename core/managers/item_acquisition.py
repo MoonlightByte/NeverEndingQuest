@@ -15,7 +15,7 @@ import shutil
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from core.nql import acquisition, apply, armor_class, genesis, stats
+from core.nql import acquisition, apply, armor_class, genesis, item_catalog, stats
 from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import debug, info, warning
 from utils.file_operations import safe_read_json, safe_write_json
@@ -80,11 +80,15 @@ def _refresh_attack_rows(sheet: Dict[str, Any], response: Dict[str, Any]) -> Non
     warning(f"ACQUIRE: {sheet.get('name')} attack rows not refreshed ({reason})", category="storage_operations")
 
 
-def _ammunition_row(sheet: Dict[str, Any], name: str) -> Optional[Dict[str, Any]]:
-    for row in sheet.get("ammunition") or []:
-        if isinstance(row, dict) and str(row.get("name", "")).casefold() == name.casefold():
+def _ammunition_row(sheet: Dict[str, Any], entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    rows = [r for r in sheet.get("ammunition") or [] if isinstance(r, dict)]
+    for row in rows:
+        if str(row.get("name", "")).casefold() == entry["name"].casefold():
             return row
-    return None
+    # #552: the one row already holding this catalog ammunition under an older
+    # name takes the purchase; two such rows, or none, keep today's new row.
+    held = [r for r in rows if (item_catalog.ammunition_entry(r) or {}).get("id") == entry["id"]]
+    return held[0] if len(held) == 1 else None
 
 
 def catalog_check(item_name: Any, quantity: Any, price: Any = None) -> Dict[str, Any]:
@@ -179,7 +183,7 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
 
             ammunition = entry.get("kind") == "ammunition"
             if ammunition:
-                row = _ammunition_row(working, entry["name"])
+                row = _ammunition_row(working, entry)
                 iid = genesis.ammunition_id(working, row["name"] if row else entry["name"])
                 lines = acquisition.coin_lines(cid, delta) + [
                     acquisition.ammunition_lines(cid, iid, entry["name"], quantity, row is not None)]
@@ -238,7 +242,9 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
                     working.setdefault("ammunition", []).append(
                         {"name": entry["name"], "quantity": int(created.get("quantity", quantity)),
                          "description": entry.get("description", ""), "catalog_id": entry["id"]})
-                landed = f"{created.get('quantity', quantity)} {entry['name']} in the ammunition stock"
+                landed = f"{created.get('quantity', quantity)} {entry['name']}" + (
+                    f" in the {row['name']} stock" if row is not None and row["name"] != entry["name"]
+                    else " in the ammunition stock")
             else:
                 row = acquisition.row_from_views(created, definition, entry)
                 if rule is not None:
