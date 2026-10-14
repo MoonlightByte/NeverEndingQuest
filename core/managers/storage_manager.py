@@ -57,7 +57,7 @@ import jsonschema
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_read_json, safe_write_json
-from core.nql import storage as nql_storage
+from core.nql import ammunition as nql_ammunition, storage as nql_storage
 from core.validation.character_validator import AICharacterValidator
 from utils.character_sheet_contract import repair_required_ammunition_field
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -143,6 +143,13 @@ class StorageManager:
             
     def _find_item_in_character(self, character_data: Dict[str, Any], item_name: str, quantity: int) -> Tuple[bool, int, Dict[str, Any]]:
         """Find and validate item in character inventory"""
+        # #366: the typed ammunition row is the stock first, as the engine
+        # transaction takes it; a read-only view for the checks below.
+        found = nql_ammunition.declared_row(character_data, item_name)
+        if found is not None:
+            row = found[1]
+            view = {"item_name": row["name"], "quantity": row["quantity"], "item_type": "ammunition"}
+            return row["quantity"] >= quantity, row["quantity"], view
         equipment = character_data.get("equipment", [])
         
         for item in equipment:
