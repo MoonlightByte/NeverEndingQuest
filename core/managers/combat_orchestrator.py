@@ -798,6 +798,21 @@ def _spell_phase_purpose(spell_name, phase):
     return None
 
 
+def _roll_request_purpose(request):
+    """The typed purpose of a player roll request (#853): the spell's
+    contract phase purpose when a spell is named, else the plain label,
+    else None. The phase is read stripped and casefolded; the request text
+    is never read."""
+    if not isinstance(request, dict):
+        return None
+    phase = request.get("phase").strip().casefold() if isinstance(request.get("phase"), str) else ""
+    spell = request.get("spellName").strip() if isinstance(request.get("spellName"), str) else ""
+    # A spell names its contract phase; a plain label keeps its own rule
+    # even with a spell named (an ambiguous contract has no phases).
+    return ((_spell_phase_purpose(spell, phase) if spell else None)
+            or (phase if phase in _ROLL_PHASES else None))
+
+
 def _validate_roll_request_phase(batch, encounter):
     """#853: a player roll request names its phase and its die as typed
     fields, and the two agree: an attack's main die is 1d20 (2d20 with
@@ -820,10 +835,7 @@ def _validate_roll_request_phase(batch, encounter):
             request["phase"] = phase
         spell = request.get("spellName").strip() if isinstance(request.get("spellName"), str) else ""
         terms = _roll_die_terms(request.get("die"))
-        # A spell names its contract phase; a plain label keeps its own rule
-        # even with a spell named (an ambiguous contract has no phases).
-        purpose = ((_spell_phase_purpose(spell, phase) if spell else None)
-                   or (phase if phase in _ROLL_PHASES else None))
+        purpose = _roll_request_purpose(request)
         problem = None
         if not phase:
             problem = ("requiresPlayerInput roll needs phase: the spell's typed phase, "
@@ -962,6 +974,21 @@ def _roll_already_answered(pending):
     return False
 
 
+def _request_is_the_swings(request):
+    """#880: True when the code-issued roll may supersede the intent's own
+    request: none, a roll with no phase, or a roll whose typed purpose is
+    the swing's attack or damage. Any other roll, or a choice, is the
+    model's to ask (Second Wind's heal before the swing)."""
+    if request is None:
+        return True
+    if not isinstance(request, dict) or request.get("kind") != "roll":
+        return False
+    phase = request.get("phase")
+    if not (isinstance(phase, str) and phase.strip()):
+        return True
+    return _roll_request_purpose(request) in ("attack", "damage")
+
+
 def _player_weapon_takeover(encounter, characters, pending, batch):
     """(record, entry) when the window opens with the human player's plain
     melee weapon swing, a cast of a recorded spell attack (#672) or of a
@@ -981,6 +1008,10 @@ def _player_weapon_takeover(encounter, characters, pending, batch):
     intents = _ordered_intents(batch, state.get("revision"))
     intent = intents[0] if intents and isinstance(intents[0], dict) else None
     if intent is None or intent.get("actorId") != actor_ids[0] or intent.get("mode") != "adjudicated":
+        return None
+    if not _request_is_the_swings(intent.get("requiresPlayerInput")):
+        # #880: the intent carries another roll or a choice; the model's
+        # path shows it, and the swing is asked for after it.
         return None
     entry = player_weapon_attack_entry(encounter, characters, intent)
     spell = None
