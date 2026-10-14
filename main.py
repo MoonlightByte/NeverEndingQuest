@@ -3177,13 +3177,21 @@ CRITICAL: If validation fails due to wrong NPC for location, provide specific co
 
 def normalize_character_names_in_response(response_text, party_tracker_data):
     """
-    Normalize NPC names in updateCharacterInfo actions before validation.
-    Handles name variations like "Kira" -> "Scout Kira", "Ranger Kira" -> "Scout Kira"
+    Check the character names in actions before validation (#855, family 2).
+    updateCharacterInfo must name a party character; transferItem,
+    transferCurrency, splitCurrency, removeEffect, awardExperience, rollCheck,
+    expendCharges and acquireItem a party character or an existing sheet,
+    exactly (case ignored, "_" read as a space). A near name
+    ("Kira", "Ranger Kira") is refused with the exact names, never matched to
+    another character. The response is never edited.
 
     Returns:
         (normalized_response, message) or (None, error_message) if unresolvable
     """
-    from utils.npc_name_normalizer import normalize_npc_name_for_action
+    from utils.npc_name_normalizer import (
+        exact_character_reference,
+        normalize_npc_name_for_action,
+    )
 
     try:
         parsed = json.loads(response_text)
@@ -3195,7 +3203,6 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
         # No actions to normalize
         return response_text, "No actions to normalize"
 
-    corrections = []
     rejections = []
 
     for i, action in enumerate(parsed['actions']):
@@ -3204,46 +3211,52 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
 
         action_type = action.get('action')
 
-        # Only normalize updateCharacterInfo actions
+        # The fields that name a character; True when an existing sheet
+        # outside the party is also a valid target.
         if action_type == 'updateCharacterInfo':
-            params = action.get('parameters', {})
-            original_name = params.get('characterName')
+            fields = (('characterName', False),)
+        elif action_type in ('transferItem', 'transferCurrency'):
+            fields = (('fromCharacter', True), ('toCharacter', True))
+        elif action_type == 'splitCurrency':
+            fields = (('fromCharacter', True), ('toCharacters', True))
+        elif action_type in ('removeEffect', 'awardExperience', 'rollCheck', 'expendCharges', 'acquireItem'):
+            fields = (('characterName', True),)
+        else:
+            continue
+        params = action.get('parameters', {})
+        if not isinstance(params, dict):
+            continue
 
-            if original_name:
-                print(f"[NPC_NORM] Checking updateCharacterInfo action with characterName='{original_name}'")
+        for field, sheet_allowed in fields:
+            value = params.get(field)
+            for original_name in (value if isinstance(value, list) else [value]):
+                if not original_name or not isinstance(original_name, str):
+                    continue
+                print(f"[NPC_NORM] Checking {action_type} action with {field}='{original_name}'")
 
-                # Try to normalize the name
-                normalized_name, match_type = normalize_npc_name_for_action(
-                    original_name, party_tracker_data, debug_print=True
-                )
+                if sheet_allowed:
+                    normalized_name = exact_character_reference(original_name, party_tracker_data)
+                else:
+                    normalized_name, _match_type = normalize_npc_name_for_action(
+                        original_name, party_tracker_data, debug_print=True
+                    )
 
                 if normalized_name is None:
-                    # Could not resolve name - reject
-                    rejections.append(f"Action {i+1}: '{original_name}' not in party tracker")
-                    print(f"[NPC_NORM] REJECT: '{original_name}' cannot be matched to party tracker")
-
-                elif normalized_name != original_name:
-                    # Name was normalized
-                    params['characterName'] = normalized_name
-                    corrections.append(f"Action {i+1}: '{original_name}' -> '{normalized_name}'")
-                    print(f"[NPC_NORM] CORRECTED: '{original_name}' -> '{normalized_name}'")
+                    # Not an exact character name - refuse, never guess
+                    rejections.append(f"Action {i+1} ({action_type} {field}): '{original_name}' not in party tracker")
+                    print(f"[NPC_NORM] REJECT: '{original_name}' is not an exact character name")
 
                 else:
-                    # Name was already correct
-                    print(f"[NPC_NORM] OK: '{original_name}' matches party tracker")
+                    # Exact (case and "_" aside); the response is left as written
+                    print(f"[NPC_NORM] OK: '{original_name}' is exact")
 
     # If any rejections, return error
     if rejections:
         error_msg = "NPC names not in party tracker: " + "; ".join(rejections)
+        error_msg += ". Use one of these exact names"
         error_msg += f". Valid party NPCs: {[npc.get('name') for npc in party_tracker_data.get('partyNPCs', [])]}"
         error_msg += f". Valid party members: {party_tracker_data.get('partyMembers', [])}"
         return None, error_msg
-
-    # If corrections were made, return updated response
-    if corrections:
-        corrected_response = json.dumps(parsed, ensure_ascii=True, indent=2)
-        message = "Auto-corrected NPC names: " + "; ".join(corrections)
-        return corrected_response, message
 
     # No changes needed
     return response_text, "All NPC names valid"
