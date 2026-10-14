@@ -780,6 +780,52 @@ def feature_heal_key(name):
     return name.split(" (", 1)[0].strip().casefold() if isinstance(name, str) else None
 
 
+# #881: class-feature heals whose amount is a typed formula: count d sides
+# + the class level. Keyed like FEATURE_HEALS (feature_heal_key). The table
+# grows only on an observed failure.
+FEATURE_HEAL_FORMULAS = {
+    "Second Wind": {"class": "fighter", "count": 1, "sides": 10, "plus": "class_level"},
+}
+
+
+def feature_heal_formula(sheet, feature_name):
+    """#881: {feature, count, sides, bonus, label} of a formula heal the
+    sheet's class uses, or None: no row, another class, or no typed level
+    (logged once)."""
+    wanted = feature_heal_key(feature_name)
+    key = next((k for k in FEATURE_HEAL_FORMULAS if feature_heal_key(k) == wanted), None)
+    if key is None or not isinstance(sheet, dict):
+        return None
+    row = FEATURE_HEAL_FORMULAS[key]
+    if str(sheet.get("class") or "").strip().casefold() != row["class"]:
+        return None
+    level = sheet.get("level")
+    if type(level) is not int or level < 1:
+        try:
+            from utils.enhanced_logger import info as _info
+            _info("FH: %s %s formula not applied (level %r)" % (sheet.get("name"), key, level),
+                  category="combat_events")
+        except Exception:
+            pass
+        return None
+    return {"feature": key, "count": row["count"], "sides": row["sides"], "bonus": level,
+            "label": "%s level %d" % (row["class"].capitalize(), level)}
+
+
+def _feature_heal_formula(encounter, characters, proposal):
+    """#881: the formula of the actor's own featureUse spend in this intent
+    (the typed resource the engine debits, not the ability or action
+    words), or None."""
+    actor = combatant_by_id(encounter, proposal.get("actorId"))
+    name = (actor or {}).get("name")
+    for record in proposal.get("resources") or []:
+        if (isinstance(record, dict) and record.get("kind") == "featureUse" and record.get("owner") == name
+                and type(record.get("delta")) is int and record["delta"] < 0
+                and any(feature_heal_key(k) == feature_heal_key(record.get("name")) for k in FEATURE_HEAL_FORMULAS)):
+            return feature_heal_formula((characters or {}).get(name), record.get("name"))
+    return None
+
+
 def _feature_heal_rule(encounter, characters, proposal):
     """(feature name, pool) when the intent's typed ability is one of the
     actor's own class features with a FEATURE_HEALS rule, else (None, None).
@@ -3618,6 +3664,7 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
         )
 
     heal_feature, heal_pool = _feature_heal_rule(encounter, characters, proposal)
+    heal_formula = _feature_heal_formula(encounter, characters, proposal)
     heal_rows = []
     for entry in targets:
         target = combatant_by_id(encounter, entry.get("combatantId"))
@@ -3638,6 +3685,24 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
             )
             continue
         feature_heal = None
+        if heal_formula is not None and hp_delta > 0 and target["combatantId"] == proposal.get("actorId"):
+            # #881: code does the arithmetic, the typed die face (rolled) plus
+            # the class level; with no rolled the declared heal is held to the
+            # formula's range (D-881-1 a). No violation, no extra pass.
+            low, high = heal_formula["count"], heal_formula["count"] * heal_formula["sides"]
+            bonus = heal_formula["bonus"]
+            face = entry.get("rolled") if type(entry.get("rolled")) is int else None
+            applied = (min(max(face, low), high) + bonus if face is not None
+                       else min(max(hp_delta, low + bonus), high + bonus))
+            if applied != hp_delta:
+                event.setdefault("normalizations", []).append({
+                    "kind": "featureHealFormula", "ability": heal_formula["feature"],
+                    "combatantId": target["combatantId"], "rolled": face, "bonus": bonus,
+                    "supplied": hp_delta, "allowed": applied})
+                feature_heal = {"supplied": hp_delta, "allowed": applied, "formula": "%dd%d (%s) + %s" % (
+                    heal_formula["count"], heal_formula["sides"], "?" if face is None else face,
+                    heal_formula["label"])}
+                hp_delta = applied
         if heal_pool is not None and hp_delta >= 0:
             hp_now = int(target.get("currentHitPoints", 0) or 0)
             max_now = _combatant_max_hp(encounter, characters, target)
