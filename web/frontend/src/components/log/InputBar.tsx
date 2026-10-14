@@ -1,4 +1,5 @@
 import { useRulesRoll } from '../../stores/rulesRoll'
+import { useInputSuggestion } from '../../stores/inputSuggestion'
 import { RulesRollPanel } from '../log/RulesRollPanel'
 /**
  * InputBar -- player text input + Send button (plan Task 4.4b).
@@ -27,12 +28,19 @@ export function InputBar({ rollInsertion }: { rollInsertion?: { id: number; text
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const insertedRoll = useRef<number | null>(null)
+  const suggestion = useInputSuggestion((s) => s.suggestion)
   useEffect(() => {
     if (!rollInsertion || insertedRoll.current === rollInsertion.id) return
     insertedRoll.current = rollInsertion.id
     setDraft((previous) => previous.trim() ? `${previous.trimEnd()} ${rollInsertion.text}` : rollInsertion.text)
     inputRef.current?.focus()
   }, [rollInsertion])
+  // #882: an offered action fills an empty draft only; a typed draft stays.
+  useEffect(() => {
+    if (suggestion === null) return
+    const text = useInputSuggestion.getState().take()
+    if (text) setDraft((previous) => previous.trim() ? previous : text)
+  }, [suggestion])
 
   // The legacy client places focus in the command field as soon as a live
   // game becomes interactive. Preserve that initial keyboard-ready state.

@@ -686,6 +686,46 @@ def store_agentic_preroll_cache(
         return deepcopy(encounter)
 
 
+def take_opening_action(encounter_path, timeout_seconds=5.0):
+    """#882: the player's declared first action, once.
+
+    It is marked offered on the encounter before it is returned, so a resume
+    never offers it again. None when there is none, it was offered, the
+    encounter predates the field, a DM request is waiting for the player, or
+    the encounter is busy (a later window offers it then).
+    """
+    with path_transaction_lock(
+        encounter_path,
+        suffix=".combat.lock",
+        timeout_seconds=timeout_seconds,
+    ) as acquired:
+        if acquired is None:
+            return None
+        encounter = safe_json_load(encounter_path)
+        if not isinstance(encounter, dict):
+            return None
+        text = encounter.get("openingAction")
+        if (
+            not isinstance(text, str)
+            or not text.strip()
+            or encounter.get("openingActionOffered") is not False
+        ):
+            return None
+        pending = (encounter.get("combatState") or {}).get("pendingTurn")
+        exchanges = pending.get("playerExchanges") if isinstance(pending, dict) else None
+        if isinstance(exchanges, list) and exchanges and isinstance(exchanges[-1], dict) and exchanges[-1].get("dmRequest"):
+            return None
+        encounter["openingActionOffered"] = True
+        try:
+            _write_object(encounter_path, encounter, "opening action offer")
+        except CombatTransactionError as exc:
+            # Optional: a failed mark never ends the turn; the player is asked
+            # for their action as before, and a later window may offer it.
+            _LOGGER.warning("opening action not offered: %s", exc)
+            return None
+        return text.strip()
+
+
 def claim_turn(
     encounter_path,
     actor_ids,

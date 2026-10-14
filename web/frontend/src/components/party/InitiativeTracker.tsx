@@ -89,7 +89,7 @@ export function InitiativeTracker() {
     // Absence preserves the legacy input-unlocked/player-name behavior.
     const active = hasTypedOwnership
       ? !isProcessing && combatant['isCurrent'] === true && projectedController === 'human'
-      : !isProcessing && kind === 'player' && playerName !== null && playerName === name
+      : !isProcessing && kind === 'player' && playerName !== null && playerName === name && combatant['downed'] !== true
 
     return (
       <CharacterChip

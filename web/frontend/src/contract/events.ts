@@ -17,7 +17,9 @@ export type MessageType =
   | 'info'
   | 'error'
   | 'startup'
-  | 'debug';
+  | 'debug'
+  /** #882: composer text offered by the game; never shown in the log. */
+  | 'input_suggestion';
 export interface GameMessage {
   type: MessageType;
   content: string;

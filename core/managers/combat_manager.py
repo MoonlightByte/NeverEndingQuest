@@ -218,6 +218,7 @@ from core.managers.combat_transaction import (
     completion_lease,
     mark_encounter_awaiting_actor,
     store_agentic_preroll_cache,
+    take_opening_action,
 )
 # Import safe JSON functions
 from utils.encoding_utils import safe_json_load, sanitize_dict
@@ -474,79 +475,40 @@ def _display_combat_narration(narration, message_id=None):
    return True
 
 
-def load_npc_with_fuzzy_match(npc_name, path_manager):
+def load_npc_with_fuzzy_match(npc_name, path_manager, encounter=None, creature=None):
     """
-    Load NPC data with fuzzy name matching support.
-    First tries exact match, then falls back to fuzzy matching if needed.
-    
+    Load an encounter NPC's sheet, exactly (#855, family 2 Part B).
+
+    The sheet is the creature's recorded sourceRef in a typed-agentic
+    encounter, else the exact name (see resolve_npc_sheet_id). A near name is
+    never matched to another NPC's sheet: it returns (None, None) and the
+    caller reports the missing file, as for any missing sheet. Never raises.
+
     Args:
         npc_name: The NPC name to look for
         path_manager: ModulePathManager instance
-        
+        encounter: the encounter holding the creature, when the caller has it
+        creature: the encounter creature, when the caller has it
+
     Returns:
         tuple: (npc_data, matched_filename) or (None, None) if not found
     """
     from utils.encoding_utils import safe_json_load
-    
-    # First try exact match with normalized name
-    formatted_npc_name = path_manager.format_filename(npc_name)
-    npc_file = path_manager.get_character_path(formatted_npc_name)
-    npc_data = safe_json_load(npc_file)
-    
-    if npc_data:
-        debug(f"NPC_LOAD: Exact match found for '{npc_name}' -> '{formatted_npc_name}'", category="combat_manager")
-        return npc_data, formatted_npc_name
-    
-    # If exact match fails, try fuzzy matching
-    debug(f"NPC_LOAD: Exact match failed for '{formatted_npc_name}', attempting fuzzy match", category="combat_manager")
-    
-    # Get all character files in the module
-    import glob
-    # Use the unified characters directory
-    character_dir = "characters"
-    character_files = glob.glob(os.path.join(character_dir, "*.json"))
-    
-    best_match = None
-    best_score = 0
-    best_filename = None
-    
-    for char_file in character_files:
-        # Skip backup files
-        if char_file.endswith(".bak") or char_file.endswith("_BU.json") or "backup" in char_file:
-            continue
-            
-        # Load the character data to check if it's an NPC
-        char_data = safe_json_load(char_file)
-        # Check both character_type (correct field) and characterType (legacy) for compatibility
-        char_type = char_data.get("character_type") or char_data.get("characterType")
-        if char_data and char_type == "npc":
-            char_name = char_data.get("name", "")
-            # Simple fuzzy matching - check if key words from requested name are in character name
-            requested_words = set(formatted_npc_name.lower().split("_"))
-            char_words = set(char_name.lower().replace(" ", "_").split("_"))
-            
-            # Debug log for fuzzy matching
-            debug(f"NPC_FUZZY: Comparing '{formatted_npc_name}' with '{char_name}' from {char_file}", category="combat_manager")
-            debug(f"NPC_FUZZY: Requested words: {requested_words}, Character words: {char_words}", category="combat_manager")
-            
-            # Calculate match score based on word overlap
-            common_words = requested_words.intersection(char_words)
-            if common_words:
-                score = len(common_words) / max(len(requested_words), len(char_words))
-                
-                if score > best_score:
-                    best_score = score
-                    best_match = char_data
-                    # Extract just the filename without path for consistency
-                    best_filename = os.path.splitext(os.path.basename(char_file))[0]
-    
-    # Use best match if score is high enough (threshold: 0.5)
-    if best_match and best_score >= 0.5:
-        info(f"NPC_FUZZY_MATCH: Success - '{npc_name}' matched to '{best_match['name']}' (score: {best_score:.2f})", category="combat_manager")
-        return best_match, best_filename
-    else:
-        warning(f"NPC_FUZZY_MATCH: Failed for '{npc_name}' (best score: {best_score:.2f})", category="combat_manager")
+    from updates.update_character_info import resolve_npc_sheet_id
+
+    matched_filename = resolve_npc_sheet_id(npc_name, encounter, creature)
+    if not matched_filename:
+        warning(f"NPC_LOAD: no sheet for '{npc_name}' (exact names only)", category="combat_manager")
         return None, None
+    try:
+        npc_data = safe_json_load(path_manager.get_character_path(matched_filename))
+    except Exception as e:
+        warning(f"NPC_LOAD: sheet for '{npc_name}' unreadable ({type(e).__name__})", category="combat_manager")
+        return None, None
+    if not isinstance(npc_data, dict):
+        return None, None
+    debug(f"NPC_LOAD: '{npc_name}' -> '{matched_filename}'", category="combat_manager")
+    return npc_data, matched_filename
 
 
 def get_current_area_id():
@@ -1522,6 +1484,11 @@ def _build_initial_combat_prompt(
     surprise_rules = surprise_opening_rules(encounter_data)
     if surprise_rules:
         down_block += f"\n\n{surprise_rules}"
+    from core.generators.combat_builder import opening_action_rules
+
+    opening_rules = opening_action_rules(encounter_data)
+    if opening_rules:
+        down_block += f"\n\n{opening_rules}"
     return f"""Dungeon Master Note: Respond with valid JSON containing a 'narration' field, 'combat_round' field, and an 'actions' array. This is the start of combat, so please describe the scene and set initiative order, but don't take any actions yet. Start off by hooking the player and engaging them for the start of combat the way any world class dungeon master would.{down_block}
 
 Important Character Field Definitions:
@@ -1665,6 +1632,23 @@ def recover_pending_combat_output():
     return True
 
 
+def _offer_opening_action(text):
+    """#882: show the player's declared first action at their first turn and
+    offer it as the composer's text (web); the terminal sends it on Enter."""
+    from web.shared_state import emit_player_output, has_player_output_sink
+
+    sentence = text if text.endswith((".", "!", "?")) else text + "."
+    line = "Your declared action: %s Send it as is, or type another action." % sentence
+    if not has_player_output_sink():
+        print(line.replace("Send it as is", "Press Enter to send it"))
+        return
+    # The shape of the rest receipt (#840): a narration on the system channel
+    # is cached with a message id, so the web shows it and a reload keeps it.
+    if emit_player_output({"type": "narration", "channel": "system", "content": line}) is not True:
+        print(line)
+    emit_player_output({"type": "input_suggestion", "channel": "input_suggestion", "content": text})
+
+
 def _open_weapon_roll_prompt(json_file_path):
     """Item 3: the [ROLL] request of an open code-issued weapon roll phase."""
     try:
@@ -1700,7 +1684,7 @@ def _agentic_combat_context(encounter_data, path_manager, monster_templates):
                 character_paths[name] = path
                 context_sheets[name] = sheet
         elif creature.get("type") == "npc":
-            sheet, filename = load_npc_with_fuzzy_match(name, path_manager)
+            sheet, filename = load_npc_with_fuzzy_match(name, path_manager, encounter_data, creature)
             if isinstance(sheet, dict) and filename:
                 character_paths[name] = path_manager.get_character_path(filename)
                 context_sheets[name] = sheet
@@ -2808,8 +2792,8 @@ def sync_active_encounter():
                     
             elif creature["type"] == "npc":
                 try:
-                    # Use fuzzy matching for NPC loading
-                    npc_data, matched_filename = load_npc_with_fuzzy_match(creature['name'], path_manager)
+                    # The NPC's own sheet: its recorded sourceRef, else its exact name
+                    npc_data, matched_filename = load_npc_with_fuzzy_match(creature['name'], path_manager, encounter_data, creature)
                     if not npc_data:
                         error(f"FAILURE: Failed to load NPC file for: {creature['name']}", category="file_operations")
                     else:
@@ -3823,8 +3807,8 @@ def _run_combat_simulation(
                    return None, None
        
        elif creature["type"] == "npc":
-           # Use fuzzy matching for NPC loading
-           npc_data, matched_filename = load_npc_with_fuzzy_match(creature["name"], path_manager)
+           # The NPC's own sheet: its recorded sourceRef, else its exact name
+           npc_data, matched_filename = load_npc_with_fuzzy_match(creature["name"], path_manager, encounter_data, creature)
            if npc_data and matched_filename:
                # Use the matched filename as the key to avoid duplicates
                if matched_filename not in npc_templates:
@@ -4085,8 +4069,8 @@ def _run_combat_simulation(
            
            # Get the actual max HP from the correct source
            if creature["type"] == "npc":
-               # For NPCs, look up their true max HP from their character file using fuzzy match
-               npc_data, matched_filename = load_npc_with_fuzzy_match(creature_name, path_manager)
+               # For NPCs, look up their true max HP from their own character file
+               npc_data, matched_filename = load_npc_with_fuzzy_match(creature_name, path_manager, encounter_data, creature)
                if npc_data:
                    creature_max_hp = npc_data["maxHitPoints"]
                else:
@@ -4612,8 +4596,8 @@ This is narration only. Do not advance the round or apply any combat action."""
        # Reload NPC data
        for creature in encounter_data["creatures"]:
            if creature["type"] == "npc":
-               # Use fuzzy matching for NPC reloading
-               npc_data, matched_filename = load_npc_with_fuzzy_match(creature["name"], path_manager)
+               # The NPC's own sheet: its recorded sourceRef, else its exact name
+               npc_data, matched_filename = load_npc_with_fuzzy_match(creature["name"], path_manager, encounter_data, creature)
                if npc_data and matched_filename:
                    # Update the NPC in the templates dictionary
                    npc_templates[matched_filename] = npc_data
@@ -4860,6 +4844,13 @@ This is narration only. Do not advance the round or apply any combat action."""
                weapon_roll_prompt = (
                    _open_weapon_roll_prompt(json_file_path) if agentic_mode else None
                )
+               # #882: the action the player declared as the fight began is
+               # offered once, at this first window; marked before it is shown.
+               opening_action = (
+                   None if weapon_roll_prompt else take_opening_action(json_file_path)
+               )
+               if opening_action:
+                   _offer_opening_action(opening_action)
                user_input_text = input(
                    weapon_roll_prompt or f"{stats_display} {player_name_display}: "
                )
@@ -4867,6 +4858,8 @@ This is narration only. Do not advance the round or apply any combat action."""
                    weapon_roll_answer = user_input_text
                    if not user_input_text.strip():
                        user_input_text = "(Enter: the game rolls)"
+               elif opening_action and not user_input_text.strip():
+                   user_input_text = opening_action
                print(f"DEBUG: [COMBAT_LOOP] Got player input: {user_input_text[:50]}..." if len(user_input_text) > 50 else f"DEBUG: [COMBAT_LOOP] Got player input: {user_input_text}")
                debug(f"COMBAT_LOOP: Received player input of length {len(user_input_text)}", category="combat_events")
            except EOFError:
@@ -5005,8 +4998,8 @@ This is narration only. Do not advance the round or apply any combat action."""
                # Get the actual max HP from the correct source
                npc_data = None
                if creature["type"] == "npc":
-                   # For NPCs, look up their true max HP from their character file using fuzzy match
-                   npc_data, matched_filename = load_npc_with_fuzzy_match(creature_name, path_manager)
+                   # For NPCs, look up their true max HP from their own character file
+                   npc_data, matched_filename = load_npc_with_fuzzy_match(creature_name, path_manager, encounter_data, creature)
                    if npc_data:
                        creature_max_hp = npc_data["maxHitPoints"]
                    else:

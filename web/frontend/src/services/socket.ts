@@ -1,5 +1,6 @@
 import { isTransientNotice, useConnectionNotice } from '../stores/connectionNotices'
 import { useRulesRoll } from '../stores/rulesRoll'
+import { useInputSuggestion } from '../stores/inputSuggestion'
 /**
  * services/socket.ts -- the ONLY module in src/ allowed to import socket.io-client.
  * It owns the connection to the Flask-SocketIO server (:8357, default /socket.io
@@ -200,7 +201,8 @@ on('ui_state_snapshot', (p) => {
 
 // ---------- game log ----------
 on('game_output', (m) => {
-  if (m.type === 'system' && isTransientNotice(m.content)) useConnectionNotice.getState().show(m.content)
+  if (m.type === 'input_suggestion') useInputSuggestion.getState().offer(m.content)
+  else if (m.type === 'system' && isTransientNotice(m.content)) useConnectionNotice.getState().show(m.content)
   else useLog.getState().append(m)
 })
 on('cached_messages', (ms) => useLog.getState().replaceAll(ms))
