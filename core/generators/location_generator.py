@@ -830,7 +830,8 @@ class LocationPromptGuide:
     Interactive or descriptive elements.
     
     Each feature needs:
-    - name: What to call it
+    - name: What to call it, as the player sees it (never a plot-point or
+      side-quest id such as SQ004, or a quest title)
     - description: What it looks like and does
     
     Examples:
@@ -1225,6 +1226,10 @@ AREA CONNECTIVITY RULES:
   The module builder assigns all cross-area connections deterministically from the
   plot route after generation; anything you put here is discarded. Note that
   "areaConnectivityId" holds destination LOCATION IDs, not area IDs.
+
+Location and feature names are in-world display names the player sees.
+Never put plot-point or side-quest ids (such as PP002 or SQ004) or quest
+titles in a name; keep quest links in dmInstructions and plotHooks.
 
 Check the location schema carefully for all required fields.
 Use only standard ASCII characters -- no smart quotes, no em-dashes, and no
