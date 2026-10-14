@@ -208,7 +208,7 @@ export function CharacterChip({
         </button>
         <span className="ember-card-summary">
           {displayName}
-          <PartyVitals stats={stats} />
+          <PartyVitals stats={stats} down={isDown} />
           {downLabel}
           {isActive && <small className="ember-turn-label">Your turn</small>}
           {mediaPending && <small className="ember-turn-label" role="status">Loading media…</small>}
@@ -274,7 +274,7 @@ export function CharacterChip({
           }}
         >
           {displayName}
-          {ember && showVitals && <PartyVitals stats={stats} />}
+          {ember && showVitals && <PartyVitals stats={stats} down={isDown} />}
           {downLabel}
           {ember && isActive && <small className="ember-turn-label">Your turn</small>}
           {mediaPending && <small className="ember-turn-label" role="status">Loading media…</small>}
