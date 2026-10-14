@@ -356,6 +356,11 @@ class LevelUpSession:
         if self._choices.get("subclass"):
             # the chosen subclass's features at this level join the gained list
             s.features = tables.features_for(cls, chosen_subclass, s.new_level)
+        # #858: the typed per-level hit point bonuses (species trait, subclass feature)
+        # from the SRD hp_bonuses table, after the hit die minimum.
+        for bonus_name, amount in tables.hp_bonuses_gained(sheet, cls, chosen_subclass, s.new_level):
+            gain += amount
+            how += f" + {amount} {bonus_name}"
         # 2. features: new ones with the agent's text, pools resized from the table.
         # A pool's maximum can follow an ability (Bardic Inspiration: Charisma), so
         # the pools are read with the scores after this level's increase; the rest
