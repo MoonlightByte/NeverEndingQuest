@@ -78,12 +78,20 @@ WEAPON_ABILITY_TERM = 'term stat "%s" offset -10 divide 2;'
 # so the term reads the level fact as srd-stats' saves do, (level + 7) / 4.
 WEAPON_PROFICIENCY_TERM = 'term stat "level" offset 7 divide 4 requires %s;'
 
+# Exact sheet labels (lowercased) -> the training Conditions they give. The
+# short keys are data/srd/choices.json class_traits armor_training values; the
+# long forms are the SRD 5.2.1 printed labels, and "all armor" is the three
+# body-armor trainings, not the shield (#896). Exact keys, never a pattern.
 _ARMOR_TRAINING = {
-    "light": "training:light",
-    "medium": "training:medium",
-    "heavy": "training:heavy",
-    "shield": "training:shield",
-    "shields": "training:shield",
+    "light": ("training:light",),
+    "medium": ("training:medium",),
+    "heavy": ("training:heavy",),
+    "shield": ("training:shield",),
+    "shields": ("training:shield",),
+    "light armor": ("training:light",),
+    "medium armor": ("training:medium",),
+    "heavy armor": ("training:heavy",),
+    "all armor": ("training:light", "training:medium", "training:heavy"),
 }
 
 
@@ -675,9 +683,9 @@ def _effect_lines(sheet: Dict[str, Any], cid: str, gaps: List[str],
 def _training(sheet: Dict[str, Any]) -> List[str]:
     out: List[str] = []
     for label in (sheet.get("proficiencies") or {}).get("armor") or []:
-        cond = _ARMOR_TRAINING.get(str(label).strip().lower())
-        if cond and cond not in out:
-            out.append(cond)
+        for cond in _ARMOR_TRAINING.get(str(label).strip().lower(), ()):
+            if cond not in out:
+                out.append(cond)
     return out
 
 
@@ -1028,9 +1036,10 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     for cond in class_conditions.condition_types():
         if cond not in condition_types:
             condition_types.append(cond)
-    for cond in _ARMOR_TRAINING.values():
-        if cond not in condition_types:
-            condition_types.append(cond)
+    for conds in _ARMOR_TRAINING.values():
+        for cond in conds:
+            if cond not in condition_types:
+                condition_types.append(cond)
     definitions: List[str] = [
         ' definition "gear:held" named "Held item" { description "Occupies one hand."; default "held"; mode "held" { occupy "hand" by 1; } }\n',
         ' definition "gear:worn" named "Worn item" { description "Worn, occupies no slot."; default "worn"; mode "worn" { } }\n',
