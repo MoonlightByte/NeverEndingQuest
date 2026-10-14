@@ -399,6 +399,34 @@ def _intent_correction(exc, batch=None):
     return correction
 
 
+def _reconcile_validated_prefix(batch, correction):
+    """#435: the intents the last correction validated are kept as validated.
+
+    A corrected batch takes the correction's validatedIntents (by actorId) in
+    their validated order, then the model's intents for every other actor in
+    the model's order: a validated actor the model changed or dropped gets its
+    validated intent back. Only the latest correction locks; the rejected
+    actor and the remainder stay the model's. The batch is then validated
+    and resolved in full as before."""
+    validated = correction.get("validatedIntents") if isinstance(correction, dict) else None
+    intents = batch.get("intents") if isinstance(batch, dict) else None
+    if not isinstance(validated, list) or not validated or not isinstance(intents, list):
+        return batch
+    if not all(isinstance(intent, dict) and isinstance(intent.get("actorId"), str) for intent in validated):
+        return batch
+    locked = {intent["actorId"] for intent in validated}
+    remainder = [
+        intent for intent in intents
+        if not (isinstance(intent, dict) and intent.get("actorId") in locked)
+    ]
+    reconciled = [deepcopy(intent) for intent in validated] + remainder
+    if reconciled != intents:
+        _LOGGER.info("#435: kept %d validated intent(s) from the correction", len(validated))
+    batch = dict(batch)
+    batch["intents"] = reconciled
+    return batch
+
+
 def _apply_trusted_spell_durations(batch, spell_references, now_scalar=None):
     """Overlay exact fixed SRD durations onto matching provider effects.
 
@@ -2204,6 +2232,7 @@ def execute_agentic_turn(
                 spell_references,
                 now_scalar=combat_now_scalar,
             )
+            batch = _reconcile_validated_prefix(batch, correction)
         except (InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as exc:
