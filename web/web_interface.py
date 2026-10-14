@@ -4072,7 +4072,8 @@ def handle_initiative_data_request(data=None):
         # Typed encounters project membership/order/current input ownership from
         # the committed combat ledger. Legacy encounters preserve the existing
         # living-roster/raw-initiative response behavior.
-        sorted_combatants = initiative_ui_projection(encounter_data)
+        # Downed party members stay in the bar, marked ``downed`` (#282).
+        sorted_combatants = initiative_ui_projection(encounter_data, include_downed_party=True)
         combat_state = encounter_data.get("combatState") or {}
         recovery_conflict = combat_state.get("recoveryConflict")
         recovery = None
@@ -4089,7 +4090,7 @@ def handle_initiative_data_request(data=None):
                 "actions": ["load", "reset"],
             }
 
-        if not sorted_combatants:
+        if not any(not c.get("downed") for c in sorted_combatants):
             # Combat is over if no one is alive
             emit('initiative_data_response', _ui_response(data, {'active': False, 'combatants': []}))
             return
@@ -4113,7 +4114,7 @@ def handle_initiative_data_request(data=None):
                 "monsterType": c.get("monsterType"),  # For enemy type lookup
                 "class": c.get("class")  # For NPC class lookup
             }
-            for projected_field in ("combatantId", "controller", "isCurrent"):
+            for projected_field in ("combatantId", "controller", "isCurrent", "downed"):
                 if projected_field in c:
                     combatant_data[projected_field] = c[projected_field]
 

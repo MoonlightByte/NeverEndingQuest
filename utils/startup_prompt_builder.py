@@ -79,7 +79,9 @@ def build_startup_rules_reference():
             "\"source\": \"<background> background (SRD 5.2.1)\"}. Other feats, such as a Human's "
             "Versatile Origin feat, also go in feats with their source. A chosen Fighting Style goes in "
             "classFeatures, not feats, as {\"name\": \"Fighting Style: <style name>\", \"description\": "
-            "\"<its text here>\", \"source\": \"<class> level <level>\"}, the name level-up writes."),
+            "\"<its text here>\", \"source\": \"<class> level <level>\"}, the name level-up writes. "
+            "Record the class's level-1 order choice as one classFeatures entry named exactly "
+            "\"Divine Order: <option>\" or \"Primal Order: <option>\"."),
         "background_ability_scores_rule": origins["background_ability_scores_rule"],
         "backgrounds": origins["backgrounds"],
         "species": origins["species"],

@@ -3220,6 +3220,24 @@
        }
       ]
      },
+     "option_grants": {
+      "Protector": {
+       "armor_training": [
+        "heavy"
+       ],
+       "weapon_proficiencies": [
+        {
+         "category": "Martial"
+        }
+       ],
+       "printed": "training with Heavy armor and proficiency with Martial weapons",
+       "source": {
+        "section": "Classes > Cleric > Cleric Class Features > Level 1: Divine Order",
+        "page": 37
+       },
+       "evidence": "Trained for battle, you gain proficiency with Martial weapons and training with Heavy armor."
+      }
+     },
      "source": {
       "section": "Classes > Cleric > Cleric Class Features > Level 1: Divine Order",
       "page": 37
@@ -3801,6 +3819,24 @@
         "evidence": "You know one extra cantrip from the Druid spell list"
        }
       ]
+     },
+     "option_grants": {
+      "Warden": {
+       "armor_training": [
+        "medium"
+       ],
+       "weapon_proficiencies": [
+        {
+         "category": "Martial"
+        }
+       ],
+       "printed": "training with Medium armor and proficiency with Martial weapons",
+       "source": {
+        "section": "Classes > Druid > Druid Class Features > Level 1: Primal Order",
+        "page": 42
+       },
+       "evidence": "Trained for battle, you gain proficiency with Martial weapons and training with Medium armor."
+      }
      },
      "source": {
       "section": "Classes > Druid > Druid Class Features > Level 1: Primal Order",
