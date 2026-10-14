@@ -2593,24 +2593,6 @@ def _complete_agentic_combat(
     return dialogue_summary, player_info
 
 
-def merge_updates(original_data, updated_data):
-    fields_to_update = ['hitPoints', 'equipment', 'attacksAndSpellcasting', 'experience_points']
-
-    for field in fields_to_update:
-        if field in updated_data:
-            if field in ['equipment', 'attacksAndSpellcasting']:
-                # For arrays, replace the entire array
-                original_data[field] = updated_data[field]
-            elif field == 'experience_points':
-                # For XP, only update if the new value is greater than the existing value
-                if updated_data[field] > original_data.get(field, 0):
-                    original_data[field] = updated_data[field]
-            else:
-                # For simple fields like hitpoints, just update the value
-                original_data[field] = updated_data[field]
-
-    return original_data
-
 # DEPRECATED: This function is no longer used and has been replaced by the new XP awarding system
 # that uses update_character_info directly with proper synchronization.
 # The new system:

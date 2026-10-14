@@ -29,6 +29,7 @@ from core.managers.effects_state import (
 )
 from updates.save_game_manager import SaveGameManager
 from utils.encoding_utils import safe_json_load
+from utils.enhanced_logger import warning
 from utils.file_operations import safe_write_json
 from utils.path_transaction_lock import path_transaction_lock
 
@@ -77,6 +78,7 @@ def _discover_character_files(party, tracker_names=None):
             roots.append(candidate)
     discovered = {}
     duplicates = {}
+    unreadable = []
     for root in roots:
         if not os.path.isdir(root):
             continue
@@ -89,7 +91,15 @@ def _discover_character_files(party, tracker_names=None):
             ):
                 continue
             path = os.path.join(root, filename)
-            value = safe_json_load(path)
+            try:
+                value = safe_json_load(path)
+            except ValueError as exc:
+                # Empty or broken JSON is not a sheet (#408): report it and
+                # leave the file as it is; never stop the conversion on it.
+                unreadable.append(path.replace("\\", "/"))
+                warning(f"EFFECTS: skipped unreadable file {path}: {exc}",
+                        category="effects_tracking")
+                continue
             if not isinstance(value, dict) or not value.get("name"):
                 continue
             key = _normalized_name(value["name"])
@@ -102,7 +112,7 @@ def _discover_character_files(party, tracker_names=None):
                 duplicates.setdefault(key, [discovered[key]]).append(path)
             else:
                 discovered[key] = path
-    return discovered, duplicates
+    return discovered, duplicates, unreadable
 
 
 def _load_tracker():
@@ -439,6 +449,16 @@ def _convert_sheet(owner, original, modifiers, world, migration_id):
     return sheet, report
 
 
+def _party_sheet_paths(party):
+    """Canonical sheet paths of the party (characters/<stem>.json)."""
+    from utils.module_path_manager import ModulePathManager
+    manager = ModulePathManager(str(party.get("module") or "").replace(" ", "_"))
+    names = [name for name in party.get("partyMembers") or [] if isinstance(name, str)]
+    names += [npc.get("name") for npc in party.get("partyNPCs") or []
+              if isinstance(npc, dict) and isinstance(npc.get("name"), str)]
+    return {os.path.normcase(os.path.normpath(manager.get_character_path(name))) for name in names}
+
+
 def preflight_effects_migration():
     party = safe_json_load("party_tracker.json")
     if not isinstance(party, dict) or not party.get("module"):
@@ -450,15 +470,19 @@ def preflight_effects_migration():
         return {"status": "deferred", "reason": combat_gate}
 
     tracker = _load_tracker()
-    files, duplicates = _discover_character_files(
+    files, duplicates, unreadable = _discover_character_files(
         party,
         (tracker.get("characters") or {}).keys(),
     )
+    party_paths = _party_sheet_paths(party)
+    held = sorted(path for path in unreadable if os.path.normcase(os.path.normpath(path)) in party_paths)
+    if held:
+        return {"status": "deferred", "reason": "party sheet unreadable: %s" % held}
     if duplicates:
         return {"status": "blocked", "refusals": ["duplicate character sheets: %s" % sorted(duplicates)]}
     migration_id = uuid.uuid4().hex
     conversions = []
-    reports = []
+    reports = ["unreadable file skipped: %s" % path for path in unreadable]
     refusals = []
     world = party.get("worldConditions") or {}
     for owner, path in sorted(files.items()):

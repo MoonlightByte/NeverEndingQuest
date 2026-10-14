@@ -4062,11 +4062,13 @@ def process_action(
 
             result_dir = tempfile.mkdtemp(prefix="combat_builder_")
             try:
+                from utils.encoding_utils import utf8_child_env
                 result = subprocess.run(
                     [sys.executable, combat_builder_path, "--result-file",
                      os.path.join(result_dir, "result.json")],
                     input=json.dumps(action),
-                    capture_output=True, text=True
+                    capture_output=True, encoding="utf-8", errors="replace",
+                    env=utf8_child_env()
                 )
                 encounter_id, build_failure = _built_encounter(
                     os.path.join(result_dir, "result.json"), result.returncode

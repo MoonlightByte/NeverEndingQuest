@@ -180,8 +180,12 @@ def normalize_character_name(character_name):
     
     # Remove leading/trailing underscores
     name = name.strip('_')
-    
-    return name
+    if name:
+        return name
+    # No ASCII letter or digit (#894): the name's own letters, never the
+    # empty stem (characters/.json).
+    from utils.encoding_utils import unicode_name_stem
+    return unicode_name_stem(character_name)
 
 def _is_backup_sheet_file(filename):
     return filename.endswith(".bak") or filename.endswith("_BU.json") or "backup" in filename

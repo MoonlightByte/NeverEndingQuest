@@ -502,6 +502,15 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 {"violations": list(resolution["violations"]),
                  "playerChargeRefusal": refusals, "retryable": True},
             )
+        if controller == "human" and resolution.get("resourceRefusals"):
+            # #671: the player's spell slot or feature use has none left. The
+            # player keeps agency, as H3b: the correction asks the player.
+            raise CombatIntentError(
+                "; ".join(resolution["violations"]),
+                actor_id,
+                {"violations": list(resolution["violations"]),
+                 "playerResourceRefusal": deepcopy(resolution["resourceRefusals"]), "retryable": True},
+            )
         if controller == "human" and resolution.get("featureHealUnspent"):
             # #669: the corrected batch still spends the player's feature on
             # a heal that restores nothing. Nothing is committed; the
