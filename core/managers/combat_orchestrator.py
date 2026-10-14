@@ -273,7 +273,8 @@ def _intent_correction(exc, batch=None):
     if isinstance(resource_refusals, list) and resource_refusals:
         # #671: the player's spend the rules engine refused, by the numbers.
         spends = ", ".join(
-            "%s %s, %s of %s left" % (r.get("kind"), r.get("name"), r.get("before"), r.get("max"))
+            "%s %s, %s left" % (r.get("kind"), r.get("name"), r.get("before")) if r.get("max") is None
+            else "%s %s, %s of %s left" % (r.get("kind"), r.get("name"), r.get("before"), r.get("max"))
             for r in resource_refusals if isinstance(r, dict)
         )
         instruction = (
@@ -591,8 +592,8 @@ def _pause_for_refused_item(encounter_path, pending, refusals, voice_intents):
 
 
 def _pause_for_refused_resource(encounter_path, pending, refusals, voice_intents):
-    """#671 fail-safe: the player's spell slot or feature use was refused (none
-    left) and the correction did not ask the player. Record the code's question
+    """#671 fail-safe: the player's spell slot, feature use, item or ammunition
+    (#968) was refused (none left) and the correction did not ask the player. Record the code's question
     on the pending turn and pause: nothing is staged, the round does not fire,
     and the player chooses again."""
     parts = []
@@ -612,7 +613,15 @@ def _pause_for_refused_resource(encounter_path, pending, refusals, voice_intents
         other = isinstance(owner, str) and isinstance(actor, str) and owner != actor
         before, need = refusal.get("before"), refusal.get("need")
         short = type(before) is int and before > 0 and type(need) is int
-        if level.isdigit():
+        if refusal.get("kind") in ("item", "ammunition"):
+            # #968: a potion or arrows, by count; another sheet's stock is named. An engine
+            # refusal of a stock the sheet shows (before >= need) reads as none left.
+            who = "%s has" % owner if other else "You have"
+            if short and before < need:
+                parts.append("%s only %s %s left; this needs %s" % (who, before, name, need))
+            else:
+                parts.append("%s no %s left" % (who, name))
+        elif level.isdigit():
             who = "%s has" % owner if other else "You have"
             if short:
                 parts.append("%s only %s level %s spell slot%s left (%s); this needs %s"
