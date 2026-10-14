@@ -351,7 +351,7 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             raise CombatPlayerInputRequired(
                 "The player's turn needs additional input",
                 actor_id,
-                {"request": deepcopy(intent.get("requiresPlayerInput"))},
+                {"request": deepcopy(intent.get("requiresPlayerInput")), "targetId": intent.get("targetId")},
             )
         if controller != "human" and intent.get("requiresPlayerInput"):
             # Only the human's actor can answer a roll request. An NPC intent
