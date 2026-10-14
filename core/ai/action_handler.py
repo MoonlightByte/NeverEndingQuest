@@ -933,12 +933,15 @@ def prepare_current_transition_actions(operation_id):
             character_name = (
                 parameters.get("characterName")
                 or parameters.get("npcName")
-                or next(iter(party.get("partyMembers", []) or []), None)
             )
             changes = parameters.get("changes")
             if isinstance(changes, dict):
                 changes = json.dumps(changes)
             try:
+                if not character_name:
+                    # #914: no named character; dropped like an unworkable
+                    # update, never written to a default character.
+                    raise CharacterProposalDropped("A party member")
                 receipt = prepare_character_update(
                     character_name, changes, party,
                     affects=parameters.get("affects"),
@@ -4792,9 +4795,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
         if not character_name:
             # Try npcName first (for NPC updates)
             character_name = parameters.get("npcName")
-            if not character_name:
-                # Fall back to player name from party tracker
-                character_name = next((member.lower() for member in party_tracker_data["partyMembers"]), None)
+            # Never a default character: an update that names none changes nothing (#914)
         
         if character_name:
             debug(f"STATE_CHANGE: Updating character info for {character_name}", category="character_updates")
@@ -4868,7 +4869,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 except Exception:
                     pass
         else:
-            print("ERROR: No character name provided and no player found in party tracker.")
+            print("ERROR: updateCharacterInfo names no character; nothing was changed (#914).")
             # Reset status even if no character was found
             try:
                 from core.managers.status_manager import status_ready

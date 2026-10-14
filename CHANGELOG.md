@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `merge_updates` from `core/managers/combat_manager.py`, a helper that nothing called; had anything called it, it would have replaced a character's whole equipment list with the update's list instead of changing single items (#471).
 
 ### Fixed
+- A character update that names no character is now sent back to the DM to name one, instead of being written to the first party member's sheet (#914).
 - A hero saved before Fighting Styles were recorded as "Fighting Style: <name>" (for example "Fighting Style (Defense)" or "Fighting Style (Archery)") now gets the style's effect at their next level-up, which records it the new way and says so; until then the game log notes it (#760).
 - A companion speaking in character now knows how much ammunition it carries: its in-character voice sees each ammunition stock with its count (for example "Arrow x19") after its equipment, so it no longer says its arrow count is not recorded (#359).
 - A Fighter with the Defense Fighting Style now sees its +1 Armor Class listed as "Fighting Style: Defense" in the armor class breakdown, not as a bonus from their armor (#759).
