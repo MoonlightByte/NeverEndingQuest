@@ -399,6 +399,47 @@ def _intent_correction(exc, batch=None):
     return correction
 
 
+def _asked_slot_level(encounter, batch, actor_id, request):
+    """#942: the slot level a player's roll request asks its dice at, read as
+    the roll audit reads it (the own slot the cast spends, then its typed
+    slotLevel); None for anything but a cast, or no level."""
+    from core.ai import srd_roll_contracts
+    actor = combatant_by_id(encounter, actor_id) if isinstance(actor_id, str) else None
+    intents = batch.get("intents") if isinstance(batch, dict) else None
+    intent = next((item for item in intents or []
+                   if isinstance(item, dict) and item.get("actorId") == actor_id), None)
+    if actor is None or intent is None or intent.get("action") != "cast":
+        return None
+    level = srd_roll_contracts._slot_level(intent, request if isinstance(request, dict) else {},
+                                           actor.get("name"))
+    return level if type(level) is int and 1 <= level <= 9 else None
+
+
+def _check_asked_slot_level(encounter, pending, batch):
+    """#942 (D-942-1 A): the roll the player just answered was asked at a slot
+    level (the previous exchange's requestedSlotLevel), so the human's cast
+    spends an own slot of that level; another level is a correction and the
+    player's dice stay. An exchange saved without the field checks nothing."""
+    from core.ai import srd_roll_contracts
+    exchanges = (pending or {}).get("playerExchanges") or []
+    previous = exchanges[-2] if len(exchanges) >= 2 and isinstance(exchanges[-2], dict) else {}
+    asked = previous.get("requestedSlotLevel")
+    if type(asked) is not int:
+        return
+    for intent in (batch.get("intents") if isinstance(batch, dict) else None) or []:
+        if not isinstance(intent, dict) or intent.get("action") != "cast":
+            continue
+        actor = combatant_by_id(encounter, intent.get("actorId"))
+        if not _is_human_controlled(encounter, actor):
+            continue
+        spent = srd_roll_contracts._spent_slot_level(intent, actor.get("name"))
+        if spent is not None and spent != asked:
+            raise CombatIntentError(
+                "the player's dice for %s were rolled for a level%d slot; spend a level%d slot, "
+                "not level%d" % (intent.get("ability") or "the spell", asked, asked, spent),
+                intent.get("actorId"), {"askedSlotLevel": asked})
+
+
 def _reconcile_validated_prefix(batch, correction):
     """#435: the intents the last correction validated are kept as validated.
 
@@ -2178,6 +2219,7 @@ def execute_agentic_turn(
             requested_phase=previous_exchange.get("requestedPhase"),
             npc_voice_intents=immutable_voice_intents,
             requested_roll=previous_exchange.get("requestedRoll"),
+            requested_slot_level=previous_exchange.get("requestedSlotLevel"),
         )
         record_combat_diagnostic(
             record_type="window_outcome",
@@ -2296,6 +2338,8 @@ def execute_agentic_turn(
                                         immutable_voice_intents)
 
         try:
+            # #942: pass 2 spends the slot the answered roll was asked at.
+            _check_asked_slot_level(encounter, pending, batch)
             takeover = _player_weapon_takeover(encounter, characters, pending, batch)
             if takeover is not None:
                 # Item 3: the player's plain melee swing. Code asks for the
@@ -2482,6 +2526,7 @@ def execute_agentic_turn(
                 requested_phase=request.get("phase") if isinstance(request, dict) else None,
                 npc_voice_intents=immutable_voice_intents,
                 requested_roll=typed_roll,
+                requested_slot_level=_asked_slot_level(encounter, batch, exc.actor_id, request),
             )
             raise CombatTurnPaused(
                 "Combat resolution requires more player input",
