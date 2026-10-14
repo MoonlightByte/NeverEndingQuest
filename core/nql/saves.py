@@ -51,6 +51,7 @@ class SaveScore:
     damage_rolled: Optional[int] = None
     damage: Optional[int] = None                          # after the effect and the traits; None when nothing was sent
     traits: List[str] = field(default_factory=list)
+    added: List[Dict[str, Any]] = field(default_factory=list)  # #889: the added dice, in the total
 
 
 def stat_id(ability: Any) -> Optional[str]:
@@ -94,12 +95,16 @@ def party_world(sheet: Dict[str, Any]) -> Tuple[str, str, str]:
 
 
 def action(source: str, stat: str, dc: int, count: int, sides: int, bonus: int, kind: str,
-           success: str, target: str, faces: List[int], damage: Optional[int] = None) -> str:
+           success: str, target: str, faces: List[int], damage: Optional[int] = None,
+           added: Optional[List[Tuple[str, List[int]]]] = None) -> str:
     parts = ["save %s profile stat %s dc %d damage %s kind %s success %s against %s"
              % (attacks._q(source), attacks._q(stat), int(dc), attacks.dice_token(count, sides, bonus),
                 attacks._q(kind), success, attacks._q(target))]
     if faces:
         parts.append("faces " + " ".join(str(int(face)) for face in faces))
+    for condition_type, added_faces in added or []:
+        # #889: a party target's added die (Bless); the engine's save never draws.
+        parts.append("added %s %s" % (attacks._q(condition_type), " ".join(str(int(f)) for f in added_faces)))
     if damage is not None:
         parts.append("damage %d" % int(damage))
     return " ".join(parts) + ";"
@@ -109,7 +114,7 @@ def score(*, ability: Any, dc: int, count: int, sides: int, bonus: int = 0, dama
           success: str, faces: List[int], damage: Optional[int] = None,
           party_sheet: Optional[Dict[str, Any]] = None, save_bonus: Optional[int] = None,
           target_hp: int = 0, target_max_hp: int = 0, target_sheet: Any = None,
-          binary: Optional[str] = None) -> SaveScore:
+          binary: Optional[str] = None, added_faces: Optional[List[Tuple[str, List[int]]]] = None) -> SaveScore:
     """One target's save through the engine. A party target passes its sheet
     (`party_sheet`); a monster passes its `save_bonus`, hit points and the
     sheet holding its damage traits. With no damage total the save is only
@@ -139,7 +144,7 @@ def score(*, ability: Any, dc: int, count: int, sides: int, bonus: int = 0, dama
             "world": world_text,
             "world_name": "save-genesis.nql",
             "actions": action(source, stat, dc, count, sides, bonus, attacks.damage_kind(damage_type),
-                              success, target, faces, damage),
+                              success, target, faces, damage, added_faces),
             "actions_name": "save.nql",
             "actor": {"kind": "character", "id": source},
             "request": "save:%s" % os.urandom(8).hex(),
@@ -177,6 +182,9 @@ def score(*, ability: Any, dc: int, count: int, sides: int, bonus: int = 0, dama
         damage=record.get("damage"),
     )
     result.traits = attacks.journal_traits(record.get("treatments"))
+    from core.nql import checks
+
+    result.added = checks.added_dice(party_sheet or {}, check.get("added"))
     if damage is not None and result.damage is None:
         # A saved `none`, or damage the traits brought to nothing: 0 is applied.
         result.damage = 0
@@ -198,5 +206,8 @@ def describe(result: SaveScore, name: str, dc: int) -> str:
     dice = " and ".join(str(face) for face in result.faces)
     modes = ", %s%s, kept %s" % (result.mode, why, result.kept) if result.mode in attacks.MODES else ""
     verdict = "succeeds by %d" % result.margin if result.success else "fails by %d" % -result.margin
-    return "%s %s: rolled %s%s; %s %+d = %s vs DC %d: %s" % (
-        name, what, dice, modes, result.kept, result.bonus, result.total, int(dc), verdict)
+    from core.nql import checks
+
+    return "%s %s: rolled %s%s; %s %+d%s = %s vs DC %d: %s" % (
+        name, what, dice, modes, result.kept, result.bonus, checks.added_text(result.added), result.total,
+        int(dc), verdict)

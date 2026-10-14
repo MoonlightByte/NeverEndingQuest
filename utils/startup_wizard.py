@@ -636,7 +636,10 @@ def select_or_create_character(conversation, module):
                 if 1 <= choice_num <= len(characters):
                     selected_char = characters[choice_num - 1]
                     print(f"Dungeon Master: Excellent! You've selected {selected_char['name']}!")
-                    return _use_existing_startup_character(conversation, module, selected_char)
+                    chosen = _use_existing_startup_character(conversation, module, selected_char)
+                    if chosen:
+                        return chosen
+                    continue
                 else:
                     print(f"Dungeon Master: Please choose a number between 1 and {len(characters)}, or 'new' to create a character")
                     continue
@@ -645,10 +648,13 @@ def select_or_create_character(conversation, module):
             
             # Try to match by character name
             user_lower = user_input.lower()
-            for char in characters:
-                if user_lower in char['name'].lower():
-                    print(f"Dungeon Master: Excellent! You've selected {char['name']}!")
-                    return _use_existing_startup_character(conversation, module, char)
+            matched = next((char for char in characters if user_lower in char['name'].lower()), None)
+            if matched is not None:
+                print(f"Dungeon Master: Excellent! You've selected {matched['name']}!")
+                chosen = _use_existing_startup_character(conversation, module, matched)
+                if chosen:
+                    return chosen
+                continue
             
             print("Dungeon Master: I didn't understand that. Please enter the character number, character name, or 'new' to create a new character.")
             
@@ -664,9 +670,31 @@ def create_new_character(conversation, module):
 
 
 def _use_existing_startup_character(conversation, module, selected):
-    character = safe_json_load(selected["path"])
-    if not character:
-        print("Dungeon Master: That character file is unavailable. Please choose again.")
+    from updates.save_game_manager import SaveGameManager
+    from utils.encoding_utils import sanitize_dict
+    from utils.transient_filesystem import read_bytes_preserving_errors
+
+    try:
+        # A file another program holds is waited for (B2); a missing, empty or
+        # broken one is unavailable and the player chooses again (#338).
+        # The bytes are read with the native Windows lock error kept: open()
+        # reports a held file as plain access denied, which is not retried.
+        raw = SaveGameManager._restore_io(
+            read_bytes_preserving_errors, selected["path"],
+            wait_label="Character selection",
+        )
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("utf-8", errors="replace")
+        character = sanitize_dict(json.loads(text))
+    except (OSError, ValueError) as exc:
+        warning(f"STARTUP: selected character unavailable: {selected['path']}: {exc}",
+                category="startup")
+        character = None
+    if not isinstance(character, dict) or not character.get("name"):
+        print("Dungeon Master: That character file is unavailable. "
+              "Please choose another character, or type 'new' to create one.")
         return None
     with _startup_operation() as scope:
         _set_startup_progress(conversation, live_scope=scope, phase="approved",

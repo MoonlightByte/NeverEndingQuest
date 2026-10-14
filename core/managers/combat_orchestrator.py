@@ -1230,10 +1230,10 @@ def _player_weapon_takeover(encounter, characters, pending, batch):
     if record is not None:
         entry = weapon_attack_sheet_entry(encounter, characters, record)
     elif spell is not None:
-        record = open_player_spell_attack(encounter, characters, intent, spell)
+        record = open_player_spell_attack(encounter, characters, intent, spell, _fresh_rolls(encounter))
         entry = weapon_attack_sheet_entry(encounter, characters, record)
     else:
-        record = open_player_weapon_attack(encounter, characters, intent, entry)
+        record = open_player_weapon_attack(encounter, characters, intent, entry, _fresh_rolls(encounter))
     record["batch"] = deepcopy(batch)
     for stored in record["batch"].get("intents") or []:
         # Code asks for this swing's dice; the model's own request (if any)

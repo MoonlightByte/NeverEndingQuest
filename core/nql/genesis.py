@@ -22,6 +22,8 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.effects.clock import DAYS_PER_MONTH, SECONDS_PER_DAY
+from core.effects.effective import _effect_name_key
+from core.effects.model import _MODIFIER_DIE
 from core.nql import class_conditions, item_catalog, srd_stats, stats
 
 EQUIPMENT_VERSION = "nql-equipment-v1"
@@ -125,6 +127,10 @@ def _int(value: Any) -> Optional[int]:
 CHARGES_MAX = 1000  # the engine's bound for an item definition's charges
 TYPE_DESCRIPTION_MAX = 4096  # the catalog's bound for an item type description, in bytes
 TYPE_KIND_MAX = 256  # the catalog's bound for a type's kind and for its id, in bytes
+ENGINE_ID_MAX = 256  # the engine's bound for an entity id, in bytes (#566)
+# A minted item id leaves room for its per-row charged type id
+# ("itemdef:row/" + the id after "item:", 7 bytes longer) under TYPE_KIND_MAX.
+ITEM_ID_MAX = TYPE_KIND_MAX - len("itemdef:row/") + len("item:")  # 249
 
 
 def _type_description(entry: Dict[str, Any]) -> str:
@@ -361,8 +367,26 @@ def container_id(storage_id: str) -> str:
     return "container:" + slug(storage_id)
 
 
+def bounded_item_id(iid: str, limit: int = ITEM_ID_MAX) -> str:
+    """``iid`` within ``limit`` bytes (#566). An id that fits is returned
+    unchanged. A longer one keeps its last two fields (the scope and row
+    index that make it unique) and shortens the name part before them. An
+    id whose tail alone cannot fit is returned unchanged."""
+    if len(iid.encode("utf-8")) <= limit:
+        return iid
+    parts = iid.split(":")
+    if len(parts) < 4:
+        return iid
+    tail = ":" + ":".join(parts[-2:])
+    room = limit - len(tail.encode("utf-8"))
+    if room < len("item:x"):
+        return iid
+    head = ":".join(parts[:-2]).encode("utf-8")[:room].decode("utf-8", errors="ignore").rstrip("-")
+    return head + tail
+
+
 def _mint(entry: Dict[str, Any], scope: str, index: int) -> str:
-    return f"item:{slug(entry.get('item_name', ''))}:{scope}:{index}"
+    return bounded_item_id(f"item:{slug(entry.get('item_name', ''))}:{scope}:{index}")
 
 
 def ammunition_id(sheet: Dict[str, Any], name: str) -> str:
@@ -394,7 +418,8 @@ def ammunition_rows(sheet: Dict[str, Any], gaps: List[str]) -> List[Tuple[str, D
 def _entry_id(entry: Dict[str, Any], scope: str, index: int) -> str:
     existing = entry.get("nql_id")
     if isinstance(existing, str) and existing.startswith("item:"):
-        return existing
+        # Every stored id the engine takes is returned as it is (#566).
+        return bounded_item_id(existing, ENGINE_ID_MAX)
     return _mint(entry, scope, index)
 
 
@@ -407,6 +432,13 @@ def assign_ids(sheet: Dict[str, Any]) -> bool:
         if not isinstance(entry, dict) or not entry.get("item_name"):
             continue
         current = entry.get("nql_id")
+        if isinstance(current, str) and current.startswith("item:"):
+            # A stored id over the engine's bound refuses the whole world;
+            # it is shortened in place, and a clash is reminted below (#566).
+            bounded = bounded_item_id(current, ENGINE_ID_MAX)
+            if bounded != current:
+                entry["nql_id"] = current = bounded
+                changed = True
         if not (isinstance(current, str) and current.startswith("item:")) or current in seen:
             candidate = _mint(entry, scope, index)
             while candidate in seen:
@@ -519,6 +551,45 @@ def effect_engine_modifiers(effect: Dict[str, Any]) -> Optional[List[Tuple[str, 
     return out
 
 
+def _die_engine_stat(stat: Any) -> Optional[str]:
+    """The engine stat an added die names (#889): saves and ability checks.
+    Attack-roll dice are not the engine's: code rolls them in combat."""
+    if not isinstance(stat, str):
+        return None
+    if stat == "savingThrows":
+        return "bonus:saves"
+    if stat == "abilityChecks":
+        return "bonus:checks"
+    if stat.startswith("savingThrow.") and stat[12:] in ABILITY_NAMES:
+        return "save:" + stat[12:]
+    if stat.startswith("abilityCheck.skill.") and stat[19:] in srd_stats.SKILLS:
+        return "skill:" + stat[19:]
+    return None
+
+
+def unrolled_die_stats(effect: Dict[str, Any]) -> List[str]:
+    """The stats an effect's added dice name that nobody rolls (#889 fail forward: the effect
+    applies without them). Attack-roll dice are code's, so they are not listed."""
+    return [str(m.get("stat")) for m in effect.get("modifiers") or []
+            if isinstance(m, dict) and isinstance(m.get("die"), str)
+            and m.get("stat") != "attackRolls" and _die_engine_stat(m.get("stat")) is None]
+
+
+def effect_engine_dice(effect: Dict[str, Any]) -> List[Tuple[str, int, int]]:
+    """[(engine stat, count, sides)] for the effect's added dice (#889: Bless
+    1d4 on saves, Guidance 1d4 on one skill). effect_engine_modifiers never
+    reads them, so every flat-number consumer is unchanged."""
+    out: List[Tuple[str, int, int]] = []
+    for modifier in effect.get("modifiers") or []:
+        if not isinstance(modifier, dict) or not isinstance(modifier.get("die"), str):
+            continue
+        engine_stat = _die_engine_stat(modifier.get("stat"))
+        if engine_stat is not None and _MODIFIER_DIE.fullmatch(modifier["die"]):
+            count, sides = modifier["die"].split("d")
+            out.append((engine_stat, int(count), int(sides)))
+    return out
+
+
 def effect_type_id(effect: Dict[str, Any]) -> str:
     return "effect:" + str(effect.get("effectId"))
 
@@ -527,7 +598,8 @@ def effect_instance_id(effect: Dict[str, Any]) -> str:
     return "fx:" + str(effect.get("effectId"))
 
 
-def effect_type_line(effect: Dict[str, Any], modifiers: List[Tuple[str, int]]) -> str:
+def effect_type_line(effect: Dict[str, Any], modifiers: List[Tuple[str, int]],
+                     dice: Tuple[Tuple[str, int, int], ...] = ()) -> str:
     parts = []
     for index, (kind, amount) in enumerate(modifiers):
         if kind == "defense":
@@ -538,6 +610,8 @@ def effect_type_line(effect: Dict[str, Any], modifiers: List[Tuple[str, int]]) -
             parts.append(f'modifier "m{index}" stat {_q(kind)} add {amount};')
         else:
             parts.append(f'modifier "m{index}" resource "hp" maximum add {amount};')
+    for index, (stat, count, sides) in enumerate(dice):
+        parts.append(f'modifier "d{index}" stat {_q(stat)} die {count} {sides};')
     return f"condition type {_q(effect_type_id(effect))} {{ instances unique; {' '.join(parts)} }}"
 
 
@@ -555,6 +629,7 @@ def _effect_lines(sheet: Dict[str, Any], cid: str, gaps: List[str],
     types: List[str] = []
     instances: List[str] = []
     seen: set = set()
+    dice_names: set = set()
     for effect in live_effects(sheet):
         modifiers = effect_engine_modifiers(effect)
         if modifiers is None:
@@ -569,7 +644,24 @@ def _effect_lines(sheet: Dict[str, Any], cid: str, gaps: List[str],
             gaps.append(f"{cid}: effect {effect.get('name')!r} repeats effectId {effect.get('effectId')!r}; second declaration skipped")
             continue
         seen.add(tid)
-        types.append(effect_type_line(effect, modifiers))
+        # #889: an engineOwned effect's added dice; the same spell's effects
+        # do not combine, so among one name only the first carries them
+        # (owner D-889b-neq-1, as core.effects.effective.modifier_dice).
+        dice: Tuple[Tuple[str, int, int], ...] = ()
+        if effect.get(EFFECT_ENGINE_OWNED) is True:
+            dice = tuple(effect_engine_dice(effect))
+            unrolled = unrolled_die_stats(effect)
+            if unrolled:
+                # Fail forward: the effect applies without that die.
+                gaps.append(f"{cid}: effect {effect.get('name')!r} adds a die on {', '.join(unrolled)}, "
+                            "which the engine does not roll; the effect applies without it")
+            key = _effect_name_key(effect)
+            if dice and key is not None:
+                if key in dice_names:
+                    dice = ()
+                else:
+                    dice_names.add(key)
+        types.append(effect_type_line(effect, modifiers, dice))
         iid = effect_instance_id(effect)
         names[iid] = str(effect.get("name") or effect.get("effectId"))
         if effect.get(EFFECT_ENGINE_OWNED) is True:

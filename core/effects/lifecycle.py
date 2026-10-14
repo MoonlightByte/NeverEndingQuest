@@ -132,6 +132,16 @@ def _reconcile_with_engine(result, removed_owned):
     from core.nql import genesis
     from utils.enhanced_logger import debug, warning
 
+    for effect in nql_effects.pending_effects(result):
+        # #889 fail forward: a die nobody rolls is dropped, said once as the
+        # effect first reaches the engine.
+        unrolled = genesis.unrolled_die_stats(effect)
+        if unrolled:
+            warning(
+                "[Effects Engine] %s: effect %r adds a die on %s, which the engine does not roll; "
+                "the effect applies without it" % (result.get("name"), effect.get("name"), ", ".join(unrolled)),
+                category="effects_tracking",
+            )
     outcome = nql_effects.reconcile(result, removed_owned)
     if outcome.ok:
         if outcome.applied or outcome.ended:
