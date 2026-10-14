@@ -67,6 +67,29 @@ def _option_for(response: Dict[str, Any], row_name: str) -> Tuple[Optional[Dict[
     return option, grant, (own[0] if own else [])
 
 
+def two_handed(sheet: Dict[str, Any], row_name: str, *, binary: Optional[str] = None) -> Optional[bool]:
+    """Whether the engine option for the row ``row_name`` occupies two hands (#879:
+    a Two-Handed weapon, or a Versatile one in its two-handed mode); None when the
+    row has no engine option or the engine is unavailable. The option is matched as
+    ``after_swing`` matches it (the grant's exact name, the worn option first)."""
+    if not isinstance(sheet, dict) or not row_name:
+        return None
+    world = genesis.build_world([copy.deepcopy(sheet)], LOCATION)
+    cid = genesis.character_id(sheet)
+    try:
+        response = apply.call({"world": world.source, "world_name": "hands.nql", "attack_options": [cid]},
+                              binary=binary)
+    except apply.EngineUnavailable:
+        return None
+    if not response.get("ok"):
+        return None
+    option, _grant, _own = _option_for(response, row_name)
+    if option is None:
+        return None
+    return any(str(s.get("slot")) == "hand" and int(s.get("amount") or 0) == 2
+               for s in option.get("slots") or [] if isinstance(s, dict))
+
+
 def _not_drawn(record: Dict[str, Any], code: str, detail: str) -> Dict[str, Any]:
     record["notDrawn"] = code
     record["notDrawnDetail"] = detail
