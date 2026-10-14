@@ -151,7 +151,7 @@ def normalize_modifier(modifier):
             raise ValueError("effect modifier needs value (a whole number) or die (such as 1d4)")
         if not _die_stat(stat):
             raise ValueError("effect modifier die applies only to attackRolls, savingThrows, "
-                             "savingThrow.<ability>, abilityChecks or abilityCheck.<ability or skill>")
+                             "savingThrow.<ability>, abilityChecks or abilityCheck.skill.<skill>")
         return {"stat": stat, "die": die}
     if type(value) not in (int, float):
         raise ValueError("effect modifier value must be numeric")

@@ -537,6 +537,14 @@ def _die_engine_stat(stat: Any) -> Optional[str]:
     return None
 
 
+def unrolled_die_stats(effect: Dict[str, Any]) -> List[str]:
+    """The stats an effect's added dice name that nobody rolls (#889 fail forward: the effect
+    applies without them). Attack-roll dice are code's, so they are not listed."""
+    return [str(m.get("stat")) for m in effect.get("modifiers") or []
+            if isinstance(m, dict) and isinstance(m.get("die"), str)
+            and m.get("stat") != "attackRolls" and _die_engine_stat(m.get("stat")) is None]
+
+
 def effect_engine_dice(effect: Dict[str, Any]) -> List[Tuple[str, int, int]]:
     """[(engine stat, count, sides)] for the effect's added dice (#889: Bless
     1d4 on saves, Guidance 1d4 on one skill). effect_engine_modifiers never
@@ -612,9 +620,7 @@ def _effect_lines(sheet: Dict[str, Any], cid: str, gaps: List[str],
         dice: Tuple[Tuple[str, int, int], ...] = ()
         if effect.get(EFFECT_ENGINE_OWNED) is True:
             dice = tuple(effect_engine_dice(effect))
-            unrolled = [str(m.get("stat")) for m in effect.get("modifiers") or []
-                        if isinstance(m, dict) and isinstance(m.get("die"), str)
-                        and m.get("stat") != "attackRolls" and _die_engine_stat(m.get("stat")) is None]
+            unrolled = unrolled_die_stats(effect)
             if unrolled:
                 # Fail forward: the effect applies without that die.
                 gaps.append(f"{cid}: effect {effect.get('name')!r} adds a die on {', '.join(unrolled)}, "
