@@ -2451,7 +2451,8 @@ def _resource_snapshot(sheet, kind, name):
             return int(level.get("current", 0) or 0), int(level.get("max", 0) or 0)
         return None
     if kind == "featureUse":
-        for feature in (sheet or {}).get("classFeatures", []):
+        # #891: a feat's use (feats[].usage) after the class features.
+        for feature in list((sheet or {}).get("classFeatures", []) or []) + list((sheet or {}).get("feats", []) or []):
             if isinstance(feature, dict) and feature.get("name") == name:
                 usage = feature.get("usage")
                 if isinstance(usage, dict):
@@ -4099,7 +4100,7 @@ def apply_resolution(encounter, characters, resolution):
                 cap = int(level.get("max", 0) or 0)
                 level["current"] = min(cap, setter(int(level.get("current", 0) or 0)))
         elif resource["kind"] == "featureUse":
-            for feature in sheet.get("classFeatures", []):
+            for feature in list(sheet.get("classFeatures", []) or []) + list(sheet.get("feats", []) or []):
                 if isinstance(feature, dict) and feature.get("name") == resource.get("name"):
                     usage = feature.get("usage")
                     if isinstance(usage, dict):
