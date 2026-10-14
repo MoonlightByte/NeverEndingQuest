@@ -896,6 +896,9 @@ def _prepare_startup_proposal(authored_proposal):
     detail = _fighting_style_correction(character)
     if detail:
         raise ValueError(detail)
+    detail = _order_choice_correction(character)
+    if detail:
+        raise ValueError(detail)
     try:
         validate(character, safe_json_load("schemas/char_schema.json"))
     except ValidationError as exc:
@@ -1788,6 +1791,105 @@ def _fighting_style_correction(character):
             f"one of: {names}. If the player has not chosen one, ask them.")
 
 
+def _order_choice_points(character):
+    """The sheet's class choice points at or below its level whose options carry
+    typed grants (data/srd/choices.json option_grants; #888: Divine Order,
+    Primal Order); [] for an unknown class or level."""
+    from core.leveling import choices, tables
+    cls = tables.class_key(character)
+    level = character.get("level")
+    if cls is None or type(level) is not int:
+        return []
+    by_level = (choices.data().get("choice_points") or {}).get(cls) or {}
+    return [point for n in range(1, level + 1) for point in by_level.get(str(n)) or []
+            if isinstance(point, dict) and point.get("name") and isinstance(point.get("option_grants"), dict)
+            and isinstance(point.get("option_source"), list)]
+
+
+def _order_options_recorded(character, point):
+    """The options of ``point`` the sheet records by the exact classFeatures name
+    "<choice>: <option>" ("Divine Order: Protector"), the form level-up writes."""
+    exact = {f"{point['name']}: {option}": option for option in point["option_source"]}
+    return [exact[entry["name"]] for entry in character.get("classFeatures") or []
+            if isinstance(entry, dict) and entry.get("name") in exact]
+
+
+def _order_choice_count(point):
+    return point["count"] if type(point.get("count")) is int else 1
+
+
+def _apply_order_grants(character, provenance=None):
+    """Write the proficiencies a recorded class order grants (#888): Divine
+    Order: Protector adds Heavy armor training and Martial weapons, Primal
+    Order: Warden adds Medium armor training and Martial weapons. Labels are
+    written in the short form the rules engine reads (core.nql.genesis
+    _ARMOR_TRAINING, core.nql.class_conditions WEAPON_CATEGORIES); one already
+    present (any case) is not added twice. Matched by the exact classFeatures
+    name only; an order recorded another way is sent back by
+    _order_choice_correction, not guessed."""
+    notes = []
+    applied = []
+    for point in _order_choice_points(character):
+        chosen = _order_options_recorded(character, point)
+        if len(chosen) != _order_choice_count(point):
+            continue
+        for option in chosen:
+            grant = point["option_grants"].get(option)
+            if not isinstance(grant, dict):
+                continue
+            if not isinstance(character.get("proficiencies"), dict):
+                character["proficiencies"] = {}
+            proficiencies = character["proficiencies"]
+            added = []
+            for field, labels in (
+                    ("armor", [str(a).capitalize() for a in grant.get("armor_training") or []]),
+                    ("weapons", [w["category"] for w in grant.get("weapon_proficiencies") or []
+                                 if isinstance(w, dict) and w.get("category")])):
+                have = proficiencies.get(field) if isinstance(proficiencies.get(field), list) else []
+                keys = {str(label).strip().casefold() for label in have}
+                for label in labels:
+                    if label.casefold() not in keys:
+                        have.append(label)
+                        keys.add(label.casefold())
+                        added.append(label)
+                proficiencies[field] = have
+            name = f"{point['name']}: {option}"
+            feature = next(e for e in character["classFeatures"] if isinstance(e, dict) and e.get("name") == name)
+            bare = f"You chose the {option} {point['name']}."
+            if not str(feature.get("description") or "").strip() or feature.get("description") == bare:
+                feature["description"] = f"You chose the {option} {point['name']}: {grant.get('printed')}."
+            page = (grant.get("source") or {}).get("page")
+            notes.append(f"{name} grants {grant.get('printed')} (SRD 5.2.1 p.{page}); "
+                         + (f"added {', '.join(added)}" if added else "already present"))
+            applied.append({"feature": name, "added": added})
+    if applied and provenance is not None:
+        provenance["order_grants"] = {
+            "source": "utils.startup_wizard._apply_order_grants", "applied": applied,
+            "policy": ("A class order's typed grants (choices.json option_grants) are written in the engine's "
+                       "short labels for the exact classFeatures name; present labels are kept."),
+        }
+    return notes
+
+
+def _order_choice_correction(character):
+    """The correction for an interview sheet whose class has a typed order choice
+    (Divine Order, Primal Order) at its level but does not record exactly one by
+    its exact classFeatures name; None otherwise (#888, refused and corrected as
+    #870's Fighting Style). The choice point comes from choices.json by class and
+    level, never from text in the sheet."""
+    for point in _order_choice_points(character):
+        chosen = _order_options_recorded(character, point)
+        count = _order_choice_count(point)
+        if len(chosen) == count:
+            continue
+        options = ", ".join(point["option_source"])
+        return (f"{character.get('class')} level {character.get('level')} has {point['name']} and the sheet "
+                f"records {len(chosen)} by its exact name (the class chooses {count}). Keep the player's choice "
+                f"and record it as one classFeatures entry named exactly \"{point['name']}: <option>\", with "
+                f"<option> one of: {options}. If the player has not chosen one, ask them.")
+    return None
+
+
 def _usage_text(usage):
     """A use pool's usage for a mechanics note, e.g. "2/2 shortRest (a Short Rest regains 1)"."""
     if not isinstance(usage, dict):
@@ -1974,6 +2076,7 @@ def startup_mechanics(character, *, provenance=None):
         character["maxHitPoints"] = expected
         character["hitPoints"] = expected
     notes.extend(_canonicalize_fighting_style(character, provenance))
+    notes.extend(_apply_order_grants(character, provenance))
     notes.extend(_level_one_pools_and_slots(character, provenance))
     from core.nql.resources import add_feat_usage as _add_feat_usage
     for _feat in _add_feat_usage(character):
