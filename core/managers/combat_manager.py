@@ -192,6 +192,37 @@ def _require_current_combat_invocation(invocation_claim):
         )
 
 
+def _lifecycle_owns_supersession(invocation_claim):
+    """True when a Load/Reset/Exit (or the turn scope's own control) ended
+    this combat entry; read from typed state only (#990)."""
+    if invocation_claim is not None:
+        from core.combat.invocation import invocation_is_current
+
+        if not invocation_is_current(invocation_claim):
+            return True
+    from utils.capture.live_provider_call import get_live_turn_scope
+
+    scope = get_live_turn_scope()
+    return scope is not None and scope.is_superseded()
+
+
+def _warn_unowned_supersession(exc, encounter_path):
+    pending = None
+    try:
+        encounter = safe_json_load(encounter_path)
+        pending = ((encounter or {}).get("combatState") or {}).get("pendingTurn")
+    except Exception:
+        pending = None
+    pending = pending if isinstance(pending, dict) else {}
+    invocation = pending.get("invocation")
+    invocation = invocation if isinstance(invocation, dict) else {}
+    warning(
+        "COMBAT_LOOP: unowned %s on turn %s (callsite %s); pausing the turn"
+        % (type(exc).__name__, pending.get("turnId"), invocation.get("callsite")),
+        category="combat_events",
+    )
+
+
 def _save_combat_json_under_invocation(
     invocation_claim, path, value, label
 ):
@@ -5196,18 +5227,26 @@ This is narration only. Do not advance the round or apply any combat action."""
                        presentation_skipped_player_notice,
                    )
                )
-               outcome = execute_agentic_turn(
-                   json_file_path,
-                   agentic_actor_ids,
-                   character_paths,
-                   context_sheets,
-                   provider_player_input,
-                   spell_references=spell_references,
-                   delivery_context=delivery_context,
-                   npc_voice_intents=npc_voice_intents,
-                   invocation_claim=invocation_claim,
-                   weapon_roll_text=weapon_roll_answer,
-               )
+               try:
+                   outcome = execute_agentic_turn(
+                       json_file_path,
+                       agentic_actor_ids,
+                       character_paths,
+                       context_sheets,
+                       provider_player_input,
+                       spell_references=spell_references,
+                       delivery_context=delivery_context,
+                       npc_voice_intents=npc_voice_intents,
+                       invocation_claim=invocation_claim,
+                       weapon_roll_text=weapon_roll_answer,
+                   )
+               except (LiveProviderSuperseded, InvocationSupersededError) as exc:
+                   # A supersession no Load/Reset/Exit owns must not end the
+                   # fight silently: pause this turn and keep it (#990).
+                   if _lifecycle_owns_supersession(invocation_claim):
+                       raise
+                   _warn_unowned_supersession(exc, json_file_path)
+                   raise CombatTurnPaused("unowned supersession") from exc
                if voice_stage is not None:
                    try:
                        from core.npc.voice_context import (

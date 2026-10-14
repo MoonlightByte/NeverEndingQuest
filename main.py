@@ -470,6 +470,12 @@ def _finish_welcome(lifecycle, disposition):
     with lifecycle.lock:
         lifecycle.disposition = disposition
         lifecycle.phase = "QUIESCENT"
+    if disposition == "SUPERSEDED":
+        warning(
+            "INITIALIZATION: Startup welcome superseded (%s)"
+            % (lifecycle.scope.supersession or {}).get("kind"),
+            category="startup",
+        )
     # Queued Save/Load/Reset records execute HERE on the game thread, before
     # quiescence releases the loop back to player input - the control thread
     # never mutates in the post-quiescence scheduling gap (F8/F9). A drain
@@ -515,11 +521,17 @@ def _apply_welcome(lifecycle):
     # after the worker stored its result (worker already exited, so it can
     # never observe LiveProviderSuperseded) must still discard the slot -
     # unless the mutation already ran (a post-mutation pending_receipt).
-    scope_superseded = lifecycle.scope.is_superseded()
+    # The scope is marked APPLYING under its own lock, so a player_acted that
+    # lands after this read is refused instead of silently ending the apply
+    # (and any fight it runs) (#990).
     with lifecycle.lock:
         if lifecycle.phase == "QUIESCENT":
             return
         lifecycle.phase = "APPLYING"
+        with lifecycle.scope.lock:
+            scope_superseded = lifecycle.scope.supersession is not None
+            if not scope_superseded:
+                lifecycle.scope.phase = "APPLYING"
         if (
             scope_superseded
             and lifecycle.disposition is None
@@ -8463,7 +8475,11 @@ def main_game_loop():
             scope.quiescent.wait()
         _show_read_only_save_stop(stop.path)
         return
-    except (LiveProviderSuperseded, InvocationSupersededError):
+    except (LiveProviderSuperseded, InvocationSupersededError) as exc:
+        warning(
+            "GAME_LOOP: gameplay unwound by %s: %s" % (type(exc).__name__, exc),
+            category="session_management",
+        )
         scope = get_live_turn_scope()
         if scope is not None:
             finish_live_turn_scope(scope)
