@@ -110,6 +110,11 @@ def preserve_engine_effects(current_effects, proposed_effects):
 _MODIFIER_DIE = re.compile(r"[1-4]d(?:4|6|8|10|12)")
 
 
+def _die_stat(stat):
+    """The stats whose added die code rolls (#889): attack rolls and saves."""
+    return stat in ("attackRolls", "savingThrows") or stat.startswith("savingThrow.")
+
+
 def normalize_modifier(modifier):
     if not isinstance(modifier, dict):
         raise ValueError("effect modifier must be an object")
@@ -124,6 +129,8 @@ def normalize_modifier(modifier):
         # Exactly one of value (a whole number) or die (#889).
         if value is not None or not isinstance(die, str) or not _MODIFIER_DIE.fullmatch(die):
             raise ValueError("effect modifier needs value (a whole number) or die (such as 1d4)")
+        if not _die_stat(stat):
+            raise ValueError("effect modifier die applies only to attackRolls or savingThrows")
         return {"stat": stat, "die": die}
     if type(value) not in (int, float):
         raise ValueError("effect modifier value must be numeric")
