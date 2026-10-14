@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - The shortened character sheet the DM reads for companions no longer folds Perception, Persuasion and Performance into one "per" skill: skills and expertise are listed by their full names (#553).
+- During character creation, a follow-up question the reviewer accepts is now shown to the player even when the reviewer also marks it as needing the player's answer, instead of being refused as an invalid review and costing the turn until the build was handed back (#887). An accepted final character that still needs the player is refused as before. The reviewer is also told that this mark is for a rejection the author cannot correct without the player.
 - Fifteen Keep of Doom loot items (potions, antitoxin, scrolls and two vials) now name a standard item or state what they do, so they can be used in play (#913).
 - Three Thornwood Watch loot items now say what they do: the explorers' two healing potions and the Hart's tears state how many hit points they restore, and the vial of alchemical fire is the standard Alchemist's Fire, so they can be used (#913).
 - An NPC named in an encounter, a combat turn, an encounter update or a party change is now matched to its own sheet only: the sheet recorded when the encounter was built, else the exact name. A name that only shares a word ("Scout", "Kira", "Captain Bryn") no longer loads, syncs or writes another NPC's sheet or an old backup file; an unreadable sheet is skipped instead of failing the lookup (#855).
