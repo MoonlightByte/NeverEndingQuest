@@ -4,8 +4,8 @@
  * Cinzel author header, TTS + Generate Image controls, inline generated
  * images), user-input is right-aligned, info/startup and error render as
  * centered system cards. Content is plain text (pre-wrap) -- no HTML
- * injection. Legacy palette preserved: DM text #ffa500, author #ffb347,
- * player accent #4a90e2 (game_interface.html .message styles).
+ * injection; DM narration lists and labels get NarrationText's line layout.
+ * Legacy palette preserved: DM text #ffa500, author #ffb347, player accent #4a90e2 (game_interface.html .message styles).
  */
 import type { GameMessage } from '../../contract/events'
 import type { GeneratedImage } from '../../stores'
@@ -16,6 +16,7 @@ import { useEmberDesktop } from '../layout/EmberPresentation'
 import { EmberIcon } from '../layout/EmberIcon'
 import dragonAvatar from '../../assets/dm-bronze-dragon.png'
 import { SceneImage } from './SceneImage'
+import { NarrationText } from './NarrationText'
 
 export interface MessageCardProps {
   message: GameMessage
@@ -73,10 +74,10 @@ export function MessageCard({ message, images = [] }: MessageCardProps) {
               className="neq-message-text whitespace-pre-wrap [overflow-wrap:anywhere] font-log text-[17px] leading-snug"
               style={{ color: '#ffa500' }}
             >
-              {message.content.slice(0, paragraphEnd?.index ?? splitAt)}
+              <NarrationText text={message.content.slice(0, paragraphEnd?.index ?? splitAt)} />
             </div>
             <InlineImages images={images} />
-            {splitAt < message.content.length && <div className="neq-message-text ember-narration-continuation whitespace-pre-wrap [overflow-wrap:anywhere]">{message.content.slice(splitAt)}</div>}
+            {splitAt < message.content.length && <div className="neq-message-text ember-narration-continuation whitespace-pre-wrap [overflow-wrap:anywhere]"><NarrationText text={message.content.slice(splitAt)} /></div>}
           </div>
         </div>
       )

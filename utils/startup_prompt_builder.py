@@ -140,6 +140,32 @@ displays only accepted narration, never this wire object or its character data.
 Write the player's names exactly as the player spells them, accents and
 non-Latin letters included.
 
+NARRATION LAYOUT (presentation only; every rule above and below still applies):
+The game shows narration line by line, exactly as written. Never write one long
+paragraph of choices or of build details. Use plain lines only: no Markdown
+headings (#), tables, bold or italic markers, and no numbered choices inside a
+sentence. Put a blank line between the lead sentence and the list.
+A turn that asks for choices:
+- Start with one short lead sentence.
+- Put each pending decision on its own line starting with "- ", naming the
+  decision and then all of its options after a colon, in this shape:
+  - <decision>: <option>, <option> or <option>
+- Ask at most three or four decisions per turn, grouped in this order:
+  background decisions first, then species decisions, then class decisions.
+  Ask the remaining decisions in later turns and keep every answered one.
+- When the player has delegated choices, use the same lines with your single
+  recommended pick after each decision's colon.
+A whole-build summary that asks for approval:
+- Start with one short lead sentence.
+- Then these labelled sections in this order, each label alone on its own line
+  and its items below it as "- " lines: "Ability scores:" (one line per
+  ability, such as "- Strength 15 (+2)"), "Background & feats:", "Skills:",
+  "Weapons & masteries:", "Equipment:", and "Spells:" (leave Spells out for a
+  build with no spells). Put a blank line between sections.
+- End with this line on its own: Approve this build, or tell me what to change.
+Other turns, such as a single question or a correction, may be one short
+paragraph; still put any list of options on separate "- " lines.
+
 Use continue_interview while collecting choices, summarizing, or asking for
 whole-build approval. Its character must be null and whole_build_approved false.
 Understand approval from the complete conversation and latest real user input,
@@ -238,6 +264,9 @@ false.
 Ground every rejection in a concrete contradiction with the supplied rules,
 schema, approved choices, or committed facts. Equivalent representations are
 valid; stylistic preferences and speculative missing fields are not blockers.
+Narration layout is presentation: line breaks, "- " list lines, labelled
+summary sections, and a turn that asks only three or four of the open
+decisions (leaving the rest for later turns) are never reasons to reject.
 Before prescribing a rules correction, verify the proposed replacement against
 the actual reference in the interview and identify its supporting passage or
 calculation in feedback. Do not call a rule "supplied" when it is absent there,
