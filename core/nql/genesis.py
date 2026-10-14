@@ -386,8 +386,16 @@ def bounded_id(prefix: str, text: str, limit: int = ENGINE_ID_MAX) -> str:
 
 def character_scope(name: Any) -> str:
     """The slug a character's engine ids carry: its id after "char:", at most
-    CHARACTER_SCOPE_MAX bytes so every id it ends fits (#1022)."""
-    return bounded_id("", slug(name), CHARACTER_SCOPE_MAX)
+    CHARACTER_SCOPE_MAX bytes so every id it ends fits (#1022). A name with no
+    ASCII letter or digit takes "xn--" and the punycode of its file stem (#894),
+    so such names no longer all share "x" (#948); a slug never holds "--"."""
+    scope = slug(name)
+    if scope == "x" and not re.search(r"[a-z0-9]", str(name).lower()):
+        from utils.encoding_utils import unicode_name_stem
+        stem = unicode_name_stem(name)
+        if stem:
+            scope = "xn--" + stem.replace("_", "-").encode("punycode").decode("ascii")
+    return bounded_id("", scope, CHARACTER_SCOPE_MAX)
 
 
 def character_id(sheet: Dict[str, Any]) -> str:

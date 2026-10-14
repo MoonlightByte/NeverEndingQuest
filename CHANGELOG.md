@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- Two characters whose names have no Latin letter or digit (for example Korean or Cyrillic names) are no longer merged into one in the rules engine; each now gets its own engine id, and every other name keeps its id (#948).
 - Raising Constitution at level-up now raises hit points as the rules say: the new level uses the new modifier, and every earlier level gains the difference. Before, the new level used the old modifier and earlier levels gained nothing (#1045).
 - When the DM stores or takes an item, or levels a character up, without naming the character, the reply is sent back to name one from the party; before, the item moved in or out of the first party member's pack and the level-up stopped with "no sheet for None". In a fight, an HP or condition update that names no one is sent back to the combat model instead of being lost at the end of the fight (#959, #1048).
 - Handing a companion part of a stack a second time no longer fails, and an item handed over or taken from a chest can no longer share its id with one kept elsewhere (#1039).
