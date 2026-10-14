@@ -23,7 +23,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.nql import ammunition, apply, genesis
+from core.nql import ammunition, apply, genesis, transfer
 from utils.enhanced_logger import warning
 
 
@@ -80,13 +80,23 @@ def _stock(entry: Dict[str, Any]) -> int:
     return entry.get("quantity") if type(entry.get("quantity")) is int else 1
 
 
+def _same_kind(entry: Dict[str, Any], other: Any) -> bool:
+    """Whether a retrieve of ``entry`` also draws on ``other``: ordinary
+    ammunition of the same name (#971), or an entry of the same name and the
+    same stack under transferItem's rule (#1026)."""
+    if not isinstance(other, dict) or other.get("item_name") != entry.get("item_name"):
+        return False
+    if _ordinary_ammunition(entry):
+        return _ordinary_ammunition(other)
+    return transfer.same_stack(entry, other)
+
+
 def stored_quantity(contents: List[Dict[str, Any]], entry: Dict[str, Any]) -> Any:
-    """What a retrieve of ``entry`` can draw on: for ordinary ammunition the sum
-    over every ordinary entry of that name (#971), else the entry's quantity."""
-    if not _ordinary_ammunition(entry):
+    """What a retrieve of ``entry`` can draw on: the sum over every entry of the
+    same kind (#971, #1026), else the entry's quantity."""
+    if not _same_kind(entry, entry):
         return entry.get("quantity", 1)
-    return sum(_stock(e) for e in contents
-               if _ordinary_ammunition(e) and e.get("item_name") == entry.get("item_name") and _stock(e) > 0)
+    return sum(_stock(e) for e in contents if _same_kind(entry, e) and _stock(e) > 0)
 
 
 def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict[str, Any],
@@ -168,15 +178,15 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
         entry = pool[index]
         if entry.get("equipped") is True:
             worn.append(name)
-        # Each deposit is its own chest entry, so a retrieve of ordinary
-        # ammunition draws on every ordinary entry of that name, whole entries
-        # first in contents order, an empty one skipped (#971). Anything else
-        # takes the one entry.
+        # Each deposit is its own chest entry, so a retrieve draws on every
+        # entry of the same kind, whole entries first in contents order, an
+        # empty one skipped (#971, #1026). A worn or effect-bearing entry, or
+        # magical ammunition, takes the one entry.
         parts = [(index, iid)]
-        if action == "retrieve_item" and _ordinary_ammunition(entry):
+        if action == "retrieve_item" and _same_kind(entry, entry):
             ids = world.content_ids.get(sid, {})
             parts = [(i, ids[i]) for i, e in enumerate(contents)
-                     if i in ids and _ordinary_ammunition(e) and e.get("item_name") == name and _stock(e) > 0]
+                     if i in ids and _same_kind(entry, e) and _stock(e) > 0]
         stock = sum(_stock(pool[i]) for i, _ in parts)
         if quantity <= 0 or quantity > stock:
             return StorageOutcome(False, reason=f"only {stock} {name!r} available, requested {quantity}", gaps=world.gaps)
@@ -221,6 +231,17 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
             for place_id, take in placed:
                 actions.append(f"consume {_q(place_id)} from {_q(cid)} by {take};")
                 actions.append(f"add {_q(aid)} to {_q(cid)} by {take};")
+                joined.append(place_id)
+        elif action == "retrieve_item" and _same_kind(entry, entry):
+            # D-1026-2: the arrivals join the sheet's matching stack, as a
+            # hand-off does (transferItem); with none, they join the first one.
+            merge_id = transfer._matching_stack(character, world.item_ids.get(cid, {}), entry)
+            rest = placed
+            if merge_id is None:
+                merge_id, rest = placed[0][0], placed[1:]
+            for place_id, take in rest:
+                actions.append(f"consume {_q(place_id)} from {_q(cid)} by {take};")
+                actions.append(f"add {_q(merge_id)} to {_q(cid)} by {take};")
                 joined.append(place_id)
     if worn:
         return StorageOutcome(False, reason="selected items are still equipped", worn_items=worn, gaps=world.gaps)

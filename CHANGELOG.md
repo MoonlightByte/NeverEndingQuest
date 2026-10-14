@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Levelling up now adds the extra hit point a Dwarf's Dwarven Toughness gives every level, and a Draconic Sorcery sorcerer's Draconic Resilience (+3 at Sorcerer level 3, then +1 each level). Before, only a new level 1 Dwarf got the bonus. Heroes who already levelled keep their current hit points (#858).
+- A character with a very long name no longer makes the rules engine refuse the whole party world; the name part of its engine ids is shortened so every derived id fits, and every shorter name keeps its ids (#1022).
+- A worn item with a very long stored id, or with eleven or more armor class bonuses, no longer makes the rules engine refuse the whole party world (#1023).
+- Taking items out of a chest now gathers matching stacks (two coils of rope come out as one stack of 2) and adds them to the same item you already carry, as handing them over does (#1026).
 - In a fight, the roll request names your weapon ("Longsword") instead of the game's internal attack label ("Longsword (Strength)") (#860).
 - Putting a second handful of the same item into a chest no longer fails, and a chest entry the game cannot read is kept instead of disappearing at the next visit (#1026).
 - A welcome-back cancelled by Quit, Reset, Load, Exit or by typing first is logged as information, not as a warning; the warning stays for a cancel with no recorded cause (#990 follow-up).
