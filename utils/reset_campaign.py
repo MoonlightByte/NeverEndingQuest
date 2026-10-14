@@ -118,7 +118,8 @@ def create_backup():
         "debug_npc_update.json", "debug_player_update.json", "debug_second_model.json",
         "npc_update_debug_log.json", "npc_update_detailed_log.json", "prompt_validation.json",
         "training_data.json", "debug.txt", "claude.txt",
-        "modules/effects_tracker.json", "modules/effects_state.json", "modules/default/effects_tracker.json"
+        "modules/effects_tracker.json", "modules/effects_state.json", "modules/checks_state.json",
+        "modules/default/effects_tracker.json"
     ]
     
     for file in root_files:
@@ -346,6 +347,8 @@ def _reset_global_state_locked(*, reset_prepared=False):
     effects_tracker_files = [
         "modules/effects_tracker.json",
         "modules/effects_state.json",
+        # A new game starts with no pending checks (#940).
+        "modules/checks_state.json",
         "modules/default/effects_tracker.json",
     ]
     for file in effects_tracker_files:

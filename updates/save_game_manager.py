@@ -517,6 +517,7 @@ class SaveGameManager:
             if value[0] == 'file' and replaced(path) and not self._restore_preserves_path(path):
                 expected[path] = ('absent', None)
         for path in ('modules/effects_state.json',
+                     'modules/checks_state.json',
                      'journal.json',
                      'live_state.json',
                      'live_state.json.bak',
@@ -603,6 +604,8 @@ class SaveGameManager:
             "modules/world_registry.json",
             "modules/effects_tracker.json",
             "modules/effects_state.json",
+            # Pending checks and unreported check results belong to this save (#940).
+            "modules/checks_state.json",
             "modules/default/effects_tracker.json",
         ])
         
@@ -1538,6 +1541,9 @@ class SaveGameManager:
             # The verified backup retains these files for a failed-Load rollback.
             for optional_path in (
                 "modules/effects_state.json",
+                # An older save has no check state; never keep the current
+                # game's pending roll or results (#940).
+                "modules/checks_state.json",
                 # A save from before the first departure has no chronicle;
                 # keeping the current one would record a journey not taken.
                 "journal.json",

@@ -7,8 +7,9 @@
   "armor" with no ``catalog_id`` whose ``item_name`` casefold-equals one base
   catalog entry's name of that kind gets the entry's id (owner ruling HQ4:
   exact name, no plural, prose or partial match). An armor row is typed only
-  when its armor fields equal the type's (a drifted row would be declared from
-  its own fields with a gap, costing the startup AC certification). Ammunition
+  when its present armor fields equal the type's (a drifted row would be declared
+  from its own fields with a gap, costing the startup AC certification); its
+  absent armor fields are filled from the type and noted (#573). Ammunition
   stays in the typed ``ammunition`` array (HC3).
 - ``release_carried``: a typed row the engine would leave unworn is set
   ``equipped`` false, so the sheet says what the engine holds and the
@@ -64,9 +65,12 @@ def _base_entries(kind: str) -> Dict[str, Dict[str, Any]]:
     return out
 
 
-def type_catalog_rows(character: Dict[str, Any]) -> Tuple[List[str], List[str]]:
+def type_catalog_rows(character: Dict[str, Any],
+                      filled: Optional[List[str]] = None) -> Tuple[List[str], List[str]]:
     """Give exact-name weapon and armor rows their ``catalog_id`` in place.
-    Returns (rows typed as "name: id", weapon and armor rows left untyped)."""
+    An armor row's absent armor fields are filled from its type, each noted in
+    ``filled`` when given (#573); a present field that differs leaves the row
+    untyped. Returns (rows typed as "name: id", weapon and armor rows left untyped)."""
     notes: List[str] = []
     untyped: List[str] = []
     tables = {"weapon": _base_entries("weapon"), "armor": _base_entries("armor")}
@@ -81,10 +85,23 @@ def type_catalog_rows(character: Dict[str, Any]) -> Tuple[List[str], List[str]]:
             untyped.append(name)
             continue
         if row["item_type"] == "armor":
-            _, drift = item_catalog.row_entry(dict(row, catalog_id=entry["id"]))
+            armor = entry.get("neq_armor") if isinstance(entry.get("neq_armor"), dict) else {}
+            category = armor.get("armor_category")
+            missing = [k for k in item_catalog._ARMOR_FIELDS
+                       if row.get(k) is None
+                       and item_catalog._armor_field(k, None, category)
+                       != item_catalog._armor_field(k, armor.get(k), category)]
+            fill = {k: armor[k] for k in missing}
+            _, drift = item_catalog.row_entry(dict(row, catalog_id=entry["id"], **fill))
             if drift:
                 untyped.append(f"{name} {drift}")
                 continue
+            if fill:
+                row.update(fill)
+                if filled is not None:
+                    filled.append(f"equipment {name!r}: "
+                                  + ", ".join(f"{k} None -> {fill[k]!r}" for k in missing)
+                                  + " (its SRD catalog type, exact name)")
         row["catalog_id"] = entry["id"]
         notes.append(f"{name}: {entry['id']}")
     return notes, untyped
