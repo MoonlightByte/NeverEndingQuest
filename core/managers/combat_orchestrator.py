@@ -285,6 +285,27 @@ def _intent_correction(exc, batch=None):
             "requiresPlayerInput {kind:'choice', prompt} saying so and asking what they do instead."
             % (feature, rendered)
         )
+    removals = feedback.get("removalRefusals")
+    if isinstance(removals, list) and removals:
+        # #725: why each remove op was refused, and the one re-rule.
+        named = []
+        for refusal in removals:
+            if not isinstance(refusal, dict):
+                continue
+            if refusal.get("reason") == "mustUseOwner":
+                named.append("a remove op for %s uses owner %r, never combatantId."
+                             % (refusal.get("combatantId"), refusal.get("owner")))
+            else:
+                current = ", ".join(str(name) for name in refusal.get("currentEffects") or [] if name)
+                named.append("%s has no effect or condition named %r (current effects: %s): there is "
+                             "nothing to remove." % (refusal.get("owner") or refusal.get("combatantId"),
+                                                       refusal.get("reference"), current or "none"))
+        if named:
+            instruction += (
+                " " + " ".join(named) + " Drop that remove op and keep the rest of the action as "
+                "given. If your next batch still carries a remove op for this actor that cannot be "
+                "matched, code drops it as ruled and resolves the rest."
+            )
     if feedback.get("multiRollRequest"):
         instruction += (
             " requiresPlayerInput must ask for exactly one next roll or "
@@ -2048,6 +2069,7 @@ def execute_agentic_turn(
     player_charge_refusal = None
     feature_heal_limits = None
     feature_heal_player = False
+    removal_refused_actors = set()
     window_kind = _window_kind(encounter, pending.get("actorIds", []))
     capability_count, rule_count = _diagnostic_context_counts(spell_references)
     attempt_number = 0
@@ -2230,6 +2252,8 @@ def execute_agentic_turn(
                 rolls,
                 # #669: a correction that still breaks the limit is clamped.
                 clamp_feature_heals=feature_heal_limits is not None,
+                # #725: an actor whose remove op was refused once has it dropped.
+                drop_removals_for=frozenset(removal_refused_actors),
             )
             roll_consumption = rolls.consumption()
             record_combat_diagnostic(
@@ -2321,6 +2345,11 @@ def execute_agentic_turn(
             if heal_limits:
                 feature_heal_limits = heal_limits
                 feature_heal_player = bool(exc.feedback.get("featureHealPlayer"))
+            removal_refusals = (getattr(exc, "feedback", None) or {}).get("removalRefusals") \
+                if isinstance(getattr(exc, "feedback", None), dict) else None
+            if removal_refusals and isinstance(getattr(exc, "actor_id", None), str):
+                # #725 (D-725-1 A): one re-rule per actor per window.
+                removal_refused_actors.add(exc.actor_id)
             correction = _intent_correction(exc, batch=batch)
             failure_class = _resolution_failure_class(exc)
             rules_drift = (
