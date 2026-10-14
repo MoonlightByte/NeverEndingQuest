@@ -210,6 +210,15 @@ class LiveTurnScope:
                     "operation_id": self.operation_id,
                     "accepted": False,
                 }
+            if str(kind) == "player_acted" and self.phase == "APPLYING":
+                # A startup welcome already being applied (it may be running a
+                # fight) is not discarded by the player's input: the text
+                # stays queued for the next input() (#990).
+                return {
+                    "kind": "welcome_applying",
+                    "operation_id": self.operation_id,
+                    "accepted": False,
+                }
             accepted = self.supersession is None or _can_promote_player_acted(
                 self.supersession, kind
             )

@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `merge_updates` from `core/managers/combat_manager.py`, a helper that nothing called; had anything called it, it would have replaced a character's whole equipment list with the update's list instead of changing single items (#471).
 
 ### Fixed
+- A fight started by the welcome-back scene no longer ends silently when you type your first action (#990). Your input waits for the fight instead of cancelling the scene, and a combat turn stopped for an unknown reason now pauses and keeps your turn.
 - In the web player, a requested check now shows the extra die the game adds, for example "+ 1d4 Guidance (the game rolls)" when Guidance or Bless is on you (#984).
 - In a fight, when the DM corrects one combatant's action, the actions already approved earlier in the same round now stay as approved, so the round no longer loops on two companions taking turns being refused (#435).
 - The storage helper now sees a character's ammunition, so asking to store arrows no longer fails with 'Character does not have Arrows' (#366).
