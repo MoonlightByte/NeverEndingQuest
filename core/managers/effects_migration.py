@@ -459,6 +459,28 @@ def _party_sheet_paths(party):
     return {os.path.normcase(os.path.normpath(manager.get_character_path(name))) for name in names}
 
 
+def _settle_duplicates(party, files, duplicates, reports):
+    """Two sheets with one name settle on the file the game opens for that
+    name, characters/<stem>.json (#1005); the others are reported and left as
+    they are. A name whose own file is not among them stays a refusal."""
+    from utils.module_path_manager import ModulePathManager
+    manager = ModulePathManager(str(party.get("module") or "").replace(" ", "_"))
+    unsettled = {}
+    for key, paths in sorted(duplicates.items()):
+        name = (safe_json_load(paths[0]) or {}).get("name")
+        own = os.path.normcase(os.path.normpath(manager.get_character_path(name)))
+        kept = [path for path in paths if os.path.normcase(os.path.normpath(path)) == own]
+        if len(kept) != 1:
+            unsettled[key] = paths
+            continue
+        files[key] = kept[0]
+        reports.extend(
+            "duplicate sheet left as it is: %s (the game uses %s)"
+            % (path.replace("\\", "/"), kept[0].replace("\\", "/"))
+            for path in paths if path != kept[0])
+    return unsettled
+
+
 def preflight_effects_migration():
     party = safe_json_load("party_tracker.json")
     if not isinstance(party, dict) or not party.get("module"):
@@ -478,11 +500,12 @@ def preflight_effects_migration():
     held = sorted(path for path in unreadable if os.path.normcase(os.path.normpath(path)) in party_paths)
     if held:
         return {"status": "deferred", "reason": "party sheet unreadable: %s" % held}
+    reports = ["unreadable file skipped: %s" % path for path in unreadable]
+    duplicates = _settle_duplicates(party, files, duplicates, reports)
     if duplicates:
         return {"status": "blocked", "refusals": ["duplicate character sheets: %s" % sorted(duplicates)]}
     migration_id = uuid.uuid4().hex
     conversions = []
-    reports = ["unreadable file skipped: %s" % path for path in unreadable]
     refusals = []
     world = party.get("worldConditions") or {}
     for owner, path in sorted(files.items()):
