@@ -147,7 +147,6 @@ from config import (
 )
 from updates.update_character_info import update_character_info, normalize_character_name
 import updates.update_encounter as update_encounter
-import updates.update_party_tracker as update_party_tracker
 # Import the preroll generator
 from core.generators.generate_prerolls import generate_prerolls
 from core.managers.combat_state import (

@@ -145,7 +145,6 @@ The codebase follows a clean, organized structure with logical separation of con
 │   ├── save_game_manager.py       # Save/load operations
 │   ├── update_character_info.py   # Character data updates
 │   ├── update_encounter.py        # Encounter state updates
-│   ├── update_party_tracker.py    # Party tracker updates
 │   └── update_world_time.py       # World time progression
 ├── web/                   # Web interface (1 file)
 │   ├── web_interface.py           # Flask server and SocketIO handlers
