@@ -1037,11 +1037,12 @@ def compact_combat_event(event):
                 if key in record
             })
     rolls = []
+    # #879: a Great Weapon Fighting die keeps what it counted as.
     for roll in event.get("rolls") or []:
         if isinstance(roll, dict):
             rolls.append({
                 key: roll.get(key)
-                for key in ("purpose", "die", "total", "value", "success")
+                for key in ("purpose", "die", "total", "value", "success", "treated", "faces", "facesTreated", "rule")
                 if key in roll
             })
     description = intent.get("description") or outcome.get("description") or ""
