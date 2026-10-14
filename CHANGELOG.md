@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- When the game asks you to roll a spell's dice for a given spell slot level (an upcast Cure Wounds at level 2), the DM can no longer then spend a slot of a different level: it is told to spend the level your dice were rolled for, and your roll stays (Closes #942).
 - A spell can no longer be cast with a spell slot below its level (a 2nd-level spell on a 1st-level slot), and the game no longer suggests one when it corrects a cast; spells it does not know are unaffected (Refs #942).
 - When a level-up ends, the DM now sees how it ended (the new level and hit points, or that nothing was applied and why), not just the player; before, only the start of a level-up and the guide's questions reached the DM's history (#1044).
 - A new character or companion whose name has no letter or digit (for example "???"), or whose name matches one of the rules engine's own reserved names (Attacker, Target, Save Source, Roster Conversion), is refused with the reason, so another name is chosen; existing characters are not changed (#949).
