@@ -247,10 +247,20 @@ class ParallelConversationCompressor:
             ).hexdigest(),
         }
 
-    def _resolve_section_runtime(self, section_type: str) -> Dict[str, Any]:
+    def _resolve_section_runtime(self, section_type: str, provider: str = None) -> Dict[str, Any]:
         if section_type == "location":
-            return self._resolve_location_compression_runtime()
-        return resolve_agentic_compression_runtime(mode="agentic")
+            runtime = self._resolve_location_compression_runtime()
+        else:
+            runtime = resolve_agentic_compression_runtime(mode="agentic", provider=provider)
+        if runtime["provider"] == "lmstudio":
+            # The Local/Custom model replaces the profile's model at dispatch
+            # (api_client), so it is part of what produced a derivative (#402).
+            from model_config import get_local_endpoint
+
+            local_model = get_local_endpoint().get("model") or ""
+            if local_model:
+                runtime = dict(runtime, local_model=local_model)
+        return runtime
 
     def _get_cache_key(
         self,
@@ -369,7 +379,7 @@ class ParallelConversationCompressor:
                     # raced the call, use the response but do not cache it under
                     # an identity that may no longer describe that response.
                     runtime_still_matches = (
-                        self._resolve_location_compression_runtime() == runtime
+                        self._resolve_section_runtime("location") == runtime
                     )
                 else:
                     result = compress_with_ai(
@@ -379,7 +389,15 @@ class ParallelConversationCompressor:
                         provider_config=dict(runtime["config"]),
                         detached_context=self.detached_context,
                     )
-                    runtime_still_matches = True
+                    # A profile or Local/Custom model change during the call
+                    # keeps the response out of the old key (#402); the
+                    # provider stays the call's snapshot.
+                    runtime_still_matches = (
+                        self._resolve_section_runtime(
+                            section_type, provider=runtime["provider"]
+                        )
+                        == runtime
+                    )
 
                 compressed_text = (
                     result.get("text") if isinstance(result, dict) else None
