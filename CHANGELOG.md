@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `merge_updates` from `core/managers/combat_manager.py`, a helper that nothing called; had anything called it, it would have replaced a character's whole equipment list with the update's list instead of changing single items (#471).
 
 ### Fixed
+- Loading a save made before any storage container existed now removes the current game's `player_storage.json`, so chests and their contents from a later point in the game no longer survive into the loaded game. Saves that include storage load it as before (#468).
 - An empty or broken JSON file in a characters folder (for example an old 0-byte `ranger_thane_temp.json` that saves carry) no longer stops the game at startup: the effects conversion skips it and records it in its report. If the broken file is a party member's own sheet, the conversion waits instead, so that member's older effect bonuses are not dropped (#408).
 - On Windows, a hero or companion whose name uses Korean, Chinese, Japanese, Cyrillic, Greek or other non-Western letters can now start a fight, and a new monster whose description holds such letters or math symbols no longer fails to build (#895).
 - A hero or companion whose name has no Latin letters (Korean, Chinese, Japanese, Cyrillic, Greek...) now gets their own character file; two such characters no longer share one sheet or block each other (#894).
