@@ -644,10 +644,10 @@ When monster quantities are given as a range (e.g., "2-3" or "1d4"):
   - Class progression abilities go in classFeatures with source (e.g., "Fighter 5th level")
   - Do not duplicate abilities across categories
 - temporaryEffects Guidelines:
-  - CORRECT: "Bless" (spell with ongoing duration), "Haste" (spell), "Spirit's Blessing" (magical effect)
-  - INCORRECT: "Guidance" (instant-use cantrip), "Insight from documents", "Knowledge of location", "Understanding gained"
+  - CORRECT: "Bless" (spell with ongoing duration), "Haste" (spell), "Spirit's Blessing" (magical effect), "Guidance" (concentration, up to 1 minute)
+  - INCORRECT: "Insight from documents", "Knowledge of location", "Understanding gained"
   - If it's not a spell, blessing, curse, or magical effect with an ongoing duration, it does NOT belong in temporaryEffects
-  - Guidance cantrip provides immediate benefit and should NOT be tracked as a temporary effect
+  - Guidance is tracked like Bless, with the skill the caster chose ("Eirik casts Guidance on Kira for Athletics, concentrating"): the game adds its 1d4 to every check with that skill while it lasts
   - The engine automatically tracks temporary-effect durations and removes expired effects. Never manually reverse their stat changes.
   - To deliberately end, dispel, or break concentration on an active effect, use `removeEffect` with the exact character and active effect identity: `{"action":"removeEffect","parameters":{"characterName":"...","effectId":"...","effectName":"...","reason":"..."}}`.
   - Concentration is held by the rules engine. Casting a concentration spell is an ordinary updateCharacterInfo per affected character ("Eirik casts Bless on Kira, concentrating"); the sheet then shows CONCENTRATING ON for the caster. One spell at a time: a new concentration spell ends the old one everywhere by itself. When the caster takes damage, the engine rolls the Constitution save (DC 10 or half the damage) and reports it under CHECK RESULTS in your next note; a failed save ends the spell on everyone it affected and you are told. NEVER roll, ask for, or track a concentration save yourself, and never remove a spell because its caster was hit: narrate what the note says. removeEffect on any effect of a concentration spell ends the whole spell (the caster stops concentrating).

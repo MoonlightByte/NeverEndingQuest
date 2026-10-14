@@ -31,6 +31,22 @@ META_STATS = frozenset(
 )
 
 
+_SKILL_STAT = re.compile(r"abilitycheck[._]skill[._](.+)", re.IGNORECASE)
+
+
+def _skill_stat(value):
+    """``abilityCheck.skill.<skill>`` for an SRD skill, in the engine's kebab
+    form (``sleight_of_hand`` -> ``sleight-of-hand``); None for any other
+    text (#889: Guidance's die on one skill)."""
+    match = _SKILL_STAT.fullmatch(value)
+    if match is None:
+        return None
+    from core.nql.stats import skill_id
+
+    skill = skill_id(match.group(1).replace(".", "-"))
+    return "abilityCheck.skill.%s" % skill if skill else None
+
+
 def canonical_stat(stat):
     """Normalize legacy stat names into stable modifier paths."""
     if not isinstance(stat, str):
@@ -38,6 +54,8 @@ def canonical_stat(stat):
     value = stat.strip()
     if value in DIRECT_STATS or value in META_STATS:
         return value
+    if _SKILL_STAT.fullmatch(value):
+        return _skill_stat(value)
     lowered = value.lower().replace("_", ".")
     if lowered in ABILITY_NAMES:
         return "abilities.%s" % lowered
@@ -111,8 +129,10 @@ _MODIFIER_DIE = re.compile(r"[1-4]d(?:4|6|8|10|12)")
 
 
 def _die_stat(stat):
-    """The stats whose added die code rolls (#889): attack rolls and saves."""
-    return stat in ("attackRolls", "savingThrows") or stat.startswith("savingThrow.")
+    """The stats an added die may name (#889): attack rolls and saves (Bless),
+    every ability check, or one skill's checks (Guidance)."""
+    return (stat in ("attackRolls", "savingThrows", "abilityChecks")
+            or stat.startswith(("savingThrow.", "abilityCheck.")))
 
 
 def normalize_modifier(modifier):
@@ -130,7 +150,8 @@ def normalize_modifier(modifier):
         if value is not None or not isinstance(die, str) or not _MODIFIER_DIE.fullmatch(die):
             raise ValueError("effect modifier needs value (a whole number) or die (such as 1d4)")
         if not _die_stat(stat):
-            raise ValueError("effect modifier die applies only to attackRolls or savingThrows")
+            raise ValueError("effect modifier die applies only to attackRolls, savingThrows, "
+                             "savingThrow.<ability>, abilityChecks or abilityCheck.<ability or skill>")
         return {"stat": stat, "die": die}
     if type(value) not in (int, float):
         raise ValueError("effect modifier value must be numeric")

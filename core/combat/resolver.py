@@ -482,7 +482,7 @@ def _target_save(encounter, characters, sheet, target, spec, rolls, actor_id, ev
     )
     if engine_save is not None:
         from core.nql import checks as nql_checks
-        result, faces = engine_save
+        result, faces, added = engine_save
         saved = bool(result.success)
         event["rolls"].append({
             "die": "d20", "value": result.kept if result.kept is not None else 0,
@@ -490,6 +490,7 @@ def _target_save(encounter, characters, sheet, target, spec, rolls, actor_id, ev
             "bonus": result.bonus, "success": saved, "engine": True,
             "faces": faces, "kept": result.kept, "mode": result.mode,
             "sources": result.sources, "total": result.total, "margin": result.margin,
+            **({"added": added} if added else {}),
         })
         line = nql_checks.describe(result)
         event.setdefault("engineChecks", []).append(line)
@@ -2713,6 +2714,23 @@ _ABILITY_ALIASES = {"str": "strength", "dex": "dexterity", "con": "constitution"
                     "int": "intelligence", "wis": "wisdom", "cha": "charisma"}
 
 
+def _engine_added_dice(dice, rolls):
+    """#889: faces for the added dice the engine holds on a party save
+    (``net_mode``'s dice), taken from the fight's pool and journaled as the
+    sheet's saveBonus rolls are; sent as the engine's ``added`` faces, so the
+    journal stays the replay authority. Returns (journal, [(type, faces)])."""
+    journal = []
+    groups = []
+    for die in dice or []:
+        faces = [int(rolls.take("d%d" % die["sides"])) for _ in range(die["count"])]
+        condition_type = die["type"]
+        effect = condition_type[len("effect:"):] if condition_type.startswith("effect:") else condition_type
+        journal.extend({"die": "1d%d" % die["sides"], "value": face, "purpose": "saveBonus", "effect": effect}
+                       for face in faces)
+        groups.append((condition_type, faces))
+    return journal, groups
+
+
 def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id):
     """CS: the rules engine rolls one party member's saving throw.
 
@@ -2721,18 +2739,11 @@ def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id):
     and Dexterity saves fail). Code reads that mode first, takes that many
     persisted d20 faces (none for an automatic failure, two for advantage or
     disadvantage, else one) so the journal stays the replay authority, and
-    hands them to the engine. Returns (result, faces) or None when the engine
+    hands them to the engine, with the faces of any added die (Bless, #889).
+    Returns (result, faces, added) or None when the engine
     is unavailable or refuses, in which case the caller keeps today's
     arithmetic (fail forward, the fight never pauses for the engine).
     """
-    if (modifier_dice(sheet, "savingThrows")
-            or modifier_dice(sheet, "savingThrow.%s" % str(save_type or "").strip().lower())):
-        try:
-            from utils.enhanced_logger import debug as _debug
-            _debug("CS: %s's added save die (#889) waits for the engine item; this engine save adds none"
-                   % (sheet or {}).get("name"), category="combat_events")
-        except Exception:
-            pass
     try:
         from core.nql import checks as nql_checks
         from core.nql import stats as nql_stats
@@ -2748,7 +2759,8 @@ def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id):
             _take_roll(rolls, "d20", "save", actor_id=actor_id, target_id=target_id, ability=ability)
             for _ in range(nql_checks.faces_needed(mode.mode))
         ]
-        result = nql_checks.resolve(sheet, stat, dc=int(dc), faces=faces or None)
+        added, groups = ([], []) if mode.mode == "fail" else _engine_added_dice(mode.dice, rolls)
+        result = nql_checks.resolve(sheet, stat, dc=int(dc), faces=faces or None, added=groups or None)
     except Exception as exc:  # engine wrapper faults never stop a fight
         _warn_save(sheet, save_type, str(exc))
         return None
@@ -2760,7 +2772,7 @@ def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id):
         _info("CS: engine save: %s" % nql_checks.describe(result), category="combat_events")
     except Exception:
         pass
-    return result, faces
+    return result, faces, added
 
 
 def _spell_save_rule(encounter, characters, proposal, save_spec, targets, event):
@@ -2841,11 +2853,13 @@ def _spell_save_target(encounter, characters, proposal, target, spell_save, hp_d
     stat = nql_saves.stat_id(ability)
     party = _sheet_backed_target(characters, target)
     mode = "normal"
+    dice = None
     if party is not None:
         try:
             net = nql_checks.net_mode(party, stat)
             if not net.reason:
                 mode = net.mode
+                dice = net.dice
         except Exception:  # engine wrapper faults never stop a fight
             pass
     faces = [
@@ -2859,15 +2873,23 @@ def _spell_save_target(encounter, characters, proposal, target, spell_save, hp_d
               "spell": spell_save["name"], "faces": faces}
     scored = None
     unchecked = None
-    # #889: a non-party target's added save dice, taken once for both paths.
-    added = [] if party is not None else _save_added_dice(encounter, characters, target, ability, rolls)
+    # #889: the target's added save dice, taken once for both paths: for a
+    # party target the dice the engine holds (sent as its added faces), else
+    # the sheet's; an automatic failure rolls none.
+    groups = []
+    if party is not None and mode == "fail":
+        added = []
+    elif party is not None and dice is not None:
+        added, groups = _engine_added_dice(dice, rolls)
+    else:
+        added = _save_added_dice(encounter, characters, target, ability, rolls)
     if added:
         record["added"] = added
     if spell_save["dice"] is not None:
         count, sides = spell_save["dice"]
         arguments = dict(
             ability=ability, dc=dc, count=count, sides=sides, damage_type=spell_save["kind"],
-            success=spell_save["success"], faces=faces, party_sheet=party,
+            success=spell_save["success"], faces=faces, party_sheet=party, added_faces=groups or None,
             save_bonus=(None if party is not None
                         else _save_bonus(encounter, characters, target, ability)
                         + sum(roll["value"] for roll in added)),
@@ -3749,7 +3771,7 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
             )
             if engine_save is not None:
                 from core.nql import checks as nql_checks
-                result, faces = engine_save
+                result, faces, added = engine_save
                 saved = bool(result.success)
                 save_line = nql_checks.describe(result)
                 event["rolls"].append({
@@ -3758,6 +3780,7 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                     "bonus": result.bonus, "success": saved, "engine": True,
                     "faces": faces, "kept": result.kept, "mode": result.mode,
                     "sources": result.sources, "total": result.total, "margin": result.margin,
+                    **({"added": added} if added else {}),
                 })
                 event.setdefault("engineChecks", []).append(save_line)
             else:
