@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- Quitting or resetting during a fight that the welcome-back started no longer shows a stray "Combat paused safely" line, and a normal Load, Reset or Exit no longer logs a warning (#990 follow-up).
 - If a file cannot be copied while saving, the game now says the save failed instead of reporting success, so loading that save can no longer silently drop your chests, journey record, effects or a character; a save that did not finish is no longer offered in the Load list (#1003).
 - In a long fight, an earlier round whose log names no initiative is now compressed like the others instead of being kept in full after its summary is refused (#1008).
 - In a fight, an answer that names your weapon (for example "I attack the spiders with my mace", or "I rolled 15" with the mace) is no longer refused with "That die does not match this action" because of the weapon notes the game adds to your words (#1008).
