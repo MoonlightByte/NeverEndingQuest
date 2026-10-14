@@ -25,7 +25,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.nql import apply, genesis, item_catalog
+from core.nql import ammunition, apply, genesis, item_catalog
 
 
 @dataclass
@@ -98,27 +98,6 @@ def _identity_value(entry: Dict[str, Any], key: str) -> Any:
     return value
 
 
-def _ammunition_row(sheet: Dict[str, Any], name: str) -> Optional[Tuple[str, Dict[str, Any]]]:
-    """(engine stock id, row) of the sheet's ammunition row for this name, or None.
-
-    Only rows genesis declares are candidates (a row whose name slugs to an
-    earlier row's id is skipped there), so the stock id is always the row's
-    own. Exact ``name`` first; otherwise a unique case-insensitive match on the
-    same typed field.
-    """
-    wanted = str(name).strip()
-    rows = genesis.ammunition_rows(sheet, [])
-    for iid, row in rows:
-        if row.get("name") == wanted:
-            return iid, row
-    loose = [(iid, row) for iid, row in rows if row["name"].strip().lower() == wanted.lower()]
-    return loose[0] if len(loose) == 1 else None
-
-
-def _declared_row(sheet: Dict[str, Any], iid: str) -> Optional[Dict[str, Any]]:
-    return next((row for stock, row in genesis.ammunition_rows(sheet, []) if stock == iid), None)
-
-
 def _transfer_ammunition(giver: Dict[str, Any], receiver: Dict[str, Any], gid: str, rid: str, src: str,
                          quantity: Any, location: str, request_id: Optional[str],
                          binary: Optional[str]) -> TransferOutcome:
@@ -133,7 +112,7 @@ def _transfer_ammunition(giver: Dict[str, Any], receiver: Dict[str, Any], gid: s
     """
     giver = copy.deepcopy(giver)
     receiver = copy.deepcopy(receiver)
-    row = _declared_row(giver, src)
+    row = ammunition.declared_row_by_id(giver, src)
     stock = row["quantity"]
     try:
         quantity = int(quantity)
@@ -144,7 +123,7 @@ def _transfer_ammunition(giver: Dict[str, Any], receiver: Dict[str, Any], gid: s
     dst = genesis.ammunition_id(receiver, row["name"])
     if not isinstance(receiver.get("ammunition"), list):
         receiver["ammunition"] = []
-    if _declared_row(receiver, dst) is None:
+    if ammunition.declared_row_by_id(receiver, dst) is None:
         if any(isinstance(r, dict) and isinstance(r.get("name"), str) and genesis.ammunition_id(receiver, r["name"]) == dst
                for r in receiver["ammunition"]):
             return TransferOutcome(False, reason=f"{receiver.get('name')}'s {row['name']!r} row has no whole-number quantity")
@@ -175,14 +154,11 @@ def _transfer_ammunition(giver: Dict[str, Any], receiver: Dict[str, Any], gid: s
                                fault=response.get("fault"), gaps=world.gaps)
     views = {v["at"]["id"]: {i["id"]: i for i in v["items"]} for v in response.get("items_at", [])}
     stocks = [(views.get(cid, {}).get(iid), target) for cid, iid, target in
-              ((gid, src, row), (rid, dst, _declared_row(receiver, dst)))]
+              ((gid, src, row), (rid, dst, ammunition.declared_row_by_id(receiver, dst)))]
     if any(item is None or type(item.get("quantity")) is not int for item, _ in stocks):
         return TransferOutcome(False, reason="engine returned no view of the ammunition stock", gaps=world.gaps)
     for item, target in stocks:
-        target["quantity"] = item["quantity"]
-        pending = item.get("recoverable") if type(item.get("recoverable")) is int else 0
-        if pending or "recoverable" in target:
-            target["recoverable"] = pending
+        ammunition.write_view(target, item)
     return TransferOutcome(True, giver=giver, receiver=receiver, item_name=str(row["name"]), quantity=quantity,
                            receipt=response.get("receipt"), gaps=world.gaps)
 
@@ -205,7 +181,7 @@ def transact(giver: Dict[str, Any], receiver: Dict[str, Any], item_name: str, qu
     rid = genesis.character_id(receiver)
     if gid == rid:
         return TransferOutcome(False, reason="giver and receiver are the same character")
-    found = _ammunition_row(giver, item_name)
+    found = ammunition.declared_row(giver, item_name)
     if found is not None:
         return _transfer_ammunition(sheets[0], sheets[1], gid, rid, found[0], quantity, location, request_id, binary)
     world = genesis.build_world([giver, receiver], location)

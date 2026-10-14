@@ -30,21 +30,14 @@ from utils.compression.ai_narrative_compressor_agentic import (
 )
 from utils.compression.location_compressor import LOCATION_SYSTEM_PROMPT, compress_location
 from utils.compression.character_sheet_conversation_compressor import CharacterSheetConversationCompressor
+from utils.path_transaction_lock import path_transaction_lock
 from model_config import COMPRESSION_MAX_WORKERS
 import config
 
 
-_PROCESS_CACHE_LOCKS = {}
-_PROCESS_CACHE_LOCKS_GUARD = threading.Lock()
 _PROCESS_KEY_LOCKS = {}
 _PROCESS_KEY_LOCKS_GUARD = threading.Lock()
 
-
-
-def _process_cache_lock(path: str) -> threading.RLock:
-    """Return one re-entrant lock shared by all instances for a cache path."""
-    with _PROCESS_CACHE_LOCKS_GUARD:
-        return _PROCESS_CACHE_LOCKS.setdefault(path, threading.RLock())
 
 
 def _process_key_lock(path: str, cache_key: str) -> threading.Lock:
@@ -78,34 +71,14 @@ class ParallelConversationCompressor:
         
     @contextmanager
     def _locked_cache_file(self):
-        """Serialize cache read/merge/write across threads and processes."""
-        cache_path = Path(self.cache_file)
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        process_lock = _process_cache_lock(self.cache_file)
-        lock_path = f"{self.cache_file}.lock"
-        with process_lock:
-            with open(lock_path, "a+b") as lock_file:
-                if os.name == "nt":
-                    import msvcrt
+        """Serialize cache read/merge/write across threads and processes.
 
-                    lock_file.seek(0, os.SEEK_END)
-                    if lock_file.tell() == 0:
-                        lock_file.write(b"\0")
-                        lock_file.flush()
-                    lock_file.seek(0)
-                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
-                else:
-                    import fcntl
-
-                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-                try:
-                    yield
-                finally:
-                    if os.name == "nt":
-                        lock_file.seek(0)
-                        msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
-                    else:
-                        fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        A cache held by another game process is waited for, never given up on
+        after LK_LOCK's ten tries (#403). Same lock file and byte as before, so
+        processes on older code still exclude this one.
+        """
+        with path_transaction_lock(self.cache_file, suffix=".lock"):
+            yield
 
     def _read_cache_unlocked(self) -> Dict[str, Any]:
         cache_path = Path(self.cache_file)
@@ -247,10 +220,20 @@ class ParallelConversationCompressor:
             ).hexdigest(),
         }
 
-    def _resolve_section_runtime(self, section_type: str) -> Dict[str, Any]:
+    def _resolve_section_runtime(self, section_type: str, provider: str = None) -> Dict[str, Any]:
         if section_type == "location":
-            return self._resolve_location_compression_runtime()
-        return resolve_agentic_compression_runtime(mode="agentic")
+            runtime = self._resolve_location_compression_runtime()
+        else:
+            runtime = resolve_agentic_compression_runtime(mode="agentic", provider=provider)
+        if runtime["provider"] == "lmstudio":
+            # The Local/Custom model replaces the profile's model at dispatch
+            # (api_client), so it is part of what produced a derivative (#402).
+            from model_config import get_local_endpoint
+
+            local_model = get_local_endpoint().get("model") or ""
+            if local_model:
+                runtime = dict(runtime, local_model=local_model)
+        return runtime
 
     def _get_cache_key(
         self,
@@ -369,7 +352,7 @@ class ParallelConversationCompressor:
                     # raced the call, use the response but do not cache it under
                     # an identity that may no longer describe that response.
                     runtime_still_matches = (
-                        self._resolve_location_compression_runtime() == runtime
+                        self._resolve_section_runtime("location") == runtime
                     )
                 else:
                     result = compress_with_ai(
@@ -379,7 +362,15 @@ class ParallelConversationCompressor:
                         provider_config=dict(runtime["config"]),
                         detached_context=self.detached_context,
                     )
-                    runtime_still_matches = True
+                    # A profile or Local/Custom model change during the call
+                    # keeps the response out of the old key (#402); the
+                    # provider stays the call's snapshot.
+                    runtime_still_matches = (
+                        self._resolve_section_runtime(
+                            section_type, provider=runtime["provider"]
+                        )
+                        == runtime
+                    )
 
                 compressed_text = (
                     result.get("text") if isinstance(result, dict) else None
