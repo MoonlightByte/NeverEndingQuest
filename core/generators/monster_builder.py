@@ -72,6 +72,13 @@ from utils.single_target_generation import (
     single_target_generation,
 )
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+from utils.schema_feedback import (
+    informed_retry_messages,
+    issue_paths_for_log,
+    json_correction,
+    schema_correction,
+    validation_issues,
+)
 register_callsite("T034", "core/generators/monster_builder.py", 231)
 
 # Set script name for logging
@@ -172,6 +179,8 @@ ACTIONS AND SPECIAL ABILITIES - write each entry the way the SRD stat block stat
 - "description": the SRD sentence for every entry (range, area, escape DC, what happens). Never put rule text in damageType; never leave a saving throw described only in prose.
 - Multiattack: a single entry named "Multiattack" with attackBonus 0, damageDice "0d0", damageBonus 0, damageType "none" and the description stating the attacks it makes; the component attacks are their own entries.
 
+`skills` and `senses` are objects mapping a skill or sense name to its number; write {} when the creature has none. `savingThrows`, `damageVulnerabilities`, `damageResistances`, `damageImmunities` and `conditionImmunities` are arrays of strings.
+
 Ensure your new monster JSON adheres to the provided schema template. Do not include any additional properties or nested 'type' and 'value' fields. For non-spellcasters, omit the spellcasting property entirely. Return only the JSON content without any markdown formatting."""
 
     # Build context-aware user prompt
@@ -234,11 +243,14 @@ Schema: {json.dumps(schema)}"""
     last_ai_response = None
     last_parsed_data = None
 
+    # A failed attempt is retried with its own reply and the validation
+    # error, rebuilt from the first request each time (#886).
+    attempt_messages = prompt
     for attempt in range(_max_retries + 1):
         try:
             response = capture_and_fanout("T034", api_client.create_completion,
                 _request_provider=MODEL_PROVIDER,
-                messages=prompt,
+                messages=attempt_messages,
                 model=monster_config["model"],
                 temperature=0.7,
                 **_extra)
@@ -266,18 +278,24 @@ Schema: {json.dumps(schema)}"""
                 last_validation_err = None
                 warning(
                     f"Monster build attempt {attempt + 1}/{_max_retries + 1} "
-                    f"returned invalid JSON: {str(e)}",
+                    f"returned invalid JSON at line {e.lineno} column {e.colno}",
                     category="monster_creation",
                 )
+                attempt_messages = informed_retry_messages(
+                    prompt, ai_response, json_correction(e))
                 continue
             except ValidationError as e:
                 last_json_err = None
                 last_validation_err = e
+                issues = validation_issues(last_parsed_data, schema, e)
                 warning(
                     f"Monster build attempt {attempt + 1}/{_max_retries + 1} "
-                    f"failed schema validation: {str(e)}",
+                    f"failed schema validation at {issue_paths_for_log(issues)} "
+                    f"({len(issues)} issue(s))",
                     category="monster_creation",
                 )
+                attempt_messages = informed_retry_messages(
+                    prompt, ai_response, schema_correction(last_parsed_data, schema, e))
                 continue
         except Exception as e:
             # Network / API failures are not retried here -- preserve the

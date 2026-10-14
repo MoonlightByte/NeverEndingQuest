@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unused summary code in `core/ai/cumulative_summary.py`, seven functions left from an older summary pipeline that nothing called, was removed, and the registered source lines of its two remaining AI calls (T018, T019) were corrected (#798). Gameplay, summaries and saves are unchanged.
 
 ### Fixed
+- A monster or NPC whose generated stat block fails the schema is now retried with the validation error and its own previous answer, instead of the same request again, and the monster prompt states that skills and senses are objects; a fight no longer fails to start because a creature listed its skills as [] twice (#886).
 - A character named in an action is now matched exactly: updateCharacterInfo, item and coin transfers, removeEffect, awardExperience, rollCheck, expendCharges, acquireItem and combat updates no longer go to a different character whose name only shares a word or part of a word ("Scout Elen" was written to Scout Kira, "Brother Tomas" to Brotherhood Guide Ana). A name that is not exact is refused before anything is written, and the DM is shown the exact names to use (#855).
 - A change dropped on the road is no longer described by the journey narration (#855).
 - A monster lying in wait to ambush the party is no longer marked surprised when the party spots it first (#882). Spotting the ambush cancels it, but the monster had already noticed the party, so by the rules it is not surprised and keeps its first turn. The DM's and the reviewer's instructions now say so.
