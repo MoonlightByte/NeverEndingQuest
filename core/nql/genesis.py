@@ -127,6 +127,10 @@ def _int(value: Any) -> Optional[int]:
 CHARGES_MAX = 1000  # the engine's bound for an item definition's charges
 TYPE_DESCRIPTION_MAX = 4096  # the catalog's bound for an item type description, in bytes
 TYPE_KIND_MAX = 256  # the catalog's bound for a type's kind and for its id, in bytes
+ENGINE_ID_MAX = 256  # the engine's bound for an entity id, in bytes (#566)
+# A minted item id leaves room for its per-row charged type id
+# ("itemdef:row/" + the id after "item:", 7 bytes longer) under TYPE_KIND_MAX.
+ITEM_ID_MAX = TYPE_KIND_MAX - len("itemdef:row/") + len("item:")  # 249
 
 
 def _type_description(entry: Dict[str, Any]) -> str:
@@ -363,8 +367,26 @@ def container_id(storage_id: str) -> str:
     return "container:" + slug(storage_id)
 
 
+def bounded_item_id(iid: str, limit: int = ITEM_ID_MAX) -> str:
+    """``iid`` within ``limit`` bytes (#566). An id that fits is returned
+    unchanged. A longer one keeps its last two fields (the scope and row
+    index that make it unique) and shortens the name part before them. An
+    id whose tail alone cannot fit is returned unchanged."""
+    if len(iid.encode("utf-8")) <= limit:
+        return iid
+    parts = iid.split(":")
+    if len(parts) < 4:
+        return iid
+    tail = ":" + ":".join(parts[-2:])
+    room = limit - len(tail.encode("utf-8"))
+    if room < len("item:x"):
+        return iid
+    head = ":".join(parts[:-2]).encode("utf-8")[:room].decode("utf-8", errors="ignore").rstrip("-")
+    return head + tail
+
+
 def _mint(entry: Dict[str, Any], scope: str, index: int) -> str:
-    return f"item:{slug(entry.get('item_name', ''))}:{scope}:{index}"
+    return bounded_item_id(f"item:{slug(entry.get('item_name', ''))}:{scope}:{index}")
 
 
 def ammunition_id(sheet: Dict[str, Any], name: str) -> str:
@@ -396,7 +418,8 @@ def ammunition_rows(sheet: Dict[str, Any], gaps: List[str]) -> List[Tuple[str, D
 def _entry_id(entry: Dict[str, Any], scope: str, index: int) -> str:
     existing = entry.get("nql_id")
     if isinstance(existing, str) and existing.startswith("item:"):
-        return existing
+        # Every stored id the engine takes is returned as it is (#566).
+        return bounded_item_id(existing, ENGINE_ID_MAX)
     return _mint(entry, scope, index)
 
 
@@ -409,6 +432,13 @@ def assign_ids(sheet: Dict[str, Any]) -> bool:
         if not isinstance(entry, dict) or not entry.get("item_name"):
             continue
         current = entry.get("nql_id")
+        if isinstance(current, str) and current.startswith("item:"):
+            # A stored id over the engine's bound refuses the whole world;
+            # it is shortened in place, and a clash is reminted below (#566).
+            bounded = bounded_item_id(current, ENGINE_ID_MAX)
+            if bounded != current:
+                entry["nql_id"] = current = bounded
+                changed = True
         if not (isinstance(current, str) and current.startswith("item:")) or current in seen:
             candidate = _mint(entry, scope, index)
             while candidate in seen:
