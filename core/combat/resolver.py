@@ -2883,8 +2883,28 @@ def _sheet_can_cast(sheet):
     return False
 
 
+def _removal_reference(op):
+    """#725: the reference a remove op supplies (effectId, name or condition),
+    read from its typed fields as the removal match reads them."""
+    nested = op.get("effect") if isinstance(op.get("effect"), dict) else {}
+    return (op.get("effectId") or nested.get("effectId") or op.get("name") or nested.get("name")
+            or op.get("condition"))
+
+
+def _refuse_removal(resolution, event, refusal, violation, drop):
+    """#725 (D-725-1 A): a remove op that cannot be matched. On the actor's
+    re-rule (drop) it is dropped as the ruling and recorded on the event;
+    otherwise the violation stands and the typed refusal goes to the
+    correction."""
+    if drop:
+        event.setdefault("normalizations", []).append(dict(refusal, kind="effectRemovalDropped"))
+        return
+    resolution["violations"].append(violation)
+    resolution.setdefault("removalRefusals", []).append(refusal)
+
+
 def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_feature_heals=False,
-                        attack_hits=None):
+                        attack_hits=None, drop_refused_removals=False):
     """General adjudicated-outcome contract for anything beyond weapon attacks.
 
     The DM model (or player-facing DM turn) proposes MECHANICS, not state:
@@ -3208,9 +3228,16 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                 )
                 continue
             if target.get("type") in ("player", "npc"):
-                resolution["violations"].append(
-                    "sheet-backed effect target %r must use owner" % combatant_id
-                )
+                violation = "sheet-backed effect target %r must use owner" % combatant_id
+                if op["op"] == "remove":
+                    # #725: a remove refused for its destination, typed for
+                    # the correction (an add keeps today's violation).
+                    _refuse_removal(resolution, event, {
+                        "reason": "mustUseOwner", "reference": _removal_reference(op),
+                        "combatantId": combatant_id, "owner": target.get("name"),
+                    }, violation, drop_refused_removals)
+                else:
+                    resolution["violations"].append(violation)
                 continue
         if op["op"] == "add":
             if not isinstance(op.get("effect"), dict):
@@ -3396,9 +3423,17 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
             elif len(matches) != 1:
                 label = supplied_effect_id or supplied_name or supplied_condition
                 reason = "ambiguous" if len(matches) > 1 else "unknown"
-                resolution["violations"].append(
-                    "%s effect removal reference %r" % (reason, label)
-                )
+                violation = "%s effect removal reference %r" % (reason, label)
+                if reason == "unknown":
+                    # #725: nothing by that reference to remove; the target's
+                    # current effects are named for the correction.
+                    refusal = {"reason": "unknown", "reference": label, "currentEffects": [
+                        effect.get("name") or effect.get("effectId")
+                        for effect in current_effects if isinstance(effect, dict)]}
+                    refusal["owner" if owner else "combatantId"] = owner or combatant_id
+                    _refuse_removal(resolution, event, refusal, violation, drop_refused_removals)
+                else:
+                    resolution["violations"].append(violation)
                 continue
 
             matched_effect = matches[0] if matches else {}

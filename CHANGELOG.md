@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Saves now keep a check that waits for the player's roll, and Load and Reset no longer carry over the current game's pending checks or unreported check results (`modules/checks_state.json`, #940).
+- In a fight, when the DM tries to end an effect your character does not have (such as tearing free of webbing that never caught you), your action now resolves after one more try instead of the DM re-ruling it over and over (#725).
 - Ammunition bought from a merchant now joins the stock a character already carries under an older name (20 Bolts bought with 60 "Crossbow bolt" make one stock of 80) instead of starting a second stock of the same ammunition, and new ammunition rows are named as the catalog names them. Saved sheets are not changed (#552).
 - The shortened character sheet the DM reads for companions no longer folds Perception, Persuasion and Performance into one "per" skill: skills and expertise are listed by their full names (#553).
 - During character creation, a follow-up question the reviewer accepts is now shown to the player even when the reviewer also marks it as needing the player's answer, instead of being refused as an invalid review and costing the turn until the build was handed back (#887). An accepted final character that still needs the player is refused as before. The reviewer is also told that this mark is for a rejection the author cannot correct without the player.
