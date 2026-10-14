@@ -116,7 +116,7 @@ except:
 # Import other necessary modules (config is now patched)
 from core.managers.combat_manager import (
     combat_record_exit_kind, combat_record_xp_receipt, run_combat_simulation,
-    render_combat_record_marker,
+    render_combat_record_marker, _lifecycle_owns_supersession,
 )
 from core.combat.down_scene import (
     MAIN_DOWN_BANNER,
@@ -8506,7 +8506,10 @@ def main_game_loop():
         _show_read_only_save_stop(stop.path)
         return
     except (LiveProviderSuperseded, InvocationSupersededError) as exc:
-        warning(
+        # Load/Reset/Exit unwind this way by design; only an unowned
+        # supersession is worth a warning (#990).
+        log = info if _lifecycle_owns_supersession(None) else warning
+        log(
             "GAME_LOOP: gameplay unwound by %s: %s" % (type(exc).__name__, exc),
             category="session_management",
         )

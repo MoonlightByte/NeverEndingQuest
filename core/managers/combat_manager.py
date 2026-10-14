@@ -200,8 +200,21 @@ def _lifecycle_owns_supersession(invocation_claim):
 
         if not invocation_is_current(invocation_claim):
             return True
-    from utils.capture.live_provider_call import get_live_turn_scope
+    from utils.capture.live_provider_call import (
+        get_active_welcome_scope,
+        get_live_provider_scope,
+        get_live_turn_scope,
+    )
 
+    # A fight run by a startup welcome answers to the welcome scope; a quit,
+    # reset, Load or exit supersedes that scope before the turn scopes. The
+    # player's own text never does while the welcome applies (#990).
+    control = get_live_provider_scope()
+    if control is not None and control is get_active_welcome_scope():
+        with control.lock:
+            kind = (control.supersession or {}).get("kind")
+        if kind is not None and kind != "player_acted":
+            return True
     scope = get_live_turn_scope()
     return scope is not None and scope.is_superseded()
 
