@@ -106,25 +106,20 @@ def load_prompt(file_name):
 def _requested_level(npc_level):
     """The level a request names, 1 to 20, or None."""
     text = str(npc_level).strip() if npc_level is not None else ""
-    return int(text) if text.isdigit() and 1 <= int(text) <= 20 else None
+    return int(text) if text.isascii() and text.isdigit() and 1 <= int(text) <= 20 else None
 
 def _srd_class_reference(npc_class, npc_level):
     """The game's SRD 5.2.1 class tables for one NPC request (#533): for the
-    requested class, or for every SRD class when the request names none, the
-    features each level grants up to the requested level (3 when it names
-    none), and at that level the class table's columns, spell slots, spell
-    counts and, once the level reaches it, the subclass options. A requested
-    class that is not an SRD class gets no reference (None)."""
+    requested class when it is an SRD class, else for every SRD class (a blank
+    request, or one naming a class the tables do not have), the features each
+    level grants up to the requested level (3 when it names none), and at that
+    level the class table's columns, spell slots and spell counts; once the
+    level reaches the subclass level, each subclass with the features it grants
+    up to that level."""
     level = _requested_level(npc_level) or 3
     classes = class_tables.tables()["classes"]
-    requested = str(npc_class or "").strip()
-    if requested:
-        key = class_tables.class_key({"class": requested})
-        if key is None:
-            return None
-        keys = [key]
-    else:
-        keys = list(classes)
+    key = class_tables.class_key({"class": str(npc_class or "").strip()})
+    keys = [key] if key else list(classes)
     reference = {}
     for key in keys:
         data = classes[key]
@@ -136,7 +131,10 @@ def _srd_class_reference(npc_class, npc_level):
             "spell_counts": {kind: n for kind, n in class_tables.spell_counts(key, level).items() if n is not None},
         }
         if type(data.get("subclass_level")) is int and level >= data["subclass_level"]:
-            entry["subclass_options"] = class_tables.subclass_options(key)
+            entry["subclasses"] = {
+                name: {str(n): features for n in range(1, level + 1)
+                       for features in [class_tables.subclass_features(key, name, n)] if features}
+                for name in class_tables.subclass_options(key)}
         reference[data.get("name") or key.capitalize()] = entry
     return {"level": level, "classes": reference}
 
@@ -203,7 +201,12 @@ def generate_npc(npc_name, schema, npc_race=None, npc_class=None, npc_level=None
     if not system_prompt_text:
         return None
 
-    class_reference = _srd_class_reference(npc_class, npc_level)
+    try:
+        class_reference = _srd_class_reference(npc_class, npc_level)
+    except Exception as e:
+        # The reference is guidance; a failure to build it never stops generation.
+        warning(f"NPC class reference not built for {npc_name}: {e}", category="npc_creation")
+        class_reference = None
     class_reference_text = "" if class_reference is None else (
         "\n\nSRD 5.2.1 CLASS REFERENCE (the game's rules tables): use these class features, the levels that grant "
         "them and these numbers; a class feature absent here is not part of that class at that level.\n"
