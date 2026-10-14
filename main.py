@@ -10559,18 +10559,15 @@ def _is_local_review_fault(exc, classification):
 
 
 def _level_up_step_messages(conversation, cursor, turn):
-    """The messages one level-up answer adds to main history (#1044).
+    """The messages one level-up answer adds to main history (#1044, #1056).
 
-    An ordinary step copies the session's new answer and reply, as before. A
-    step that ends the level-up publishes what the player was shown: the
-    answer, then the ending line (applied, not applied, aborted) as that step's
-    one reply, the way the start turn is published, so the DM sees how it ended.
+    Every step publishes what the player was shown: the player's answer, then
+    the step's shown line as its one reply, the way the start turn is
+    published. The ending line (applied, not applied, aborted) tells the DM how
+    the level-up ended (#1044); a guide draft the rules refused stays in the
+    session's own conversation and never reaches main history (#1056).
     """
-    step = [dict(message) for message in conversation[cursor:]
-            if message.get("role") in ("user", "assistant")]
-    if getattr(turn, "kind", "interview") == "interview":
-        return step
-    return [message for message in step if message.get("role") == "user"] + [
+    return [dict(message) for message in conversation[cursor:] if message.get("role") == "user"] + [
         {"role": "assistant", "content": json.dumps({"narration": turn.narration, "actions": []})}]
 
 
