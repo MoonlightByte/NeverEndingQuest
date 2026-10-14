@@ -187,6 +187,30 @@ def normalize_character_name(character_name):
     from utils.encoding_utils import unicode_name_stem
     return unicode_name_stem(character_name)
 
+def reserved_character_ids():
+    """The engine character ids the game's own worlds use (#949): no character
+    may resolve to one of them."""
+    from core.nql.attacks import ATTACKER, TARGET
+    from core.nql.saves import SOURCE
+    from utils.roster_conversion import ACTOR
+    return (ATTACKER, TARGET, SOURCE, ACTOR)
+
+
+def name_refusal(character_name):
+    """Why a new character cannot take this name, or None (#949). A name with
+    no letter or digit gives the empty file stem (characters/.json); a name
+    whose engine id is a reserved one would share it (travel leaves a member
+    with the roster actor's id out of the party)."""
+    name = str(character_name or "")
+    if not normalize_character_name(name):
+        return f"the name {name!r} has no letter or digit, so it cannot name a character file"
+    from core.nql.genesis import character_id
+    cid = character_id({"name": name})
+    if cid in reserved_character_ids():
+        return f"the name {name!r} gives the engine id {cid}, which the rules engine reserves for itself"
+    return None
+
+
 def _is_backup_sheet_file(filename):
     return filename.endswith(".bak") or filename.endswith("_BU.json") or "backup" in filename
 

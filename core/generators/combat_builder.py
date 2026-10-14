@@ -333,6 +333,12 @@ def load_or_create_monster(monster_type):
     return monster_data
 
 def load_or_create_npc(npc_name):
+    from updates.update_character_info import name_refusal
+    refusal = name_refusal(npc_name)
+    if refusal:
+        # #949: no sheet for a name that cannot name a character.
+        warning(f"COMBAT_BUILDER: NPC not created: {refusal}", category="combat_builder")
+        return None
     formatted_npc_name = format_type_name(npc_name)
     print(f"[COMBAT_BUILDER] NPC name normalization: '{npc_name}' -> '{formatted_npc_name}'")
     # Get current module from party tracker for consistent path resolution

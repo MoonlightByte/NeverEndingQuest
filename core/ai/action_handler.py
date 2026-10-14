@@ -3020,6 +3020,11 @@ def prepare_party_npc_update(parameters, operation_id):
     npc_name = npc.get("name")
     if not isinstance(npc_name, str) or not npc_name.strip():
         raise ValueError("updatePartyNPCs requires an exact NPC name")
+    if operation == "add":
+        from updates.update_character_info import name_refusal
+        refusal = name_refusal(npc_name)
+        if refusal:
+            raise ValueError(f"updatePartyNPCs add refused: {refusal}")
     party = safe_json_load("party_tracker.json")
     if not isinstance(party, dict) or not isinstance(party.get("partyNPCs"), list):
         raise RuntimeError("party roster is unavailable")
@@ -4978,6 +4983,17 @@ Please use a valid location that exists in the current area ({current_area_id}) 
         _roster_before = [
             dict(x) for x in party_tracker_data.get("partyNPCs", [])
         ]
+        from updates.update_character_info import name_refusal
+        _refusal = name_refusal(npc.get("name")) if operation == "add" else None
+        if _refusal:
+            # #949: no sheet is built for a name that cannot name a character.
+            _name = str(npc.get("name") or "")
+            conversation_history.append({"role": "user", "content": (
+                f"Party Error: updatePartyNPCs add for {_name} did not complete: {_refusal}. Nothing was built "
+                f"and nobody joined. Later actions from this response have not executed. Do not repeat earlier "
+                f"completed actions. Give this companion a name with letters that is not a reserved engine name.")})
+            needs_conversation_history_update = True
+            return create_return(status="needs_response", needs_update=True)
         if update_party_npcs(party_tracker_data, operation, npc) is False:
             # The add's sheet could not be built: nothing joined. The DM is told
             # so, as for a refused quest or storage step, and later actions of

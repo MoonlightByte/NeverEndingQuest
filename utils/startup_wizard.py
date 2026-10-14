@@ -901,6 +901,10 @@ def _prepare_startup_proposal(authored_proposal):
     if proposal["decision"] != "finalize_character":
         return proposal, provenance
     character = sanitize_character_data(proposal["character"])
+    from updates.update_character_info import name_refusal
+    detail = name_refusal(character.get("name"))
+    if detail:
+        raise ValueError(f"The character name cannot be used: {detail}. Choose another name.")
     detail = _control_character_correction(character)
     if detail:
         raise ValueError(detail)
