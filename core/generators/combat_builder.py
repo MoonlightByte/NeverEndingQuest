@@ -751,8 +751,11 @@ def opening_action_rules(encounter):
     text = encounter.get("openingAction")
     if not isinstance(text, str) or not text.strip():
         return ""
+    text = text.strip()
+    if not text.endswith((".", "!", "?")):
+        text += "."
     return (
-        "The player has declared their first action: " + text.strip() + ". "
+        "The player has declared their first action: " + text + " "
         "It is resolved on the player's turn: do not narrate it resolved and "
         "do not ask the player what they do."
     )

@@ -716,7 +716,13 @@ def take_opening_action(encounter_path, timeout_seconds=5.0):
         if isinstance(exchanges, list) and exchanges and isinstance(exchanges[-1], dict) and exchanges[-1].get("dmRequest"):
             return None
         encounter["openingActionOffered"] = True
-        _write_object(encounter_path, encounter, "opening action offer")
+        try:
+            _write_object(encounter_path, encounter, "opening action offer")
+        except CombatTransactionError as exc:
+            # Optional: a failed mark never ends the turn; the player is asked
+            # for their action as before, and a later window may offer it.
+            _LOGGER.warning("opening action not offered: %s", exc)
+            return None
         return text.strip()
 
 

@@ -1676,11 +1676,15 @@ def _offer_opening_action(text):
     offer it as the composer's text (web); the terminal sends it on Enter."""
     from web.shared_state import emit_player_output, has_player_output_sink
 
-    line = "Your declared action: %s. Send it as is, or type another action." % text
+    sentence = text if text.endswith((".", "!", "?")) else text + "."
+    line = "Your declared action: %s Send it as is, or type another action." % sentence
     if not has_player_output_sink():
         print(line.replace("Send it as is", "Press Enter to send it"))
         return
-    emit_player_output({"type": "system", "channel": "combat", "content": line})
+    # The shape of the rest receipt (#840): a narration on the system channel
+    # is cached with a message id, so the web shows it and a reload keeps it.
+    if emit_player_output({"type": "narration", "channel": "system", "content": line}) is not True:
+        print(line)
     emit_player_output({"type": "input_suggestion", "channel": "input_suggestion", "content": text})
 
 
