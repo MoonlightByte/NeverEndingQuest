@@ -576,7 +576,7 @@ def _allowed_values(dossier):
             if not isinstance(resource, dict):
                 continue
             if resource.get("kind") == "spellSlot":
-                match = re.search(r"(\d+)", str(resource.get("name") or ""))
+                match = re.fullmatch(r"level([1-9])", str(resource.get("name") or ""))
                 if match:
                     values["slotLevel"].add(int(match.group(1)))
         actor_id = fact.get("actorId")
