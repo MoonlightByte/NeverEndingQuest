@@ -436,6 +436,15 @@ def hp_gain(sheet: Dict[str, Any], cls: str, method: str, roll: Optional[int] = 
     return max(1, fixed_hp_gain(cls) + con), f"fixed {fixed_hp_gain(cls)} + {con} Con"
 
 
+def con_increase_hp(before: Any, after: Any, earlier_levels: int) -> int:
+    """Hit points a higher Constitution modifier adds for the levels already
+    gained (#1045): the SRD maximum changes as though the new modifier had
+    applied from level 1. ``before``/``after`` are abilities dicts; never negative."""
+    old = modifier((before or {}).get("constitution"))
+    new = modifier((after or {}).get("constitution"))
+    return max(0, new - old) * max(0, int(earlier_levels))
+
+
 def hp_bonuses_gained(sheet: Dict[str, Any], cls: str, subclass: Optional[str],
                       new_level: int) -> List[Tuple[str, int]]:
     """The hit point maximum increases the SRD hp_bonuses table grants for gaining
