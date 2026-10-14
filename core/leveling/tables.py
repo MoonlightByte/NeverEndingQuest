@@ -436,6 +436,36 @@ def hp_gain(sheet: Dict[str, Any], cls: str, method: str, roll: Optional[int] = 
     return max(1, fixed_hp_gain(cls) + con), f"fixed {fixed_hp_gain(cls)} + {con} Con"
 
 
+def hp_bonuses_gained(sheet: Dict[str, Any], cls: str, subclass: Optional[str],
+                      new_level: int) -> List[Tuple[str, int]]:
+    """The hit point maximum increases the SRD hp_bonuses table grants for gaining
+    ``new_level`` (#858), from typed facts only: a species trait whose species is
+    the sheet's race (stripped, casefolded, exact) gives its per_character_level
+    every level; a subclass feature of this class whose subclass is ``subclass``
+    (casefolded) gives, on reaching its from_class_level, per_class_level for each
+    class level so far (the SRD's "increases by 3" at Sorcerer 3), then
+    per_class_level each later level. Level 1 is the startup derivation's.
+    [(name, amount)]."""
+    out: List[Tuple[str, int]] = []
+    race = str(sheet.get("race") or "").strip().casefold()
+    chosen = str(subclass or "").strip().casefold()
+    for entry in tables().get("hp_bonuses") or []:
+        if not isinstance(entry, dict) or not str(entry.get("name") or "").strip():
+            continue
+        granted = entry.get("granted_by") if isinstance(entry.get("granted_by"), dict) else {}
+        name = str(entry["name"]).strip()
+        if granted.get("kind") == "species trait" and type(entry.get("per_character_level")) is int:
+            if race and str(granted.get("species") or "").strip().casefold() == race:
+                out.append((name, entry["per_character_level"]))
+        elif granted.get("kind") == "subclass feature" and type(entry.get("per_class_level")) is int:
+            start = entry.get("from_class_level")
+            if (granted.get("class") != cls or type(start) is not int or new_level < start
+                    or not chosen or str(granted.get("subclass") or "").strip().casefold() != chosen):
+                continue
+            out.append((name, entry["per_class_level"] * (new_level if new_level == start else 1)))
+    return out
+
+
 def apply_asi(abilities: Dict[str, int], increases: Dict[str, int]) -> Tuple[Dict[str, int], str]:
     """+2 to one ability or +1 to two, never above 20. Returns (new abilities, reason if refused)."""
     if not isinstance(increases, dict) or not increases:
