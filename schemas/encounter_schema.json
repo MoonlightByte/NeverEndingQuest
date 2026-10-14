@@ -244,9 +244,11 @@
                     "properties": {
                       "stat": {"type": "string"},
                       "value": {"type": "integer"},
+                      "die": {"type": "string", "pattern": "^[1-4]d(4|6|8|10|12)$"},
                       "affectsMax": {"type": "boolean"}
                     },
-                    "required": ["stat", "value"]
+                    "required": ["stat"],
+                    "oneOf": [{"required": ["value"]}, {"required": ["die"]}]
                   }
                 },
                 "created": {"type": "object"},

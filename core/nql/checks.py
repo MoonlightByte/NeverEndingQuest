@@ -69,6 +69,33 @@ class RollMode:
     mode: str                      # "normal" | "advantage" | "disadvantage" | "fail"
     sources: List[str] = field(default_factory=list)   # condition names, e.g. ["poisoned"]
     reason: Optional[str] = None   # engine unavailable / refused
+    dice: List[Dict[str, Any]] = field(default_factory=list)  # #889: added dice in force {type, name, count, sides}
+
+
+def effect_name(sheet: Dict[str, Any], condition_type: Any) -> str:
+    """The sheet effect's name for an engine Condition type ``effect:<effectId>``; else the type."""
+    if isinstance(condition_type, str) and condition_type.startswith("effect:"):
+        effect_id = condition_type[len("effect:"):]
+        for effect in (sheet or {}).get("temporaryEffects") or []:
+            if isinstance(effect, dict) and effect.get("effectId") == effect_id and effect.get("name"):
+                return str(effect["name"])
+    return str(condition_type)
+
+
+def added_dice(sheet: Dict[str, Any], records: Any) -> List[Dict[str, Any]]:
+    """#889: the engine's added dice (a status ``added_dice``, or a check's
+    ``added`` with faces, drawn and sum), each named by its sheet effect."""
+    out: List[Dict[str, Any]] = []
+    for record in records or []:
+        if not (isinstance(record, dict) and type(record.get("count")) is int and type(record.get("sides")) is int):
+            continue
+        entry = {"type": str(record.get("type")), "name": effect_name(sheet, record.get("type")),
+                 "count": record["count"], "sides": record["sides"]}
+        if "faces" in record:
+            entry.update(faces=list(record.get("faces") or []), drawn=bool(record.get("drawn")),
+                         sum=int(record.get("sum") or 0))
+        out.append(entry)
+    return out
 
 
 def combine(requested: Optional[str], conditions: str) -> str:
@@ -100,13 +127,15 @@ def net_mode(sheet: Dict[str, Any], stat: str, requested: Optional[str] = None, 
         return RollMode(combine(requested, "normal"), reason=f"engine refused the world at {response.get('phase')}")
     conditions = "normal"
     sources: List[str] = []
+    dice: List[Dict[str, Any]] = []
     for status in response.get("status") or []:
         for record in status.get("stats") or []:
             if isinstance(record, dict) and record.get("stat") == stat:
                 conditions = record.get("roll") or "normal"
                 sources = sorted({str(src.get("type", "")).replace(stats.STATE_PREFIX, "")
                                   for src in record.get("roll_sources") or [] if isinstance(src, dict)})
-    return RollMode(combine(requested, conditions), sources)
+                dice = added_dice(sheet, record.get("added_dice"))
+    return RollMode(combine(requested, conditions), sources, dice=dice)
 
 
 @dataclass
@@ -126,11 +155,15 @@ class CheckResult:
     success: Optional[bool] = None
     margin: Optional[int] = None
     reason: Optional[str] = None
+    added: List[Dict[str, Any]] = field(default_factory=list)  # #889: the added dice rolled, in the total
 
 
 def resolve(sheet: Dict[str, Any], stat: str, *, dc: Optional[int] = None, mode: Optional[str] = None,
-            faces: Optional[List[int]] = None, binary: Optional[str] = None) -> CheckResult:
-    """One `check` action on the sheet's world. Faces are the player's; None lets the world roll."""
+            faces: Optional[List[int]] = None, binary: Optional[str] = None,
+            added: Optional[List[Tuple[str, List[int]]]] = None) -> CheckResult:
+    """One `check` action on the sheet's world. Faces are the player's; None lets the world roll.
+    ``added`` gives the faces of added dice as [(Condition type, faces)]; a die
+    without them is drawn by the world after the d20 (#889)."""
     from core.nql import apply, genesis
 
     world = genesis.build_world([sheet], "check", dice_seed=fresh_seed())
@@ -143,6 +176,8 @@ def resolve(sheet: Dict[str, Any], stat: str, *, dc: Optional[int] = None, mode:
         parts.append(mode)
     if faces:
         parts.append("faces " + " ".join(str(int(f)) for f in faces))
+    for condition_type, added_faces in added or []:
+        parts.append(f"added {_q(condition_type)} " + " ".join(str(int(f)) for f in added_faces))
     action = " ".join(parts) + ";"
     try:
         response = apply.call({"world": world.source, "world_name": "check-genesis.nql", "actions": action,
@@ -167,7 +202,13 @@ def resolve(sheet: Dict[str, Any], stat: str, *, dc: Optional[int] = None, mode:
         net = "fail"
     return CheckResult(True, stat, name, dc, mode, net, sources, list(record.get("faces") or []),
                        bool(record.get("drawn")), record.get("kept"), record.get("bonus"), record.get("total"),
-                       record.get("success"), record.get("margin"))
+                       record.get("success"), record.get("margin"), added=added_dice(sheet, record.get("added")))
+
+
+def added_text(dice: List[Dict[str, Any]]) -> str:
+    """' +3 (Bless 1d4, the game rolled)' per added die, or ''."""
+    return "".join(f" {int(d.get('sum') or 0):+d} ({d['name']} {d['count']}d{d['sides']}"
+                   + (", the game rolled" if d.get("drawn") else "") + ")" for d in dice or [])
 
 
 def describe(result: CheckResult) -> str:
@@ -183,7 +224,7 @@ def describe(result: CheckResult) -> str:
     modes = f", {result.mode}{why}, kept {result.kept}" if result.mode in MODES else ""
     if result.requested in MODES and result.sources and result.mode == "normal":
         modes = f" ({result.requested} for the situation and {', '.join(result.sources)} cancel)"
-    line = f"{result.character} {what}: {how} {dice}{modes}; {result.kept} {result.bonus:+d} = {result.total}"
+    line = f"{result.character} {what}: {how} {dice}{modes}; {result.kept} {result.bonus:+d}{added_text(result.added)} = {result.total}"
     if result.dc is None:
         return line + " (no DC: compare totals)"
     verdict = f"succeeds by {result.margin}" if result.success else f"fails by {-result.margin}"
