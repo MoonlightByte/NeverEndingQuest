@@ -5764,6 +5764,11 @@
         });
 
         socket.on('game_output', (message) => {
+            if (message.type === 'input_suggestion') {
+                const box = document.getElementById('user-input');
+                if (box && !box.value) box.value = message.content || '';
+                return;
+            }
             if (!addGameOutputMessage(message)) return;
             // Check for combat immediately after any game output
             requestInitiativeData();

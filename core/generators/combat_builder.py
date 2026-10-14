@@ -444,6 +444,7 @@ def generate_encounter(encounter_data):
 
     if "encounterSummary" in encounter_data:
         encounter["encounterSummary"] = encounter_data["encounterSummary"]
+    copy_opening_action(encounter_data, encounter)
 
     # Add player
     # Get current module from party tracker for consistent path resolution
@@ -692,6 +693,37 @@ def surprise_opening_rules(encounter):
         "this moment and lose their round 1 turn. Narrate them caught off "
         "guard (startled, turning, scrambling for a weapon); before the party "
         "acts they make no attack, no move and no challenge or speech."
+    )
+
+
+# #882: the longest declared opening action kept on the encounter.
+OPENING_ACTION_LIMIT = 300
+
+
+def copy_opening_action(encounter_data, encounter):
+    """#882: keep the player's own declared first action on the encounter, to
+    offer it at their first combat turn. The text is passed through, never
+    read; anything but a non-empty string is dropped."""
+    opening_action = encounter_data.get("openingAction")
+    if isinstance(opening_action, str) and opening_action.strip():
+        encounter["openingAction"] = opening_action.strip()[:OPENING_ACTION_LIMIT]
+        encounter["openingActionOffered"] = False
+    elif opening_action is not None:
+        logging.debug("openingAction dropped: not a non-empty string")
+
+
+def opening_action_rules(encounter):
+    """The opening note for a declared first action (#882), or ""."""
+    text = encounter.get("openingAction")
+    if not isinstance(text, str) or not text.strip():
+        return ""
+    text = text.strip()
+    if not text.endswith((".", "!", "?")):
+        text += "."
+    return (
+        "The player has declared their first action: " + text + " "
+        "It is resolved on the player's turn: do not narrate it resolved and "
+        "do not ask the player what they do."
     )
 
 
