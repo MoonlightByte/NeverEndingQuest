@@ -30,6 +30,7 @@ from core.combat.resolver import (
     open_player_weapon_attack,
     player_spell_attack_entry,
     player_spell_save_entry,
+    player_great_weapon,
     player_weapon_attack_dice,
     player_weapon_attack_entry,
     player_weapon_attack_score,
@@ -818,6 +819,21 @@ def _spell_phase_purpose(spell_name, phase):
     return None
 
 
+def _roll_request_purpose(request):
+    """The typed purpose of a player roll request (#853): the spell's
+    contract phase purpose when a spell is named, else the plain label,
+    else None. The phase is read stripped and casefolded; the request text
+    is never read."""
+    if not isinstance(request, dict):
+        return None
+    phase = request.get("phase").strip().casefold() if isinstance(request.get("phase"), str) else ""
+    spell = request.get("spellName").strip() if isinstance(request.get("spellName"), str) else ""
+    # A spell names its contract phase; a plain label keeps its own rule
+    # even with a spell named (an ambiguous contract has no phases).
+    return ((_spell_phase_purpose(spell, phase) if spell else None)
+            or (phase if phase in _ROLL_PHASES else None))
+
+
 def _validate_roll_request_phase(batch, encounter):
     """#853: a player roll request names its phase and its die as typed
     fields, and the two agree: an attack's main die is 1d20 (2d20 with
@@ -840,10 +856,7 @@ def _validate_roll_request_phase(batch, encounter):
             request["phase"] = phase
         spell = request.get("spellName").strip() if isinstance(request.get("spellName"), str) else ""
         terms = _roll_die_terms(request.get("die"))
-        # A spell names its contract phase; a plain label keeps its own rule
-        # even with a spell named (an ambiguous contract has no phases).
-        purpose = ((_spell_phase_purpose(spell, phase) if spell else None)
-                   or (phase if phase in _ROLL_PHASES else None))
+        purpose = _roll_request_purpose(request)
         problem = None
         if not phase:
             problem = ("requiresPlayerInput roll needs phase: the spell's typed phase, "
@@ -875,6 +888,8 @@ def _validate_roll_request_phase(batch, encounter):
 # the dice), takes only bare typed numbers, and scores the swing; any other
 # answer goes back to the model's adjudicated path.
 _ROLL_NUMBERS = re.compile(r"^\s*(\d{1,3})(?:[\s,]+(\d{1,3}))?\s*$")
+# #879: a Great Weapon Fighting swing takes each damage die (a critical 2d6 is 4).
+_FACE_LIST = re.compile(r"^\s*\d{1,3}(?:[\s,]+\d{1,3})*\s*$")
 # #249: the browser cannot send a blank line, so "roll" asks the game to roll,
 # and its dice tray inserts a whole sentence ("I rolled a 14 on a d20.", or
 # "I rolled a 5 on a d8 and a 3 on a d8. My damage dice add up to 8.").
@@ -928,8 +943,7 @@ def _tray_faces(text, record, entry):
     wanted = 20 if record.get("phase") == "attack" else sides
     if len(dice) != count or any(die != wanted or not 1 <= face <= die for face, die in dice):
         return "invalid"
-    faces = [face for face, _die in dice]
-    return faces if record.get("phase") == "attack" else [sum(faces)]
+    return [face for face, _die in dice]
 
 
 _DUPLICATE_SUFFIX_RE = re.compile(r"_(\d+)\b")
@@ -939,6 +953,18 @@ def _spoken_name(name):
     """A combatant name as the player reads it: the engine keeps duplicate
     monsters apart as "Bandit Sentry_2"; the request says "Bandit Sentry 2"."""
     return _DUPLICATE_SUFFIX_RE.sub(r" \1", str(name or ""))
+
+
+def _wants_each_die(record, count):
+    """#879 (owner D-879-1): a Great Weapon Fighting damage roll of two or more
+    dice asks for each die; the flag was read when the damage was asked for."""
+    return (record.get("phase") == "damage" and record.get("greatWeapon") is True
+            and not isinstance(record.get("spell"), dict) and count >= 2)
+
+
+def _each_die_example(count, sides):
+    """An example of one number per die, e.g. "1 4" for 2d6, "1 4 2 6" for 4d6."""
+    return " ".join(str((face - 1) % sides + 1) for face in ([1, 4, 2, 6, 3, 5] * count)[:count])
 
 
 def _weapon_attack_prompt(record, entry):
@@ -972,8 +998,10 @@ def _weapon_attack_prompt(record, entry):
         "critical hit" if record.get("critical")
         else "hit (%s vs AC %s)" % (record.get("attackTotal"), record.get("targetAC"))
     )
-    return "%s %s on %s: roll %dd%d for damage and type the total, or type roll and the game rolls." % (
-        record.get("ability"), hit, _spoken_name(record.get("targetName")), count, sides,
+    what = ("each die (e.g. %s)" % _each_die_example(count, sides)
+            if _wants_each_die(record, count) else "the total")
+    return "%s %s on %s: roll %dd%d for damage and type %s, or type roll and the game rolls." % (
+        record.get("ability"), hit, _spoken_name(record.get("targetName")), count, sides, what,
     )
 
 
@@ -985,11 +1013,16 @@ def _parse_weapon_roll(text, record, entry):
         return None
     if not text.strip() or _lets_the_game_roll(text):
         return []
+    count, sides = player_weapon_attack_dice(record, entry)
+    if _wants_each_die(record, count):
+        if not _FACE_LIST.match(text):
+            return _tray_faces(text, record, entry)
+        values = [int(value) for value in re.findall(r"\d+", text)]
+        return values if len(values) == count and all(1 <= value <= sides for value in values) else "invalid"
     match = _ROLL_NUMBERS.match(text)
     if not match:
         return _tray_faces(text, record, entry)
     values = [int(group) for group in match.groups() if group is not None]
-    count, sides = player_weapon_attack_dice(record, entry)
     if record.get("phase") == "attack":
         fits = len(values) == count and all(1 <= value <= 20 for value in values)
     else:
@@ -1013,6 +1046,22 @@ def _roll_already_answered(pending):
     return False
 
 
+def _request_is_the_swings(request):
+    """#880: True when the code-issued roll may supersede the intent's own
+    request: none, a roll with no phase, or a roll whose typed purpose is
+    the swing's attack or damage. Any other roll, or a choice, is the
+    model's to ask (Second Wind's heal before the swing)."""
+    if not request:
+        # None or an empty object: the pipeline reads both as no request.
+        return True
+    if not isinstance(request, dict) or request.get("kind") != "roll":
+        return False
+    phase = request.get("phase")
+    if not (isinstance(phase, str) and phase.strip()):
+        return True
+    return _roll_request_purpose(request) in ("attack", "damage")
+
+
 def _player_weapon_takeover(encounter, characters, pending, batch):
     """(record, entry) when the window opens with the human player's plain
     melee weapon swing, a cast of a recorded spell attack (#672) or of a
@@ -1032,6 +1081,10 @@ def _player_weapon_takeover(encounter, characters, pending, batch):
     intents = _ordered_intents(batch, state.get("revision"))
     intent = intents[0] if intents and isinstance(intents[0], dict) else None
     if intent is None or intent.get("actorId") != actor_ids[0] or intent.get("mode") != "adjudicated":
+        return None
+    if not _request_is_the_swings(intent.get("requiresPlayerInput")):
+        # #880: the intent carries another roll or a choice; the model's
+        # path shows it, and the swing is asked for after it.
         return None
     entry = player_weapon_attack_entry(encounter, characters, intent)
     spell = None
@@ -1150,6 +1203,9 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
             "Type %d whole number%s between 1 and 20, or type roll to let the game roll. "
             % (count, "s" if count == 2 else "")
             if record.get("phase") == "attack"
+            else "Type each of the %dd%d dice (e.g. %s), or type roll to let the game roll. " % (
+                count, sides, _each_die_example(count, sides))
+            if _wants_each_die(record, count)
             else "Type the total of %dd%d (%d to %d), or type roll to let the game roll. "
             % (count, sides, count, count * sides)
         )
@@ -1163,9 +1219,16 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
         if phase == "attack":
             values = [roller.randint(1, 20) for _ in range(count)]
         else:
-            values = [sum(roller.randint(1, sides) for _ in range(count))]
+            values = [roller.randint(1, sides) for _ in range(count)]
         source, answer = "game", "(the game rolled %s)" % " ".join(str(v) for v in values)
-    record["faces"][phase] = values if phase == "attack" else values[0]
+    if phase == "attack":
+        record["faces"][phase] = values
+    else:
+        # #879: the total stays an int (spell and older readers); the faces are
+        # kept beside it whenever they are known (tray, game roll, each die).
+        record["faces"][phase] = sum(values)
+        if len(values) == count:
+            record["faces"]["damageFaces"] = list(values)
     record["sources"][phase] = source
     prompt = None
     requested = None
@@ -1175,6 +1238,8 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
                        "attackTotal": total, "targetAC": ac})
         if hit:
             record["phase"] = "damage"
+            if not isinstance(record.get("spell"), dict):
+                record["greatWeapon"] = player_great_weapon(encounter, characters, record, entry)
             prompt = _weapon_attack_prompt(record, entry)
             record["prompt"] = prompt
             requested = record["dice"]
