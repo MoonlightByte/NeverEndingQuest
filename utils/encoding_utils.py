@@ -345,3 +345,16 @@ def setup_utf8_console():
             reconfigure = getattr(stream, 'reconfigure', None)
             if callable(reconfigure):
                 reconfigure(encoding='utf-8', errors='strict')
+
+
+def utf8_child_env():
+    """Environment for a Python child whose stdio the game reads (#895).
+
+    On Windows a child with piped stdio prints with the locale code page
+    (cp1252), so a name or model text outside it raised UnicodeEncodeError
+    at the first print. A copy of os.environ keeps PATH, PYTHONPATH and the
+    rest; only the child's stdio encoding changes.
+    """
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8:backslashreplace"
+    return env
