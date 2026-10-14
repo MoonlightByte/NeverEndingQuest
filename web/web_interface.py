@@ -700,7 +700,11 @@ def _queue_safe_player_output(message, *, commit_guard=None):
     """Route normalized player output through the existing web game queue."""
     try:
         payload = dict(message)
-        status = _cache_message(payload, commit_guard=commit_guard)
+        if payload.get("type") == "input_suggestion":
+            # #882: offered live once; never cached, so a reload never replays it.
+            status = "paused" if _web_gameplay_paused() else "live"
+        else:
+            status = _cache_message(payload, commit_guard=commit_guard)
         if status == "duplicate":
             # Stable-ID replay is successful when the exact message already
             # exists in the durable cache; do not enqueue a duplicate.
