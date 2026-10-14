@@ -231,8 +231,10 @@ Do not request schema fields, placeholders or null values. The proposal shown
 normalization_provenance lists what the game dropped or derived.
 Reject a proposal that loses approved choices, claims uncommitted facts or
 finalizes without whole-build approval. Give precise corrective feedback.
-Set needs_player_clarification true only when actual player input is needed;
-otherwise the author corrects the proposal with existing context.
+Set needs_player_clarification true only on a rejection that the author cannot
+correct without new player input. A continue_interview that asks the player a
+question does not need clarification: accept it with needs_player_clarification
+false.
 Ground every rejection in a concrete contradiction with the supplied rules,
 schema, approved choices, or committed facts. Equivalent representations are
 valid; stylistic preferences and speculative missing fields are not blockers.
