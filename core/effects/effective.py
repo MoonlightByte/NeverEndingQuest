@@ -6,7 +6,7 @@
 
 from copy import deepcopy
 
-from core.effects.model import canonical_stat
+from core.effects.model import _MODIFIER_DIE, canonical_stat
 
 
 def _live_effects(sheet):
@@ -48,6 +48,43 @@ def modifier_total(sheet, stat):
                 if type(value) in (int, float):
                     total += int(value)
     return total
+
+
+def _effect_name_key(effect):
+    name = effect.get("name")
+    return " ".join(name.split()).casefold() if isinstance(name, str) and name.strip() else None
+
+
+def modifier_dice(sheet, stat):
+    """#889: [(count, sides, effectId)] for the live effects' ``die``
+    modifiers of that canonical stat, in effect order (modifier_total skips
+    them: they hold no value). The same spell's effects do not combine
+    (owner D-889b-neq-1): among live effects of one name only the first
+    that adds dice carries them."""
+    canonical = canonical_stat(stat)
+    if canonical is None:
+        return []
+    out = []
+    seen = set()
+    for effect in _live_effects(sheet):
+        dice = []
+        for modifier in effect.get("modifiers", []):
+            if not isinstance(modifier, dict) or canonical_stat(modifier.get("stat")) != canonical:
+                continue
+            die = modifier.get("die")
+            match = _MODIFIER_DIE.fullmatch(die) if isinstance(die, str) else None
+            if match:
+                count, sides = die.split("d")
+                dice.append((int(count), int(sides), effect.get("effectId")))
+        if not dice:
+            continue
+        key = _effect_name_key(effect)
+        if key is not None and key in seen:
+            continue
+        if key is not None:
+            seen.add(key)
+        out.extend(dice)
+    return out
 
 
 def _get_path(data, path):

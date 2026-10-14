@@ -32,7 +32,7 @@ from core.combat.attacks import (
     is_executable_attack,
     is_flat_attack,
 )
-from core.effects.effective import effective_sheet, modifier_total
+from core.effects.effective import effective_sheet, modifier_dice, modifier_total
 from core.effects.lifecycle import (
     INCAPACITATING_CONDITIONS,
     apply_effect_ops,
@@ -482,7 +482,7 @@ def _target_save(encounter, characters, sheet, target, spec, rolls, actor_id, ev
     )
     if engine_save is not None:
         from core.nql import checks as nql_checks
-        result, faces = engine_save
+        result, faces, added = engine_save
         saved = bool(result.success)
         event["rolls"].append({
             "die": "d20", "value": result.kept if result.kept is not None else 0,
@@ -490,6 +490,7 @@ def _target_save(encounter, characters, sheet, target, spec, rolls, actor_id, ev
             "bonus": result.bonus, "success": saved, "engine": True,
             "faces": faces, "kept": result.kept, "mode": result.mode,
             "sources": result.sources, "total": result.total, "margin": result.margin,
+            **({"added": added} if added else {}),
         })
         line = nql_checks.describe(result)
         event.setdefault("engineChecks", []).append(line)
@@ -497,9 +498,12 @@ def _target_save(encounter, characters, sheet, target, spec, rolls, actor_id, ev
         return saved
     die = _take_roll(rolls, "d20", "save", actor_id=actor_id, target_id=target.get("combatantId"), ability=spec.get("type"))
     bonus = _save_bonus(encounter, characters, target, spec.get("type"))
-    saved = die + bonus >= int(spec.get("dc", 10) or 10)
+    added = _save_added_dice(encounter, characters, target, spec.get("type"), rolls)
+    saved = die + bonus + sum(roll["value"] for roll in added) >= int(spec.get("dc", 10) or 10)
     record = {"die": "d20", "value": die, "purpose": "save", "combatantId": target["combatantId"],
               "bonus": bonus, "success": saved}
+    if added:
+        record["added"] = added
     if sheet is not None:
         record["engine"] = False
     event["rolls"].append(record)
@@ -1458,7 +1462,49 @@ def _engine_swing(rolls, entry, sheet, to_hit, mode, faces, target_ac, target, t
     return None
 
 
-def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override=None, great_weapon=None):
+def _added_dice(sheet, stats, rolls, purpose):
+    """#889: the added dice of the sheet's live effects on ``stats`` (Bless:
+    1d4 to attack rolls and saving throws), each face taken from the generic
+    pool of ``rolls`` and journaled. Empty when no effect adds a die, so no
+    face is taken and the dice stream is today's."""
+    journal = []
+    for stat in stats:
+        for count, sides, effect_id in modifier_dice(sheet, stat):
+            for _ in range(count):
+                journal.append({"die": "1d%d" % sides, "value": int(rolls.take("d%d" % sides)),
+                                "purpose": purpose, "effect": effect_id})
+    return journal
+
+
+def _replay_added_dice(rolls, added):
+    """#889: the faces an open roll phase took from a fresh copy of the
+    prerolls are taken again from the committing source, so its generic
+    pools advance by the same takes (the stored faces are the ones used)."""
+    if rolls is None:
+        return
+    for roll in added or []:
+        rolls.take("d%s" % str(roll.get("die", "")).split("d")[-1])
+
+
+def _save_added_dice(encounter, characters, creature, save_type, rolls):
+    """#889: the added dice (Bless) on a saving throw code scores."""
+    ability = str(save_type or "").strip().lower()
+    return _added_dice(_raw_combatant_sheet(encounter, characters, creature),
+                       ("savingThrows", "savingThrow.%s" % ability), rolls, "saveBonus")
+
+
+def _opened_faces(encounter, characters, actor, rolls):
+    """#889: the faces a swing's roll phase opens with: the actor's added
+    attack dice, taken now from a fresh copy of the prerolls (nothing is
+    consumed until the window commits), or {}."""
+    if rolls is None:
+        return {}
+    added = _added_dice(_raw_combatant_sheet(encounter, characters, actor), ("attackRolls",), rolls,
+                        "attackBonus")
+    return {"bonusDice": added} if added else {}
+
+
+def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override=None, great_weapon=None, bonus_dice=None):
     """Resolve a validated attack intent into an event + deltas.
 
     Only 'attack' (and the no-op stances) resolve mechanically here;
@@ -1541,6 +1587,11 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
         attack_bonus = int(entry.get("attackBonus", 0) or 0) + modifier_total(
             sheet, "attackRolls"
         )
+        # #889: an effect's added die (Bless) joins this to-hit: from the
+        # generic pool, or the faces the player's open roll phase holds.
+        added = (list(bonus_dice) if bonus_dice is not None
+                 else _added_dice(sheet, ("attackRolls",), rolls, "attackBonus"))
+        attack_bonus += sum(int(roll["value"]) for roll in added)
         # #528: advantage or disadvantage takes two faces from the same
         # source (both journaled), and keeps the higher or the lower one.
         if mode_override is not None:
@@ -1603,6 +1654,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
             if attack_mode != "normal":
                 roll_record["mode"] = attack_mode
             event["rolls"].append(roll_record)
+        event["rolls"].extend(dict(roll) for roll in added)
         damage = 0
         raw_damage = 0
         damage_traits = []
@@ -1932,7 +1984,7 @@ def player_weapon_attack_entry(encounter, characters, intent):
     return entry
 
 
-def open_player_weapon_attack(encounter, characters, intent, entry):
+def open_player_weapon_attack(encounter, characters, intent, entry, rolls=None):
     """The roll-phase record for pendingTurn.weaponAttack: the mode is fixed
     here (conditions, Dodge and the DM's typed ruling) so the number of d20
     faces asked for never changes mid-turn."""
@@ -1954,7 +2006,7 @@ def open_player_weapon_attack(encounter, characters, intent, entry):
         "mode": mode,
         "modeSources": list(sources),
         "phase": "attack",
-        "faces": {},
+        "faces": _opened_faces(encounter, characters, actor, rolls),
         "sources": {},
     }
 
@@ -1990,6 +2042,9 @@ def player_weapon_attack_score(encounter, characters, record, entry):
     faces = list((record.get("faces") or {}).get("attack") or [])
     mode = record.get("mode")
     to_hit = int(entry.get("attackBonus", 0) or 0) + modifier_total(sheet, "attackRolls")
+    # #889: the added dice the phase took when it opened (none on a record
+    # opened before them).
+    to_hit += sum(int(roll["value"]) for roll in (record.get("faces") or {}).get("bonusDice") or [])
     ac = _combatant_ac(encounter, characters, target)
     # Option 3: the player's first step is a score-only engine call (no
     # damage total yet); today's arithmetic stays the fallback.
@@ -2059,7 +2114,7 @@ def player_great_weapon(encounter, characters, record, entry):
     return great_weapon_applies(sheet, entry)[0]
 
 
-def resolve_player_weapon_attack(encounter, characters, intent, record, event_id):
+def resolve_player_weapon_attack(encounter, characters, intent, record, event_id, roll_source=None):
     """Score the player's swing from the typed faces on the completed roll
     phase through resolve_intent (crit, natural 1, typed damage traits, the
     event shape); the journal keeps the faces as typed."""
@@ -2082,15 +2137,19 @@ def resolve_player_weapon_attack(encounter, characters, intent, record, event_id
         "targetId": record.get("targetId"),
         "description": (intent or {}).get("description", ""),
     }
+    added = [dict(roll) for roll in faces.get("bonusDice") or []]
+    _replay_added_dice(roll_source, added)
     resolution = resolve_intent(
         encounter, characters, scored, DeterministicRollSource(pools), event_id,
         mode_override=(record.get("mode"), list(record.get("modeSources") or [])),
         great_weapon=great_weapon,
+        bonus_dice=added,
     )
     event = resolution["event"]
     event["intent"] = deepcopy(intent if isinstance(intent, dict) else scored)
     sources = record.get("sources") or {}
     rolls = [dict(r, source=sources.get("attack", "player")) for r in event["rolls"] if r.get("purpose") == "attack"]
+    rolls += [dict(r, source="game") for r in event["rolls"] if r.get("purpose") == "attackBonus"]
     if type(damage_total) is int and event["outcome"].get("hit"):
         count, sides = player_weapon_attack_dice(dict(record, phase="damage"), entry)
         row = {"die": "%dd%d" % (count, sides), "value": damage_total, "purpose": "damage",
@@ -2201,11 +2260,12 @@ def _sheet_lists_spell(casting, name):
     )
 
 
-def open_player_spell_attack(encounter, characters, intent, spell):
+def open_player_spell_attack(encounter, characters, intent, spell, rolls=None):
     """The roll-phase record for a spell attack: the swing's record (mode fixed
     now) plus the spell entry under ``spell``."""
     entry = {"name": spell["name"], "type": spell["type"]}
-    record = open_player_weapon_attack(encounter, characters, dict(intent, targetId=spell["targetId"]), entry)
+    record = open_player_weapon_attack(encounter, characters, dict(intent, targetId=spell["targetId"]), entry,
+                                       rolls)
     record["spell"] = dict(spell)
     return record
 
@@ -2255,6 +2315,8 @@ def resolve_player_spell_attack(encounter, characters, intent, record, event_id,
     critical_phase = bool(record.get("critical"))
     total_rolled = faces.get("damage") if type(faces.get("damage")) is int else None
     to_hit = int(entry["attackBonus"]) + modifier_total(sheet, "attackRolls")
+    added = [dict(roll) for roll in faces.get("bonusDice") or []]
+    to_hit += sum(int(roll["value"]) for roll in added)
     ac = _combatant_ac(encounter, characters, target)
     count, sides, _flat = parse_dice(entry["damageDice"])
     scored = attacks.score(
@@ -2289,6 +2351,7 @@ def resolve_player_spell_attack(encounter, characters, intent, record, event_id,
         # The faces scored differently from when the damage was asked for:
         # the model rules the window from the exchanges (fail forward).
         raise ValueError("the spell attack's damage roll does not match its hit")
+    _replay_added_dice(rolls, added)
     resolution = resolve_adjudicated(
         encounter, characters, spell_attack_proposal(intent, target["combatantId"], damage), rolls, event_id,
         attack_hits={target["combatantId"]: hit},
@@ -2302,6 +2365,7 @@ def resolve_player_spell_attack(encounter, characters, intent, record, event_id,
         if mode in PLAYER_DECLARED_MODES:
             roll["mode"] = mode
         attack_rolls.append(roll)
+    attack_rolls += [dict(roll, source="game") for roll in added]
     if hit:
         attack_rolls.append({"die": "%dd%d" % (count * (2 if critical else 1), sides), "value": total_rolled,
                              "purpose": "damage", "source": sources.get("damage", "player")})
@@ -2696,6 +2760,23 @@ _ABILITY_ALIASES = {"str": "strength", "dex": "dexterity", "con": "constitution"
                     "int": "intelligence", "wis": "wisdom", "cha": "charisma"}
 
 
+def _engine_added_dice(dice, rolls):
+    """#889: faces for the added dice the engine holds on a party save
+    (``net_mode``'s dice), taken from the fight's pool and journaled as the
+    sheet's saveBonus rolls are; sent as the engine's ``added`` faces, so the
+    journal stays the replay authority. Returns (journal, [(type, faces)])."""
+    journal = []
+    groups = []
+    for die in dice or []:
+        faces = [int(rolls.take("d%d" % die["sides"])) for _ in range(die["count"])]
+        condition_type = die["type"]
+        effect = condition_type[len("effect:"):] if condition_type.startswith("effect:") else condition_type
+        journal.extend({"die": "1d%d" % die["sides"], "value": face, "purpose": "saveBonus", "effect": effect}
+                       for face in faces)
+        groups.append((condition_type, faces))
+    return journal, groups
+
+
 def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id):
     """CS: the rules engine rolls one party member's saving throw.
 
@@ -2704,7 +2785,8 @@ def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id):
     and Dexterity saves fail). Code reads that mode first, takes that many
     persisted d20 faces (none for an automatic failure, two for advantage or
     disadvantage, else one) so the journal stays the replay authority, and
-    hands them to the engine. Returns (result, faces) or None when the engine
+    hands them to the engine, with the faces of any added die (Bless, #889).
+    Returns (result, faces, added) or None when the engine
     is unavailable or refuses, in which case the caller keeps today's
     arithmetic (fail forward, the fight never pauses for the engine).
     """
@@ -2723,7 +2805,8 @@ def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id):
             _take_roll(rolls, "d20", "save", actor_id=actor_id, target_id=target_id, ability=ability)
             for _ in range(nql_checks.faces_needed(mode.mode))
         ]
-        result = nql_checks.resolve(sheet, stat, dc=int(dc), faces=faces or None)
+        added, groups = ([], []) if mode.mode == "fail" else _engine_added_dice(mode.dice, rolls)
+        result = nql_checks.resolve(sheet, stat, dc=int(dc), faces=faces or None, added=groups or None)
     except Exception as exc:  # engine wrapper faults never stop a fight
         _warn_save(sheet, save_type, str(exc))
         return None
@@ -2735,7 +2818,7 @@ def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id):
         _info("CS: engine save: %s" % nql_checks.describe(result), category="combat_events")
     except Exception:
         pass
-    return result, faces
+    return result, faces, added
 
 
 def _spell_save_rule(encounter, characters, proposal, save_spec, targets, event):
@@ -2816,11 +2899,13 @@ def _spell_save_target(encounter, characters, proposal, target, spell_save, hp_d
     stat = nql_saves.stat_id(ability)
     party = _sheet_backed_target(characters, target)
     mode = "normal"
+    dice = None
     if party is not None:
         try:
             net = nql_checks.net_mode(party, stat)
             if not net.reason:
                 mode = net.mode
+                dice = net.dice
         except Exception:  # engine wrapper faults never stop a fight
             pass
     faces = [
@@ -2834,12 +2919,26 @@ def _spell_save_target(encounter, characters, proposal, target, spell_save, hp_d
               "spell": spell_save["name"], "faces": faces}
     scored = None
     unchecked = None
+    # #889: the target's added save dice, taken once for both paths: for a
+    # party target the dice the engine holds (sent as its added faces), else
+    # the sheet's; an automatic failure rolls none.
+    groups = []
+    if party is not None and mode == "fail":
+        added = []
+    elif party is not None and dice is not None:
+        added, groups = _engine_added_dice(dice, rolls)
+    else:
+        added = _save_added_dice(encounter, characters, target, ability, rolls)
+    if added:
+        record["added"] = added
     if spell_save["dice"] is not None:
         count, sides = spell_save["dice"]
         arguments = dict(
             ability=ability, dc=dc, count=count, sides=sides, damage_type=spell_save["kind"],
-            success=spell_save["success"], faces=faces, party_sheet=party,
-            save_bonus=None if party is not None else _save_bonus(encounter, characters, target, ability),
+            success=spell_save["success"], faces=faces, party_sheet=party, added_faces=groups or None,
+            save_bonus=(None if party is not None
+                        else _save_bonus(encounter, characters, target, ability)
+                        + sum(roll["value"] for roll in added)),
             target_hp=int(target.get("currentHitPoints", 0) or 0),
             target_max_hp=_combatant_max_hp(encounter, characters, target),
             target_sheet=_raw_combatant_sheet(encounter, characters, target),
@@ -2875,7 +2974,7 @@ def _spell_save_target(encounter, characters, proposal, target, spell_save, hp_d
         bonus = _save_bonus(encounter, characters, target, ability)
         kept = (None if not faces else max(faces) if mode == "advantage"
                 else min(faces) if mode == "disadvantage" else faces[0])
-        saved = kept is not None and kept + bonus >= dc
+        saved = kept is not None and kept + bonus + sum(roll["value"] for roll in added) >= dc
         record.update({"value": kept or 0, "bonus": bonus, "success": saved, "engine": False})
         save_line = None
     if total is not None:
@@ -3777,7 +3876,7 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
             )
             if engine_save is not None:
                 from core.nql import checks as nql_checks
-                result, faces = engine_save
+                result, faces, added = engine_save
                 saved = bool(result.success)
                 save_line = nql_checks.describe(result)
                 event["rolls"].append({
@@ -3786,6 +3885,7 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                     "bonus": result.bonus, "success": saved, "engine": True,
                     "faces": faces, "kept": result.kept, "mode": result.mode,
                     "sources": result.sources, "total": result.total, "margin": result.margin,
+                    **({"added": added} if added else {}),
                 })
                 event.setdefault("engineChecks", []).append(save_line)
             else:
@@ -3798,10 +3898,13 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                     ability=save_spec.get("type"),
                 )
                 bonus = _save_bonus(encounter, characters, target, save_spec.get("type"))
-                saved = die + bonus >= int(save_spec.get("dc", 10) or 10)
+                added = _save_added_dice(encounter, characters, target, save_spec.get("type"), rolls)
+                saved = die + bonus + sum(roll["value"] for roll in added) >= int(save_spec.get("dc", 10) or 10)
                 record = {"die": "d20", "value": die, "purpose": "save",
                           "combatantId": target["combatantId"],
                           "bonus": bonus, "success": saved}
+                if added:
+                    record["added"] = added
                 if save_sheet is not None:
                     record["engine"] = False
                 event["rolls"].append(record)
