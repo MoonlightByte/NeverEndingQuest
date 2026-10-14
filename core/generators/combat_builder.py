@@ -346,51 +346,17 @@ def load_or_create_npc(npc_name):
     # A sheet that does not exist yet is the normal first use, not an error.
     npc_data = load_json(npc_file) if os.path.exists(npc_file) else None
     
-    # If exact match fails, try fuzzy matching for NPCs
+    # Not under the normalized stem: the one sheet whose own name is this
+    # name, else none. A near name is never matched to another NPC's sheet
+    # (or to a backup); it is a new NPC, created below as for any new name
+    # (#855, family 2 Part B).
     if not npc_data:
-        print(f"[COMBAT_BUILDER] Exact match failed for {formatted_npc_name}, trying fuzzy match")
-        # Get all character files in the module
-        import glob
-        # Use the unified characters directory
-        character_dir = "characters"
-        character_files = glob.glob(os.path.join(character_dir, "*.json"))
-        
-        # Try to find a matching NPC file using fuzzy logic
-        best_match = None
-        best_score = 0
-        
-        for char_file in character_files:
-            # Skip backup files
-            if char_file.endswith(".bak") or char_file.endswith("_BU.json"):
-                continue
-                
-            # Load the character data to check if it's an NPC
-            char_data = load_json(char_file)
-            if char_data and char_data.get("characterType") == "npc":
-                char_name = char_data.get("name", "")
-                # Simple fuzzy matching - check if key words from requested name are in character name
-                requested_words = set(formatted_npc_name.lower().split())
-                char_words = set(char_name.lower().split())
-                
-                # Calculate match score based on word overlap
-                common_words = requested_words.intersection(char_words)
-                if common_words:
-                    score = len(common_words) / max(len(requested_words), len(char_words))
-                    print(f"[COMBAT_BUILDER] Fuzzy match candidate: {char_name} (score: {score:.2f})")
-                    
-                    if score > best_score:
-                        best_score = score
-                        best_match = (char_file, char_data)
-        
-        # Use best match if score is high enough (threshold: 0.5)
-        if best_match and best_score >= 0.5:
-            npc_file, npc_data = best_match
-            print(f"[COMBAT_BUILDER] Using fuzzy match: {npc_data['name']} (score: {best_score:.2f})")
-            info(f"FUZZY_MATCH: NPC fuzzy match successful - requested '{npc_name}' matched to '{npc_data['name']}' (score: {best_score:.2f})", category="combat_builder")
-        else:
-            print(f"[COMBAT_BUILDER] No suitable fuzzy match found (best score: {best_score:.2f})")
-            warning(f"FUZZY_MATCH: NPC fuzzy match failed for '{npc_name}' (best score: {best_score:.2f})", category="combat_builder")
-    
+        from updates.update_character_info import find_character_file_fuzzy
+        matched = find_character_file_fuzzy(npc_name)
+        if matched:
+            npc_file = path_manager.get_character_path(matched)
+            npc_data = load_json(npc_file) if os.path.exists(npc_file) else None
+
     # CH-H2 (T5-4): consult the central NPC compendium BEFORE falling
     # through to AI generation. The compendium carries identity-only
     # records (canonical name + description); it does NOT contain stat
