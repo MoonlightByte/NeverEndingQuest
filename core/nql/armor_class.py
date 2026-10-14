@@ -110,6 +110,10 @@ def project(sheet: Dict[str, Any], *, binary: Optional[str] = None) -> Projectio
     """Return the sheet with engine-owned AC fields rewritten, or unchanged with a reason."""
     previous = sheet.get("armorClass") if type(sheet.get("armorClass")) is int else None
     world = genesis.build_world([sheet], PROJECTION_LOCATION)
+    from core.leveling import fighting_style  # lazy, as the projection's other table readers
+    style_note = fighting_style.pending_note(sheet)
+    if style_note:
+        world.notes.append(style_note)  # #760: the saved style waits for a level-up; AC is untouched
     # An entry typed armor with no ac_base is not modelled armor: genesis
     # treats it as a worn item with no defense and reports it in gaps. The
     # pre-update armor-field repair (T051, #357) is asked to classify such

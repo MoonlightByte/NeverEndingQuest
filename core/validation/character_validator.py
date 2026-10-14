@@ -1751,6 +1751,8 @@ class AICharacterValidator:
             warning(f"[AC Projection] {name}: sheet left unchanged: {projection.reason}",
                     category="character_validation")
             return character_data
+        for note in projection.notes:
+            info(f"[AC Projection] {name}: {note}", category="character_validation")
         if projection.changed:
             self.corrections_made.append(
                 f"armorClass {projection.previous_armor_class} -> {projection.armor_class} (engine explanation)")
