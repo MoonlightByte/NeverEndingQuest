@@ -10237,10 +10237,8 @@ def _main_game_loop(startup_authority, turn_authority):
                         turn.narration, channel="levelup", commit_guard=level_up_publication_guard
                     )
                     with level_up_publication_guard():
-                        conversation_history.extend(
-                            dict(message) for message in
-                            level_up_session.conversation[level_up_history_cursor:]
-                            if message.get('role') in ('user', 'assistant'))
+                        conversation_history.extend(_level_up_step_messages(
+                            level_up_session.conversation, level_up_history_cursor, turn))
                         level_up_history_cursor = len(level_up_session.conversation)
                     save_conversation_history(
                         conversation_history, allow_compression=False,
@@ -10558,6 +10556,22 @@ def _is_local_review_fault(exc, classification):
         pending.extend((getattr(current, "original_error", None),
                         current.__cause__, current.__context__))
     return True
+
+
+def _level_up_step_messages(conversation, cursor, turn):
+    """The messages one level-up answer adds to main history (#1044).
+
+    An ordinary step copies the session's new answer and reply, as before. A
+    step that ends the level-up publishes what the player was shown: the
+    answer, then the ending line (applied, not applied, aborted) as that step's
+    one reply, the way the start turn is published, so the DM sees how it ended.
+    """
+    step = [dict(message) for message in conversation[cursor:]
+            if message.get("role") in ("user", "assistant")]
+    if getattr(turn, "kind", "interview") == "interview":
+        return step
+    return [message for message in step if message.get("role") == "user"] + [
+        {"role": "assistant", "content": json.dumps({"narration": turn.narration, "actions": []})}]
 
 
 def _followup_failure_message(result):
