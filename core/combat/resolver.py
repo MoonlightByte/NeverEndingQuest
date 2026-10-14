@@ -2453,9 +2453,11 @@ def player_spell_save_entry(encounter, characters, intent):
         return None
     if _stat_block_save_entry(sheet, intent.get("ability")) is not None:
         return None
-    if srd_roll_contracts.slot_level_mismatch(intent, actor.get("name")):
+    if (srd_roll_contracts.slot_level_mismatch(intent, actor.get("name"))
+            or srd_roll_contracts.slot_below_spell_level(intent, actor.get("name"))):
         # F4-Q3 A: never opened at the claimed level; the adjudicated
-        # path returns the mismatch to the model as a violation.
+        # path returns the mismatch to the model as a violation (#942:
+        # also a slot below the spell's level).
         return None
     slot_level = None
     level = None
@@ -3238,7 +3240,8 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
     if isinstance(actor_sheet, dict):
         # #855 F4-Q3 A: the own slot spent sets the spell's level.
         from core.ai import srd_roll_contracts as _contracts
-        mismatch = _contracts.slot_level_mismatch(proposal, actor_name, actor_sheet)
+        mismatch = (_contracts.slot_level_mismatch(proposal, actor_name, actor_sheet)
+                    or _contracts.slot_below_spell_level(proposal, actor_name))
         if mismatch:
             resolution["violations"].append(mismatch)
 
