@@ -1083,6 +1083,19 @@ def _spoken_name(name):
     return _DUPLICATE_SUFFIX_RE.sub(r" \1", str(name or ""))
 
 
+_ENGINE_LABEL_RE = re.compile(r" \([^()]*\)$")
+
+
+def _spoken_weapon(record, entry):
+    """The weapon as the player reads it (#860): genesis labels an engine row
+    "Longsword (Strength)" to keep a weapon's attacks apart; the request says
+    "Longsword". record["ability"] keeps the full name the row is found by."""
+    name = str(record.get("ability") or "")
+    if isinstance(entry, dict) and entry.get("engine") is True:
+        return _ENGINE_LABEL_RE.sub("", name)
+    return name
+
+
 def _wants_each_die(record, count):
     """#879 (owner D-879-1): a Great Weapon Fighting damage roll of two or more
     dice asks for each die; the flag was read when the damage was asked for."""
@@ -1106,7 +1119,7 @@ def _roll_line(record, entry):
         )
         what = "both results (e.g. 15 3)" if count == 2 else "the result (e.g. 15)"
         return "%s attack against %s: roll %dd20%s and type %s, or type roll and the game rolls." % (
-            record.get("ability"), _spoken_name(record.get("targetName")), count, why, what,
+            _spoken_weapon(record, entry), _spoken_name(record.get("targetName")), count, why, what,
         )
     spell = record.get("spell") if isinstance(record.get("spell"), dict) else {}
     if spell.get("type") == "save":
@@ -1129,7 +1142,7 @@ def _roll_line(record, entry):
     what = ("each die (e.g. %s)" % _each_die_example(count, sides)
             if _wants_each_die(record, count) else "the total")
     return "%s %s on %s: roll %dd%d for damage and type %s, or type roll and the game rolls." % (
-        record.get("ability"), hit, _spoken_name(record.get("targetName")), count, sides, what,
+        _spoken_weapon(record, entry), hit, _spoken_name(record.get("targetName")), count, sides, what,
     )
 
 

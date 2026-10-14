@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - A character with a very long name no longer makes the rules engine refuse the whole party world; the name part of its engine ids is shortened so every derived id fits, and every shorter name keeps its ids (#1022).
+- A worn item with a very long stored id, or with eleven or more armor class bonuses, no longer makes the rules engine refuse the whole party world (#1023).
+- Taking items out of a chest now gathers matching stacks (two coils of rope come out as one stack of 2) and adds them to the same item you already carry, as handing them over does (#1026).
+- In a fight, the roll request names your weapon ("Longsword") instead of the game's internal attack label ("Longsword (Strength)") (#860).
+- Putting a second handful of the same item into a chest no longer fails, and a chest entry the game cannot read is kept instead of disappearing at the next visit (#1026).
+- A welcome-back cancelled by Quit, Reset, Load, Exit or by typing first is logged as information, not as a warning; the warning stays for a cancel with no recorded cause (#990 follow-up).
+- Quitting or resetting during a fight that the welcome-back started no longer shows a stray "Combat paused safely" line, and a normal Load, Reset or Exit no longer logs a warning (#990 follow-up).
 - If a file cannot be copied while saving, the game now says the save failed instead of reporting success, so loading that save can no longer silently drop your chests, journey record, effects or a character; a save that did not finish is no longer offered in the Load list (#1003).
 - In a long fight, an earlier round whose log names no initiative is now compressed like the others instead of being kept in full after its summary is refused (#1008).
 - In a fight, an answer that names your weapon (for example "I attack the spiders with my mace", or "I rolled 15" with the mace) is no longer refused with "That die does not match this action" because of the weapon notes the game adds to your words (#1008).
