@@ -185,6 +185,24 @@ def normalize_typography_deep(value: Any):
     return normalized, count, residual
 
 
+def unicode_name_stem(name):
+    """A file stem from a name's non-ASCII letters, digits and marks (#894).
+
+    Used only when a name has no ASCII letter or digit. NFC, then the same
+    lower() as normalize_character_name; every other character becomes one
+    "_" and the ends are stripped. The result holds no ASCII letter or digit,
+    so it can never equal an ASCII stem. A name with no letter or digit at
+    all still gives "".
+    """
+    text = unicodedata.normalize("NFC", str(name).strip()).lower()
+    kept = "".join(
+        ch if not ch.isascii() and (ch.isalnum() or unicodedata.category(ch).startswith("M")) else "_"
+        for ch in text
+    )
+    stem = "_".join(part for part in kept.split("_") if part)
+    return stem if any(ch.isalnum() for ch in stem) else ""
+
+
 def safe_json_load(filepath: str) -> Any:
     """
     Load JSON file with proper encoding and error handling.
