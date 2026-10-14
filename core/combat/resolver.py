@@ -2116,7 +2116,7 @@ def player_spell_attack_entry(encounter, characters, intent):
     slot_level = None
     level = None
     if (phase.get("scaling") or {}).get("kind") == "slot_level":
-        slot_level = srd_roll_contracts._slot_level(intent, {})
+        slot_level = srd_roll_contracts._slot_level(intent, {}, actor.get("name"))
         if slot_level is None:
             return None
     else:
@@ -2343,10 +2343,14 @@ def player_spell_save_entry(encounter, characters, intent):
         return None
     if _stat_block_save_entry(sheet, intent.get("ability")) is not None:
         return None
+    if srd_roll_contracts.slot_level_mismatch(intent, actor.get("name")):
+        # F4-Q3 A: never opened at the claimed level; the adjudicated
+        # path returns the mismatch to the model as a violation.
+        return None
     slot_level = None
     level = None
     if (phase.get("scaling") or {}).get("kind") == "slot_level":
-        slot_level = srd_roll_contracts._slot_level(intent, {})
+        slot_level = srd_roll_contracts._slot_level(intent, {}, actor.get("name"))
         if slot_level is None:
             return None
     else:
@@ -2737,7 +2741,10 @@ def _spell_save_rule(encounter, characters, proposal, save_spec, targets, event)
         })
     level = caster.get("level") if caster is not None else None
     dice = srd_spell_saves.damage_dice(
-        phase, srd_roll_contracts._slot_level(proposal, {}), level if type(level) is int else None,
+        phase,
+        srd_roll_contracts._slot_level(
+            proposal, {}, (combatant_by_id(encounter, proposal.get("actorId")) or {}).get("name")),
+        level if type(level) is int else None,
     ) if phase else None
     return {"name": record["name"], "spec": spec, "success": record["success"],
             "kind": record["damageKind"], "dice": dice}
@@ -3060,6 +3067,12 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
         resolution["violations"].append(
             "%s has no spells or spell slots on their sheet and cannot cast; choose an "
             "action from their own attacks, features or items" % actor_name)
+    if isinstance(actor_sheet, dict):
+        # #855 F4-Q3 A: the own slot spent sets the spell's level.
+        from core.ai import srd_roll_contracts as _contracts
+        mismatch = _contracts.slot_level_mismatch(proposal, actor_name, actor_sheet)
+        if mismatch:
+            resolution["violations"].append(mismatch)
 
     # Resources: validate owner/kind/name, reject overspend, and record
     # absolute before/after so a crash-replay of this event is idempotent.
