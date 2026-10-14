@@ -368,8 +368,12 @@ An adjudicated intent may contain:
   the resource, which need not be the actor: an ally administering a potion
   from the downed character's own pack lists owner as that downed character
   and name as the item exactly as that sheet lists it. Read the sheets before
-  choosing: if the actor's slot is spent and no party sheet holds the item,
-  do not declare the spell or potion at all; take a real listed action.
+  choosing: for an NPC or enemy whose slot or feature use is spent and no
+  party sheet holds the item, do not declare the spell, feature or potion at
+  all; take a real listed action. The PLAYER's spent slot or feature use is
+  never a reason to choose another action for them: set requiresPlayerInput
+  {kind:'choice', prompt} saying it cannot be used (no slot of that level or
+  no use left) and asking what they do instead.
   Every shot from a bow, crossbow, or sling in an adjudicated intent declares
   the ammunition it fires: kind 'ammunition', the ammunition name exactly as
   the shooter's sheet lists it, delta -1 per shot. Every player shot is

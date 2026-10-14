@@ -269,6 +269,23 @@ def _intent_correction(exc, batch=None):
             "per-use cost. Keep every other intent exactly as given."
             % items
         )
+    resource_refusals = feedback.get("playerResourceRefusal")
+    if isinstance(resource_refusals, list) and resource_refusals:
+        # #671: the player's spend the rules engine refused, by the numbers.
+        spends = ", ".join(
+            "%s %s, %s of %s left" % (r.get("kind"), r.get("name"), r.get("before"), r.get("max"))
+            for r in resource_refusals if isinstance(r, dict)
+        )
+        instruction = (
+            "Return a corrected full ordered intent batch. The rules engine "
+            "refused the PLAYER's spend: %s. Nothing was spent. Never choose "
+            "another action for the player and never resolve a null action: "
+            "return the player's intent with empty targets, resources and "
+            "effects and requiresPlayerInput {kind:'choice', prompt} saying it "
+            "cannot be used and asking what they do instead. Keep every other "
+            "intent exactly as given."
+            % spends
+        )
     limits = feedback.get("featureHealLimits")
     if isinstance(limits, list) and limits:
         # #669: the typed limits of a class-feature heal, by the numbers.
@@ -569,6 +586,39 @@ def _pause_for_refused_item(encounter_path, pending, refusals, voice_intents):
     )
     raise CombatTurnPaused(
         "The player's item use was refused; waiting for the player's choice",
+        player_message=message,
+    )
+
+
+def _pause_for_refused_resource(encounter_path, pending, refusals, voice_intents):
+    """#671 fail-safe: the player's spell slot or feature use was refused (none
+    left) and the correction did not ask the player. Record the code's question
+    on the pending turn and pause: nothing is staged, the round does not fire,
+    and the player chooses again."""
+    parts = []
+    for refusal in refusals or []:
+        if not isinstance(refusal, dict) or not refusal.get("name"):
+            continue
+        _LOGGER.info("#671: paused for the player: %s %s refused (%s of %s)", refusal.get("kind"),
+                     refusal.get("name"), refusal.get("before"), refusal.get("max"))
+        name = str(refusal["name"])
+        count = ("%s of %s" % (refusal.get("before"), refusal.get("max"))
+                 if refusal.get("max") is not None else "%s left" % refusal.get("before"))
+        level = name[len("level"):] if refusal.get("kind") == "spellSlot" and name.startswith("level") else ""
+        if level.isdigit():
+            parts.append("You have no level %s spell slot left (%s)" % (level, count))
+        else:
+            parts.append("%s has no uses left (%s)" % (name, count))
+    message = "%s. Nothing was spent. What do you do instead?" % (
+        "; ".join(parts) or "That cannot be used right now")
+    record_pending_player_request(
+        encounter_path,
+        pending.get("turnId"),
+        message,
+        npc_voice_intents=voice_intents,
+    )
+    raise CombatTurnPaused(
+        "The player's spend was refused; waiting for the player's choice",
         player_message=message,
     )
 
@@ -2071,6 +2121,7 @@ def execute_agentic_turn(
     correction = None
     rules_drift_seen = False
     player_charge_refusal = None
+    player_resource_refusal = None
     feature_heal_limits = None
     feature_heal_player = False
     removal_refused_actors = set()
@@ -2139,6 +2190,19 @@ def execute_agentic_turn(
                 rule_references=rule_count,
             )
             continue
+
+        if player_resource_refusal and not any(
+            isinstance(intent, dict)
+            and _is_human_controlled(encounter, combatant_by_id(encounter, intent.get("actorId")))
+            and isinstance(intent.get("requiresPlayerInput"), dict)
+            and intent["requiresPlayerInput"].get("kind") == "choice"
+            for intent in ((batch.get("intents") if isinstance(batch, dict) else None) or [])
+        ):
+            # #671 (D-671-1 A): the re-rule after the player's refused spend did
+            # not ask the player; code asks, before any takeover, roll request
+            # or resolution.
+            _pause_for_refused_resource(encounter_path, pending, player_resource_refusal,
+                                        immutable_voice_intents)
 
         try:
             takeover = _player_weapon_takeover(encounter, characters, pending, batch)
@@ -2339,6 +2403,10 @@ def execute_agentic_turn(
                 _pause_for_refused_item(encounter_path, pending, refused, immutable_voice_intents)
             if refused:
                 player_charge_refusal = refused
+            resource_refused = (getattr(exc, "feedback", None) or {}).get("playerResourceRefusal") \
+                if isinstance(getattr(exc, "feedback", None), dict) else None
+            if resource_refused:
+                player_resource_refusal = resource_refused
             heal_limits = (getattr(exc, "feedback", None) or {}).get("featureHealLimits") \
                 if isinstance(getattr(exc, "feedback", None), dict) else None
             if heal_limits and feature_heal_limits is not None and exc.feedback.get("featureHealPlayer"):
