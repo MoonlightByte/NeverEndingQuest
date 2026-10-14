@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- A level-up that names someone outside the party is now refused before the reply is accepted, and the DM is shown the exact party names to use, as for a character update (#423). Advancing more than one level at a time, or without the experience points the SRD table requires, was already refused when the level-up starts.
 - In a fight, the roll request names your weapon ("Longsword") instead of the game's internal attack label ("Longsword (Strength)") (#860).
 - Putting a second handful of the same item into a chest no longer fails, and a chest entry the game cannot read is kept instead of disappearing at the next visit (#1026).
 - A welcome-back cancelled by Quit, Reset, Load, Exit or by typing first is logged as information, not as a warning; the warning stays for a cancel with no recorded cause (#990 follow-up).
