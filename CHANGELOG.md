@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed two unreachable code paths (#444). The DM-response validator in main.py no longer has a branch that normalized a draft itself: its only caller always passes the draft already normalized, and now has to. `core/validation/dm_response_validator.py` no longer has its own createEncounter shape check, a second copy of the live check in `core/combat/scene.py` that no game code ran. No game behaviour changes.
 
 ### Fixed
+- A night's sleep no longer counts as two long rests (#892). The game leaves 16 hours between long rests, a sleep "until morning" keeps the morning the DM narrates instead of being stretched to a full 8 hours, and a rest only lands when the story shows the party resting.
 - On Windows, a chronicle compression that finds the compression cache held by another game process now waits for it, instead of giving up after ten seconds and sending the full history for that turn (#403).
 - Arrows, bolts and other ammunition can now be put in a chest or other storage and taken back out: stored ammunition leaves the character's ammunition count and comes back to it (#366).
 - Recruiting a companion whose character sheet could not be built no longer reads as a successful join: the DM is told the companion has not joined and the rest of that response does not run (#534).
