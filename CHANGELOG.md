@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- In a fight, the roll request names your weapon ("Longsword") instead of the game's internal attack label ("Longsword (Strength)") (#860).
 - Putting a second handful of the same item into a chest no longer fails, and a chest entry the game cannot read is kept instead of disappearing at the next visit (#1026).
 - A welcome-back cancelled by Quit, Reset, Load, Exit or by typing first is logged as information, not as a warning; the warning stays for a cancel with no recorded cause (#990 follow-up).
 - Quitting or resetting during a fight that the welcome-back started no longer shows a stray "Combat paused safely" line, and a normal Load, Reset or Exit no longer logs a warning (#990 follow-up).
