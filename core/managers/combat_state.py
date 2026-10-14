@@ -517,22 +517,46 @@ def initiative_eligible_ids(encounter):
     }
 
 
-def initiative_ui_projection(encounter):
+def _projected_member(creature, include_downed_party):
+    """Return whether a creature belongs in the UI projection.
+
+    Living combatants always do. With ``include_downed_party`` a downed party
+    member stays too (#282): the player's own row at 0 HP is what tells them
+    they are down rather than out of the fight. Targeting and turn order are
+    unaffected; the projection is display-only.
+    """
+    if not isinstance(creature, dict):
+        return False
+    if is_combatant_targetable(creature):
+        return True
+    return include_downed_party and is_party_member(creature) and is_down(creature)
+
+
+def _projected_copy(creature):
+    projected = deepcopy(creature)
+    if not is_combatant_targetable(creature):
+        projected["downed"] = True
+    return projected
+
+
+def initiative_ui_projection(encounter, include_downed_party=False):
     """Project initiative order and typed input ownership for UI consumers.
 
     Legacy encounters retain the existing living-roster/raw-initiative shape.
     Typed encounters are projected strictly from the committed stable ledger;
     observers never appear merely because they are alive, and source ``type``
-    never decides who owns the current input window.
+    never decides who owns the current input window. ``include_downed_party``
+    keeps downed party members in place, marked ``downed`` (the initiative
+    bar only; NPC access and scene context keep the living roster).
     """
     creatures = [
         creature
         for creature in encounter.get("creatures", [])
-        if isinstance(creature, dict) and is_combatant_targetable(creature)
+        if _projected_member(creature, include_downed_party)
     ]
     if combat_provenance(encounter) != "typed":
         return [
-            deepcopy(creature)
+            _projected_copy(creature)
             for creature in sorted(
                 creatures,
                 key=lambda creature: creature.get("initiative", 0),
@@ -576,7 +600,7 @@ def initiative_ui_projection(encounter):
 
     projection = []
     for combatant_id in committed_order:
-        creature = deepcopy(by_id[combatant_id])
+        creature = _projected_copy(by_id[combatant_id])
         creature["controller"] = resolve_creature_controller(creature, state)
         creature["isCurrent"] = combatant_id == current_id
         projection.append(creature)
