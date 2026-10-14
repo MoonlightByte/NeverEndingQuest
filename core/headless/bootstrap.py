@@ -27,6 +27,16 @@ import shutil
 
 _STATIC_DIRS = ("schemas", "prompts", "data")
 
+# Paths under the static folders that the game writes while it runs. They
+# hold this game's state, so refreshing a game dir never touches them.
+_GAME_WRITTEN_STATIC = (
+    "data/companion_memories",
+    "data/companion_memories_compressed",
+    "data/bestiary",
+    "data/active_pack.json",
+    "data/style_templates.json",
+)
+
 _RUNTIME_DIRS = (
     # Mirrors the required_dirs list in main.main(), which headless (like
     # web mode) bypasses by calling main_game_loop() directly.
@@ -88,12 +98,56 @@ def ensure_runtime_dirs():
         os.makedirs(dir_path, exist_ok=True)
 
 
+def _game_written(rel_path):
+    return any(rel_path == path or rel_path.startswith(path + "/")
+               for path in _GAME_WRITTEN_STATIC)
+
+
+def _same_bytes(path_a, path_b):
+    if os.path.getsize(path_a) != os.path.getsize(path_b):
+        return False
+    with open(path_a, "rb") as handle_a, open(path_b, "rb") as handle_b:
+        return handle_a.read() == handle_b.read()
+
+
+def _refresh_static_dir(src, dst, name):
+    """Copy each file of the repo's static folder that the game dir lacks or
+    holds with other bytes (#899). Files only the game dir has, and the
+    files the game writes itself, are left as they are.
+
+    Returns the refreshed paths, relative to the game dir.
+    """
+    refreshed = []
+    for directory, dirnames, filenames in os.walk(src):
+        rel_dir = os.path.relpath(directory, src).replace(os.sep, "/")
+        prefix = name if rel_dir == "." else name + "/" + rel_dir
+        dirnames[:] = sorted(
+            value for value in dirnames
+            if not _game_written(prefix + "/" + value))
+        for filename in sorted(filenames):
+            rel_path = prefix + "/" + filename
+            if _game_written(rel_path):
+                continue
+            source = os.path.join(directory, filename)
+            target = os.path.join(dst, *rel_path.split("/")[1:])
+            if os.path.isfile(target) and _same_bytes(source, target):
+                continue
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            partial = target + ".refresh-tmp"
+            shutil.copy2(source, partial)
+            os.replace(partial, target)
+            refreshed.append(rel_path)
+    return refreshed
+
+
 def prepare_game_dir(game_dir, repo_root, module=None):
     """Populate an isolated game directory with the static content the
-    cwd-relative engine needs. Copies are skipped when already present, so
-    re-running against an existing fixture is cheap and non-destructive.
+    cwd-relative engine needs. A static folder the game dir already has is
+    refreshed file by file from the repo, so later prompt, schema and rules
+    fixes reach it (#899); the game's own files are kept.
 
-    Returns the list of copies performed (for logging).
+    Returns the list of copies performed (for logging); a refresh is listed
+    as "refreshed <folder>/ (<n> files)".
     """
     game_dir = os.path.abspath(game_dir)
     repo_root = os.path.abspath(repo_root)
@@ -120,6 +174,11 @@ def prepare_game_dir(game_dir, repo_root, module=None):
                 ignore = ignore_private_runtime
             shutil.copytree(src, dst, ignore=ignore)
             copied.append(name)
+        elif os.path.isdir(src) and os.path.isdir(dst):
+            refreshed = _refresh_static_dir(src, dst, name)
+            if refreshed:
+                copied.append(
+                    "refreshed %s/ (%d files)" % (name, len(refreshed)))
     if module:
         dst = os.path.join(game_dir, "modules", module)
         if not os.path.exists(dst):

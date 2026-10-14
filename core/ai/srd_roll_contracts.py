@@ -214,6 +214,40 @@ def _slot_level(intent, request, owner=None):
     return None
 
 
+def spell_base_level(intent):
+    """#942: the level data/spell_repository.json types for the spell a cast
+    intent names (its ``ability``, then ``spellName``), by the repository's
+    canonical key; None for another action, a name the repository does not
+    hold, or a cantrip."""
+    if not isinstance(intent, dict) or intent.get("action") != "cast":
+        return None
+    for field in ("ability", "spellName"):
+        name = intent.get(field)
+        if not isinstance(name, str) or not name.strip():
+            continue
+        try:
+            reference = load_srd_reference_index().reference(name)
+        except Exception:
+            reference = None
+        if not reference or reference.get("kind") != "spell":
+            continue
+        level = (reference.get("entry") or {}).get("level")
+        return level if type(level) is int and level > 0 else None
+    return None
+
+
+def slot_below_spell_level(intent, owner):
+    """#942: the correction when the own slot a cast spends is below the
+    spell's level (spell_base_level), or None. An unknown spell is never
+    refused."""
+    spent = _spent_slot_level(intent, owner)
+    base = spell_base_level(intent) if spent is not None else None
+    if base is None or spent >= base:
+        return None
+    return ("%s is a level %d spell: spend a level%d or higher slot; level%d is below it"
+            % (intent.get("ability") or intent.get("spellName"), base, base, spent))
+
+
 def slot_level_mismatch(intent, owner, sheet=None):
     """The correction when the intent spends an own slot and also types a
     different slotLevel (F4-Q3 A: the spent slot sets the level), or None.
@@ -225,6 +259,10 @@ def slot_level_mismatch(intent, owner, sheet=None):
     typed = _typed_slot_level(intent, request if isinstance(request, dict) else {})
     if typed is None or typed == spent:
         return None
+    below = slot_below_spell_level(intent, owner)
+    if below:
+        # #942: never offer a slot level below the spell's own.
+        return below
     message = ("slotLevel %d disagrees with the spent slot level%d: the slot spent sets the spell's level; "
                "send slotLevel %d" % (typed, spent, spent))
     slots = ((sheet or {}).get("spellcasting") or {}).get("spellSlots") if isinstance(sheet, dict) else None
