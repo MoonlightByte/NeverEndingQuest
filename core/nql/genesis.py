@@ -142,6 +142,12 @@ ENGINE_ID_MAX = 256  # the engine's bound for an entity id, in bytes (#566)
 # A minted item id leaves room for its per-row charged type id
 # ("itemdef:row/" + the id after "item:", 7 bytes longer) under TYPE_KIND_MAX.
 ITEM_ID_MAX = TYPE_KIND_MAX - len("itemdef:row/") + len("item:")  # 249
+# A character's scope ends every condition instance id it holds ("<kind>:<scope>",
+# at most 36 bytes over the scope) and the engine's own event id for each "add"
+# modifier of such an instance ("condition:<len>:<instance>:<len>:<label>"). The
+# longest is a Long Rest removing exhaustion, 41 bytes over the scope; a longer
+# kind or modifier label must lower this bound (#1022).
+CHARACTER_SCOPE_MAX = ENGINE_ID_MAX - len("condition:256:state:exhaustion:6::5:speed")  # 215
 
 
 def _type_description(entry: Dict[str, Any]) -> str:
@@ -378,8 +384,9 @@ def bounded_id(prefix: str, text: str, limit: int = ENGINE_ID_MAX) -> str:
 
 
 def character_scope(name: Any) -> str:
-    """The slug a character's engine ids carry: its id after "char:"."""
-    return bounded_id("char:", slug(name))[len("char:"):]
+    """The slug a character's engine ids carry: its id after "char:", at most
+    CHARACTER_SCOPE_MAX bytes so every id it ends fits (#1022)."""
+    return bounded_id("", slug(name), CHARACTER_SCOPE_MAX)
 
 
 def character_id(sheet: Dict[str, Any]) -> str:

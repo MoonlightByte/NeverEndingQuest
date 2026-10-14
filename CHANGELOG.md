@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- A character with a very long name no longer makes the rules engine refuse the whole party world; the name part of its engine ids is shortened so every derived id fits, and every shorter name keeps its ids (#1022).
 - A worn item with a very long stored id, or with eleven or more armor class bonuses, no longer makes the rules engine refuse the whole party world (#1023).
 - Taking items out of a chest now gathers matching stacks (two coils of rope come out as one stack of 2) and adds them to the same item you already carry, as handing them over does (#1026).
 - In a fight, the roll request names your weapon ("Longsword") instead of the game's internal attack label ("Longsword (Strength)") (#860).
