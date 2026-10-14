@@ -1007,12 +1007,13 @@ def prepare_current_transition_actions(operation_id):
                 receipt["message_id"] = str(uuid4())
             except _TRAVEL_PREPARE_PASSTHROUGH:
                 raise
-            except (ValueError, RuntimeError):
+            except (ValueError, RuntimeError) as exc:
                 # #855: dropped like a sheet update; the travel goes on.
                 owner = character_name or "Your character"
                 warning(
                     "TRAVEL: no usable storage change for %s; dropped after "
-                    "the bounded tries, travel goes on" % owner,
+                    "the bounded tries, travel goes on (%s: %s)"
+                    % (owner, type(exc).__name__, exc),
                     category="location_transitions",
                 )
                 receipt = {
@@ -1028,7 +1029,7 @@ def prepare_current_transition_actions(operation_id):
                 )
             except _TRAVEL_PREPARE_PASSTHROUGH:
                 raise
-            except (ValueError, RuntimeError):
+            except (ValueError, RuntimeError) as exc:
                 # #855: a party change that cannot be prepared (no sheet
                 # could be made, or a malformed request) is dropped and the
                 # travel goes on. A failed add is told on arrival.
@@ -1041,7 +1042,8 @@ def prepare_current_transition_actions(operation_id):
                 )
                 warning(
                     "TRAVEL: no usable party change for %s; dropped, travel "
-                    "goes on" % (owner or "an unnamed NPC"),
+                    "goes on (%s: %s)"
+                    % (owner or "an unnamed NPC", type(exc).__name__, exc),
                     category="location_transitions",
                 )
                 receipt = {
@@ -3796,20 +3798,32 @@ def _retire_unmoved_transition_checkpoint(operation_id):
     """
     from core.managers.campaign_manager import _party_module_transition_lock
 
-    with _party_module_transition_lock():
-        checkpoint = safe_json_load(PENDING_LOCATION_TRANSITION_FILE)
-        party = safe_json_load("party_tracker.json")
-        world = party.get("worldConditions") if isinstance(party, dict) else None
-        if (
-            isinstance(checkpoint, dict)
-            and checkpoint.get("operation_id") == operation_id
-            and checkpoint.get("kind") == "current_transition"
-            and isinstance(world, dict)
-            and str(world.get("currentLocationId", ""))
-            == str(checkpoint.get("origin_location_id", ""))
-        ):
-            _remove_location_transition_checkpoint()
-            return True
+    try:
+        with _party_module_transition_lock():
+            checkpoint = safe_json_load(PENDING_LOCATION_TRANSITION_FILE)
+            party = safe_json_load("party_tracker.json")
+            world = party.get("worldConditions") if isinstance(party, dict) else None
+            if (
+                isinstance(checkpoint, dict)
+                and checkpoint.get("operation_id") == operation_id
+                and checkpoint.get("kind") == "current_transition"
+                and isinstance(world, dict)
+                and str(world.get("currentLocationId", ""))
+                == str(checkpoint.get("origin_location_id", ""))
+            ):
+                _remove_location_transition_checkpoint()
+                return True
+    except ReadOnlySaveStop:
+        raise
+    except OSError as exc:
+        # #943: a locked or vanished file must not replace the curated
+        # prepare failure; the record is left for recovery.
+        warning(
+            "TRAVEL: the failed move's record was left for recovery (could "
+            "not read or remove it: %s: %s)" % (type(exc).__name__, exc),
+            category="location_transitions",
+        )
+        return False
     warning(
         "TRAVEL: the failed move's record was left for recovery",
         category="location_transitions",
