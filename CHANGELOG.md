@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `merge_updates` from `core/managers/combat_manager.py`, a helper that nothing called; had anything called it, it would have replaced a character's whole equipment list with the update's list instead of changing single items (#471).
 
 ### Fixed
+- A fight started by the welcome-back scene no longer ends silently when you type your first action (#990). Your input waits for the fight instead of cancelling the scene, and a combat turn stopped for an unknown reason now pauses and keeps your turn.
 - The storage helper now sees a character's ammunition, so asking to store arrows no longer fails with 'Character does not have Arrows' (#366).
 - In a fight, when you use a potion or other item you have none of left, or shoot with no arrows or bolts left, the DM now tells you and asks what you do instead, instead of picking another action for you (#968). This extends the same rule for spell slots and class features (#671) to items and ammunition; nothing is spent.
 - After you roll a check the DM asked for, the result (your roll, bonus, total and the difficulty, success or failure) now shows right away under your dice, before the DM narrates what happens (#530).
