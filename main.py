@@ -1881,6 +1881,7 @@ def _transition_narration_action_context(checkpoint):
         if "dropped" in (
             receipt.get("character_status"),
             receipt.get("storage_status"),
+            receipt.get("npc_status"),
         ):
             # #855: a change dropped before movement was not made, so it is
             # not a fact of the turn (the player is told so on arrival).
@@ -2222,6 +2223,8 @@ def _transition_outcome_lines(checkpoint, party):
                 % (receipt.get("name") or "The effect", receipt.get("owner") or "its target")
             )
         elif family == "updatePartyNPCs":
+            if receipt.get("npc_status") == "dropped":
+                continue  # #855: not made; the player is told on arrival
             if receipt.get("operation") == "add":
                 lines.append(
                     "%s joins your traveling party at %s."
