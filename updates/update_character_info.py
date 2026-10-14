@@ -1107,16 +1107,17 @@ def _engine_owned_total(character_data, updates):
             if isinstance(pool, dict) and 'current' in pool:
                 return ("spell slot totals are not accepted; report the change as spellSlotDelta "
                         "{levelN: signed whole number}")
-    stored = {f.get('name'): f.get('usage') for f in character_data.get('classFeatures') or []
-              if isinstance(f, dict)}
-    for feature in updates.get('classFeatures') or [] if isinstance(updates.get('classFeatures'), list) else []:
-        if not isinstance(feature, dict) or not isinstance(feature.get('usage'), dict):
-            continue
-        before = stored.get(feature.get('name'))
-        if isinstance(before, dict) and 'current' in feature['usage'] and \
-                feature['usage'].get('current') != before.get('current'):
-            return ("feature use totals are not accepted; report the change as featureUseDelta "
-                    "{\"<exact feature name>\": signed whole number}")
+    # Class features and feats (#891, #937) hold use pools alike.
+    for key in ('classFeatures', 'feats'):
+        stored = {f.get('name'): f.get('usage') for f in character_data.get(key) or [] if isinstance(f, dict)}
+        for feature in updates.get(key) or [] if isinstance(updates.get(key), list) else []:
+            if not isinstance(feature, dict) or not isinstance(feature.get('usage'), dict):
+                continue
+            before = stored.get(feature.get('name'))
+            if isinstance(before, dict) and 'current' in feature['usage'] and \
+                    feature['usage'].get('current') != before.get('current'):
+                return ("feature use totals are not accepted; report the change as featureUseDelta "
+                        "{\"<exact feature name>\": signed whole number}")
     return None
 
 
@@ -1312,11 +1313,13 @@ def _copy_engine_pools(engine_sheet, target):
         for key, pool in engine_slots.items():
             if isinstance(pool, dict) and isinstance(target_slots.get(key), dict):
                 target_slots[key]['current'] = pool['current']
-    engine_uses = {f['name']: f['usage']['current'] for f in engine_sheet.get('classFeatures') or []
-                   if isinstance(f, dict) and isinstance(f.get('usage'), dict) and f.get('name')}
-    for feature in target.get('classFeatures') or []:
-        if isinstance(feature, dict) and isinstance(feature.get('usage'), dict) and feature.get('name') in engine_uses:
-            feature['usage']['current'] = engine_uses[feature['name']]
+    # Class features and feats (#891): a feat spend is kept too (#937).
+    for key in ('classFeatures', 'feats'):
+        engine_uses = {f['name']: f['usage']['current'] for f in engine_sheet.get(key) or []
+                       if isinstance(f, dict) and isinstance(f.get('usage'), dict) and f.get('name')}
+        for feature in target.get(key) or []:
+            if isinstance(feature, dict) and isinstance(feature.get('usage'), dict) and feature.get('name') in engine_uses:
+                feature['usage']['current'] = engine_uses[feature['name']]
 
 
 def prepare_character_delta(character_data, updates, character_role, schema,
