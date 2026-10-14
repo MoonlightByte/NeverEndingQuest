@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `merge_updates` from `core/managers/combat_manager.py`, a helper that nothing called; had anything called it, it would have replaced a character's whole equipment list with the update's list instead of changing single items (#471).
 
 ### Fixed
+- In the web player, a requested check now shows the extra die the game adds, for example "+ 1d4 Guidance (the game rolls)" when Guidance or Bless is on you (#984).
 - In a fight, when the DM corrects one combatant's action, the actions already approved earlier in the same round now stay as approved, so the round no longer loops on two companions taking turns being refused (#435).
 - The storage helper now sees a character's ammunition, so asking to store arrows no longer fails with 'Character does not have Arrows' (#366).
 - In a fight, when you use a potion or other item you have none of left, or shoot with no arrows or bolts left, the DM now tells you and asks what you do instead, instead of picking another action for you (#968). This extends the same rule for spell slots and class features (#671) to items and ammunition; nothing is spent.
