@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unused summary code in `core/ai/cumulative_summary.py`, seven functions left from an older summary pipeline that nothing called, was removed, and the registered source lines of its two remaining AI calls (T018, T019) were corrected (#798). Gameplay, summaries and saves are unchanged.
 
 ### Fixed
+- The Thornwood Watch hermit's healing potion is now a standard Potion of Healing that states what it restores, so it can be drunk (#903).
 - A fight no longer fails to start when the DM picks a monster count inside a location's listed range, and a challenge the player makes of an NPC (a duel, a surrender, a parley term) is answered before any fight starts (#885). Before, the reviewer rejected a count such as two bandits from a "2-4" group as invented, and treated a duel offered with a drawn weapon as the start of combat, so the turn was rejected until it was dropped. The DM's and the reviewer's instructions now say both, in their full and compressed forms.
 - Monsters and NPCs created for a fight are now built for the party's real level: the party level is read from each character's sheet file instead of a path made from the display name, which fell back to level 1 for any multi-word name (#873).
 - A travel turn that adds an NPC who has no character sheet yet now creates the sheet and moves the party; before, it raised a TypeError that ended the game session, and the next start discarded the planned move (#893).
