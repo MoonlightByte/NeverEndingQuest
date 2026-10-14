@@ -693,6 +693,32 @@ def _responses_text_format(response_format):
     return dict(response_format)
 
 
+def _answer_item(index, phases):
+    """Whether an output item's text belongs to the answer (#961).
+
+    GPT-6 models may stream a ``commentary`` message before the
+    ``final_answer`` message; joining both yields two JSON objects back to
+    back. When the model labels a final answer, only that text is the answer;
+    unlabelled output (older models) is kept whole."""
+    if "final_answer" not in phases.values():
+        return True
+    return phases.get(index) == "final_answer"
+
+
+def _final_answer_text(final):
+    """The answer text read from a completed Responses object, by the same rule
+    as the streamed deltas: final_answer messages when labelled, else all."""
+    messages = [item for item in (getattr(final, "output", None) or [])
+                if getattr(item, "type", None) == "message"]
+    if not messages:
+        return getattr(final, "output_text", "") or ""
+    if any(getattr(item, "phase", None) == "final_answer" for item in messages):
+        messages = [item for item in messages if getattr(item, "phase", None) == "final_answer"]
+    return "".join(getattr(part, "text", "") or "" for item in messages
+                   for part in (getattr(item, "content", None) or [])
+                   if getattr(part, "type", None) == "output_text")
+
+
 def _responses_stream_completion(client, messages, model, temperature, strip_temp,
                                  response_format, phase_emit, output_ceiling=None, **kwargs):
     """One streamed Responses request assembled into a ChatCompletion-shaped
@@ -728,6 +754,7 @@ def _responses_stream_completion(client, messages, model, temperature, strip_tem
     _phase(phase_emit, "endpoint", "responses")
     stream = client.responses.create(**call_kwargs)
     parts = []
+    phases = {}  # output_index -> message phase ("commentary" / "final_answer"), when the model labels it
     final = None
     last_receiving = 0.0
     runaway = _RunawayGuard(ceiling=output_ceiling)
@@ -746,7 +773,12 @@ def _responses_stream_completion(client, messages, model, temperature, strip_tem
             if not parts or time.monotonic() - last_receiving >= 1.0:
                 _phase(phase_emit, "receiving")
                 last_receiving = time.monotonic()
-            parts.append(event.delta)
+            parts.append((getattr(event, "output_index", None), event.delta))
+        elif kind == "response.output_item.added":
+            item = getattr(event, "item", None)
+            if getattr(item, "type", None) == "message" and getattr(item, "phase", None):
+                phases[getattr(event, "output_index", None)] = item.phase
+            _phase(phase_emit, "working", kind)
         elif kind in ("response.completed", "response.incomplete"):
             final = event.response
         elif kind == "response.failed":
@@ -762,11 +794,11 @@ def _responses_stream_completion(client, messages, model, temperature, strip_tem
             _phase(phase_emit, "working", kind)
     if final is None:
         raise ResponsesStreamFailed("stream_ended", "no terminal response event")
-    content = "".join(parts)
+    content = "".join(delta for index, delta in parts if _answer_item(index, phases))
     if not content:
         # A completed Responses answer whose text is not in the deltas
         # (defensive read of the final object; same text, never a second value).
-        content = getattr(final, "output_text", "") or ""
+        content = _final_answer_text(final)
     finish_reason = "stop"
     details = getattr(final, "incomplete_details", None)
     if getattr(final, "status", "") == "incomplete":
