@@ -253,7 +253,8 @@ def resolve_effect_clock_window(encounter, characters, pending_turn):
     return [event], next_encounter, next_characters
 
 
-def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_source, clamp_feature_heals=False):
+def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_source, clamp_feature_heals=False,
+                           drop_removals_for=()):
     """Resolve a provider batch sequentially and return staged events.
 
     The batch must contain one ordered intent per claimed actor. Actors
@@ -468,6 +469,8 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 roll_source,
                 event_id,
                 clamp_feature_heals=clamp_feature_heals,
+                # #725: this actor's refused remove op was re-ruled once.
+                drop_refused_removals=actor_id in drop_removals_for,
             )
         else:
             raise CombatIntentError("Unknown intent mode %r" % mode, actor_id)
@@ -518,6 +521,9 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 feedback["featureHealLimits"] = deepcopy(resolution["featureHealLimits"])
                 feedback["featureHealPlayer"] = controller == "human"
                 feedback["retryable"] = True
+            if resolution.get("removalRefusals"):
+                # #725: the typed removal refusals the correction names.
+                feedback["removalRefusals"] = deepcopy(resolution["removalRefusals"])
             raise CombatIntentError(
                 "; ".join(resolution["violations"]),
                 actor_id,
