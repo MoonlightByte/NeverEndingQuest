@@ -16,6 +16,14 @@ export function RulesRollActions({ prompt }: { prompt: RulesRollPrompt }) {
   </span>
 }
 
+// #984: the dice the game adds to the check (Guidance, Bless), from typed fields only.
+function addedDice(prompt: RulesRollPrompt) {
+  return (Array.isArray(prompt.dice) ? prompt.dice : [])
+    .filter((d) => Number.isInteger(d?.count) && d.count > 0 && Number.isInteger(d?.sides) && d.sides > 0 && typeof d?.name === 'string')
+    .map((d) => ` \u00b7 + ${d.count}d${d.sides} ${d.name} (the game rolls)`)
+    .join('')
+}
+
 export function RulesRollPanel({ prompt }: { prompt: RulesRollPrompt }) {
   const [faces, setFaces] = useState<string[]>([])
   const ember = useEmberDesktop()
@@ -29,7 +37,7 @@ export function RulesRollPanel({ prompt }: { prompt: RulesRollPrompt }) {
   }
   return <section className="neq-rules-roll" aria-label="Requested check">
     <div className="neq-rules-roll-title"><strong>{prompt.label}</strong><span>{prompt.characterName}</span></div>
-    <p>{prompt.faces === 2 ? `Two d20s · ${prompt.netMode}` : 'One d20'}{prompt.dc != null ? ` · Difficulty ${prompt.dc}` : ''}</p>
+    <p>{prompt.faces === 2 ? `Two d20s · ${prompt.netMode}` : 'One d20'}{addedDice(prompt)}{prompt.dc != null ? ` · Difficulty ${prompt.dc}` : ''}</p>
     {prompt.reason && <p className="neq-rules-roll-reason">{prompt.reason}</p>}
     <div className="neq-rules-roll-actions">
       {!ember && <RulesRollActions prompt={prompt} />}
