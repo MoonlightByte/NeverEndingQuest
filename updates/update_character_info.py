@@ -183,92 +183,91 @@ def normalize_character_name(character_name):
     
     return name
 
+def _is_backup_sheet_file(filename):
+    return filename.endswith(".bak") or filename.endswith("_BU.json") or "backup" in filename
+
 def find_character_file_fuzzy(character_name):
-    """Find a character file using fuzzy matching
-    
-    This function attempts to find a character file that matches the given name,
-    even if the file name doesn't exactly match the character name.
-    
+    """Find the character file for a name, exactly (#855, family 2 Part B).
+
+    The name is kept for its callers; it no longer matches loosely. In order:
+    - characters/<normalized name>.json;
+    - the one non-backup sheet in characters/ whose own "name" is this name
+      (case ignored, "_" read as a space), for a sheet whose file id differs
+      from its name, such as "Ranger Thane" in corrupted_ranger_thane.json;
+    - for a name ending in "_<n>" (n >= 2), the name combat_builder gives a
+      second copy of an NPC in one encounter, the same two steps on the name
+      before the suffix.
+    A near name ("Kira", "Captain Bryn") returns None: it is never resolved to
+    another character's file. An unreadable sheet is skipped with a warning,
+    so one bad file cannot make a lookup fail.
+
     Args:
         character_name (str): The character name to search for
-        
+
     Returns:
         str: The matched filename (without .json extension) or None if no match found
-        
-    Examples:
-        - "Ranger Thane" might match "corrupted_ranger_thane.json"
-        - "Scout Kira" would match "scout_kira.json"
     """
     import glob
-    import os
-    from difflib import SequenceMatcher
-    from utils.enhanced_logger import debug
-    
-    # First try exact match with normalized name
-    normalized_name = normalize_character_name(character_name)
-    
-    # Use the unified characters directory
-    character_dir = "characters"
-    character_files = glob.glob(os.path.join(character_dir, "*.json"))
-    
-    # Try exact match first
-    exact_match_file = os.path.join(character_dir, f"{normalized_name}.json")
-    if os.path.exists(exact_match_file):
-        # Suppress routine exact match logging - this is expected behavior
-        # debug(f"FUZZY_MATCH: Exact match found for '{character_name}' -> '{normalized_name}'", category="character_updates")
-        return normalized_name
-    
-    # Prepare for fuzzy matching
-    input_lower = character_name.lower()
-    input_words = set(input_lower.split())
-    input_normalized = input_lower.replace("_", " ")
-    
-    best_match = None
-    best_score = 0.0
-    
-    for char_file in character_files:
-        filename = os.path.splitext(os.path.basename(char_file))[0]
-        
-        # Skip player character files (they should match exactly)
-        if filename in ['eirik_hearthwise', 'wizard_player']:
-            continue
-            
-        # Check various matching strategies
-        file_lower = filename.lower()
-        file_words = set(file_lower.replace("_", " ").split())
-        
-        # Strategy 1: Word subset matching
-        if input_words.issubset(file_words) or file_words.issubset(input_words):
-            score = len(input_words.intersection(file_words)) / max(len(input_words), len(file_words))
-            if score > best_score:
-                best_score = score
-                best_match = filename
-                # debug(f"FUZZY_MATCH: Word subset match '{character_name}' -> '{filename}' (score: {score:.2f})", category="character_updates")
-        
-        # Strategy 2: Normalized partial match
-        if input_normalized in file_lower.replace("_", " "):
-            score = len(input_normalized) / len(file_lower)
-            if score > best_score:
-                best_score = score
-                best_match = filename
-                # debug(f"FUZZY_MATCH: Partial match '{character_name}' -> '{filename}' (score: {score:.2f})", category="character_updates")
-        
-        # Strategy 3: Sequence matching
-        sequence_score = SequenceMatcher(None, input_lower, file_lower).ratio()
-        if sequence_score > best_score:
-            best_score = sequence_score
-            best_match = filename
-            # debug(f"FUZZY_MATCH: Sequence match '{character_name}' -> '{filename}' (score: {sequence_score:.2f})", category="character_updates")
-    
-    # Return match if score is high enough
-    # Note: Threshold increased from 0.5 to 0.65 to prevent false matches like "Scout Elen" -> "Scout Kira"
-    # while still allowing valid matches like "Ranger Thane" -> "corrupted_ranger_thane" (0.667)
-    if best_match and best_score >= 0.65:
-        # debug(f"FUZZY_MATCH: Best match for '{character_name}' is '{best_match}' (score: {best_score:.2f})", category="character_updates")
-        return best_match
-    else:
-        # debug(f"FUZZY_MATCH: No suitable match found for '{character_name}' (best score: {best_score:.2f})", category="character_updates")
+
+    if not isinstance(character_name, str) or not character_name.strip():
         return None
+
+    def key(name):
+        return " ".join(str(name or "").replace("_", " ").lower().split())
+
+    def resolve(name):
+        normalized_name = normalize_character_name(name)
+        if normalized_name and os.path.exists(os.path.join("characters", f"{normalized_name}.json")):
+            return normalized_name
+        wanted = key(name)
+        matches = []
+        for char_file in sorted(glob.glob(os.path.join("characters", "*.json"))):
+            filename = os.path.basename(char_file)
+            if _is_backup_sheet_file(filename):
+                continue
+            try:
+                with open(char_file, "r", encoding="utf-8") as f:
+                    sheet = json.load(f)
+            except Exception as e:
+                warning(f"CHARACTER_LOOKUP: skipped unreadable sheet {char_file} ({type(e).__name__})", category="character_updates")
+                continue
+            if isinstance(sheet, dict) and isinstance(sheet.get("name"), str) and key(sheet["name"]) == wanted:
+                matches.append(os.path.splitext(filename)[0])
+        return matches[0] if len(matches) == 1 else None
+
+    found = resolve(character_name)
+    if found:
+        return found
+    duplicate = re.match(r"^(.+)_([2-9]|[1-9][0-9]+)$", character_name.strip())
+    if duplicate:
+        return resolve(duplicate.group(1))
+    return None
+
+def resolve_npc_sheet_id(npc_name, encounter=None, creature=None):
+    """The file id of an encounter NPC's sheet (#855, family 2 Part B).
+
+    A typed-agentic encounter records each NPC's sheet as the sourceRef of its
+    scene participant, found by the creature's combatantId, so the name is not
+    read. Otherwise (an older encounter, or no encounter) the name is resolved
+    exactly by find_character_file_fuzzy. Never raises.
+    """
+    try:
+        combatant_id = creature.get("combatantId") if isinstance(creature, dict) else None
+        scene = encounter.get("sceneFacts") if isinstance(encounter, dict) else None
+        participants = scene.get("participants") if isinstance(scene, dict) else None
+        if combatant_id and isinstance(participants, list):
+            for participant in participants:
+                if isinstance(participant, dict) and participant.get("combatantId") == combatant_id:
+                    source_ref = participant.get("sourceRef")
+                    if participant.get("sourceKind") == "character" and isinstance(source_ref, str):
+                        filename = os.path.basename(source_ref.replace("\\", "/"))
+                        if (filename.endswith(".json") and not _is_backup_sheet_file(filename)
+                                and os.path.exists(os.path.join("characters", filename))):
+                            return os.path.splitext(filename)[0]
+                    break
+    except Exception as e:
+        warning(f"CHARACTER_LOOKUP: encounter sheet reference unreadable ({type(e).__name__})", category="character_updates")
+    return find_character_file_fuzzy(npc_name)
 
 def detect_character_role(character_name):
     """Detect character role from existing data or file location"""
