@@ -16,6 +16,7 @@ decision D8); ``build_world`` uses that id, or mints a temporary one for an
 entry that still lacks it, and returns the id of every entry so callers can map
 engine facts back to sheet entries. Display names are not identities.
 """
+import copy
 import json
 import re
 from dataclasses import dataclass, field
@@ -424,6 +425,44 @@ def bounded_item_id(iid: str, limit: int = ITEM_ID_MAX) -> str:
         room = limit - len(tail.encode("utf-8"))
     head = ":".join(parts[:-2]).encode("utf-8")[:room].decode("utf-8", errors="ignore").rstrip("-")
     return head + tail
+
+
+def split_id(base: str, count: int, taken: set) -> str:
+    """The id of a part split off ``base``: ``<base>:part:<count>``, or with a
+    numbered tail while that id is taken (#1037). ``taken`` holds, as values,
+    every id the game holds where the caller could read it (every sheet and
+    container) and this request's earlier splits: a part travels between
+    sheets and chests that no one world declares together (#1039). The id is
+    compared and returned in the bounded form genesis declares, and is added
+    to ``taken``."""
+    candidate = bounded_item_id(f"{base}:part:{count}", ENGINE_ID_MAX)
+    suffix = 1
+    while candidate in taken:
+        suffix += 1
+        candidate = bounded_item_id(f"{base}:part:{count}:{suffix}", ENGINE_ID_MAX)
+    taken.add(candidate)
+    return candidate
+
+
+def held_ids(sheets: List[Any], containers: List[Any]) -> set:
+    """Every item id these sheets and storage containers hold, as genesis
+    declares it: each sheet row's stored (or minted) id and ammunition stock,
+    and each container entry's stored id (#1039)."""
+    held: set = set()
+    for sheet in sheets:
+        if not isinstance(sheet, dict):
+            continue
+        sheet = copy.deepcopy(sheet)
+        assign_ids(sheet)
+        for entry in sheet.get("equipment") or []:
+            if isinstance(entry, dict) and isinstance(entry.get("nql_id"), str):
+                held.add(bounded_item_id(entry["nql_id"], ENGINE_ID_MAX))
+        held.update(aid for aid, _ in ammunition_rows(sheet, []))
+    for container in containers:
+        for entry in (container.get("contents") or []) if isinstance(container, dict) else []:
+            if isinstance(entry, dict) and isinstance(entry.get("nql_id"), str):
+                held.add(bounded_item_id(entry["nql_id"], ENGINE_ID_MAX))
+    return held
 
 
 def ac_effect_id(iid: str, index: int) -> str:

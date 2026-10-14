@@ -14,6 +14,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 
 from core.nql import armor_class
+from core.nql import storage as nql_storage
 from core.nql import transfer as nql_transfer
 from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import debug, info, warning
@@ -106,7 +107,8 @@ def execute_transfer(from_character: str, to_character: str, item_name: str, qua
             if not giver or not receiver:
                 return {"success": False, "error": "could not load both character sheets"}
 
-            outcome = nql_transfer.transact(giver, receiver, item_name, quantity, location=location)
+            outcome = nql_transfer.transact(giver, receiver, item_name, quantity, location=location,
+                                            reserved=nql_storage.held_ids_on_disk())
             for gap in outcome.gaps:
                 debug(f"TRANSFER: genesis gap: {gap}", category="storage_operations")
             if not outcome.ok:
