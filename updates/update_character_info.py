@@ -1158,7 +1158,9 @@ def _split_equipment_quantity_deltas(character_data, updates, model_authored):
 
 
 def _stored_ammunition_name(character_data, name):
-    """The stored ammunition row name for a delta entry: exact, then unique case-insensitive."""
+    """The stored ammunition row name for a delta entry: exact, then unique
+    case-insensitive, then the one row holding the same catalog ammunition
+    (Arrows for a row named Arrow, #358). The stored row keeps its name."""
     names = [r.get('name') for r in character_data.get('ammunition') or []
              if isinstance(r, dict) and r.get('name')]
     if name in names:
@@ -1168,6 +1170,16 @@ def _stored_ammunition_name(character_data, name):
         return folded[0], None
     if folded:
         return None, f"{name!r} matches several ammunition rows; name it exactly as on the sheet"
+    from core.nql import item_catalog
+    wanted = item_catalog.ammunition_entry({"name": name})
+    if wanted is not None:
+        same = [r.get('name') for r in character_data.get('ammunition') or []
+                if isinstance(r, dict) and r.get('name')
+                and (item_catalog.ammunition_entry(r) or {}).get('id') == wanted.get('id')]
+        if len(same) == 1:
+            return same[0], None
+        if same:
+            return None, f"{name!r} matches several ammunition rows {same}; name it exactly as on the sheet"
     return None, None
 
 

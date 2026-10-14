@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `updates/update_party_tracker.py`, a module that nothing called: it read a `party` list and an armor/weapons/other equipment shape that no party tracker or character sheet has used for a long time, so any call would have failed. Its unused import in `core/managers/combat_manager.py` and the lines naming it in `module_debugger.py` and `ARCHITECTURE.md` went with it (#470).
 
 ### Fixed
+- Spending or adding ammunition by a plural or older name (Arrows for a sheet row named Arrow) now changes that row instead of being refused or starting a second row (#358).
 - Second Wind now restores 1d10 plus the fighter's level. Before, the fight sometimes healed only the die roll, so a level 1 fighter got 1 hit point too few (#881).
 - In a fight, when you ask for a spell or class feature you have no slot or use left for, the DM now tells you and asks what you do instead, instead of picking another action for you (#671).
 - With the Local/Custom provider, changing the custom model in Settings now rebuilds compressed chronicle sections with the new model instead of reusing ones the previous model wrote (#402).
