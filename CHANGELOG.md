@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `merge_updates` from `core/managers/combat_manager.py`, a helper that nothing called; had anything called it, it would have replaced a character's whole equipment list with the update's list instead of changing single items (#471).
 
 ### Fixed
+- A character sheet that lists proficiencies the way the rules print them ("Martial weapons", "Light armor", "all armor") now has those proficiencies counted by the rules engine, the same as "Martial" or "Light" (#896).
 - A recruited NPC is now built from the adventure's own description of that person, so the companion matches the character the players met even when the recruit action leaves race or class blank or names others; the recruit build also runs inside the game instead of a separate command, so a cancelled turn stops it cleanly (#534).
 - The Thornwood Watch no longer shows a quest id in a place or feature name: the cave is now just "Wolf's Den Cave" and the watchtower bells are "East Tower Bell" and "West Tower Bell" (#989).
 - When you attack in a fight, the DM now describes your swing or spell in its own words before asking for the dice; the exact dice to roll and the option to type roll stay the same (#860).
