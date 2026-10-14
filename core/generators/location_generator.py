@@ -21,6 +21,12 @@ import config
 import jsonschema
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import normalize_typography_deep
+from utils.schema_feedback import (
+    SchemaIssue as _SchemaIssue,
+    compact_issue_message as _compact_issue_message,
+    format_schema_issues as _format_schema_issues,
+    schema_issues as _schema_issues,
+)
 from utils.capture.multi_model_capture import (
     capture_and_fanout,
     register_callsite,
@@ -336,85 +342,6 @@ def _canonicalize_t026_mechanical_fields(parsed: Any) -> Any:
                 world_conditions["month"] = _T026_CALENDAR_MONTHS[month - 1]
 
     return corrected
-
-
-@dataclass(frozen=True)
-class _SchemaIssue:
-    """One deterministic, user-prompt-safe schema issue."""
-
-    path: str
-    message: str
-
-
-def _compact_issue_message(message: Any, limit: int = 240) -> str:
-    """Bound model-derived validation text before it enters a retry prompt."""
-    compact = " ".join(str(message).split())
-    if len(compact) <= limit:
-        return compact
-    return compact[: limit - 3] + "..."
-
-
-def _json_path(parts) -> str:
-    """Render a jsonschema path deterministically as dotted/indexed JSON."""
-    rendered = ""
-    for part in parts:
-        if isinstance(part, int):
-            rendered += f"[{part}]"
-        else:
-            rendered += ("." if rendered else "") + str(part)
-    return rendered or "$"
-
-
-def _schema_issues(
-    instance: Any,
-    schema: Dict[str, Any],
-    prefix=(),
-) -> List[_SchemaIssue]:
-    """Return all schema errors with stable paths and stable ordering."""
-    validator = jsonschema.Draft7Validator(schema)
-    errors = sorted(
-        validator.iter_errors(instance),
-        key=lambda error: (
-            tuple(str(part) for part in error.absolute_path),
-            str(error.validator),
-            error.message,
-        ),
-    )
-    issues = []
-    for error in errors:
-        path_parts = tuple(prefix) + tuple(error.absolute_path)
-        if error.validator == "required" and isinstance(error.instance, dict):
-            missing = sorted(
-                key
-                for key in error.validator_value
-                if key not in error.instance
-            )
-            for key in missing:
-                issues.append(
-                    _SchemaIssue(
-                        _json_path(path_parts + (key,)),
-                        "required property is missing",
-                    )
-                )
-            continue
-        issues.append(
-            _SchemaIssue(
-                _json_path(path_parts),
-                _compact_issue_message(error.message),
-            )
-        )
-    return sorted(issues, key=lambda issue: (issue.path, issue.message))
-
-
-def _format_schema_issues(issues: List[_SchemaIssue], limit: int = 24) -> str:
-    """Compact schema feedback without embedding the full model response."""
-    shown = issues[:limit]
-    rendered = "; ".join(
-        f"{issue.path}: {issue.message}" for issue in shown
-    )
-    if len(issues) > limit:
-        rendered += f"; ... {len(issues) - limit} additional issue(s)"
-    return rendered
 
 
 def _validate_location_envelope(
