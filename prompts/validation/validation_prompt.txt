@@ -66,8 +66,10 @@ Always evaluate the last assistant response starting with "role": "assistant", "
 Always respond with a JSON object in the following format:
 {
   "valid": true/false,
-  "reason": "Explanation for why the response is valid or invalid. Add direction to the model on how it should respond correctly."
+  "reason": "Explanation for why the response is valid or invalid. Add direction to the model on how it should respond correctly.",
+  "category": "one of none, reference, missing_action, unrequested_action, action_order, travel, combat, resources, inventory, party, module, other"
 }
+category names the rule you applied when valid is false, and is none when valid is true. The examples below show valid and reason only; always add category. It is for counting only and never changes your verdict.
 
 // Example Response 1: True - Valid response
 {
