@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - The Thornwood Watch no longer shows a quest id in a place or feature name: the cave is now just "Wolf's Den Cave" and the watchtower bells are "East Tower Bell" and "West Tower Bell" (#989).
+- When you attack in a fight, the DM now describes your swing or spell in its own words before asking for the dice; the exact dice to roll and the option to type roll stay the same (#860).
+- An item with a very long name no longer stops the rules engine from loading the whole party (#566). Its engine id is now kept within the engine's size limit by shortening the name part, so every engine step for that party works again; ids already on a sheet stay as they are.
 - A turn no longer fails with "the AI provider call could not be completed" when the response checker's debug file cannot be written (a file held by another program, a read-only or full disk); the debug copy is skipped and the turn goes on (#342).
 - Choosing an existing character whose file has gone missing, is empty or is broken no longer ends setup; the game says the file is unavailable and asks again, and a file another program holds is waited for (#338).
 - Spending or adding ammunition by a plural or older name (Arrows for a sheet row named Arrow) now changes that row instead of being refused or starting a second row (#358).
