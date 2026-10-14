@@ -979,7 +979,8 @@ def _request_is_the_swings(request):
     request: none, a roll with no phase, or a roll whose typed purpose is
     the swing's attack or damage. Any other roll, or a choice, is the
     model's to ask (Second Wind's heal before the swing)."""
-    if request is None:
+    if not request:
+        # None or an empty object: the pipeline reads both as no request.
         return True
     if not isinstance(request, dict) or request.get("kind") != "roll":
         return False
