@@ -66,6 +66,22 @@ def _find_entry(entries: List[Dict[str, Any]], ids: Dict[int, str], name: str) -
 _STACK_IDENTITY = ("item_name", "item_type", "item_subtype", "magical", "armor_category", "ac_base", "ac_bonus")
 
 
+def same_stack(entry: Dict[str, Any], other: Dict[str, Any]) -> bool:
+    """Whether two entries are one kind of thing that may share a stack: never
+    a worn or effect-bearing entry; shared by transferItem and storage (#1026)."""
+    if entry.get("equipped") is True or entry.get("effects"):
+        return False
+    if other.get("equipped") is True or other.get("effects"):
+        return False
+    mine = item_catalog.row_entry(entry)[0]
+    theirs = item_catalog.row_entry(other)[0]
+    if mine is not None or theirs is not None:
+        # SA: a catalog row stacks only with another row of the same catalog
+        # type; a row that drifted from its type is its own kind of thing.
+        return mine is not None and theirs is not None and mine["id"] == theirs["id"]
+    return all(_identity_value(other, k) == _identity_value(entry, k) for k in _STACK_IDENTITY)
+
+
 def _matching_stack(receiver: Dict[str, Any], ids: Dict[int, str], entry: Dict[str, Any]) -> Optional[str]:
     """The receiver's engine item id for an entry of the same typed identity, or None."""
     if entry.get("equipped") is True or entry.get("effects"):
@@ -73,17 +89,7 @@ def _matching_stack(receiver: Dict[str, Any], ids: Dict[int, str], entry: Dict[s
     for index, other in enumerate(receiver.get("equipment") or []):
         if not isinstance(other, dict) or index not in ids or other is entry:
             continue
-        if other.get("equipped") is True or other.get("effects"):
-            continue
-        mine = item_catalog.row_entry(entry)[0]
-        theirs = item_catalog.row_entry(other)[0]
-        if mine is not None or theirs is not None:
-            # SA: a catalog row stacks only with another row of the same catalog
-            # type; a row that drifted from its type is its own kind of thing.
-            if mine is not None and theirs is not None and mine["id"] == theirs["id"]:
-                return ids[index]
-            continue
-        if all(_identity_value(other, k) == _identity_value(entry, k) for k in _STACK_IDENTITY):
+        if same_stack(entry, other):
             return ids[index]
     return None
 
