@@ -48,6 +48,7 @@ from core.managers.combat_state import (
 )
 from core.managers.combat_transaction import (
     CombatPreconditionChanged,
+    append_pending_game_roll,
     append_pending_player_input,
     apply_staged_turn,
     claim_turn,
@@ -547,7 +548,26 @@ def _pause_for_refused_item(encounter_path, pending, refusals, voice_intents):
     )
 
 
-def _player_request_message(request):
+# #877: said after a typed roll request, as the code-issued roll lines say it.
+_TYPED_ROLL_SENTENCE = " Type the result, or type roll and the game rolls."
+
+
+def _player_request_message(request, typed_roll=False):
+    """The text shown for the model's request; ``typed_roll`` (a roll
+    request with a typed die, #877) adds that the game can roll it."""
+    message = _request_text(request)
+    return message + _TYPED_ROLL_SENTENCE if typed_roll else message
+
+
+def _typed_roll(request):
+    """The full typed dice of a roll request ("1d8+1d6"), or None."""
+    if not isinstance(request, dict) or request.get("kind") != "roll":
+        return None
+    terms = _roll_die_terms(request.get("die"))
+    return "+".join("%dd%d" % term for term in terms) if terms else None
+
+
+def _request_text(request):
     if not isinstance(request, dict):
         return "I need one more detail before resolving that action. What do you do?"
     prompt = request.get("prompt")
@@ -874,6 +894,37 @@ _FACE_LIST = re.compile(r"^\s*\d{1,3}(?:[\s,]+\d{1,3})*\s*$")
 # and its dice tray inserts a whole sentence ("I rolled a 14 on a d20.", or
 # "I rolled a 5 on a d8 and a 3 on a d8. My damage dice add up to 8.").
 _LET_THE_GAME_ROLL = {"roll", "roll for me", "you roll"}
+
+
+def _lets_the_game_roll(text):
+    """The exact words that ask the game to roll (#249, #830, #877)."""
+    return isinstance(text, str) and text.strip().rstrip(".!").casefold() in _LET_THE_GAME_ROLL
+
+
+def _game_roll_answer(pending, text):
+    """#877: the answer to the open typed roll request when the player asks
+    the game to roll it: (the sentence the DM reads, faces per die term).
+    "answered" when the last exchange already holds the game's roll and
+    the DM has not asked again (a resumed turn re-sending "roll"). None
+    for any other line, or when no typed request is open: the line then
+    goes to the DM as today."""
+    if not _lets_the_game_roll(text):
+        return None
+    exchanges = [item for item in (pending or {}).get("playerExchanges") or [] if isinstance(item, dict)]
+    if not exchanges:
+        return None
+    last = exchanges[-1]
+    if last.get("rolledBy") == "game" and not last.get("dmRequest"):
+        return "answered"
+    terms = _roll_die_terms(last.get("requestedRoll")) if last.get("dmRequest") else None
+    if not terms:
+        return None
+    rng = random.SystemRandom()
+    faces = [[rng.randint(1, sides) for _ in range(count)] for count, sides in terms]
+    parts = ["%s on the %s" % (" and ".join(str(face) for face in term_faces),
+                               "d%d" % sides if count == 1 else "%dd%d" % (count, sides))
+             for term_faces, (count, sides) in zip(faces, terms)]
+    return "The game rolled for me: %s." % " and ".join(parts), faces
 _TRAY_DIE = r"a (\d{1,3}) on a d(\d{1,3})"
 _TRAY_SENTENCE = re.compile(
     r"^\s*I rolled %s(?:(?:, | and )%s)*\.(?: My damage dice add up to \d{1,4}\.)?\s*$" % (_TRAY_DIE, _TRAY_DIE),
@@ -960,7 +1011,7 @@ def _parse_weapon_roll(text, record, entry):
     anything else."""
     if text is None:
         return None
-    if not text.strip() or text.strip().rstrip(".!").casefold() in _LET_THE_GAME_ROLL:
+    if not text.strip() or _lets_the_game_roll(text):
         return []
     count, sides = player_weapon_attack_dice(record, entry)
     if _wants_each_die(record, count):
@@ -1838,11 +1889,22 @@ def execute_agentic_turn(
             encounter = safe_json_load(encounter_path)
             pending = deepcopy((encounter.get("combatState") or {}).get("pendingTurn"))
         if not weapon_answered and not _all_non_player(encounter, pending.get("actorIds", [])):
-            append_pending_player_input(
-                encounter_path,
-                pending.get("turnId"),
-                player_input,
-            )
+            game_roll = _game_roll_answer(pending, player_input)
+            if isinstance(game_roll, tuple):
+                # #877: the open typed request decides that this line
+                # answers it; the game rolls its full dice.
+                append_pending_game_roll(
+                    encounter_path,
+                    pending.get("turnId"),
+                    game_roll[0],
+                    game_roll[1],
+                )
+            elif game_roll is None:
+                append_pending_player_input(
+                    encounter_path,
+                    pending.get("turnId"),
+                    player_input,
+                )
             encounter = safe_json_load(encounter_path)
             pending = deepcopy((encounter.get("combatState") or {}).get("pendingTurn"))
         persisted_voice_intents = normalize_npc_voice_intents(
@@ -1950,6 +2012,7 @@ def execute_agentic_turn(
             requested_die=previous_exchange.get("requestedDie"),
             requested_phase=previous_exchange.get("requestedPhase"),
             npc_voice_intents=immutable_voice_intents,
+            requested_roll=previous_exchange.get("requestedRoll"),
         )
         record_combat_diagnostic(
             record_type="window_outcome",
@@ -2225,7 +2288,8 @@ def execute_agentic_turn(
                 rule_references=rule_count,
                 intents=len(batch.get("intents") or []) if isinstance(batch, dict) else None,
             )
-            player_message = _player_request_message(request)
+            typed_roll = _typed_roll(request)
+            player_message = _player_request_message(request, typed_roll=typed_roll is not None)
             record_pending_player_request(
                 encounter_path,
                 pending.get("turnId"),
@@ -2233,6 +2297,7 @@ def execute_agentic_turn(
                 requested_die=_authoritative_requested_die(request),
                 requested_phase=request.get("phase") if isinstance(request, dict) else None,
                 npc_voice_intents=immutable_voice_intents,
+                requested_roll=typed_roll,
             )
             raise CombatTurnPaused(
                 "Combat resolution requires more player input",
