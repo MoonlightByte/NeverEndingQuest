@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `updates/update_party_tracker.py`, a module that nothing called: it read a `party` list and an armor/weapons/other equipment shape that no party tracker or character sheet has used for a long time, so any call would have failed. Its unused import in `core/managers/combat_manager.py` and the lines naming it in `module_debugger.py` and `ARCHITECTURE.md` went with it (#470).
 
 ### Fixed
+- Choosing an existing character whose file has gone missing, is empty or is broken no longer ends setup; the game says the file is unavailable and asks again, and a file another program holds is waited for (#338).
 - A hero or companion whose name has no Latin letters (Korean, Chinese, Japanese, Cyrillic, Greek...) now gets their own character file; two such characters no longer share one sheet or block each other (#894).
 - When rebuilding companion memories at startup stops on a journal entry it cannot finish, the other entries still being read in parallel are now cancelled, so startup no longer waits on work it is going to discard (#429).
 - Second Wind now restores 1d10 plus the fighter's level. Before, the fight sometimes healed only the die roll, so a level 1 fighter got 1 hit point too few (#881).
