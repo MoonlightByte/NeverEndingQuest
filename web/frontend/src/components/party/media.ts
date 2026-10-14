@@ -160,9 +160,9 @@ const CLASS_PORTRAIT_KEYWORDS: Array<[string[], string]> = [
   [['druid'], 'druid'],
   [['paladin'], 'paladin'],
   [['rogue'], 'rogue'],
-  [['fighter'], 'fighter'],
-  [['barbarian'], 'barbarian'],
-  [['monk'], 'monk'],
+  // No fighter, barbarian or monk art ships yet; their old entries asked for
+  // files that 404 and left a blank hero.
+  [['fighter', 'barbarian', 'monk'], 'default_npc'],
   [['bard'], 'bard'],
   [['wizard', 'sorcerer', 'warlock', 'mage'], 'wizard'],
 ]
