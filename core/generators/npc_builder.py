@@ -196,7 +196,8 @@ def save_json(file_name, data):
     print(f"{RED}Error saving to {file_name}: atomic write failed{RESET}")
     return False
 
-def generate_npc(npc_name, schema, npc_race=None, npc_class=None, npc_level=None, npc_background=None):
+def generate_npc(npc_name, schema, npc_race=None, npc_class=None, npc_level=None, npc_background=None,
+                 npc_identity=None):
     system_prompt_text = load_prompt("prompts/generators/npc_builder_prompt.txt") # Renamed variable
     if not system_prompt_text:
         return None
@@ -246,10 +247,15 @@ Adhere strictly to 5e rules and the provided schema."""
 
     # Create smarter level guidance
     level_guidance = npc_level if npc_level else "1-3 (appropriate for early adventuring parties)"
+    # The NPC's authored record, when the adventure has one (#534); the retry
+    # below is rebuilt from this first request, so every attempt carries it.
+    identity_text = "" if not npc_identity else (
+        "\n\nEstablished NPC from the adventure (keep race, class, appearance and personality consistent with "
+        "it; it wins over any Race or Class above that contradicts it): " + json.dumps(npc_identity))
     
     prompt_messages = [ # Renamed variable
         {"role": "system", "content": system_message},
-        {"role": "user", "content": f"Create an NPC named '{npc_name}' using 5e rules. Race: {npc_race or 'Any appropriate race'}, Class: {npc_class or 'Any appropriate class'}, Level: {level_guidance}, Background: {npc_background or 'Any appropriate background'}. Schema: {json.dumps(schema)}"}
+        {"role": "user", "content": f"Create an NPC named '{npc_name}' using 5e rules. Race: {npc_race or 'Any appropriate race'}, Class: {npc_class or 'Any appropriate class'}, Level: {level_guidance}, Background: {npc_background or 'Any appropriate background'}. Schema: {json.dumps(schema)}{identity_text}"}
     ]
 
     # Select model config per provider
@@ -398,6 +404,13 @@ def remove_nested_values(data):
 _NPC_STATUS_WORDS = ("corrupted", "wounded", "elite", "enhanced")
 
 
+# The DM pipeline passes literal placeholders when a value is not
+# established in play ('unknown', 'none', 'n/a', ...). Treat every such
+# placeholder exactly like empty: the builder infers a sensible default.
+# Rejecting them crashed party recruitment mid-turn (Scout Kira, live).
+UNSPECIFIED_ARGUMENTS = frozenset({"unknown", "none", "n/a", "na", "null", "tbd", "?"})
+
+
 def _expected_npc_target_name(npc_name):
     """Mirror the prompt's deterministic status-word cleanup for lock identity."""
     value = str(npc_name or "").strip()
@@ -451,8 +464,10 @@ def build_npc_file_with_path(
     npc_level=None,
     npc_background=None,
     path_manager=None,
+    npc_identity=None,
 ):
-    """Generate and save one NPC; return (sheet, path it was loaded or saved at), or None."""
+    """Generate and save one NPC; return (sheet, path it was loaded or saved at), or None.
+    npc_identity is the NPC's authored record, given to the model (#534)."""
     path_manager = path_manager or _active_module_path_manager()
     expected_name = _expected_npc_target_name(npc_name)
     logical_target = path_manager.get_character_unified_path(expected_name)
@@ -477,6 +492,7 @@ def build_npc_file_with_path(
             npc_class,
             npc_level,
             npc_background,
+            npc_identity=npc_identity,
         )
         if not generated:
             return None
@@ -503,11 +519,12 @@ def build_npc_file(
     npc_level=None,
     npc_background=None,
     path_manager=None,
+    npc_identity=None,
 ):
     """Generate and save one NPC as a deduplicated target transaction."""
     built = build_npc_file_with_path(
         npc_name, schema, npc_race, npc_class, npc_level, npc_background,
-        path_manager=path_manager,
+        path_manager=path_manager, npc_identity=npc_identity,
     )
     return built[0] if built else None
 
@@ -534,16 +551,11 @@ def main():
                              "NPC creation if no explicit level is given.")
     args = parser.parse_args()
 
-    # The DM pipeline passes literal placeholders when a value is not
-    # established in play ('unknown', 'none', 'n/a', ...). Treat every such
-    # placeholder exactly like empty: the builder infers a sensible default.
-    # Rejecting them crashed party recruitment mid-turn (Scout Kira, live).
-    _UNSPECIFIED = {"unknown", "none", "n/a", "na", "null", "tbd", "?"}
-    if args.level is not None and args.level.strip().lower() in _UNSPECIFIED:
+    if args.level is not None and args.level.strip().lower() in UNSPECIFIED_ARGUMENTS:
         args.level = ""
-    if args.npc_class is not None and args.npc_class.strip().lower() in _UNSPECIFIED:
+    if args.npc_class is not None and args.npc_class.strip().lower() in UNSPECIFIED_ARGUMENTS:
         args.npc_class = ""
-    if args.race is not None and args.race.strip().lower() in _UNSPECIFIED:
+    if args.race is not None and args.race.strip().lower() in UNSPECIFIED_ARGUMENTS:
         args.race = ""
 
     npc_name_arg = args.npc_name

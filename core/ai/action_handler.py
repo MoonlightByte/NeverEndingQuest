@@ -2871,6 +2871,18 @@ def validate_location_transition(location_graph, current_location_id, destinatio
     except Exception as e:
         return False, f"Location validation failed with exception: {str(e)}", None
 
+def _recruit_identity(party, npc_name):
+    """The authored record of the present person a recruit names, read before
+    the occupant is resolved as joined (#534); None when there is none."""
+    from core.nql import occupants as _occupants
+
+    return _occupants.person_identity(
+        str(party.get("module") or ""),
+        str((party.get("worldConditions") or {}).get("currentLocationId") or ""),
+        str(npc_name or ""),
+    )
+
+
 def update_party_npcs(party_tracker_data, operation, npc):
     """Update NPC party members (add or remove). Returns False only when an
     add's character sheet could not be built (nothing changed), else True."""
@@ -2913,20 +2925,43 @@ def update_party_npcs(party_tracker_data, operation, npc):
                                 warning(f"FAILURE: Could not get party level, using default: {e}", category="character_updates")
                 
                 npc_level = str(npc.get('level', default_level))
-                
-                # Add this debug line right before the subprocess.run call
-                debug(f"SUBPROCESS: Calling npc_builder.py with arguments: {npc['name']} {npc.get('race', '')} {npc.get('class', '')} {npc_level} {npc.get('background', '')}", category="character_updates")
 
-                subprocess.run([
-                    sys.executable, _generator_script_path("npc_builder.py"),
+                # Built in process, as the travel path and combat_builder build
+                # (#534), by the npc_builder.py command's argument rules: a
+                # placeholder is blank, and a level other than a whole number
+                # builds no sheet.
+                from core.generators.npc_builder import UNSPECIFIED_ARGUMENTS, build_npc_file, load_schema
+
+                def _given(value):
+                    text = str(value)
+                    return "" if text.strip().lower() in UNSPECIFIED_ARGUMENTS else text
+
+                level_text = _given(npc_level)
+                level = None
+                if level_text:
+                    if not level_text.isdigit():
+                        raise ValueError(f"level {npc_level!r} is not a whole number")
+                    level = int(level_text)
+                debug(f"STATE_CHANGE: Building NPC {npc['name']}: {npc.get('race', '')} {npc.get('class', '')} {npc_level} {npc.get('background', '')}", category="character_updates")
+                schema = load_schema("schemas/char_schema.json")
+                if not schema:
+                    raise RuntimeError("NPC character schema is unavailable")
+                sheet = build_npc_file(
                     npc['name'],
-                    npc.get('race', ''),
-                    npc.get('class', ''),
-                    npc_level,
-                    npc.get('background', '')
-                ], check=True, stdin=subprocess.DEVNULL)
+                    schema,
+                    _given(npc.get('race', '')),
+                    _given(npc.get('class', '')),
+                    level,
+                    str(npc.get('background', '')),
+                    npc_identity=_recruit_identity(party_tracker_data, npc['name']),
+                )
+                if not sheet:
+                    raise RuntimeError("no sheet was accepted")
                 info(f"SUCCESS: NPC profile created for {npc['name']}", category="character_updates")
-            except subprocess.CalledProcessError as e:
+            except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+                # A superseded live turn ends the turn by its own handler (#893).
+                raise
+            except Exception as e:
                 error(f"FAILURE: Failed to create NPC profile for {npc['name']}: {e}", category="character_updates")
                 return False
 
@@ -3021,6 +3056,7 @@ def prepare_party_npc_update(parameters, operation_id):
             npc.get("level") or party_level,
             npc.get("background"),
             path_manager=path_manager,
+            npc_identity=_recruit_identity(party, npc_name),
         )
         if not isinstance(sheet, dict):
             raise RuntimeError("required NPC sheet was not accepted")
