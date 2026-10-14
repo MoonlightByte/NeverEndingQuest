@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- A new NPC is given the game's SRD 5.2.1 species and backgrounds, with ability score increases from its background, instead of an older edition's race table in the builder prompt (#1055).
 - When the game asks you to roll a spell's dice for a given spell slot level (an upcast Cure Wounds at level 2), the DM can no longer then spend a slot of a different level: it is told to spend the level your dice were rolled for, and your roll stays (Closes #942).
 - A headless game folder (`--game-dir`) made by an earlier version now gets this version's prompts, schemas and rules data when it starts; before, it kept the copies it was made with, so later prompt and rules fixes never reached it (#899). Files only the folder has, the game's own files (companion memories, the bestiary, characters, saves, modules), and a folder already up to date are left as they are; a start that updated anything says so in one line.
 - A spell can no longer be cast with a spell slot below its level (a 2nd-level spell on a 1st-level slot), and the game no longer suggests one when it corrects a cast; spells it does not know are unaffected (Refs #942).

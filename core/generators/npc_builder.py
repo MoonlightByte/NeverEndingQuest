@@ -153,6 +153,26 @@ def _srd_class_reference(npc_class, npc_level):
         reference[name] = entry
     return {"level": level, "classes": reference}
 
+def _srd_origin_reference(npc_race, npc_background):
+    """The game's SRD 5.2.1 origins for one NPC request (#1055): the background
+    ability score rule, the species the request names (every species when it
+    names none, or one the data does not have, such as a subrace) and likewise
+    the background, each entry as the origins file holds it."""
+    from core.leveling.fighting_style import ORIGINS_BASENAME
+    from utils.encoding_utils import safe_json_load
+    origins = safe_json_load(os.path.join(os.path.dirname(os.path.dirname(class_tables._DATA)), ORIGINS_BASENAME))
+
+    def named(entries, request):
+        wanted = str(request or "").strip().casefold()
+        match = [entry for entry in entries if str(entry.get("name", "")).casefold() == wanted]
+        return match or list(entries)
+
+    return {
+        "background_ability_scores_rule": origins["background_ability_scores_rule"],
+        "species": named(origins["species"], npc_race),
+        "backgrounds": named(origins["backgrounds"], npc_background),
+    }
+
 def _set_class_tables(npc_data):
     """A fresh draft's spell slots and feature uses from the SRD class tables
     (#533), as startup sets them for a new hero (#704). Each slot level the
@@ -228,6 +248,17 @@ def generate_npc(npc_name, schema, npc_race=None, npc_class=None, npc_level=None
         "them, these numbers and these class spell lists; a class feature absent here is not part of that class "
         "at that level.\n"
         + json.dumps(class_reference))
+    try:
+        origin_reference = _srd_origin_reference(npc_race, npc_background)
+    except Exception as e:
+        # The reference is guidance; a failure to build it never stops generation.
+        warning(f"NPC origin reference not built for {npc_name}: {e}", category="npc_creation")
+        origin_reference = None
+    origin_reference_text = "" if origin_reference is None else (
+        "\n\nSRD 5.2.1 ORIGIN REFERENCE (the game's species and backgrounds): use these species, their traits and "
+        "these backgrounds. A species grants no ability score increase: the background raises ability scores "
+        "by background_ability_scores_rule, over the three abilities it lists.\n"
+        + json.dumps(origin_reference))
 
     system_message = f"""You are an assistant that creates NPC schema JSON files from a master NPC schema template for a 5e game. Given an NPC name and optional details, create a JSON representation of the NPC's stats and abilities according to 5e rules following the NPC schema template exactly. Ensure your new NPC JSON adheres to the provided schema template. Do not include any additional properties or nested 'type' and 'value' fields. Return only the JSON content without any markdown formatting.
 
@@ -250,14 +281,11 @@ a two-handed primary weapon needs both hands and no shield. Keep all other weapo
 stowed. Wear only one suit of armor and at most one shield. Do not invent code-owned
 nqlEquipmentMigration receipts.
 
-RACIAL TRAITS: Include ALL racial traits as separate entries in the racialTraits array. Every trait the race grants must be listed, including ability score increases. Examples:
-- Human: [{{"name":"Ability Score Increase","description":"Your ability scores each increase by 1."}},{{"name":"Extra Language","description":"You can speak, read, and write one extra language of your choice."}}]
-- Wood Elf: Darkvision, Keen Senses, Fey Ancestry, Trance, Mask of the Wild (5 traits)
-- Hill Dwarf: Darkvision, Dwarven Resilience, Dwarven Combat Training, Stonecunning, Dwarven Toughness (5 traits)
+RACIAL TRAITS: Include every trait the NPC's species grants in the ORIGIN REFERENCE as a separate entry in the racialTraits array, named as there. A species grants no ability score increase.
 
 Use the following rules information when creating the NPC:
 
-{system_prompt_text}{class_reference_text}
+{system_prompt_text}{class_reference_text}{origin_reference_text}
 
 Adhere strictly to 5e rules and the provided schema."""
 
