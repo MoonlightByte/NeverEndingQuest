@@ -402,7 +402,7 @@ def execute_expend(character_name: str, item_name: str, charges: Any, request_id
                                                    f"not be read ({clock_error}); nothing was spent"}
 
             working = copy.deepcopy(sheet)
-            genesis.assign_ids(working)
+            genesis.assign_ids(working, reserved=genesis.held_ids_on_disk())
             cid = genesis.character_id(working)
             if clock is not None:
                 # H2b: a catalog dice row without an engine seed is minted
@@ -484,7 +484,7 @@ def combat_spend(sheet: Dict[str, Any], item_name: str, charges: int, clock: Opt
         return {"ok": False, "overspend": False, "fact": "clock",
                 "reason": f"{item_name} keeps its charges on the game clock, which could not be read ({clock_error})"}
     working = copy.deepcopy(sheet)
-    genesis.assign_ids(working)
+    genesis.assign_ids(working, reserved=genesis.held_ids_on_disk())
     cid = genesis.character_id(working)
     wrow = working["equipment"][index]
     if clock is not None and genesis.mint_reason(wrow):
@@ -582,7 +582,7 @@ def refresh_sheet(character_name: str, now: int, location: str = "party") -> Dic
             if not due:
                 return {"refreshed": []}
             working = copy.deepcopy(sheet)
-            genesis.assign_ids(working)
+            genesis.assign_ids(working, reserved=genesis.held_ids_on_disk())
             cid = genesis.character_id(working)
             # H2b: catalog dice rows without an engine seed are minted first
             # (anchored at now by the engine), then whatever is still due is counted.

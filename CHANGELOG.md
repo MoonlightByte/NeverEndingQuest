@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- Two characters buying the same item, or an item added after a stored one, no longer end up sharing an id that hides one of them (#1060).
 - A new character or companion whose name has no letter or digit (for example "???"), or whose name matches one of the rules engine's own reserved names (Attacker, Target, Save Source, Roster Conversion), is refused with the reason, so another name is chosen; existing characters are not changed (#949).
 - A saved character with more weapons equipped than two hands can hold (Scout Elen: Longbow, Shortsword and Short Sword) is no longer refused by the rules engine, so their armor class, attack rows, damage and level-up work again; the extra one is treated as carried and the saved sheet is left as it is (Closes #960).
 - Two characters whose names have no Latin letter or digit (for example Korean or Cyrillic names) are no longer merged into one in the rules engine; each now gets its own engine id, and every other name keeps its id (#948).

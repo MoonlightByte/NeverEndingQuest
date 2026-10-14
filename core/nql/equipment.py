@@ -69,16 +69,18 @@ def _refusal_reason(before, old, new, fault):
 
 
 def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = "sheet",
-              binary: Optional[str] = None) -> EquipmentOutcome:
+              binary: Optional[str] = None, reserved: Optional[set] = None) -> EquipmentOutcome:
     """Return the engine-reconciled equipment list for ``after``, or a refusal.
 
     ``before`` is the sheet as stored; ``after`` is the same sheet with the T079
     delta merged (by item name, as the legacy merge does). Entries keep their
     ``nql_id`` through the merge; entries only in ``after`` are new items.
+    A new item's minted id steps past ``reserved``, the ids held on other
+    sheets and in chests (#1060).
     """
     before = copy.deepcopy(before)
     after = copy.deepcopy(after)
-    genesis.assign_ids(before)
+    genesis.assign_ids(before, reserved=reserved)
     # Carry ids into the merged entries by exact name for entries that have none
     # (the T079 delta never carries nql_id), then mint for genuinely new ones.
     by_name = {}
@@ -88,7 +90,7 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
     for e in after.get("equipment") or []:
         if isinstance(e, dict) and not isinstance(e.get("nql_id"), str) and e.get("item_name") in by_name:
             e["nql_id"] = by_name[e["item_name"]]
-    genesis.assign_ids(after)
+    genesis.assign_ids(after, reserved=reserved)
 
     cid = genesis.character_id(before)
     old = _index_by_id(before)

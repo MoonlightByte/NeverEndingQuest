@@ -181,8 +181,8 @@ def transact(giver: Dict[str, Any], receiver: Dict[str, Any], item_name: str, qu
     sheets = (giver, receiver)
     giver = copy.deepcopy(giver)
     receiver = copy.deepcopy(receiver)
-    genesis.assign_ids(giver)
-    genesis.assign_ids(receiver)
+    genesis.assign_ids(giver, reserved=reserved)
+    genesis.assign_ids(receiver, reserved=reserved)
     gid = genesis.character_id(giver)
     rid = genesis.character_id(receiver)
     if gid == rid:

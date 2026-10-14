@@ -163,10 +163,13 @@ def ammunition_lines(cid: str, iid: str, name: str, quantity: int, existing: boo
     return f"create item {_q(iid)} named {_q(name)} {{ owner {_q(cid)}; custody character {_q(cid)}; quantity {quantity}; }};"
 
 
-def next_item_id(sheet: Dict[str, Any], entry: Dict[str, Any]) -> str:
-    """item:buy:<slug>:<n>, the first n not on the sheet."""
+def next_item_id(sheet: Dict[str, Any], entry: Dict[str, Any], reserved: Any = ()) -> str:
+    """item:buy:<slug>:<n>, the first n not on the sheet nor in ``reserved``:
+    the id names no character, so another sheet or a chest may hold it; the
+    caller passes every id held there, read as values (#1060)."""
     taken = {e.get("nql_id") for e in sheet.get("equipment") or [] if isinstance(e, dict)}
     taken |= {str(e.get("nqlId")) for e in sheet.get("acquisitions") or [] if isinstance(e, dict)}
+    taken |= set(reserved or ())
     slug = entry["id"].split("/", 1)[1] if "/" in entry["id"] else genesis.slug(entry.get("name", ""))
     n = 1
     while f"item:buy:{slug}:{n}" in taken:
