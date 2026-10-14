@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed two unreachable code paths (#444). The DM-response validator in main.py no longer has a branch that normalized a draft itself: its only caller always passes the draft already normalized, and now has to. `core/validation/dm_response_validator.py` no longer has its own createEncounter shape check, a second copy of the live check in `core/combat/scene.py` that no game code ran. No game behaviour changes.
 - Removed `updates/update_party_tracker.py`, a module that nothing called: it read a `party` list and an armor/weapons/other equipment shape that no party tracker or character sheet has used for a long time, so any call would have failed. Its unused import in `core/managers/combat_manager.py` and the lines naming it in `module_debugger.py` and `ARCHITECTURE.md` went with it (#470).
 - Removed `merge_updates` from `core/managers/combat_manager.py`, a helper that nothing called; had anything called it, it would have replaced a character's whole equipment list with the update's list instead of changing single items (#471).
+- Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
 - In the web player, a requested check now shows the extra die the game adds, for example "+ 1d4 Guidance (the game rolls)" when Guidance or Bless is on you (#984).
