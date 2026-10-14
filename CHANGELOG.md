@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - After you roll a check the DM asked for, the result (your roll, bonus, total and the difficulty, success or failure) now shows right away under your dice, before the DM narrates what happens (#530).
+- A character update that names no character is now sent back to the DM to name one, instead of being written to the first party member's sheet (#914).
+- A hero saved before Fighting Styles were recorded as "Fighting Style: <name>" (for example "Fighting Style (Defense)" or "Fighting Style (Archery)") now gets the style's effect at their next level-up, which records it the new way and says so; until then the game log notes it (#760).
+- A companion speaking in character now knows how much ammunition it carries: its in-character voice sees each ammunition stock with its count (for example "Arrow x19") after its equipment, so it no longer says its arrow count is not recorded (#359).
+- A Fighter with the Defense Fighting Style now sees its +1 Armor Class listed as "Fighting Style: Defense" in the armor class breakdown, not as a bonus from their armor (#759).
+- A character sheet that lists proficiencies the way the rules print them ("Martial weapons", "Light armor", "all armor") now has those proficiencies counted by the rules engine, the same as "Martial" or "Light" (#896).
 - A recruited NPC is now built from the adventure's own description of that person, so the companion matches the character the players met even when the recruit action leaves race or class blank or names others; the recruit build also runs inside the game instead of a separate command, so a cancelled turn stops it cleanly (#534).
 - The Thornwood Watch no longer shows a quest id in a place or feature name: the cave is now just "Wolf's Den Cave" and the watchtower bells are "East Tower Bell" and "West Tower Bell" (#989).
 - When you attack in a fight, the DM now describes your swing or spell in its own words before asking for the dice; the exact dice to roll and the option to type roll stay the same (#860).

@@ -764,15 +764,25 @@ def _utilities(sheet: Mapping[str, Any]) -> list[str]:
 def _items(sheet: Mapping[str, Any]) -> list[str]:
     result = []
     equipment = sheet.get("equipment")
-    if not isinstance(equipment, list):
-        return result
-    for item in equipment:
-        if isinstance(item, dict):
-            name = _string(item.get("item_name") or item.get("name"))
-        else:
-            name = _string(item)
-        if name:
-            result.append(name)
+    if isinstance(equipment, list):
+        for item in equipment:
+            if isinstance(item, dict):
+                name = _string(item.get("item_name") or item.get("name"))
+            else:
+                name = _string(item)
+            if name:
+                result.append(name)
+    # #359: the typed ammunition stock follows the equipment names, one
+    # "<name> x<quantity>" entry per row, so the voice knows its arrow count.
+    ammunition = sheet.get("ammunition")
+    if isinstance(ammunition, list):
+        for row in ammunition:
+            if not isinstance(row, dict):
+                continue
+            name = _string(row.get("name"))
+            quantity = row.get("quantity")
+            if name and type(quantity) is int:
+                result.append("%s x%d" % (name, quantity))
     return result
 
 

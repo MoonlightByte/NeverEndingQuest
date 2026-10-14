@@ -229,7 +229,7 @@ def test_chosen_fighting_style_is_committed_as_level_up_writes_it(wizard, author
     assert committed.get("feats", []) == []
     assert committed["armorClass"] == provenance["engine_projection"]["armorClass"] == 19
     assert provenance["fighting_style"]["style"] == "Defense"
-    style_notes = [note for note in provenance["mechanics_notes"] if "Fighting Style" in note]
+    style_notes = [note for note in provenance["mechanics_notes"] if note.startswith("Fighting Style")]
     assert style_notes == ([] if was is None else [f"Fighting Style: Defense set in classFeatures (was {was})"])
 
 
