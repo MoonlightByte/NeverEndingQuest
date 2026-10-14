@@ -5,7 +5,14 @@
     "RO001": {
       "name": "Rangers\u2019 Outpost",
       "type": "wilderness",
-      "locations": [],
+      "locations": [
+        "RO01",
+        "RO02",
+        "RO03",
+        "RO04",
+        "RO05",
+        "RO06"
+      ],
       "npcs": [
         "Ranger Elen",
         "Quartermaster Brann",
@@ -22,7 +29,14 @@
     "TW001": {
       "name": "Thornwood Wilds",
       "type": "wilderness",
-      "locations": [],
+      "locations": [
+        "TW01",
+        "TW02",
+        "TW03",
+        "TW04",
+        "TW05",
+        "TW06"
+      ],
       "npcs": [
         "Wounded Scout Neris",
         "Merchant Lira",
@@ -38,7 +52,13 @@
     "NCW001": {
       "name": "Northern Corrupted Woods",
       "type": "wilderness",
-      "locations": [],
+      "locations": [
+        "NC01",
+        "NC02",
+        "NC03",
+        "NC04",
+        "NC05"
+      ],
       "npcs": [
         "The Withered Hart"
       ],
@@ -146,7 +166,200 @@
       ]
     }
   },
-  "locations": {},
+  "locations": {
+    "NC01": {
+      "name": "Corrupted Entry Cave",
+      "area": "NCW001",
+      "npcs": [],
+      "connections": [
+        "NC02",
+        "NC03",
+        "TW05"
+      ]
+    },
+    "NC02": {
+      "name": "Blighted Thornbriar Grove",
+      "area": "NCW001",
+      "npcs": [
+        "Thorn-Touched Dryad Sylara"
+      ],
+      "connections": [
+        "NC01",
+        "NC04",
+        "NC05"
+      ]
+    },
+    "NC03": {
+      "name": "Hollow of the Withered Hart",
+      "area": "NCW001",
+      "npcs": [
+        "The Withered Hart"
+      ],
+      "connections": [
+        "NC01",
+        "NC04",
+        "NC05"
+      ]
+    },
+    "NC04": {
+      "name": "Doomed Explorer's Camp",
+      "area": "NCW001",
+      "npcs": [
+        "Corrupted Ranger Thane"
+      ],
+      "connections": [
+        "NC02",
+        "NC03"
+      ]
+    },
+    "NC05": {
+      "name": "The Corrupted Nexus",
+      "area": "NCW001",
+      "npcs": [
+        "Malarok the Corruptor"
+      ],
+      "connections": [
+        "NC02",
+        "NC03"
+      ]
+    },
+    "RO01": {
+      "name": "Rangers' Command Post",
+      "area": "RO001",
+      "npcs": [
+        "Ranger Elen",
+        "Ranger Marcus",
+        "Scout Kira",
+        "Messenger Tom",
+        "Rusk"
+      ],
+      "connections": [
+        "RO02",
+        "RO03",
+        "RO04"
+      ]
+    },
+    "RO02": {
+      "name": "Supply Depot",
+      "area": "RO001",
+      "npcs": [
+        "Quartermaster Brann",
+        "Dock Worker Finn",
+        "Merchant Vera",
+        "Apprentice Jeb"
+      ],
+      "connections": [
+        "RO01",
+        "RO04"
+      ]
+    },
+    "RO03": {
+      "name": "Trader's Rest",
+      "area": "RO001",
+      "npcs": [
+        "Trader Sila",
+        "Merchant Gareth",
+        "Trader Mila",
+        "Caravan Guard Bex"
+      ],
+      "connections": [
+        "RO01",
+        "RO05",
+        "RO06"
+      ]
+    },
+    "RO04": {
+      "name": "Scout's Watch",
+      "area": "RO001",
+      "npcs": [],
+      "connections": [
+        "RO01",
+        "RO02"
+      ]
+    },
+    "RO05": {
+      "name": "Forgotten Waystation",
+      "area": "RO001",
+      "npcs": [],
+      "connections": [
+        "RO03"
+      ]
+    },
+    "RO06": {
+      "name": "North Tower Overlook",
+      "area": "RO001",
+      "npcs": [],
+      "connections": [
+        "RO03",
+        "TW01"
+      ]
+    },
+    "TW01": {
+      "name": "Ambush Site",
+      "area": "TW001",
+      "npcs": [],
+      "connections": [
+        "TW02",
+        "TW04",
+        "TW06",
+        "RO06"
+      ]
+    },
+    "TW02": {
+      "name": "Bandit Trail",
+      "area": "TW001",
+      "npcs": [],
+      "connections": [
+        "TW01",
+        "TW03",
+        "TW05"
+      ]
+    },
+    "TW03": {
+      "name": "Abandoned Camp",
+      "area": "TW001",
+      "npcs": [],
+      "connections": [
+        "TW02",
+        "TW04"
+      ]
+    },
+    "TW04": {
+      "name": "Hermit's Refuge",
+      "area": "TW001",
+      "npcs": [
+        "Spirit-Touched Hermit Maelo"
+      ],
+      "connections": [
+        "TW01",
+        "TW03",
+        "TW06"
+      ]
+    },
+    "TW05": {
+      "name": "Bandit Stronghold",
+      "area": "TW001",
+      "npcs": [
+        "Bandit Captain Gorvek"
+      ],
+      "connections": [
+        "TW02",
+        "NC01"
+      ]
+    },
+    "TW06": {
+      "name": "Wolf's Den Cave",
+      "area": "TW001",
+      "npcs": [
+        "Wounded Ranger Gareth",
+        "Merchant Kael"
+      ],
+      "connections": [
+        "TW04",
+        "TW01"
+      ]
+    }
+  },
   "plot_scopes": {
     "PP001": "RO001",
     "PP002": "TW001",

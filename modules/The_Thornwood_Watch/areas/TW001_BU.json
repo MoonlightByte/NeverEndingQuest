@@ -17,7 +17,8 @@
         "type": "clearing",
         "connections": [
           "TW02",
-          "TW04"
+          "TW04",
+          "TW06"
         ],
         "coordinates": "X2Y2",
         "name": "Ambush Site"
@@ -67,7 +68,8 @@
         "id": "TW06",
         "type": "cave",
         "connections": [
-          "TW04"
+          "TW04",
+          "TW01"
         ],
         "coordinates": "X1Y1",
         "name": "Wolf's Den Cave"
@@ -303,7 +305,8 @@
       "coordinates": "X2Y1",
       "connectivity": [
         "TW01",
-        "TW03"
+        "TW03",
+        "TW06"
       ],
       "areaConnectivity": [],
       "areaConnectivityId": [],
@@ -491,7 +494,8 @@
       "description": "A narrow cave mouth, partially obscured by thorny bushes, leads into darkness. The sounds of snarling wolves and the desperate clang of steel echo from within. Inside, Wounded Ranger Gareth and Merchant Kael are cornered, making a desperate stand against several unnaturally aggressive wolves corrupted by Malarok's influence.",
       "coordinates": "X1Y1",
       "connectivity": [
-        "TW04"
+        "TW04",
+        "TW01"
       ],
       "areaConnectivity": [],
       "areaConnectivityId": [],
