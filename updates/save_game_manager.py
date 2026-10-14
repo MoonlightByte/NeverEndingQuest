@@ -245,6 +245,17 @@ class SaveGameManager:
                     raise
                 _wait_to_retry(None, 0.05, report, started)
 
+    def _discard_unfinished_save(self, save_path):
+        """Remove a save folder that did not finish (#1003). If it cannot be
+        removed, its ``save_incomplete`` marker keeps it out of the Load list."""
+        try:
+            self._restore_io(shutil.rmtree, save_path, wait_label='Save')
+        except FileNotFoundError:
+            pass
+        except Exception as exc:
+            warning(f"SAVE: An unfinished save stays on disk, hidden from Load: {save_path}: {exc}",
+                    category="save_game")
+
     @staticmethod
     def _clear_campaign_completion_metadata(*, generation_only=False) -> None:
         """Discard runtime WAL/receipts after restoring older campaign state."""
@@ -1143,6 +1154,7 @@ class SaveGameManager:
         Returns:
             Tuple of (success: bool, message: str)
         """
+        unfinished = None
         try:
             # Generate timestamp for save directory
             if save_folder is None:
@@ -1167,16 +1179,20 @@ class SaveGameManager:
             
             # Create save directory
             os.makedirs(save_path, exist_ok=True)
+            unfinished = save_path
             info(f"FILE_OP: Created save directory: {save_path}", category="save_game")
             
-            # Generate and save metadata
+            # Generate and save metadata. Until the last write the save is
+            # marked unfinished, so it is never offered for Load (#1003).
             metadata = self.generate_save_metadata(
                 description, save_mode, auto_checkpoint=auto_checkpoint
             )
+            metadata["save_incomplete"] = True
             metadata_path = f"{save_path}/save_metadata.json"
             if not safe_write_json(
                 metadata_path, metadata, create_backup=False
             ):
+                self._discard_unfinished_save(save_path)
                 return False, "Failed to write save metadata"
             
             # Copy files based on save mode
@@ -1261,16 +1277,22 @@ class SaveGameManager:
                                             category='save_game',
                                         )
                             continue
-                        if dest_dir:
-                            os.makedirs(dest_dir, exist_ok=True)
-                        
                         try:
-                            shutil.copy2(source_path, dest_path)
-                            copied_files.append(file_path)
-                            debug(f"FILE_OP: Copied: {file_path}", category="save_game")
-                        except Exception as e:
-                            error(f"FAILURE: Failed to copy {file_path}", exception=e, category="save_game")
+                            # A busy file is retried. A file that still cannot be
+                            # copied ends the save: Load reads a missing file as
+                            # one this save never had and removes it (#1003).
+                            if dest_dir:
+                                self._restore_io(os.makedirs, dest_dir, exist_ok=True, wait_label='Save')
+                            self._restore_io(shutil.copy2, source_path, dest_path, wait_label='Save')
+                        except FileNotFoundError:
+                            # Gone at the save boundary: absent from this save too.
                             skipped_files.append(file_path)
+                            continue
+                        except OSError as exc:
+                            error(f"FAILURE: Failed to copy {file_path}", exception=exc, category="save_game")
+                            raise RuntimeError(f"could not copy {file_path}: {exc}") from exc
+                        copied_files.append(file_path)
+                        debug(f"FILE_OP: Copied: {file_path}", category="save_game")
                     else:
                         skipped_files.append(file_path)
             
@@ -1286,10 +1308,13 @@ class SaveGameManager:
             metadata["state_manifest"] = self._state_manifest_for_root(save_path)
 
             # Save updated metadata
+            metadata.pop("save_incomplete", None)
             if not safe_write_json(
                 metadata_path, metadata, create_backup=False
             ):
+                self._discard_unfinished_save(save_path)
                 return False, "Failed to finalize save metadata"
+            unfinished = None
             
             success_msg = f"Save game created successfully: {save_path}"
             success_msg += f"\nCopied {len(copied_files)} files"
@@ -1311,6 +1336,8 @@ class SaveGameManager:
         except Exception as e:
             error_msg = f"Failed to create save game: {str(e)}"
             error(f"FAILURE: {error_msg}", category="save_game")
+            if unfinished:
+                self._discard_unfinished_save(unfinished)
             return False, error_msg
     
     def list_save_games(self) -> List[Dict[str, Any]]:
@@ -1331,7 +1358,8 @@ class SaveGameManager:
                     metadata_path = os.path.join(item_path, "save_metadata.json")
                     if os.path.exists(metadata_path):
                         metadata = safe_read_json(metadata_path)
-                        if metadata:
+                        # A save that did not finish is never offered (#1003).
+                        if metadata and metadata.get("save_incomplete") is not True:
                             metadata["save_folder"] = item
                             metadata["save_path"] = item_path
                             save_games.append(metadata)
