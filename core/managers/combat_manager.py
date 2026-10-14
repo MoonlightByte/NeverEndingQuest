@@ -3226,7 +3226,8 @@ def _round_facts_text(encounter, round_num):
                 piece += f" roll {roll.get('value')}"
                 if roll.get("rule") and roll.get("treated") not in (None, roll.get("value")):
                     piece += f" (counts as {roll.get('treated')}, {roll.get('rule')})"
-                elif roll.get("rule") and roll.get("facesTreated"):
+                elif (roll.get("rule") and roll.get("facesTreated")
+                      and roll.get("facesTreated") != roll.get("faces")):
                     piece += f" (dice {roll.get('faces')} count as {roll.get('facesTreated')}, {roll.get('rule')})"
             if roll.get("success") is not None:
                 piece += " success" if roll.get("success") else " failure"
