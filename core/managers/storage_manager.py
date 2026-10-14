@@ -416,7 +416,8 @@ class StorageManager:
             # The engine moves the stock (core/nql/storage.py): it checks stock,
             # worn state and location, commits once, and both records below are
             # rewritten from its custody facts. No quantity is computed here.
-            outcome = nql_storage.transact(character_data, storage_data, storage_container, operation)
+            outcome = nql_storage.transact(character_data, storage_data, storage_container, operation,
+                                           reserved=nql_storage.held_ids_on_disk())
             if not outcome.ok:
                 raise Exception(outcome.reason)
             character_data = outcome.character
@@ -560,7 +561,8 @@ class StorageManager:
                 items_to_retrieve.append((operation["item_name"], operation["quantity"], stored_item))
             
             # The engine moves the stock back (core/nql/storage.py); see store_item.
-            outcome = nql_storage.transact(character_data, storage_data, storage_container, operation)
+            outcome = nql_storage.transact(character_data, storage_data, storage_container, operation,
+                                           reserved=nql_storage.held_ids_on_disk())
             if not outcome.ok:
                 raise Exception(outcome.reason)
             character_data = outcome.character
@@ -750,7 +752,8 @@ class StorageManager:
             # The engine stages the move (core/nql/storage.py): same transaction
             # as the immediate path, applied to the working copies.
             outcome = nql_storage.transact(character_after, storage_working, container, operation,
-                                           request_id="storage:%s" % operation_id)
+                                           request_id="storage:%s" % operation_id,
+                                           reserved=nql_storage.held_ids_on_disk())
             if not outcome.ok:
                 if outcome.worn_items:
                     raise ValueError("selected items are still equipped")

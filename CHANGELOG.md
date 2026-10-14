@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- Handing a companion part of a stack a second time no longer fails, and an item handed over or taken from a chest can no longer share its id with one kept elsewhere (#1039).
 - On Windows, travel departure, cache, capture and generation file locks now wait for another game process instead of failing after about ten seconds (#944).
 - A fight's round summary no longer says a Great Weapon Fighting swing's damage dice "count as" the same numbers when no die rolled a 1 or 2; it still says so when one did (#941).
 - When a move's prepare step fails and its record cannot be read or removed, the player still gets the plain "the move could not be prepared" line; the record is left for recovery (#943).
