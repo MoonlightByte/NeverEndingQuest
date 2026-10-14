@@ -1218,6 +1218,14 @@ def _split_ammunition_quantity_deltas(character_data, updates, model_authored):
                 return pending, (f"ammunition quantity totals are not accepted for rows already on the sheet "
                                  f"({entry['name']!r}); report the change as quantityDelta (signed whole "
                                  "number), or quantity 0 to remove the row entirely")
+        elif stored is None and model_authored and type(entry.get('quantity')) is int \
+                and entry['quantity'] <= 0:
+            # #358: a removal under a name the sheet does not list changed nothing
+            # and was reported as done; it is refused so the change is said again.
+            names = [r.get('name') for r in character_data.get('ammunition') or []
+                     if isinstance(r, dict) and r.get('name')]
+            return pending, (f"ammunition {entry['name']!r} is not on the sheet, so it cannot be spent or "
+                             f"removed; the sheet's rows are {names}; use the exact name with quantityDelta")
     return pending, None
 
 
