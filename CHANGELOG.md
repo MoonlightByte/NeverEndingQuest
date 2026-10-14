@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed two unreachable code paths (#444). The DM-response validator in main.py no longer has a branch that normalized a draft itself: its only caller always passes the draft already normalized, and now has to. `core/validation/dm_response_validator.py` no longer has its own createEncounter shape check, a second copy of the live check in `core/combat/scene.py` that no game code ran. No game behaviour changes.
 
 ### Fixed
+- The shortened character sheet the DM reads for companions no longer folds Perception, Persuasion and Performance into one "per" skill: skills and expertise are listed by their full names (#553).
 - Fifteen Keep of Doom loot items (potions, antitoxin, scrolls and two vials) now name a standard item or state what they do, so they can be used in play (#913).
 - Three Thornwood Watch loot items now say what they do: the explorers' two healing potions and the Hart's tears state how many hit points they restore, and the vial of alchemical fire is the standard Alchemist's Fire, so they can be used (#913).
 - An NPC named in an encounter, a combat turn, an encounter update or a party change is now matched to its own sheet only: the sheet recorded when the encounter was built, else the exact name. A name that only shares a word ("Scout", "Kira", "Captain Bryn") no longer loads, syncs or writes another NPC's sheet or an old backup file; an unreadable sheet is skipped instead of failing the lookup (#855).
