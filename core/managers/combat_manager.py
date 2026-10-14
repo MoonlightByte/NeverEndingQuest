@@ -1003,6 +1003,7 @@ def _inexact_character_names(response, encounter_data):
         if isinstance(creature, dict) and creature.get("type") in ("player", "npc") and creature.get("name")
     ]
     inexact = []
+    nameless = 0
     for action in actions:
         if not isinstance(action, dict) or str(action.get("action", "")).lower() not in (
             "updatecharacterinfo", "updateplayerinfo", "updatenpcinfo"
@@ -1010,17 +1011,29 @@ def _inexact_character_names(response, encounter_data):
             continue
         params = action.get("parameters") or {}
         name = (params.get("characterName") or params.get("npcName")) if isinstance(params, dict) else None
-        if name and exact_character_reference(name, party, combatants) is None:
+        if not name:
+            # #959: an update that names no one would be dropped at the end of combat
+            nameless += 1
+        elif exact_character_reference(name, party, combatants) is None:
             inexact.append(name)
-    if not inexact:
+    if not inexact and not nameless:
         return None
     names = list(party.get("partyMembers", []) or []) + [
         npc.get("name") for npc in party.get("partyNPCs", []) or [] if isinstance(npc, dict)
     ] + combatants
+    problems = []
+    if inexact:
+        problems.append(
+            "updateCharacterInfo names "
+            + ", ".join(repr(name) for name in inexact)
+            + ", which are not exact character names"
+        )
+    if nameless:
+        problems.append("%d updateCharacterInfo action(s) name no character" % nameless)
     return (
-        "Character name error: updateCharacterInfo names "
-        + ", ".join(repr(name) for name in inexact)
-        + ", which are not exact character names. Use one of these exact names: "
+        "Character name error: "
+        + "; ".join(problems)
+        + ". Use one of these exact names: "
         + ", ".join(sorted({str(name) for name in names if name}))
         + "."
     )
@@ -6079,6 +6092,10 @@ Rules:
                character_name = parameters.get(char_name_key)
                changes = parameters.get("changes")
 
+               if not character_name and changes:
+                   # Backstop: the name check sends a nameless update back (#959)
+                   warning("CONSOLIDATING: an update names no character; not applied: %r" % (changes,),
+                           category="combat_events")
                if character_name and changes:
                    if character_name not in final_character_updates:
                        final_character_updates[character_name] = []
