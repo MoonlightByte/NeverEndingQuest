@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- Two characters whose names have no Latin letter or digit (for example Korean or Cyrillic names) are no longer merged into one in the rules engine; each now gets its own engine id, and every other name keeps its id (#948).
 - When a move's prepare step fails and its record cannot be read or removed, the player still gets the plain "the move could not be prepared" line; the record is left for recovery (#943).
 - A feat that raises an ability score at level-up (Grappler, an Epic Boon, or Ability Score Improvement named as a feat) now applies its increase; before, the feat was saved and the increase was lost. When the answer leaves the ability out, the level-up asks for it (#424).
 - An internal error while the DM's response is being checked now ends that check at once with its own message, instead of being retried five times and reported as an AI provider failure (#950).
