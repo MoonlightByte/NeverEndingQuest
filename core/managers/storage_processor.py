@@ -128,6 +128,20 @@ class StorageProcessor:
                     "quantity": item.get("quantity", 1),
                     "type": item.get("item_type", "miscellaneous")
                 })
+        # The ammunition stock is inventory too (#366): one entry per row the
+        # character still holds, so storing arrows names an item it has.
+        ammunition = (context.get("character") or {}).get("ammunition")
+        for row in ammunition if isinstance(ammunition, list) else []:
+            if not isinstance(row, dict):
+                continue
+            name = row.get("name")
+            quantity = row.get("quantity")
+            if isinstance(name, str) and name.strip() and type(quantity) is int and quantity > 0:
+                character_inventory.append({
+                    "name": name,
+                    "quantity": quantity,
+                    "type": "ammunition"
+                })
                 
         # Format existing storage for context
         existing_storage_info = []
