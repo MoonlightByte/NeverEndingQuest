@@ -16,7 +16,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
 
-from core.nql import apply, genesis
+from core.nql import apply, genesis, item_catalog
 
 
 @dataclass
@@ -44,6 +44,22 @@ def declared_row(sheet: Dict[str, Any], name: str) -> Optional[Tuple[str, Dict[s
             return iid, row
     loose = [(iid, row) for iid, row in rows if row["name"].strip().lower() == wanted.lower()]
     return loose[0] if len(loose) == 1 else None
+
+
+def declared_row_for_catalog(sheet: Dict[str, Any], name: str,
+                             catalog_id: Any = None) -> Optional[Tuple[str, Dict[str, Any]]]:
+    """(engine stock id, row) of the one declared row holding the same catalog
+    ammunition as ``name`` (or ``catalog_id``) under another name, or None.
+
+    The purchase rule (#552): an Arrow row takes Arrows. None, or two or more
+    such rows, give None and the caller keeps its own path (#971).
+    """
+    wanted = item_catalog.ammunition_entry({"name": name, "catalog_id": catalog_id})
+    if wanted is None:
+        return None
+    held = [(iid, row) for iid, row in genesis.ammunition_rows(sheet, [])
+            if (item_catalog.ammunition_entry(row) or {}).get("id") == wanted.get("id")]
+    return held[0] if len(held) == 1 else None
 
 
 def declared_row_by_id(sheet: Dict[str, Any], iid: str) -> Optional[Dict[str, Any]]:

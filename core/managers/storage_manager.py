@@ -537,7 +537,7 @@ class StorageManager:
                     if not stored_item:
                         raise Exception(f"{item_info['item_name']} not found in storage")
                         
-                    available_quantity = stored_item.get("quantity", 1)
+                    available_quantity = nql_storage.stored_quantity(storage_container["contents"], stored_item)
                     if available_quantity < item_info["quantity"]:
                         raise Exception(f"Storage only has {available_quantity} {item_info['item_name']}, requested {item_info['quantity']}")
                         
@@ -553,7 +553,7 @@ class StorageManager:
                 if not stored_item:
                     raise Exception(f"{operation['item_name']} not found in storage")
                     
-                available_quantity = stored_item.get("quantity", 1)
+                available_quantity = nql_storage.stored_quantity(storage_container["contents"], stored_item)
                 if available_quantity < operation["quantity"]:
                     raise Exception(f"Storage only has {available_quantity} {operation['item_name']}, requested {operation['quantity']}")
                     
