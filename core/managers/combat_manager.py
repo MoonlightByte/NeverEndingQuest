@@ -3486,11 +3486,14 @@ def _is_valid_combat_round_summary(summary, expected_round):
         ):
             return False
 
+        # A round with no committed facts names no initiative, so T042 may
+        # leave it null; nothing reads it (#1008). A given value is a number.
         initiative = action.get("init")
-        if isinstance(initiative, bool) or not isinstance(initiative, (int, float)):
-            return False
-        if not math.isfinite(initiative):
-            return False
+        if initiative is not None:
+            if isinstance(initiative, bool) or not isinstance(initiative, (int, float)):
+                return False
+            if not math.isfinite(initiative):
+                return False
 
         outcome_fields = [field for field in ("damage", "heal") if field in action]
         if not outcome_fields or not all(
@@ -3562,7 +3565,7 @@ Create a JSON summary with EXACTLY this structure:
 {{
   "round": {round_num},
   "actions": [
-    {{"actor": "name", "init": number, "action": "action_type", "target": "target_name", "roll": "dice+mod=total vs AC/DC", "result": "hit/miss/save/fail", "damage": "X type" or "heal": "X", "effects": "HP changes, conditions, etc"}}
+    {{"actor": "name", "init": number or null, "action": "action_type", "target": "target_name", "roll": "dice+mod=total vs AC/DC", "result": "hit/miss/save/fail", "damage": "X type" or "heal": "X", "effects": "HP changes, conditions, etc"}}
   ],
   "deaths": ["ALL creatures with HP 0 or listed as dead in the creature states -- include every dead creature regardless of when they died"],
   "status_changes": ["new conditions or effects applied this round"],
@@ -3579,6 +3582,7 @@ CRITICAL RULES:
 - The "deaths" array MUST include every creature shown as dead or at 0 HP in the creature states, even if they died in a prior round. This is a complete death list for state tracking.
 - Focus on mechanical accuracy for the actions -- exact roll values, damage numbers, and HP totals.
 - Every action carries "damage" or "heal"; a miss, a failed attempt or a non-damaging action carries "damage": "0".
+- "init" is the initiative shown in the log or the facts; null when none is shown.
 - For narrative_highlights, extract the most dramatic moments.
 - Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."""
 
