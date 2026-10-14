@@ -10505,12 +10505,47 @@ _DM_REVIEW_EXHAUSTED_MESSAGE = (
     "Nothing in your game was changed. The DM could not settle a response "
     "for that action. You can try it again one step at a time."
 )
+# #950: the game's own code failed while a draft was reviewed. A follow-up
+# review may run after an earlier beat committed, so this does not claim
+# that nothing changed.
+_DM_REVIEW_LOCAL_FAULT_MESSAGE = (
+    "The game hit an internal error while checking that response, so it was "
+    "not applied. Try that action again; if it keeps happening, Load your "
+    "last save."
+)
 # #735: a follow-up review's failure, shown after an earlier beat of the turn
 # may already have committed (so "Nothing in your game was changed" is false).
 _FOLLOWUP_NOT_APPLIED_MESSAGE = (
     "That last response could not be completed, so it was not applied. "
     "You can try that action again."
 )
+
+
+def _is_local_review_fault(exc, classification):
+    """True when a review exception is the game's own fault, not the
+    provider's (#950): the classifier found no provider signal and no
+    exception in its chain is a typed provider failure. Every review provider
+    call raises one of those types (api_client wraps SDK and transport
+    errors; the live path raises its completed and unavailable errors)."""
+    from core.ai.api_client import ProviderCallError
+    from utils.capture.live_provider_call import (
+        LiveProviderCompletedError, LiveProviderUnavailable,
+    )
+    if classification.get("category") != "unclassified":
+        return False
+    provider_types = (ProviderCallError, LiveProviderCompletedError, LiveProviderUnavailable)
+    seen = set()
+    pending = [exc]
+    while pending:
+        current = pending.pop()
+        if current is None or id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, provider_types):
+            return False
+        pending.extend((getattr(current, "original_error", None),
+                        current.__cause__, current.__context__))
+    return True
 
 
 def _followup_failure_message(result):
@@ -11333,6 +11368,21 @@ def _review_dm_candidate(
             raise
         except Exception as response_error:
             classification = classify_provider_error(response_error)
+            if _is_local_review_fault(response_error, classification):
+                # #950 (owner D-950-1): a bug or local I/O error cannot heal on
+                # a reissue; the review ends now with its own line.
+                error(
+                    f"FAILURE: Candidate review raised a local error (not a provider "
+                    f"failure): {type(response_error).__name__}: {response_error}; "
+                    f"the review ends without a retry",
+                    exception=response_error, category="ai_validation",
+                )
+                return {
+                    "status": "provider_error",
+                    "player_message": _DM_REVIEW_LOCAL_FAULT_MESSAGE,
+                    "category": "local_fault",
+                    "provider": "",
+                }
             provider_failures += 1
             decision = provider_failure_policy(
                 classification, provider_failures, provider_retry_notice_shown,
