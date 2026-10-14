@@ -11,8 +11,9 @@ the Condition instances a character holds:
 - ``prof:weapon:<slug>``: each base catalog weapon the character is proficient
   with, the union of the primary class's rules (choices.json
   ``class_traits.<class>.weapon_proficiencies``) and the sheet's
-  ``proficiencies.weapons`` in a fixed vocabulary ("simple", "martial", or a
-  base catalog weapon's exact name, casefolded); anything else is a note;
+  ``proficiencies.weapons`` in a fixed vocabulary ("simple", "martial", their
+  printed long forms "simple weapons" and "martial weapons" (#896), or a base
+  catalog weapon's exact name, casefolded); anything else is a note;
 - the Monk's Martial Arts types for the die in progression.json's "Martial
   Arts" column at its Monk level (choices ``martial_arts.condition_types``);
 - ``feature:unarmored-defense:<class>``: the class's non-subclass
@@ -41,7 +42,8 @@ CHOICES_PATH = os.path.join(_DIR, "choices.json")
 
 UNARMED_STRIKE = "srd:unarmed-strike"
 UNARMORED_DEFENSE_PREFIX = "feature:unarmored-defense:"
-WEAPON_CATEGORIES = {"simple": "Simple", "martial": "Martial"}
+WEAPON_CATEGORIES = {"simple": "Simple", "martial": "Martial",
+                     "simple weapons": "Simple", "martial weapons": "Martial"}
 _ABILITIES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
 
 _CACHE: Dict[str, Any] = {}

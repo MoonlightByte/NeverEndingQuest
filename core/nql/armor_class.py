@@ -90,6 +90,9 @@ def _ac_entries(explanation: Dict[str, Any], names_by_id: Dict[str, str]) -> Lis
         source = (contribution.get("source") or {}).get("id")
         amount = contribution.get("amount")
         name = names_by_id.get(source, source or "engine")
+        member = (contribution.get("equipment_origin") or {}).get("member")
+        if member == genesis.DEFENSE_STYLE_MEMBER:
+            name = genesis.DEFENSE_STYLE_FEATURE  # the engine's +1 comes from the style, worn through the armor
         if type(amount) is not int:
             continue
         entries.append({
