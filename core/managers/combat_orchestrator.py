@@ -1400,6 +1400,7 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
         encounter_path, pending.get("turnId"), record,
         player_message=prompt, requested_die=requested, answer=answer,
         npc_voice_intents=voice_intents,
+        requested_phase=record.get("phase") if prompt else None,
     )
     return pending, prompt
 
@@ -2294,6 +2295,7 @@ def execute_agentic_turn(
                     player_message=record.get("prompt"),
                     requested_die=record.get("dice"),
                     npc_voice_intents=immutable_voice_intents,
+                    requested_phase=record.get("phase"),
                 )
                 record_combat_diagnostic(
                     record_type="call_attempt",
