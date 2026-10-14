@@ -11,6 +11,11 @@ them or none, so the item can neither vanish nor be duplicated between two
 independent sheet updates. Code then rewrites both sheets' ``equipment`` from
 the engine's custody facts; every quantity comes from the engine's item records.
 
+A give of ammunition (#902) moves the typed ``ammunition`` row instead: that
+row is the engine stock the attack rows spend from (AM), so the giver's stock
+is consumed and the receiver's raised by the same count in one request, and
+equipment is left as it is.
+
 A refusal (absent item, over-request, self-transfer, engine fault) is a typed
 outcome with the engine's reason. Nothing is written by this module; the
 caller owns files and locks.
@@ -93,14 +98,105 @@ def _identity_value(entry: Dict[str, Any], key: str) -> Any:
     return value
 
 
+def _ammunition_row(sheet: Dict[str, Any], name: str) -> Optional[Tuple[str, Dict[str, Any]]]:
+    """(engine stock id, row) of the sheet's ammunition row for this name, or None.
+
+    Only rows genesis declares are candidates (a row whose name slugs to an
+    earlier row's id is skipped there), so the stock id is always the row's
+    own. Exact ``name`` first; otherwise a unique case-insensitive match on the
+    same typed field.
+    """
+    wanted = str(name).strip()
+    rows = genesis.ammunition_rows(sheet, [])
+    for iid, row in rows:
+        if row.get("name") == wanted:
+            return iid, row
+    loose = [(iid, row) for iid, row in rows if row["name"].strip().lower() == wanted.lower()]
+    return loose[0] if len(loose) == 1 else None
+
+
+def _declared_row(sheet: Dict[str, Any], iid: str) -> Optional[Dict[str, Any]]:
+    return next((row for stock, row in genesis.ammunition_rows(sheet, []) if stock == iid), None)
+
+
+def _transfer_ammunition(giver: Dict[str, Any], receiver: Dict[str, Any], gid: str, rid: str, src: str,
+                         quantity: Any, location: str, request_id: Optional[str],
+                         binary: Optional[str]) -> TransferOutcome:
+    """#902: move ``quantity`` of a typed ammunition row to the receiver's row of the same stock.
+
+    ``giver`` and ``receiver`` are the caller's untouched sheets. The engine
+    consumes the giver's stock and adds to the receiver's in one request (a
+    receiver without that row gets one at 0 first); only the two rows'
+    quantities and pending counts are written back, from the engine. The
+    consume is not recoverable, so the giver's pending count stays with the
+    giver; equipment is not touched.
+    """
+    giver = copy.deepcopy(giver)
+    receiver = copy.deepcopy(receiver)
+    row = _declared_row(giver, src)
+    stock = row["quantity"]
+    try:
+        quantity = int(quantity)
+    except (TypeError, ValueError):
+        return TransferOutcome(False, reason=f"quantity {quantity!r} is not a whole number")
+    if quantity <= 0 or quantity > stock:
+        return TransferOutcome(False, reason=f"only {stock} {row['name']!r} available, requested {quantity}")
+    dst = genesis.ammunition_id(receiver, row["name"])
+    if not isinstance(receiver.get("ammunition"), list):
+        receiver["ammunition"] = []
+    if _declared_row(receiver, dst) is None:
+        if any(isinstance(r, dict) and isinstance(r.get("name"), str) and genesis.ammunition_id(receiver, r["name"]) == dst
+               for r in receiver["ammunition"]):
+            return TransferOutcome(False, reason=f"{receiver.get('name')}'s {row['name']!r} row has no whole-number quantity")
+        seed = {"name": row["name"], "quantity": 0, "description": str(row.get("description") or "")}
+        if row.get("catalog_id"):
+            seed["catalog_id"] = row["catalog_id"]
+        receiver["ammunition"].append(seed)
+    world_giver = copy.deepcopy(giver)
+    world_receiver = copy.deepcopy(receiver)
+    genesis.assign_ids(world_giver)
+    genesis.assign_ids(world_receiver)
+    world = genesis.build_world([world_giver, world_receiver], location)
+    if rid not in world.item_ids:
+        return TransferOutcome(False, reason="receiver is not in the engine world", gaps=world.gaps)
+    actions = [f"consume {_q(src)} from {_q(gid)} by {quantity};", f"add {_q(dst)} to {_q(rid)} by {quantity};"]
+    try:
+        response = apply.call({"world": world.source, "world_name": "transfer-genesis.nql",
+                               "actions": "\n".join(actions), "actions_name": "transfer.nql",
+                               "actor": {"kind": "character", "id": gid},
+                               "request": request_id or f"transfer:{uuid.uuid4().hex}",
+                               "items_at": [{"kind": "character", "id": gid}, {"kind": "character", "id": rid}]},
+                              binary=binary)
+    except apply.EngineUnavailable as error:
+        return TransferOutcome(False, reason=str(error), gaps=world.gaps)
+    if not response.get("ok"):
+        detail = response.get("diagnostics") or response.get("fault") or response.get("error")
+        return TransferOutcome(False, reason=f"engine refused at {response.get('phase')}: {detail}",
+                               fault=response.get("fault"), gaps=world.gaps)
+    views = {v["at"]["id"]: {i["id"]: i for i in v["items"]} for v in response.get("items_at", [])}
+    stocks = [(views.get(cid, {}).get(iid), target) for cid, iid, target in
+              ((gid, src, row), (rid, dst, _declared_row(receiver, dst)))]
+    if any(item is None or type(item.get("quantity")) is not int for item, _ in stocks):
+        return TransferOutcome(False, reason="engine returned no view of the ammunition stock", gaps=world.gaps)
+    for item, target in stocks:
+        target["quantity"] = item["quantity"]
+        pending = item.get("recoverable") if type(item.get("recoverable")) is int else 0
+        if pending or "recoverable" in target:
+            target["recoverable"] = pending
+    return TransferOutcome(True, giver=giver, receiver=receiver, item_name=str(row["name"]), quantity=quantity,
+                           receipt=response.get("receipt"), gaps=world.gaps)
+
+
 def transact(giver: Dict[str, Any], receiver: Dict[str, Any], item_name: str, quantity: int, *,
              location: str = "party", request_id: Optional[str] = None,
              binary: Optional[str] = None) -> TransferOutcome:
     """Move ``quantity`` of the giver's ``item_name`` to the receiver through the engine.
 
     Returns new copies of both sheets with ``equipment`` rewritten from the
-    engine's custody facts, or a refusal with nothing changed.
+    engine's custody facts (or, for an ammunition row, the two rows' quantities),
+    or a refusal with nothing changed.
     """
+    sheets = (giver, receiver)
     giver = copy.deepcopy(giver)
     receiver = copy.deepcopy(receiver)
     genesis.assign_ids(giver)
@@ -109,6 +205,9 @@ def transact(giver: Dict[str, Any], receiver: Dict[str, Any], item_name: str, qu
     rid = genesis.character_id(receiver)
     if gid == rid:
         return TransferOutcome(False, reason="giver and receiver are the same character")
+    found = _ammunition_row(giver, item_name)
+    if found is not None:
+        return _transfer_ammunition(sheets[0], sheets[1], gid, rid, found[0], quantity, location, request_id, binary)
     world = genesis.build_world([giver, receiver], location)
     if rid not in world.item_ids:
         return TransferOutcome(False, reason="receiver is not in the engine world", gaps=world.gaps)
