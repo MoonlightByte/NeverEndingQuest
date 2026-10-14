@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - A generated monster that lists its skills or senses as an empty list (`[]`, a creature with none) is now saved with an empty set (`{}`) instead of failing the schema twice, so the fight starts on the first try with one pre-combat save (#886).
+- A spell can no longer be cast with a spell slot below its level (a 2nd-level spell on a 1st-level slot), and the game no longer suggests one when it corrects a cast; spells it does not know are unaffected (Refs #942).
 - When a level-up ends, the DM now sees how it ended (the new level and hit points, or that nothing was applied and why), not just the player; before, only the start of a level-up and the guide's questions reached the DM's history (#1044).
 - A new character or companion whose name has no letter or digit (for example "???"), or whose name matches one of the rules engine's own reserved names (Attacker, Target, Save Source, Roster Conversion), is refused with the reason, so another name is chosen; existing characters are not changed (#949).
 - A saved character with more weapons equipped than two hands can hold (Scout Elen: Longbow, Shortsword and Short Sword) is no longer refused by the rules engine, so their armor class, attack rows, damage and level-up work again; the extra one is treated as carried and the saved sheet is left as it is (Closes #960).
