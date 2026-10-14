@@ -530,9 +530,6 @@ class ModuleDebugger:
                 self.log_success("World time data present for update_world_time.py")
             else:
                 self.log_warning("No time data in worldConditions")
-        
-        # update_party_tracker.py
-        self.log_info("update_party_tracker.py would synchronize all party data")
     
     def simulate_dm_systems(self):
         """Simulate dm.py and conversation systems"""
