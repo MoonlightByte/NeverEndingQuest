@@ -8,7 +8,8 @@
       "type": "clearing",
       "connections": [
         "TW02",
-        "TW04"
+        "TW04",
+        "TW06"
       ],
       "coordinates": "X2Y2",
       "name": "Ambush Site"
@@ -43,7 +44,7 @@
         "TW06"
       ],
       "coordinates": "X2Y1",
-      "name": "Thornheart Grove"
+      "name": "Hermit's Refuge"
     },
     {
       "id": "TW05",
@@ -58,7 +59,8 @@
       "id": "TW06",
       "type": "cave",
       "connections": [
-        "TW04"
+        "TW04",
+        "TW01"
       ],
       "coordinates": "X1Y1",
       "name": "Wolf's Den Cave"
