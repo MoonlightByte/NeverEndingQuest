@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `merge_updates` from `core/managers/combat_manager.py`, a helper that nothing called; had anything called it, it would have replaced a character's whole equipment list with the update's list instead of changing single items (#471).
 
 ### Fixed
+- The Thornwood Watch no longer shows a quest id in a place or feature name: the cave is now just "Wolf's Den Cave" and the watchtower bells are "East Tower Bell" and "West Tower Bell" (#989).
 - A turn no longer fails with "the AI provider call could not be completed" when the response checker's debug file cannot be written (a file held by another program, a read-only or full disk); the debug copy is skipped and the turn goes on (#342).
 - Choosing an existing character whose file has gone missing, is empty or is broken no longer ends setup; the game says the file is unavailable and asks again, and a file another program holds is waited for (#338).
 - Spending or adding ammunition by a plural or older name (Arrows for a sheet row named Arrow) now changes that row instead of being refused or starting a second row (#358).
