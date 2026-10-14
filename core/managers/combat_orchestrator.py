@@ -121,6 +121,10 @@ def _is_human_controlled(encounter, actor):
 
 def _immutable_voice_intents(npc_voice_intents):
     """Copy once at the coordinator boundary, then reuse unchanged on retries."""
+    if not npc_voice_intents:
+        # No advisory this turn (a solo party, or no companion lines) is the
+        # normal case, not a malformed envelope.
+        return MappingProxyType({})
     canonical_voice_intents, _replaced, _residual = normalize_typography_deep(
         npc_voice_intents
     )

@@ -977,6 +977,50 @@ def sanitize_unicode_for_logging(text):
     
     return text
 
+def _inexact_character_names(response, encounter_data):
+    """The correction for updateCharacterInfo names that are not exact, or None.
+
+    A target must be a party name, a player or NPC of this encounter, or an
+    existing sheet, exactly (#855, family 2); a near name would otherwise be
+    lost or written to another character at the final consolidated update.
+    """
+    from utils.npc_name_normalizer import exact_character_reference
+
+    try:
+        actions = json.loads(response).get("actions", [])
+    except (ValueError, TypeError, AttributeError):
+        return None
+    if not isinstance(actions, list):
+        return None
+    party = safe_json_load("party_tracker.json") or {}
+    combatants = [
+        creature.get("name") for creature in encounter_data.get("creatures", []) or []
+        if isinstance(creature, dict) and creature.get("type") in ("player", "npc") and creature.get("name")
+    ]
+    inexact = []
+    for action in actions:
+        if not isinstance(action, dict) or str(action.get("action", "")).lower() not in (
+            "updatecharacterinfo", "updateplayerinfo", "updatenpcinfo"
+        ):
+            continue
+        params = action.get("parameters") or {}
+        name = (params.get("characterName") or params.get("npcName")) if isinstance(params, dict) else None
+        if name and exact_character_reference(name, party, combatants) is None:
+            inexact.append(name)
+    if not inexact:
+        return None
+    names = list(party.get("partyMembers", []) or []) + [
+        npc.get("name") for npc in party.get("partyNPCs", []) or [] if isinstance(npc, dict)
+    ] + combatants
+    return (
+        "Character name error: updateCharacterInfo names "
+        + ", ".join(repr(name) for name in inexact)
+        + ", which are not exact character names. Use one of these exact names: "
+        + ", ".join(sorted({str(name) for name in names if name}))
+        + "."
+    )
+
+
 def validate_combat_response(response, encounter_data, user_input, conversation_history=None, npc_voice_batch=None):
     """
     Validate a combat response for accuracy in HP tracking, combat flow, etc.
@@ -994,6 +1038,10 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
         debug(f"VALIDATION_CONTEXT: Round={combat_round}, Actions={num_actions}, HasPlan={has_plan}", category="combat_validation")
     except:
         debug("VALIDATION_CONTEXT: Unable to parse response JSON for context", category="combat_validation")
+
+    name_correction = _inexact_character_names(response, encounter_data)
+    if name_correction:
+        return name_correction
     
     # Load validation prompt from file (using toggle for compressed vs original)
     from model_config import USE_COMPRESSED_COMBAT

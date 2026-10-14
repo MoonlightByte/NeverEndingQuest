@@ -1878,6 +1878,13 @@ def _transition_narration_action_context(checkpoint):
         receipt = record.get("receipt")
         if not isinstance(action, dict) or not isinstance(receipt, dict):
             continue
+        if "dropped" in (
+            receipt.get("character_status"),
+            receipt.get("storage_status"),
+        ):
+            # #855: a change dropped before movement was not made, so it is
+            # not a fact of the turn (the player is told so on arrival).
+            continue
         fact = {
             "action": family,
             "parameters": copy.deepcopy(action.get("parameters") or {}),
@@ -3170,13 +3177,21 @@ CRITICAL: If validation fails due to wrong NPC for location, provide specific co
 
 def normalize_character_names_in_response(response_text, party_tracker_data):
     """
-    Normalize NPC names in updateCharacterInfo actions before validation.
-    Handles name variations like "Kira" -> "Scout Kira", "Ranger Kira" -> "Scout Kira"
+    Check the character names in actions before validation (#855, family 2).
+    updateCharacterInfo must name a party character; transferItem,
+    transferCurrency, splitCurrency, removeEffect, awardExperience, rollCheck,
+    expendCharges and acquireItem a party character or an existing sheet,
+    exactly (case ignored, "_" read as a space). A near name
+    ("Kira", "Ranger Kira") is refused with the exact names, never matched to
+    another character. The response is never edited.
 
     Returns:
         (normalized_response, message) or (None, error_message) if unresolvable
     """
-    from utils.npc_name_normalizer import normalize_npc_name_for_action
+    from utils.npc_name_normalizer import (
+        exact_character_reference,
+        normalize_npc_name_for_action,
+    )
 
     try:
         parsed = json.loads(response_text)
@@ -3188,7 +3203,6 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
         # No actions to normalize
         return response_text, "No actions to normalize"
 
-    corrections = []
     rejections = []
 
     for i, action in enumerate(parsed['actions']):
@@ -3197,46 +3211,52 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
 
         action_type = action.get('action')
 
-        # Only normalize updateCharacterInfo actions
+        # The fields that name a character; True when an existing sheet
+        # outside the party is also a valid target.
         if action_type == 'updateCharacterInfo':
-            params = action.get('parameters', {})
-            original_name = params.get('characterName')
+            fields = (('characterName', False),)
+        elif action_type in ('transferItem', 'transferCurrency'):
+            fields = (('fromCharacter', True), ('toCharacter', True))
+        elif action_type == 'splitCurrency':
+            fields = (('fromCharacter', True), ('toCharacters', True))
+        elif action_type in ('removeEffect', 'awardExperience', 'rollCheck', 'expendCharges', 'acquireItem'):
+            fields = (('characterName', True),)
+        else:
+            continue
+        params = action.get('parameters', {})
+        if not isinstance(params, dict):
+            continue
 
-            if original_name:
-                print(f"[NPC_NORM] Checking updateCharacterInfo action with characterName='{original_name}'")
+        for field, sheet_allowed in fields:
+            value = params.get(field)
+            for original_name in (value if isinstance(value, list) else [value]):
+                if not original_name or not isinstance(original_name, str):
+                    continue
+                print(f"[NPC_NORM] Checking {action_type} action with {field}='{original_name}'")
 
-                # Try to normalize the name
-                normalized_name, match_type = normalize_npc_name_for_action(
-                    original_name, party_tracker_data, debug_print=True
-                )
+                if sheet_allowed:
+                    normalized_name = exact_character_reference(original_name, party_tracker_data)
+                else:
+                    normalized_name, _match_type = normalize_npc_name_for_action(
+                        original_name, party_tracker_data, debug_print=True
+                    )
 
                 if normalized_name is None:
-                    # Could not resolve name - reject
-                    rejections.append(f"Action {i+1}: '{original_name}' not in party tracker")
-                    print(f"[NPC_NORM] REJECT: '{original_name}' cannot be matched to party tracker")
-
-                elif normalized_name != original_name:
-                    # Name was normalized
-                    params['characterName'] = normalized_name
-                    corrections.append(f"Action {i+1}: '{original_name}' -> '{normalized_name}'")
-                    print(f"[NPC_NORM] CORRECTED: '{original_name}' -> '{normalized_name}'")
+                    # Not an exact character name - refuse, never guess
+                    rejections.append(f"Action {i+1} ({action_type} {field}): '{original_name}' not in party tracker")
+                    print(f"[NPC_NORM] REJECT: '{original_name}' is not an exact character name")
 
                 else:
-                    # Name was already correct
-                    print(f"[NPC_NORM] OK: '{original_name}' matches party tracker")
+                    # Exact (case and "_" aside); the response is left as written
+                    print(f"[NPC_NORM] OK: '{original_name}' is exact")
 
     # If any rejections, return error
     if rejections:
         error_msg = "NPC names not in party tracker: " + "; ".join(rejections)
+        error_msg += ". Use one of these exact names"
         error_msg += f". Valid party NPCs: {[npc.get('name') for npc in party_tracker_data.get('partyNPCs', [])]}"
         error_msg += f". Valid party members: {party_tracker_data.get('partyMembers', [])}"
         return None, error_msg
-
-    # If corrections were made, return updated response
-    if corrections:
-        corrected_response = json.dumps(parsed, ensure_ascii=True, indent=2)
-        message = "Auto-corrected NPC names: " + "; ".join(corrections)
-        return corrected_response, message
 
     # No changes needed
     return response_text, "All NPC names valid"
@@ -6064,6 +6084,15 @@ class _RestoreControlTransfer(BaseException):
         super().__init__('Load requested at the welcome input boundary')
 
 
+# #878: added to an engine refusal's note when the reply's narration was
+# already shown, so the follow-up continues it instead of retelling the scene.
+_SHOWN_NARRATION_FACT = (
+    " Your previous narration has already been shown to the player. Keep its "
+    "outcome wherever a corrected action can record it, and narrate only what "
+    "has to change, as a short continuation rather than a new account."
+)
+
+
 def process_ai_response(
     response,
     party_tracker_data,
@@ -6651,6 +6680,7 @@ def process_ai_response(
         # If not a transition or levelup, proceed with normal processing
         narration = parsed_response.get("narration", "")
         sanitized_narration = sanitize_text(narration)
+        narration_shown = False
         # A reply whose only action is createNewModule narrates a module that
         # does not exist yet, so its narration is held, as a transition holds
         # its departure narration (#182). A published build is narrated by the
@@ -6666,6 +6696,7 @@ def process_ai_response(
             response = json.dumps(held_reply)
         else:
             display_dm_narration(sanitized_narration)
+            narration_shown = bool(str(sanitized_narration or "").strip())
 
         actions_processed = False
         
@@ -6915,6 +6946,15 @@ def process_ai_response(
                     current_response = {"role": "assistant", "content": response}
                     insert_at = min(pre_action_len, len(conversation_history))
                     conversation_history.insert(insert_at, current_response)
+                    note = conversation_history[-1]
+                    if (
+                        narration_shown
+                        and len(conversation_history) > insert_at + 1
+                        and isinstance(note, dict)
+                        and note.get("role") == "user"
+                        and isinstance(note.get("content"), str)
+                    ):
+                        note["content"] += _SHOWN_NARRATION_FACT
                     save_conversation_history(conversation_history)
 
                     # Now reload and get the new AI response
@@ -10342,6 +10382,30 @@ _TRAVEL_ORDER_FACT = (
 )
 
 
+def _acquire_catalog_refusal(actions):
+    """#878: the engine's reason a draft's acquireItem would be refused before
+    any sheet or purse is read (an unknown catalog name, a quantity that is not
+    a whole lot, a charged item bought more than one at a time), or None. Only
+    the action's typed itemName, quantity and price are read."""
+    from core.managers.item_acquisition import catalog_check
+
+    for action in actions:
+        if not isinstance(action, dict) or action.get("action") != action_handler.ACTION_ACQUIRE_ITEM:
+            continue
+        parameters = action.get("parameters")
+        parameters = parameters if isinstance(parameters, dict) else {}
+        checked = catalog_check(
+            parameters.get("itemName", ""),
+            parameters.get("quantity", 1),
+            parameters.get("price"),
+        )
+        if "error" in checked:
+            return "acquireItem %s: %s" % (
+                json.dumps(parameters.get("itemName", "")), checked["error"],
+            )
+    return None
+
+
 def _review_dm_candidate(
     initial_candidate, *, accepted_history, player_input, party,
     validation_prompt, srd_context, npc_voice_batch, invocation_claim,
@@ -10548,6 +10612,30 @@ def _review_dm_candidate(
                         f"retry {retry_count}",
                         category="location_transitions",
                     )
+
+                # #878: a purchase the catalog refuses is corrected here, so
+                # its draft never reaches review or the player.
+                acquire_refusal = (
+                    _acquire_catalog_refusal(actions)
+                    if transition_check_passed else None
+                )
+                if acquire_refusal:
+                    retry_count += 1
+                    transition_check_passed = False
+                    rejected_candidate = ai_response_content
+                    retry_correction = (
+                        "The previous structured response was rejected before "
+                        "anything was shown: " + acquire_refusal + ". Keep the "
+                        "outcome your narration describes and correct only that "
+                        "action's itemName or quantity. Return the complete "
+                        "corrected JSON."
+                    )
+                    info(
+                        "VALIDATION: acquireItem refused by the catalog before "
+                        f"review; retry {retry_count}",
+                        category="ai_validation",
+                    )
+                    review_retry_status(retry_count)
 
                 for action in actions if transition_check_passed else []:
                     if isinstance(action, dict) and action.get("action") == "transitionLocation":
