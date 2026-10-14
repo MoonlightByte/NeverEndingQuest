@@ -60,9 +60,37 @@ def _signed(label: str, amount: Any) -> Tuple[Optional[int], str]:
     return amount, ""
 
 
+# #891: feats with their own use pool. SRD 5.2.1 Magic Initiate: the level 1
+# spell is cast once without a spell slot, regained on a Long Rest. Keyed by
+# the feat name before any " (" (a repeatable feat names its list there).
+FEAT_USES = {"magic initiate": {"max": 1, "refreshOn": "longRest"}}
+
+
+def feat_usage(feat: Any) -> Optional[Dict[str, Any]]:
+    """A full ``usage`` for a feat entry whose typed name has a FEAT_USES rule, else None."""
+    name = feat.get("name") if isinstance(feat, dict) else None
+    rule = FEAT_USES.get(str(name or "").split(" (")[0].strip().casefold())
+    return None if rule is None else {"current": rule["max"], "max": rule["max"], "refreshOn": rule["refreshOn"]}
+
+
+def add_feat_usage(sheet: Any) -> List[str]:
+    """#891: a full ``usage`` on each feat that has a rule and no ``usage`` key
+    yet (an explicit null is left as written). Returns the feat names set."""
+    feats = sheet.get("feats") if isinstance(sheet, dict) else None
+    added = []
+    for feat in feats if isinstance(feats, list) else []:
+        if isinstance(feat, dict) and "usage" not in feat:
+            usage = feat_usage(feat)
+            if usage is not None:
+                feat["usage"] = usage
+                added.append(str(feat.get("name")))
+    return added
+
+
 def _feature_pools(sheet: Dict[str, Any]) -> List[Tuple[str, Dict[str, Any]]]:
-    """(name, feature) for every class feature that carries a usage pool."""
-    return [(f["name"], f) for f in sheet.get("classFeatures") or []
+    """(name, feature) for every class feature, then every feat (#891), that
+    carries a usage pool."""
+    return [(f["name"], f) for f in list(sheet.get("classFeatures") or []) + list(sheet.get("feats") or [])
             if isinstance(f, dict) and isinstance(f.get("usage"), dict) and f.get("name")]
 
 
@@ -356,6 +384,11 @@ def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", re
     sheets = [copy.deepcopy(s) for s in sheets]
     if not sheets:
         return RestOutcome(False, reason="no one is resting")
+    if kind == "long":
+        # #891 (owner D-891-2 A): a sheet that has a feat with its own use
+        # but no pool yet gets it, full, on its first Long Rest.
+        for sheet in sheets:
+            add_feat_usage(sheet)
     world = genesis.build_world(sheets, location)
     ids = [genesis.character_id(s) for s in sheets]
     if len(set(ids)) != len(ids):

@@ -442,7 +442,8 @@ def pool_resources(sheet: Dict[str, Any], gaps: List[str]) -> List[Tuple[str, in
     """(resource id, current, max) for hit points, spell slots and feature use pools.
 
     Typed fields only: ``hitPoints``/``maxHitPoints``, ``spellcasting.spellSlots.levelN``
-    ``{current, max}`` and ``classFeatures[].usage {current, max}``. A pool the sheet
+    ``{current, max}``, ``classFeatures[].usage {current, max}`` and then
+    ``feats[].usage`` (#891; a feat whose id a class feature holds is a gap). A pool the sheet
     does not carry is simply absent; a spend against it is then a compile refusal.
     """
     cid = character_id(sheet)
@@ -465,7 +466,7 @@ def pool_resources(sheet: Dict[str, Any], gaps: List[str]) -> List[Tuple[str, in
         if p is not None:
             out.append((slot_resource_id(key), p[0], p[1]))
     seen: set = set()
-    for feature in sheet.get("classFeatures") or []:
+    for feature in list(sheet.get("classFeatures") or []) + list(sheet.get("feats") or []):
         if not isinstance(feature, dict) or not isinstance(feature.get("usage"), dict) or not feature.get("name"):
             continue
         rid = feature_resource_id(feature["name"])

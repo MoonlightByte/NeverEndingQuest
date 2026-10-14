@@ -1975,6 +1975,10 @@ def startup_mechanics(character, *, provenance=None):
         character["hitPoints"] = expected
     notes.extend(_canonicalize_fighting_style(character, provenance))
     notes.extend(_level_one_pools_and_slots(character, provenance))
+    from core.nql.resources import add_feat_usage as _add_feat_usage
+    for _feat in _add_feat_usage(character):
+        # #891: a feat with its own use (Magic Initiate) starts full.
+        notes.append(f"{_feat} usage set full (SRD 5.2.1 feat use)")
     from core.nql import armor_class, startup_rows, stats
     # NUM-H3c: exact-name catalog rows (HQ4), then the hand rule's carried rows
     # unequipped, before the projection reads the equipment.
