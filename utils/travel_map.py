@@ -59,8 +59,8 @@ def q(text):
 
 def member_id(name: str) -> str:
     """The engine id of a party member: the genesis world's."""
-    from core.nql.genesis import slug
-    return "char:" + slug(name)
+    from core.nql.genesis import character_id
+    return character_id({"name": name})
 
 
 def party_members(tracker: Optional[Dict[str, Any]]) -> List[Tuple[str, str]]:
