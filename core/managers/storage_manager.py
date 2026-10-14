@@ -530,7 +530,7 @@ class StorageManager:
                     # Find item in storage and validate availability
                     stored_item = None
                     for item in storage_container["contents"]:
-                        if item["item_name"] == item_info["item_name"]:
+                        if item.get("item_name") == item_info["item_name"]:
                             stored_item = item
                             break
                             
@@ -546,7 +546,7 @@ class StorageManager:
                 # Single item operation
                 stored_item = None
                 for item in storage_container["contents"]:
-                    if item["item_name"] == operation["item_name"]:
+                    if item.get("item_name") == operation["item_name"]:
                         stored_item = item
                         break
                         
