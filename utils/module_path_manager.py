@@ -224,13 +224,31 @@ class ModulePathManager:
         """Get the path to a player character file (legacy support)"""
         return f"{self.module_dir}/{self.format_filename(player_name)}.json"
     
+    def _character_file(self, character_name):
+        """characters/<stem>.json; a pre-#894 sheet at characters/.json keeps its file."""
+        stem = self.format_filename(character_name)
+        path = f"characters/{stem}.json"
+        if stem.isascii() or os.path.exists(path):
+            return path
+        legacy = "characters/.json"
+        if not os.path.exists(legacy):
+            return path
+        try:
+            with open(legacy, "r", encoding="utf-8") as handle:
+                legacy_name = json.load(handle).get("name")
+        except (OSError, ValueError, AttributeError):
+            return legacy  # never fork an existing sheet on a failed read
+        if isinstance(legacy_name, str) and self.format_filename(legacy_name) == stem:
+            return legacy
+        return path
+
     # Unified character paths with fallback support
     def get_character_path(self, character_name):
         """
         Get the path to a character file - now using root characters directory for all characters
         """
         # All characters are now stored in the root characters directory
-        return f"characters/{self.format_filename(character_name)}.json"
+        return self._character_file(character_name)
     
     def _determine_character_role(self, character_name):
         """Determine character role from party_tracker.json"""
@@ -253,7 +271,7 @@ class ModulePathManager:
     
     def get_character_unified_path(self, character_name):
         """Get the unified path (whether file exists or not) - now using root characters directory"""
-        return f"characters/{self.format_filename(character_name)}.json"
+        return self._character_file(character_name)
     
     def get_character_legacy_path(self, character_name, character_role=None):
         """Get the legacy path for a character based on role"""

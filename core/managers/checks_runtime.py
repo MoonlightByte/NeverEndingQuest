@@ -66,6 +66,9 @@ def stage_roll_check(parameters: Dict[str, Any]) -> Dict[str, Any]:
         return {"resolved": line}
     entry = {"characterName": resolved, "stat": stat, "dc": dc, "mode": mode, "netMode": net.mode,
              "sources": net.sources, "faces": checks.faces_needed(net.mode), "reason": reason}
+    if net.dice:
+        # #889: an added die (Guidance, Bless) is the game's to roll.
+        entry["dice"] = [{"name": d["name"], "count": d["count"], "sides": d["sides"]} for d in net.dice]
     checks_state.add_pending(entry)
     info(f"CHECK: pending for {resolved}: {checks.label(stat)} ({net.mode}, {entry['faces']} dice)", category="character_updates")
     return {"pending": entry}
@@ -77,7 +80,9 @@ def roll_prompt_text(entry: Dict[str, Any]) -> str:
     why = f" ({entry['netMode']}" + (f" from {', '.join(entry['sources'])}" if entry.get("sources") else "") + ")" if count == 2 else ""
     dc = f" vs DC {entry['dc']}" if entry.get("dc") is not None else ""
     dice = f"roll {count}d20{why} and type " + ("both results (e.g. 15 3)" if count == 2 else "the result (e.g. 15)")
-    return f"{ROLL_TAG} {what} for {entry['characterName']}{dc}: {dice}, or press Enter and the game rolls: "
+    added = "".join(f", plus {d['count']}d{d['sides']} from {d['name']} that the game rolls"
+                    for d in entry.get("dice") or [])
+    return f"{ROLL_TAG} {what} for {entry['characterName']}{dc}{added}: {dice}, or press Enter and the game rolls: "
 
 
 def parse_faces(text: str, count: int) -> Optional[List[int]]:

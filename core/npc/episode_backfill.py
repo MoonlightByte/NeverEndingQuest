@@ -516,7 +516,8 @@ def backfill_from_journal(
     on this thread in journal order, one entry at a time, exactly as before: the
     cursor, the checkpoints, the two-strike skip and the halt-and-resume on a failed
     entry are unchanged. Extractions already in flight past a halted entry are
-    discarded; their coordinates are stable, so the resume simply redoes them."""
+    discarded and their scopes sealed so the live layer reaps them; their
+    coordinates are stable, so the resume simply redoes them."""
     entries = journal.get("entries") if isinstance(journal, Mapping) else None
     entries = entries if isinstance(entries, list) else []
     total = len(entries)
@@ -587,6 +588,7 @@ def backfill_from_journal(
         thread.start()
         threads.append(thread)
 
+    completed_all = False
     try:
         while index < total:
             entry_index = index
@@ -648,10 +650,21 @@ def backfill_from_journal(
                 committed += 1
             if checkpoint_cb:
                 checkpoint_cb(index, committed)
+        else:
+            completed_all = True
     finally:
         stop.set()
         with ready:
             cursor["next"] = len(order)
+        if not completed_all:
+            # #429: an early exit discards every extraction still in flight.
+            # Sealing the worker scopes lets the live call layer reap them, so
+            # the join waits for reaping, not for a sibling's transport
+            # reissue loop. A completed run seals nothing: scopes[0] goes on to
+            # the summaries backfill.
+            for worker_scope in scopes:
+                if worker_scope is not None:
+                    worker_scope.seal()
         for thread in threads:
             thread.join()
     return {

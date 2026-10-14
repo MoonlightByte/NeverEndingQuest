@@ -90,6 +90,12 @@ abilities.dexterity, abilities.constitution, abilities.intelligence,
 abilities.wisdom, abilities.charisma, attackRolls, damageRolls, abilityChecks,
 savingThrows, savingThrow.<ability>, abilityCheck.<ability>, initiative,
 spellSaveDC, spellAttackBonus.
+A spell that adds a die to attack rolls, saving throws or ability checks
+(Bless: 1d4) uses {"stat":"attackRolls", "die":"1d4"} in place of value, never
+an average. A die is accepted only on attackRolls, savingThrows,
+savingThrow.<ability>, abilityChecks and abilityCheck.skill.<skill>. Guidance
+is one modifier on the skill the caster chose, the skill in lowercase with
+hyphens: {"stat":"abilityCheck.skill.sleight-of-hand", "die":"1d4"}.
 
 Current hit points are a resource, not a derived modifier. For Aid-like effects
 that raise maximum and current HP, use a maxHitPoints modifier plus matching

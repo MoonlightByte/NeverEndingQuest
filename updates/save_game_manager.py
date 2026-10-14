@@ -521,6 +521,7 @@ class SaveGameManager:
                      'journal.json',
                      'live_state.json',
                      'live_state.json.bak',
+                     'player_storage.json',
                      'modules/conversation_history/combat_conversation_history.json',
                      'modules/conversation_history/startup_conversation.json',
                      'modules/conversation_history/game_interface_cache.json',
@@ -1553,6 +1554,9 @@ class SaveGameManager:
                 # Never saved (*.bak). Left behind, the refusal ladder could
                 # take a document with a later clock than the restored tracker.
                 "live_state.json.bak",
+                # A save from before the first storage container: its chests
+                # did not exist yet (#468).
+                "player_storage.json",
                 "modules/conversation_history/combat_conversation_history.json",
                 "modules/conversation_history/startup_conversation.json",
                 "modules/conversation_history/game_interface_cache.json",
