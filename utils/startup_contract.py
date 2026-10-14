@@ -91,10 +91,15 @@ def parse_startup_response(text, *, latest_user_index):
     return value
 
 
-def parse_startup_review(text):
-    """Validate the independent review, without treating prose as a verdict."""
+def parse_startup_review(text, *, decision=None):
+    """Validate the independent review, without treating prose as a verdict.
+
+    An accepted continue_interview may also need the player: publishing it asks
+    them (#887). For any other decision, or none given, that pair stays invalid,
+    so an accepted finalize_character is never saved without the player's answer."""
     value = _parse_object(text, STARTUP_REVIEW_SCHEMA)
-    if value["accepted"] and value["needs_player_clarification"]:
+    if (value["accepted"] and value["needs_player_clarification"]
+            and decision != "continue_interview"):
         raise ValueError("An accepted proposal cannot still need player clarification")
     if not value["accepted"] and not value["feedback"].strip():
         raise ValueError("A rejected proposal requires corrective feedback")

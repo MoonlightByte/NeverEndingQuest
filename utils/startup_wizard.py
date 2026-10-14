@@ -766,7 +766,7 @@ def _review_startup_response(conversation, proposal, committed_facts, *,
                               persist_response=False, live_scope=live_scope,
                               startup_phase="startup_review", task_id="T124")
         try:
-            return parse_startup_review(raw)
+            return parse_startup_review(raw, decision=proposal.get("decision"))
         except ValueError as exc:
             invalid += 1
             if attempts is not None and invalid >= attempts:

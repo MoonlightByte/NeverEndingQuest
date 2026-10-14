@@ -169,7 +169,7 @@
         "Ancient officer's medallion (grants safe passage past spectral soldiers)",
         "Weatherproof satchel containing preserved maps of the region before corruption",
         "Enchanted compass that points toward the nearest safe path rather than north",
-        "Vial of marsh antitoxin (advantage on saves against poison in this region)",
+        "Antitoxin (a vial clutched in a long-dead traveler's hand; drink it as a Bonus Action for Advantage on saving throws to avoid or end the Poisoned condition for 1 hour)",
         "Pilgrim's token showing the keep before its fall (worth 25 gp to collectors)"
       ],
       "plotHooks": [
@@ -452,7 +452,7 @@
         "Black Banner research journal detailing shadow magic experiments",
         "Medallion of shadow resistance (advantage on saves against necrotic damage)",
         "Map showing locations of other Black Banner operations in the region",
-        "Vial of distilled shadow essence (can temporarily grant shadow-based powers)",
+        "Vial of distilled shadow essence (drink it as a Bonus Action to gain Darkvision out to 60 feet and Advantage on Dexterity (Stealth) checks made in dim light or darkness, both for 1 hour)",
         "Key to the captives' cages (attached to the guard captain's belt)"
       ],
       "plotHooks": [

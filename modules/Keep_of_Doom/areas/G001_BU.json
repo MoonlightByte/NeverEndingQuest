@@ -578,7 +578,7 @@
       "lootTable": [
         "Tarnished silver amulet (once used in blessing rituals, 10 gp value)",
         "Ceremonial dagger with wooden handle (potential focus for ward rituals)",
-        "Small pouch of fragrant dried herbs (can be used for healing poultice, equivalent to healing potion)",
+        "Potion of Healing (a pouch of fragrant dried herbs made into a healing poultice; restores 2d4 + 2 hit points)",
         "Stone tablet fragment with partial ritual instructions",
         "Ration wrapper",
         "Strip of blue cloth torn from Elen's uniform"
@@ -637,7 +637,7 @@
       "npcs": [],
       "monsters": [],
       "lootTable": [
-        "Scroll of protection from evil and good",
+        "Spell Scroll of Protection from Evil and Good (level 1; only a reader who has the spell on their spell list can use it; read it to cast the spell without Material components; the scroll crumbles to dust once cast)",
         "Tattered ritual book with instructions for renewing the wards"
       ],
       "plotHooks": [
@@ -714,7 +714,7 @@
         }
       ],
       "lootTable": [
-        "Waterlogged satchel containing a potion of water breathing",
+        "Potion of Water Breathing (found in a waterlogged satchel; drink it as a Bonus Action to breathe underwater for 24 hours)",
         "Boots of elvenkind (caught in tree roots beneath the water)",
         "Small chest with 3d10 gp and a water-damaged map",
         "Well-preserved longsword with silver inlay (from a previous victim)"
@@ -886,13 +886,13 @@
         }
       ],
       "lootTable": [
-        "Potion of greater healing (offered as a gift if Morvath is pleased)",
+        "Potion of Greater Healing (offered as a gift if Morvath is pleased; drink it as a Bonus Action to regain 4d4 + 4 hit points)",
         "Wand of secrets (hidden on a shelf amongst curious trinkets)",
         "Scout Elen's journal (containing her observations about the keep and Sir Garran)",
         "Ancient key with skull motif (opens a specific door in the keep)",
         "Carved bone talisman (ritual component provided by Morvath)",
         "Pouch of dried Gloamwood roots (ritual component provided by Morvath)",
-        "Potent herbal concoction (restores vitality; brewed by Morvath)"
+        "Potion of Healing (a potent herbal concoction brewed by Morvath; restores 2d4 + 2 hit points)"
       ],
       "plotHooks": [
         "Morvath guided Scout Elen toward the keep and fears for her safety.",
