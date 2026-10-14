@@ -870,27 +870,6 @@ def _validate_roll_request_phase(batch, encounter):
             )
 
 
-def _validate_answered_roll_target(batch, pending):
-    """#877 C4: after the game rolled the player's answer to a typed roll
-    request, the requesting actor's intent keeps that request's target.
-    Other intents, and typed numeric answers, are not checked."""
-    exchanges = [item for item in (pending or {}).get("playerExchanges") or [] if isinstance(item, dict)]
-    if len(exchanges) < 2 or exchanges[-1].get("rolledBy") != "game":
-        return
-    target, actor = exchanges[-2].get("requestedTargetId"), exchanges[-2].get("requestedActorId")
-    if not isinstance(target, str) or not isinstance(actor, str):
-        return
-    for intent in (batch or {}).get("intents", []) or []:
-        if (isinstance(intent, dict) and intent.get("actorId") == actor
-                and intent.get("targetId") is not None and intent.get("targetId") != target):
-            raise CombatIntentError(
-                "the player's roll answered the request against %s; keep targetId %s or ask a new roll"
-                % (target, target),
-                actor,
-                {"answeredRollTarget": target},
-            )
-
-
 # Item 3: the player's plain melee weapon swing. Code asks for the dice (the
 # request is the pause narration; the input line is the C2a [ROLL] tag plus
 # the dice), takes only bare typed numbers, and scores the swing; any other
@@ -1969,8 +1948,6 @@ def execute_agentic_turn(
             requested_phase=previous_exchange.get("requestedPhase"),
             npc_voice_intents=immutable_voice_intents,
             requested_roll=previous_exchange.get("requestedRoll"),
-            requested_target=previous_exchange.get("requestedTargetId"),
-            requested_actor=previous_exchange.get("requestedActorId"),
         )
         record_combat_diagnostic(
             record_type="window_outcome",
@@ -2127,7 +2104,6 @@ def execute_agentic_turn(
                 # leave the player's turn without an answer.
                 _validate_player_weapon_question(batch, encounter, characters, pending)
             _validate_roll_request_phase(batch, encounter)
-            _validate_answered_roll_target(batch, pending)
             try:
                 roll_audits = _audit_batch_spell_roll_requests(
                     batch,
@@ -2257,8 +2233,6 @@ def execute_agentic_turn(
                 requested_phase=request.get("phase") if isinstance(request, dict) else None,
                 npc_voice_intents=immutable_voice_intents,
                 requested_roll=typed_roll,
-                requested_target=exc.feedback.get("targetId") if typed_roll else None,
-                requested_actor=exc.actor_id if typed_roll else None,
             )
             raise CombatTurnPaused(
                 "Combat resolution requires more player input",
