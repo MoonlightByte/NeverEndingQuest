@@ -709,39 +709,8 @@ def update_character_effects(character_name: str, change_description: str) -> bo
     """
     Main entry point for effects tracking.
     Analyzes character updates and tracks temporary effects.
-    Also detects when rests occur to clear rest-based effects.
     """
     debug(f"EFFECTS: Analyzing potential effect for {character_name}: {change_description}", category="effects_tracking")
-    
-    rest_reversals_succeeded = True
-
-    # First check if this is a rest action that should clear effects
-    change_lower = change_description.lower()
-    if any(phrase in change_lower for phrase in ["short rest", "long rest", "takes a rest", "take a rest"]):
-        debug(f"EFFECTS: Detected rest action in description", category="effects_tracking")
-        
-        # Determine rest type
-        if "long rest" in change_lower:
-            rest_type = "long_rest"
-        else:
-            rest_type = "short_rest"  # Default to short rest
-        
-        info(f"EFFECTS: Processing {rest_type} effects for {character_name}", category="effects_tracking")
-        
-        # Clear rest-based effects and get reversals
-        rest_reversals = clear_rest_effects(character_name, rest_type)
-        
-        # Apply reversals to character
-        if rest_reversals:
-            from updates.update_character_info import update_character_info
-            for reversal in rest_reversals:
-                debug(f"EFFECTS: Applying rest reversal: {reversal['description']}")
-                if not apply_claimed_effect_reversal(
-                    reversal, update_character_info
-                ):
-                    rest_reversals_succeeded = False
-        
-        # Continue to check if there are also new effects to track
     
     # Use AI to analyze if this is a trackable effect
     analysis = analyze_effect_with_ai(character_name, change_description)
@@ -760,10 +729,10 @@ def update_character_effects(character_name: str, change_description: str) -> bo
         else:
             error(f"EFFECTS: Failed to track effect: {effect_info['source']}", category="effects_tracking")
         
-        return success and rest_reversals_succeeded
+        return success
     else:
         debug(f"EFFECTS: Effect not trackable: {change_description}", category="effects_tracking")
-        return rest_reversals_succeeded
+        return True
 
 def get_character_modifiers(character_name: str) -> Dict[str, int]:
     """Get current active modifiers for a character."""
