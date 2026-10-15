@@ -20,7 +20,7 @@
     },
     {
       "location": "NC04",
-      "name": "Corrupted Ranger Thane",
+      "name": "Ranger Thane",
       "index": 0,
       "disposition": "indifferent"
     },
@@ -122,7 +122,7 @@
     },
     {
       "location": "TW06",
-      "name": "Wounded Ranger Gareth",
+      "name": "Ranger Gareth",
       "index": 0,
       "disposition": "friendly"
     },
