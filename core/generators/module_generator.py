@@ -276,7 +276,7 @@ class ModulePromptGuide:
     """
     
     
-    mainObjective: str = """
+    mainPlot_mainObjective: str = """
     The ultimate goal of the module in one sentence.
     Should be:
     - Clear and specific
@@ -287,7 +287,7 @@ class ModulePromptGuide:
     Format: Verb + specific goal
     """
     
-    antagonist: str = """
+    mainPlot_antagonist: str = """
     The main villain or opposing force.
     Format: Name + title/organization
     
@@ -311,7 +311,7 @@ class ModulePromptGuide:
     A state such as wounded or corrupted belongs in a description, never in a name.
     """
     
-    plotStages: str = """
+    mainPlot_plotStages: str = """
     3-7 major module stages/acts.
     Each needs:
     - stageName: Clear identifier ("Act 1: The Awakening")
