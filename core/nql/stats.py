@@ -280,6 +280,9 @@ def stat_lines(sheet: Dict[str, Any], gaps: List[str]) -> List[str]:
             gaps.append(f"{cid}: abilities.{ability} is not an integer; 10 declared")
             score = 10
         lines.append(f' stat {_q(ability)} = {score};')
+        if ability == "wisdom":
+            # #1077: the Wisdom copy the Thaumaturge Divine Order floors (srd_stats.THAUMATURGE_STAT).
+            lines.append(f' stat {_q(srd_stats.THAUMATURGE_STAT)} = {score};')
     level = _int(sheet.get("level"))
     if level is None or level < 1:
         gaps.append(f"{cid}: level is not a positive integer; 1 declared")

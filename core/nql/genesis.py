@@ -1378,12 +1378,12 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
                 definitions.append(text)
 
     for cond in condition_types:
-        lines.append(f"condition type {_q(cond)} {{ instances unique; }}")
+        lines.append(f"condition type {_q(cond)} {{ {srd_stats.TYPE_BODIES.get(cond, 'instances unique;')} }}")
     # The SRD proficiency types are declared for every world: the derive rules
     # below name them with `requires`, legal only for a declared type.
     for cond in srd_stats.CONDITION_TYPES:
         if cond not in condition_types:
-            lines.append(f"condition type {_q(cond)} {{ instances unique; }}")
+            lines.append(f"condition type {_q(cond)} {{ {srd_stats.TYPE_BODIES.get(cond, 'instances unique;')} }}")
     # The SRD condition states (C1): declared for every world so a later
     # `apply condition` has them and the engine can hold unconscious at 0 hp.
     lines.append(srd_stats.STATE_TYPES.rstrip("\n"))

@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- A Cleric who chose the Thaumaturge Divine Order now adds their Wisdom modifier (at least +1) to Intelligence (Arcana) and Intelligence (Religion) checks, as SRD 5.2.1 says. The DM's check line shows the higher total, and a listed Arcana or Religion value on the sheet includes it from the next game start (#1077).
 - Companions no longer hear the game's own notes ([COMBAT CONCLUDED], storage and system lines) as things your character said, and those notes no longer reach a companion's remembered moments; the adventure chronicler sees only your own words as yours (Closes #449).
 - Outside a fight, a spell a feat lets you cast once without a spell slot (Magic Initiate's level 1 spell) now uses that free cast first; before, the DM always spent a spell slot, so Brannoc's first Bless after a long rest cost a slot. The feat's use comes back on a long rest (#891).
 - A generated monster that lists its skills or senses as an empty list (`[]`, a creature with none) is now saved with an empty set (`{}`) instead of failing the schema twice, so the fight starts on the first try with one pre-combat save (#886).
