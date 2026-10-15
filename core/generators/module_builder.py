@@ -3015,7 +3015,7 @@ CRITICAL RULES:
 - locations_per_area MUST be %d-%d (default 6 when allowed)
 - level_range MUST have both "min" and "max" as numbers
 - adventure_type MUST be lowercase: "dungeon", "wilderness", "urban", "nautical", or "mixed"
-- plot_themes must be useful text of at least 3 words containing 1-3 comma-separated goals
+- plot_themes must be useful non-empty text; name the main goals (usually 1-3), separated by commas
 
 Return ONLY the JSON object, no explanations or additional text.""" % (
         resolved_policy.min_areas,
