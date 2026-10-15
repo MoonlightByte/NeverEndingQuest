@@ -19,6 +19,8 @@ Maximums are never written by this module: level-up and the effects layer own
 ``maxHitPoints`` and ``max``. Nothing here reads prose or writes files.
 """
 import copy
+import json
+import os
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -61,15 +63,45 @@ def _signed(label: str, amount: Any) -> Tuple[Optional[int], str]:
 
 
 # #891: feats with their own use pool. SRD 5.2.1 Magic Initiate: the level 1
-# spell is cast once without a spell slot, regained on a Long Rest. Keyed by
-# the feat name before any " (" (a repeatable feat names its list there).
-FEAT_USES = {"magic initiate": {"max": 1, "refreshOn": "longRest"}}
+# spell is cast once without a spell slot, regained on a Long Rest. "namedBy"
+# is the choice (its typed name in data/srd/choices.json) whose option a sheet
+# writes after the feat name: the repeatable feat takes a different list each time.
+FEAT_RULES = {"Magic Initiate": {"max": 1, "refreshOn": "longRest", "namedBy": "Spell List"}}
+CHOICES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                            "data", "srd", "choices.json")
+
+
+def _feat_uses(rules: Dict[str, Dict[str, Any]], path: str) -> Dict[str, Dict[str, Any]]:
+    """Every whole feat name a sheet can carry for a feat in ``rules``, casefolded:
+    the SRD name, and "<name> (<option>)" for each option of the rule's
+    ``namedBy`` choice in data/srd/choices.json (the form the origins data
+    writes, e.g. "Magic Initiate (Cleric)"). No name is cut or parsed (#855)."""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            feats = json.load(handle).get("feats") or []
+    except (OSError, ValueError, AttributeError):
+        feats = []
+    uses = {name.casefold(): rule for name, rule in rules.items()}
+    for feat in feats:
+        rule = rules.get(feat.get("name")) if isinstance(feat, dict) else None
+        if rule is None:
+            continue
+        for choice in feat.get("choices") or []:
+            if not isinstance(choice, dict) or choice.get("name") != rule.get("namedBy"):
+                continue
+            options = choice.get("option_source")
+            for option in options if isinstance(options, list) else []:
+                uses[f"{feat['name']} ({option})".casefold()] = rule
+    return uses
+
+
+FEAT_USES = _feat_uses(FEAT_RULES, CHOICES_PATH)
 
 
 def feat_usage(feat: Any) -> Optional[Dict[str, Any]]:
-    """A full ``usage`` for a feat entry whose typed name has a FEAT_USES rule, else None."""
+    """A full ``usage`` for a feat entry whose typed name is a FEAT_USES name (whole value), else None."""
     name = feat.get("name") if isinstance(feat, dict) else None
-    rule = FEAT_USES.get(str(name or "").split(" (")[0].strip().casefold())
+    rule = FEAT_USES.get(name.strip().casefold()) if isinstance(name, str) else None
     return None if rule is None else {"current": rule["max"], "max": rule["max"], "refreshOn": rule["refreshOn"]}
 
 
