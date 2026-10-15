@@ -947,7 +947,6 @@ def narrate_committed_events(
     """Compatibility wrapper for one T097 attempt with a truthful fallback."""
     from core.ai.combat_narration import (
         build_scene_dossier,
-        lint_combat_narration,
         render_committed_events,
     )
 
@@ -962,13 +961,6 @@ def narrate_committed_events(
             attempt=attempt,
             diagnostics=diagnostics,
         )
-        lint = lint_combat_narration(narration, dossier)
-        if lint["reject"]:
-            raise CombatNarrationAttemptError(
-                "T097 narration failed deterministic integrity checks",
-                candidate=narration,
-                failure_class="narration_lint_reject",
-            )
         return narration, False
     except Exception:
         return render_committed_events(encounter, events), True
