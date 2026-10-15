@@ -80,6 +80,8 @@ _ACCOUNT_REFUSAL_MOMENTS = {
     "welcome": "%s. Nothing in your game was changed. %s, then tell the DM what you do next.",
     # A follow-up after the response was applied (#442): what happened is kept.
     "followup": "%s. What already happened in your game is kept, but the DM could not narrate what comes next. %s, then continue.",
+    # A fight left after a refused combat call (#1087): it stays saved and active.
+    "combat": "%s. The fight is saved as it stands. %s, then load your game to continue the fight.",
 }
 
 

@@ -61,6 +61,7 @@ from core.managers.combat_transaction import (
     write_weapon_attack,
 )
 from utils.encoding_utils import normalize_typography_deep, safe_json_load
+from utils.capture.live_provider_call import LiveProviderCompletedError
 from utils.transient_filesystem import ReadOnlySaveStop
 
 
@@ -1729,7 +1730,9 @@ def _deliver_committed_turn(
                                 warning_codes=lint["warnings"],
                             )
                             break
-                except (InvocationSupersededError, ReadOnlySaveStop):
+                except (InvocationSupersededError, ReadOnlySaveStop, LiveProviderCompletedError):
+                    # A completed refusal ends the fight window; the delivery
+                    # stays pending and is narrated on resume (#1087).
                     raise
                 except Exception as exc:
                     candidate = str(getattr(exc, "candidate", "") or "")
@@ -2291,7 +2294,9 @@ def execute_agentic_turn(
                 now_scalar=combat_now_scalar,
             )
             batch = _reconcile_validated_prefix(batch, correction)
-        except (InvocationSupersededError, ReadOnlySaveStop):
+        except (InvocationSupersededError, ReadOnlySaveStop, LiveProviderCompletedError):
+            # A completed refusal cannot heal by re-sending: it ends the fight
+            # window and the pending turn is kept for resume (#1087).
             raise
         except Exception as exc:
             # Keep the same persisted logical operation alive. Provider/network
