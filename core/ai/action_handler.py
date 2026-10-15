@@ -1157,6 +1157,51 @@ def _departure_projection_status(action_record):
     return status
 
 
+def _commit_departure_journal_only(
+    checkpoint, summary_record, commit_record, journal_data, area_detail
+):
+    """Commit a departure whose area is left as it is (#1072, D-1072-1).
+
+    The skip is recorded in the checkpoint before the journal is written, so a
+    retry after a crash takes this path again even if the area reads cleanly
+    by then; the entry at its staged index marks the commit done.
+    """
+    if not isinstance(journal_data, dict) or not isinstance(
+        journal_data.get("entries"), list
+    ):
+        raise RuntimeError("journal is unavailable during departure commit")
+    if not commit_record.get("area_skipped"):
+        warning(
+            "FALLBACK: departure area left as it is for %s: %s; the journal "
+            "records the departure" % (checkpoint["origin_location_id"], area_detail),
+            category="location_transitions",
+        )
+        commit_record["area_skipped"] = area_detail
+        _write_location_transition_checkpoint(checkpoint)
+    journal_index = commit_record["journal_entry_index"]
+    entries = journal_data["entries"]
+    if not (
+        journal_index < len(entries)
+        and entries[journal_index] == commit_record["journal_entry_after"]
+    ):
+        if len(entries) != journal_index:
+            commit_record["status"] = "blocked_conflict"
+            checkpoint["phase"] = "blocked_conflict"
+            _write_location_transition_checkpoint(checkpoint)
+            raise RuntimeError("departure journal changed outside the staged operation")
+        from core.ai import adv_summary
+
+        journal_after = copy.deepcopy(journal_data)
+        journal_after["entries"].append(
+            copy.deepcopy(commit_record["journal_entry_after"])
+        )
+        adv_summary.commit_departure_journal(journal_after)
+    commit_record["status"] = "committed"
+    checkpoint["phase"] = "departure_committed"
+    _write_location_transition_checkpoint(checkpoint)
+    return summary_record["text"]
+
+
 def resolve_current_transition_departure(operation_id, transition_context):
     """Run required T016/T015 outside locks, then commit once on game thread."""
     checkpoint = load_current_transition_checkpoint(operation_id)
@@ -1237,12 +1282,6 @@ def resolve_current_transition_departure(operation_id, transition_context):
             structured_actions=action_projection,
             destination_location_name=checkpoint.get("destination_location_name"),
         )
-        area_before = proposal["area_before"]
-        location_index = next(
-            index
-            for index, location in enumerate(area_before["locations"])
-            if location.get("locationId") == checkpoint["origin_location_id"]
-        )
         summary_record.update(
             {
                 "status": "accepted",
@@ -1254,27 +1293,56 @@ def resolve_current_transition_departure(operation_id, transition_context):
             commit_record["journal_entry_after"]
         )
         staged_journal_entry["summary"] = proposal["summary"]
-        commit_record.update(
-            {
-                "status": "staged",
-                "area_path": proposal["area_path"],
-                "area_owned_before": copy.deepcopy(
-                    proposal["area_before"]["locations"][location_index]
-                ),
-                "area_owned_after": copy.deepcopy(
-                    proposal["area_after"]["locations"][location_index]
-                ),
-                "journal_entry_after": staged_journal_entry,
-            }
-        )
+        if proposal["area_before"] is None:
+            # #1072: the area could not be read strictly; only the journal
+            # entry is committed and the area is left as it is.
+            commit_record.update(
+                {
+                    "status": "staged",
+                    "area_path": proposal["area_path"],
+                    "area_skipped": proposal["area_unreadable"],
+                    "journal_entry_after": staged_journal_entry,
+                }
+            )
+        else:
+            area_before = proposal["area_before"]
+            location_index = next(
+                index
+                for index, location in enumerate(area_before["locations"])
+                if location.get("locationId") == checkpoint["origin_location_id"]
+            )
+            commit_record.update(
+                {
+                    "status": "staged",
+                    "area_path": proposal["area_path"],
+                    "area_owned_before": copy.deepcopy(
+                        proposal["area_before"]["locations"][location_index]
+                    ),
+                    "area_owned_after": copy.deepcopy(
+                        proposal["area_after"]["locations"][location_index]
+                    ),
+                    "journal_entry_after": staged_journal_entry,
+                }
+            )
         checkpoint["phase"] = "departure_pending"
         _write_location_transition_checkpoint(checkpoint)
 
-    area_data = safe_json_load(commit_record["area_path"])
+    area_status, area_data, area_detail = adv_summary.read_departure_area(
+        transition_context["origin_party_tracker"],
+        commit_record["area_path"],
+        checkpoint["origin_area_id"],
+        checkpoint["origin_location_id"],
+    )
+    if area_status not in (adv_summary.OK, adv_summary.UNREADABLE):
+        area_data = safe_json_load(commit_record["area_path"])
     journal_exists = os.path.exists("journal.json")
     journal_data = safe_json_load("journal.json")
     if not journal_exists and journal_data is None:
         journal_data = {"entries": []}
+    if area_status == adv_summary.UNREADABLE or commit_record.get("area_skipped"):
+        return _commit_departure_journal_only(
+            checkpoint, summary_record, commit_record, journal_data, area_detail
+        )
     if not isinstance(area_data, dict) or not isinstance(
         area_data.get("locations"), list
     ):

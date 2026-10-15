@@ -12,7 +12,7 @@ from jsonschema import Draft202012Validator
 
 TASK_ID = "T105"
 PACKET_VERSION = "npc-voice-packet/v1"
-PROMPT_VERSION = "npc-voice-prompt/v4"
+PROMPT_VERSION = "npc-voice-prompt/v5"
 RESPONSE_SCHEMA_VERSION = "npc-voice-response/v2"
 AFFINITY_EVENT_TYPES = (
     "abandon",
