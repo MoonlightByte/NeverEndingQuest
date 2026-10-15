@@ -65,10 +65,11 @@ def _lookup_npc_in_compendium(requested_name,
     missing file / malformed file. Never raises -- callers fall through
     to AI generation when this returns None.
 
-    Match strategy: normalize the requested name and compare against
-    both each compendium key AND each entry's 'name' field, both
-    normalized the same way. This catches modules that reference an
-    NPC by either form.
+    Match strategy: an entry matches when its 'name' has the same
+    character-file key as the requested name (format_type_name, the key
+    every other path files the sheet under), so a pinned name is filed
+    where the rest of the game looks for it. The compendium key is an
+    image-asset id and is not compared (#445).
     """
     try:
         with open(compendium_path, "r", encoding="utf-8") as fh:
@@ -94,17 +95,18 @@ def _lookup_npc_in_compendium(requested_name,
     if not isinstance(npcs, dict):
         return None
 
-    needle = _normalize_compendium_key(requested_name)
+    if not isinstance(requested_name, str) or not requested_name.strip():
+        return None
+    needle = format_type_name(requested_name)
     if not needle:
         return None
 
-    for key, entry in npcs.items():
+    for entry in npcs.values():
         if not isinstance(entry, dict):
             continue
-        if _normalize_compendium_key(key) == needle:
-            return entry
-        entry_name = entry.get("name", "")
-        if _normalize_compendium_key(entry_name) == needle:
+        entry_name = entry.get("name")
+        if (isinstance(entry_name, str) and entry_name.strip()
+                and format_type_name(entry_name) == needle):
             return entry
     return None
 
