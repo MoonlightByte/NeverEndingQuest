@@ -29,11 +29,11 @@ def stage_roll_check(parameters: Dict[str, Any]) -> Dict[str, Any]:
     name = parameters.get("characterName")
     if not isinstance(name, str) or not name.strip():
         return {"error": "rollCheck requires characterName."}
-    stat = checks.stat_id(parameters.get("check"))
+    stat = checks.stat_id(parameters.get("stat"))
     if stat is None:
         # Fail forward: the turn goes on and the DM reads why next turn.
-        line = (f"{name} check {parameters.get('check')!r}: not resolved (name a skill, an ability save, an ability check "
-                f"or initiative and issue rollCheck again)")
+        line = (f"{name} check {parameters.get('stat')!r}: not resolved (stat must be exactly one of "
+                f"{', '.join(checks.STATS)}; issue rollCheck again)")
         checks_state.add_result(line)
         warning(f"CHECK: {line}", category="character_updates")
         return {"resolved": line}
