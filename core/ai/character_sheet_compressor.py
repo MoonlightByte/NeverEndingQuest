@@ -51,30 +51,15 @@ def squeeze_name(name: str) -> str:
     n = re.sub(r'\s+', '', n).strip()
     return n
 
-def normalize_feat(name: str, ability_uses: dict = None) -> str:
-    """Normalize features with ability counters if available"""
-    m = re.search(r'\(([^)]*)\)', name)
-    base_name = re.sub(r'\s*\([^)]*\)', '', name).strip() if m else name
-    
-    # Check if this ability has usage tracking
-    if ability_uses:
-        for ability_key in ability_uses:
-            if ability_key.lower() in base_name.lower():
-                uses = ability_uses[ability_key]
-                current = uses.get('current', uses.get('uses', 0))
-                max_uses = uses.get('max', uses.get('max_uses', 0))
-                base = squeeze_name(base_name)
-                if max_uses > 0:
-                    return f"{base}({current}/{max_uses})"
-    
-    if m:
-        inner = m.group(1).strip()
-        base = squeeze_name(base_name)
-        # Replace spaces in CR values
-        inner = re.sub(r'CR\s+', 'CR', inner)
-        if re.search(r'\d|cr|rest', inner, flags=re.IGNORECASE):
-            return f"{base}:{inner.replace(' ', '')}"
-        return base
+def normalize_feat(name: str) -> str:
+    """A feature's name squeezed, with what its parentheses hold kept as written
+    (spaces removed): "Divine Order (Protector)" -> "DivineOrder:Protector".
+    No word in the name decides what is shown."""
+    inner = [x.strip().replace(' ', '') for x in re.findall(r'\(([^)]*)\)', name)]
+    inner = [x for x in inner if x]
+    if inner:
+        base = squeeze_name(re.sub(r'\s*\([^)]*\)', '', name).strip())
+        return f"{base}:{','.join(inner)}"
     return squeeze_name(name)
 
 def normalize_attack(name: str, kind: str, dmg_die: str, dmg_type: str, atk_bonus: int = None, dmg_bonus: int = None) -> str:
@@ -195,17 +180,12 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
     # VULN/RES/IMM/COND_IMM
     vuln = character.get('vulnerabilities') or ''
     res  = character.get('damageResistances') or []
-    # Deduplicate and format resistances
+    # Each resistance as the sheet holds it (deduplicated), never merged or reworded
     res_clean = set()
     for r in res:
-        r_lower = r.lower().replace(' from ', '_from_').replace(' ', '_')
-        # Handle "poison_from_giant_spider" -> "spider_poison"
-        if 'poison_from_giant_spider' in r_lower:
-            res_clean.add('spider_poison')
-        elif 'poison' in r_lower and 'poison' not in res_clean:
-            res_clean.add('poison')
-        else:
-            res_clean.add(r_lower)
+        value = compact(r).lower().replace(' ', '_')
+        if value:
+            res_clean.add(value)
     res_out = ','.join(sorted(res_clean))
     cimm= character.get('conditionImmunities') or []
     cimm_out = ','.join(c.lower() for c in cimm)
@@ -223,13 +203,13 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
             # For abilities with usage, add (current/max) after the name
             if current is not None and max_uses is not None:
                 # First normalize the base name (keeping things like 2/rest)
-                base_norm = normalize_feat(feat_name, None)
+                base_norm = normalize_feat(feat_name)
                 # Then add the usage counter
                 cf_norm.append(f"{base_norm}({current}/{max_uses})")
             else:
-                cf_norm.append(normalize_feat(feat_name, None))
+                cf_norm.append(normalize_feat(feat_name))
         else:
-            cf_norm.append(normalize_feat(feat, None))
+            cf_norm.append(normalize_feat(feat))
     classfeat_out = ','.join(cf_norm)
 
     # Feats (D-242-D, ruling 5): every feat with its whole description, so the
@@ -291,13 +271,9 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
         dtype = atk.get('damageType','') or ''
         atk_bonus = atk.get('attackBonus')
         dmg_bonus = atk.get('damageBonus')
-        desc = (atk.get('description') or '').lower()
-        if 'spell' in desc or an.lower().strip() == 'sacred flame':
-            kind = 'spell'
-        elif 'ranged' in desc or 'crossbow' in an.lower():
-            kind = 'ranged'
-        else:
-            kind = 'melee'
+        # The row's typed kind (char_schema: melee, ranged or spell); a row
+        # without one is shown as untyped, never guessed from its words.
+        kind = atk.get('type') if atk.get('type') in ('melee', 'ranged', 'spell') else 'untyped'
         atk_parts.append(normalize_attack(an, kind, dmg, dtype, atk_bonus, dmg_bonus))
     atk_out = '[' + ','.join(atk_parts) + ']'
 

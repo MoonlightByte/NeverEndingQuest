@@ -2,16 +2,16 @@
 # SPDX-License-Identifier: Fair-Source-1.0
 # License: See LICENSE file in the repository root
 
-"""Authoritative context, integrity linting, and fallback combat narration.
+"""Authoritative context and fallback combat narration.
 
 The helpers in this module are deterministic. They never call a model and
-never mutate encounter or character state. Model prose is accepted only after
-it agrees with the compact scene dossier built from committed combat facts.
+never mutate encounter or character state. They build the compact scene
+dossier from committed combat facts; the model's narration is not checked
+against it by keyword (D-KW-4).
 """
 
 from __future__ import annotations
 
-import re
 from copy import deepcopy
 
 from core.managers.combat_state import combatant_presentation_name
@@ -48,37 +48,6 @@ _SHEET_FIELDS = (
     "vulnerabilities",
     "senses",
 )
-
-_INTERNAL_RE = re.compile(
-    r"(?:\bcmb-[a-z0-9-]+\b|\b[A-Za-z0-9_-]+-R\d+-[a-f0-9]{8,}-A\d+\b|"
-    r"\b(?:eventId|stateVersion|pendingDelivery|turnCursor|actorId|combatState)\b)",
-    re.IGNORECASE,
-)
-_DAMAGE_RE = re.compile(r"\b(\d+)\s+(?:points?\s+of\s+)?damage\b", re.IGNORECASE)
-_HEAL_RE = re.compile(
-    r"\b(?:heals?|healed|restores?|regains?)\D{0,24}(\d+)\s+(?:hit points?|hp)\b",
-    re.IGNORECASE,
-)
-_HP_RE = re.compile(
-    r"\b(?:at|to|with|has|leaves?\s+\w+\s+at)\s+(\d+)\s+(?:hit points?|hp)\b",
-    re.IGNORECASE,
-)
-_AC_RE = re.compile(r"\bAC\s*(?:of\s*)?(\d+)\b", re.IGNORECASE)
-_ROUND_RE = re.compile(r"\bround\s+(\d+)\b", re.IGNORECASE)
-_ATTACK_ROLL_RE = re.compile(
-    r"\b(?:attack\s+roll|rolls?)(?:\s+of|\s+is|:)?\s*(\d+)\b",
-    re.IGNORECASE,
-)
-_SLOT_RE = re.compile(
-    r"\b(?:level\s*)?(\d+)(?:st|nd|rd|th)?[- ]level\s+spell\s+slot\b",
-    re.IGNORECASE,
-)
-_AMMUNITION_RE = re.compile(
-    r"\b(?:uses?|used|expends?|expended|spends?|spent|leaving|left(?:\s+with)?)"
-    r"\D{0,24}(\d+)\s+(?:arrows?|bolts?|ammunition|ammo)\b",
-    re.IGNORECASE,
-)
-
 
 def _public_copy(value):
     """Copy complete JSON-like combat data while omitting private keys."""
@@ -507,140 +476,6 @@ def update_narration_activity(activity, events):
     return result
 
 
-def lint_combat_narration(narration, dossier):
-    """Return conservative rejecting violations and warning-only findings."""
-    text = str(narration or "").strip()
-    rejects = []
-    warnings = []
-    if not text:
-        return {"reject": ["empty_narration"], "warnings": []}
-    if _INTERNAL_RE.search(text):
-        rejects.append("internal_identifier_leak")
-    mechanical_checks = (
-        _DAMAGE_RE,
-        _HEAL_RE,
-        _HP_RE,
-        _AC_RE,
-        _ROUND_RE,
-        _ATTACK_ROLL_RE,
-        _SLOT_RE,
-        _AMMUNITION_RE,
-    )
-    for pattern in mechanical_checks:
-        if pattern.search(text):
-            rejects.append("mechanical_bookkeeping_leak")
-            break
-    facts = ((dossier or {}).get("authoritativeFacts") or {}).get("events") or []
-    combatants = [
-        row
-        for row in (dossier or {}).get("combatants", []) or []
-        if isinstance(row, dict)
-    ]
-    combatants_by_name = {
-        str(row.get("name") or "").casefold(): row
-        for row in combatants
-        if isinstance(row.get("name"), str)
-    }
-    living_hostiles = [
-        row
-        for row in combatants
-        if row.get("type") == "enemy"
-        and str(row.get("status") or "alive").casefold()
-        not in {"dead", "defeated", "unconscious"}
-        and (
-            type(row.get("currentHitPoints")) is not int
-            or row.get("currentHitPoints") > 0
-        )
-    ]
-    for fact in facts:
-        if not isinstance(fact, dict):
-            continue
-        for target in fact.get("targets", []) or []:
-            if not isinstance(target, dict) or target.get("statusAfter") not in {
-                "dead", "defeated", "unconscious"
-            }:
-                continue
-            target_name = str(target.get("targetName") or "").strip()
-            if not target_name:
-                continue
-            base_name = re.sub(r"[_ ]\d+$", "", target_name).strip()
-            same_kind_remains = any(
-                re.sub(r"[_ ]\d+$", "", str(row.get("name") or "")).casefold()
-                == base_name.casefold()
-                for row in living_hostiles
-            )
-            if same_kind_remains and re.search(
-                r"\b(?:last|final|only\s+remaining)\s+" + re.escape(base_name) + r"\b",
-                text,
-                re.IGNORECASE,
-            ):
-                rejects.append("hostile_count_mismatch")
-
-            target_row = combatants_by_name.get(target_name.casefold()) or {}
-            hp_before = target.get("hpBefore")
-            max_hp = target_row.get("maxHitPoints")
-            if (
-                type(hp_before) is int
-                and type(max_hp) is int
-                and hp_before >= max_hp
-                and (
-                    re.search(
-                        r"\b(?:wounded|injured|bloodied|weakened|battered)\s+"
-                        + re.escape(target_name)
-                        + r"\b",
-                        text,
-                        re.IGNORECASE,
-                    )
-                    or re.search(
-                        r"\b"
-                        + re.escape(base_name)
-                        + r"\b\s*,?\s*(?:though\s+)?(?:already\s+|still\s+)?"
-                        r"(?:wounded|injured|bloodied|weakened|battered)\b",
-                        text,
-                        re.IGNORECASE,
-                    )
-                )
-            ):
-                rejects.append("stale_condition_mismatch")
-
-    for action_name in {
-        str(fact.get("actionName") or "").strip()
-        for fact in facts
-        if isinstance(fact, dict)
-        and isinstance(fact.get("actionName"), str)
-        and str(fact.get("actionName") or "").strip()
-    }:
-        if not re.search(r"\b%s\b" % re.escape(action_name), text, re.IGNORECASE):
-            warnings.append("committed_action_name_missing")
-            break
-    names = [
-        row.get("name")
-        for row in (dossier or {}).get("combatants", [])
-        if isinstance(row, dict) and isinstance(row.get("name"), str)
-    ]
-    sentences = re.split(r"(?<=[.!?])\s+", text)
-    for fact in facts:
-        if not isinstance(fact, dict):
-            continue
-        actor = fact.get("actorName")
-        action = fact.get("actionName")
-        if not isinstance(actor, str) or not isinstance(action, str):
-            continue
-        for other in names:
-            if other == actor:
-                continue
-            for sentence in sentences:
-                if re.match(
-                    r"^\s*%s\b" % re.escape(other), sentence, re.IGNORECASE
-                ) and re.search(r"\b%s\b" % re.escape(action), sentence, re.IGNORECASE):
-                    warnings.append("actor_attribution_mismatch")
-                    break
-    return {
-        "reject": list(dict.fromkeys(rejects)),
-        "warnings": list(dict.fromkeys(warnings)),
-    }
-
-
 def render_committed_events(encounter, events):
     """Render a truthful last-resort sentence from committed typed facts."""
     creatures = _creature_map(encounter if isinstance(encounter, dict) else {})
@@ -673,8 +508,8 @@ def render_committed_events(encounter, events):
             sentence = "%s uses %s" % (actor, action)
             if target_name:
                 sentence += " on %s" % target_name
-        # #511: no damage or HP numbers, as the narration lint requires of
-        # model prose; a target the committed facts leave at 0 HP is down.
+        # #511: no damage or HP numbers in this sentence; a target the
+        # committed facts leave at 0 HP is down.
         if isinstance(target, dict) and type(target.get("hpAfter")) is int and target["hpAfter"] == 0:
             sentence += "; %s is down" % target.get("targetName", "the target")
         parts.append(sentence + ".")

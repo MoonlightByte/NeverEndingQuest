@@ -68,7 +68,7 @@ def console_handback(inputs):
 
 
 def test_terminal_retry_is_explicit_and_does_not_rewrite_choices():
-    namespace, events = console_handback(['invalid option', 'retry'])
+    namespace, events = console_handback(['invalid option', 'quit', 'exit', 'retry'])
     scope = live.LiveTurnScope()
     before = recovery.configuration_revision('lmstudio')
     assert namespace['_startup_configuration_handback'](
@@ -78,7 +78,7 @@ def test_terminal_retry_is_explicit_and_does_not_rewrite_choices():
     assert scope.controls_open and not scope.is_superseded()
 
 
-@pytest.mark.parametrize('answer', ['cancel', 'quit', 'exit'])
+@pytest.mark.parametrize('answer', ['cancel'])
 def test_terminal_cancellation_propagates_to_existing_startup_owner(answer):
     namespace, _ = console_handback([answer])
     before = recovery.configuration_revision('lmstudio')

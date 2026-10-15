@@ -66,6 +66,10 @@
         "antagonist": {
           "type": "string"
         },
+        "antagonistName": {
+          "type": "string",
+          "minLength": 1
+        },
         "plotStages": {
           "type": "array",
           "items": {
@@ -150,6 +154,18 @@
           },
           "recommendedLevel": {
             "type": "integer"
+          },
+          "areaType": {
+            "type": "string",
+            "enum": ["dungeon", "town", "wilderness", "mixed"]
+          },
+          "climate": {
+            "type": "string",
+            "minLength": 1
+          },
+          "terrain": {
+            "type": "string",
+            "minLength": 1
           },
           "levels": {
             "type": "array",
