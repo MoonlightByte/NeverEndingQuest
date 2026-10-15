@@ -634,6 +634,7 @@ class StorageManager:
         operation_id: str,
     ) -> Dict[str, Any]:
         """Freeze one travel-owned storage mutation before its first write."""
+        operation = _create_with_items_as_store(operation)
         if not self._validate_storage_operation(operation):
             raise ValueError("invalid storage operation")
         action = operation.get("action")
@@ -904,9 +905,20 @@ def get_storage_manager() -> StorageManager:
     """Get storage manager instance"""
     return StorageManager()
 
+def _create_with_items_as_store(operation: Dict[str, Any]) -> Dict[str, Any]:
+    """A create_storage that names items is a store into a new container
+    (#377): the existing create-then-store path, where the engine moves the
+    stock. A plain create is returned unchanged."""
+    if (isinstance(operation, dict) and operation.get("action") == "create_storage"
+            and (operation.get("items") or operation.get("item_name"))):
+        operation = dict(operation, action="store_item")
+        operation.pop("storage_id", None)
+    return operation
+
 def execute_storage_operation(operation: Dict[str, Any]) -> Dict[str, Any]:
     """Execute a storage operation"""
     manager = get_storage_manager()
+    operation = _create_with_items_as_store(operation)
     
     action = operation.get("action")
     

@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- Leaving items in a new chest or cache now puts them in it; the game no longer reports the container as made while the items stay with the character (#377)
 - An NPC from the compendium is matched by the same name key as its character file, so a different spelling of its name no longer gives it a second sheet in combat (#445).
 - A Load during a fight that the welcome-back narration started now logs "Startup welcome superseded (restore)" as info every time, instead of "(None)" as a warning when the fight ended before the Load reached the welcome: the combat fence keeps the reason it stopped the fight (#1038).
 - A fight no longer re-sends a refused AI provider call forever: when a combat call is refused (out of funds or quota, API key rejected, no model access, or another completed error), the fight stops with one line that says why, is saved as it stands and stays active, and continues when you load your game (#1087).
