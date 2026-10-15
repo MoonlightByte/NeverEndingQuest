@@ -209,6 +209,9 @@ def strict_internal_contract(schema: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+SCENE_SCALES = ("area_mass", "site", "confined", "unclassified")
+
+
 def outline_schema() -> Dict[str, Any]:
     truth = _obj(
         {
@@ -264,6 +267,7 @@ def outline_schema() -> Dict[str, Any]:
             },
             "isCrescendo": {"type": "boolean"},
             "optionalTerminal": {"type": "boolean"},
+            "sceneScale": {"type": "string", "enum": list(SCENE_SCALES)},
         }
     )
     thread = _obj(
@@ -281,6 +285,8 @@ def outline_schema() -> Dict[str, Any]:
             "concept": {"type": "string", "minLength": 20},
             "storyRole": {"type": "string", "minLength": 10},
             "targetCR": {"type": "number", "minimum": 0},
+            "requiresSubmergedMovement": {"type": "boolean"},
+            "requiresUnsupportedSense": {"type": "boolean"},
         }
     )
     return _obj(
@@ -319,6 +325,7 @@ def area_binding_schema(
                 "type": "array",
                 "items": {"type": "string", "pattern": "^B[0-9]{3}$"},
             },
+            "sceneScale": {"type": "string", "enum": list(SCENE_SCALES)},
         }
     )
     area = _obj(

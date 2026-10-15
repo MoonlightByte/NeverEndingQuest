@@ -135,129 +135,6 @@ def unique_values(items: Iterable[Dict[str, Any]], key: str, label: str) -> List
     return values
 
 
-_AREA_MASS_BEAT_PATTERNS = (
-    r"\b(?:city|district|region|settlement|town|village)[ -]?wide\b",
-    r"\b(?:army|armies|battlefield|mass battle|mass combat|siege lines?|war ?host)\b",
-    r"\b(?:evacuate|evacuation of) (?:the )?(?:city|district|settlement|town|village)\b",
-)
-_CONFINED_BEAT_PATTERNS = (
-    r"\bprivate (?:conversation|interview|meeting|ritual)\b",
-    r"\b(?:one|single) (?:captive|patient|prisoner|witness)\b",
-)
-_SITE_BEAT_PATTERNS = (
-    r"\b(?:building|bridge|camp|courtyard|gate|hall|house|temple|tower)[ -]wide\b",
-    r"\b(?:defend|evacuate|search) (?:the )?(?:building|bridge|camp|gate|hall|temple|tower)\b",
-)
-_CONFINED_LOCATION_PATTERNS = (
-    r"\b(?:alcoves?|cells?|closets?|cupboards?|pantries|privies)\b",
-    r"\b(?:cramped|narrow|tiny) (?:cells?|chambers?|rooms?)\b",
-    r"\b(?:interior|one-room|private) shacks?\b",
-)
-_AREA_MASS_LOCATION_PATTERNS = (
-    r"\b(?:battlefield|city streets?|district streets?|siege lines?)\b",
-    r"\b(?:city|district|settlement|town|village) (?:center|centre|streets?)\b",
-)
-_SITE_LOCATION_PATTERNS = (
-    r"\b(?:market|muster|parade|public|town|village) (?:field|ground|plaza|square)\b",
-    r"\b(?:courtyard|marketplace|open field|public plaza)\b",
-)
-_SUBMERGED_ROLE_PATTERNS = (
-    r"\b(?:ambush|ambushes|attack|attacks|hunt|hunts|hunting|live|lives|move|moves|"
-    r"operate|operates|pursue|pursues|remain|remains)\b[^.]{0,100}"
-    r"\b(?:fully )?(?:submerged|underwater)\b",
-    r"\b(?:fully )?(?:submerged|underwater)\b[^.]{0,100}"
-    r"\b(?:ambush|ambushes|attack|attacks|hunt|hunts|hunting|move|moves|"
-    r"operate|operates|pursue|pursues)\b",
-)
-_VIBRATION_ROLE_PATTERNS = (
-    r"\b(?:detect|detects|find|finds|hunt|hunts|locate|locates|sense|senses|track|"
-    r"tracks)\b[^.]{0,100}\b(?:tremorsense|vibrations?)\b",
-    r"\b(?:tremorsense|vibrations?)\b[^.]{0,100}\b(?:detect|detects|find|finds|"
-    r"hunt|hunts|locate|locates|sense|senses|track|tracks)\b",
-)
-
-
-def _semantic_text(value: Any) -> str:
-    parts: List[str] = []
-
-    def visit(item: Any) -> None:
-        if isinstance(item, str):
-            parts.append(item)
-        elif isinstance(item, (list, tuple)):
-            for child in item:
-                visit(child)
-
-    visit(value)
-    return " ".join(parts).casefold()
-
-
-def _matches_any(text: str, patterns: Iterable[str]) -> bool:
-    return any(re.search(pattern, text) for pattern in patterns)
-
-
-def classify_beat_scene_scale(beat: Dict[str, Any]) -> str:
-    """Classify only explicit scene-scale language; ambiguity is unclassified."""
-    text = _semantic_text(
-        [
-            beat.get("title", ""),
-            beat.get("purpose", ""),
-            beat.get("playerApproaches", []),
-            beat.get("consequences", []),
-        ]
-    )
-    if _matches_any(text, _AREA_MASS_BEAT_PATTERNS):
-        return "area_mass"
-    if _matches_any(text, _CONFINED_BEAT_PATTERNS):
-        return "confined"
-    if _matches_any(text, _SITE_BEAT_PATTERNS):
-        return "site"
-    return "unclassified"
-
-
-def classify_location_scene_scale(
-    role: Dict[str, Any], area: Dict[str, Any], outline_area: Dict[str, Any]
-) -> str:
-    """Classify a location role without treating danger or broad area as capacity."""
-    role_text = _semantic_text(
-        [role.get("name", ""), role.get("type", ""), role.get("storyPurpose", "")]
-    )
-    confined = _matches_any(role_text, _CONFINED_LOCATION_PATTERNS)
-    large = _matches_any(role_text, _AREA_MASS_LOCATION_PATTERNS)
-    site = _matches_any(role_text, _SITE_LOCATION_PATTERNS)
-    if sum((confined, large, site)) > 1:
-        return "unclassified"
-    if confined:
-        return "confined"
-    if large:
-        return "area_mass"
-    if site:
-        return "site"
-
-    # Broad area context is evidence only when the role itself declares that it
-    # is public/open/complex. It never upgrades a named cell or shack.
-    if re.search(r"\b(?:complex|open|public)\b", role_text):
-        context = _semantic_text(
-            [
-                area.get("areaType", ""),
-                outline_area.get("environment", ""),
-            ]
-        )
-        if re.search(r"\b(?:city|district|settlement|town|village)\b", context):
-            return "site"
-    return "unclassified"
-
-
-def classify_unrepresentable_creature_role(brief: Mapping[str, Any]) -> List[str]:
-    """Name only explicit role dependencies absent from the frozen monster shape."""
-    text = _semantic_text([brief.get("concept", ""), brief.get("storyRole", "")])
-    requirements = []
-    if _matches_any(text, _SUBMERGED_ROLE_PATTERNS):
-        requirements.append("submerged_movement")
-    if _matches_any(text, _VIBRATION_ROLE_PATTERNS):
-        requirements.append("unsupported_special_sense")
-    return requirements
-
-
 def looks_plural_creature_reference(name: str) -> bool:
     """Catch ordinary plural keys without pretending to be a full inflector."""
     words = re.findall(r"[A-Za-z]+", name)
@@ -376,7 +253,14 @@ def semantic_outline_checks(
                 f"duplicate creature brief names: {creature_names[name_key]!r}, {name!r}"
             )
         creature_names[name_key] = name
-        requirements = classify_unrepresentable_creature_role(brief)
+        requirements = [
+            requirement
+            for field, requirement in (
+                ("requiresSubmergedMovement", "submerged_movement"),
+                ("requiresUnsupportedSense", "unsupported_special_sense"),
+            )
+            if brief[field]
+        ]
         if requirements:
             role_issues.append(
                 {
@@ -596,12 +480,8 @@ def semantic_area_binding_checks(
         outline_area = outline_areas.get(area_id)
         if beat is None or outline_area is None:
             continue
-        beat_scale = classify_beat_scene_scale(beat)
-        location_scale = classify_location_scene_scale(
-            role,
-            next(item for item in binding["areas"] if item["areaRoleId"] == area_id),
-            outline_area,
-        )
+        beat_scale = beat["sceneScale"]
+        location_scale = role["sceneScale"]
         if beat_scale != "unclassified" or location_scale != "unclassified":
             scale_checked_count += 1
         if beat_scale == "area_mass":
