@@ -419,14 +419,31 @@ def npc_repair_schema(location_ids, loca_schema):
     )
 
 
-def hardening_schema(location_ids, loca_schema):
+def hardening_schema(location_ids, loca_schema, entity_names, level_min, level_max):
     dm = copy.deepcopy(
         loca_schema["properties"]["locations"]["items"]["properties"]["dmInstructions"]
+    )
+    name = {"type": "string"}
+    if entity_names:
+        name["enum"] = sorted(set(entity_names))
+    guard = _obj(
+        {
+            "name": name,
+            "switchWhen": {"type": "string", "minLength": 10},
+        }
+    )
+    level = _obj(
+        {
+            "level": {"type": "integer", "minimum": level_min, "maximum": level_max},
+            "guidance": {"type": "string", "minLength": 10},
+        }
     )
     repair = _obj(
         {
             "locationId": {"type": "string", "enum": list(location_ids)},
             "dmInstructions": dm,
+            "sameEntityGuards": {"type": "array", "items": guard},
+            "levelGuidance": {"type": "array", "items": level},
         }
     )
     return _obj(

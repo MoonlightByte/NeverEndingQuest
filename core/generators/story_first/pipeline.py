@@ -870,11 +870,6 @@ class StoryFirstPipeline:
                             != source_tail
                         ):
                             raise ValueError("potential-scene guidance changed")
-                    if location["locationId"] in overlaps and (
-                        "never instantiate both"
-                        not in location["dmInstructions"].casefold()
-                    ):
-                        raise ValueError("accepted same-entity guard is missing")
             climax = next(
                 location
                 for area in accepted.areas
@@ -882,11 +877,6 @@ class StoryFirstPipeline:
                 if location["locationId"] == climax_id
             )
             climax_text = climax["dmInstructions"].casefold()
-            for level in range(
-                seed.module_controls["levelMin"], seed.module_controls["levelMax"] + 1
-            ):
-                if f"level {level}" not in climax_text:
-                    raise ValueError("accepted climax level guidance is incomplete")
             climax_source = migrated_by_id[climax_id]["dmInstructions"]
             if (
                 "POTENTIAL SCENE GUIDANCE (not completed history):" in climax_source
