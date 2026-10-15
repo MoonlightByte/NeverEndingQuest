@@ -8,8 +8,8 @@
     "sourceSha256": "5fafd1c79e869dbca686e3efbc18e9e680119b55a662400b1e1513892c9068ee",
     "totalSpells": 339,
     "classificationCounts": {
-      "verified": 8,
-      "ambiguous": 124,
+      "verified": 9,
+      "ambiguous": 123,
       "no_player_roll": 207
     },
     "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
@@ -3543,8 +3543,8 @@
     },
     "spiritual_weapon": {
       "name": "Spiritual Weapon",
-      "classification": "ambiguous",
-      "reason": "Roll-relevant SRD text exists, but no reviewed typed phase contract is available; runtime enforcement must not block this spell.",
+      "classification": "verified",
+      "reason": "Manually typed and reviewed against the SRD 5.2.1 repository entry.",
       "evidenceDice": [
         "1d8"
       ],
@@ -3553,7 +3553,37 @@
       ],
       "source": "SRD 5.2.1",
       "version": "5.2.1",
-      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+      "phases": [
+        {
+          "id": "spell_attack",
+          "purpose": "attack",
+          "playerRoll": true,
+          "baseDice": {
+            "count": 1,
+            "sides": 20
+          },
+          "modifier": "spellAttackBonus"
+        },
+        {
+          "id": "damage",
+          "purpose": "damage",
+          "playerRoll": true,
+          "trigger": "hit",
+          "baseDice": {
+            "count": 1,
+            "sides": 8
+          },
+          "scaling": {
+            "kind": "slot_level",
+            "baseLevel": 2,
+            "perLevel": {
+              "count": 1,
+              "sides": 8
+            }
+          }
+        }
+      ]
     },
     "starry_wisp": {
       "name": "Starry Wisp",
