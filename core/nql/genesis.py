@@ -487,7 +487,12 @@ def held_ids_on_disk(characters_dir: str = "characters", storage_file: str = "pl
     of them (#1039, #1060)."""
     from utils.file_operations import safe_read_json
     sheets = []
-    for path in sorted(glob.glob(os.path.join(characters_dir, "*.json"))):
+    paths = glob.glob(os.path.join(characters_dir, "*.json"))
+    # glob never matches a dotfile; a sheet saved before #894 is characters/.json (#1074)
+    legacy = os.path.join(characters_dir, ".json")
+    if os.path.isfile(legacy):
+        paths.append(legacy)
+    for path in sorted(paths):
         if "." not in os.path.basename(path)[:-len(".json")]:
             sheets.append(safe_read_json(path))
     data = safe_read_json(storage_file) if os.path.exists(storage_file) else None

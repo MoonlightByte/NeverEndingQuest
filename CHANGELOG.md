@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- Item ids on a hero's sheet saved before #894 as characters/.json (a name with no Latin letters) are now protected like every other sheet's, so a new item id never repeats one of them (#1074).
 - A journey resumed after a restart no longer writes replaced characters into the area it leaves when that area file holds a damaged byte; the area is left as it is for repair, the departure is still recorded in the journal, and a warning names the file (#1072).
 - Companion voices are told what the current moment really is: in a fight it is the game's account of the encounter and your declared action, not words you spoke to them, and out of combat a request you make for yourself ("help me") is about you even when it names a companion (Closes #430).
 - After a resumed fight, a party tracker that names its area and location but has no location id now pauses the game with the "no readable location" message, as a missing name already did; the player and party panels find the people at the current location the same way as the rest of the game, so a briefly locked area file is retried and a damaged one is named in the log (#850)
