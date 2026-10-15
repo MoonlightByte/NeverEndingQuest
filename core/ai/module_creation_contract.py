@@ -174,33 +174,13 @@ def get_module_creation_policy(
         )
 
 
-def _word_count(value: str) -> int:
-    return len(re.findall(r"[A-Za-z0-9']+", value))
-
-
 def _validate_plot_themes(value: Any) -> str:
+    # The themes are model-written prose read only by later prompts. Code checks
+    # presence; how many words or goals the text holds is the model's choice
+    # (#347 removed the upper bound; the floor and goal split went with D-KW-7).
     if not isinstance(value, str) or not value.strip():
         raise ModuleCreationContractError("plot_themes must be useful non-empty text")
-    normalized = " ".join(value.strip().split())
-    words = _word_count(normalized)
-    # #347: no upper bound. A word count over model-written prose is not a
-    # contract; only the floor (useful text) and the goal shape are checked.
-    if words < 3:
-        raise ModuleCreationContractError("plot_themes must contain at least 3 words")
-
-    # Prompts request comma/semicolon-separated concrete goals.  Counting those
-    # explicit separators is deterministic while avoiding guesses about every
-    # natural-language use of "and" within a goal.
-    goals = [
-        goal.strip()
-        for goal in re.split(r"\s*(?:,|;|\n+)\s*", normalized)
-        if goal.strip()
-    ]
-    if not 1 <= len(goals) <= 3:
-        raise ModuleCreationContractError(
-            "plot_themes must contain 1 to 3 comma- or semicolon-separated goals"
-        )
-    return normalized
+    return " ".join(value.strip().split())
 
 
 def normalize_user_module_name(value: Any) -> str:
