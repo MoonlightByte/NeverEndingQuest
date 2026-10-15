@@ -43,7 +43,8 @@ except:
 
 from jsonschema import validate, ValidationError
 from utils.module_path_manager import ModulePathManager
-from utils.encoding_utils import sanitize_text, safe_json_load, safe_json_dump
+from utils.encoding_utils import sanitize_dict, sanitize_text, safe_json_load, safe_json_dump
+from core.managers.current_location import OK, UNREADABLE, read_current_location
 from utils.file_operations import FileLockError, atomic_writer
 from utils.transient_filesystem import ReadOnlySaveStop, raise_if_save_stopped
 from core.managers.status_manager import status_generating_summary
@@ -1260,6 +1261,76 @@ def commit_departure_summary(
                 )
 
 
+def commit_departure_journal(journal_after, pending_path=PENDING_DEPARTURE_SUMMARY_FILE):
+    """Commit a departure's journal entry alone, its area left as it is (#1072).
+
+    One file, replaced atomically, so no recovery marker: a retry finds the
+    entry at its staged index. The locks are the pair commit's, in its order.
+    """
+    journal_path = os.path.abspath(os.path.normpath("journal.json"))
+    expected_journal_before = _journal_before_from_appended_update(journal_after)
+
+    with _wait_for_module_refresh():
+        with _departure_transaction_lock(pending_path):
+            _resolve_prior_pending_summary_unlocked(pending_path)
+            try:
+                atomic_writer.acquire_lock(journal_path)
+            except Exception as exc:
+                raise DepartureSummaryError(
+                    "could not acquire departure transaction target lock for "
+                    f"{journal_path}: {exc}"
+                ) from exc
+            try:
+                journal_existed, journal_before = _load_json_snapshot(journal_path)
+                if journal_existed:
+                    journal_matches_base = journal_before == expected_journal_before
+                else:
+                    journal_matches_base = not expected_journal_before.get("entries")
+                if not journal_matches_base:
+                    raise DepartureSummaryError(
+                        "departure journal changed concurrently; staged summary "
+                        "was not committed"
+                    )
+                safe_json_dump(journal_after, journal_path)
+                if not _snapshot_matches(
+                    *_load_json_snapshot(journal_path), True, journal_after
+                ):
+                    raise DepartureSummaryError(
+                        "departure journal commit verification failed"
+                    )
+            finally:
+                atomic_writer.release_lock(journal_path)
+    return {"success": True, "status": "committed", "area_path": None}
+
+
+def read_departure_area(party_tracker, area_path, area_id, location_id):
+    """(status, area, detail) for the area a departure leaves, read through
+    #448's one reader (#1072).
+
+    The reader keys on a tracker's current ids, and a resumed journey's tracker
+    is already at the destination, so it reads one projected to the departure's
+    own area and location. OK gives the area sanitized as safe_json_load reads
+    a healthy file; UNREADABLE gives no area and the reader's detail. Any other
+    answer, or a reader file other than ``area_path``, gives (status, None, detail)
+    and the caller reads as before.
+    """
+    projected = {
+        "module": (party_tracker or {}).get("module", ""),
+        "worldConditions": {
+            "currentAreaId": area_id,
+            "currentLocationId": location_id,
+        },
+    }
+    read = read_current_location(projected)
+    if not read.area_file or os.path.abspath(read.area_file) != os.path.abspath(
+        area_path
+    ):
+        return None, None, "the reader names another area file"
+    if read.status == OK:
+        return OK, sanitize_dict(read.area), ""
+    return read.status, None, read.detail
+
+
 def prepare_departure_summary(
     conversation_history,
     party_tracker,
@@ -1300,7 +1371,34 @@ def prepare_departure_summary(
 
     current_module = party_tracker.get("module", "").replace(" ", "_")
     area_path = ModulePathManager(current_module or None).get_area_path(current_area_id)
-    area_before = load_json_file(area_path)
+    area_status, area_before, area_detail = read_departure_area(
+        party_tracker, area_path, current_area_id, leaving_location_id
+    )
+    if area_status == UNREADABLE:
+        # Fail forward (#1072, D-1072-1): the party has moved. The damaged area
+        # is left as it is, T015 is not called, the journal records the departure.
+        warning(
+            "FALLBACK: departure area left as it is for %s: %s; the journal "
+            "records the departure" % (leaving_location_id, area_detail),
+            category="location_transitions",
+        )
+        journal_after = build_journal_update(
+            adventure_summary,
+            party_tracker,
+            leaving_location_name,
+        )
+        return {
+            "summary": adventure_summary,
+            "area_path": area_path,
+            "area_before": None,
+            "area_after": None,
+            "area_unreadable": area_detail,
+            "journal_after": journal_after,
+            "journal_entry_index": len(journal_after.get("entries", [])) - 1,
+            "journal_entry_after": copy.deepcopy(journal_after["entries"][-1]),
+        }
+    if area_status != OK:
+        area_before = load_json_file(area_path)
     if not isinstance(area_before, dict) or not isinstance(
         area_before.get("locations"), list
     ):
