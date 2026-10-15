@@ -3627,6 +3627,38 @@ def _validation_location_view(location_data):
             if k not in ("connectivity", "areaConnectivity", "areaConnectivityId")}
 
 
+def _validation_storage_view(location_id):
+    """The party's storage containers at one place, as values, for the
+    validator (#388). Containers are matched by locationId, as the engine
+    matches them for a retrieve. No player_storage.json means none stored; an
+    unreadable one raises, so the caller marks the record unavailable rather
+    than empty."""
+    from utils.transient_filesystem import read_bytes_preserving_errors, retry_transient_filesystem
+    try:
+        raw = retry_transient_filesystem(lambda: read_bytes_preserving_errors("player_storage.json"))
+    except FileNotFoundError:
+        return []
+    data = json.loads(raw.decode("utf-8"))
+    containers = data.get("playerStorage") if isinstance(data, dict) else None
+    if not isinstance(containers, list):
+        raise ValueError("no playerStorage list")
+    view = []
+    for container in containers:
+        if not isinstance(container, dict) or container.get("locationId") != location_id:
+            continue
+        contents = []
+        for entry in container.get("contents") or []:
+            if not isinstance(entry, dict):
+                continue
+            item = {"item": entry.get("item_name"), "quantity": entry.get("quantity")}
+            if str(entry.get("nql_id") or "").startswith("item:"):
+                item["id"] = entry["nql_id"]
+            contents.append(item)
+        view.append({"id": container.get("id"), "name": container.get("deviceName"),
+                     "type": container.get("deviceType"), "contents": contents})
+    return view
+
+
 def _compact_character_evidence(character_records):
     """The validator's character block as compact KEY=value lines (context views C1).
 
@@ -4173,6 +4205,12 @@ def validate_ai_response(
                 if _scene_here["rosterRecord"]:
                     _scene_location["rosterRecord"] = _scene_here["rosterRecord"]
             scene_record["location"] = _scene_location
+        if role == "origin":
+            try:
+                scene_record["playerStorage"] = _validation_storage_view(scene_location)
+            except (OSError, ValueError) as exc:
+                scene_record["playerStorageStatus"] = "unavailable"
+                scene_record["playerStorageReason"] = type(exc).__name__
         scene_records.append(scene_record)
     location_records_context = None
     validation_messages_to_send = list(validation_messages_to_send) + [{
@@ -4185,7 +4223,8 @@ def validate_ai_response(
             "player input and established events. A location's `occupants` list is the "
             "rules engine's record of who is present (people and creature groups, with "
             "ids, counts and attitudes); appearing in it does not by itself establish party "
-            "allegiance. "
+            "allegiance. The origin's `playerStorage` lists the party's storage containers "
+            "at that place and their contents before this turn's actions. "
             "Judge the encounter role using the supplied scenario and typed proposal. "
             "Authored traps, secrets and future events establish scenario context, "
             "not that the party detected them, triggered them or earned their outcomes. "
@@ -5873,7 +5912,8 @@ def _action_failure_player_message(result):
         refusal_text = account_refusal_message(
             source_data.get("provider_refusal"),
             source_data.get("provider_refusal_provider"),
-            "after_narration",
+            # A refused combat call left its fight saved (#1087).
+            "combat" if source_data.get("provider_refusal_moment") == "combat" else "after_narration",
         )
         if refusal_text is not None:
             return refusal_text
@@ -9028,10 +9068,19 @@ def _main_game_loop(startup_authority, turn_authority):
         # Call run_combat_simulation directly to get the return values
         from core.managers.combat_manager import run_combat_simulation
         # A quit at a combat prompt returns None; the fight stays active (#444).
-        combat_result = run_combat_simulation(
-            active_encounter_id, party_tracker_data, location_data_resume,
-            invocation_claim=startup_claim,
-        )
+        combat_refusal_line = None
+        try:
+            combat_result = run_combat_simulation(
+                active_encounter_id, party_tracker_data, location_data_resume,
+                invocation_claim=startup_claim,
+            )
+        except LiveProviderCompletedError as refused:
+            # #1087: a refused combat call leaves the fight saved and active.
+            combat_result = None
+            refusal = classify_provider_error(refused)
+            combat_refusal_line = account_refusal_message(
+                refusal["category"], refusal["provider"], "combat"
+            )
         dialogue_summary = (
             combat_result[0]
             if isinstance(combat_result, tuple) and combat_result
@@ -9079,7 +9128,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 )
             else:
                 display_dm_narration(
-                    "Combat did not reach a confirmed completion state. "
+                    combat_refusal_line
+                    or "Combat did not reach a confirmed completion state. "
                     "The active encounter was preserved for recovery and "
                     "no post-combat narration was requested.",
                     channel="combat",

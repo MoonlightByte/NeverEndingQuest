@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - A Load during a fight that the welcome-back narration started now logs "Startup welcome superseded (restore)" as info every time, instead of "(None)" as a warning when the fight ended before the Load reached the welcome: the combat fence keeps the reason it stopped the fight (#1038).
+- A fight no longer re-sends a refused AI provider call forever: when a combat call is refused (out of funds or quota, API key rejected, no model access, or another completed error), the fight stops with one line that says why, is saved as it stands and stays active, and continues when you load your game (#1087).
+- The scene check now sees what is stored in the party's chests at the current place, so taking out an item stored earlier is no longer refused as invented (#388)
 - A character saved before #894 as characters/.json (a name with no Latin letters) is found again: a lookup by its name finds its sheet, a fight that refers to that sheet loads it instead of looking for characters/json.json, and a companion saved there is in the list whose memories are kept (#1082).
 - When combat narration falls back to the game's own sentence, it no longer reads out damage and HP numbers; it says who hits or misses and who goes down (Refs #511).
 - When module work held the module lock for more than 5 seconds as a fight ended, the fight's record was not written to the location (an older fight lost it; a current one repeated its summary call and stayed unfinished until a later turn). The record now waits for the module work, as the travel record already does; Load, Reset and Quit still end the wait (#453).
