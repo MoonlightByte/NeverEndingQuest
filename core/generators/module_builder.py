@@ -304,14 +304,6 @@ def _is_auth_error(exc):
     )
 
 
-def _looks_like_npc_name(value: Any) -> bool:
-    """Reject prose paragraphs without trying to invent a replacement name."""
-    if not isinstance(value, str):
-        return False
-    candidate = " ".join(value.split())
-    return bool(candidate) and len(candidate) <= 120 and len(candidate.split()) <= 18
-
-
 def _project_locations_into_context(context, area_id: str, locations) -> None:
     """Mirror accepted classic locations into the internal module context."""
     for location in locations or []:
@@ -1039,22 +1031,10 @@ MODULE INDEPENDENCE RULES:
         """
         self.log("Injecting main antagonist into climactic location...")
 
-        # 1. Identify the main antagonist from the module data
-        antagonist_name = self.module_data.get("mainPlot", {}).get("antagonist")
+        # 1. Identify the main antagonist by the worker's typed name field
+        antagonist_name = self.module_data.get("mainPlot", {}).get("antagonistName")
         if not antagonist_name:
-            self.log("  - WARNING: No antagonist found in module data. Skipping injection.")
-            return
-        if not _looks_like_npc_name(antagonist_name):
-            warning(
-                "Antagonist placement skipped because the antagonist field is "
-                "paragraph-shaped rather than name-shaped; model-authored area "
-                "content was left unchanged.",
-                category="module_generation",
-            )
-            self.log(
-                "  - WARNING: Antagonist field is paragraph-shaped. "
-                "Skipping automatic NPC injection without rewriting it."
-            )
+            self.log("  - WARNING: No antagonist name found in module data. Skipping injection.")
             return
 
         # 2. Identify the climactic area by reading the unified plot file
