@@ -267,7 +267,7 @@ from core.managers.combat_transaction import (
 from utils.encoding_utils import safe_json_load, sanitize_dict
 from utils.file_operations import safe_write_json
 from utils.transient_filesystem import ReadOnlySaveStop, raise_if_save_stopped
-from utils.module_refresh_lock import module_refresh_lock
+from utils.module_refresh_lock import wait_for_module_refresh
 import core.ai.cumulative_summary as cumulative_summary
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
 # Import combat message compressor for optimizing conversation history
@@ -1948,16 +1948,16 @@ def _append_combat_encounter_to_current_area(current_location_id, new_encounter)
     whole-location replacement after T041 would therefore be able to undo a
     completed T088 NPC reconciliation. Resolve the authoritative module/area
     and change only its encounter list while holding the shared outer fence.
+    Busy means wait, never skip (#193 B2-ii, issue #453): a skip lost the
+    fight's record, or made the agentic exit repeat its T041 call. Load,
+    Reset or Quit still end the wait.
     """
-    with module_refresh_lock() as refresh_acquired:
-        if not refresh_acquired:
-            warning(
-                "Combat summary area update skipped because module refresh "
-                "is busy",
-                category="encounter_setup",
-            )
-            return False
-
+    with wait_for_module_refresh(
+        lambda seconds: (
+            "Waiting for module work to finish before recording the fight "
+            "(%d seconds)." % seconds
+        )
+    ):
         try:
             authoritative_party = safe_json_load("party_tracker.json")
         except Exception as exc:
