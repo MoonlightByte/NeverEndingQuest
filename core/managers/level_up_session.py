@@ -23,9 +23,10 @@ from core.ai import api_client
 from core.leveling import tables
 from core.managers.level_up_manager import LevelUpTurn, _level_up_commit_guard
 from core.nql import leveling as nql_leveling
-from utils.capture.live_provider_call import get_live_turn_scope
+from utils.capture.live_provider_call import LiveProviderCompletedError, get_live_turn_scope
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.enhanced_logger import debug, error, info, warning
+from utils.provider_errors import account_refusal_message, classify_provider_error
 from utils.file_operations import safe_read_json
 from utils.module_path_manager import ModulePathManager
 
@@ -71,6 +72,7 @@ class LevelUpSession:
         self._last_turn: Optional[LevelUpTurn] = None
         self.is_player = False
         self._failures = 0
+        self._refusal_text = None  # #442: an account refusal's line ends the session
         self._committed = False
 
     # ---- surface -------------------------------------------------------------
@@ -133,6 +135,9 @@ class LevelUpSession:
             with self.commit_guard():
                 pass
             answer = self._ask_agent(corrections)
+            if answer is None and self._refusal_text:
+                # #442: retrying cannot help an account refusal.
+                return self._terminal("not_applied", self._refusal_text)
             if answer is None:
                 self._failures += 1
                 if self._failures >= _MAX_AGENT_FAILURES:
@@ -183,6 +188,9 @@ class LevelUpSession:
             raw = response.choices[0].message.content
         except Exception as exc:  # transport already reissued; a completed failure ends this turn
             error(f"LEVEL-UP: agent call failed: {exc}", category="level_up")
+            if isinstance(exc, LiveProviderCompletedError):
+                refusal = classify_provider_error(exc)
+                self._refusal_text = account_refusal_message(refusal["category"], refusal["provider"], "turn")
             return None
         try:
             parsed = json.loads(raw)

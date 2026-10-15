@@ -875,10 +875,10 @@ def _apply_welcome(lifecycle):
             _finish_welcome(lifecycle, "SUPERSEDED")
             return
         if isinstance(process_result, dict) and process_result.get("status") in {
-            "travel_content_unavailable", "review_exhausted",
+            "travel_content_unavailable", "review_exhausted", "provider_error",
         }:
-            # Content failure is not a completed welcome or a provider error.
-            # Existing failure cleanup retains any accepted parent beats.
+            # Content failure or a refused follow-up (#442) is not a completed
+            # welcome. Existing failure cleanup retains any accepted parent beats.
             if not is_kickoff_claim_still_active(lifecycle.startup_attempt_id, lifecycle.lease_owner):
                 _finish_welcome(lifecycle, "STALE_DISCARDED")
                 return
@@ -1157,6 +1157,10 @@ def _spawn_welcome_worker(conversation_history, note_message,
     return lifecycle
 
 
+# A refused opening call's welcome line, kept for after its one retry (#442).
+_kickoff_refusal_line = None
+
+
 def _run_startup_kickoff_once(
     conversation_history,
     party_tracker_data,
@@ -1166,7 +1170,7 @@ def _run_startup_kickoff_once(
     precomputed_response=None,
 ):
     from core.combat.invocation import InvocationSupersededError
-    from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.capture.live_provider_call import LiveProviderCompletedError, LiveProviderSuperseded
 
     claim = claim_kickoff_lease(source=source)
     claim_status = claim.get("status")
@@ -1279,7 +1283,7 @@ def _run_startup_kickoff_once(
         if isinstance(process_result, dict) and process_result.get("status") == "superseded_invocation":
             return "stale_discarded"
         if isinstance(process_result, dict) and process_result.get("status") in {
-            "travel_content_unavailable", "review_exhausted",
+            "travel_content_unavailable", "review_exhausted", "provider_error",
         }:
             if not is_kickoff_claim_still_active(startup_attempt_id, lease_owner):
                 return "stale_discarded"
@@ -1323,6 +1327,12 @@ def _run_startup_kickoff_once(
     except (LiveProviderSuperseded, InvocationSupersededError):
         return "stale_discarded"
     except Exception as exc:
+        global _kickoff_refusal_line
+        if isinstance(exc, LiveProviderCompletedError):
+            refusal = classify_provider_error(exc)
+            _kickoff_refusal_line = account_refusal_message(
+                refusal["category"], refusal["provider"], "welcome"
+            )
         fail_result = mark_kickoff_failed(startup_attempt_id, lease_owner, str(exc))
         emit_startup_marker(
             "startup_kickoff_failed",
@@ -1344,6 +1354,8 @@ def run_startup_kickoff_with_recovery(
     precomputed_response=None,
 ):
     """Run startup kickoff with exactly-once lease and one fallback recovery attempt."""
+    global _kickoff_refusal_line
+    _kickoff_refusal_line = None
     startup_state = load_startup_state()
     result = _run_startup_kickoff_once(
         conversation_history,
@@ -1392,7 +1404,10 @@ def run_startup_kickoff_with_recovery(
     )
     if _is_restore_request(retry_result):
         return retry_result
-    return {"status": "done" if retry_result == "done" else "failed", "reason": retry_result}
+    if retry_result == "done":
+        return {"status": "done", "reason": retry_result}
+    # #442: a refused opening call is told once, after its one retry.
+    return {"status": "failed", "reason": retry_result, "player_message": _kickoff_refusal_line}
 
 
 def recover_startup_handoff():
@@ -6317,7 +6332,7 @@ def process_ai_response(
     )
 
     response_fences = ExitStack()
-    from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.capture.live_provider_call import LiveProviderCompletedError, LiveProviderSuperseded
 
     def precommit_stale_result(status, **details):
         result = retryable_result(status, **details)
@@ -6954,6 +6969,13 @@ def process_ai_response(
                     category="action_processing",
                 )
                 result = {"status": "error", "success": False}
+                if isinstance(action_error, LiveProviderCompletedError):
+                    # #442: the one selector shows the account reason.
+                    refusal = classify_provider_error(action_error)
+                    result["response_data"] = {
+                        "provider_refusal": refusal["category"],
+                        "provider_refusal_provider": refusal["provider"],
+                    }
             if _is_restore_request(result):
                 return result
             actions_processed = True
@@ -7212,6 +7234,16 @@ def process_ai_response(
             "status": "superseded_invocation",
             "retryable": False,
         }
+    except LiveProviderCompletedError as refused:
+        # #442: a follow-up call (post-combat narration, a needs_response
+        # answer) was refused after the response was applied. The turn ends
+        # with one line and the game keeps running.
+        error(
+            "FAILURE: A follow-up provider call was refused; the turn ends",
+            exception=refused,
+            category="action_processing",
+        )
+        return _provider_refusal_followup(refused)
     except json.JSONDecodeError as e:
         # The model reply was parsed before this try (#621), so a
         # JSONDecodeError here comes from a game file or helper read while
@@ -7260,7 +7292,9 @@ def resolve_retryable_ai_result(
     with a line the player sees (issue #707).
     """
     from core.combat.invocation import require_current_invocation
-    from utils.capture.live_provider_call import LiveProviderSuperseded, get_live_provider_scope
+    from utils.capture.live_provider_call import (
+        LiveProviderCompletedError, LiveProviderSuperseded, get_live_provider_scope,
+    )
 
     def review_authority_current(context):
         scope = (detached_context or {}).get("scope") or get_live_provider_scope()
@@ -7420,7 +7454,11 @@ def resolve_retryable_ai_result(
         location_data = get_location_data_from_party_tracker(
             party_tracker_data
         )
-        regenerated_response = get_ai_response(conversation_history)
+        try:
+            regenerated_response = get_ai_response(conversation_history)
+        except LiveProviderCompletedError as refused:
+            final_result = _provider_refusal_followup(refused)  # #442
+            break
         final_result = _process_fresh_dm_response(
             regenerated_response,
             party_tracker_data,
@@ -8569,7 +8607,9 @@ _MEMORY_JOURNAL_UNREADABLE_LINE = (
 def _main_game_loop(startup_authority, turn_authority):
     global needs_conversation_history_update, should_inject_creation_prompt
     from core.combat.invocation import InvocationSupersededError, require_current_invocation
-    from utils.capture.live_provider_call import LiveProviderSuperseded, get_live_turn_scope
+    from utils.capture.live_provider_call import (
+        LiveProviderCompletedError, LiveProviderSuperseded, get_live_turn_scope,
+    )
 
     # A new session saves again; a file still read-only stops it again at its
     # first save (issue #654).
@@ -9084,11 +9124,13 @@ def _main_game_loop(startup_authority, turn_authority):
             conversation_history = _prepare_rebuilt_history_for_t067(
                 conversation_history, main_system_prompt_text
             )
-        ai_response_after_combat = (
-            None
-            if combat_still_active
-            else get_ai_response(conversation_history)
-        )
+        ai_response_after_combat = None
+        if not combat_still_active:
+            try:
+                ai_response_after_combat = get_ai_response(conversation_history)
+            except LiveProviderCompletedError as refused:
+                # #442: the fight's result is kept; the turn loop starts.
+                display_dm_narration(_provider_refusal_followup(refused)["player_message"])
         if ai_response_after_combat:
             require_current_invocation(startup_claim)
             # Process the AI's post-combat response to get the game moving again.
@@ -9128,12 +9170,13 @@ def _main_game_loop(startup_authority, turn_authority):
                 "provider_error", "travel_content_unavailable", "review_exhausted",
             }:
                 display_dm_narration(_followup_failure_message(post_combat_result))
-            if (
+            if isinstance(post_combat_result, dict) and post_combat_result.get("status") == "error":
+                # #442: the same line the turn loop prints for a failed action.
+                print(f"[SYSTEM] {_action_failure_line(post_combat_result)}")
+                warning("Post-combat response processing failed safely", category="module_management")
+            elif (
                 isinstance(post_combat_result, dict)
-                and (
-                    post_combat_result.get("retryable") is True
-                    or post_combat_result.get("status") == "error"
-                )
+                and post_combat_result.get("retryable") is True
             ):
                 retry_status = post_combat_result.get(
                     "status", "state_recovery_pending"
@@ -9329,6 +9372,8 @@ def _main_game_loop(startup_authority, turn_authority):
                     f"INITIALIZATION: Startup kickoff did not complete cleanly: {kickoff_result}",
                     category="startup",
                 )
+                if kickoff_result.get("player_message"):
+                    display_dm_narration(kickoff_result["player_message"])
 
     # Add safeguard against infinite loops in non-interactive environments
     empty_input_count = 0
@@ -10163,16 +10208,7 @@ def _main_game_loop(startup_authority, turn_authority):
                 isinstance(final_result, dict)
                 and final_result.get("status") == "error"
             ):
-                from web.shared_state import SAFE_ACTION_FAILURE_MESSAGE
-
-                # Only the one selector's result carries an action-failure
-                # id; its text is curated. Anything else gets the generic line.
-                processing_error = SAFE_ACTION_FAILURE_MESSAGE
-                if str(final_result.get("message_id", "")).startswith(
-                    "action-failure:"
-                ) and final_result.get("player_message"):
-                    processing_error = final_result["player_message"]
-                print(f"[SYSTEM] {processing_error}")
+                print(f"[SYSTEM] {_action_failure_line(final_result)}")
                 warning(
                     "Response processing failed safely",
                     category="module_management",
@@ -10571,6 +10607,35 @@ def _level_up_step_messages(conversation, cursor, turn):
     """
     return [dict(message) for message in conversation[cursor:] if message.get("role") == "user"] + [
         {"role": "assistant", "content": json.dumps({"narration": turn.narration, "actions": []})}]
+
+
+def _action_failure_line(result):
+    """The line a failed action result prints in the terminal."""
+    from web.shared_state import SAFE_ACTION_FAILURE_MESSAGE
+
+    # Only the one selector's result carries an action-failure id; its text
+    # is curated. Anything else gets the generic line.
+    if str(result.get("message_id", "")).startswith(
+        "action-failure:"
+    ) and result.get("player_message"):
+        return result["player_message"]
+    return SAFE_ACTION_FAILURE_MESSAGE
+
+
+def _provider_refusal_followup(exc):
+    """A refused follow-up as the provider_error result the turn shows (#442).
+
+    The response was already applied, so an account refusal gets its
+    follow-up text and any other refusal the follow-up failure line.
+    """
+    refusal = classify_provider_error(exc)
+    text = account_refusal_message(refusal["category"], refusal["provider"], "followup")
+    return {
+        "status": "provider_error",
+        "player_message": text or _FOLLOWUP_NOT_APPLIED_MESSAGE,
+        "category": refusal["category"],
+        "provider": refusal["provider"],
+    }
 
 
 def _followup_failure_message(result):

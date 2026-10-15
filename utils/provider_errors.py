@@ -78,6 +78,8 @@ _ACCOUNT_REFUSAL_MOMENTS = {
     "after_narration": "%s. That action could not be completed, and no further actions from that response were applied. %s, then continue.",
     # The startup welcome: no player action exists yet.
     "welcome": "%s. Nothing in your game was changed. %s, then tell the DM what you do next.",
+    # A follow-up after the response was applied (#442): what happened is kept.
+    "followup": "%s. What already happened in your game is kept, but the DM could not narrate what comes next. %s, then continue.",
 }
 
 
