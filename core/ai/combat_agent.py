@@ -292,6 +292,9 @@ def _spell_attack_prompt():
         "damage dice, and deals the damage. An effect the spell grants only on a\n"
         "hit (Guiding Bolt's Advantage on the next attack roll against the\n"
         "target) gets applyOn 'hit'; code stages it only when the attack hits.\n"
+        "A later attack of a spell that persists (Spiritual Weapon on later\n"
+        "turns) is declared the same way and spends no slot: send slotLevel,\n"
+        "the level it was cast at.\n"
         "Every other spell attack keeps requiresPlayerInput as below.\n\n" % listed
     )
 

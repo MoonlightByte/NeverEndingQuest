@@ -431,26 +431,12 @@ def _batch_id(conversation_prefix: Iterable[Any], raw_input: str) -> str:
     return head + raw_input
 
 
-def _raw_player_text(content: Any) -> str:
-    if not isinstance(content, str):
-        return ""
-    if not content.startswith("Dungeon Master Note:"):
-        return content.strip()
-    marker = " Player: "
-    if marker not in content:
-        return ""
-    value = content.rsplit(marker, 1)[1]
-    cutoffs = [
-        index
-        for index in (
-            value.find("\n[Inventory Context:"),
-            value.find("\n[SRD CONTEXT"),
-        )
-        if index >= 0
-    ]
-    if cutoffs:
-        value = value[: min(cutoffs)]
-    return value.strip()
+def _raw_player_text(message: Any) -> str:
+    """The player's own words on a history message (#449): the typed field,
+    or an old turn's envelope; "" for an engine note, a marker or a summary."""
+    from core.ai import history_markers
+
+    return history_markers.player_input(message) or ""
 
 
 def _source_turn_witnessed(user_content: Any, npc_name: str) -> bool:
@@ -494,7 +480,7 @@ def _accepted_evidence_summary(
             if not isinstance(user, dict) or user.get("role") != "user":
                 continue
             user_content = user.get("content")
-            player_text = _raw_player_text(user_content)
+            player_text = _raw_player_text(user)
             if not player_text or player_text.startswith("Error Note:"):
                 continue
             summary = "Player: %s Result: %s" % (player_text, narration)
@@ -518,7 +504,7 @@ def _recent_scene_window(
         role = message.get("role")
         content = message.get("content")
         if role == "user":
-            text = _raw_player_text(content)
+            text = _raw_player_text(dict(message))
             if text and not text.startswith("Error Note:"):
                 rows.append({"speaker": player_name, "kind": "player", "text": text})
         elif role == "assistant" and isinstance(content, str):

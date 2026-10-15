@@ -6,7 +6,7 @@
     "source": "System Reference Document 5.2.1, CC BY 4.0",
     "sourceRepository": "data/spell_repository.json",
     "sourceSha256": "5fafd1c79e869dbca686e3efbc18e9e680119b55a662400b1e1513892c9068ee",
-    "totalRecords": 2,
+    "totalRecords": 3,
     "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
   },
   "attacks": {
@@ -26,6 +26,15 @@
       "abilityModifierToDamage": false,
       "contractKey": "guiding_bolt",
       "source": "SRD 5.2.1 p.138",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "spiritual_weapon": {
+      "name": "Spiritual Weapon",
+      "attack": "melee",
+      "damageKind": "force",
+      "abilityModifierToDamage": true,
+      "contractKey": "spiritual_weapon",
+      "source": "SRD 5.2.1 p.165",
       "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
     }
   }
