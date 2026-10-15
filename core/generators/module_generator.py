@@ -72,6 +72,7 @@ import os
 import re
 import glob
 import random
+from core.generators.location_prefixes import PREFIX_COUNT, location_prefix
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -122,29 +123,19 @@ def registered_location_prefixes() -> set:
 
 
 def get_location_prefix(area_index: int, used_prefixes=frozenset(), module_name: str = "", log=None) -> str:
-    """Get the prefix for location IDs: the area index's prefix, or the next one not in used_prefixes"""
-    # Use letters A-Z for first 26 areas, then AA-AZ, BA-BZ, etc.
-    candidate_index = area_index
-    while True:
-        if candidate_index < 26:
-            prefix = chr(65 + candidate_index)  # A-Z
-        else:
-            first_letter = chr(65 + (candidate_index // 26) - 1)
-            second_letter = chr(65 + (candidate_index % 26))
-            prefix = first_letter + second_letter
+    """Get the prefix for location IDs: the area index's prefix, or the next one not in used_prefixes.
 
+    The one allocator (#646): A-Z, AA-ZZ, then AAA-ZZZ (core/generators/location_prefixes).
+    When every prefix is in use it raises ValueError; there is no random fallback,
+    which could repeat a prefix and gave IDs the location schema rejects.
+    """
+    for candidate_index in range(area_index, PREFIX_COUNT):
+        prefix = location_prefix(candidate_index)
         if prefix not in used_prefixes:
             if log:
                 log(f"Assigned unique location prefix '{prefix}' for area {area_index}")
             return prefix
-
-        candidate_index += 1
-        if candidate_index > 702:  # Safety limit (26 + 26*26 = 702 possible prefixes)
-            # Fallback to module-specific prefix
-            prefix = f"M{module_name[:3].upper()}{random.randint(1,99)}"
-            if log:
-                log(f"Warning: Using fallback prefix '{prefix}' due to exhausted standard prefixes")
-            return prefix
+    raise ValueError(f"every location prefix from index {area_index} is in use ({module_name or 'module'})")
 
 
 def _strip_response_fence(content: str) -> str:
