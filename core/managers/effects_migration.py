@@ -158,8 +158,9 @@ def _combat_migration_gate(party):
 
 def _effect_matches(effect, source):
     def label(value):
-        normalized = re.sub(r"\s+", " ", str(value or "").strip().casefold())
-        return re.sub(r"\s+(spell|effect|bonus|penalty)$", "", normalized)
+        # The whole name: an unpaired modifier is materialized as its own
+        # effect, and the visible-sheet check below refuses any change.
+        return " ".join(str(value or "").split()).casefold()
 
     source_key = label(source)
     if not source_key or not isinstance(effect, dict):

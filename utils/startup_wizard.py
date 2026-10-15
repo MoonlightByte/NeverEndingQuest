@@ -419,6 +419,16 @@ def _present_startup_menu(conversation, prompt, *, phase="startup_interview"):
         print(f"Dungeon Master: {response}")
 
 
+def _menu_key(text):
+    """One whole menu answer or option name, spacing and case folded (D-KW-6)."""
+    return " ".join(str(text).split()).casefold()
+
+
+def _print_startup_choices(labels):
+    """Print the exact numbered choices under the presented menu."""
+    print("\n".join(f"{i}. {label}" for i, label in enumerate(labels, 1)))
+
+
 def present_module_options(conversation, modules):
     """Show available modules to player using AI"""
     if not modules:
@@ -459,9 +469,10 @@ Present EVERY listed module with its exact menu number. Recommend an adventure
 only from its actual known level metadata; unknown is not level 1. Never choose
 for the player. Even a sole installed module needs the player's confirmation.
 
-Ask the player which module they'd like to play, and explain that they can just tell you the number (1, 2, etc.) or the name of the module they prefer."""
+Ask the player which module they'd like to play, and explain that they can type its number (1, 2, etc.) or its full name exactly as listed."""
     
     _present_startup_menu(conversation, ai_prompt, phase="startup_module_selection")
+    _print_startup_choices([module['display_name'] for module in modules])
     
     return modules
 
@@ -517,11 +528,11 @@ def select_module(conversation):
             except ValueError:
                 pass
             
-            # Try to match by name
-            user_lower = user_input.lower()
+            # The number, or the adventure's whole name (D-KW-6).
+            answer = _menu_key(user_input)
             matches = [module for module in modules
-                       if user_lower in module['display_name'].lower()
-                       or user_lower in module['name'].lower()]
+                       if answer in {_menu_key(module['display_name']),
+                                     _menu_key(module['name'])}]
             if len(matches) == 1:
                 selected = matches[0]
                 _set_startup_progress(conversation, module=selected['name'],
@@ -531,7 +542,7 @@ def select_module(conversation):
                 print("Dungeon Master: That name matches more than one adventure. Please choose its displayed number.")
                 continue
             
-            print("Dungeon Master: I didn't understand that. Please enter the number (1, 2, etc.) or name of the module.")
+            print("Dungeon Master: I didn't understand that. Please enter the number (1, 2, etc.) or the adventure's full name as listed.")
             
         except KeyboardInterrupt:
             raise
@@ -595,11 +606,12 @@ def present_character_options(conversation, characters, module_name):
 Existing Characters:
 {chars_text}
 
-You can also mention option: "new" or "create" to make a new character.
+{len(characters) + 1}. Create a new character
 
-Be helpful and explain that they can type the character number, character name, or "new" to create a fresh character."""
+Be helpful and explain that they can type the character's number or full name as listed, or "new" (or {len(characters) + 1}) to create a fresh character."""
     
     _present_startup_menu(conversation, ai_prompt)
+    _print_startup_choices([char['name'] for char in characters] + ['Create a new character'])
     
     return characters
 
@@ -627,12 +639,14 @@ def select_or_create_character(conversation, module):
             conversation.append({"role": "user", "content": user_input})
             
             # Check for new character creation
-            if user_input.lower() in ['new', 'create', 'create new', 'make new']:
+            if _menu_key(user_input) == 'new':
                 return create_new_character(conversation, module)
             
             # Try to parse as number
             try:
                 choice_num = int(user_input)
+                if choice_num == len(characters) + 1:
+                    return create_new_character(conversation, module)
                 if 1 <= choice_num <= len(characters):
                     selected_char = characters[choice_num - 1]
                     print(f"Dungeon Master: Excellent! You've selected {selected_char['name']}!")
@@ -641,14 +655,18 @@ def select_or_create_character(conversation, module):
                         return chosen
                     continue
                 else:
-                    print(f"Dungeon Master: Please choose a number between 1 and {len(characters)}, or 'new' to create a character")
+                    print(f"Dungeon Master: Please choose a number between 1 and {len(characters) + 1}; {len(characters) + 1} or 'new' creates a character")
                     continue
             except ValueError:
                 pass
             
-            # Try to match by character name
-            user_lower = user_input.lower()
-            matched = next((char for char in characters if user_lower in char['name'].lower()), None)
+            # The number, or the character's whole name (D-KW-6).
+            answer = _menu_key(user_input)
+            named = [char for char in characters if _menu_key(char['name']) == answer]
+            if len(named) > 1:
+                print("Dungeon Master: That name matches more than one character. Please choose its displayed number.")
+                continue
+            matched = named[0] if named else None
             if matched is not None:
                 print(f"Dungeon Master: Excellent! You've selected {matched['name']}!")
                 chosen = _use_existing_startup_character(conversation, module, matched)
@@ -656,7 +674,7 @@ def select_or_create_character(conversation, module):
                     return chosen
                 continue
             
-            print("Dungeon Master: I didn't understand that. Please enter the character number, character name, or 'new' to create a new character.")
+            print("Dungeon Master: I didn't understand that. Please enter the character's number or full name as listed, or 'new' to create a new character.")
             
         except KeyboardInterrupt:
             raise
@@ -2305,7 +2323,7 @@ def _startup_configuration_handback(exc, provider, revision, scope):
             if scope.is_superseded():
                 raise LiveProviderSuperseded("startup configuration wait superseded")
             answer = input("\nAfter updating provider configuration, type retry, or cancel: ").strip().lower()
-            if answer in {"cancel", "quit", "exit"}:
+            if answer == "cancel":
                 raise StartupCancelled()
             if answer == "retry":
                 notify_configuration_saved(provider)
