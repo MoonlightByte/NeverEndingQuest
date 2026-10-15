@@ -177,7 +177,7 @@ from core.combat.down_scene import (
 )
 from core.managers.combat_orchestrator import CombatTurnPaused, execute_agentic_turn
 from core.combat.invocation import InvocationSupersededError
-from utils.capture.live_provider_call import LiveProviderSuperseded
+from utils.capture.live_provider_call import LiveProviderCompletedError, LiveProviderSuperseded
 
 
 def _require_current_combat_invocation(invocation_claim):
@@ -374,7 +374,8 @@ def _finalize_t043_resume_exchange(
     if response_content is None and retry_provider is not None:
         try:
             response_content = retry_provider(None)
-        except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+        except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop,
+                LiveProviderCompletedError):
             raise
         except Exception as exc:
             parse_error = exc
@@ -396,7 +397,8 @@ def _finalize_t043_resume_exchange(
             break
         try:
             response_content = retry_provider(parse_error)
-        except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+        except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop,
+                LiveProviderCompletedError):
             raise
         except Exception as exc:
             parse_error = exc
@@ -1310,7 +1312,8 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
                 debug(f"VALIDATION: Problematic response: {validation_response}", category="combat_validation")
                 continue
 
-        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop, LiveProviderCompletedError):
+            # A completed refusal ends the fight window, never re-sent (#1087).
             raise
         except Exception as e:
             debug(f"VALIDATION: Validation error - {str(e)}", category="combat_validation")
@@ -4261,6 +4264,12 @@ This is narration only. Do not advance the round or apply any combat action."""
        except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
            raise
        except Exception as e:
+           if (
+               isinstance(e, LiveProviderCompletedError)
+               and combat_provenance(encounter_data) == "typed"
+           ):
+               # #1087: a typed resume never re-sends a refused call.
+               raise
            resume_stage_failed = True
            error("FAILURE: T043 re-engagement API call failed.", exception=e, category="combat_events")
            print(f"DEBUG: [RESUME] Error getting re-engagement: {str(e)}")
@@ -4444,7 +4453,9 @@ This is narration only. Do not advance the round or apply any combat action."""
                    # validation_result is now the full feedback string
                    conversation_history.append({"role": "user", "content": validation_result})
                    continue
-           except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+           except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop,
+                   LiveProviderCompletedError):
+               # A completed refusal ends the fight window, never re-sent (#1087).
                raise
            except Exception as e:
                error(f"FAILURE: AI call for initial scene failed on attempt {attempt + 1}", exception=e, category="combat_events")
@@ -5908,7 +5919,7 @@ Rules:
                    else:
                        warning("VALIDATION: Max retries exceeded for combat validation. Using last response.", category="combat_validation")
                        break
-           except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+           except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop, LiveProviderCompletedError):
                raise
            except Exception as e:
                error(f"FAILURE: Failed to get or validate AI response (Attempt {attempt + 1}/{max_retries})", exception=e, category="combat_events")

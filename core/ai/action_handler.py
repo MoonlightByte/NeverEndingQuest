@@ -4261,12 +4261,28 @@ def process_action(
                 except Exception as e:
                     error(f"FAILURE: Could not update status for combat start", exception=e, category="combat_processing")
                 
-                combat_result = run_combat_simulation(
-                    encounter_id,
-                    party_tracker_data,
-                    reloaded_location_data,
-                    invocation_claim=invocation_claim,
-                )
+                try:
+                    combat_result = run_combat_simulation(
+                        encounter_id,
+                        party_tracker_data,
+                        reloaded_location_data,
+                        invocation_claim=invocation_claim,
+                    )
+                except LiveProviderCompletedError as refused:
+                    # #1087: a refused combat call ends this window. Nothing
+                    # was cleared: the fight stays active and resumes at the
+                    # next start or Load. The one selector says why.
+                    error(
+                        "FAILURE: A combat provider call was refused; the fight is kept",
+                        exception=refused,
+                        category="combat_processing",
+                    )
+                    refusal = classify_provider_error(refused)
+                    return create_return(status="error", response_data={
+                        "provider_refusal": refusal["category"],
+                        "provider_refusal_provider": refusal["provider"],
+                        "provider_refusal_moment": "combat",
+                    })
 
                 authoritative_party = safe_json_load("party_tracker.json")
                 active_after_combat = (

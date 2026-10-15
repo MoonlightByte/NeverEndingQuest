@@ -5902,7 +5902,8 @@ def _action_failure_player_message(result):
         refusal_text = account_refusal_message(
             source_data.get("provider_refusal"),
             source_data.get("provider_refusal_provider"),
-            "after_narration",
+            # A refused combat call left its fight saved (#1087).
+            "combat" if source_data.get("provider_refusal_moment") == "combat" else "after_narration",
         )
         if refusal_text is not None:
             return refusal_text
@@ -9057,10 +9058,19 @@ def _main_game_loop(startup_authority, turn_authority):
         # Call run_combat_simulation directly to get the return values
         from core.managers.combat_manager import run_combat_simulation
         # A quit at a combat prompt returns None; the fight stays active (#444).
-        combat_result = run_combat_simulation(
-            active_encounter_id, party_tracker_data, location_data_resume,
-            invocation_claim=startup_claim,
-        )
+        combat_refusal_line = None
+        try:
+            combat_result = run_combat_simulation(
+                active_encounter_id, party_tracker_data, location_data_resume,
+                invocation_claim=startup_claim,
+            )
+        except LiveProviderCompletedError as refused:
+            # #1087: a refused combat call leaves the fight saved and active.
+            combat_result = None
+            refusal = classify_provider_error(refused)
+            combat_refusal_line = account_refusal_message(
+                refusal["category"], refusal["provider"], "combat"
+            )
         dialogue_summary = (
             combat_result[0]
             if isinstance(combat_result, tuple) and combat_result
@@ -9108,7 +9118,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 )
             else:
                 display_dm_narration(
-                    "Combat did not reach a confirmed completion state. "
+                    combat_refusal_line
+                    or "Combat did not reach a confirmed completion state. "
                     "The active encounter was preserved for recovery and "
                     "no post-combat narration was requested.",
                     channel="combat",
