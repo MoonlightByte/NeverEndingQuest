@@ -29,6 +29,10 @@ _condition = threading.Condition(threading.RLock())
 _current = None
 _generation = 0
 _supersession_barriers = set()
+# Each Load/Reset/exit fence is counted with its reason, so work it ended can
+# name the cause (#1038).
+_fence_count = 0
+_fence_reason = None
 
 
 class InvocationSupersededError(RuntimeError):
@@ -107,6 +111,24 @@ def complete_invocation(claim):
         return False
 
 
+def _record_fence(reason):
+    global _fence_count, _fence_reason
+    _fence_count += 1
+    _fence_reason = str(reason)
+
+
+def fence_mark():
+    """The fence count now, for fence_reason_since (#1038)."""
+    with _condition:
+        return _fence_count
+
+
+def fence_reason_since(mark):
+    """The reason of the latest fence after ``mark``, or None (#1038)."""
+    with _condition:
+        return _fence_reason if _fence_count > mark else None
+
+
 def supersede_invocations(reason):
     """Fence the live generation before Load, Reset, or process exit."""
     global _current, _generation
@@ -114,6 +136,7 @@ def supersede_invocations(reason):
         superseded = _current
         _current = None
         _generation += 1
+        _record_fence(reason)
         _condition.notify_all()
         return {
             "reason": str(reason),
@@ -130,6 +153,7 @@ def begin_invocation_supersession(reason):
         superseded = _current
         _current = None
         _generation += 1
+        _record_fence(reason)
         _supersession_barriers.add(token)
         _condition.notify_all()
         return {
@@ -151,9 +175,11 @@ def end_invocation_supersession(barrier):
 
 
 def reset_invocation_authority_for_tests():
-    global _current, _generation
+    global _current, _generation, _fence_count, _fence_reason
     with _condition:
         _current = None
         _generation = 0
+        _fence_count = 0
+        _fence_reason = None
         _supersession_barriers.clear()
         _condition.notify_all()

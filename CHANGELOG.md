@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- A Load during a fight that the welcome-back narration started now logs "Startup welcome superseded (restore)" as info every time, instead of "(None)" as a warning when the fight ended before the Load reached the welcome: the combat fence keeps the reason it stopped the fight (#1038).
 - A character saved before #894 as characters/.json (a name with no Latin letters) is found again: a lookup by its name finds its sheet, a fight that refers to that sheet loads it instead of looking for characters/json.json, and a companion saved there is in the list whose memories are kept (#1082).
 - When combat narration falls back to the game's own sentence, it no longer reads out damage and HP numbers; it says who hits or misses and who goes down (Refs #511).
 - When module work held the module lock for more than 5 seconds as a fight ended, the fight's record was not written to the location (an older fight lost it; a current one repeated its summary call and stayed unfinished until a later turn). The record now waits for the module work, as the travel record already does; Load, Reset and Quit still end the wait (#453).
