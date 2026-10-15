@@ -1141,6 +1141,8 @@ def update_character_data(conversation_history, party_tracker_data):
                         item_description = f"{item['item_name']} ({item['item_type']})"
                         if item['quantity'] > 1:
                             item_description = f"{item_description} x{item['quantity']}"
+                        if item.get('equipped') is True:
+                            item_description = f"{item_description} [equipped]"
                         # Item charges: the engine-held count (the DM never
                         # invents one; the description's own number is flavor).
                         charges_tag = _charges_tag(item)
@@ -1236,6 +1238,8 @@ FLAWS: {member_data['flaws']}
                         # Check if quantity exists before accessing it
                         if item.get('quantity', 1) > 1:
                             item_description = f"{item_description} x{item['quantity']}"
+                        if item.get('equipped') is True:
+                            item_description = f"{item_description} [equipped]"
                         charges_tag = _charges_tag(item)
                         if charges_tag:
                             item_description = f"{item_description} {charges_tag}"

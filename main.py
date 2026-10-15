@@ -9991,16 +9991,11 @@ def _main_game_loop(startup_authority, turn_authority):
             player_data_current,
         )
 
-        # Enhance player input with the established inventory context. The
-        # player sheet was already used above for SRD availability/resource
-        # hints; keep the legacy inventory inputs unchanged on no-match turns.
+        # The player's own words, never annotated with guessed items (D-KW-5):
+        # the DM already sees every item on the party sheets.
         user_input_with_note = build_enhanced_dm_note(
             dm_note,
             user_input_text,
-            None,
-            party_tracker_data,
-            None,  # characters_data not available at this scope
-            in_combat=False,  # Always use general context for main conversation
             srd_context=turn_srd_context,
         )
         
