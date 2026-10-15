@@ -35,13 +35,10 @@ def _party_paths(party: Dict[str, Any]) -> List[str]:
 
 
 def _match_sheet(sheets: List[Dict[str, Any]], name: str) -> Optional[Dict[str, Any]]:
-    """The resting sheet ``name`` refers to: its full name, else a unique first name."""
+    """The resting sheet whose full name is ``name`` (whole value, case ignored).
+    Never a first name or other part of a name (#855)."""
     wanted = name.strip().casefold()
-    exact = [s for s in sheets if str(s.get("name") or "").strip().casefold() == wanted]
-    if exact:
-        return exact[0]
-    first = [s for s in sheets if str(s.get("name") or "").strip().casefold().split(" ")[0] == wanted]
-    return first[0] if len(first) == 1 else None
+    return next((s for s in sheets if str(s.get("name") or "").strip().casefold() == wanted), None)
 
 
 def roll_hit_dice(sheets: List[Dict[str, Any]], hit_dice: Any,
@@ -63,7 +60,8 @@ def roll_hit_dice(sheets: List[Dict[str, Any]], hit_dice: Any,
     for raw_name, count in hit_dice.items():
         sheet = _match_sheet(sheets, str(raw_name))
         if sheet is None:
-            return None, f"no resting party character is named {raw_name!r}"
+            resting = ", ".join(repr(str(s.get("name"))) for s in sheets)
+            return None, f"no resting party character is named {raw_name!r}; name each by full name: {resting}"
         name = str(sheet.get("name"))
         if name in seen:
             return None, f"{name} is named twice in hitDice"
