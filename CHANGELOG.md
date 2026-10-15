@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- When combat narration falls back to the game's own sentence, it no longer reads out damage and HP numbers; it says who hits or misses and who goes down (Refs #511).
 - When module work held the module lock for more than 5 seconds as a fight ended, the fight's record was not written to the location (an older fight lost it; a current one repeated its summary call and stayed unfinished until a later turn). The record now waits for the module work, as the travel record already does; Load, Reset and Quit still end the wait (#453).
 - Item ids on a hero's sheet saved before #894 as characters/.json (a name with no Latin letters) are now protected like every other sheet's, so a new item id never repeats one of them (#1074).
 - A chest item that had no id (an old save or a hand-edited chest) no longer gets an id that another character or chest already holds, so it can still be taken out (#1073)
