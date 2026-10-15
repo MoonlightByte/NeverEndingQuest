@@ -1153,7 +1153,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
                 containers: Optional[List[Dict[str, Any]]] = None, contents_owner: Optional[str] = None,
                 definition_entries: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
                 clock_tick: Optional[int] = None, dice_seed: Optional[Tuple[int, int]] = None,
-                damage_traits: bool = False) -> Genesis:
+                damage_traits: bool = False, reserved: Optional[set] = None) -> Genesis:
     """Return the NQL world source for these sheets and storage containers at one location.
 
     ``containers`` are player_storage.json container records at this location. Their
@@ -1166,6 +1166,8 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     ``damage_traits`` (K1, a rider's typed damage) declares the world `attacks`
     law and each sheet's resist/vulnerable/immune lines, so a `damage ... kind`
     meets them; without it the world text is unchanged.
+    ``reserved`` holds the ids stored on other sheets and in other chests (read
+    as values); a chest entry with no stored id is minted past them (#1073).
     """
     gaps: List[str] = []
     loc = location_id(location)
@@ -1360,6 +1362,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
             items.append(f"item {_q(iid)} named {_q(row['name'])} {{ {' '.join(fields)} }}")
 
     owner = contents_owner or next(iter(character_ids.values()), None)
+    reserved_ids = reserved or ()
     for container in containers or []:
         sid = str(container.get("id", ""))
         if not sid:
@@ -1385,7 +1388,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
                 continue
             iid = _entry_id(entry, slug(sid), index)
             spare = index
-            while iid in stored and not str(entry.get("nql_id") or "").startswith("item:"):
+            while (iid in stored or iid in reserved_ids) and not str(entry.get("nql_id") or "").startswith("item:"):
                 spare += 1000
                 iid = _mint(entry, slug(sid), spare)
             if iid in all_ids:

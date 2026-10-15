@@ -104,16 +104,18 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
         return StorageOutcome(False, reason=f"unsupported storage action {action!r}")
     character = copy.deepcopy(character)
     container = copy.deepcopy(container)
-    # A minted id steps past every id the storage record and the caller's
-    # disk read hold, as a split id does (#1060).
-    genesis.assign_ids(character, reserved=set(reserved or ()) | genesis.held_ids([], storage.get("playerStorage") or []))
+    # A minted id, on the sheet or in a chest, steps past every id the
+    # storage record and the caller's disk read hold, as a split id does
+    # (#1060, #1073).
+    held_elsewhere = set(reserved or ()) | genesis.held_ids([], storage.get("playerStorage") or [])
+    genesis.assign_ids(character, reserved=held_elsewhere)
     cid = genesis.character_id(character)
     location = str(container.get("locationId") or "unknown")
     siblings = [c for c in storage.get("playerStorage", [])
                 if isinstance(c, dict) and c.get("locationId") == container.get("locationId")]
     siblings = [container if c.get("id") == container.get("id") else c for c in siblings]
     world = genesis.build_world([character], location, str(container.get("locationName") or location),
-                                containers=siblings, contents_owner=cid)
+                                containers=siblings, contents_owner=cid, reserved=held_elsewhere)
     sid = str(container.get("id"))
     conid = world.container_ids.get(sid)
     if conid is None:
