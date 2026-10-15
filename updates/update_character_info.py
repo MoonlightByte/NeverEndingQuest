@@ -214,6 +214,17 @@ def name_refusal(character_name):
 def _is_backup_sheet_file(filename):
     return filename.endswith(".bak") or filename.endswith("_BU.json") or "backup" in filename
 
+def _legacy_sheet_id(sheet):
+    """The file id of a sheet saved before #894 as characters/.json: its name's
+    stem, which ModulePathManager maps back to that file; None when it would
+    not (#1082)."""
+    name = sheet.get("name") if isinstance(sheet, dict) else None
+    stem = normalize_character_name(name) if isinstance(name, str) else ""
+    if (not stem or stem.isascii() or normalize_character_name(stem) != stem
+            or os.path.exists(os.path.join("characters", f"{stem}.json"))):
+        return None
+    return stem
+
 def find_character_file_fuzzy(character_name):
     """Find the character file for a name, exactly (#855, family 2 Part B).
 
@@ -249,7 +260,11 @@ def find_character_file_fuzzy(character_name):
             return normalized_name
         wanted = key(name)
         matches = []
-        for char_file in sorted(glob.glob(os.path.join("characters", "*.json"))):
+        char_files = glob.glob(os.path.join("characters", "*.json"))
+        # glob never matches a dotfile; a sheet saved before #894 is characters/.json (#1082)
+        if os.path.isfile(os.path.join("characters", ".json")):
+            char_files.append(os.path.join("characters", ".json"))
+        for char_file in sorted(char_files):
             filename = os.path.basename(char_file)
             if _is_backup_sheet_file(filename):
                 continue
@@ -267,6 +282,11 @@ def find_character_file_fuzzy(character_name):
                 warning(f"CHARACTER_LOOKUP: skipped unreadable sheet {char_file} ({type(e).__name__})", category="character_updates")
                 continue
             if isinstance(sheet, dict) and isinstance(sheet.get("name"), str) and key(sheet["name"]) == wanted:
+                if filename == ".json":
+                    legacy_id = _legacy_sheet_id(sheet)
+                    if legacy_id:
+                        matches.append(legacy_id)
+                    continue
                 matches.append(os.path.splitext(filename)[0])
         return matches[0] if len(matches) == 1 else None
 
@@ -296,6 +316,15 @@ def resolve_npc_sheet_id(npc_name, encounter=None, creature=None):
                     source_ref = participant.get("sourceRef")
                     if participant.get("sourceKind") == "character" and isinstance(source_ref, str):
                         filename = os.path.basename(source_ref.replace("\\", "/"))
+                        if filename == ".json":
+                            # characters/.json (#1082): its id is its name's stem, not ".json"
+                            legacy = os.path.join("characters", ".json")
+                            if os.path.isfile(legacy):
+                                with open(legacy, "r", encoding="utf-8", errors="replace") as f:
+                                    legacy_id = _legacy_sheet_id(json.load(f))
+                                if legacy_id:
+                                    return legacy_id
+                            break
                         if (filename.endswith(".json") and not _is_backup_sheet_file(filename)
                                 and os.path.exists(os.path.join("characters", filename))):
                             return os.path.splitext(filename)[0]

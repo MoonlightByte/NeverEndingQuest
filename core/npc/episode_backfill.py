@@ -321,7 +321,12 @@ def load_module_area_dicts(module_dir: str) -> List[Dict[str, Any]]:
 
 def load_character_dicts(characters_dir: str = "characters") -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
-    for path in sorted(glob.glob(os.path.join(characters_dir, "*.json"))):
+    paths = glob.glob(os.path.join(characters_dir, "*.json"))
+    # glob never matches a dotfile; a sheet saved before #894 is characters/.json (#1082)
+    legacy = os.path.join(characters_dir, ".json")
+    if os.path.isfile(legacy):
+        paths.append(legacy)
+    for path in sorted(paths):
         base = os.path.basename(path)
         if ".backup" in base or "_temp" in base or base.endswith((".bak", ".tmp")):
             continue
