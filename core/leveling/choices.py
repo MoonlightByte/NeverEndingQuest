@@ -280,6 +280,92 @@ def data_choice_points(sheet: Dict[str, Any], cls: str, new_level: int) -> List[
     return points
 
 
+def order_choice_points(sheet: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The sheet's class choice points at or below its level whose options carry
+    typed grants (``option_grants``: Divine Order, Primal Order; #888); [] for an
+    unknown class or level."""
+    cls = tables.class_key(sheet)
+    level = sheet.get("level")
+    if cls is None or type(level) is not int:
+        return []
+    by_level = (data().get("choice_points") or {}).get(cls) or {}
+    return [point for n in range(1, level + 1) for point in by_level.get(str(n)) or []
+            if isinstance(point, dict) and point.get("name") and isinstance(point.get("option_grants"), dict)
+            and isinstance(point.get("option_source"), list)]
+
+
+def order_options_recorded(sheet: Dict[str, Any], point: Dict[str, Any]) -> List[str]:
+    """The options of ``point`` the sheet records by the exact classFeatures name
+    "<choice>: <option>" ("Divine Order: Protector"), the form level-up writes."""
+    exact = {f"{point['name']}: {option}": option for option in point["option_source"]}
+    return [exact[entry["name"]] for entry in sheet.get("classFeatures") or []
+            if isinstance(entry, dict) and entry.get("name") in exact]
+
+
+def order_choice_count(point: Dict[str, Any]) -> int:
+    return point["count"] if type(point.get("count")) is int else 1
+
+
+def _engine_reading(field: str, label: Any) -> set:
+    """What the rules engine reads from one proficiency label: armor training
+    conditions (core.nql.genesis) or a weapon category (core.nql.class_conditions).
+    A label the engine does not know reads as itself."""
+    from core.nql.class_conditions import WEAPON_CATEGORIES
+    from core.nql.genesis import _ARMOR_TRAINING
+    key = str(label).strip().lower()
+    if field == "armor":
+        return set(_ARMOR_TRAINING.get(key, ())) or {key}
+    return {WEAPON_CATEGORIES.get(key, key)}
+
+
+def apply_order_grants(sheet: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Write the proficiencies a recorded class order grants, in place (#888):
+    Divine Order: Protector adds Heavy armor training and Martial weapons, Primal
+    Order: Warden adds Medium armor training and Martial weapons. Labels are
+    written in the short form the rules engine reads; one whose reading the sheet
+    already has (any label, e.g. "Heavy armor") is not added again. Matched by the
+    exact classFeatures name only, never by text. Returns one entry per order
+    applied: its feature, choice, option, printed grant, SRD page and the labels
+    added ([] when all were present)."""
+    applied = []
+    for point in order_choice_points(sheet):
+        chosen = order_options_recorded(sheet, point)
+        if len(chosen) != order_choice_count(point):
+            continue
+        for option in chosen:
+            grant = point["option_grants"].get(option)
+            if not isinstance(grant, dict):
+                continue
+            if not isinstance(sheet.get("proficiencies"), dict):
+                sheet["proficiencies"] = {}
+            proficiencies = sheet["proficiencies"]
+            added = []
+            for field, labels in (
+                    ("armor", [str(a).capitalize() for a in grant.get("armor_training") or []]),
+                    ("weapons", [w["category"] for w in grant.get("weapon_proficiencies") or []
+                                 if isinstance(w, dict) and w.get("category")])):
+                have = proficiencies.get(field) if isinstance(proficiencies.get(field), list) else []
+                reads = set()
+                for label in have:
+                    reads |= _engine_reading(field, label)
+                for label in labels:
+                    reading = _engine_reading(field, label)
+                    if not reading <= reads:
+                        have.append(label)
+                        reads |= reading
+                        added.append(label)
+                proficiencies[field] = have
+            name = f"{point['name']}: {option}"
+            feature = next(e for e in sheet["classFeatures"] if isinstance(e, dict) and e.get("name") == name)
+            bare = f"You chose the {option} {point['name']}."
+            if not str(feature.get("description") or "").strip() or feature.get("description") == bare:
+                feature["description"] = f"You chose the {option} {point['name']}: {grant.get('printed')}."
+            applied.append({"feature": name, "choice": point["name"], "option": option,
+                            "printed": grant.get("printed"), "page": (grant.get("source") or {}).get("page"),
+                            "added": added})
+    return applied
+
+
 def check_pick(point: Dict[str, Any], value: Any, sheet: Dict[str, Any], cls: str, new_level: int) -> Tuple[bool, str]:
     """Validate an agent's answer for a data-driven choice point."""
     kind = point["kind"]

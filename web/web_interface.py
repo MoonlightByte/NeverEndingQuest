@@ -4093,7 +4093,7 @@ def handle_initiative_data_request(data=None):
 
         # Prepare clean data for frontend with full character data for tooltips
         from utils.module_path_manager import ModulePathManager
-        from updates.update_character_info import normalize_character_name, find_character_file_fuzzy
+        from updates.update_character_info import normalize_character_name, resolve_npc_sheet_id
 
         party_tracker = safe_read_json("party_tracker.json")
         current_module = party_tracker.get("module", "").replace(" ", "_") if party_tracker else ""
@@ -4121,8 +4121,8 @@ def handle_initiative_data_request(data=None):
 
                     # Try to load character data
                     if c.get("type") == 'npc':
-                        # Use fuzzy matching for NPCs
-                        matched_name = find_character_file_fuzzy(character_name)
+                        # The sheet the encounter recorded for this combatant, else the exact name (#938)
+                        matched_name = resolve_npc_sheet_id(character_name, encounter_data, c)
                         if matched_name:
                             char_file = path_manager.get_character_path(matched_name)
                         else:

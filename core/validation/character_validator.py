@@ -3857,7 +3857,7 @@ Remember to return a single JSON response with all three validation results."""
             change = int(total) - int(current.get(coin, 0) or 0)
             if change:
                 delta[coin] = change
-        outcome = nql_consolidate.transact(character_data, removals, delta)
+        outcome = nql_consolidate.transact(character_data, removals, delta, reserved=nql_consolidate.genesis.held_ids_on_disk())
         for gap in outcome.gaps:
             debug(f"[Consolidation Engine] {character_data.get('name')}: {gap}", category="character_validation")
         if not outcome.ok:

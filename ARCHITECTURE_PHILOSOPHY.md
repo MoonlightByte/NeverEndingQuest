@@ -90,7 +90,7 @@ save_games/             # Module-aware save system
 ```
 
 ### **ID and Naming Conventions**
-- **Location IDs**: Area prefix + sequential number (HH001, G001)
+- **Location IDs**: Location prefix (1-3 letters) + two digits (A01, AA01); area IDs look like HH001, G001
 - **Character Files**: Lowercase with underscores (norn.json, test_guard.json)
 - **Encounter IDs**: Location-encounter format (B02-E1)
 - **File Locking**: .lock suffix for concurrent access protection

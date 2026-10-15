@@ -394,3 +394,25 @@ CONCENTRATION_RULES = """\
 condition type "state:concentration" { instances replace; ends_on_condition "state:incapacitated"; }
 condition_check "state:concentration" after_damage resource "hp" stat "save:constitution" sides 20 minimum 10 divide 2 maximum 30;
 """
+
+# NEQ-local addition (#1077), not in the NQL example: keep this block when the file is regenerated.
+# SRD 5.2.1 Divine Order, Thaumaturge: "When you make an Intelligence (Arcana or Religion) check, you
+# gain a bonus to the check equal to your Wisdom modifier (minimum of +1)." A derive term has no
+# minimum, so every character declares THAUMATURGE_STAT, a copy of its Wisdom score (stats.stat_lines),
+# the feature floors that copy at 12 (modifier +1), and Arcana and Religion add its modifier while the
+# character has the feature. The copy is the sheet's score: nothing changes Wisdom during play today
+# (genesis effect types change defense, saves, hit points and dice only); an effect that changes
+# Wisdom must change this copy too.
+THAUMATURGE_FEATURE = "feature:thaumaturge"
+THAUMATURGE_STAT = "thaumaturge:wisdom"
+FEATURE_TYPES["divine order: thaumaturge"] = THAUMATURGE_FEATURE
+CONDITION_TYPES += (THAUMATURGE_FEATURE,)
+# Condition type bodies other than the plain "instances unique;" (genesis declares each type once).
+TYPE_BODIES = {THAUMATURGE_FEATURE: 'instances unique; modifier "thaumaturge" stat "%s" at least 12;' % THAUMATURGE_STAT}
+for _skill in ("arcana", "religion"):
+    _head = ' derive stat "skill:%s" {\n' % _skill
+    if DERIVE_RULES.count(_head) != 1:
+        raise RuntimeError("srd_stats.py: no single skill:%s rule to add the #1077 Thaumaturge term to" % _skill)
+    DERIVE_RULES = DERIVE_RULES.replace(
+        _head, _head + '  term stat "%s" offset -10 divide 2 requires "%s";\n' % (THAUMATURGE_STAT, THAUMATURGE_FEATURE))
+del _skill, _head

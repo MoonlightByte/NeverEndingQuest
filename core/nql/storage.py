@@ -19,15 +19,12 @@ A rejection is returned as a typed outcome with the engine's fault. The caller
 decides how to report it; nothing is written.
 """
 import copy
-import glob
-import os
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.nql import ammunition, apply, genesis, transfer
 from utils.enhanced_logger import warning
-from utils.file_operations import safe_read_json
 
 
 @dataclass
@@ -89,18 +86,8 @@ def stored_quantity(contents: List[Dict[str, Any]], entry: Dict[str, Any]) -> An
     return sum(_stock(e) for e in contents if _same_kind(entry, e) and _stock(e) > 0)
 
 
-def held_ids_on_disk(characters_dir: str = "characters", storage_file: str = "player_storage.json") -> set:
-    """Every item id the saved game holds, read as values: each sheet in
-    ``characters_dir`` (a backup, whose name has a second dot, is not a sheet)
-    and every container in ``storage_file``. A new split id is none of them
-    (#1039)."""
-    sheets = []
-    for path in sorted(glob.glob(os.path.join(characters_dir, "*.json"))):
-        if "." not in os.path.basename(path)[:-len(".json")]:
-            sheets.append(safe_read_json(path))
-    data = safe_read_json(storage_file) if os.path.exists(storage_file) else None
-    containers = data.get("playerStorage") if isinstance(data, dict) else None
-    return genesis.held_ids(sheets, containers if isinstance(containers, list) else [])
+# Read by the managers (#1039); it lives with the id authority (#1060).
+held_ids_on_disk = genesis.held_ids_on_disk
 
 
 def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict[str, Any],
@@ -117,7 +104,9 @@ def transact(character: Dict[str, Any], storage: Dict[str, Any], container: Dict
         return StorageOutcome(False, reason=f"unsupported storage action {action!r}")
     character = copy.deepcopy(character)
     container = copy.deepcopy(container)
-    genesis.assign_ids(character)
+    # A minted id steps past every id the storage record and the caller's
+    # disk read hold, as a split id does (#1060).
+    genesis.assign_ids(character, reserved=set(reserved or ()) | genesis.held_ids([], storage.get("playerStorage") or []))
     cid = genesis.character_id(character)
     location = str(container.get("locationId") or "unknown")
     siblings = [c for c in storage.get("playerStorage", [])

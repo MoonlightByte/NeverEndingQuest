@@ -16,8 +16,9 @@ decision D8); ``build_world`` uses that id, or mints a temporary one for an
 entry that still lacks it, and returns the id of every entry so callers can map
 engine facts back to sheet entries. Display names are not identities.
 """
-import copy
+import glob
 import json
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
@@ -453,24 +454,45 @@ def split_id(base: str, count: int, taken: set) -> str:
 
 
 def held_ids(sheets: List[Any], containers: List[Any]) -> set:
-    """Every item id these sheets and storage containers hold, as genesis
-    declares it: each sheet row's stored (or minted) id and ammunition stock,
-    and each container entry's stored id (#1039)."""
+    """Every item id these sheets and storage containers hold, as values: each
+    sheet row's stored id and ammunition stock, and each container entry's
+    stored id (#1039). A row with no stored id is left out: its minted id names
+    its own sheet, and that mint steps past the ids held elsewhere (#1060).
+    An equipment, ammunition or contents value that is not a list, or a
+    container that is not an object, holds nothing: one malformed file never
+    stops another sheet's save."""
+    def rows(value):
+        return value if isinstance(value, list) else []
+
     held: set = set()
     for sheet in sheets:
         if not isinstance(sheet, dict):
             continue
-        sheet = copy.deepcopy(sheet)
-        assign_ids(sheet)
-        for entry in sheet.get("equipment") or []:
+        for entry in rows(sheet.get("equipment")):
             if isinstance(entry, dict) and isinstance(entry.get("nql_id"), str):
                 held.add(bounded_item_id(entry["nql_id"], ENGINE_ID_MAX))
-        held.update(aid for aid, _ in ammunition_rows(sheet, []))
+        if isinstance(sheet.get("ammunition"), list):
+            held.update(aid for aid, _ in ammunition_rows(sheet, []))
     for container in containers:
-        for entry in (container.get("contents") or []) if isinstance(container, dict) else []:
+        for entry in rows(container.get("contents")) if isinstance(container, dict) else []:
             if isinstance(entry, dict) and isinstance(entry.get("nql_id"), str):
                 held.add(bounded_item_id(entry["nql_id"], ENGINE_ID_MAX))
     return held
+
+
+def held_ids_on_disk(characters_dir: str = "characters", storage_file: str = "player_storage.json") -> set:
+    """Every item id the saved game holds, read as values: each sheet in
+    ``characters_dir`` (a backup, whose name has a second dot, is not a sheet)
+    and every container in ``storage_file``. A new split or minted id is none
+    of them (#1039, #1060)."""
+    from utils.file_operations import safe_read_json
+    sheets = []
+    for path in sorted(glob.glob(os.path.join(characters_dir, "*.json"))):
+        if "." not in os.path.basename(path)[:-len(".json")]:
+            sheets.append(safe_read_json(path))
+    data = safe_read_json(storage_file) if os.path.exists(storage_file) else None
+    containers = data.get("playerStorage") if isinstance(data, dict) else None
+    return held_ids(sheets, containers if isinstance(containers, list) else [])
 
 
 def ac_effect_id(iid: str, index: int) -> str:
@@ -536,8 +558,14 @@ def _entry_id(entry: Dict[str, Any], scope: str, index: int) -> str:
     return _mint(entry, scope, index)
 
 
-def assign_ids(sheet: Dict[str, Any]) -> bool:
-    """Write a nql_id onto every equipment entry that lacks one. Returns True if any was added."""
+def assign_ids(sheet: Dict[str, Any], reserved: Optional[set] = None) -> bool:
+    """Write a nql_id onto every equipment entry that lacks one. Returns True if any was added.
+
+    A minted id also steps past ``reserved``, the ids held where this sheet
+    cannot see them (every sheet and chest, read as values): a row index is
+    reused once a row leaves the sheet, and its old id may sit in a chest or
+    on another sheet (#1060)."""
+    held = reserved or ()
     changed = False
     seen = set()
     scope = character_scope(sheet.get("name", ""))
@@ -554,7 +582,7 @@ def assign_ids(sheet: Dict[str, Any]) -> bool:
                 changed = True
         if not (isinstance(current, str) and current.startswith("item:")) or current in seen:
             candidate = _mint(entry, scope, index)
-            while candidate in seen:
+            while candidate in seen or candidate in held:
                 index += 1000
                 candidate = _mint(entry, scope, index)
             entry["nql_id"] = candidate
@@ -1378,12 +1406,12 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
                 definitions.append(text)
 
     for cond in condition_types:
-        lines.append(f"condition type {_q(cond)} {{ instances unique; }}")
+        lines.append(f"condition type {_q(cond)} {{ {srd_stats.TYPE_BODIES.get(cond, 'instances unique;')} }}")
     # The SRD proficiency types are declared for every world: the derive rules
     # below name them with `requires`, legal only for a declared type.
     for cond in srd_stats.CONDITION_TYPES:
         if cond not in condition_types:
-            lines.append(f"condition type {_q(cond)} {{ instances unique; }}")
+            lines.append(f"condition type {_q(cond)} {{ {srd_stats.TYPE_BODIES.get(cond, 'instances unique;')} }}")
     # The SRD condition states (C1): declared for every world so a later
     # `apply condition` has them and the engine can hold unconscious at 0 hp.
     lines.append(srd_stats.STATE_TYPES.rstrip("\n"))

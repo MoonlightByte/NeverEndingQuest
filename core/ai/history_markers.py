@@ -20,9 +20,17 @@ field either, so the same start rule keeps protecting them.
 
 The field stays inside the game: providers receive role and content only (the
 Responses and Gemini paths), or the message without it (Chat Completions).
+
+The player's own turn carries the player's typed words in a second field
+(#449). Player speech is read from that field only; every other user message
+(an engine note, a marker, a summary) is not player speech. A turn saved before
+the field existed is read from the engine's turn envelope as it always was.
 """
 
 MARKER_FIELD = "nql_marker"
+PLAYER_INPUT_FIELD = "nql_player_input"
+# The game's own fields on a history message; providers never receive them.
+GAME_FIELDS = (MARKER_FIELD, PLAYER_INPUT_FIELD)
 
 LOCATION_TRANSITION = "location_transition"
 MODULE_TRANSITION = "module_transition"
@@ -80,6 +88,42 @@ def marker_kind(message):
                 return CHRONICLE
             return kind
     return None
+
+
+_ENVELOPE = "Dungeon Master Note:"
+_ENVELOPE_PLAYER = " Player: "
+_ENVELOPE_BLOCKS = ("\n[Inventory Context:", "\n[SRD CONTEXT")
+
+
+def player_turn(content, player_input):
+    """The player's turn message: the engine's envelope as content and the
+    player's own words beside it (#449)."""
+    return {"role": "user", "content": content, PLAYER_INPUT_FIELD: player_input}
+
+
+def player_input(message):
+    """The player's own words on a history message, or None when it is not a
+    player turn.
+
+    A turn saved before the field existed (#449, owner D-449-1 A) has no game
+    field; it is read as it always was, only when it is the engine's own turn
+    envelope: it starts with "Dungeon Master Note:" and holds " Player: ".
+    """
+    if not isinstance(message, dict) or message.get("role") != "user":
+        return None
+    if PLAYER_INPUT_FIELD in message:
+        value = message[PLAYER_INPUT_FIELD]
+        return value.strip() if isinstance(value, str) else None
+    if MARKER_FIELD in message:
+        return None
+    content = message.get("content")
+    if not isinstance(content, str) or not content.startswith(_ENVELOPE) or _ENVELOPE_PLAYER not in content:
+        return None
+    value = content.rsplit(_ENVELOPE_PLAYER, 1)[1]
+    cutoffs = [index for index in (value.find(block) for block in _ENVELOPE_BLOCKS) if index >= 0]
+    if cutoffs:
+        value = value[: min(cutoffs)]
+    return value.strip()
 
 
 def is_marker(message, *kinds):

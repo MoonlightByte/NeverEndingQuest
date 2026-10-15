@@ -1,20 +1,5 @@
 
 
-Race:AbilityScoreIncrease;Traits
--Human:+1 to all ability scores;Extra language
--Hill Dwarf:+2 Constitution,+1 Wisdom;Darkvision 60ft,Dwarven Resilience,Dwarven Combat Training
--Mountain Dwarf:+2 Constitution,+2 Strength;Darkvision 60ft,Dwarven Resilience,Dwarven Combat Training
--High Elf:+2 Dexterity,+1 Intelligence;Darkvision 60ft,Keen Senses,Fey Ancestry,Trance
--Wood Elf:+2 Dexterity,+1 Wisdom;Darkvision 60ft,Keen Senses,Fey Ancestry,Trance,Mask of the Wild
--Dark Elf (Drow):+2 Dexterity,+1 Charisma;Superior Darkvision 120ft,Keen Senses,Fey Ancestry,Trance,Sunlight Sensitivity
--Lightfoot Halfling:+2 Dexterity,+1 Charisma;Lucky,Brave,Halfling Nimbleness
--Stout Halfling:+2 Dexterity,+1 Constitution;Lucky,Brave,Halfling Nimbleness,Stout Resilience
--Forest Gnome:+2 Intelligence,+1 Dexterity;Darkvision 60ft,Gnome Cunning,Natural Illusionist,Speak with Small Beasts
--Rock Gnome:+2 Intelligence,+1 Constitution;Darkvision 60ft,Gnome Cunning,Artificer's Lore,Tinker
--Half-Elf:+2 Charisma,+1 to two other scores;Darkvision 60ft,Fey Ancestry,Skill Versatility
--Half-Orc:+2 Strength,+1 Constitution;Darkvision 60ft,Relentless Endurance,Savage Attacks
--Tiefling:+2 Charisma,+1 Intelligence;Darkvision 60ft,Hellish Resistance,Infernal Legacy
-
 Proficiencies:
 -Armor:Light,Medium,Heavy,Shields
 -Weapons:Simple,Martial

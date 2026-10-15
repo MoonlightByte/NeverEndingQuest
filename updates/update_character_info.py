@@ -254,8 +254,15 @@ def find_character_file_fuzzy(character_name):
             if _is_backup_sheet_file(filename):
                 continue
             try:
-                with open(char_file, "r", encoding="utf-8") as f:
-                    sheet = json.load(f)
+                with open(char_file, "rb") as f:
+                    raw = f.read()
+                try:
+                    text = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    # safe_json_load's retry, without its sanitizing: the
+                    # stored name is compared as written (#938).
+                    text = raw.decode("utf-8", errors="replace")
+                sheet = json.loads(text)
             except Exception as e:
                 warning(f"CHARACTER_LOOKUP: skipped unreadable sheet {char_file} ({type(e).__name__})", category="character_updates")
                 continue
@@ -1107,16 +1114,17 @@ def _engine_owned_total(character_data, updates):
             if isinstance(pool, dict) and 'current' in pool:
                 return ("spell slot totals are not accepted; report the change as spellSlotDelta "
                         "{levelN: signed whole number}")
-    stored = {f.get('name'): f.get('usage') for f in character_data.get('classFeatures') or []
-              if isinstance(f, dict)}
-    for feature in updates.get('classFeatures') or [] if isinstance(updates.get('classFeatures'), list) else []:
-        if not isinstance(feature, dict) or not isinstance(feature.get('usage'), dict):
-            continue
-        before = stored.get(feature.get('name'))
-        if isinstance(before, dict) and 'current' in feature['usage'] and \
-                feature['usage'].get('current') != before.get('current'):
-            return ("feature use totals are not accepted; report the change as featureUseDelta "
-                    "{\"<exact feature name>\": signed whole number}")
+    # Class features and feats (#891, #937) hold use pools alike.
+    for key in ('classFeatures', 'feats'):
+        stored = {f.get('name'): f.get('usage') for f in character_data.get(key) or [] if isinstance(f, dict)}
+        for feature in updates.get(key) or [] if isinstance(updates.get(key), list) else []:
+            if not isinstance(feature, dict) or not isinstance(feature.get('usage'), dict):
+                continue
+            before = stored.get(feature.get('name'))
+            if isinstance(before, dict) and 'current' in feature['usage'] and \
+                    feature['usage'].get('current') != before.get('current'):
+                return ("feature use totals are not accepted; report the change as featureUseDelta "
+                        "{\"<exact feature name>\": signed whole number}")
     return None
 
 
@@ -1312,11 +1320,13 @@ def _copy_engine_pools(engine_sheet, target):
         for key, pool in engine_slots.items():
             if isinstance(pool, dict) and isinstance(target_slots.get(key), dict):
                 target_slots[key]['current'] = pool['current']
-    engine_uses = {f['name']: f['usage']['current'] for f in engine_sheet.get('classFeatures') or []
-                   if isinstance(f, dict) and isinstance(f.get('usage'), dict) and f.get('name')}
-    for feature in target.get('classFeatures') or []:
-        if isinstance(feature, dict) and isinstance(feature.get('usage'), dict) and feature.get('name') in engine_uses:
-            feature['usage']['current'] = engine_uses[feature['name']]
+    # Class features and feats (#891): a feat spend is kept too (#937).
+    for key in ('classFeatures', 'feats'):
+        engine_uses = {f['name']: f['usage']['current'] for f in engine_sheet.get(key) or []
+                       if isinstance(f, dict) and isinstance(f.get('usage'), dict) and f.get('name')}
+        for feature in target.get(key) or []:
+            if isinstance(feature, dict) and isinstance(feature.get('usage'), dict) and feature.get('name') in engine_uses:
+                feature['usage']['current'] = engine_uses[feature['name']]
 
 
 def prepare_character_delta(character_data, updates, character_role, schema,
@@ -1504,7 +1514,7 @@ def prepare_character_delta(character_data, updates, character_role, schema,
         # is reported like a schema failure so the model can correct its delta.
         from core.nql import equipment as nql_equipment
 
-        outcome = nql_equipment.reconcile(character_data, updated_data)
+        outcome = nql_equipment.reconcile(character_data, updated_data, reserved=nql_equipment.genesis.held_ids_on_disk())
         if not outcome.ok:
             checks.update(error_message=(
                 "the equipment change was refused by the rules engine: "
@@ -1938,18 +1948,18 @@ def _update_character_info_unlocked(
             pass
     debug(f"STATE_CHANGE: Updating character info for: {character_name}", category="character_updates")
     
-    # Try fuzzy matching first if the character isn't found
+    # An exact party-name match (#900) when the character's file is not found
     original_name = character_name
     party_tracker_data = safe_json_load("party_tracker.json")
     
     # First try with the original name
     character_path = get_character_path(character_name, character_role)
     if not os.path.exists(character_path):
-        # Try fuzzy matching
-        fuzzy_matched_name = fuzzy_match_character_name(character_name, party_tracker_data)
-        if fuzzy_matched_name and fuzzy_matched_name != character_name:
-            info(f"FUZZY_MATCH: Resolved '{character_name}' to '{fuzzy_matched_name}'", category="character_updates")
-            character_name = fuzzy_matched_name
+        # The party's exact name for it (#900)
+        party_name = fuzzy_match_character_name(character_name, party_tracker_data)
+        if party_name and party_name != character_name:
+            info(f"CHARACTER_LOOKUP: Resolved '{character_name}' to party name '{party_name}'", category="character_updates")
+            character_name = party_name
         else:
             # Still try normalization as a fallback
             normalized_name = normalize_character_name(character_name)
@@ -2183,8 +2193,9 @@ Your primary goal is to generate the smallest possible valid JSON object that re
   NEVER return `hitPoints`: the engine applies the change to the real sheet, stops healing at the maximum and stops damage at 0.
   A note that only states a resulting total ("now at 12 HP") with no amount is a balance statement: return {{}} and let it be corrected rather than guessing.
 - Spell slots: return {{"spellSlotDelta": {{"levelN": -1}}}} per leveled spell cast (cantrips: nothing). NEVER return a slot `current`;
-  the engine refuses a cast with no slot left and you are told.
-- Feature uses: return {{"featureUseDelta": {{"<exact stored feature name>": -1}}}} for the resource-owning feature (a shared option spends
+  the engine refuses a cast with no slot left and you are told. A cast the note pays with a feat's free use ("Uses Magic Initiate
+  (Cleric) to cast Bless") spends no slot: return {{"featureUseDelta": {{"<exact stored feat name>": -1}}}} and no spellSlotDelta.
+- Feature uses: return {{"featureUseDelta": {{"<exact stored feature or feat name>": -1}}}} for the resource-owning feature or feat (a shared option spends
   its parent's pool). NEVER return `usage.current`; the engine refuses a use beyond the pool and you are told.
 - Refills ("regains one use", "recovers two 1st-level slots") are positive amounts; the engine stops at each maximum.
 - Temporary hit points: "gains 10 temporary hit points" -> {{"tempHpGrant": 10}} (positive only). NEVER return

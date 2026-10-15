@@ -2741,7 +2741,7 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 issues.append(f"expected gateway {a}<->{b} not realized reciprocally ({sorted(links)})")
         for pair in phys:
             if pair not in expected_pairs:
-                issues.append(f"spurious cross-area link {tuple(pair)} not in plot edge set")
+                issues.append(f"spurious cross-area link {tuple(sorted(pair))} not in plot edge set")
         return issues
 
     def finalize_locations_and_connections(self):
