@@ -3650,11 +3650,10 @@ def handle_player_data_request(data=None):
             path_manager = ModulePathManager(current_module)
             
             from web.npc_projection import visible_npc_names, npc_sheet_projection
-            from utils.file_operations import safe_read_json
-            world = party_tracker.get('worldConditions', {})
-            area_path = os.path.join('modules', current_module, 'areas',
-                                     str(world.get('currentAreaId', '')) + '.json')
-            area = safe_read_json(area_path) if os.path.isfile(area_path) else {}
+            # The current location through #448's one reader (#850)
+            from core.managers.current_location import current_location_data
+            location = current_location_data(party_tracker, consumer="player panel")
+            area = {'locations': [location]} if location else {}
             for npc_name in visible_npc_names(party_tracker, area):
                 
                 try:
@@ -3980,16 +3979,13 @@ def handle_party_data_request(data=None):
                 npc_names = None
             if npc_names is None:
                 npc_names = []
-                area_file_path = os.path.join("modules", current_module, "areas", f"{current_area_id}.json")
-                if os.path.exists(area_file_path):
-                    area_data = safe_read_json(area_file_path)
-                    if area_data and 'locations' in area_data:
-                        current_location_data = next((loc for loc in area_data['locations']
-                                                     if loc.get('locationId') == current_location_id), None)
-                        for npc in (current_location_data or {}).get('npcs') or []:
-                            npc_name = npc.get('name') if isinstance(npc, dict) else npc
-                            if npc_name:
-                                npc_names.append(npc_name)
+                # The current location through #448's one reader (#850)
+                from core.managers.current_location import current_location_data
+                here = current_location_data(party_tracker, consumer="party panel")
+                for npc in (here or {}).get('npcs') or []:
+                    npc_name = npc.get('name') if isinstance(npc, dict) else npc
+                    if npc_name:
+                        npc_names.append(npc_name)
             for npc_name in npc_names:
                 # Exclude NPCs that are already in the player's party
                 # Also exclude NPCs whose names are contained within any party member's name
