@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- An NPC renamed during a fight keeps its attack prerolls and its combat tooltip, which now read the sheet recorded for the encounter; a sheet saved in a non-UTF-8 encoding is found by its name (#938).
 - In a fight, a Second Wind that spends its use but declares no healing is sent back to be ruled again, so the use is never spent for nothing (#939).
 - A feat's own uses (Magic Initiate's free cast) now show on the DM's character sheet line, a feat use spent outside a fight is kept instead of coming back, and a sheet update can no longer refill a feat's use without a rest (#937).
 - During a level-up, a guide answer the rules refused (for example an invalid hit point method) no longer reaches the DM's history; each level-up answer now records the player's answer and the one reply the player was shown, as the start and the end of a level-up already did (#1056).
