@@ -658,17 +658,11 @@ def render_committed_events(encounter, events):
             # NUM-B2: a committed draw is part of the swing
             attacker = "%s draws the %s and" % (actor, fact["drew"]) if fact.get("drew") else actor
             if fact.get("hit"):
-                damage = fact.get("damage")
-                if type(damage) is not int and isinstance(target, dict):
-                    delta = target.get("hpDelta")
-                    damage = abs(delta) if type(delta) is int and delta < 0 else None
                 sentence = "%s attacks %s with %s and hits" % (
                     attacker,
                     target_name or "the target",
                     action,
                 )
-                if type(damage) is int:
-                    sentence += " for %d damage" % damage
             else:
                 sentence = "%s attacks %s with %s and misses" % (
                     attacker,
@@ -679,11 +673,10 @@ def render_committed_events(encounter, events):
             sentence = "%s uses %s" % (actor, action)
             if target_name:
                 sentence += " on %s" % target_name
-        if isinstance(target, dict) and type(target.get("hpAfter")) is int:
-            sentence += "; %s has %d HP remaining" % (
-                target.get("targetName", "the target"),
-                target["hpAfter"],
-            )
+        # #511: no damage or HP numbers, as the narration lint requires of
+        # model prose; a target the committed facts leave at 0 HP is down.
+        if isinstance(target, dict) and type(target.get("hpAfter")) is int and target["hpAfter"] == 0:
+            sentence += "; %s is down" % target.get("targetName", "the target")
         parts.append(sentence + ".")
     return " ".join(parts) or "The committed combat actions resolve, and the battle continues."
 
