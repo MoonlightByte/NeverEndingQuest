@@ -148,17 +148,6 @@ _declare(
          "profiles.",
 )
 _declare(
-    "T024",
-    _profiles(
-        "OPENAI_GPT56_LUNA_NONE",
-        "DM_MAIN_GEMINI_PRO_LOW",
-        "DM_MAIN_LEGACY",
-        "DM_MAIN_LMSTUDIO",
-    ),
-    status="dormant",
-    note="Direct comparison only; helper is currently unreferenced.",
-)
-_declare(
     "T026",
     _profiles(
         "OPENAI_GPT56_LUNA_HIGH",
@@ -793,12 +782,12 @@ def openai_output_ceiling(task_id):
     """The output ceiling for one callsite on the openai provider, or None."""
     value = OPENAI_OUTPUT_CEILING_CHARS.get(task_id)
     return value if isinstance(value, int) and value > 0 else None
-# Reviewed source inventory: 73 register_callsite IDs (T014 and T091 retired in P4-e/P4-f) plus enabled T104, plus the
+# Reviewed source inventory: 87 registered callsite IDs (T014 and T091 retired in P4-e/P4-f, T024 in keyword GEN-11) plus enabled T104, plus the
 # NPC-voice family T105 (voice+affinity) and T107 (profile seed). Keep this
 # independent from _DECLARATIONS so deleting/adding a binding cannot make the
 # expected set silently redefine itself.
 REGISTERED_TASK_IDS = tuple(
-    "T012 T013 T015 T016 T017 T018 T019 T020 T021 T022 T023 T024 T025 "
+    "T012 T013 T015 T016 T017 T018 T019 T020 T021 T022 T023 T025 "
     "T026 T027 T028 T029 T030 T031 T032 T033 T034 T035 T036 T037 T038 T039 "
     "T040 T041 T042 T043 T044 T045 T046 T047 T048 T049 T050 T051 T052 T053 "
     "T054 T059 T063 T064 T065 T066 T067 T078 T079 T081 T082 T083 T084 "

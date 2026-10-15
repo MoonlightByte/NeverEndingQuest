@@ -47,7 +47,6 @@ from utils.capture.multi_model_capture import capture_and_fanout, register_calls
 from model_config import convert_to_gemini_schema
 register_callsite("T022", "core/generators/area_generator.py", 223)
 register_callsite("T023", "core/generators/area_generator.py", 527)
-register_callsite("T024", "core/generators/area_generator.py", 694)
 
 # issue #128: small Gemini response_schema for the area name/description call (T023).
 # Source of truth for these fields is the code's own expected output
@@ -72,18 +71,6 @@ def _useful_text(value: Any) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ValueError("expected a non-empty string")
     return value.strip()
-
-
-def _validate_area_description(value: Any) -> str:
-    """Validate T024's standalone prose contract."""
-    text = _useful_text(value)
-    if len(text) <= 10:
-        raise ValueError("area description is too short")
-    if "```" in text or text.startswith(("{", "[")):
-        raise ValueError("area description must be plain prose")
-    if text.lower().startswith(("description:", "area description:")):
-        raise ValueError("area description must not include a label")
-    return text
 
 
 def _validate_thematic_names(value: Any, expected_count: int) -> List[str]:
@@ -661,67 +648,6 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
         }
         
         return area_data
-    
-    def generate_area_description(self, area_name: str, config: AreaConfig) -> str:
-        """Generate a thematic area description using AI"""        
-        prompt = f"""Generate a unique, atmospheric description for a 5th edition area named "{area_name}".
-
-Area Details:
-- Type: {config.area_type}
-- Size: {config.size}
-- Complexity: {config.complexity}
-- Danger Level: {config.danger_level}
-- Recommended Level: {config.recommended_level}
-
-Requirements:
-- Write 1-2 sentences that capture the area's atmosphere and character
-- Make it unique and evocative, not generic
-- Include sensory details appropriate to the area type
-- Avoid using the exact phrase "where civilization meets the frontier"
-- Match the danger level and complexity in the description
-
-Return ONLY the area description text, no additional formatting or labels.
-Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."""
-
-        try:
-            from model_config import MODEL_PROVIDER
-            if MODEL_PROVIDER == "openai":
-                main_cfg = app_config.DM_MAIN_GPT52_NONE
-            elif MODEL_PROVIDER == "gemini":
-                main_cfg = app_config.DM_MAIN_GEMINI_PRO_LOW
-            elif MODEL_PROVIDER == "lmstudio":
-                main_cfg = app_config.DM_MAIN_LMSTUDIO
-            else:  # legacy
-                main_cfg = app_config.DM_MAIN_LEGACY
-
-            response = capture_and_fanout("T024", api_client.create_completion,
-                _request_provider=MODEL_PROVIDER,
-                messages=[
-                    {"role": "system", "content": "You are an expert fantasy world builder. Create unique, atmospheric descriptions for 5th edition of the world's most popular roleplaying game areas that avoid cliches and generic phrases."},
-                    {"role": "user", "content": prompt}
-                ],
-                model=main_cfg["model"],
-                temperature=0.8,
-                response_format=None,
-                **{k: v for k, v in main_cfg.items() if k != "model"})
-            
-            return _validate_area_description(
-                response.choices[0].message.content
-            )
-                
-        except Exception as e:
-            print(f"DEBUG: [Area Generator] Warning: Failed to generate area description via AI: {e}")
-            # Fallback to basic description without hardcoded templates
-            area_adjectives = {
-                "dungeon": ["ancient", "forgotten", "mysterious", "treacherous"],
-                "wilderness": ["untamed", "wild", "dangerous", "pristine"], 
-                "town": ["bustling", "quiet", "prosperous", "troubled"],
-                "mixed": ["unique", "varied", "complex", "intriguing"]
-            }
-            
-            adjective = area_adjectives.get(config.area_type, ["mysterious"])[0]
-            article = "an" if adjective[:1].lower() in "aeiou" else "a"
-            return f"{area_name} is {article} {adjective} {config.area_type} area with {config.complexity} challenges suitable for level {config.recommended_level} adventurers."
     
     def generate_encounter_table(self, config: AreaConfig) -> List[Dict[str, Any]]:
         """Generate a random encounter table for the area"""
