@@ -1588,7 +1588,6 @@ def _deliver_committed_turn(
     from core.combat.invocation import InvocationSupersededError
     from core.ai.combat_narration import (
         build_scene_dossier,
-        lint_combat_narration,
         progressive_narration_feedback,
     )
 
@@ -1696,44 +1695,37 @@ def _deliver_committed_turn(
                             "warnings": [],
                         }
                     else:
-                        lint = lint_combat_narration(candidate, dossier)
-                        if lint["reject"]:
-                            attempt_status = "rejected"
-                            failure_class = "narration_lint_reject"
-                            error_code = "NarrationIntegrityReject"
-                        else:
-                            narration = candidate
-                            used_fallback = False
-                            record_combat_diagnostic(
-                                record_type="call_attempt",
-                                callsite="T097",
-                                outcome=(
-                                    "narration_success"
-                                    if model_attempt == 1
-                                    else "narration_corrected"
-                                ),
-                                provider=(narration_diagnostics or {}).get("provider"),
-                                model=(narration_diagnostics or {}).get("model"),
-                                encounter_id=encounter.get("encounterId"),
-                                turn_id=delivery.get("turnId"),
-                                revision=(encounter.get("combatState") or {}).get("revision"),
-                                round_number=(encounter.get("combatState") or {}).get("round"),
-                                window_kind=_window_kind(
-                                    encounter,
-                                    [
-                                        event.get("actorId")
-                                        for event in events
-                                        if isinstance(event, dict)
-                                    ],
-                                ),
-                                actor_count=len(events or []),
-                                attempt=model_attempt,
-                                correction=model_attempt > 1,
-                                elapsed_ms=(narration_diagnostics or {}).get("elapsed_ms"),
-                                committed_events=len(events or []),
-                                warning_codes=lint["warnings"],
-                            )
-                            break
+                        narration = candidate
+                        used_fallback = False
+                        record_combat_diagnostic(
+                            record_type="call_attempt",
+                            callsite="T097",
+                            outcome=(
+                                "narration_success"
+                                if model_attempt == 1
+                                else "narration_corrected"
+                            ),
+                            provider=(narration_diagnostics or {}).get("provider"),
+                            model=(narration_diagnostics or {}).get("model"),
+                            encounter_id=encounter.get("encounterId"),
+                            turn_id=delivery.get("turnId"),
+                            revision=(encounter.get("combatState") or {}).get("revision"),
+                            round_number=(encounter.get("combatState") or {}).get("round"),
+                            window_kind=_window_kind(
+                                encounter,
+                                [
+                                    event.get("actorId")
+                                    for event in events
+                                    if isinstance(event, dict)
+                                ],
+                            ),
+                            actor_count=len(events or []),
+                            attempt=model_attempt,
+                            correction=model_attempt > 1,
+                            elapsed_ms=(narration_diagnostics or {}).get("elapsed_ms"),
+                            committed_events=len(events or []),
+                        )
+                        break
                 except (InvocationSupersededError, ReadOnlySaveStop, LiveProviderCompletedError):
                     # A completed refusal ends the fight window; the delivery
                     # stays pending and is narrated on resume (#1087).
@@ -1817,11 +1809,7 @@ def _deliver_committed_turn(
                 record_combat_diagnostic(
                     record_type="call_attempt",
                     callsite="T097",
-                    outcome=(
-                        "narration_lint_reject"
-                        if attempt_status == "rejected"
-                        else failure_class
-                    ),
+                    outcome=failure_class,
                     provider=(narration_diagnostics or {}).get("provider"),
                     model=(narration_diagnostics or {}).get("model"),
                     encounter_id=encounter.get("encounterId"),
