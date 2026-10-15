@@ -84,6 +84,7 @@ from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_write_json as save_json_safely
 from utils.enhanced_logger import debug, info, warning, error
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
+from utils.status_words import status_word_refusal
 register_callsite("T031", "core/generators/module_generator.py", 585)
 
 
@@ -189,6 +190,11 @@ def _parse_generated_field_value(
         raise ValueError(f"{field_path} must be a useful non-empty object")
     elif isinstance(value, list) and not value and field_path != "moduleConflicts":
         raise ValueError(f"{field_path} must be a useful non-empty array")
+    if field_path in _GENERATION_NAME_FIELDS:
+        # D-KW-3: a NAME field never carries a status word; the retry asks again.
+        refusal = status_word_refusal(value)
+        if refusal:
+            raise ValueError(f"{field_path}: {refusal}")
     return value
 
 # Region fields a NEW module must carry (keyword program GEN-3/4). The schema
@@ -198,6 +204,11 @@ def _parse_generated_field_value(
 _GENERATION_REQUIRED_FIELDS = {
     "worldMap": ("areaType", "climate", "terrain"),
 }
+
+# Fields that are a character's NAME (keyword program GEN-6). The builder places
+# the antagonist as an NPC under this exact name; the free-text antagonist
+# field stays the description.
+_GENERATION_NAME_FIELDS = frozenset({"mainPlot.antagonistName"})
 
 
 def _generation_field_schema(field_path: str, schema_info: Dict[str, Any]) -> Dict[str, Any]:
@@ -286,6 +297,18 @@ class ModulePromptGuide:
     - "The Crimson Hand cult"
     
     Should tie directly to the main objective
+    """
+
+    mainPlot_antagonistName: str = """
+    The proper name of the villain named in mainPlot.antagonist, alone, exactly
+    as the character would be listed as an NPC: no title clause, organization or
+    description.
+
+    Examples:
+    - "Rurik Emberstone"
+    - "The Whispering Shadow"
+
+    A state such as wounded or corrupted belongs in a description, never in a name.
     """
     
     plotStages: str = """
@@ -707,6 +730,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
             "moduleConflicts",
             "mainPlot.mainObjective",
             "mainPlot.antagonist",
+            "mainPlot.antagonistName",
             "mainPlot.plotStages",
             "factions",
             "worldMap",
