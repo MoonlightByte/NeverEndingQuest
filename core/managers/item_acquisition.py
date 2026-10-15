@@ -91,14 +91,14 @@ def _ammunition_row(sheet: Dict[str, Any], entry: Dict[str, Any]) -> Optional[Di
     return held[0] if len(held) == 1 else None
 
 
-def catalog_check(item_name: Any, quantity: Any, price: Any = None) -> Dict[str, Any]:
+def catalog_check(item_name: Any, quantity: Any, price: Any = None, kind: Any = None) -> Dict[str, Any]:
     """The checks of one acquisition that need no sheet and no purse (#878).
 
     Returns {"entry", "quantity", "cost", "rule"} or {"error": reason}, with
     the reasons execute_acquisition has always returned. The DM's draft is
     checked with it before review and display; the purchase runs it again.
     """
-    entry, reason = acquisition.find_entry(item_name)
+    entry, reason = acquisition.find_entry(item_name, kind)
     if entry is None:
         return {"error": reason}
     if quantity in (None, ""):
@@ -127,7 +127,7 @@ def catalog_check(item_name: Any, quantity: Any, price: Any = None) -> Dict[str,
 
 def execute_acquisition(character_name: str, item_name: str, quantity: Any, price: Any = None,
                         request_id: Optional[str] = None,
-                        party_tracker: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+                        party_tracker: Optional[Dict[str, Any]] = None, kind: Any = None) -> Dict[str, Any]:
     """Run one acquisition. Returns {"success": bool, "message": str} or {"success": False, "error": str}."""
     from updates.update_character_info import _get_character_update_lock
     from utils.path_transaction_lock import path_transaction_lock
@@ -135,7 +135,7 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
     path = _resolve(character_name)
     if path is None:
         return {"success": False, "error": f"no character sheet for {character_name!r}"}
-    checked = catalog_check(item_name, quantity, price)
+    checked = catalog_check(item_name, quantity, price, kind)
     if "error" in checked:
         return {"success": False, "error": checked["error"]}
     entry, quantity, cost, rule = checked["entry"], checked["quantity"], checked["cost"], checked["rule"]
