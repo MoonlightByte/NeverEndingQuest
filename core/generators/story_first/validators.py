@@ -27,33 +27,17 @@ def require_ascii(value: Any, label: str) -> None:
         raise ValueError(f"{label} contains non-ASCII text") from exc
 
 
-_POSITIVE_MOVEMENT = re.compile(
-    r"(?i)(?:\b(?:fly|flying|hover|swim|swimming|burrow|burrowing|climb|climbing)"
-    r"(?:\s+speed)?(?:\s+of)?\s*([0-9]+)\s*(?:ft\.?|feet|foot)\b|"
-    r"\b([0-9]+)\s*(?:ft\.?|feet|foot)\s*"
-    r"(?:fly|flying|hover|swim|swimming|burrow|burrowing|climb|climbing)\b)"
-)
-
-
 def semantic_creature_viability_checks(creature: Mapping[str, Any]) -> Dict[str, Any]:
     """Enforce a loose minimum: the creature can move and take one action."""
     issues = []
     speed = creature.get("speed")
-    ability_text = " ".join(
-        value
-        for ability in creature.get("specialAbilities", [])
-        if isinstance(ability, Mapping)
-        for key in ("name", "description")
-        for value in (ability.get(key),)
-        if isinstance(value, str)
-    )
-    movement_match = _POSITIVE_MOVEMENT.search(ability_text)
+    # Typed alternate speeds (keyword program OFF-1); the prose is never read.
+    alternate = creature.get("alternateSpeeds")
     alternate_speed = max(
         (
-            int(value)
-            for match in _POSITIVE_MOVEMENT.finditer(ability_text)
-            for value in match.groups()
-            if value is not None
+            value
+            for value in (alternate.values() if isinstance(alternate, Mapping) else ())
+            if isinstance(value, int) and not isinstance(value, bool)
         ),
         default=0,
     )
@@ -65,7 +49,7 @@ def semantic_creature_viability_checks(creature: Mapping[str, Any]) -> Dict[str,
                 "expectation": "speed must be a non-negative number",
             }
         )
-    elif speed == 0 and not movement_match:
+    elif speed == 0 and alternate_speed <= 0:
         issues.append(
             {
                 "invariant": "creature_mobility",
@@ -75,8 +59,8 @@ def semantic_creature_viability_checks(creature: Mapping[str, Any]) -> Dict[str,
                     sort_keys=True,
                 ),
                 "expectation": (
-                    "use speed above zero or explicitly state a positive fly, hover, "
-                    "swim, burrow, or climb distance in specialAbilities text"
+                    "use speed above zero or a positive fly, swim, burrow, or climb "
+                    "value in alternateSpeeds"
                 ),
             }
         )
