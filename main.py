@@ -9958,7 +9958,8 @@ def _main_game_loop(startup_authority, turn_authority):
         # The player's durable turn input belongs to the same serialized
         # logical operation as T067. Claim before the first history write so
         # a concurrent Load/Reset cannot be overwritten by an unclaimed turn.
-        conversation_history.append({"role": "user", "content": user_input_with_note})
+        # #449: the player's own words ride beside the envelope, typed.
+        conversation_history.append(hm.player_turn(user_input_with_note, user_input_text))
         initial_history_persisted = persist_t067_history_if_current(
             conversation_history
         )
