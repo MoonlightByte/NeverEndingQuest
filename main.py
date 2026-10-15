@@ -10739,7 +10739,7 @@ def _acquire_catalog_refusal(actions):
     """#878: the engine's reason a draft's acquireItem would be refused before
     any sheet or purse is read (an unknown catalog name, a quantity that is not
     a whole lot, a charged item bought more than one at a time), or None. Only
-    the action's typed itemName, quantity and price are read."""
+    the action's typed itemName, quantity, price and kind are read."""
     from core.managers.item_acquisition import catalog_check
 
     for action in actions:
@@ -10751,6 +10751,7 @@ def _acquire_catalog_refusal(actions):
             parameters.get("itemName", ""),
             parameters.get("quantity", 1),
             parameters.get("price"),
+            parameters.get("kind"),
         )
         if "error" in checked:
             return "acquireItem %s: %s" % (
@@ -10980,7 +10981,7 @@ def _review_dm_candidate(
                         "The previous structured response was rejected before "
                         "anything was shown: " + acquire_refusal + ". Keep the "
                         "outcome your narration describes and correct only that "
-                        "action's itemName or quantity. Return the complete "
+                        "action's itemName, kind or quantity. Return the complete "
                         "corrected JSON."
                     )
                     info(

@@ -9,8 +9,8 @@ identity and owns every duration calculation and mutation.
 """
 
 from copy import deepcopy
-import hashlib
 import json
+import uuid
 
 from core.ai import api_client
 from core.effects.clock import display_iso_from_scalar
@@ -216,21 +216,10 @@ def _finalize(effect, now_scalar, owner, change_description):
             int(now_scalar) + int(float(value) * multiplier)
         )
     effect["duration"] = "%s %s" % (value, kind.replace("_", " "))
-    identity_material = json.dumps(
-        {
-            "owner": owner,
-            "change": str(change_description),
-            "gameTimeScalar": int(now_scalar),
-            "name": effect.get("name"),
-            "source": effect.get("source"),
-        },
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    effect["effectId"] = "FX-%s" % hashlib.sha256(
-        identity_material.encode("utf-8")
-    ).hexdigest()[:24]
+    # A code-minted id with no content in it (#193 AP-7): never a digest of
+    # the change text. The same effect named again replaces this record by
+    # name (core/effects/lifecycle.py), not by id.
+    effect["effectId"] = "FX-%s" % uuid.uuid4().hex
     effect["authoredBy"] = "classifier"
     effect["created"] = {
         "gameTimeScalar": int(now_scalar),

@@ -30,6 +30,28 @@
       "speed": {
         "type": "integer"
       },
+      "alternateSpeeds": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "fly": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "swim": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "burrow": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "climb": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
       "abilities": {
         "type": "object",
         "properties": {

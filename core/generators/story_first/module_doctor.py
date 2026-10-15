@@ -3,11 +3,11 @@
 
 """Objective-only, transactional repair for accepted story-first modules.
 
-The doctor deliberately does not interpret prose or modify monster profiles.
-Descriptive abilities, private authoring IDs, and lock-answer concerns are advisory
-until an agentic playthrough demonstrates a real failure. The only currently
-implemented repair is an exact unresolved public PPxxx/SQxxx reference in an
-allowlisted location text field; other objective defects return to their owning stage.
+The doctor deliberately does not interpret or rewrite prose and does not modify
+monster profiles. Descriptive abilities and lock-answer concerns are advisory until
+an agentic playthrough demonstrates a real failure. No repair kind is currently
+implemented: every objective defect returns to its owning stage, and a snapshot
+heal only revalidates and republishes the accepted files.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
-import re
 import secrets
 import shutil
 from typing import Any, Dict, Iterable, Mapping, Sequence, Tuple
@@ -24,19 +23,14 @@ from typing import Any, Dict, Iterable, Mapping, Sequence, Tuple
 import jsonschema
 
 from .contracts import StageEvidence, freeze_value, mutable_copy
-from .execution import NonRetryableStageError, SemanticCorrectionError
+from .execution import NonRetryableStageError
 from .validators import (
     require_ascii,
     validate_public_candidate_references_and_keys,
 )
 
 
-_LOCATION_TEXT_PATH = re.compile(
-    r"^\$\.areas\[(?P<area>[0-9]+)\]\.locations\[(?P<location>[0-9]+)\]\."
-    r"(?P<field>.+)$"
-)
-_LIST_FIELD = re.compile(r"^(?P<field>plotHooks)\[(?P<index>[0-9]+)\]$")
-_OBJECTIVE_DEFECT_KINDS = frozenset({"undefined_public_reference"})
+_OBJECTIVE_DEFECT_KINDS: frozenset = frozenset()
 
 
 class ModuleDoctorScopeError(NonRetryableStageError):
@@ -56,101 +50,6 @@ class ModuleDoctorResult:
         object.__setattr__(self, "plot", freeze_value(self.plot))
         object.__setattr__(self, "monsters", freeze_value(self.monsters))
         object.__setattr__(self, "metrics", freeze_value(self.metrics))
-
-
-def _get_text_field(location: Mapping[str, Any], field_path: str) -> str:
-    if field_path in {"description", "dmInstructions"}:
-        value = location[field_path]
-    else:
-        match = _LIST_FIELD.fullmatch(field_path)
-        if match is None:
-            raise ModuleDoctorScopeError("reference field is outside the allowlist")
-        try:
-            value = location[match.group("field")][int(match.group("index"))]
-        except (KeyError, IndexError, TypeError):
-            raise ModuleDoctorScopeError("reference field is missing") from None
-    if not isinstance(value, str):
-        raise ModuleDoctorScopeError("reference field is not text")
-    return value
-
-
-def _set_text_field(location: Dict[str, Any], field_path: str, value: str) -> None:
-    if field_path in {"description", "dmInstructions"}:
-        location[field_path] = value
-        return
-    match = _LIST_FIELD.fullmatch(field_path)
-    if match is None:
-        raise ModuleDoctorScopeError("reference field is outside the allowlist")
-    location[match.group("field")][int(match.group("index"))] = value
-
-
-def _scrub_unresolved_public_reference(text: str, reference: str) -> str:
-    if reference.startswith("PP"):
-        replacement = "the relevant plot point"
-    elif reference.startswith("SQ"):
-        replacement = "the related side quest"
-    else:
-        raise ModuleDoctorScopeError("only unresolved public IDs are repairable")
-    result = re.sub(rf"\b{re.escape(reference)}\b", replacement, text)
-    if result == text or re.search(rf"\b{re.escape(reference)}\b", result):
-        raise ModuleDoctorScopeError("public reference could not be scrubbed exactly")
-    return result
-
-
-def collect_candidate_integrity_defects(
-    areas: Sequence[Mapping[str, Any]],
-    plot: Mapping[str, Any],
-    entry_location_id: str,
-) -> Tuple[Dict[str, Any], ...]:
-    """Return only objective unresolved-public-reference repair targets.
-
-    The validator returns private-ID and lock/key findings as advisories, so they
-    never enter this repair list. Unknown public references in plot prose are left
-    to the plot-owning stage rather than granting this doctor a broad plot rewrite.
-    """
-    try:
-        validate_public_candidate_references_and_keys(
-            mutable_copy(areas), mutable_copy(plot), entry_location_id
-        )
-        return ()
-    except SemanticCorrectionError as exc:
-        issues = exc.issues
-
-    defects = []
-    seen = set()
-    for issue in issues:
-        if issue["invariant"] != "undefined_public_reference":
-            raise ModuleDoctorScopeError(
-                f"candidate issue is outside objective doctor scope: "
-                f"{issue['invariant']}"
-            )
-        offending = json.loads(issue["offending"])
-        match = _LOCATION_TEXT_PATH.fullmatch(offending["path"])
-        if match is None:
-            raise ModuleDoctorScopeError(
-                "unresolved plot reference belongs to the plot-owning stage"
-            )
-        area_index = int(match.group("area"))
-        location_index = int(match.group("location"))
-        try:
-            area = areas[area_index]
-            location = area["locations"][location_index]
-        except (IndexError, KeyError, TypeError):
-            raise ModuleDoctorScopeError("reference target is missing") from None
-        key = (location["locationId"], match.group("field"), offending["reference"])
-        if key in seen:
-            continue
-        seen.add(key)
-        defects.append(
-            {
-                "kind": "undefined_public_reference",
-                "areaId": area["areaId"],
-                "locationId": location["locationId"],
-                "fieldPath": match.group("field"),
-                "reference": offending["reference"],
-            }
-        )
-    return tuple(defects)
 
 
 def _location_index(areas: Sequence[Mapping[str, Any]]):
@@ -225,29 +124,7 @@ def run(
             + ", ".join(unsupported)
         )
 
-    locations = _location_index(area_values)
-    seen = set()
-    for defect in defect_values:
-        key = (
-            defect.get("locationId"),
-            defect.get("fieldPath"),
-            defect.get("reference"),
-        )
-        if key in seen:
-            raise ModuleDoctorScopeError("duplicate objective repair target")
-        seen.add(key)
-        if key[0] not in locations:
-            raise ModuleDoctorScopeError("objective repair location is missing")
-        area_index, location_index, area_id = locations[key[0]]
-        if defect.get("areaId") != area_id:
-            raise ModuleDoctorScopeError("objective repair area does not match")
-        location = area_values[area_index]["locations"][location_index]
-        current = _get_text_field(location, key[1])
-        _set_text_field(
-            location,
-            key[1],
-            _scrub_unresolved_public_reference(current, key[2]),
-        )
+    _location_index(area_values)
 
     _validate_artifacts(
         area_values,
@@ -259,7 +136,7 @@ def run(
         monster_schema=monster_schema,
     )
     integrity = validate_public_candidate_references_and_keys(
-        area_values, original_plot, entry_location_id
+        area_values, entry_location_id
     )
     return ModuleDoctorResult(
         areas=tuple(area_values),
@@ -267,7 +144,6 @@ def run(
         monsters=tuple(original_monsters),
         evidence=StageEvidence(stage="module_doctor", attempts=0, result="accepted"),
         metrics={
-            "deterministicReferenceScrubCount": len(defect_values),
             "monsterProfileMutationCount": 0,
             "advisories": mutable_copy(integrity["advisories"]),
         },
@@ -374,7 +250,6 @@ def heal_module_snapshot(
 __all__ = [
     "ModuleDoctorResult",
     "ModuleDoctorScopeError",
-    "collect_candidate_integrity_defects",
     "heal_module_snapshot",
     "run",
 ]

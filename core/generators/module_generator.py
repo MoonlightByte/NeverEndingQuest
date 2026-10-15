@@ -166,7 +166,14 @@ def _parse_generated_field_value(
         if content.startswith('"'):
             value = json.loads(content)
         else:
-            value = content
+            try:
+                decoded = json.loads(content)
+            except json.JSONDecodeError:
+                decoded = content
+            # JSON null is the typed absent value: the schema refuses it below
+            # and the retry asks again (keyword program GEN-12). Any other
+            # unquoted reply is the string as written.
+            value = None if decoded is None else content
     else:
         try:
             value = json.loads(content)
@@ -184,7 +191,7 @@ def _parse_generated_field_value(
 
     if isinstance(value, str):
         value = value.strip()
-        if not value or value.casefold() in {"null", "none", "n/a"}:
+        if not value:
             raise ValueError(f"{field_path} must be a useful non-empty string")
     elif isinstance(value, dict) and not value:
         raise ValueError(f"{field_path} must be a useful non-empty object")

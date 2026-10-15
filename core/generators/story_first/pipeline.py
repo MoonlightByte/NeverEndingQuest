@@ -565,7 +565,6 @@ class StoryFirstPipeline:
             semantic_outline_checks(
                 value["value"],
                 seed.to_prompt_value(),
-                self.blocklist,
             )
             return AcceptedOutline(
                 value=value["value"],
@@ -720,7 +719,6 @@ class StoryFirstPipeline:
                     _json_value(by_id[area["areaId"]]),
                     _json_value(accepted_outline.value),
                     seed.to_prompt_value(),
-                    self.blocklist,
                 )
             _, thread_to_quest = plot_derivation.trusted_mappings(accepted_outline)
             validate_side_thread_location_projection(
@@ -748,7 +746,6 @@ class StoryFirstPipeline:
                 provider=self.provider,
                 loca_schema=self.schemas["location"],
                 locationfile_schema=self.schemas["locationfile"],
-                blocklist=self.blocklist,
                 generate_batch=self.generate_batch,
             ),
             _accepted_areas_value,
@@ -873,11 +870,6 @@ class StoryFirstPipeline:
                             != source_tail
                         ):
                             raise ValueError("potential-scene guidance changed")
-                    if location["locationId"] in overlaps and (
-                        "never instantiate both"
-                        not in location["dmInstructions"].casefold()
-                    ):
-                        raise ValueError("accepted same-entity guard is missing")
             climax = next(
                 location
                 for area in accepted.areas
@@ -885,11 +877,6 @@ class StoryFirstPipeline:
                 if location["locationId"] == climax_id
             )
             climax_text = climax["dmInstructions"].casefold()
-            for level in range(
-                seed.module_controls["levelMin"], seed.module_controls["levelMax"] + 1
-            ):
-                if f"level {level}" not in climax_text:
-                    raise ValueError("accepted climax level guidance is incomplete")
             climax_source = migrated_by_id[climax_id]["dmInstructions"]
             if (
                 "POTENTIAL SCENE GUIDANCE (not completed history):" in climax_source
@@ -1033,16 +1020,10 @@ class StoryFirstPipeline:
         )
         if entry != world.entry:
             raise ValueError("accepted entry projection changed after area compilation")
-        try:
-            candidate_integrity = validate_public_candidate_references_and_keys(
-                _json_value(final_areas.areas),
-                _json_value(accepted_plot.value),
-                entry["entryLocationId"],
-            )
-        except SemanticCorrectionError as exc:
-            raise StoryFirstPipelineError(
-                "candidate_validation", "semantic", diagnostics=exc.issues
-            ) from None
+        candidate_integrity = validate_public_candidate_references_and_keys(
+            _json_value(final_areas.areas),
+            entry["entryLocationId"],
+        )
         evidence = (
             accepted_outline.evidence,
             accepted_binding.evidence,

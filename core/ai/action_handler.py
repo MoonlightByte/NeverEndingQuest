@@ -5749,6 +5749,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 parameters.get("price"),
                 _engine_request_id(invocation_claim, action_context, "acquireItem"),
                 party_tracker_data,
+                kind=parameters.get("kind"),
             )
             if result.get("success"):
                 info(f"SUCCESS: {result.get('message')}", category="storage_operations")

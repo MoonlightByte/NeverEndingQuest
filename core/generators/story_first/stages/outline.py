@@ -50,7 +50,13 @@ unnamed roles, and deliberate aliases are not new canonical identities. The froz
 monster format cannot represent swim speed, tremorsense, or vibration sensing. Water themes
 remain welcome, but no creature's declared story role may mechanically depend on operating
 submerged or locating targets through those unsupported senses; redesign such a role while
-preserving its story purpose. Use ASCII canonical text. Avoid
+preserving its story purpose. Set requiresSubmergedMovement and requiresUnsupportedSense true
+only when the creature's role still depends on that; a true flag returns the brief for
+redesign. Give every beat a sceneScale: area_mass for a scene spanning a city, district,
+village, army, evacuation, or mass battle; site for a scene that fills one building, camp,
+square, bridge, gate, or similar place; confined for a private meeting or a scene with a single
+captive, patient, prisoner, or witness; unclassified when none of these fits. Use ASCII
+canonical text. Avoid
 these overused priors unless the seed explicitly contains them:
 {avoid}. Return only JSON matching the response contract."""
     seed_value = seed.to_prompt_value()
@@ -94,7 +100,6 @@ def run(
         semantic_gate=lambda value: semantic_outline_checks(
             value,
             seed.to_prompt_value(),
-            blocked_terms,
         ),
         gateway=gateway,
     )
