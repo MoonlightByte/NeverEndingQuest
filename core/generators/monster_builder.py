@@ -269,6 +269,7 @@ Schema: {json.dumps(schema)}"""
                     monster_data = monster_data["properties"]
                 # Remove nested 'value' fields if they exist
                 monster_data = remove_nested_values(monster_data)
+                monster_data = empty_lists_as_maps(monster_data)
                 last_parsed_data = monster_data
                 validate(instance=monster_data, schema=schema)
                 require_stated_abilities(monster_data)
@@ -346,6 +347,21 @@ def require_stated_abilities(monster_data):
                     "%s entry %r carries a save object but kind %r (a save on a hit belongs in rider)"
                     % (family, entry.get("name"), kind)
                 )
+
+
+# mon_schema types these as objects (a skill or sense name -> its number).
+# An empty list states the same typed fact as {}: the creature has none.
+# It is reconciled to {} before validation (#886); a non-empty list is
+# still a schema failure and goes through the informed retry.
+_MAP_FIELDS = ("skills", "senses")
+
+
+def empty_lists_as_maps(monster_data):
+    if isinstance(monster_data, dict):
+        for field in _MAP_FIELDS:
+            if monster_data.get(field) == []:
+                monster_data[field] = {}
+    return monster_data
 
 
 def remove_nested_values(data):
