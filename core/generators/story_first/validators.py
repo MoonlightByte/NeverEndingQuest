@@ -11,6 +11,7 @@ from typing import Any, Dict, Iterable, List, Mapping, Tuple
 
 import jsonschema
 
+from utils.status_words import status_word_refusal
 from .compilers import (
     GraphEmbeddingError,
     compile_grid_embedding,
@@ -1136,6 +1137,13 @@ def validate_story_first_location_result(
         for npc in location.get("npcs", [])
     ):
         raise ValueError("T026 placed a party member in an NPC roster")
+    for location in actual:
+        for npc in location.get("npcs", []):
+            refusal = status_word_refusal(npc.get("name"))
+            if refusal:
+                raise ValueError(
+                    f"T026 named an NPC in {location['locationId']} with a status word: {refusal}"
+                )
     briefs = {brief["name"].strip().casefold() for brief in outline["creatureBriefs"]}
     monsters = [
         monster for location in actual for monster in location.get("monsters", [])

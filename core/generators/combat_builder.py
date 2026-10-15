@@ -336,7 +336,8 @@ def load_or_create_monster(monster_type):
 
 def load_or_create_npc(npc_name):
     from updates.update_character_info import name_refusal
-    refusal = name_refusal(npc_name)
+    from utils.status_words import status_word_refusal
+    refusal = name_refusal(npc_name, status_words=False)
     if refusal:
         # #949: no sheet for a name that cannot name a character.
         warning(f"COMBAT_BUILDER: NPC not created: {refusal}", category="combat_builder")
@@ -403,6 +404,12 @@ def load_or_create_npc(npc_name):
             npc_name = canonical_name
 
     if not npc_data:
+        # #1119: a sheet that exists still loads under any name; a new one is
+        # never made for a name carrying a status word.
+        refusal = status_word_refusal(npc_name)
+        if refusal:
+            warning(f"COMBAT_BUILDER: NPC not created: {refusal}", category="combat_builder")
+            return None
         print(f"[COMBAT_BUILDER] NPC file not found, creating: {npc_file}")
         warning(f"NPC_LOADING: NPC loading ({npc_name}) - attempting creation", category="combat_builder")
         # Resolve party level here and pass it explicitly so npc_builder
@@ -410,8 +417,7 @@ def load_or_create_npc(npc_name):
         # high-level party (bug CH-C1).
         party_level = _get_party_level()
         # The builder gets the NPC's name, not its file stem, and reports the
-        # file it loaded or saved: it may clean the name (status words) and
-        # so save under another stem (#884).
+        # file it loaded or saved, which may be under another stem (#884).
         built = None
         try:
             from core.generators.npc_builder import build_npc_file_with_path, load_schema

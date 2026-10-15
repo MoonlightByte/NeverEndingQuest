@@ -129,6 +129,7 @@ import re
 from utils.module_path_manager import ModulePathManager
 from utils.file_operations import safe_write_json, safe_read_json
 from utils.encoding_utils import safe_json_load
+from utils.status_words import status_word_refusal
 from core.validation.character_validator import AICharacterValidator, armor_contract_errors
 from core.validation.character_effects_validator import AICharacterEffectsValidator
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -196,11 +197,12 @@ def reserved_character_ids():
     return (ATTACKER, TARGET, SOURCE, ACTOR)
 
 
-def name_refusal(character_name):
+def name_refusal(character_name, status_words=True):
     """Why a new character cannot take this name, or None (#949). A name with
     no letter or digit gives the empty file stem (characters/.json); a name
     whose engine id is a reserved one would share it (travel leaves a member
-    with the roster actor's id out of the party)."""
+    with the roster actor's id out of the party). With status_words, a name
+    carrying a status word is refused too (#1119)."""
     name = str(character_name or "")
     if not normalize_character_name(name):
         return f"the name {name!r} has no letter or digit, so it cannot name a character file"
@@ -208,6 +210,8 @@ def name_refusal(character_name):
     cid = character_id({"name": name})
     if cid in reserved_character_ids():
         return f"the name {name!r} gives the engine id {cid}, which the rules engine reserves for itself"
+    if status_words:
+        return status_word_refusal(name)
     return None
 
 

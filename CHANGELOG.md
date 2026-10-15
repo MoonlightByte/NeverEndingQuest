@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- A new character can no longer take a name with a status word (corrupted, wounded, elite, enhanced): the party add, combat, the NPC builder, the startup wizard and module generation ask for its proper name instead, and the NPC builder keeps the name it is given. A game saved earlier gets its NPCs' proper names once at load, after an automatic save, so a companion such as Ranger Gareth is found by his roster name again (#1119).
 - The Thornwood Watch names its people properly: Wounded Ranger Gareth is Ranger Gareth, Wounded Scout Neris is Scout Neris and Corrupted Ranger Thane is Ranger Thane, in the module files and their portraits, so a recruited companion's roster name and character sheet agree (#1119).
 - Leaving items in a new chest or cache now puts them in it; the game no longer reports the container as made while the items stay with the character (#377)
 - An NPC from the compendium is matched by the same name key as its character file, so a different spelling of its name no longer gives it a second sheet in combat (#445).

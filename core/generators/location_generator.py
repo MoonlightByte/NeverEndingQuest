@@ -21,6 +21,7 @@ import config
 import jsonschema
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import normalize_typography_deep
+from utils.status_words import NPC_STATUS_WORDS, status_word_refusal
 from utils.schema_feedback import (
     SchemaIssue as _SchemaIssue,
     compact_issue_message as _compact_issue_message,
@@ -587,7 +588,25 @@ def _validate_location_batch_contract(
         raise ValueError(
             f"schema validation failed: {_format_schema_issues(issues)}"
         )
+    refusals = _status_word_npc_names(parsed["locations"])
+    if refusals:
+        raise ValueError("NPC names refused: " + "; ".join(refusals))
     return copy.deepcopy(parsed)
+
+
+def _status_word_npc_names(locations: List[Dict[str, Any]]) -> List[str]:
+    """Each location NPC name that carries a status word, with its path (#1119).
+    Only the structured npcs[].name field is read; monsters are creature types
+    and keep their names."""
+    refusals = []
+    for index, location in enumerate(locations):
+        for npc_index, npc in enumerate(location.get("npcs") or []):
+            if not isinstance(npc, dict):
+                continue
+            refusal = status_word_refusal(npc.get("name"))
+            if refusal:
+                refusals.append(f"locations[{index}].npcs[{npc_index}].name: {refusal}")
+    return refusals
 
 
 @dataclass
@@ -1168,7 +1187,9 @@ CRITICAL COMPLETE LOCATION CHECKLIST -- field names and nesting must match EXACT
 - "npcs" (NOT "notableNPCs") is an array of complete objects. Every NPC
   requires name (string), description (string), attitude (string, free
   text), and disposition (exactly "friendly", "indifferent" or "hostile":
-  how the NPC first treats the party).
+  how the NPC first treats the party). An NPC's name is its proper name with
+  no status word ({', '.join(NPC_STATUS_WORDS)}): "Ranger Gareth", never
+  "Wounded Ranger Gareth"; a condition belongs in the description.
 - "monsters" (NOT "creatures") is an array of complete objects. Every
   monster requires name (string) and quantity (object); quantity requires
   min (integer, 0 or greater) and max (integer, 1 or greater).

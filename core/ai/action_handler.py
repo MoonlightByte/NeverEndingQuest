@@ -5068,14 +5068,17 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             dict(x) for x in party_tracker_data.get("partyNPCs", [])
         ]
         from updates.update_character_info import name_refusal
+        from utils.status_words import NPC_STATUS_WORDS
         _refusal = name_refusal(npc.get("name")) if operation == "add" else None
         if _refusal:
-            # #949: no sheet is built for a name that cannot name a character.
+            # #949: no sheet is built for a name that cannot name a character;
+            # #1119: nor for a name carrying a status word.
             _name = str(npc.get("name") or "")
             conversation_history.append({"role": "user", "content": (
                 f"Party Error: updatePartyNPCs add for {_name} did not complete: {_refusal}. Nothing was built "
                 f"and nobody joined. Later actions from this response have not executed. Do not repeat earlier "
-                f"completed actions. Give this companion a name with letters that is not a reserved engine name.")})
+                f"completed actions. Give this companion its proper name: a name with letters that is not a "
+                f"reserved engine name and has no status word ({', '.join(NPC_STATUS_WORDS)}).")})
             needs_conversation_history_update = True
             return create_return(status="needs_response", needs_update=True)
         if update_party_npcs(party_tracker_data, operation, npc) is False:
