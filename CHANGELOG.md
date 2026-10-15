@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - A journey resumed after a restart no longer writes replaced characters into the area it leaves when that area file holds a damaged byte; the area is left as it is for repair, the departure is still recorded in the journal, and a warning names the file (#1072).
+- A world with more than 702 areas no longer gets location ids the game rejects ("[A01", or a random "MKEE18" that two areas could share): prefixes go on to AAA-ZZZ, one shared scheme serves the builder, the story-first generator (its 27th area got "[") and the module stitcher, and existing ids keep their letters (#646).
+- Two characters buying the same item, or an item added after a stored one, no longer end up sharing an id that hides one of them (#1060).
 - A Cleric who chose the Thaumaturge Divine Order now adds their Wisdom modifier (at least +1) to Intelligence (Arcana) and Intelligence (Religion) checks, as SRD 5.2.1 says. The DM's check line shows the higher total, and a listed Arcana or Religion value on the sheet includes it from the next game start (#1077).
 - Companions no longer hear the game's own notes ([COMBAT CONCLUDED], storage and system lines) as things your character said, and those notes no longer reach a companion's remembered moments; the adventure chronicler sees only your own words as yours (Closes #449).
 - Outside a fight, a spell a feat lets you cast once without a spell slot (Magic Initiate's level 1 spell) now uses that free cast first; before, the DM always spent a spell slot, so Brannoc's first Bless after a long rest cost a slot. The feat's use comes back on a long rest (#891).

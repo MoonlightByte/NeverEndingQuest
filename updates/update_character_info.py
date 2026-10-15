@@ -1514,7 +1514,7 @@ def prepare_character_delta(character_data, updates, character_role, schema,
         # is reported like a schema failure so the model can correct its delta.
         from core.nql import equipment as nql_equipment
 
-        outcome = nql_equipment.reconcile(character_data, updated_data)
+        outcome = nql_equipment.reconcile(character_data, updated_data, reserved=nql_equipment.genesis.held_ids_on_disk())
         if not outcome.ok:
             checks.update(error_message=(
                 "the equipment change was refused by the rules engine: "
