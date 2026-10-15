@@ -2193,8 +2193,9 @@ Your primary goal is to generate the smallest possible valid JSON object that re
   NEVER return `hitPoints`: the engine applies the change to the real sheet, stops healing at the maximum and stops damage at 0.
   A note that only states a resulting total ("now at 12 HP") with no amount is a balance statement: return {{}} and let it be corrected rather than guessing.
 - Spell slots: return {{"spellSlotDelta": {{"levelN": -1}}}} per leveled spell cast (cantrips: nothing). NEVER return a slot `current`;
-  the engine refuses a cast with no slot left and you are told.
-- Feature uses: return {{"featureUseDelta": {{"<exact stored feature name>": -1}}}} for the resource-owning feature (a shared option spends
+  the engine refuses a cast with no slot left and you are told. A cast the note pays with a feat's free use ("Uses Magic Initiate
+  (Cleric) to cast Bless") spends no slot: return {{"featureUseDelta": {{"<exact stored feat name>": -1}}}} and no spellSlotDelta.
+- Feature uses: return {{"featureUseDelta": {{"<exact stored feature or feat name>": -1}}}} for the resource-owning feature or feat (a shared option spends
   its parent's pool). NEVER return `usage.current`; the engine refuses a use beyond the pool and you are told.
 - Refills ("regains one use", "recovers two 1st-level slots") are positive amounts; the engine stops at each maximum.
 - Temporary hit points: "gains 10 temporary hit points" -> {{"tempHpGrant": 10}} (positive only). NEVER return
