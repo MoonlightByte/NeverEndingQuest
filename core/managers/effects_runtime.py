@@ -538,9 +538,27 @@ def _engine_expirations(sheets, now_scalar):
     return plans
 
 
+def _legacy_rest_clears(rest_kind):
+    """On a campaign whose effects conversion is refused or postponed, the typed
+    rest kind clears the legacy tracker's rest-bound modifiers for the party
+    (#855: never from rest words in update prose)."""
+    from updates.process_effect_expirations import process_rest_effects
+
+    party = safe_json_load("party_tracker.json") or {}
+    names = list(party.get("partyMembers", []) or [])
+    names.extend(
+        npc.get("name") for npc in party.get("partyNPCs", []) or [] if isinstance(npc, dict)
+    )
+    for name in names:
+        if isinstance(name, str) and name:
+            process_rest_effects(name, rest_kind)
+
+
 def process_effect_lifecycle(conversation_history=None, rest_kind=None):
     """Apply due expirations/rest clears and return one exactly-once DM note."""
     if not campaign_effects_migrated():
+        if rest_kind in ("short_rest", "long_rest"):
+            _legacy_rest_clears(rest_kind)
         return None
     history = conversation_history if isinstance(conversation_history, list) else []
     party = safe_json_load("party_tracker.json") or {}
