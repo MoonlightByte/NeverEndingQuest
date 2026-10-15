@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- A fight no longer re-sends a refused AI provider call forever: when a combat call is refused (out of funds or quota, API key rejected, no model access, or another completed error), the fight stops with one line that says why, is saved as it stands and stays active, and continues when you load your game (#1087).
 - The scene check now sees what is stored in the party's chests at the current place, so taking out an item stored earlier is no longer refused as invented (#388)
 - A character saved before #894 as characters/.json (a name with no Latin letters) is found again: a lookup by its name finds its sheet, a fight that refers to that sheet loads it instead of looking for characters/json.json, and a companion saved there is in the list whose memories are kept (#1082).
 - When combat narration falls back to the game's own sentence, it no longer reads out damage and HP numbers; it says who hits or misses and who goes down (Refs #511).
