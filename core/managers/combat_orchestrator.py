@@ -503,27 +503,12 @@ def _apply_trusted_spell_durations(batch, spell_references, now_scalar=None):
         return batch
 
     def trusted_duration(effect_name):
+        # The effect name is matched only as a whole value. A display name
+        # such as "Aid (2nd-level)" takes its duration from the intent's
+        # typed spell fields below, never from reading the name (D-KW-7).
         if not isinstance(effect_name, str):
             return None
-        normalized_name = effect_name.strip().casefold()
-        exact = trusted.get(normalized_name)
-        if exact:
-            return exact
-        # Models commonly keep the exact spell name but append the selected
-        # slot level for display (for example, ``Aid (2nd-level)``). Accept
-        # only that tightly bounded suffix; do not fuzzy-match unrelated
-        # effect prose to a rules reference.
-        for reference_name, duration in trusted.items():
-            suffix = normalized_name[len(reference_name):]
-            if (
-                normalized_name.startswith(reference_name)
-                and re.fullmatch(
-                    r"\s*\(\s*(?:level\s+\d+|\d+(?:st|nd|rd|th)[ -]?level)\s*\)",
-                    suffix,
-                )
-            ):
-                return duration
-        return None
+        return trusted.get(effect_name.strip().casefold())
 
     normalized = deepcopy(batch)
     for intent in normalized.get("intents") or []:
