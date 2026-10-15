@@ -84,15 +84,8 @@ class ModuleContext:
                 canonical_key = key
                 break
         
-        # 3. Handle special cases like "Specter of Abbot Liran" vs "Spirit of Abbot Liran"
-        if not canonical_key:
-            if "abbot liran" in base_name.lower():
-                for key, data in self.npcs.items():
-                    if "abbot liran" in data['name'].lower():
-                        canonical_key = key
-                        break
-
-        # 4. If no match is found, create a NEW canonical entry
+        # 3. If no match is found, create a NEW canonical entry. Variant names of
+        # one person are merged by T088's roster call (NpcReconciler).
         if not canonical_key:
             canonical_key = normalize_character_name(base_name)  # The key is based on the clean name
             self.npcs[canonical_key] = {
@@ -103,7 +96,7 @@ class ModuleContext:
                 "appears_in": [],
                 "aliases": [npc_name]  # Track the original generated name as an alias
             }
-        # 5. If a match IS found, update the existing entry
+        # 4. If a match IS found, update the existing entry
         else:
             # Add the new variant as an alias if it's not already there
             if npc_name not in self.npcs[canonical_key].get("aliases", []):
