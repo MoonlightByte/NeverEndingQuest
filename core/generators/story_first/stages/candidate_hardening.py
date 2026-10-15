@@ -39,6 +39,23 @@ TASK_ID = "T102"
 SCHEMA_NAME = "story_first_candidate_hardening"
 
 
+def _render_hardening(repair):
+    """Write the typed guards and level guidance into the DM text the runtime reads."""
+    text = repair["dmInstructions"].rstrip()
+    for guard in repair["sameEntityGuards"]:
+        text += (
+            f"\n\nSAME ENTITY: {guard['name']} has both an NPC record and a creature "
+            "record here; they are one entity, so never instantiate both. Switch "
+            f"representations when: {guard['switchWhen']}"
+        )
+    entries = sorted(repair["levelGuidance"], key=lambda entry: entry["level"])
+    if entries:
+        text += "\n\nLEVEL GUIDANCE:" + "".join(
+            f"\nLevel {entry['level']}: {entry['guidance']}" for entry in entries
+        )
+    return text
+
+
 def _apply_hardening(
     migrated,
     repairs,
@@ -56,17 +73,28 @@ def _apply_hardening(
         raise ValueError("hardening IDs differ from targets")
     for area in result:
         for location in area["locations"]:
-            if location["locationId"] in by_id:
+            location_id = location["locationId"]
+            if location_id in by_id:
+                repair = by_id[location_id]
+                guarded = sorted(guard["name"] for guard in repair["sameEntityGuards"])
+                if guarded != sorted(overlaps.get(location_id, [])):
+                    raise ValueError(
+                        f"same-entity guards at {location_id} differ from the overlaps"
+                    )
+                levels = sorted(entry["level"] for entry in repair["levelGuidance"])
+                expected = (
+                    list(range(level_min, level_max + 1))
+                    if location_id == climax_id
+                    else []
+                )
+                if levels != expected:
+                    raise ValueError(
+                        f"level guidance at {location_id} must cover exactly {expected}"
+                    )
                 location["dmInstructions"] = preserve_potential_scene_guidance(
                     location["dmInstructions"],
-                    by_id[location["locationId"]]["dmInstructions"],
+                    _render_hardening(repair),
                 )
-                if (
-                    location["locationId"] in overlaps
-                    and "never instantiate both"
-                    not in location["dmInstructions"].casefold()
-                ):
-                    raise ValueError("same-entity guard missing")
             if location.get("encounters") != []:
                 raise ValueError("new module contains encounter history")
     climax = next(
@@ -75,10 +103,6 @@ def _apply_hardening(
         for location in area["locations"]
         if location["locationId"] == climax_id
     )
-    text = climax["dmInstructions"].casefold()
-    for level in range(level_min, level_max + 1):
-        if f"level {level}" not in text:
-            raise ValueError(f"climax omits level {level} guidance")
     climax["dmInstructions"] = add_level_scaling_precedence(climax["dmInstructions"])
     require_ascii(result, "hardened candidate")
     for area in result:
@@ -115,7 +139,15 @@ def run(
         if point["id"] == beat_to_plot[crescendo]
     )
     target_ids = sorted(set(overlaps) | {climax_id})
-    production_contract = hardening_schema(target_ids, mutable_copy(loca_schema))
+    level_min = seed.module_controls["levelMin"]
+    level_max = seed.module_controls["levelMax"]
+    production_contract = hardening_schema(
+        target_ids,
+        mutable_copy(loca_schema),
+        [name for names in overlaps.values() for name in names],
+        level_min,
+        level_max,
+    )
     contract = strict_internal_contract(production_contract)
     affected = [
         location
@@ -123,12 +155,12 @@ def run(
         for location in area["locations"]
         if location["locationId"] in target_ids
     ]
-    level_min = seed.module_controls["levelMin"]
-    level_max = seed.module_controls["levelMax"]
     system = """Correct only DM guidance. At any listed social-NPC/combat-template overlap,
-the two records are the same entity: explicitly say 'never instantiate both' and when to switch
-representations. At the climax, give useful level-specific roster choices across the seed's
-actual level range. Preserve story facts and possible-scene guidance. Do not claim scenes
+the two records are the same entity: give one sameEntityGuards entry per overlapping name, with
+switchWhen saying when to switch representations; code writes the never-instantiate-both rule
+from it. At the climax, give one levelGuidance entry per level in the seed's actual level range
+with useful level-specific roster choices. Other locations use empty sameEntityGuards and
+levelGuidance lists. Preserve story facts and possible-scene guidance. Do not claim scenes
 occurred, change any other field, or require combat to solve noncombat paths. Return ASCII JSON."""
     user = (
         "LEVEL RANGE:\n"
