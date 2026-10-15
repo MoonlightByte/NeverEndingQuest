@@ -159,6 +159,50 @@ def _is_valid_campaign_export_data(exported_data: Any) -> bool:
     )
 
 
+def _party_member_names(party_tracker_data: Dict[str, Any], module_name: str) -> List[str]:
+    """The party's player characters by tracker id and by sheet name (#625)."""
+    path_manager = ModulePathManager(module_name)
+    names: List[str] = []
+    for member in party_tracker_data.get("partyMembers") or []:
+        if not isinstance(member, str) or not member.strip():
+            continue
+        names.append(member.strip())
+        sheet = safe_json_load(path_manager.get_character_path(member))
+        if isinstance(sheet, dict) and isinstance(sheet.get("name"), str) and sheet["name"].strip():
+            names.append(sheet["name"].strip())
+    return list(dict.fromkeys(names))
+
+
+def _same_character_name(a: str, b: str) -> bool:
+    """Exact name equality, case ignored and "_" read as a space (as #855's matcher)."""
+    def norm(name):
+        return " ".join(str(name).lower().replace("_", " ").split())
+    return norm(a) == norm(b)
+
+
+def _relationships_dealt_with(
+    relationships: Dict[str, Any], party_names: List[str] = ()
+) -> Tuple[Dict[str, Any], List[str]]:
+    """Keep the NPCs T039 marks the party as having dealt with (#625).
+
+    T039 labels each NPC it names with ``contact``: "dealt_with", "seen" or
+    "heard_of". Only a dealt-with NPC is a relationship; the label is the
+    model's own typed output, so no status text is read here. A party
+    member is never a relationship: its key is matched exactly against the
+    party's typed names.
+    """
+    kept: Dict[str, Any] = {}
+    dropped: List[str] = []
+    for name, value in relationships.items():
+        if any(_same_character_name(name, member) for member in party_names):
+            dropped.append(name)
+        elif isinstance(value, dict) and value.get("contact") == "dealt_with":
+            kept[name] = value
+        else:
+            dropped.append(name)
+    return kept, dropped
+
+
 def format_campaign_hubs(hubs: Dict[str, Any]) -> str:
     """Render the complete recorded hub facts for both DM-context readers (#328)."""
     if not hubs:
@@ -3968,13 +4012,26 @@ Focus on story outcomes, character development, and decisions that will matter i
                         "Could not durably checkpoint T038 output"
                     ) from checkpoint_exc
             
-            # Have AI also extract exportable data
+            # Have AI also extract exportable data. The player's own words
+            # are the typed record of what the player said and promised
+            # (#449); the summary retells them (#625).
+            player_words = [
+                words for words in (
+                    hm.player_input(message) for message in filtered_conversation
+                ) if words
+            ]
+            party_names = _party_member_names(party_tracker_data, module_name)
             export_prompt = f"""From this module summary, extract key data to export to the campaign:
             
             Summary: {summary_text}
             
+            The player's own words, turn by turn (what the player said and did; the summary retells them):
+            {json.dumps(player_words, indent=2)}
+            
+            The party's player characters (never a relationship): {json.dumps(party_names)}
+            
             Extract:
-            1. Relationships formed (NPCs met, befriended, made enemies): only NPCs the summary shows the party dealing with; leave out an NPC the party only saw or heard of; a status never claims a meeting, conversation or bond the summary does not show
+            1. Relationships: each NPC the summary or the player's words name, as an object with "contact", "status" and "details". "contact" is "dealt_with" when the party spoke with, fought, traded with or acted on that NPC, "seen" when the party only saw them, and "heard_of" when the party was only told about them or sent to find them. status and details never claim a meeting, conversation or bond the summary does not show. A promise or agreement the player made to an NPC is recorded in that NPC's own status or details as the player's words state it; leaving or not yet acting on a request is not a refusal unless the player's words refuse it
             2. Artifacts or important items acquired
             3. Locations that could become hubs (owned property, bases)
             4. World state changes (political shifts, curses lifted, etc)
@@ -4039,6 +4096,15 @@ Focus on story outcomes, character development, and decisions that will matter i
                 exported_data = json.loads(export_response.choices[0].message.content)
                 if not _is_valid_campaign_export_data(exported_data):
                     raise ValueError("T039 returned invalid campaign export data")
+                exported_data["relationships"], not_dealt_with = (
+                    _relationships_dealt_with(exported_data["relationships"], party_names)
+                )
+                if not_dealt_with:
+                    debug(
+                        "T039 relationships left out (not dealt with): "
+                        + ", ".join(not_dealt_with),
+                        category="campaign_management",
+                    )
             except LiveProviderSuperseded:
                 raise
             except Exception as e:
