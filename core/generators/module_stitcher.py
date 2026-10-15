@@ -98,7 +98,6 @@ import os
 import glob
 import re
 import hashlib
-import errno
 import shutil
 import stat
 from copy import deepcopy
@@ -310,8 +309,8 @@ class TargetedPublicationResult:
     ``NOT_PUBLISHED`` is returned only when the registry is proven not to
     reference the module and the live module is proven to match the manifest
     of the held tree taken before validation.
-    ``INDETERMINATE`` means cleanup is unsafe because at least one relevant
-    on-disk state could not be proven.
+    ``INDETERMINATE`` means at least one relevant on-disk state could not be
+    proven.
 
     ``backup_path`` is a compatibility-shaped, permanently ``None`` field.
     The manifest receipt deliberately exposes no mutable filesystem locator.
@@ -333,84 +332,10 @@ class TargetedPublicationResult:
     def published(self) -> bool:
         return self.status is PublicationStatus.PUBLISHED
 
-    @property
-    def cleanup_safe(self) -> bool:
-        return (
-            self.status is PublicationStatus.NOT_PUBLISHED
-            and self.registry_absence_proven is True
-            and self.registry_restoration_proven is True
-            and self.module_restoration_proven is True
-        )
-
-    def cleanup_safe_for(self, expected_module_name: str) -> bool:
-        """Bind complete non-publication proof to the exact builder result."""
-        return (
-            self.module_name == expected_module_name
-            and self.cleanup_safe is True
-        )
-
     def __bool__(self) -> bool:
         raise TypeError(
             "TargetedPublicationResult has no implicit truth value; inspect "
-            ".status, .published, or .cleanup_safe explicitly"
-        )
-
-
-@dataclass(frozen=True)
-class RegistryAbsenceResult:
-    """Fresh-disk proof used to decide whether orphan cleanup is safe."""
-
-    module_name: str
-    proven: bool
-    absent: bool
-    reason: str = ""
-
-    @property
-    def cleanup_safe(self) -> bool:
-        return self.proven is True and self.absent is True
-
-    def __bool__(self) -> bool:
-        raise TypeError(
-            "RegistryAbsenceResult has no implicit truth value; inspect "
-            ".proven, .absent, or .cleanup_safe explicitly"
-        )
-
-
-class OrphanCleanupStatus(str, Enum):
-    """Exact outcome of proof-bound unpublished-module cleanup."""
-
-    REMOVED = "REMOVED"
-    ALREADY_ABSENT = "ALREADY_ABSENT"
-    RECOVERY_REQUIRED = "RECOVERY_REQUIRED"
-
-
-@dataclass(frozen=True)
-class OrphanCleanupResult:
-    """Typed cleanup result that cannot be mistaken for an arbitrary boolean."""
-
-    status: OrphanCleanupStatus
-    module_name: str
-    reason: str = ""
-    quarantine_path: Optional[str] = None
-
-    @property
-    def safe_to_retry(self) -> bool:
-        return (
-            self.status is OrphanCleanupStatus.REMOVED
-            or self.status is OrphanCleanupStatus.ALREADY_ABSENT
-        )
-
-    def safe_to_retry_for(self, expected_module_name: str) -> bool:
-        """Bind a retry-safe status to the exact generated module."""
-        return (
-            self.module_name == expected_module_name
-            and self.safe_to_retry is True
-        )
-
-    def __bool__(self) -> bool:
-        raise TypeError(
-            "OrphanCleanupResult has no implicit truth value; inspect .status "
-            "or .safe_to_retry explicitly"
+            ".status or .published explicitly"
         )
 
 
@@ -690,12 +615,6 @@ class ModuleStitcher:
             return "unsafe", None, "Exact module entry is not a directory"
         return "directory", target_stat, ""
 
-    def _exact_cleanup_target_state(
-        self, module_name: str, module_path: str
-    ) -> Tuple[str, Optional[os.stat_result], str]:
-        """Compatibility seam for the proof-bound cleanup path."""
-        return self._exact_module_entry_state(module_name, module_path)
-
     @staticmethod
     def _stable_directory_identity(
         path_stat: os.stat_result,
@@ -836,147 +755,6 @@ class ModuleStitcher:
             return False, reason or "Exact module absence changed"
         return False, "Initial exact module entry state was not proven"
 
-    def _publication_transactions_inactive_for_cleanup_locked(
-        self,
-    ) -> Tuple[bool, str]:
-        """Temporary GAP-01 seam; Task 3 replaces it with journal recovery."""
-        transaction_root = os.path.join(
-            self.modules_dir, ".publication_transactions"
-        )
-        active_root = os.path.join(transaction_root, "active")
-
-        try:
-            transaction_stat = self._lstat_or_absent(transaction_root)
-        except (OSError, ValueError):
-            return False, "Publication transaction root could not be inspected"
-        if transaction_stat is not None:
-            if self._is_symlink_or_reparse(transaction_root):
-                return False, "Publication transaction root is unsafe"
-            try:
-                if os.path.ismount(transaction_root):
-                    return False, "Publication transaction root is a mount point"
-                if not stat.S_ISDIR(transaction_stat.st_mode):
-                    return False, "Publication transaction root is not a directory"
-            except OSError:
-                return False, "Publication transaction root could not be inspected"
-
-        try:
-            active_stat = self._lstat_or_absent(active_root)
-        except (OSError, ValueError):
-            return False, "Active publication state could not be inspected"
-        if active_stat is None:
-            return True, ""
-        if self._is_symlink_or_reparse(active_root):
-            return False, "Active publication state is unsafe"
-        try:
-            if os.path.ismount(active_root):
-                return False, "Active publication state is a mount point"
-            if not stat.S_ISDIR(active_stat.st_mode):
-                return False, "Active publication state is not a directory"
-            with os.scandir(active_root) as entries:
-                if next(entries, None) is not None:
-                    return False, "An active publication transaction remains"
-        except OSError:
-            return False, "Active publication state could not be inspected"
-        return True, ""
-
-    def _prepare_orphan_quarantine_root_locked(self) -> Tuple[Optional[str], str]:
-        """Create or verify the contained same-filesystem quarantine root."""
-        quarantine_root = os.path.join(
-            self.modules_dir, ".module_orphan_quarantine"
-        )
-        try:
-            with os.scandir(self.modules_dir) as entries:
-                entry_names = [entry.name for entry in entries]
-            quarantine_name = os.path.basename(quarantine_root)
-            if any(
-                self._module_names_alias(name, quarantine_name)
-                and name != quarantine_name
-                for name in entry_names
-            ):
-                return None, "A case-aliased quarantine root exists"
-            quarantine_stat = self._lstat_or_absent(quarantine_root)
-            if quarantine_stat is not None:
-                if self._is_symlink_or_reparse(quarantine_root):
-                    return None, "Orphan quarantine root is unsafe"
-                if not stat.S_ISDIR(quarantine_stat.st_mode):
-                    return None, "Orphan quarantine root is not a directory"
-            else:
-                os.mkdir(quarantine_root, 0o700)
-                quarantine_stat = self._lstat_or_absent(quarantine_root)
-                if quarantine_stat is None:
-                    return None, "Orphan quarantine root creation is unproven"
-                if not stat.S_ISDIR(quarantine_stat.st_mode):
-                    return None, "Orphan quarantine root is not a directory"
-
-            modules_root = os.path.realpath(self.modules_dir)
-            resolved_quarantine = os.path.realpath(quarantine_root)
-            if os.path.dirname(resolved_quarantine) != modules_root:
-                return None, "Orphan quarantine root is not contained"
-            if self._is_symlink_or_reparse(quarantine_root):
-                return None, "Orphan quarantine root became unsafe"
-            if os.path.ismount(quarantine_root):
-                return None, "Orphan quarantine root is a mount point"
-        except (OSError, ValueError):
-            return None, "Orphan quarantine root could not be prepared"
-        return quarantine_root, ""
-
-    def _quarantined_tree_safe_to_purge(self, quarantine_path: str) -> bool:
-        """Do not recursively purge a tree containing link/reparse/mount edges."""
-        def raise_walk_error(walk_error):
-            raise walk_error
-
-        try:
-            for directory, child_directories, child_files in os.walk(
-                quarantine_path,
-                topdown=True,
-                onerror=raise_walk_error,
-                followlinks=False,
-            ):
-                for child_name in child_directories + child_files:
-                    child_path = os.path.join(directory, child_name)
-                    if self._is_symlink_or_reparse(child_path):
-                        return False
-                    if os.path.isdir(child_path) and os.path.ismount(child_path):
-                        return False
-            return True
-        except OSError:
-            return False
-
-    @staticmethod
-    def _sync_directory_if_supported(directory: str) -> bool:
-        """Synchronize directory-entry changes where the platform supports it."""
-        if os.name == "nt":
-            return True
-        flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-        descriptor = None
-        sync_ok = False
-        close_ok = True
-        unsupported = {
-            errno.EINVAL,
-            getattr(errno, "ENOTSUP", errno.EINVAL),
-            getattr(errno, "EOPNOTSUPP", errno.EINVAL),
-            getattr(errno, "ENOSYS", errno.EINVAL),
-        }
-        try:
-            descriptor = os.open(directory, flags)
-            try:
-                os.fsync(descriptor)
-                sync_ok = True
-            except OSError as exc:
-                sync_ok = exc.errno in unsupported
-            except (TypeError, ValueError):
-                sync_ok = False
-        except (OSError, TypeError, ValueError):
-            sync_ok = False
-        finally:
-            if descriptor is not None:
-                try:
-                    os.close(descriptor)
-                except (OSError, TypeError, ValueError):
-                    close_ok = False
-        return sync_ok and close_ok
-
     def _read_registry_snapshot(self) -> Tuple[Optional[Dict[str, Any]], str]:
         """Fresh-read and shape-check the on-disk world registry."""
         try:
@@ -1094,202 +872,6 @@ class ModuleStitcher:
         if not isinstance(modules, dict) or module_name not in modules:
             return False
         return not cls._is_registry_stub(registry, module_name)
-
-    def _prove_module_absent_from_registry_locked(
-        self, module_name: str
-    ) -> RegistryAbsenceResult:
-        registry, reason = self._read_registry_snapshot()
-        if registry is None:
-            return RegistryAbsenceResult(module_name, False, False, reason)
-        absent = not self._registry_references_module(registry, module_name)
-        return RegistryAbsenceResult(
-            module_name,
-            True,
-            absent,
-            "No exact registry reference exists"
-            if absent
-            else "The exact module is still referenced by the registry",
-        )
-
-    def prove_module_absent_from_registry_locked(
-        self, module_name: str
-    ) -> RegistryAbsenceResult:
-        """Fresh proof API for callers that already own module_refresh_lock."""
-        if self._target_module_path(module_name) is None:
-            return RegistryAbsenceResult(
-                module_name,
-                False,
-                False,
-                "Invalid or non-contained module name",
-            )
-        from utils.module_refresh_lock import assert_module_refresh_lock_owned
-
-        assert_module_refresh_lock_owned()
-        return self._prove_module_absent_from_registry_locked(module_name)
-
-    def cleanup_unpublished_module_locked(
-        self,
-        expected_module_name: str,
-        publication_result: TargetedPublicationResult,
-        fresh_absence_result: RegistryAbsenceResult,
-    ) -> OrphanCleanupResult:
-        """Quarantine one exact unpublished module after complete fresh proof.
-
-        The caller must still own ``module_refresh_lock``.  No boolean can grant
-        authority: both proof-bearing result objects and their exact identities
-        are revalidated here immediately before the destructive rename.
-        """
-
-        def recovery(reason: str, quarantine_path: Optional[str] = None):
-            return OrphanCleanupResult(
-                OrphanCleanupStatus.RECOVERY_REQUIRED,
-                expected_module_name
-                if isinstance(expected_module_name, str)
-                else "unknown",
-                reason,
-                quarantine_path,
-            )
-
-        if self._target_module_path(expected_module_name) is None:
-            return recovery("Expected module name is invalid or not contained")
-        from utils.module_refresh_lock import assert_module_refresh_lock_owned
-
-        assert_module_refresh_lock_owned()
-
-        if type(publication_result) is not TargetedPublicationResult:
-            return recovery("Publication proof object is unavailable")
-        if type(fresh_absence_result) is not RegistryAbsenceResult:
-            return recovery("Fresh registry-absence proof object is unavailable")
-        if publication_result.cleanup_safe_for(expected_module_name) is not True:
-            return recovery("Publication rollback proof is incomplete or mismatched")
-        if (
-            fresh_absence_result.module_name != expected_module_name
-            or fresh_absence_result.cleanup_safe is not True
-        ):
-            return recovery("Fresh registry-absence proof is incomplete or mismatched")
-
-        module_path = self._target_module_path(expected_module_name)
-        if module_path is None:
-            return recovery("Expected module name is invalid or not contained")
-
-        transactions_inactive, transaction_reason = (
-            self._publication_transactions_inactive_for_cleanup_locked()
-        )
-        if not transactions_inactive:
-            return recovery(transaction_reason)
-
-        target_state, target_stat, target_reason = (
-            self._exact_cleanup_target_state(expected_module_name, module_path)
-        )
-        if target_state == "absent":
-            return OrphanCleanupResult(
-                OrphanCleanupStatus.ALREADY_ABSENT,
-                expected_module_name,
-                target_reason,
-            )
-        if target_state != "directory" or target_stat is None:
-            return recovery(target_reason)
-
-        quarantine_root, quarantine_reason = (
-            self._prepare_orphan_quarantine_root_locked()
-        )
-        if quarantine_root is None:
-            return recovery(quarantine_reason)
-
-        quarantine_path = None
-        for _ in range(8):
-            candidate = os.path.join(quarantine_root, uuid4().hex)
-            try:
-                candidate_stat = self._lstat_or_absent(candidate)
-            except (OSError, ValueError):
-                return recovery("Opaque quarantine path could not be inspected")
-            if candidate_stat is None:
-                quarantine_path = candidate
-                break
-        if quarantine_path is None:
-            return recovery("A unique opaque quarantine path could not be allocated")
-
-        try:
-            resolved_quarantine = os.path.realpath(quarantine_path)
-            if os.path.dirname(resolved_quarantine) != os.path.realpath(
-                quarantine_root
-            ):
-                return recovery("Opaque quarantine path is not contained")
-            os.replace(module_path, quarantine_path)
-        except (OSError, ValueError):
-            return recovery("Exact module could not be quarantined")
-
-        try:
-            public_stat = self._lstat_or_absent(module_path)
-            quarantine_stat = self._lstat_or_absent(quarantine_path)
-            if quarantine_stat is None:
-                quarantine_valid = False
-            else:
-                same_device = quarantine_stat.st_dev == target_stat.st_dev
-                same_inode = (
-                    not target_stat.st_ino
-                    or not quarantine_stat.st_ino
-                    or quarantine_stat.st_ino == target_stat.st_ino
-                )
-                quarantine_valid = (
-                    public_stat is None
-                    and same_device
-                    and same_inode
-                    and stat.S_ISDIR(quarantine_stat.st_mode)
-                    and not self._is_symlink_or_reparse(quarantine_path)
-                )
-        except (OSError, ValueError):
-            quarantine_valid = False
-        if not quarantine_valid:
-            return recovery(
-                "Quarantine rename could not be verified", quarantine_path
-            )
-
-        quarantine_synced = self._sync_directory_if_supported(quarantine_root)
-        modules_synced = self._sync_directory_if_supported(self.modules_dir)
-        if not quarantine_synced or not modules_synced:
-            return recovery(
-                "Quarantine rename could not be fully synchronized",
-                quarantine_path,
-            )
-
-        if self._quarantined_tree_safe_to_purge(quarantine_path):
-            try:
-                shutil.rmtree(quarantine_path)
-            except Exception:
-                # The public name is durably absent. Hidden evidence is
-                # deliberately retained for a later maintenance/recovery pass.
-                pass
-
-        return OrphanCleanupResult(
-            OrphanCleanupStatus.REMOVED,
-            expected_module_name,
-            "Exact public module entry was quarantined",
-            quarantine_path,
-        )
-
-    def prove_module_absent_from_registry(
-        self, module_name: str
-    ) -> RegistryAbsenceResult:
-        """Prove from a fresh disk read whether exact-module cleanup is safe."""
-        from utils.module_refresh_lock import module_refresh_lock
-
-        if self._target_module_path(module_name) is None:
-            return RegistryAbsenceResult(
-                module_name,
-                False,
-                False,
-                "Invalid or non-contained module name",
-            )
-        with module_refresh_lock() as acquired:
-            if not acquired:
-                return RegistryAbsenceResult(
-                    module_name,
-                    False,
-                    False,
-                    "Module publication lock timed out",
-                )
-            return self.prove_module_absent_from_registry_locked(module_name)
 
     def _registry_matches_snapshot(
         self, expected: Dict[str, Any]
@@ -3223,35 +2805,14 @@ Create atmospheric travel narration that leads into this adventure."""
 
 
 
-    def publish_module(self, module_name: str) -> TargetedPublicationResult:
-        """Transactionally publish one exact module; never perform a scan."""
-        from utils.module_refresh_lock import module_refresh_lock
-
-        if self._target_module_path(module_name) is None:
-            return TargetedPublicationResult(
-                PublicationStatus.INDETERMINATE,
-                module_name,
-                "Invalid or non-contained module name",
-            )
-        with module_refresh_lock() as acquired:
-            if not acquired:
-                return TargetedPublicationResult(
-                    PublicationStatus.INDETERMINATE,
-                    module_name,
-                    "Module publication lock timed out",
-                )
-            return self._publish_module_locked(module_name)
-
     def publish_module_locked(
         self, module_name: str
     ) -> TargetedPublicationResult:
         """Publish one exact module while the caller owns module_refresh_lock.
 
-        This entry point intentionally does not acquire or release the lock. It
-        exists for the builder/publication transaction in ``action_handler``,
-        whose caller must keep one uninterrupted ``module_refresh_lock`` scope
-        around both module construction and this call. Other callers should use
-        :meth:`publish_module`.
+        This entry point intentionally does not acquire or release the lock. Its
+        caller, the startup scan (``_scan_and_integrate_new_modules_locked``),
+        holds ``module_refresh_lock`` for the whole scan.
         """
         if self._target_module_path(module_name) is None:
             return TargetedPublicationResult(
@@ -3824,10 +3385,6 @@ Create atmospheric travel narration that leads into this adventure."""
                 entry_guard=entry_guard,
             )
 
-    def integrate_module(self, module_name: str) -> bool:
-        """Compatibility adapter for callers that still require a boolean."""
-        return self.publish_module(module_name).published
-
     @staticmethod
     def _capture_area_documents_from_path(
         module_path: str,
@@ -3871,18 +3428,14 @@ Create atmospheric travel narration that leads into this adventure."""
         self,
         module_name: str,
         module_data: Dict[str, Any],
-        registry_snapshot: Optional[Dict[str, Any]] = None,
+        registry_snapshot: Dict[str, Any],
         *,
         module_path: str,
     ) -> int:
         """Resolve area ID and location ID conflicts by modifying the new module"""
         try:
             conflicts_resolved = 0
-            registry = (
-                registry_snapshot
-                if registry_snapshot is not None
-                else self.world_registry
-            )
+            registry = registry_snapshot
             # Conflict discovery needs a working copy. Mutating the live
             # registry here would violate the publication commit boundary.
             existing_areas = deepcopy(registry.get('areas', {}))
@@ -4158,7 +3711,7 @@ Create atmospheric travel narration that leads into this adventure."""
         module_name: str,
         module_path: str,
         pre_reprefix_area_documents: Dict[str, Dict[str, Any]],
-        registry_snapshot: Optional[Dict[str, Any]] = None,
+        registry_snapshot: Dict[str, Any],
     ) -> int:
         """
         Ensures all location IDs in a new module are globally unique.
@@ -4177,11 +3730,7 @@ Create atmospheric travel narration that leads into this adventure."""
         # from its JSON areaId: legacy packages may not have matching stems,
         # and silently skipping that lookup would miss a real collision.
         all_existing_loc_ids = set()
-        registry = (
-            registry_snapshot
-            if registry_snapshot is not None
-            else self.world_registry
-        )
+        registry = registry_snapshot
         existing_module_names = {
             area_info.get("module")
             for area_info in registry.get("areas", {}).values()
