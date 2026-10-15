@@ -263,6 +263,8 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
         base, _ = strip_parens(raw) if not keep_paren_info else (raw, None)
         nm = compact(base)
         nm_qty = f"{nm} x{qty}" if qty and qty > 1 else nm
+        if isinstance(it, dict) and it.get('equipped') is True:
+            nm_qty = f"{nm_qty} [equipped]"
         # D-242-D: the item's whole description after a colon (never inside
         # parentheses, which strip_parens keys on for names).
         equip_names.append(f"{nm_qty}: {desc}" if desc else nm_qty)
