@@ -68,6 +68,7 @@ import json
 # generation while maintaining consistency and quality standards.
 # ============================================================================
 
+import copy
 import os
 import re
 import glob
@@ -189,6 +190,26 @@ def _parse_generated_field_value(
     elif isinstance(value, list) and not value and field_path != "moduleConflicts":
         raise ValueError(f"{field_path} must be a useful non-empty array")
     return value
+
+# Region fields a NEW module must carry (keyword program GEN-3/4). The schema
+# lists them as optional so module data written before them stays valid;
+# generation requires them here, and generate_field's retry heals a reply that
+# leaves one out. The model authors them; code never guesses them from names.
+_GENERATION_REQUIRED_FIELDS = {
+    "worldMap": ("areaType", "climate", "terrain"),
+}
+
+
+def _generation_field_schema(field_path: str, schema_info: Dict[str, Any]) -> Dict[str, Any]:
+    """Return one T031 field schema with the generation-only required fields."""
+    required = _GENERATION_REQUIRED_FIELDS.get(field_path)
+    if not required:
+        return schema_info
+    schema = copy.deepcopy(schema_info)
+    items = schema["items"]
+    present = list(items.get("required", []))
+    items["required"] = present + [name for name in required if name not in present]
+    return schema
 
 @dataclass
 class ModulePromptGuide:
@@ -325,6 +346,9 @@ class ModulePromptGuide:
     - mapId: Unique identifier based on region initials (e.g., "BH001" for Blackwood Hollow)
     - dangerLevel: "low", "medium", "high", "extreme"
     - recommendedLevel: Character level range (e.g., 1-3)
+    - areaType: "dungeon", "town", "wilderness" or "mixed" - the kind of place the region is
+    - climate: the region's climate in a few words, matching the region
+    - terrain: the region's ground and landscape in a few words, matching the region
     - levels: Sub-areas within the region
     
     Sub-area format:
@@ -699,7 +723,9 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 continue
             
             # Get schema info for this field
-            schema_info = self.get_field_schema(field_path)
+            schema_info = _generation_field_schema(
+                field_path, self.get_field_schema(field_path)
+            )
             
             # Progress feedback
             print(f"MODULE_GENERATION_PROGRESS: Generating field {idx}/{total_fields}: {field_path}")
@@ -844,7 +870,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
         for index, region in enumerate(world_map):
             area_id = region.get("mapId")
             area_name = region.get("regionName")
-            area_type = self._determine_area_type(region.get("regionDescription", ""))
+            area_type = region["areaType"]
             danger_level = region.get("dangerLevel", "medium")
             recommended_level = region.get("recommendedLevel", 1)
             
@@ -861,7 +887,9 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 complexity="moderate",
                 danger_level=danger_level,
                 recommended_level=recommended_level,
-                num_locations=random.randint(5, 7)  # Explicitly set to 5-7 locations
+                num_locations=random.randint(5, 7),  # Explicitly set to 5-7 locations
+                climate=region["climate"],
+                terrain=region["terrain"],
             )
             
             # Generate area data (issue #128: generate_area requires the location
@@ -926,19 +954,6 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
         
         # Return list of generated areas
         return generated_areas
-    
-    def _determine_area_type(self, description: str) -> str:
-        """Determine area type from description text"""
-        description = description.lower()
-        
-        if any(word in description for word in ["dungeon", "cave", "crypt", "tomb", "underground"]):
-            return "dungeon"
-        elif any(word in description for word in ["forest", "mountain", "swamp", "wilderness", "natural"]):
-            return "wilderness"
-        elif any(word in description for word in ["town", "city", "village", "settlement", "urban"]):
-            return "town"
-        else:
-            return "mixed"
     
     def update_area_with_prefix(self, area_data: Dict[str, Any], prefix: str) -> Dict[str, Any]:
         """Update all location IDs in area data to use the specified prefix"""
