@@ -1149,8 +1149,8 @@ MODULE INDEPENDENCE RULES:
             danger_level = region.get("dangerLevel", "Medium")
             recommended_level = region.get("recommendedLevel", 1)
 
-            # Determine area type based on region description
-            area_type = self.determine_area_type(region)
+            # The worker's region carries the model-authored area type
+            area_type = region["areaType"]
             
             # Use custom per-area locations if provided, otherwise use default
             if self.per_area_locations and i < len(self.per_area_locations):
@@ -1165,7 +1165,9 @@ MODULE INDEPENDENCE RULES:
                 complexity="moderate",
                 danger_level=danger_level,
                 recommended_level=recommended_level,
-                num_locations=num_locations_for_area
+                num_locations=num_locations_for_area,
+                climate=region["climate"],
+                terrain=region["terrain"],
             )
 
             # Add area to context
@@ -1183,9 +1185,6 @@ MODULE INDEPENDENCE RULES:
                 prefix=prefix
             )
             
-            # Validate area consistency after generation
-            self.validate_area_consistency(area_data, self.module_data)
-            
             self.areas_data[area_id] = area_data
             self._atomic_save_json(f"areas/{area_id}.json", area_data)
 
@@ -1197,44 +1196,6 @@ MODULE INDEPENDENCE RULES:
             self.context.add_area(area_id, region_name, area_data.get("areaType", area_type))
 
             self.log(f"Generated area: {region_name} ({area_id})")
-    
-    def determine_area_type(self, region: Dict[str, Any]) -> str:
-        """Determine area type based on region description with better pattern matching"""
-        description = region.get("regionDescription", "").lower()
-        name = region.get("regionName", "").lower()
-        
-        # Enhanced pattern matching
-        if any(word in description + name for word in ["mine", "cave", "dungeon", "ruins", "tomb", "underground", "depths"]):
-            return "dungeon"
-        elif any(word in description + name for word in ["town", "city", "village", "settlement", "hollow", "borough"]):
-            return "town"
-        elif any(word in description + name for word in ["forest", "woods", "wilds", "grove", "emerald", "woodland"]):
-            return "wilderness"
-        elif any(word in description + name for word in ["mountain", "peaks", "marches", "highlands", "cliffs"]):
-            return "wilderness" 
-        elif any(word in description + name for word in ["swamp", "marsh", "bog", "mire"]):
-            return "wilderness"
-        else:
-            return "mixed"
-    
-    def validate_area_consistency(self, area_data: Dict[str, Any], module_data: Dict[str, Any]):
-        """Validate area descriptions match their names and themes"""
-        area_name = area_data.get("areaName", "").lower()
-        climate = area_data.get("climate", "")
-        terrain = area_data.get("terrain", "")
-        
-        # Fix obvious mismatches
-        if any(word in area_name for word in ["emerald", "wilds", "forest", "woods"]):
-            if climate == "desert" or "desert" in terrain:
-                self.log(f"WARNING: Fixed climate mismatch for {area_data['areaName']}")
-                area_data["climate"] = "temperate"
-                area_data["terrain"] = "dense forest with clearings and groves"
-        
-        if any(word in area_name for word in ["frostward", "marches", "winter", "ice"]):
-            if climate == "temperate":
-                self.log(f"WARNING: Fixed climate mismatch for {area_data['areaName']}")
-                area_data["climate"] = "cold"
-                area_data["terrain"] = "frozen tundra and icy peaks"
     
     def get_party_members(self):
         """Get list of existing character names to avoid conflicts"""

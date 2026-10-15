@@ -136,6 +136,8 @@ class AreaConfig:
     danger_level: str = "medium"  # low, medium, high, extreme
     recommended_level: int = 1
     num_locations: int = None  # If specified, override size-based calculation
+    climate: str = ""  # model-authored, from the module's worldMap region
+    terrain: str = ""  # model-authored, from the module's worldMap region
 
 class MapLayoutGenerator:
     """Generates map layouts for areas"""
@@ -649,8 +651,8 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
             "areaDescription": area_description,  # Use the generated description
             "dangerLevel": config.danger_level,
             "recommendedLevel": config.recommended_level,
-            "climate": self.determine_climate(config.area_type),
-            "terrain": self.determine_terrain(config.area_type),
+            "climate": config.climate,
+            "terrain": config.terrain,
             "map": map_data,
             "locations": locations,
             "randomEncounters": self.generate_encounter_table(config),
@@ -720,27 +722,6 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
             adjective = area_adjectives.get(config.area_type, ["mysterious"])[0]
             article = "an" if adjective[:1].lower() in "aeiou" else "a"
             return f"{area_name} is {article} {adjective} {config.area_type} area with {config.complexity} challenges suitable for level {config.recommended_level} adventurers."
-    
-    def determine_climate(self, area_type: str) -> str:
-        """Determine appropriate climate for area type"""
-        climates = {
-            "dungeon": "controlled - cool and damp",
-            "wilderness": random.choice(["temperate", "tropical", "arctic", "desert"]),
-            "town": "temperate",
-            "mixed": "varied"
-        }
-        return climates.get(area_type, "temperate")
-    
-    def determine_terrain(self, area_type: str) -> str:
-        """Determine appropriate terrain for area type"""
-        terrains = {
-            "dungeon": "stone corridors and chambers",
-            "wilderness": random.choice(["forest", "mountains", "plains", "swamp", "coast"]),
-            "town": "urban streets and buildings",
-            "mixed": "varied terrain"
-        }
-        return terrains.get(area_type, "varied")
-    
     
     def generate_encounter_table(self, config: AreaConfig) -> List[Dict[str, Any]]:
         """Generate a random encounter table for the area"""
@@ -871,13 +852,17 @@ def main():
     complexity = input("Complexity (simple/moderate/complex): ").strip() or "moderate"
     danger_level = input("Danger level (low/medium/high/extreme): ").strip() or "medium"
     recommended_level = int(input("Recommended character level (1-20): ").strip() or "1")
+    climate = input("Climate: ").strip() or "varied"
+    terrain = input("Terrain: ").strip() or "varied terrain"
     
     config = AreaConfig(
         area_type=area_type,
         size=size,
         complexity=complexity,
         danger_level=danger_level,
-        recommended_level=recommended_level
+        recommended_level=recommended_level,
+        climate=climate,
+        terrain=terrain,
     )
     
     # Mock module context
