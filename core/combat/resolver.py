@@ -2221,15 +2221,20 @@ def player_spell_attack_entry(encounter, characters, intent):
     slot_level = None
     level = None
     if (phase.get("scaling") or {}).get("kind") == "slot_level":
+        # #724 (D-724-1 A): a cast that spends no slot (Spiritual Weapon's
+        # later attacks) is scored at its typed slotLevel, else the contract's
+        # base level, the level the roll audit assumes.
         slot_level = srd_roll_contracts._slot_level(intent, {}, actor.get("name"))
         if slot_level is None:
+            slot_level = phase["scaling"].get("baseLevel")
+        if type(slot_level) is not int or slot_level < 1:
             return None
     else:
         level = sheet.get("level") if type(sheet.get("level")) is int else None
     dice = srd_spell_attacks.damage_dice(phase, slot_level, level)
     if dice is None:
         return None
-    return {
+    entry = {
         "name": record["name"],
         "type": record["attack"],
         "damageDice": "%dd%d" % dice,
@@ -2240,6 +2245,15 @@ def player_spell_attack_entry(encounter, characters, intent):
         "characterLevel": level,
         "targetId": target["combatantId"],
     }
+    if record["abilityModifierToDamage"]:
+        # #724: the caster's spellcasting ability modifier, added to the damage once.
+        ability = casting.get("ability")
+        abilities = sheet.get("abilities") if isinstance(sheet.get("abilities"), dict) else {}
+        score = abilities.get(ability) if isinstance(ability, str) else None
+        if type(score) is not int:
+            return None
+        entry["damageBonus"] = (score - 10) // 2
+    return entry
 
 
 SPELL_ATTACK_APPLY_ON = ("always", "hit")
@@ -2319,8 +2333,9 @@ def resolve_player_spell_attack(encounter, characters, intent, record, event_id,
     to_hit += sum(int(roll["value"]) for roll in added)
     ac = _combatant_ac(encounter, characters, target)
     count, sides, _flat = parse_dice(entry["damageDice"])
+    damage_bonus = int(spell.get("damageBonus") or 0)
     scored = attacks.score(
-        to_hit=to_hit, count=count, sides=sides, bonus=0, damage_type=entry["damageType"], mode=mode,
+        to_hit=to_hit, count=count, sides=sides, bonus=damage_bonus, damage_type=entry["damageType"], mode=mode,
         faces=attack_faces, target_ac=ac, target_hp=int(target.get("currentHitPoints", 0) or 0),
         target_max_hp=_combatant_max_hp(encounter, characters, target), target_sheet=trait_sheet,
         damage=None if critical_phase else total_rolled,
@@ -2344,7 +2359,7 @@ def resolve_player_spell_attack(encounter, characters, intent, record, event_id,
         total = kept + to_hit
         critical = kept == 20
         hit = critical or (kept != 1 and total >= ac)
-        raw_damage = max(0, total_rolled or 0) if hit else 0
+        raw_damage = max(0, (total_rolled or 0) + damage_bonus) if hit else 0
         damage, traits = _typed_damage(trait_sheet, entry["damageType"], raw_damage) if hit else (0, [])
         engine = False
     if hit and (total_rolled is None or critical != critical_phase):
@@ -2379,6 +2394,8 @@ def resolve_player_spell_attack(encounter, characters, intent, record, event_id,
         spell_record["modeSources"] = list(record["modeSources"])
     if spell.get("slotLevel") is not None:
         spell_record["slotLevel"] = spell["slotLevel"]
+    if "damageBonus" in spell:
+        spell_record["damageBonus"] = damage_bonus
     if hit:
         spell_record.update({"damageRolled": total_rolled, "rawDamage": raw_damage, "damage": damage})
         if traits:
