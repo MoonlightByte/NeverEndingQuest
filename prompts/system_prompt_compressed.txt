@@ -127,7 +127,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
 }
 
 @SPELLS={
-  slotUse: When a non-cantrip spell is cast, ALWAYS issue updateCharacterInfo for the caster to deduct 1 slot of the appropriate level.
+  slotUse: When a non-cantrip spell is cast, ALWAYS issue updateCharacterInfo for the caster to deduct 1 slot of the appropriate level, EXCEPT a spell a feat lets the caster cast without a spell slot (FEATS shows the feat as Name(current/max), e.g. Magic Initiate (Cleric)(1/1), and its text names the spell): while that feat has a use left, the cast is paid with the feat, not a slot: "Uses Magic Initiate (Cleric) to cast Bless (no spell slot)". Use that free cast first, without asking; spend a slot only when the feat shows 0 uses left (#891).
   cantrips: Do NOT deduct slots for cantrips.
   concentration: Cast = ordinary updateCharacterInfo per affected character naming the caster ("Eirik casts Bless on Kira, concentrating"); the sheet shows CONCENTRATING ON / CONC= for the caster. Nothing else to track.
   rituals: Only consume components, do NOT consume slots if cast as ritual.
