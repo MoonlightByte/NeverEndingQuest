@@ -491,7 +491,7 @@
       "locationId": "TW06",
       "name": "Wolf's Den Cave",
       "type": "cave",
-      "description": "A narrow cave mouth, partially obscured by thorny bushes, leads into darkness. The sounds of snarling wolves and the desperate clang of steel echo from within. Inside, Wounded Ranger Gareth and Merchant Kael are cornered, making a desperate stand against several unnaturally aggressive wolves corrupted by Malarok's influence.",
+      "description": "A narrow cave mouth, partially obscured by thorny bushes, leads into darkness. The sounds of snarling wolves and the desperate clang of steel echo from within. Inside, Ranger Gareth and Merchant Kael are cornered, making a desperate stand against several unnaturally aggressive wolves corrupted by Malarok's influence.",
       "coordinates": "X1Y1",
       "connectivity": [
         "TW04",
@@ -501,7 +501,7 @@
       "areaConnectivityId": [],
       "npcs": [
         {
-          "name": "Wounded Ranger Gareth",
+          "name": "Ranger Gareth",
           "description": "A grizzled ranger who was scouting bandit movements when he and Kael were cornered by corrupted wolves. He has a bleeding shoulder wound but fights with grim determination. He carries a partially completed map of the bandit camp's defenses and patrol routes.",
           "attitude": "Stoic and battle-hardened, but grateful for rescue. Eager to share intelligence to stop the bandit threat."
         },

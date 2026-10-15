@@ -363,14 +363,14 @@
       "areaConnectivityId": [],
       "npcs": [
         {
-          "name": "Corrupted Ranger Thane",
+          "name": "Ranger Thane",
           "description": "Once a proud ranger sent to investigate the corruption, Thane has been partially consumed by the taint but retains enough of his humanity to feel the horror of his transformation. His armor bears the marks of desperate battles against creatures that were once his woodland allies, and his eyes flicker between awareness and malevolent hunger.",
           "attitude": "Tortured and conflicted, desperately fighting against the corruption within him. May beg for death or warn the party before succumbing to violent episodes."
         }
       ],
       "monsters": [
         {
-          "name": "Corrupted Ranger Thane",
+          "name": "Ranger Thane",
           "quantity": {
             "min": 1,
             "max": 1

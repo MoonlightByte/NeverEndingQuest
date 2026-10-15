@@ -38,7 +38,7 @@
         "TW06"
       ],
       "npcs": [
-        "Wounded Scout Neris",
+        "Scout Neris",
         "Merchant Lira",
         "Spirit-Touched Hermit Maelo"
       ],
@@ -126,8 +126,8 @@
         }
       ]
     },
-    "wounded_scout_neris": {
-      "name": "Wounded Scout Neris",
+    "scout_neris": {
+      "name": "Scout Neris",
       "role": "",
       "faction": "",
       "appears_in": [
@@ -205,7 +205,7 @@
       "name": "Doomed Explorer's Camp",
       "area": "NCW001",
       "npcs": [
-        "Corrupted Ranger Thane"
+        "Ranger Thane"
       ],
       "connections": [
         "NC02",
@@ -351,7 +351,7 @@
       "name": "Wolf's Den Cave",
       "area": "TW001",
       "npcs": [
-        "Wounded Ranger Gareth",
+        "Ranger Gareth",
         "Merchant Kael"
       ],
       "connections": [
@@ -388,7 +388,7 @@
     "npc:Merchant Lira": [
       "module:plotStages"
     ],
-    "npc:Wounded Scout Neris": [
+    "npc:Scout Neris": [
       "module:plotStages"
     ],
     "npc:Spirit-Touched Hermit Maelo": [

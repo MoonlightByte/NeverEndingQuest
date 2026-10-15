@@ -55,7 +55,7 @@ This sequence is a sandbox designed to be dismantled piece by piece by a clever 
 
 The final section of the module shifts the focus from combat to compassion, presenting major "boss" encounters that have non-violent solutions.
 
-### The Challenge: The Corrupted Ranger Thane (NC04)
+### The Challenge: Ranger Thane (NC04)
 
 The party finds Ranger Thane, but he is twisted by dark magic and initially hostile. He is a formidable opponent if engaged in combat.
 
