@@ -724,9 +724,12 @@ _TYPED_ROLL_SENTENCE = " Type the result, or type roll and the game rolls."
 
 def _player_request_message(request, typed_roll=False):
     """The text shown for the model's request; ``typed_roll`` (a roll
-    request with a typed die, #877) adds that the game can roll it."""
+    request with a typed die, #877) adds that the game can roll it,
+    unless the request already says so (#1103)."""
     message = _request_text(request)
-    return message + _TYPED_ROLL_SENTENCE if typed_roll else message
+    if not typed_roll or re.search(r"\btype roll\b", message, re.IGNORECASE):
+        return message
+    return message + _TYPED_ROLL_SENTENCE
 
 
 def _typed_roll(request):
