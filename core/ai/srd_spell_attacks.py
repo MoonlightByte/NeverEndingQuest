@@ -91,10 +91,10 @@ def load_spell_attacks():
             raise SpellAttackDataError("%s has an invalid attack kind" % key)
         if record.get("damageKind") not in DAMAGE_KINDS:
             raise SpellAttackDataError("%s has an invalid damage kind" % key)
-        # Schema 1 types the field; adding the modifier waits for a record
-        # that needs it (Spiritual Weapon, #724), so only false is accepted.
-        if record.get("abilityModifierToDamage") is not False:
-            raise SpellAttackDataError("%s adds an ability modifier, which schema 1 does not score" % key)
+        # #724: true adds the caster's spellcasting ability modifier to the
+        # damage once (Spiritual Weapon).
+        if type(record.get("abilityModifierToDamage")) is not bool:
+            raise SpellAttackDataError("%s has an invalid abilityModifierToDamage" % key)
         contract = contracts.get(record.get("contractKey"))
         if not isinstance(contract, dict) or contract.get("classification") != "verified":
             raise SpellAttackDataError("%s names no verified roll contract" % key)

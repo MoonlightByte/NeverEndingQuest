@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - A generated monster that lists its skills or senses as an empty list (`[]`, a creature with none) is now saved with an empty set (`{}`) instead of failing the schema twice, so the fight starts on the first try with one pre-combat save (#886).
+- Spiritual Weapon's attacks are now asked for and scored by the game like Fire Bolt's: you roll the d20, then 1d8 on a hit (2d8 on a critical, +1d8 per slot level above 2), and the game adds your spellcasting modifier once; the weapon's later bonus-action attacks are scored the same way (Closes #724).
+- An NPC renamed during a fight keeps its attack prerolls and its combat tooltip, which now read the sheet recorded for the encounter; a sheet saved in a non-UTF-8 encoding is found by its name (#938).
 - A Cleric with the Protector Divine Order, or a Druid with the Warden Primal Order, saved before character creation applied the order's grants now gets them at the next game start: Heavy armor training (Medium for Warden) and Martial weapons are added to the saved sheet, and one line says so. A sheet that already has them, in any wording the rules read, is left as it is (Closes #888).
 - In a fight, a Second Wind that spends its use but declares no healing is sent back to be ruled again, so the use is never spent for nothing (#939).
 - A feat's own uses (Magic Initiate's free cast) now show on the DM's character sheet line, a feat use spent outside a fight is kept instead of coming back, and a sheet update can no longer refill a feat's use without a rest (#937).

@@ -98,7 +98,7 @@ def get_monster_attacks(monster_type):
         print(f"Error loading monster {monster_type}: {e}")
         return [{"name": f"{monster_type} attack"}], 1
 
-def get_npc_attacks(npc_name):
+def get_npc_attacks(npc_name, encounter=None, creature=None):
     """Load NPC attack data from character file"""
     if not npc_name:
         return [{"name": "weapon attack"}], 1
@@ -106,7 +106,7 @@ def get_npc_attacks(npc_name):
     try:
         from utils.module_path_manager import ModulePathManager
         from utils.encoding_utils import safe_json_load
-        from updates.update_character_info import find_character_file_fuzzy
+        from updates.update_character_info import resolve_npc_sheet_id
         
         # Get current module from party tracker for consistent path resolution
         try:
@@ -116,10 +116,10 @@ def get_npc_attacks(npc_name):
         except:
             path_manager = ModulePathManager()  # Fallback to reading from file
         
-        # Use fuzzy matching to find the correct NPC file
-        matched_name = find_character_file_fuzzy(npc_name)
+        # The sheet the encounter recorded for this creature, else the exact name (#938)
+        matched_name = resolve_npc_sheet_id(npc_name, encounter, creature)
         if not matched_name:
-            print(f"Warning: Could not find NPC file for '{npc_name}' using fuzzy matching")
+            print(f"Warning: Could not find NPC file for '{npc_name}'")
             return [{"name": "weapon attack"}], 1
             
         npc_file = path_manager.get_character_path(matched_name)
@@ -215,7 +215,7 @@ def generate_prerolls(encounter_data, round_num=None):
                     from utils.module_path_manager import ModulePathManager
                     path_manager = ModulePathManager()
                     npc_name = path_manager.format_filename(creature_name)
-                    attacks_info, num_attacks = get_npc_attacks(npc_name)
+                    attacks_info, num_attacks = get_npc_attacks(npc_name, encounter_data, creature)
             except Exception as e:
                 print(f"Warning: Could not load attack data for {creature_name}: {e}")
                 # Fallback defaults
