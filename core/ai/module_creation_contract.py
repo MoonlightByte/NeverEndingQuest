@@ -324,21 +324,6 @@ class ModuleCreationSpec:
         }
 
 
-_LABEL_ALIASES = {
-    "module name": "module_name",
-    "number of areas": "num_areas",
-    "locations per area": "locations_per_area",
-    "level range": "level_range",
-    "adventure type": "adventure_type",
-    "plot themes": "plot_themes",
-}
-_LABEL_PATTERN = re.compile(
-    r"\b(module\s+name|number\s+of\s+areas|locations\s+per\s+area|"
-    r"level\s+range|adventure\s+type|plot\s+themes)\s*(?:\*\*)?\s*:\s*(?:\*\*)?\s*",
-    re.IGNORECASE,
-)
-
-
 def _unquote(value: str) -> str:
     value = value.strip().strip(",;").rstrip(".").strip()
     if len(value) >= 2 and value[0] == value[-1] and value[0] in {'"', "'"}:
@@ -351,7 +336,7 @@ def normalize_explicit_module_value(
     value: Any,
     policy: Union[str, ModuleCreationPolicy] = GAME_MODULE_POLICY,
 ) -> Any:
-    """Normalize one labeled or typed explicit value, then validate it."""
+    """Normalize one typed explicit value, then validate it."""
 
     resolved_policy = get_module_creation_policy(policy)
     if field == "module_name":
@@ -398,35 +383,6 @@ def normalize_explicit_module_value(
             raise ModuleCreationContractError("plot_themes must be text")
         return _validate_plot_themes(_unquote(value))
     raise ModuleCreationContractError(f"unknown module specification field: {field}")
-
-
-def extract_labeled_module_values(
-    narrative: str,
-    policy: Union[str, ModuleCreationPolicy] = GAME_MODULE_POLICY,
-) -> Dict[str, Any]:
-    """Deterministically extract recognized ``Label: value`` fields.
-
-    Values run until the next recognized label, allowing both newline and
-    compact comma-separated technical blocks.  Equivalent duplicate labels
-    are accepted; contradictory normalized duplicates fail closed.
-    """
-
-    if not isinstance(narrative, str) or not narrative.strip():
-        raise ModuleCreationContractError("module narrative must be non-empty text")
-    matches = list(_LABEL_PATTERN.finditer(narrative))
-    extracted: Dict[str, Any] = {}
-    for index, match in enumerate(matches):
-        label = " ".join(match.group(1).lower().split())
-        field = _LABEL_ALIASES[label]
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(narrative)
-        raw_value = narrative[match.end() : end].rstrip(",;|*- \t\r\n")
-        normalized = normalize_explicit_module_value(field, raw_value, policy)
-        if field in extracted and extracted[field] != normalized:
-            raise ModuleCreationContractError(
-                f"conflicting duplicate label for {field}"
-            )
-        extracted[field] = normalized
-    return extracted
 
 
 def extract_typed_module_overrides(

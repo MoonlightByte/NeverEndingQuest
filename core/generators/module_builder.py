@@ -64,7 +64,6 @@ from core.ai.module_creation_contract import (
     ModuleCreationPolicy,
     ModuleCreationRecoveryRequiredError,
     ModuleCreationSpec,
-    extract_labeled_module_values,
     extract_typed_module_overrides,
     get_module_creation_policy,
 )
@@ -3009,6 +3008,7 @@ Return this exact JSON structure:
 }
 
 CRITICAL RULES:
+- When the narrative states a value with its label (for example "Module Name: Shadow_Pass_Mystery" or "Level Range: 5-7"), return exactly that value for that field
 - module_name MUST use underscores, not spaces
 - num_areas MUST be a number (not a string)
 - num_areas MUST be %d-%d
@@ -3155,10 +3155,10 @@ def _resolve_module_creation_spec(
     params: Dict[str, Any],
     policy: Any,
 ) -> ModuleCreationSpec:
-    """Resolve labels and inference into one validated specification."""
+    """Resolve typed toolkit values and T030 inference into one specification."""
 
     resolved_policy = get_module_creation_policy(policy)
-    explicit = extract_labeled_module_values(narrative, resolved_policy)
+    explicit = {}
 
     typed_fields = MODULE_SPEC_FIELDS.intersection(params)
     if typed_fields and resolved_policy.name != "toolkit":
@@ -3224,8 +3224,8 @@ def _ai_driven_module_creation_impl(
                 "A module concept or narrative is required."
             )
 
-        # Resolve labeled values before inference.  A complete explicit block
-        # skips T030; otherwise validated explicit values override inference.
+        # Typed toolkit values come before inference; a complete typed set
+        # skips T030. Only T030 reads the narrative (D-KW-7).
         if progress_callback:
             progress_callback(
                 {
