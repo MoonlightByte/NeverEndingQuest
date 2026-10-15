@@ -658,7 +658,6 @@ TRUSTED_LOCATION_FIELDS = (
     "dangerLevel",
 )
 
-_PUBLIC_RUNTIME_REFERENCE = re.compile(r"\b(?:PP|SQ|B|S)[0-9]{3}\b")
 _KEY_LITERAL_CONVENTION = re.compile(
     r"(?i)^(?:key|passphrase|answer|cycle tag|ritual phrase):\s*(\S(?:.*\S)?)$"
 )
@@ -709,15 +708,15 @@ def _contains_exact_literal(text: str, literal: str) -> bool:
 
 def validate_public_candidate_references_and_keys(
     areas: Iterable[Mapping[str, Any]],
-    plot: Mapping[str, Any],
     entry_location_id: str,
 ) -> Dict[str, Any]:
-    """Block objective reference failures and report prose concerns as advisories.
+    """Report lock/key concerns in the accepted candidate as advisories.
 
     The frozen door shape has no destination or edge ID. Key reachability therefore
     cannot prove which edge a door blocks or that agentic narration cannot resolve it.
-    Door-literal findings and leaked private authoring IDs are consequently advisory.
-    A PPxxx/SQxxx reference to no published object remains an objective blocker.
+    Door-literal findings are consequently advisory. Location and plot prose is never
+    scanned for ID-shaped words: runtime plot progress uses the typed plotPointId of
+    an updatePlot action, which the engine checks.
     """
     area_values = list(areas)
     locations = {
@@ -725,21 +724,6 @@ def validate_public_candidate_references_and_keys(
         for area in area_values
         for location in area["locations"]
     }
-    points = list(plot.get("plotPoints", ()))
-    known_plot_ids = {
-        point.get("id")
-        for point in points
-        if isinstance(point, Mapping) and isinstance(point.get("id"), str)
-    }
-    known_quest_ids = {
-        quest.get("id")
-        for point in points
-        if isinstance(point, Mapping)
-        for quest in point.get("sideQuests", ())
-        if isinstance(quest, Mapping) and isinstance(quest.get("id"), str)
-    }
-    known_public_ids = known_plot_ids | known_quest_ids
-    blocking_issues: List[Dict[str, str]] = []
     advisories: List[Dict[str, str]] = []
 
     def add(target, invariant: str, offending: Any, expectation: str) -> None:
@@ -752,38 +736,6 @@ def validate_public_candidate_references_and_keys(
                 "expectation": expectation,
             }
         )
-
-    def scan_references(item: Any, path: str) -> None:
-        if len(blocking_issues) >= 24:
-            return
-        if isinstance(item, Mapping):
-            for key, child in item.items():
-                scan_references(child, f"{path}.{key}")
-        elif isinstance(item, (list, tuple)):
-            for index, child in enumerate(item):
-                scan_references(child, f"{path}[{index}]")
-        elif isinstance(item, str):
-            for reference in _PUBLIC_RUNTIME_REFERENCE.findall(item):
-                if reference[:2] not in {"PP", "SQ"}:
-                    add(
-                        advisories,
-                        "private_internal_reference",
-                        {"path": path, "reference": reference},
-                        (
-                            "prefer public story language over private Bxxx/Sxxx authoring "
-                            "IDs; this is advisory unless agentic play proves a failure"
-                        ),
-                    )
-                elif reference not in known_public_ids:
-                    add(
-                        blocking_issues,
-                        "undefined_public_reference",
-                        {"path": path, "reference": reference},
-                        "PPxxx/SQxxx references must resolve to a published plot object",
-                    )
-
-    scan_references(area_values, "$.areas")
-    scan_references(plot, "$.plot")
 
     graph = {location_id: set() for location_id in locations}
     for location_id, location in locations.items():
@@ -880,16 +832,9 @@ def validate_public_candidate_references_and_keys(
                 continue
             validated_literals += 1
 
-    if blocking_issues:
-        raise SemanticCorrectionError(blocking_issues)
     return {
-        "knownPublicReferenceCount": len(known_public_ids),
-        "invalidInternalReferenceCount": 0,
         "validatedLockedDoorLiteralCount": validated_literals,
         "unreachableKeyLiteralCount": unreachable_literals,
-        "privateInternalReferenceAdvisoryCount": sum(
-            item["invariant"] == "private_internal_reference" for item in advisories
-        ),
         "lockedDoorAdvisoryCount": sum(
             item["invariant"] in {"riddle_answer_exists", "key_reachability"}
             for item in advisories
