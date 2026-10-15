@@ -39,9 +39,12 @@ when that makes story sense. When an important non-adjacent hop is needed, make 
 travel or time change explicit in the authored transition. This is pacing guidance, not a
 prohibition: the atlas and runtime travel systems remain authoritative, and the story need not
 become a linear corridor. Preserve each accepted area's dangerBand exactly as dangerLevel.
-Match the physical scale of each anchor role to its beat: a citywide, village-wide, army,
-evacuation, or mass battle scene cannot be anchored to a closet, cell, alcove, or private
-one-room shack. Use an explicit public, open, or complex space for a large scene. Use ASCII
+Give every location role a sceneScale: area_mass for streets, a district, a battlefield, or
+siege lines; site for a public square, courtyard, marketplace, open field, or similar open or
+complex space; confined for a closet, cell, alcove, pantry, or private one-room shack;
+unclassified when none of these fits. Match the physical scale of each anchor role to its
+beat: a beat whose sceneScale is area_mass cannot be anchored to a confined role. Use an
+explicit public, open, or complex space for a large scene. Use ASCII
 text and return only JSON matching the response contract."""
     user = (
         "IMMUTABLE SEED:\n"
