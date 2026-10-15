@@ -41,7 +41,8 @@ def _stock(entry: Dict[str, Any]) -> int:
 
 
 def transact(sheet: Dict[str, Any], removals: List[str], coin_delta: Any, *, location: str = "sheet",
-             request_id: Optional[str] = None, binary: Optional[str] = None) -> ConsolidationOutcome:
+             request_id: Optional[str] = None, binary: Optional[str] = None,
+             reserved: Optional[set] = None) -> ConsolidationOutcome:
     """Consume the named entries entirely and credit ``coin_delta`` in one engine request."""
     delta, reason = currency.normalize_delta(coin_delta or {})
     if delta is None:
@@ -49,7 +50,7 @@ def transact(sheet: Dict[str, Any], removals: List[str], coin_delta: Any, *, loc
     if any(v < 0 for v in delta.values()):
         return ConsolidationOutcome(False, reason="consolidation may not reduce a coin balance")
     sheet = copy.deepcopy(sheet)
-    genesis.assign_ids(sheet)
+    genesis.assign_ids(sheet, reserved=reserved)
     cid = genesis.character_id(sheet)
     world = genesis.build_world([sheet], location)
     entries = sheet.get("equipment") or []
