@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- A chest item that had no id (an old save or a hand-edited chest) no longer gets an id that another character or chest already holds, so it can still be taken out (#1073)
 - A world with more than 702 areas no longer gets location ids the game rejects ("[A01", or a random "MKEE18" that two areas could share): prefixes go on to AAA-ZZZ, one shared scheme serves the builder, the story-first generator (its 27th area got "[") and the module stitcher, and existing ids keep their letters (#646).
 - Two characters buying the same item, or an item added after a stored one, no longer end up sharing an id that hides one of them (#1060).
 - A Cleric who chose the Thaumaturge Divine Order now adds their Wisdom modifier (at least +1) to Intelligence (Arcana) and Intelligence (Religion) checks, as SRD 5.2.1 says. The DM's check line shows the higher total, and a listed Arcana or Religion value on the sheet includes it from the next game start (#1077).
