@@ -304,20 +304,6 @@ def _is_auth_error(exc):
     )
 
 
-def _flag_unknown_plot_ids(plot_hooks, valid_ids):
-    """Return the set of PP###/SQ### IDs referenced in plot_hooks but not in valid_ids.
-
-    MED-5 (#127): T029 can bake hallucinated plot-point IDs into per-location
-    plotHooks. This scans the hook strings and reports unknown IDs so the builder
-    can warn (we do NOT silently drop the hook text -- it may be valid prose).
-    """
-    referenced = set()
-    for hook in (plot_hooks or []):
-        if isinstance(hook, str):
-            referenced.update(re.findall(r"\b(?:PP|SQ)\d{3}\b", hook))
-    return referenced - set(valid_ids or [])
-
-
 def _looks_like_npc_name(value: Any) -> bool:
     """Reject prose paragraphs without trying to invent a replacement name."""
     if not isinstance(value, str):
@@ -442,7 +428,12 @@ def _validate_unified_plot_contract(
 
 
 def _validate_plot_hook_updates(value, area_data, valid_plot_ids):
-    """Validate T029's exact location and plot references before merging."""
+    """Validate T029's exact location and plot references before merging.
+
+    The plot points and side quests a location's hooks use come back typed in
+    referencedIds and are checked against the ids the rules engine declares
+    for this module (utils/quest_record.declare); the hook text is never
+    scanned for ids (keyword program GEN-5)."""
     if not isinstance(value, dict) or set(value) != {"plotHookUpdates"}:
         raise ValueError("T029 requires exactly plotHookUpdates")
     updates = value["plotHookUpdates"]
@@ -455,8 +446,12 @@ def _validate_plot_hook_updates(value, area_data, valid_plot_ids):
     }
     seen = set()
     for update in updates:
-        if not isinstance(update, dict) or set(update) != {"locationId", "plotHooks"}:
-            raise ValueError("T029 update requires exactly locationId and plotHooks")
+        if not isinstance(update, dict) or set(update) != {
+            "locationId", "plotHooks", "referencedIds"
+        }:
+            raise ValueError(
+                "T029 update requires exactly locationId, plotHooks and referencedIds"
+            )
         location_id = update["locationId"]
         if location_id not in valid_locations or location_id in seen:
             raise ValueError("T029 update has an unknown or duplicate locationId")
@@ -466,7 +461,12 @@ def _validate_plot_hook_updates(value, area_data, valid_plot_ids):
             isinstance(hook, str) and hook.strip() for hook in hooks
         ):
             raise ValueError("T029 plotHooks must contain useful strings")
-        unknown = _flag_unknown_plot_ids(hooks, valid_plot_ids)
+        referenced = update["referencedIds"]
+        if not isinstance(referenced, list) or not all(
+            isinstance(ident, str) for ident in referenced
+        ):
+            raise ValueError("T029 referencedIds must be an array of IDs")
+        unknown = set(referenced) - set(valid_plot_ids)
         if unknown:
             raise ValueError(f"T029 references unknown plot IDs: {sorted(unknown)}")
     return updates
@@ -1804,17 +1804,14 @@ IMPORTANT:
         relevant_plot_points = []
         relevant_side_quests = []
 
-        # MED-5 (#127): collect every known plot-point/side-quest ID across the
-        # whole unified plot so we can warn on hallucinated references later.
-        valid_plot_ids = set()
-        for pp in unified_plot.get("plotPoints", []):
-            pp_id = pp.get("id")
-            if pp_id:
-                valid_plot_ids.add(pp_id)
-            for sq in pp.get("sideQuests", []):
-                sq_id = sq.get("id")
-                if sq_id:
-                    valid_plot_ids.add(sq_id)
+        # MED-5 (#127): T029's typed referencedIds must be quests the rules
+        # engine declares for this module (D-KW-8: the engine's own reading of
+        # the plot, not a copy of it).
+        from utils import quest_record
+
+        valid_plot_ids = set(
+            quest_record.declare(self.config.module_name, unified_plot, []).keys()
+        )
 
         for pp in unified_plot.get("plotPoints", []):
             if pp.get("location") == area_id:
@@ -1842,7 +1839,8 @@ IMPORTANT:
                 area_id,
                 original_area_data,
                 relevant_plot_points,
-                relevant_side_quests
+                relevant_side_quests,
+                valid_plot_ids,
             )
             
             if not updated_hooks:
@@ -1855,7 +1853,7 @@ IMPORTANT:
         
         # STEP 6: Deep merge updates with original data (ATOMIC OPERATION)
         try:
-            updated_area_data = self._deep_merge_area_updates(area_backup, updated_hooks, valid_plot_ids)
+            updated_area_data = self._deep_merge_area_updates(area_backup, updated_hooks)
             
             # STEP 7: Validate critical fields preserved
             if not self._validate_area_integrity(area_backup, updated_area_data, area_id):
@@ -1881,7 +1879,9 @@ IMPORTANT:
             except:
                 self.log(f"Critical error: Could not restore {area_id} from backup")
     
-    def _generate_enhanced_plot_hooks(self, area_id, area_data, plot_points, side_quests):
+    def _generate_enhanced_plot_hooks(
+        self, area_id, area_data, plot_points, side_quests, valid_plot_ids
+    ):
         """Generate enhanced plot hooks that reference specific plot points and side quests"""
         from core.ai import api_client
         import config
@@ -1911,8 +1911,8 @@ TASK: Update the existing plot hooks to specifically reference the unified plot 
 
 REQUIREMENTS:
 1. Keep the essence and style of existing plot hooks
-2. Add specific references to plot point IDs (PP001, PP002, etc.) where appropriate
-3. Add references to side quest IDs (SQ001, SQ002, etc.) where appropriate
+2. Name the plot points and side quests a hook leads to by their titles in the hook text
+3. List the IDs of the plot points and side quests each location's hooks lead to in "referencedIds" (an empty list when none)
 4. Maintain the narrative tone and area atmosphere
 5. Make hooks actionable for DMs
 6. Only update plot hooks - do NOT change other area data
@@ -1924,16 +1924,17 @@ Return a JSON object with this structure:
     {{
       "locationId": "R01",
       "plotHooks": [
-        "Enhanced hook that mentions PP001 or SQ001 specifically...",
-        "Another enhanced hook referencing the unified plot..."
-      ]
+        "Enhanced hook that leads to a named plot point or side quest...",
+        "Another enhanced hook tied to the unified plot..."
+      ],
+      "referencedIds": ["PP001", "SQ001"]
     }}
   ]
 }}
 
 IMPORTANT: 
 - Only include locations that need plot hook updates
-- Reference specific plot point/side quest IDs where it makes narrative sense
+- Put plot point and side quest IDs only in "referencedIds", never in the hook text
 - Preserve the existing hook style and tone
 - Make hooks more specific and actionable"""
 
@@ -1960,11 +1961,6 @@ IMPORTANT:
                 **{k: v for k, v in main_cfg.items() if k != "model"})
 
             result = json.loads(response.choices[0].message.content)
-            valid_plot_ids = {
-                item.get("id")
-                for item in [*plot_points, *side_quests]
-                if isinstance(item, dict) and item.get("id")
-            }
             return _validate_plot_hook_updates(
                 result, area_data, valid_plot_ids
             )
@@ -1973,7 +1969,7 @@ IMPORTANT:
             self.log(f"Error in AI plot hook generation: {e}")
             return []
     
-    def _deep_merge_area_updates(self, original_data, hook_updates, valid_plot_ids=None):
+    def _deep_merge_area_updates(self, original_data, hook_updates):
         """Deep merge plot hook updates into area data, preserving all other data"""
         import copy
         result = copy.deepcopy(original_data)
@@ -1990,15 +1986,6 @@ IMPORTANT:
             location_id = location.get("locationId")
             if location_id in location_updates:
                 location["plotHooks"] = location_updates[location_id]
-                # MED-5 (#127): warn on hallucinated plot IDs (non-destructive)
-                if valid_plot_ids is not None:
-                    try:
-                        unknown_ids = _flag_unknown_plot_ids(location["plotHooks"], valid_plot_ids)
-                        if unknown_ids:
-                            warning(f"T029: location {location_id} references unknown plot IDs: "
-                                    f"{sorted(unknown_ids)}", category="module_creation")
-                    except Exception:
-                        pass
 
         return result
     
