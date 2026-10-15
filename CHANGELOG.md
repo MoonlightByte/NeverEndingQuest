@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- Companion voices are told what the current moment really is: in a fight it is the game's account of the encounter and your declared action, not words you spoke to them, and out of combat a request you make for yourself ("help me") is about you even when it names a companion (Closes #430).
 - After a resumed fight, a party tracker that names its area and location but has no location id now pauses the game with the "no readable location" message, as a missing name already did; the player and party panels find the people at the current location the same way as the rest of the game, so a briefly locked area file is retried and a damaged one is named in the log (#850)
 - A world with more than 702 areas no longer gets location ids the game rejects ("[A01", or a random "MKEE18" that two areas could share): prefixes go on to AAA-ZZZ, one shared scheme serves the builder, the story-first generator (its 27th area got "[") and the module stitcher, and existing ids keep their letters (#646).
 - Two characters buying the same item, or an item added after a stored one, no longer end up sharing an id that hides one of them (#1060).
