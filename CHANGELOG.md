@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Removed `update_json_schema` from `core/managers/combat_manager.py`, a deprecated function that nothing called; it only logged a warning and returned its input unchanged (#1002).
 
 ### Fixed
+- The scene check now sees what is stored in the party's chests at the current place, so taking out an item stored earlier is no longer refused as invented (#388)
 - Item ids on a hero's sheet saved before #894 as characters/.json (a name with no Latin letters) are now protected like every other sheet's, so a new item id never repeats one of them (#1074).
 - A chest item that had no id (an old save or a hand-edited chest) no longer gets an id that another character or chest already holds, so it can still be taken out (#1073)
 - When the AI provider refuses a request on the player's account (out of funds or quota, API key rejected, no model access), more places now say why instead of a generic line or nothing: a refused follow-up after an action (such as the narration after a fight) ends that turn with the account reason and the game keeps running, where before it stopped the game; an action, a level-up (which now ends at once instead of asking to retry), the startup welcome's follow-up and the terminal startup welcome say why; and resumed combat in the terminal shows the failure line instead of a recovery notice (#442).
