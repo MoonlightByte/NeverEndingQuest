@@ -1030,16 +1030,10 @@ class StoryFirstPipeline:
         )
         if entry != world.entry:
             raise ValueError("accepted entry projection changed after area compilation")
-        try:
-            candidate_integrity = validate_public_candidate_references_and_keys(
-                _json_value(final_areas.areas),
-                _json_value(accepted_plot.value),
-                entry["entryLocationId"],
-            )
-        except SemanticCorrectionError as exc:
-            raise StoryFirstPipelineError(
-                "candidate_validation", "semantic", diagnostics=exc.issues
-            ) from None
+        candidate_integrity = validate_public_candidate_references_and_keys(
+            _json_value(final_areas.areas),
+            entry["entryLocationId"],
+        )
         evidence = (
             accepted_outline.evidence,
             accepted_binding.evidence,
