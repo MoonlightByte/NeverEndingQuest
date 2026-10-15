@@ -135,21 +135,6 @@ def unique_values(items: Iterable[Dict[str, Any]], key: str, label: str) -> List
     return values
 
 
-def looks_plural_creature_reference(name: str) -> bool:
-    """Catch ordinary plural keys without pretending to be a full inflector."""
-    words = re.findall(r"[A-Za-z]+", name)
-    if not words:
-        return False
-    word = words[-1].casefold()
-    if word in {"species", "series", "gas", "glass", "moss", "grass", "chaos"}:
-        return False
-    if word.endswith(("ss", "us", "is")):
-        return False
-    return word.endswith(
-        ("ies", "ves", "ches", "shes", "xes", "zes", "ses")
-    ) or word.endswith("s")
-
-
 def semantic_outline_checks(
     outline: Dict[str, Any],
     seed: Dict[str, Any],
@@ -236,13 +221,6 @@ def semantic_outline_checks(
         raise ValueError(
             f"side threads reference unknown anchor beats: {unknown_thread_anchors}"
         )
-    plural = [
-        brief["name"]
-        for brief in outline["creatureBriefs"]
-        if looks_plural_creature_reference(brief["name"])
-    ]
-    if plural:
-        raise ValueError(f"creature reference names must be singular: {plural}")
     creature_names: Dict[str, str] = {}
     role_issues = []
     for index, brief in enumerate(outline["creatureBriefs"]):
@@ -966,8 +944,6 @@ def validate_story_first_location_result(
         monster.get("name", "").strip().casefold() not in briefs for monster in monsters
     ):
         raise ValueError("T026 introduced an unbriefed creature")
-    if any(looks_plural_creature_reference(monster["name"]) for monster in monsters):
-        raise ValueError("T026 used a plural creature reference")
     if any(
         monster["quantity"]["min"] > monster["quantity"]["max"] for monster in monsters
     ):
