@@ -8875,6 +8875,29 @@ def _main_game_loop(startup_authority, turn_authority):
             )
             return
 
+        # A game saved before #1119 gets its NPCs' proper names once (no status
+        # word), before the party tracker is read for this session.
+        try:
+            from core.managers.name_migration import run_name_migration
+
+            name_migration = run_name_migration(create_backup=True)
+            if name_migration.get("status") == "renamed":
+                print(
+                    "[SYSTEM] Characters' names were updated to their proper names. "
+                    "A save from before the update was created automatically."
+                )
+                info(f"NAME_MIGRATION: completed: {name_migration}", category="startup")
+            elif name_migration.get("status") == "deferred":
+                debug(f"NAME_MIGRATION: deferred: {name_migration}", category="startup")
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
+        except Exception as name_migration_exc:
+            error(
+                "FAILURE: NPC name update did not complete; the game keeps its earlier names",
+                exception=name_migration_exc,
+                category="startup",
+            )
+
         # --- START: COMBAT RESUMPTION LOGIC ---
         party_tracker_data = load_json_file("party_tracker.json")
         combat_was_resumed = False  # Track if we resumed from combat

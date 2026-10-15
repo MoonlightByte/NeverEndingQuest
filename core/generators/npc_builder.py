@@ -262,8 +262,8 @@ def generate_npc(npc_name, schema, npc_race=None, npc_class=None, npc_level=None
 
     system_message = f"""You are an assistant that creates NPC schema JSON files from a master NPC schema template for a 5e game. Given an NPC name and optional details, create a JSON representation of the NPC's stats and abilities according to 5e rules following the NPC schema template exactly. Ensure your new NPC JSON adheres to the provided schema template. Do not include any additional properties or nested 'type' and 'value' fields. Return only the JSON content without any markdown formatting.
 
-NAME HANDLING: The `name` field must preserve the NPC's full name including any title or role prefix (Scout, Guard, Captain, Ranger, etc.). ONLY strip status condition words: 'corrupted', 'wounded', 'elite', 'enhanced'. Examples:
-- 'Corrupted Ranger Thane' -> 'Ranger Thane'
+NAME HANDLING: The `name` field is exactly the NPC name you are given, including any title or role prefix (Scout, Guard, Captain, Ranger, etc.). Never add or remove a word. Examples:
+- 'Ranger Thane' -> 'Ranger Thane'
 - 'Scout Kira' -> 'Scout Kira'
 - 'Guard Marcus' -> 'Guard Marcus'
 
@@ -445,23 +445,11 @@ def remove_nested_values(data):
         return data
 
 
-_NPC_STATUS_WORDS = ("corrupted", "wounded", "elite", "enhanced")
-
-
 # The DM pipeline passes literal placeholders when a value is not
 # established in play ('unknown', 'none', 'n/a', ...). Treat every such
 # placeholder exactly like empty: the builder infers a sensible default.
 # Rejecting them crashed party recruitment mid-turn (Scout Kira, live).
 UNSPECIFIED_ARGUMENTS = frozenset({"unknown", "none", "n/a", "na", "null", "tbd", "?"})
-
-
-def _expected_npc_target_name(npc_name):
-    """Mirror the prompt's deterministic status-word cleanup for lock identity."""
-    value = str(npc_name or "").strip()
-    status_pattern = r"\b(?:" + "|".join(_NPC_STATUS_WORDS) + r")\b"
-    cleaned = re.sub(status_pattern, " ", value, flags=re.IGNORECASE)
-    cleaned = " ".join(cleaned.split()).strip(" _-")
-    return cleaned or value
 
 
 def _active_module_path_manager():
@@ -511,9 +499,16 @@ def build_npc_file_with_path(
     npc_identity=None,
 ):
     """Generate and save one NPC; return (sheet, path it was loaded or saved at), or None.
-    npc_identity is the NPC's authored record, given to the model (#534)."""
+    npc_identity is the NPC's authored record, given to the model (#534).
+    A name carrying a status word ("Wounded Ranger Gareth") is refused: an NPC
+    takes its proper name, which its sheet keeps (#1119)."""
+    from utils.status_words import status_word_refusal
+    refusal = status_word_refusal(npc_name)
+    if refusal:
+        warning(f"NPC_CREATION: NPC not created: {refusal}", category="npc_creation")
+        return None
     path_manager = path_manager or _active_module_path_manager()
-    expected_name = _expected_npc_target_name(npc_name)
+    expected_name = str(npc_name or "").strip()
     logical_target = path_manager.get_character_unified_path(expected_name)
 
     with single_target_generation(logical_target) as transaction:
@@ -541,6 +536,12 @@ def build_npc_file_with_path(
         if not generated:
             return None
 
+        if expected_name and status_word_refusal(generated.get("name")):
+            # The sheet keeps the name it was asked for, never a status word (#1119).
+            warning(f"NPC_CREATION: generated name {generated.get('name')!r} replaced by "
+                    f"{expected_name!r}: {status_word_refusal(generated.get('name'))}",
+                    category="npc_creation")
+            generated["name"] = expected_name
         clean_name = generated.get("name", expected_name)
         actual_target = path_manager.get_character_unified_path(clean_name)
         existing = load_valid_generated_target(actual_target, schema)
