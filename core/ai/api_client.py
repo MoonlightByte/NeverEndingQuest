@@ -934,9 +934,9 @@ def _openai_completion(messages, model, temperature, provider, response_format=_
         )
 
     # Chat Completions receives each history message as stored; the game's
-    # own marker field is not part of the provider's message shape.
+    # own fields are not part of the provider's message shape.
     call_kwargs = {"model": model, "messages": [
-        {k: v for k, v in message.items() if k != hm.MARKER_FIELD}
+        {k: v for k, v in message.items() if k not in hm.GAME_FIELDS}
         if isinstance(message, dict) else message
         for message in messages
     ]}

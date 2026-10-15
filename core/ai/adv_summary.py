@@ -521,8 +521,11 @@ def convert_to_dialogue(trimmed_data):
         elif role == 'user':
             if hm.is_marker(message, hm.LOCATION_TRANSITION): # This is a system note, not player dialogue for summary
                 dialogue += f"[{content}]\n\n" # Keep as a note for context if needed by summarizer
-            else: # Actual player input
-                dialogue += f"Player: {content}\n\n"
+            elif hm.player_input(message) is not None:
+                # #449 (D-449-3 A): only the player's own words are the player's.
+                dialogue += f"Player: {hm.player_input(message)}\n\n"
+            else:
+                dialogue += f"[Game note: {content}]\n\n"
     return [
         trimmed_data[0],
         {"role": "user", "content": dialogue.strip()}
