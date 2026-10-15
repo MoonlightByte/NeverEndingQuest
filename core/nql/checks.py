@@ -1,7 +1,7 @@
 """Checks and saves through the rules engine (C2a).
 
-The DM names the check (a skill, an ability save or check, initiative), the
-difficulty and any situational advantage or disadvantage. The engine adds the
+The DM names the check by its engine stat (a skill, an ability save or check,
+initiative), the difficulty and any situational advantage or disadvantage. The engine adds the
 character's total, combines the situation with the conditions' roll modes
 (Poisoned: disadvantage on checks; Paralyzed: Strength and Dexterity saves
 fail), keeps the right die, and reports total, success and margin. Dice are
@@ -24,27 +24,17 @@ def _q(value: str) -> str:
     return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def stat_id(check: Any) -> Optional[str]:
-    """The engine stat for a check name the DM wrote: 'athletics', 'Sleight of Hand',
-    'wisdom save', 'strength check', 'initiative'. None when it is not one."""
-    if not isinstance(check, str):
-        return None
-    text = " ".join(check.strip().casefold().replace("_", " ").split())
-    if text in ("initiative", "initiative check", "initiative roll"):
-        return "initiative"
-    for suffix, prefix in (("saving throw", "save"), ("save", "save"), ("skill check", "check"), ("check", "check"), ("roll", "check")):
-        if text.endswith(" " + suffix):
-            head = text[: -len(suffix) - 1]
-            skill = stats.skill_id(head)
-            if skill and prefix == "check":
-                return "skill:" + skill
-            ability = stats.ability_id(head)
-            return f"{prefix}:{ability}" if ability else None
-    skill = stats.skill_id(text)
-    if skill:
-        return "skill:" + skill
-    ability = stats.ability_id(text)
-    return f"check:{ability}" if ability else None
+# The engine stats a rollCheck may name (#503, D-KW-5): every SRD skill, every
+# ability check and save, and initiative. The DM's `stat` is one of these exactly.
+STATS = (tuple("skill:" + s for s in srd_stats.SKILLS) + tuple("check:" + a for a in srd_stats.ABILITIES)
+         + tuple("save:" + a for a in srd_stats.ABILITIES) + ("initiative",))
+
+
+def stat_id(stat: Any) -> Optional[str]:
+    """The engine stat a rollCheck names: exactly one of ``STATS`` ('skill:athletics',
+    'check:strength', 'save:wisdom', 'initiative'), else None. A typed value; no
+    words are read."""
+    return stat if isinstance(stat, str) and stat in STATS else None
 
 
 def label(stat: str) -> str:
