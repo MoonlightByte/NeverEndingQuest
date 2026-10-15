@@ -461,8 +461,11 @@ def _remove_welcome_note(lifecycle, history):
     return False
 
 
-def _finish_welcome(lifecycle, disposition):
-    """Game-thread terminal: set disposition, quiescence, clear registry."""
+def _finish_welcome(lifecycle, disposition, cause=None):
+    """Game-thread terminal: set disposition, quiescence, clear registry.
+
+    ``cause`` is the reason of a Load/Reset/exit fence that ended the
+    welcome's fight before the control claimed the welcome itself (#1038)."""
     from utils.capture.live_provider_call import (
         clear_welcome_scope,
         drain_live_saves,
@@ -474,6 +477,8 @@ def _finish_welcome(lifecycle, disposition):
     if disposition == "SUPERSEDED":
         with lifecycle.scope.lock:
             kind = (lifecycle.scope.supersession or {}).get("kind")
+        if kind is None:
+            kind = cause
         # Every recorded cause is a designed end: a control, or the player's
         # text before the apply (refused during it since #990). Only an end
         # with no recorded cause is worth a warning.
@@ -508,7 +513,9 @@ def _finish_welcome(lifecycle, disposition):
 
 def _apply_welcome(lifecycle):
     """Game-thread handback: apply or discard the completed welcome."""
-    from core.combat.invocation import InvocationSupersededError
+    from core.combat.invocation import (
+        InvocationSupersededError, fence_mark, fence_reason_since,
+    )
     from utils.capture.live_provider_call import (
         LiveProviderSuperseded, _executing_control_scope,
     )
@@ -828,6 +835,9 @@ def _apply_welcome(lifecycle):
             _interruptible_wait(0.25, lifecycle.scope, "Checking startup state...")
 
     provider_scope_token = _executing_control_scope.set(lifecycle.scope)
+    # A Load during the welcome's fight fences combat before it claims the
+    # welcome; that fence's reason names the end (#1038).
+    apply_fence_mark = fence_mark()
     try:
         if lifecycle.scope.is_superseded():
             raise LiveProviderSuperseded("welcome handback superseded")
@@ -872,7 +882,7 @@ def _apply_welcome(lifecycle):
         if lifecycle.scope.is_superseded():
             raise LiveProviderSuperseded("welcome follow-up superseded")
         if isinstance(process_result, dict) and process_result.get("status") == "superseded_invocation":
-            _finish_welcome(lifecycle, "SUPERSEDED")
+            _finish_welcome(lifecycle, "SUPERSEDED", cause=fence_reason_since(apply_fence_mark))
             return
         if isinstance(process_result, dict) and process_result.get("status") in {
             "travel_content_unavailable", "review_exhausted", "provider_error",
@@ -896,7 +906,7 @@ def _apply_welcome(lifecycle):
                 % process_result.get("status", "unknown")
             )
     except (LiveProviderSuperseded, InvocationSupersededError):
-        _finish_welcome(lifecycle, "SUPERSEDED")
+        _finish_welcome(lifecycle, "SUPERSEDED", cause=fence_reason_since(apply_fence_mark))
         return
     except ReadOnlySaveStop:
         # Nothing more may be written: no failed receipt, no history save.
