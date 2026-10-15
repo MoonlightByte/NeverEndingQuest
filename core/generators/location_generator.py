@@ -38,28 +38,6 @@ register_callsite("T025", "core/generators/location_generator.py", 693)
 register_callsite("T026", "core/generators/location_generator.py", 884)
 
 
-_T026_OFFICIAL_SKILLS = frozenset(
-    {
-        "Acrobatics",
-        "Animal Handling",
-        "Arcana",
-        "Athletics",
-        "Deception",
-        "History",
-        "Insight",
-        "Intimidation",
-        "Investigation",
-        "Medicine",
-        "Nature",
-        "Perception",
-        "Performance",
-        "Persuasion",
-        "Religion",
-        "Sleight of Hand",
-        "Stealth",
-        "Survival",
-    }
-)
 _T026_CALENDAR_MONTHS = (
     "Firstmonth",
     "Coldmonth",
@@ -75,10 +53,6 @@ _T026_CALENDAR_MONTHS = (
     "Yearend",
 )
 _T026_DANGER_LEVELS = frozenset({"Low", "Medium", "High", "Very High"})
-_T026_ABILITY_SKILL_CHECK = re.compile(
-    r"^(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma) "
-    r"\(([^)]+)\) (DC [0-9]+: .+)$"
-)
 
 
 def _location_stub_ids(location_stubs: List[Dict[str, Any]]) -> List[str]:
@@ -317,15 +291,6 @@ def _canonicalize_t026_mechanical_fields(parsed: Any) -> Any:
         # into DM narration context. Strip them deterministically so a weak model
         # can never inject a bad date or a phantom encounter into a new module.
         location["encounters"] = []
-
-        checks = location.get("dcChecks")
-        if isinstance(checks, list):
-            for index, check in enumerate(checks):
-                if not isinstance(check, str):
-                    continue
-                match = _T026_ABILITY_SKILL_CHECK.fullmatch(check)
-                if match and match.group(1) in _T026_OFFICIAL_SKILLS:
-                    checks[index] = f"{match.group(1)} {match.group(2)}"
 
         encounters = location.get("encounters")
         if not isinstance(encounters, list):
@@ -865,10 +830,11 @@ class LocationPromptGuide:
     
     dcChecks: str = """
     Skill challenges available in the location.
-    Format: "SkillName DC XX: Result description"
+    Format: "Ability (Skill) DC XX: Result description", or the skill or the
+    ability alone before "DC"
     
     Examples:
-    - "Perception DC 15: Notice the secret door behind the tapestry"
+    - "Wisdom (Perception) DC 15: Notice the secret door behind the tapestry"
     - "Investigation DC 12: Find the hidden compartment in the altar"
     - "Athletics DC 18: Climb the crumbling wall to the upper level"
     - "Arcana DC 16: Identify the magical aura around the crystals"
@@ -1206,20 +1172,18 @@ CRITICAL COMPLETE LOCATION CHECKLIST -- field names and nesting must match EXACT
   in dmInstructions, plotHooks, or monsters.
 - Every door requires name, description, type, locked, lockDC, breakDC,
   keyname, trapped, and trap, using the types listed below.
-- "dcChecks" entries begin with an official skill or ability name only and use
-  "SkillOrAbility DC XX: Description". Use "Arcana DC 13:", not
-  "Intelligence (Arcana) DC 13:". Valid multiword examples include
-  "Animal Handling DC 12:" and "Sleight of Hand DC 15:". A raw ability
-  check such as "Wisdom DC 14:" is also valid.
-- SRD 5.2.1 check naming: an ability check is named for one of the six
-  abilities; a skill or tool proficiency can apply to that check. This output
-  contract also permits one official skill as shorthand, but the label before
-  "DC" must be exactly ONE of: Strength, Dexterity, Constitution,
-  Intelligence, Wisdom, Charisma, Acrobatics, Animal Handling, Arcana,
+- "dcChecks" entries use "Label DC XX: Description". SRD 5.2.1 check naming:
+  an ability check is named for one of the six abilities, with the skill that
+  applies in parentheses, as in "Wisdom (Perception) DC 13:" or
+  "Dexterity (Sleight of Hand) DC 15:". The skill alone ("Arcana DC 13:") and
+  the ability alone ("Wisdom DC 14:") are also valid. The ability is exactly
+  ONE of: Strength, Dexterity, Constitution, Intelligence, Wisdom, Charisma.
+  The skill is exactly ONE of: Acrobatics, Animal Handling, Arcana,
   Athletics, Deception, History, Insight, Intimidation, Investigation,
   Medicine, Nature, Perception, Performance, Persuasion, Religion,
   Sleight of Hand, Stealth, or Survival.
-- Never put a slash, "or", parentheses, or a tool name in the check label. If
+- Never put a slash, "or", or a tool name in the check label, and never more
+  than one skill in the parentheses. If
   alternate skills or a tool proficiency apply, use the governing ability as
   the label and state the applicable proficiencies in the description. For
   example: "Strength DC 13: Cross the broken stairs; Acrobatics or Athletics
