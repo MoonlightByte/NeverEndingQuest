@@ -544,6 +544,24 @@ def repair_and_persist_character(
     from core.nql.legacy_loadout import migrate as migrate_legacy_loadout
     raw_changes = list(raw_changes) + migrate_legacy_loadout(repaired_data)
 
+    # A class order's typed grants (Divine Order: Protector, Primal Order: Warden)
+    # on a hero saved before character creation wrote them (#888). Taken only when
+    # the engine reads something new, and said in one line once the sheet is saved.
+    order_lines = []
+    try:
+        from core.leveling import choices as srd_choices
+        granted = copy.deepcopy(repaired_data)
+        order_added = [entry for entry in srd_choices.apply_order_grants(granted) if entry["added"]]
+    except Exception as exc:  # the repair pass never blocks a game from loading
+        order_added = []
+        warning(f"REPAIR: class order grants not checked for {character_file_path}: {exc}", category="character_repair")
+    if order_added:
+        repaired_data = granted
+        raw_changes = raw_changes + ["order_grants=" + ",".join(entry["feature"] for entry in order_added)]
+        hero = repaired_data.get("name") or os.path.basename(character_file_path)
+        order_lines = [f"[SYSTEM] {hero}'s sheet now records what the {entry['option']} {entry['choice']} grants: "
+                       f"{entry['printed']} (SRD 5.2.1)." for entry in order_added]
+
     # Extract field names from changes (e.g., "ammunition=default_list" -> "ammunition")
     changes = [change.split("=", 1)[0] for change in raw_changes]
 
@@ -574,5 +592,7 @@ def repair_and_persist_character(
                 f"REPAIR: Persisted {len(changes)} fixes to {character_file_path}: {', '.join(raw_changes)}",
                 category="character_repair",
             )
+            for line in order_lines:
+                print(line)
 
     return repaired_data, changes
