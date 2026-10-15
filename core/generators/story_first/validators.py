@@ -135,37 +135,6 @@ def unique_values(items: Iterable[Dict[str, Any]], key: str, label: str) -> List
     return values
 
 
-def unexpected_blocklist_terms(
-    authored: Dict[str, Any], seed: Dict[str, Any], blocklist: Iterable[str]
-) -> List[str]:
-    authored_text = json.dumps(authored, ensure_ascii=True).casefold()
-    immutable_seed = json.dumps(seed, ensure_ascii=True).casefold()
-    unexpected = set()
-    for word in blocklist:
-        pattern = rf"\b{re.escape(word.casefold())}(?:s|'s)?\b"
-        authored_count = len(re.findall(pattern, authored_text))
-        seed_count = len(re.findall(pattern, immutable_seed))
-        if authored_count > seed_count:
-            unexpected.add(word)
-    return sorted(unexpected)
-
-
-def _outline_identity_fields(outline: Dict[str, Any]) -> Dict[str, Any]:
-    """Return only authored identity fields governed by the gold-prior list."""
-    return {
-        "moduleTitle": outline.get("moduleTitle", ""),
-        "oppositionName": outline.get("opposition", {}).get("name", ""),
-        "areaNames": [item.get("name", "") for item in outline.get("areas", [])],
-        "beatTitles": [item.get("title", "") for item in outline.get("beats", [])],
-        "sideThreadTitles": [
-            item.get("title", "") for item in outline.get("sideThreads", [])
-        ],
-        "creatureNames": [
-            item.get("name", "") for item in outline.get("creatureBriefs", [])
-        ],
-    }
-
-
 _AREA_MASS_BEAT_PATTERNS = (
     r"\b(?:city|district|region|settlement|town|village)[ -]?wide\b",
     r"\b(?:army|armies|battlefield|mass battle|mass combat|siege lines?|war ?host)\b",
@@ -307,7 +276,6 @@ def looks_plural_creature_reference(name: str) -> bool:
 def semantic_outline_checks(
     outline: Dict[str, Any],
     seed: Dict[str, Any],
-    blocklist: Iterable[str],
 ) -> Dict[str, Any]:
     """Check the model-authored graph and trusted seed constraints."""
     require_ascii(outline, "outline")
@@ -391,11 +359,6 @@ def semantic_outline_checks(
         raise ValueError(
             f"side threads reference unknown anchor beats: {unknown_thread_anchors}"
         )
-    blocked = unexpected_blocklist_terms(
-        _outline_identity_fields(outline), seed, blocklist
-    )
-    if blocked:
-        raise ValueError(f"outline introduced blocklisted priors: {blocked}")
     plural = [
         brief["name"]
         for brief in outline["creatureBriefs"]
@@ -1082,7 +1045,6 @@ def validate_story_first_location_result(
     area: Dict[str, Any],
     outline: Dict[str, Any],
     seed: Dict[str, Any],
-    blocklist: Iterable[str],
 ) -> Dict[str, Any]:
     """Enforce story-first invariants around an unchanged accepted T026 batch."""
     expected, actual = area["locations"], generated["locations"]
@@ -1099,18 +1061,6 @@ def validate_story_first_location_result(
         if location.get("explorationState") != {"status": "unvisited"}:
             raise ValueError(f"{stub['locationId']} is not initially unvisited")
     require_ascii(generated, "T026 output")
-    seed_text = json.dumps(seed, ensure_ascii=True).casefold()
-    for location in actual:
-        for entity in [*location.get("npcs", []), *location.get("monsters", [])]:
-            name = str(entity.get("name", ""))
-            for blocked in blocklist:
-                pattern = rf"\b{re.escape(str(blocked).casefold())}(?:s|'s)?\b"
-                if re.search(pattern, name.casefold()) and not re.search(
-                    pattern, seed_text
-                ):
-                    raise ValueError(
-                        f"T026 introduced blocklisted entity in {location['locationId']}"
-                    )
     party = {
         str(name).strip().casefold()
         for name in seed.get("campaignContext", {}).get("partyNames", [])

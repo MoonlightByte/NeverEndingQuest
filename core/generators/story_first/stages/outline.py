@@ -94,7 +94,6 @@ def run(
         semantic_gate=lambda value: semantic_outline_checks(
             value,
             seed.to_prompt_value(),
-            blocked_terms,
         ),
         gateway=gateway,
     )

@@ -586,7 +586,7 @@ class LocationPromptGuide:
     - Cave Entrance: "The Whispering Threshold", "Maw of Shadows"
     - Chamber: "Hall of Echoing Stone", "The Crystal Sanctum"  
     - Corridor: "The Winding Descent", "Passage of Whispers"
-    - Throne Room: "Court of the Fallen King", "Ember Throne Chamber"
+    - Throne Room: "Court of the Fallen King", "Hall of the Iron Seat"
     
     Format: 2-5 words, capitalize major words
     Style: Atmospheric, hints at location's nature
@@ -650,7 +650,7 @@ class LocationPromptGuide:
     "The pillars conceal pressure plates (DC 15 Perception to notice). 
     Triggering one releases poison darts (DC 13 Dex save, 2d4 poison 
     damage). The sealed door requires the proper ritual phrase or DC 20 
-    Strength to force. Behind it lies the forge guardian, which activates 
+    Strength to force. Behind it lies the stone guardian, which activates 
     if the seal is broken violently. The sulfur smell intensifies near 
     the secret passage (DC 18 Investigation to find) leading to area R07."
     

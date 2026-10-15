@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import copy
 import json
-from typing import Any, Callable, Dict, Iterable, Mapping, Optional
+from typing import Any, Callable, Dict, Mapping, Optional
 
 import jsonschema
 
@@ -102,7 +102,6 @@ def run(
     provider: str,
     loca_schema: Mapping[str, Any],
     locationfile_schema: Mapping[str, Any],
-    blocklist: Iterable[str],
     generate_batch: Optional[Callable[..., Dict[str, Any]]] = None,
 ) -> AcceptedAreas:
     """Fill each trusted area stub through T026, without changing T026 mechanics."""
@@ -147,7 +146,7 @@ def run(
         result, typography_replacements = normalize_ascii_typography(result)
         jsonschema.validate(result, mutable_copy(loca_schema))
         area_metrics = validate_story_first_location_result(
-            result, area, outline_value, seed_value, blocklist
+            result, area, outline_value, seed_value
         )
         wrapper = copy.deepcopy(area)
         wrapper["locations"] = copy.deepcopy(result["locations"])

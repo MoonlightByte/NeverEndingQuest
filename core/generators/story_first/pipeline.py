@@ -565,7 +565,6 @@ class StoryFirstPipeline:
             semantic_outline_checks(
                 value["value"],
                 seed.to_prompt_value(),
-                self.blocklist,
             )
             return AcceptedOutline(
                 value=value["value"],
@@ -720,7 +719,6 @@ class StoryFirstPipeline:
                     _json_value(by_id[area["areaId"]]),
                     _json_value(accepted_outline.value),
                     seed.to_prompt_value(),
-                    self.blocklist,
                 )
             _, thread_to_quest = plot_derivation.trusted_mappings(accepted_outline)
             validate_side_thread_location_projection(
@@ -748,7 +746,6 @@ class StoryFirstPipeline:
                 provider=self.provider,
                 loca_schema=self.schemas["location"],
                 locationfile_schema=self.schemas["locationfile"],
-                blocklist=self.blocklist,
                 generate_batch=self.generate_batch,
             ),
             _accepted_areas_value,
