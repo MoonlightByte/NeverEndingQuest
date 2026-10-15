@@ -11,7 +11,6 @@ type), never authored by a model. Reference: kit acquire_gate.py (lot_cost,
 pay, acquire_lines, sheet_row).
 """
 import copy
-import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.nql import genesis, item_catalog
@@ -24,11 +23,12 @@ def _q(value: str) -> str:
     return genesis._q(value)
 
 
-def find_entry(item_name: Any) -> Tuple[Optional[Dict[str, Any]], str]:
+def find_entry(item_name: Any, kind: Any = None) -> Tuple[Optional[Dict[str, Any]], str]:
     """The catalog entry whose typed ``name`` equals ``item_name`` (exact, then a
     unique case-insensitive match), or (None, reason). A value comparison on
     the catalog's name field, the same comparison transferItem makes against
-    sheet rows."""
+    sheet rows. ``kind`` (the DM's typed catalog kind) only chooses which
+    catalog names a refusal lists; no words of ``item_name`` are read (#855)."""
     if not isinstance(item_name, str) or not item_name.strip():
         return None, "itemName must name a catalog item"
     wanted = item_name.strip()
@@ -39,32 +39,31 @@ def find_entry(item_name: Any) -> Tuple[Optional[Dict[str, Any]], str]:
     loose = [e for e in entries if str(e.get("name", "")).casefold() == wanted.casefold()]
     if len(loose) == 1:
         return loose[0], ""
-    near = suggest(wanted, entries)
-    hint = f". Catalog items near that name: {'; '.join(near)}. Use the catalog name alone as itemName" if near else ""
-    return None, f"{wanted!r} is not an item in the SRD catalog{hint}"
+    return None, f"{wanted!r} is not an item in the SRD catalog. {catalog_names(entries, kind)}"
 
 
-def _words(text: str) -> List[str]:
-    return [w for w in re.split(r"[^a-z0-9]+", text.casefold()) if len(w) >= 3]
+def _listed(entry: Dict[str, Any]) -> str:
+    per_lot = (entry.get("price") or {}).get("units_per_lot")
+    lots = f" (sold in lots of {per_lot}: quantity {per_lot}, {2 * per_lot}, ...)" if type(per_lot) is int and per_lot > 1 else ""
+    return f"{entry.get('name')!r}{lots}"
 
 
-def suggest(item_name: str, entries: Optional[List[Dict[str, Any]]] = None, limit: int = 6) -> List[str]:
-    """Catalog names that share a word with the DM's itemName (one word a prefix
-    of the other, e.g. "bolt" and "bolts"). A hint for the correction only: the
-    DM re-decides; nothing is bought from a suggestion."""
-    words = _words(item_name)
-    if not words:
-        return []
-    out: List[str] = []
-    for e in entries if entries is not None else item_catalog.entries().values():
-        name = str(e.get("name", ""))
-        if any(a.startswith(b) or b.startswith(a) for a in _words(name) for b in words):
-            per_lot = (e.get("price") or {}).get("units_per_lot")
-            facts = str(e.get("kind") or "item")
-            if type(per_lot) is int and per_lot > 1:
-                facts += f", sold in lots of {per_lot} (quantity {per_lot}, {2 * per_lot}, ...)"
-            out.append(f"{name!r} = {facts}")
-    return out[:limit]
+def catalog_names(entries: List[Dict[str, Any]], kind: Any = None) -> str:
+    """The catalog names a refusal shows the DM: every entry of the typed
+    ``kind`` first when it is a catalog kind, then every other entry grouped
+    by kind, so a name the DM filed under the wrong kind is still listed. The
+    DM re-decides; nothing is bought from this list."""
+    kinds = sorted({str(e.get("kind")) for e in entries if e.get("kind")})
+
+    def group(k: str) -> str:
+        return f"{k}: {'; '.join(_listed(e) for e in entries if e.get('kind') == k)}"
+
+    if isinstance(kind, str) and kind in kinds:
+        rest = " | ".join(group(k) for k in kinds if k != kind)
+        return (f"Catalog {kind} items: {'; '.join(_listed(e) for e in entries if e.get('kind') == kind)}. "
+                f"Other catalog items by kind: {rest}. Use one of these names exactly as itemName")
+    unknown = f"kind {kind!r} is not a catalog kind ({', '.join(kinds)}). " if kind not in (None, "") else ""
+    return f"{unknown}Catalog items by kind: {' | '.join(group(k) for k in kinds)}. Use one of these names exactly as itemName"
 
 
 def lot_cost(entry: Dict[str, Any], quantity: Any) -> Tuple[Optional[int], str]:
