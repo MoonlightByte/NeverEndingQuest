@@ -10,6 +10,8 @@ import re
 from types import MappingProxyType
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Set, Tuple
 
+from core.generators.location_prefixes import location_prefix
+
 
 ASCII_TYPOGRAPHY_REPLACEMENTS = MappingProxyType(
     {
@@ -247,7 +249,7 @@ def compile_area_binding(
     location_ids_by_role: Dict[Tuple[str, str], str] = {}
 
     for area_index, authored in enumerate(binding["areas"]):
-        prefix = chr(ord("A") + area_index)
+        prefix = location_prefix(area_index)  # the shared encoding (#646, D-646-1)
         authored_roles = sorted(
             authored["locationRoles"], key=lambda role: role["roleKey"]
         )

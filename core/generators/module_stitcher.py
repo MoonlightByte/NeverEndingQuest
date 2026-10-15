@@ -118,6 +118,7 @@ register_callsite("T033", "core/generators/module_stitcher.py", 4016)
 # Set script name for logging
 set_script_name("module_stitcher")
 from utils.encoding_utils import safe_json_load
+from core.generators.location_prefixes import location_prefix, location_prefix_index
 from utils.file_operations import safe_write_json
 from utils.transient_filesystem import (
     is_transient_filesystem_error,
@@ -502,31 +503,15 @@ def _coerce_module_safety_result(result: Any) -> ModuleSafetyResult:
     )
 
 
-def _location_prefix_to_index(prefix: str) -> int:
-    """Inverse of module_generator.get_location_prefix's 0-indexed scheme:
-    0->A .. 25->Z, 26->AA, 27->AB, ...
-
-    Used by INT-H2 to find the next free location-prefix index from existing
-    location IDs. Reads the FULL alpha prefix (1-2 letters), so 'AA01' maps to
-    index 26 (not 0), preventing reuse of already-used two-letter prefixes.
-    """
-    prefix = (prefix or "").upper()
-    if len(prefix) == 1:
-        return ord(prefix[0]) - 65
-    if len(prefix) == 2:
-        return (ord(prefix[0]) - 65 + 1) * 26 + (ord(prefix[1]) - 65)
-    return 26 * 26  # 3+ letters: jump well past the 2-letter range
+def _location_prefix_to_index(prefix: str):
+    """INT-H2: the index of a location ID's FULL alpha prefix ('AA01' -> 26, not 0),
+    from the one encoding (#646); None for a prefix outside the location schema."""
+    return location_prefix_index((prefix or "").upper())
 
 
 def _location_index_to_prefix(index: int) -> str:
-    """Return the deterministic inverse prefix used by module generation."""
-    if not isinstance(index, int) or isinstance(index, bool) or index < 0:
-        raise ValueError("Location prefix index must be a non-negative integer")
-    if index < 26:
-        return chr(65 + index)
-    if index < 702:
-        return chr(65 + (index // 26) - 1) + chr(65 + (index % 26))
-    raise ValueError("The supported location-prefix namespace is exhausted")
+    """The prefix module generation gives this index (#646: the shared encoding)."""
+    return location_prefix(index)
 
 
 class ModuleStitcher:
@@ -4266,8 +4251,9 @@ Create atmospheric travel narration that leads into this adventure."""
         max_prefix_index = -1
         for loc_id in all_existing_loc_ids | new_module_loc_ids:
             m = re.match(r'^([A-Za-z]+)\d', loc_id or '')
-            if m:
-                max_prefix_index = max(max_prefix_index, _location_prefix_to_index(m.group(1)))
+            index = _location_prefix_to_index(m.group(1)) if m else None
+            if index is not None:
+                max_prefix_index = max(max_prefix_index, index)
 
         start_index = max_prefix_index + 1
         
