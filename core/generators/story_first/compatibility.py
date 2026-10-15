@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import re
 import secrets
 from typing import Any, Dict, Iterable, Mapping, Sequence
 
@@ -353,7 +352,7 @@ def validate_reconciled_context(
             raise ValueError("reconciled context NPC appearances drifted")
         canonical = npc.get("name")
         allowed_canonical_names = {
-            re.sub(r"\s*\([^)]*\)\s*", "", source_name).strip()
+            source_name.strip()
             for source_name, source_key in source_to_key.items()
             if source_key == key
         }

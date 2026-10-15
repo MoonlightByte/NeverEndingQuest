@@ -20,7 +20,6 @@ Maintains consistency across all module generation by tracking references and re
 """
 
 import json
-import re
 import os
 import glob
 import copy
@@ -67,36 +66,37 @@ class ModuleContext:
     def add_npc(self, npc_name: str, area_id: str = None, location_id: str = None, 
                 role: str = "", faction: str = "", description: str = ""):
         """
-        Smarter NPC registration that finds or creates a canonical entry.
-        It normalizes names and handles aliases/duplicates.
+        Find or create the context record for one NPC name.
+
+        A record matches only by the whole name compared casefold, and keeps the
+        name as written: "Guard (North Gate)" and "Guard (South Gate)" are two
+        records (keyword program GEN-15). Variant names of one person are merged
+        by T088's roster call (NpcReconciler).
         """
         from updates.update_character_info import normalize_character_name
-        
-        # --- New Smart Matching Logic ---
-        # 1. Get the "base name" by removing parenthetical descriptions (e.g., "Elder Myra")
-        base_name = re.sub(r'\s*\([^)]*\)\s*', '', npc_name).strip()
-        
-        # 2. Search for an existing NPC with the same base name
+
+        name = npc_name.strip()
         canonical_key = None
         for key, data in self.npcs.items():
-            existing_base_name = re.sub(r'\s*\([^)]*\)\s*', '', data['name']).strip()
-            if base_name.lower() == existing_base_name.lower():
+            if name.casefold() == data['name'].strip().casefold():
                 canonical_key = key
                 break
-        
-        # 3. If no match is found, create a NEW canonical entry. Variant names of
-        # one person are merged by T088's roster call (NpcReconciler).
+
         if not canonical_key:
-            canonical_key = normalize_character_name(base_name)  # The key is based on the clean name
+            stem = normalize_character_name(name)
+            canonical_key = stem
+            suffix = 2
+            while canonical_key in self.npcs:
+                canonical_key = f"{stem}_{suffix}"
+                suffix += 1
             self.npcs[canonical_key] = {
-                "name": base_name,  # Store the clean, canonical name
+                "name": name,
                 "role": role,
                 "faction": faction,
                 "description": description,
                 "appears_in": [],
                 "aliases": [npc_name]  # Track the original generated name as an alias
             }
-        # 4. If a match IS found, update the existing entry
         else:
             # Add the new variant as an alias if it's not already there
             if npc_name not in self.npcs[canonical_key].get("aliases", []):
@@ -104,8 +104,6 @@ class ModuleContext:
             # If the new entry has a description and the old one doesn't, add it
             if description and not self.npcs[canonical_key].get("description"):
                 self.npcs[canonical_key]["description"] = description
-        
-        # --- End of New Logic ---
 
         # Track where this NPC appears using the canonical entry
         if area_id and location_id:
