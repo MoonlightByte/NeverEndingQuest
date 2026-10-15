@@ -251,20 +251,12 @@ class LocationGraph:
                     print(f"         Auto-fixing by extracting area name...")
                     
                     # Try to extract a useful name from the dict
-                    # Look for 'name', 'areaName', 'description' fields
+                    # Look for the typed 'name' or 'areaName' fields, then 'areaId'
                     area_name = None
                     if 'name' in connected_location_name:
                         area_name = connected_location_name['name']
                     elif 'areaName' in connected_location_name:
                         area_name = connected_location_name['areaName']
-                    elif 'description' in connected_location_name:
-                        # Extract area name from description if possible
-                        desc = connected_location_name['description']
-                        if 'toward the' in desc:
-                            # e.g., "toward the Goblin Warren Depths"
-                            area_name = desc.split('toward the')[1].split(',')[0].strip()
-                        elif 'to the' in desc:
-                            area_name = desc.split('to the')[1].split(',')[0].strip()
                     
                     # If we found a name, use it; otherwise try to construct from areaId
                     if not area_name and 'areaId' in connected_location_name:

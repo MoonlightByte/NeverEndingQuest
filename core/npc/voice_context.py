@@ -24,10 +24,6 @@ from core.npc.voice_contracts import (
     ThoughtContractError,
     validate_packet,
 )
-from core.npc.voice_selection import (
-    rank_ooc_candidates,
-    resolve_ooc_mention,
-)
 from core.npc.voice_service import NpcVoiceBatch, NpcVoiceService
 
 
@@ -944,7 +940,6 @@ def build_ooc_packet_for_turn(
     roster = party_tracker_data.get("partyNPCs", [])
     if not isinstance(roster, list):
         roster = []
-    _mentioned_npc, ambiguous_mention = resolve_ooc_mention(roster, raw_input)
     store = relationship_store or RelationshipStore()
     selected = None
     selected_sheet = None
@@ -952,7 +947,7 @@ def build_ooc_packet_for_turn(
     candidate_order = (
         [dict(_selected_candidate)]
         if isinstance(_selected_candidate, Mapping)
-        else rank_ooc_candidates(roster, raw_input)
+        else [dict(npc) for npc in roster if isinstance(npc, dict)]
     )
     for candidate in candidate_order:
         name = _string(candidate.get("name"))
@@ -1020,23 +1015,15 @@ def build_ooc_packet_for_turn(
     )
     scene_id = "%s|%s" % (module, location_id)
     stored_working = store.get_working(npc_id, scene_id=scene_id)
-    accepted_summary, accepted_witnessed, accepted_player_text = (
+    # Every companion receives the accepted player/DM pair; its own T105
+    # classification returns a typed affinity event, or null when the beat
+    # does not concern it. Code never picks the companion from the player's
+    # words (#855, D-KW-7).
+    accepted_summary, accepted_witnessed, _ = (
         _accepted_evidence_summary(conversation_prefix, npc_name)
     )
-    _accepted_mention, accepted_mention_ambiguous = resolve_ooc_mention(
-        roster, accepted_player_text
-    )
     beat_evidence = None
-    accepted_matches_selected = (
-        _accepted_mention is None
-        or _string(_accepted_mention.get("name")) == _string(selected.get("name"))
-    )
-    if (
-        accepted_summary
-        and not ambiguous_mention
-        and not accepted_mention_ambiguous
-        and accepted_matches_selected
-    ):
+    if accepted_summary:
         beat_evidence = {
             "actorId": player_id,
             "actor": player_name,
@@ -1143,7 +1130,7 @@ def build_ooc_packets_for_turn(
     relationship_store: Optional[RelationshipStore] = None,
     packet_invalid_handler: Optional[Callable[[str, str], None]] = None,
 ) -> tuple[Dict[str, Any], ...]:
-    """Compose and deterministically rank every eligible OOC packet."""
+    """Compose every eligible OOC packet, in roster order."""
     player_name = _canonical_player_display_name(
         player_name,
         path_manager=path_manager,
@@ -1191,9 +1178,8 @@ def build_ooc_packets_for_turn(
                 "npcId": npc_id,
             }
         )
-    ranked = rank_ooc_candidates(ranked_inputs, raw_input)
     selected_packets = tuple(
-        packets_by_id[candidate["npcId"]] for candidate in ranked
+        packets_by_id[candidate["npcId"]] for candidate in ranked_inputs
     )
     return _enrich_ooc_packets(
         selected_packets,
