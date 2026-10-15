@@ -254,8 +254,15 @@ def find_character_file_fuzzy(character_name):
             if _is_backup_sheet_file(filename):
                 continue
             try:
-                with open(char_file, "r", encoding="utf-8") as f:
-                    sheet = json.load(f)
+                with open(char_file, "rb") as f:
+                    raw = f.read()
+                try:
+                    text = raw.decode("utf-8")
+                except UnicodeDecodeError:
+                    # safe_json_load's retry, without its sanitizing: the
+                    # stored name is compared as written (#938).
+                    text = raw.decode("utf-8", errors="replace")
+                sheet = json.loads(text)
             except Exception as e:
                 warning(f"CHARACTER_LOOKUP: skipped unreadable sheet {char_file} ({type(e).__name__})", category="character_updates")
                 continue
@@ -1941,18 +1948,18 @@ def _update_character_info_unlocked(
             pass
     debug(f"STATE_CHANGE: Updating character info for: {character_name}", category="character_updates")
     
-    # Try fuzzy matching first if the character isn't found
+    # An exact party-name match (#900) when the character's file is not found
     original_name = character_name
     party_tracker_data = safe_json_load("party_tracker.json")
     
     # First try with the original name
     character_path = get_character_path(character_name, character_role)
     if not os.path.exists(character_path):
-        # Try fuzzy matching
-        fuzzy_matched_name = fuzzy_match_character_name(character_name, party_tracker_data)
-        if fuzzy_matched_name and fuzzy_matched_name != character_name:
-            info(f"FUZZY_MATCH: Resolved '{character_name}' to '{fuzzy_matched_name}'", category="character_updates")
-            character_name = fuzzy_matched_name
+        # The party's exact name for it (#900)
+        party_name = fuzzy_match_character_name(character_name, party_tracker_data)
+        if party_name and party_name != character_name:
+            info(f"CHARACTER_LOOKUP: Resolved '{character_name}' to party name '{party_name}'", category="character_updates")
+            character_name = party_name
         else:
             # Still try normalization as a fallback
             normalized_name = normalize_character_name(character_name)
