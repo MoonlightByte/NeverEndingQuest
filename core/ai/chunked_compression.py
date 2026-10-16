@@ -123,7 +123,7 @@ def chunked_compression(conversation_file="modules/conversation_history/conversa
     count, summaries_after_chronicle, last_chronicle_idx = count_summaries_after_last_chronicle(conversation_data)
     
     info("COMPRESSION_STATUS: Current state:", category="compression")
-    debug(f"  AI Chronicles found: {len([m for m in conversation_data if '[AI-Generated Chronicle Summary]' in m.get('content', '')])}", category="compression")
+    debug(f"  AI Chronicles found: {sum(1 for m in conversation_data if hm.is_marker(m, hm.CHRONICLE))}", category="compression")
     debug(f"  Location summaries after last chronicle: {count}", category="compression")
     debug(f"  Compression trigger: {COMPRESSION_TRIGGER} summaries", category="compression")
     debug(f"  Compression size: {CHUNK_SIZE} transitions per chunk", category="compression")
@@ -240,7 +240,7 @@ def chunked_compression(conversation_file="modules/conversation_history/conversa
 - **Compression ratio**: {result['compression_ratio']:.1%}
 
 ## Chronicle Status
-- **Total AI chronicles**: {len([m for m in compressed_conversation if '[AI-Generated Chronicle Summary]' in m.get('content', '')])}
+- **Total AI chronicles**: {sum(1 for m in compressed_conversation if hm.is_marker(m, hm.CHRONICLE))}
 - **Remaining location summaries**: {count - len(summaries_to_compress)}
 
 ## AI-Generated Chronicle
@@ -264,7 +264,7 @@ The compression created a new chronicle chapter covering {CHUNK_SIZE} transition
         info(f"  - {summary_file}", category="compression")
         
         # Show chronicle count
-        chronicles_after = len([m for m in compressed_conversation if '[AI-Generated Chronicle Summary]' in m.get('content', '')])
+        chronicles_after = sum(1 for m in compressed_conversation if hm.is_marker(m, hm.CHRONICLE))
         info(f"CHRONICLE_STATUS: Chronicle chapters: {chronicles_after}", category="compression")
         
         return True
