@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - When a new module's plot title or main objective is written, the game no longer refuses a value just because its whole text is "none", "null" or "n/a" (a plot titled "None" was refused, and after two refusals the plot failed). A reply that is JSON null is still refused and the model is asked again, as for module text fields since GEN-12 (Refs #193).
+- When a new module's location is missing a descriptive field even after the model is asked again for just that field, the field is now left empty instead of holding the sentence "To be detailed by the module doctor." (#855). No module doctor exists; the DM narrates the missing detail in play from the location's name, area and surroundings.
 - Removed `core/generators/story_first/module_doctor.py`, an unused repair stage (#855). Nothing imported it, and its own description said no repair was implemented; module building is unchanged.
 - Documented why converting an old saved game still matches monster group names loosely ("Shadows" matches "Shadow"): the owner kept it as an exception for that one-time conversion (#855). No behavior change.
 - The module toolkit's monster and media asset lists take each monster's whole name from the module's location data (#855). An old-style text entry such as "1 Tainted Naiad (leader)", which the location format no longer allows and no bundled module has, is no longer cut into a name.
