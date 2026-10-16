@@ -555,8 +555,8 @@ def _apply_trusted_spell_durations(batch, spell_references, now_scalar=None):
     """Overlay exact fixed SRD durations onto matching provider effects.
 
     The provider still chooses whether an effect exists and its targets. This
-    only prevents a named, attached SRD spell from silently degrading to the
-    resolver's encounter-only default when the model omits duration fields.
+    only prevents a spell listed in spellActionIndex from silently degrading to
+    the resolver's encounter-only default when the model omits duration fields.
     """
     if (
         not isinstance(batch, dict)
@@ -567,11 +567,13 @@ def _apply_trusted_spell_durations(batch, spell_references, now_scalar=None):
     from core.effects.clock import display_iso_from_scalar, fixed_duration_seconds
     from core.effects.lifecycle import enter_combat_effect
 
-    references = spell_references.get("spellReferences")
-    if not isinstance(references, dict):
+    # Every spell on a window actor's sheet is listed there, so a cast keeps
+    # its fixed SRD duration whether or not the player's words named it.
+    references = spell_references.get("spellActionIndex")
+    if not isinstance(references, list):
         return batch
     trusted = {}
-    for reference in references.values():
+    for reference in references:
         if not isinstance(reference, dict):
             continue
         name = reference.get("name")
@@ -2168,7 +2170,6 @@ def execute_agentic_turn(
 
             spell_references = build_contextual_spell_payload(
                 provider_characters,
-                provider_player_input,
                 actor_names=_pending_actor_names(encounter, pending),
                 encounter_context=(spell_references or {}).get("encounterContext"),
             )

@@ -273,8 +273,6 @@ from utils.enhanced_logger import debug, info, warning, error, game_event, set_s
 # Import combat message compressor for optimizing conversation history
 from core.ai.combat_compressor import CombatUserMessageCompressor
 from core.ai import history_markers as hm
-# Import the SRD context block for a rule named in a player's combat action
-from core.ai.inventory_context_integration import build_srd_context
 
 # Set script name for logging
 set_script_name(__name__)
@@ -4834,34 +4832,9 @@ This is narration only. Do not advance the round or apply any combat action."""
                active_round_scope = open_live_turn_scope()
                owned_round_scope["scope"] = active_round_scope
 
-       # Preserve the actual submission for deterministic rule matching. The
-       # text below may carry the code-authored SRD block, which must never be
-       # treated as a fresh player mention.
+       # The player's submission as typed (D-KW-5: never annotated).
        raw_combat_input_text = user_input_text
        
-       # Add the SRD block for a rule the player names (legacy combat only).
-       # The player's words are never annotated with guessed items (D-KW-5).
-       try:
-           # Load fresh player data for the SRD block
-           player_file = path_manager.get_character_path(normalize_character_name(player_name_display))
-           fresh_player_data = safe_json_load(player_file)
-           
-           # The automatic initiative continuation is a system instruction,
-           # not a player action, so it gets no SRD block.
-           if not automatic_initiative_step and not agentic_mode:
-               srd_context = build_srd_context(
-                   raw_combat_input_text,
-                   fresh_player_data,
-               )
-               if srd_context:
-                   user_input_text = "%s\n\n%s" % (user_input_text, srd_context)
-                   debug(
-                       "COMBAT_LOOP: Added SRD context to player input",
-                       category="combat_events",
-                   )
-       except Exception as e:
-           debug(f"COMBAT_LOOP: Failed to add SRD context: {e}", category="combat_events")
-           # Continue with the player's input as typed
        presentation_history_input = _delivery_history_input(
            presentation_history_input, user_input_text
        )
@@ -5094,7 +5067,6 @@ This is narration only. Do not advance the round or apply any combat action."""
 
                spell_references = build_contextual_spell_payload(
                    context_sheets,
-                   raw_combat_input_text,
                    actor_names=automatic_turn_window,
                    encounter_context="\n".join(
                        str(value)

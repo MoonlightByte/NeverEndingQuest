@@ -14,15 +14,11 @@ import time
 from collections.abc import Mapping
 
 from core.ai import api_client
-from core.ai.combat_capabilities import (
-    build_player_capability_context,
-    match_owned_capabilities,
-)
+from core.ai.combat_capabilities import build_player_capability_context
 from core.ai.srd_reference import (
     SRDContextMatcher,
     SRDReferenceError,
     SRDReferenceIndex,
-    compact_rule_reference,
     load_srd_reference_index,
     normalize_rule_name,
 )
@@ -149,32 +145,19 @@ def select_spell_references(characters, repository):
     return {key: references[key] for key in sorted(references)}
 
 
-def _compact_spell_entry(entry):
-    keys = (
-        "name",
-        "aliases",
-        "level",
-        "school",
-        "casting_time",
-        "range",
-        "duration",
-        "ritual",
-        "concentration",
-        "compactGuidance",
-        "source",
-        "version",
-    )
-    return {key: entry[key] for key in keys if key in entry}
-
-
 def build_contextual_spell_payload(
     characters,
-    player_input,
     actor_names=None,
     encounter_context=None,
     index=None,
 ):
-    """Build complete selected T096 guidance for the current actor window."""
+    """Build the typed T096 spell and capability context for the actor window.
+
+    Nothing here reads the player's words or the scene prose (D-KW-5): every
+    spell on a window actor's sheet travels in spellActionIndex with its
+    guidance and resource keys, and every owned capability in the sheets and
+    capabilityContexts.
+    """
     index = index or load_srd_reference_index()
     matcher = SRDContextMatcher(index=index)
     names = list(actor_names or ())
@@ -185,88 +168,14 @@ def build_contextual_spell_payload(
         for name in names
         if isinstance((characters or {}).get(name), dict)
     ]
-    capability_contexts = {}
-    capability_candidates = {}
-
-    candidates = []
-    for actor_order, (actor_name, sheet) in enumerate(actor_rows):
-        for match in matcher.select(player_input, actor_sheet=sheet):
-            value = dict(match)
-            value["actor"] = actor_name
-            value["actorOrder"] = actor_order
-            candidates.append(value)
-        context = build_player_capability_context(sheet, actor_name=actor_name)
-        matches = match_owned_capabilities(sheet, player_input, actor_name=actor_name)
-        capability_contexts[actor_name] = context
-        capability_candidates[actor_name] = matches
-        # Owned spells already appear in spellActionIndex. A unique fuzzy typo
-        # only promotes that owned spell into the fuller reference budget.
-        for capability in matches:
-            if capability.get("kind") != "spell" or capability.get("matchSource") != "typo":
-                continue
-            reference = index.reference(capability.get("name"))
-            if not reference:
-                continue
-            entry = reference["entry"]
-            candidates.append(
-                {
-                    "key": reference["key"],
-                    "ruleId": reference["id"],
-                    "kind": "spell",
-                    "entry": entry,
-                    "matchedTerm": capability.get("matchedText"),
-                    "matchSource": "typo",
-                    "score": 260,
-                    "span": None,
-                    "actorAvailability": "listed",
-                    "sheetSpellName": capability.get("name"),
-                    "resourceHints": (),
-                    "actor": actor_name,
-                    "actorOrder": actor_order,
-                }
-            )
-    # Static encounter evidence persists across automatic continuations. Only
-    # general-rule matches are taken from it; a spell name in scene prose must
-    # never be misread as the current actor casting that spell.
-    if isinstance(encounter_context, str) and encounter_context.strip():
-        for match in matcher.select(encounter_context):
-            if match["kind"] != "rule":
-                continue
-            value = dict(match)
-            value["actor"] = None
-            value["actorOrder"] = len(actor_rows)
-            value["matchSource"] = "encounter"
-            candidates.append(value)
-    # The first actor is the current actor. If more than one combatant knows an
-    # explicitly named spell, attach availability/resources for the actor whose
-    # turn is actually being resolved rather than whichever name sorts first.
-    candidates.sort(
-        key=lambda item: (item["actorOrder"], -item["score"], item["ruleId"])
-    )
-    selected = []
-    seen_rule_ids = set()
-    for candidate in candidates:
-        if candidate["ruleId"] in seen_rule_ids:
-            continue
-        seen_rule_ids.add(candidate["ruleId"])
-        selected.append(candidate)
-
-    spell_references = {
-        match["key"]: _compact_spell_entry(match["entry"])
-        for match in selected
-        if match["kind"] == "spell"
-    }
-    rule_references = [
-        compact_rule_reference(match, actor=match["actor"]) for match in selected
-    ]
     return {
         "_contextVersion": 1,
-        "spellReferences": spell_references,
-        "ruleReferences": rule_references,
         "encounterContext": encounter_context if isinstance(encounter_context, str) else "",
         "spellActionIndex": matcher.legal_spell_index(actor_rows),
-        "capabilityContexts": capability_contexts,
-        "capabilityCandidates": capability_candidates,
+        "capabilityContexts": {
+            actor_name: build_player_capability_context(sheet, actor_name=actor_name)
+            for actor_name, sheet in actor_rows
+        },
     }
 
 
@@ -305,8 +214,8 @@ You choose actions and structured rulings; code owns initiative, dice consumptio
 arithmetic, state mutation, and recovery.
 
 Treat playerInput as natural narrative intent. Use capabilityContext together
-with the authoritative sheets, spellActionIndex and capabilityCandidates to
-map it to the actor's actual skills, attacks, spells, features and resources.
+with the authoritative sheets and spellActionIndex to map it to the actor's
+actual skills, attacks, spells, features and resources.
 The player need not name mechanics. Do not invent an unavailable capability.
 Words that describe a creature ("the crossbow bandit", "the archer", "the one
 with the axe") name the target, never the player's weapon. When the player
@@ -595,11 +504,6 @@ def request_intent_batch(
         "sheets": {
             name: _relevant_sheet(sheet) for name, sheet in (characters or {}).items()
         },
-        "spellReferences": (
-            contextual_payload.get("spellReferences", {})
-            if contextual_payload
-            else spell_references or {}
-        ),
     }
     # D-242 consumer 1: the one rules string while any party member is down.
     down_rules = down_scene_rules_from_encounter(encounter)
@@ -630,7 +534,6 @@ def request_intent_batch(
         if selected_voice:
             payload["npcVoiceIntents"] = selected_voice
     if contextual_payload:
-        payload["ruleReferences"] = contextual_payload.get("ruleReferences", [])
         payload["spellActionIndex"] = contextual_payload.get("spellActionIndex", [])
         if contextual_payload.get("encounterContext"):
             payload["encounterContext"] = contextual_payload["encounterContext"]
@@ -645,17 +548,9 @@ def request_intent_batch(
             ):
                 player_names.append(creature["name"])
         contexts = contextual_payload.get("capabilityContexts") or {}
-        candidates = contextual_payload.get("capabilityCandidates") or {}
         selected_contexts = [contexts[name] for name in player_names if name in contexts]
-        selected_candidates = [
-            candidate
-            for name in player_names
-            for candidate in (candidates.get(name) or [])
-        ]
         if selected_contexts:
             payload["capabilityContext"] = selected_contexts[0]
-        if selected_candidates:
-            payload["capabilityCandidates"] = selected_candidates
     if correction:
         payload["correction"] = correction
     messages = [
