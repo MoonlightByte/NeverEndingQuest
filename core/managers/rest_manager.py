@@ -119,22 +119,25 @@ def player_hit_dice(party: Dict[str, Any], hit_dice: Any) -> Optional[Tuple[str,
 def ask_hit_die_faces(name: str, die: int, count: int, read: Callable[[str], str]) -> List[Any]:
     """Ask the player for each hit die: the face they rolled, or Enter to let the engine roll it ("engine")."""
     from core.managers.checks_runtime import ROLL_TAG
+    from core.managers.combat_orchestrator import _lets_the_game_roll
 
     answers: List[Any] = []
+    again = ""
     while len(answers) < count:
         which = f" ({len(answers) + 1} of {count})" if count > 1 else ""
         try:
-            text = read(f"{ROLL_TAG} Hit die for {name}{which}: roll 1d{die} and type the result (e.g. {min(4, die)}), "
-                        "or press Enter and the game rolls: ")
+            text = read(f"{again}{ROLL_TAG} Hit die for {name}{which}: roll 1d{die} and type the result (e.g. {min(4, die)}), "
+                        "or type roll and the game rolls: ")
         except EOFError:
             text = ""
         text = (text or "").strip()
-        if not text:
+        again = ""
+        if not text or _lets_the_game_roll(text):
             answers.append("engine")
         elif text.isdigit() and 1 <= int(text) <= die:
             answers.append(int(text))
         else:
-            print(f"Type one whole number between 1 and {die}, or press Enter to let the game roll.")
+            again = f"Type one whole number between 1 and {die}, or type roll and the game rolls. "
     return answers
 
 

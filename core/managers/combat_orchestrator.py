@@ -580,7 +580,7 @@ def _check_answered_roll_faces(encounter_path, encounter, pending, batch, voice_
             message = (
                 "A d%s result must be between 1 and %s. Please roll it again; "
                 "your turn is still waiting." % (sides, sides)
-            )
+            ) + _TYPED_ROLL_SENTENCE
             record_pending_player_request(
                 encounter_path,
                 pending.get("turnId"),
