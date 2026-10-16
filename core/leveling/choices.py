@@ -63,7 +63,7 @@ def _names(rows: Any, key: str = "name") -> List[str]:
 
 
 def _held_feature_names(sheet: Dict[str, Any]) -> set:
-    return {tables._feature_key(f.get("name")) for f in sheet.get("classFeatures") or [] if isinstance(f, dict)}
+    return {tables._feature_key(f) for f in sheet.get("classFeatures") or [] if isinstance(f, dict)}
 
 
 def _held_feats(sheet: Dict[str, Any]) -> List[str]:

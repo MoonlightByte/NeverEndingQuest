@@ -64,6 +64,7 @@ class LevelUpSession:
         self._accepted_history = accepted_history or []
         self._scope = None
         self._sheet: Optional[Dict[str, Any]] = None
+        self._loaded: Optional[Dict[str, Any]] = None  # the sheet as read; the commit expects it on disk
         self._path: Optional[str] = None
         self._settled: Optional[tables.Settled] = None
         self._choices: Dict[str, Any] = {}
@@ -114,6 +115,18 @@ class LevelUpSession:
         self._sheet = safe_read_json(self._path)
         if not self._sheet:
             return self._terminal("not_applied", f"Your level-up has not been applied: no sheet for {self.character_name}.")
+        # The sheet as loaded is what the commit expects on disk. A legacy feature
+        # name the SRD tables miss is named once by T125 (typed srd_name) before
+        # the level is settled; the names ride in this level-up's commit (V4).
+        self._loaded = self._sheet
+        from core.leveling import feature_names
+        named = feature_names.name_features(self._sheet, scope=self._scope,
+                                            live_selected="advisory" if self._scope is not None else None)
+        if named.error:
+            return self._terminal("not_applied", "Your level-up has not been applied: the rules could not read "
+                                  f"{self.character_name}'s older feature names. Nothing changed; ask to level up "
+                                  "again later.")
+        self._sheet = named.sheet
         self.is_player = self._sheet.get("character_type") == "player"
         check = tables.eligibility(self._sheet, self.requested_level)
         if not check.ok:
@@ -415,12 +428,13 @@ class LevelUpSession:
         # that refreshes a pool is the table row in effect at the new level (#704).
         pools = tables.use_pools_at(cls, s.new_level, abilities)
         existing = {f.get("name"): f for f in sheet.get("classFeatures") or [] if isinstance(f, dict)}
-        # A pool's feature may carry a suffix on the sheet ("Channel Divinity (2/rest)"):
-        # match on the name before any parenthesis, case-insensitively.
+        # A stored feature is matched by its SRD identity: the typed srd_name T125
+        # gave a decorated legacy name ("Channel Divinity (2/rest)"), else its
+        # whole name (keyword validation V4).
         def stored_name(name):
-            key = str(name).split("(")[0].strip().lower()
-            for stored in existing:
-                if str(stored).split("(")[0].strip().lower() == key:
+            key = tables._feature_key(name)
+            for stored, feature in existing.items():
+                if tables._feature_key(feature) == key:
                     return stored
             return None
         feature_updates: List[Dict[str, Any]] = []
@@ -514,7 +528,7 @@ class LevelUpSession:
                 return self._interview("Your sheet is busy; say 'retry' in a moment.")
             from updates.update_character_info import create_character_backup
             create_character_backup(self._path)
-            commit_character_sheet(self._path, after, commit_guard=self.commit_guard, expected_before=sheet)
+            commit_character_sheet(self._path, after, commit_guard=self.commit_guard, expected_before=self._loaded if self._loaded is not None else sheet)
             self._committed = True
         info(f"LEVEL-UP: {self.character_name} -> level {s.new_level} ({how}); engine ops {growth.operations}",
              category="level_up")

@@ -50,8 +50,66 @@ def subclasses() -> Dict[str, Any]:
     return _SUBCLASSES
 
 
-def _feature_key(name: Any) -> str:
-    return str(name).split("(")[0].strip().lower()
+_VARIANTS: Optional[Dict[str, str]] = None
+
+
+def _table_variants() -> Dict[str, str]:
+    """{casefolded class table row: its use pool's feature}, from the typed
+    ``table_names`` of data/srd/progression.json: the table prints "Action
+    Surge (one use)" for the Action Surge pool. Whole values; nothing is cut."""
+    global _VARIANTS
+    if _VARIANTS is None:
+        _VARIANTS = {str(row).strip().casefold(): pool["feature"]
+                     for entry in tables()["classes"].values() for pool in entry.get("use_pools") or []
+                     for row in pool.get("table_names") or []}
+    return _VARIANTS
+
+
+def _feature_key(feature: Any) -> str:
+    """A feature's identity as the SRD tables match it, trimmed and casefolded.
+
+    A classFeatures entry answers with its typed ``srd_name`` when T125 has
+    named its SRD feature (a decorated legacy name such as "Channel Divinity
+    (2/rest)"), else with its whole name; a string is its own whole value. A
+    class table row listed in a pool's ``table_names`` is that pool's feature.
+    No name is cut (keyword validation V4)."""
+    if isinstance(feature, dict):
+        typed = feature.get("srd_name")
+        feature = typed if isinstance(typed, str) and typed.strip() else feature.get("name")
+    key = str(feature if feature is not None else "").strip().casefold()
+    pool = _table_variants().get(key)
+    return pool.strip().casefold() if pool else key
+
+
+def srd_feature_names(cls: str) -> List[str]:
+    """Every SRD feature name a sheet of this class can carry: the class
+    table's features at every level, its subclasses' features and its use
+    pools. The closed list T125 names a legacy feature from."""
+    names: List[str] = []
+    entry = tables()["classes"].get(cls) or {}
+    for level_names in (entry.get("features_by_level") or {}).values():
+        names.extend(level_names)
+    for subclass in ((subclasses().get("classes") or {}).get(cls) or {}).get("subclasses") or []:
+        for level_names in (subclass.get("features_by_level") or {}).values():
+            names.extend(level_names)
+    names.extend(pool["feature"] for pool in entry.get("use_pools") or [] if pool.get("feature"))
+    seen = set()
+    return [n for n in names if isinstance(n, str) and not (n in seen or seen.add(n))]
+
+
+def unnamed_features(sheet: Dict[str, Any]) -> List[int]:
+    """Indexes of the classFeatures entries whose SRD identity is unsettled:
+    no ``srd_name`` key yet and a whole name that is not an SRD feature of the
+    sheet's class. Empty for a sheet without an SRD class."""
+    cls = class_key(sheet)
+    if cls is None:
+        return []
+    known = {_feature_key(name) for name in srd_feature_names(cls)}
+    return [
+        index for index, feature in enumerate(sheet.get("classFeatures") or [])
+        if isinstance(feature, dict) and "srd_name" not in feature
+        and isinstance(feature.get("name"), str) and _feature_key(feature["name"]) not in known
+    ]
 
 
 def subclass_options(cls: str) -> List[str]:
@@ -75,7 +133,7 @@ def infer_subclass(sheet: Dict[str, Any], cls: str) -> Optional[str]:
     for feature in sheet.get("classFeatures") or []:
         if not isinstance(feature, dict):
             continue
-        for row in keyed.get(_feature_key(feature.get("name")), []):
+        for row in keyed.get(_feature_key(feature), []):
             if row.get("class") == cls:
                 votes[row["subclass"]] = votes.get(row["subclass"], 0) + 1
     if not votes:
@@ -270,16 +328,16 @@ def use_pools_at(cls: str, level: int, abilities: Optional[Dict[str, Any]] = Non
     return out
 
 
-def pool_key(name: Any) -> str:
-    """A feature name as pools match it: the part before any parenthesis,
-    casefolded ("Action Surge (one use)" and "Channel Divinity (2/rest)" name
-    the Action Surge and Channel Divinity pools)."""
-    return str(name).split("(")[0].strip().casefold()
+def pool_key(feature: Any) -> str:
+    """A feature as pools match it: its SRD identity (``_feature_key``). A
+    decorated legacy name ("Channel Divinity (2/rest)") reaches its pool
+    through the typed ``srd_name`` T125 gave it, never by cutting the name."""
+    return _feature_key(feature)
 
 
 def pool_feature(features: Any, name: str) -> Optional[Dict[str, Any]]:
     """The classFeatures entry that owns pool ``name``, or None."""
-    return next((f for f in features or [] if isinstance(f, dict) and pool_key(f.get("name", "")) == pool_key(name)),
+    return next((f for f in features or [] if isinstance(f, dict) and pool_key(f) == pool_key(name)),
                 None)
 
 

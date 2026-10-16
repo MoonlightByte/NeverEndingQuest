@@ -1017,6 +1017,17 @@ class AICharacterValidator:
 
         return self.validate_and_correct_character_with_result(character_data).data
     
+    def _name_legacy_features(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
+        """T125 once for legacy classFeatures names a table lookup misses; journaled.
+        A failed naming leaves the sheet unchanged and is asked again next time."""
+        from core.leveling import feature_names
+
+        named = feature_names.name_features(
+            character_data, scope=self.provider_scope, status=self.provider_status,
+            live_selected='advisory' if self.provider_scope is not None else None)
+        self.corrections_made.extend(named.notes)
+        return named.sheet
+
     def _raise_pools_to_tables(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
         """Raise use pool and spell slot maxima below the SRD class table (#704); journaled."""
         from core.leveling import tables
@@ -1185,6 +1196,10 @@ class AICharacterValidator:
         # Use pools and spell slots below the class table for the hero's level
         # are raised (never lowered, current untouched) before the projection,
         # so genesis declares them at their table maximum (#704).
+        # A legacy feature name the SRD tables miss ("Channel Divinity (2/rest)")
+        # is named once by T125 as a typed srd_name, so the pools below and
+        # level-up find it without cutting the name (keyword validation V4).
+        corrected_data = self._name_legacy_features(corrected_data)
         corrected_data = self._raise_pools_to_tables(corrected_data)
 
         if needs['ac']:
