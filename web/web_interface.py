@@ -2591,7 +2591,6 @@ def get_module_monsters_api(module_name):
         from utils.module_path_manager import ModulePathManager
         from utils.file_operations import safe_read_json
         import os
-        import re
 
         path_manager = ModulePathManager(module_name)
         monster_ids = set()
@@ -2615,14 +2614,8 @@ def get_module_monsters_api(module_name):
                                         # "Bandit Captain Gorvek" -> "bandit_captain_gorvek"
                                         monster_id = monster['name'].lower().replace(' ', '_')
                                         monster_ids.add(monster_id)
-                                    elif isinstance(monster, str):
-                                        # Handle string format like "1 Tainted Naiad"
-                                        # Extract just the monster name
-                                        match = re.search(r'\d*\s*(.+?)(?:\s*\(|$)', monster)
-                                        if match:
-                                            monster_name = match.group(1).strip()
-                                            monster_id = monster_name.lower().replace(' ', '_')
-                                            monster_ids.add(monster_id)
+                                    # Location monsters are objects with a whole name (the location
+                                    # schemas); a name is never cut out of a string (#855).
         
         # Also scan the monsters folder for this module
         monsters_dir = os.path.join('modules', module_name, 'monsters')
@@ -2654,7 +2647,6 @@ def get_module_unified_assets(module_name):
         from utils.file_operations import safe_read_json
         from utils.bestiary_updater import BestiaryUpdater
         import os
-        import re
         
         info(f"TOOLKIT: Scanning unified assets for module {module_name}")
         
@@ -2688,13 +2680,8 @@ def get_module_unified_assets(module_name):
                                         monster_id = monster['name'].lower().replace(' ', '_')
                                         if monster_id not in monsters:
                                             monsters[monster_id] = {'name': monster['name'], 'type': 'monster'}
-                                    elif isinstance(monster, str):
-                                        match = re.search(r'\d*\s*(.+?)(?:\s*\(|$)', monster)
-                                        if match:
-                                            monster_name = match.group(1).strip()
-                                            monster_id = monster_name.lower().replace(' ', '_')
-                                            if monster_id not in monsters:
-                                                monsters[monster_id] = {'name': monster_name, 'type': 'monster'}
+                                    # Location monsters are objects with a whole name (the location
+                                    # schemas); a name is never cut out of a string (#855).
         
         # Check for descriptions and media status
         def check_asset_status(asset_id, asset_type, asset_name):
