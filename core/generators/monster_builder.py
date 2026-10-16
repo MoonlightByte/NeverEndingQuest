@@ -63,6 +63,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from core.ai import api_client
 from jsonschema import validate, ValidationError
+from core.combat.attacks import is_executable_attack, is_multiattack_marker
 import config
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -177,7 +178,7 @@ ACTIONS AND SPECIAL ABILITIES - write each entry the way the SRD stat block stat
 - kind "trait": a passive feature with no roll (Web Sense, Spider Climb, Pack Tactics, Keen Smell): attackBonus 0, damageDice "0d0", damageBonus 0, damageType "none", and the rule text in "description". Traits go in specialAbilities; attack and save abilities that the creature uses on its turn go in actions.
 - "recharge": {min, max} on an action that recharges on a d6 (Recharge 5-6 is {"min": 5, "max": 6}); omit it otherwise.
 - "description": the SRD sentence for every entry (range, area, escape DC, what happens). Never put rule text in damageType; never leave a saving throw described only in prose.
-- Multiattack: a single entry named "Multiattack" with attackBonus 0, damageDice "0d0", damageBonus 0, damageType "none" and the description stating the attacks it makes; the component attacks are their own entries.
+- Multiattack: a single entry named "Multiattack" with attackBonus 0, damageDice "0d0", damageBonus 0, damageType "none" and the description stating the attacks it makes; the component attacks are their own entries. Also write the top-level "multiattackSequence": the swings one Attack action makes, in order, one {"name", "count"} per component attack, each name exactly one of this monster's own attack entries (for example [{"name": "Claw", "count": 2}, {"name": "Bite", "count": 1}]). Combat plays exactly this list; it never reads the description. Omit multiattackSequence when the monster has no Multiattack.
 
 `skills` and `senses` are objects mapping a skill or sense name to its number; write {} when the creature has none. `savingThrows`, `damageVulnerabilities`, `damageResistances`, `damageImmunities` and `conditionImmunities` are arrays of strings.
 
@@ -273,6 +274,7 @@ Schema: {json.dumps(schema)}"""
                 last_parsed_data = monster_data
                 validate(instance=monster_data, schema=schema)
                 require_stated_abilities(monster_data)
+                require_typed_multiattack(monster_data)
                 return monster_data
             except json.JSONDecodeError as e:
                 last_json_err = e
@@ -347,6 +349,41 @@ def require_stated_abilities(monster_data):
                     "%s entry %r carries a save object but kind %r (a save on a hit belongs in rider)"
                     % (family, entry.get("name"), kind)
                 )
+
+
+def require_typed_multiattack(monster_data):
+    """MA-2: a Multiattack carries its typed swings.
+
+    Combat plays exactly the swings in ``multiattackSequence``
+    (core/combat/attacks.py); the Multiattack entry's description is for the
+    DM and is never parsed. A Multiattack entry without a sequence, or a
+    sequence item that names no executable attack of this block, is a
+    ValidationError so the retry loop asks the model again. Names resolve as
+    combat resolves them (attacks._find: stripped, casefolded). The item
+    shape and counts are the schema's (mon_schema multiattackSequence).
+    """
+    entries = monster_data.get("actions")
+    entries = [e for e in entries if isinstance(e, dict)] if isinstance(entries, list) else []
+    sequence = monster_data.get("multiattackSequence")
+    if sequence is None:
+        if any(is_multiattack_marker(entry) for entry in entries):
+            raise ValidationError(
+                "the Multiattack entry needs a top-level multiattackSequence: "
+                "one {name, count} per component attack, naming this monster's "
+                "own attack entries",
+                path=["multiattackSequence"],
+            )
+        return
+    attacks = [str(e.get("name") or "").strip() for e in entries if is_executable_attack(e)]
+    known = {name.casefold() for name in attacks}
+    for index, item in enumerate(sequence if isinstance(sequence, list) else []):
+        name = item.get("name") if isinstance(item, dict) else None
+        if str(name or "").strip().casefold() not in known:
+            raise ValidationError(
+                "multiattackSequence item %d names %r, which is not one of this "
+                "monster's attack entries %s" % (index, name, attacks),
+                path=["multiattackSequence", index, "name"],
+            )
 
 
 # mon_schema types these as objects (a skill or sense name -> its number).
