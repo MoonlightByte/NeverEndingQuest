@@ -4330,7 +4330,11 @@ def resolution_from_event(encounter, characters, event):
     resolution = Resolution(event=deepcopy(event), charDeltas={}, creatureDeltas={},
                             effectOps=[deepcopy(op) for op in event.get("effects", []) or []],
                             violations=[])
-    for record in (event.get("outcome") or {}).get("targets", []) or []:
+    bonus = event.get("bonusAction") if isinstance(event.get("bonusAction"), dict) else {}
+    # R2: the bonus action's targets first; the Action's own records (taken
+    # after it) replace them for the same combatant.
+    bonus_records = list((bonus.get("outcome") or {}).get("targets") or [])
+    for index, record in enumerate(bonus_records + list((event.get("outcome") or {}).get("targets", []) or [])):
         combatant_id = record.get("combatantId")
         resolution["creatureDeltas"][combatant_id] = {
             "currentHitPoints": int(record["hpAfter"]),
@@ -4339,7 +4343,7 @@ def resolution_from_event(encounter, characters, event):
         creature = combatant_by_id(encounter, combatant_id)
         if (creature is not None and creature.get("type") in ("player", "npc")
                 and creature.get("name") in (characters or {})):
-            if (event.get("outcome") or {}).get("kind") in ("flee", "yield"):
+            if index >= len(bonus_records) and (event.get("outcome") or {}).get("kind") in ("flee", "yield"):
                 # Same as the live path (#466): no sheet delta for leaving.
                 continue
             delta = {"hitPoints": int(record["hpAfter"])}
@@ -4629,7 +4633,10 @@ def apply_resolution(encounter, characters, resolution):
                 and isinstance(rows[index], dict) and rows[index].get("item_name") == draw.get("item_name")):
             rows[index]["equipped"] = draw.get("equippedAfter") is True
 
-    for resource in event.get("resources", []) or []:
+    bonus = event.get("bonusAction") if isinstance(event.get("bonusAction"), dict) else {}
+    for resource in list(bonus.get("resources") or []) + list(event.get("resources", []) or []):
+        # R2: the bonus action's spends come first (its absolute 'after' values
+        # are already on the sheet when the live path applied it).
         sheet = new_characters.get(resource.get("owner"))
         if not isinstance(sheet, dict):
             continue

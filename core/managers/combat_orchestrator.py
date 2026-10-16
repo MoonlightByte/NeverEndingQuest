@@ -21,6 +21,7 @@ from core.combat import (
     resolve_effect_clock_window,
     resolve_claimed_window,
 )
+from core.combat.bonus_actions import bonus_action_names, bonus_action_problem, bonus_name_refused
 from core.combat.pipeline import _intent_for_actor, _ordered_intents
 from core.combat.resolver import (
     _action_entries,
@@ -349,6 +350,22 @@ def _intent_correction(exc, batch=None):
             " Keep the rejected actor's targets and hpDelta exactly as given (%s); correct only "
             "playerRoll." % json.dumps(keep_targets, sort_keys=True)
         )
+    bonus_names = feedback.get("bonusActionNames")
+    bonus_problem = feedback.get("bonusActionProblem")
+    if isinstance(bonus_names, list) and isinstance(bonus_problem, str):
+        # R2: the rejected actor's typed Bonus Actions (bonusActionNames) and
+        # what was wrong with the one given.
+        if feedback.get("bonusActionNameRefused") is True:
+            instruction += (
+                " For the rejected actor, bonusAction.featureName must be exactly one of %s; otherwise "
+                "leave bonusAction out and keep the Action as given."
+                % (", ".join(repr(str(name)) for name in bonus_names) or "none (it has no Bonus Action)")
+            )
+        else:
+            instruction += (
+                " For the rejected actor, correct only its bonusAction (%s) and keep the Action as given."
+                % bonus_problem
+            )
     if feedback.get("multiRollRequest"):
         instruction += (
             " requiresPlayerInput must ask for exactly one next roll or "
@@ -1123,6 +1140,31 @@ def _validate_feature_names(batch, encounter, characters):
             intent.get("actorId"),
             {"retryable": True, "featureNames": options},
         )
+
+
+def _validate_bonus_actions(batch, encounter, characters):
+    """R2: an intent's typed bonusAction names one of the actor's
+    bonusActionNames (its sheet's class features whose SRD activation is a
+    Bonus Action), checked before any roll is asked. While the intent still
+    asks the player for a roll, only the name is checked."""
+    for intent in (batch or {}).get("intents", []) or []:
+        if not isinstance(intent, dict) or intent.get("bonusAction") is None:
+            continue
+        actor = combatant_by_id(encounter, intent.get("actorId"))
+        sheet = (characters or {}).get((actor or {}).get("name"))
+        bonus = intent["bonusAction"]
+        names = bonus_action_names(sheet)
+        if isinstance(intent.get("requiresPlayerInput"), dict) and isinstance(bonus, dict) \
+                and bonus.get("featureName") in names:
+            continue
+        problem = bonus_action_problem(sheet, bonus)
+        if problem:
+            raise CombatIntentError(
+                problem,
+                intent.get("actorId"),
+                {"violations": [problem], "bonusActionNames": names, "bonusActionProblem": problem,
+                 "bonusActionNameRefused": bonus_name_refused(sheet, bonus), "retryable": True},
+            )
 
 
 def _validate_player_input_request_ownership(batch, encounter):
@@ -2448,6 +2490,9 @@ def execute_agentic_turn(
             _check_answered_roll_faces(encounter_path, encounter, pending, batch, immutable_voice_intents)
             # Item 10 (r2): the answered save keeps the DC it was asked at.
             _check_asked_save_dc(batch, asked_dc_corrected)
+            # R2: a bonusAction outside the actor's bonusActionNames is
+            # corrected before any roll is asked.
+            _validate_bonus_actions(batch, encounter, characters)
             takeover = _player_weapon_takeover(encounter, characters, pending, batch)
             if takeover is not None:
                 # Item 3: the player's plain melee swing. Code asks for the

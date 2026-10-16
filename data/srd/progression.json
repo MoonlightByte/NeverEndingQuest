@@ -153,7 +153,8 @@
   "No SRD 5.2.1 class is a third caster; caster_kind third is unused.",
   "Subclass features appear as the SRD's 'Subclass feature' entry; subclass tables are not included.",
   "table_columns holds the class table's other columns (for example Rages or Sneak Attack) exactly as printed.",
-  "srd-progression/2 (NUM): classes.<class>.use_pools lists every class feature (not subclass) whose uses are counted and restored by a rest: maximum is {column} (the class table), {fixed}, {by_level}, {ability_modifier, minimum} or {class_level_times}; refresh is a list of steps from a class level, short_rest and long_rest each one, all or null. use_pools_not_modeled names the three whose limits are not a count. ac_formulas: unarmored base Armor Class features. hp_bonuses: typed Hit Point maximum increases (SRD 5.2.1 has no Tough feat). table_names (keyword validation V4): the class table rows printed for a pool's feature (\"Action Surge (one use)\"), each matched as a whole name."
+  "srd-progression/2 (NUM): classes.<class>.use_pools lists every class feature (not subclass) whose uses are counted and restored by a rest: maximum is {column} (the class table), {fixed}, {by_level}, {ability_modifier, minimum} or {class_level_times}; refresh is a list of steps from a class level, short_rest and long_rest each one, all or null. use_pools_not_modeled names the three whose limits are not a count. ac_formulas: unarmored base Armor Class features. hp_bonuses: typed Hit Point maximum increases (SRD 5.2.1 has no Tough feat). table_names (keyword validation V4): the class table rows printed for a pool's feature (\"Action Surge (one use)\"), each matched as a whole name.",
+  "srd-progression/2 (R2): classes.<class>.feature_activation, for fighter and rogue (every class feature except Ability Score Improvement, Epic Boon and the subclass entries), records how the SRD says the feature is used: activation is bonusAction, action, magicAction, reaction, noAction (used or triggered without taking an action) or passive, with the SRD sentence that says so (evidence) and its source section and page. Other classes have no feature_activation yet. table_names as in use_pools."
  ],
  "xp_thresholds": {
   "1": 0,
@@ -1860,6 +1861,137 @@
      }
     }
    ],
+   "feature_activation": {
+    "Action Surge": {
+     "activation": "noAction",
+     "evidence": [
+      "On your turn, you can take one additional action, except the Magic action."
+     ],
+     "source": {
+      "page": 48,
+      "section": "Classes > Fighter > Fighter Class Features > Level 2: Action Surge"
+     },
+     "table_names": [
+      "Action Surge (one use)",
+      "Action Surge (two uses)"
+     ]
+    },
+    "Extra Attack": {
+     "activation": "passive",
+     "evidence": [
+      "You can attack twice instead of once whenever you take the Attack action on your turn."
+     ],
+     "source": {
+      "page": 48,
+      "section": "Classes > Fighter > Fighter Class Features > Level 5: Extra Attack"
+     }
+    },
+    "Fighting Style": {
+     "activation": "passive",
+     "evidence": [
+      "You have honed your martial prowess and gain a Fighting Style feat of your choice (see \"Feats\")."
+     ],
+     "source": {
+      "page": 47,
+      "section": "Classes > Fighter > Fighter Class Features > Level 1: Fighting Style"
+     }
+    },
+    "Indomitable": {
+     "activation": "noAction",
+     "evidence": [
+      "If you fail a saving throw, you can reroll it with a bonus equal to your Fighter level."
+     ],
+     "source": {
+      "page": 48,
+      "section": "Classes > Fighter > Fighter Class Features > Level 9: Indomitable"
+     },
+     "table_names": [
+      "Indomitable (one use)",
+      "Indomitable (two uses)",
+      "Indomitable (three uses)"
+     ]
+    },
+    "Second Wind": {
+     "activation": "bonusAction",
+     "evidence": [
+      "As a Bonus Action, you can use it to regain Hit Points equal to 1d10 plus your Fighter level."
+     ],
+     "source": {
+      "page": 48,
+      "section": "Classes > Fighter > Fighter Class Features > Level 1: Second Wind"
+     }
+    },
+    "Studied Attacks": {
+     "activation": "passive",
+     "evidence": [
+      "If you make an attack roll against a creature and miss, you have Advantage on your next attack roll against that creature before the end of your next turn."
+     ],
+     "source": {
+      "page": 48,
+      "section": "Classes > Fighter > Fighter Class Features > Level 13: Studied Attacks"
+     }
+    },
+    "Tactical Master": {
+     "activation": "passive",
+     "evidence": [
+      "When you attack with a weapon whose mastery property you can use, you can replace that property with the Push, Sap, or Slow property for that attack."
+     ],
+     "source": {
+      "page": 48,
+      "section": "Classes > Fighter > Fighter Class Features > Level 9: Tactical Master"
+     }
+    },
+    "Tactical Mind": {
+     "activation": "noAction",
+     "evidence": [
+      "When you fail an ability check, you can expend a use of your Second Wind to push yourself toward success."
+     ],
+     "source": {
+      "page": 48,
+      "section": "Classes > Fighter > Fighter Class Features > Level 2: Tactical Mind"
+     }
+    },
+    "Tactical Shift": {
+     "activation": "passive",
+     "evidence": [
+      "Whenever you activate your Second Wind with a Bonus Action, you can move up to half your Speed without provoking Opportunity Attacks."
+     ],
+     "source": {
+      "page": 48,
+      "section": "Classes > Fighter > Fighter Class Features > Level 5: Tactical Shift"
+     }
+    },
+    "Three Extra Attacks": {
+     "activation": "passive",
+     "evidence": [
+      "You can attack four times instead of once whenever you take the Attack action on your turn."
+     ],
+     "source": {
+      "page": 48,
+      "section": "Classes > Fighter > Fighter Class Features > Level 20: Three Extra Attacks"
+     }
+    },
+    "Two Extra Attacks": {
+     "activation": "passive",
+     "evidence": [
+      "You can attack three times instead of once whenever you take the Attack action on your turn."
+     ],
+     "source": {
+      "page": 48,
+      "section": "Classes > Fighter > Fighter Class Features > Level 11: Two Extra Attacks"
+     }
+    },
+    "Weapon Mastery": {
+     "activation": "passive",
+     "evidence": [
+      "Your training with weapons allows you to use the mastery properties of three kinds of Simple or Martial weapons of your choice."
+     ],
+     "source": {
+      "page": 48,
+      "section": "Classes > Fighter > Fighter Class Features > Level 1: Weapon Mastery"
+     }
+    }
+   },
    "ac_formulas": []
   },
   "monk": {
@@ -3086,6 +3218,158 @@
      }
     }
    ],
+   "feature_activation": {
+    "Cunning Action": {
+     "activation": "bonusAction",
+     "evidence": [
+      "On your turn, you can take one of the following actions as a Bonus Action: Dash, Disengage, or Hide."
+     ],
+     "source": {
+      "page": 62,
+      "section": "Classes > Rogue > Rogue Class Features > Level 2: Cunning Action"
+     }
+    },
+    "Cunning Strike": {
+     "activation": "passive",
+     "evidence": [
+      "When you deal Sneak Attack damage, you can add one of the following Cunning Strike effects."
+     ],
+     "source": {
+      "page": 63,
+      "section": "Classes > Rogue > Rogue Class Features > Level 5: Cunning Strike"
+     }
+    },
+    "Devious Strikes": {
+     "activation": "passive",
+     "evidence": [
+      "The following effects are now among your Cunning Strike options."
+     ],
+     "source": {
+      "page": 63,
+      "section": "Classes > Rogue > Rogue Class Features > Level 14: Devious Strikes"
+     }
+    },
+    "Elusive": {
+     "activation": "passive",
+     "evidence": [
+      "No attack roll can have Advantage against you unless you have the Incapacitated condition."
+     ],
+     "source": {
+      "page": 63,
+      "section": "Classes > Rogue > Rogue Class Features > Level 18: Elusive"
+     }
+    },
+    "Evasion": {
+     "activation": "passive",
+     "evidence": [
+      "When you're subjected to an effect that allows you to make a Dexterity saving throw to take only half damage, you instead take no damage if you succeed on the saving throw and only half damage if you fail."
+     ],
+     "source": {
+      "page": 63,
+      "section": "Classes > Rogue > Rogue Class Features > Level 7: Evasion"
+     }
+    },
+    "Expertise": {
+     "activation": "passive",
+     "evidence": [
+      "You gain Expertise in two of your skill proficiencies of your choice."
+     ],
+     "source": {
+      "page": 61,
+      "section": "Classes > Rogue > Rogue Class Features > Level 1: Expertise"
+     }
+    },
+    "Improved Cunning Strike": {
+     "activation": "passive",
+     "evidence": [
+      "You can use up to two Cunning Strike effects when you deal Sneak Attack damage, paying the die cost for each effect."
+     ],
+     "source": {
+      "page": 63,
+      "section": "Classes > Rogue > Rogue Class Features > Level 11: Improved Cunning Strike"
+     }
+    },
+    "Reliable Talent": {
+     "activation": "passive",
+     "evidence": [
+      "Whenever you make an ability check that uses one of your skill or tool proficiencies, you can treat a d20 roll of 9 or lower as a 10."
+     ],
+     "source": {
+      "page": 63,
+      "section": "Classes > Rogue > Rogue Class Features > Level 7: Reliable Talent"
+     }
+    },
+    "Slippery Mind": {
+     "activation": "passive",
+     "evidence": [
+      "You gain proficiency in Wisdom and Charisma saving throws."
+     ],
+     "source": {
+      "page": 63,
+      "section": "Classes > Rogue > Rogue Class Features > Level 15: Slippery Mind"
+     }
+    },
+    "Sneak Attack": {
+     "activation": "passive",
+     "evidence": [
+      "Once per turn, you can deal an extra 1d6 damage to one creature you hit with an attack roll if you have Advantage on the roll and the attack uses a Finesse or a Ranged weapon."
+     ],
+     "source": {
+      "page": 61,
+      "section": "Classes > Rogue > Rogue Class Features > Level 1: Sneak Attack"
+     }
+    },
+    "Steady Aim": {
+     "activation": "bonusAction",
+     "evidence": [
+      "As a Bonus Action, you give yourself Advantage on your next attack roll on the current turn."
+     ],
+     "source": {
+      "page": 62,
+      "section": "Classes > Rogue > Rogue Class Features > Level 3: Steady Aim"
+     }
+    },
+    "Stroke of Luck": {
+     "activation": "noAction",
+     "evidence": [
+      "If you fail a D20 Test, you can turn the roll into a 20."
+     ],
+     "source": {
+      "page": 63,
+      "section": "Classes > Rogue > Rogue Class Features > Level 20: Stroke of Luck"
+     }
+    },
+    "Thieves' Cant": {
+     "activation": "passive",
+     "evidence": [
+      "You know Thieves' Cant and one other language of your choice, which you choose from the language tables in \"Character Creation.\""
+     ],
+     "source": {
+      "page": 62,
+      "section": "Classes > Rogue > Rogue Class Features > Level 1: Thieves' Cant"
+     }
+    },
+    "Uncanny Dodge": {
+     "activation": "reaction",
+     "evidence": [
+      "When an attacker that you can see hits you with an attack roll, you can take a Reaction to halve the attack's damage against you (round down)."
+     ],
+     "source": {
+      "page": 63,
+      "section": "Classes > Rogue > Rogue Class Features > Level 5: Uncanny Dodge"
+     }
+    },
+    "Weapon Mastery": {
+     "activation": "passive",
+     "evidence": [
+      "Your training with weapons allows you to use the mastery properties of two kinds of weapons of your choice with which you have proficiency, such as Daggers and Shortbows."
+     ],
+     "source": {
+      "page": 62,
+      "section": "Classes > Rogue > Rogue Class Features > Level 1: Weapon Mastery"
+     }
+    }
+   },
    "ac_formulas": []
   },
   "sorcerer": {
