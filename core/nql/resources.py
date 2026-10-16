@@ -479,7 +479,7 @@ def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", re
             if sheet is not None:
                 left = {r: (c, m) for r, c, m in genesis.pool_resources(sheet, [])}.get(fault["field"], (0, 0))
                 return RestOutcome(False, reason=(
-                    f"{sheet.get('name')} has {left[0]} of {left[1]} {fault['field'][9:]} hit dice left and cannot "
+                    f"{sheet.get('name')} has {left[0]} of {left[1]} {fault['field'].split(':', 1)[1]} hit dice left and cannot "
                     f"spend {hit_dice.get(str(sheet.get('name')))}; spent hit dice return on a long rest"), gaps=gaps)
         return RestOutcome(False, reason=f"engine refused at {response.get('phase')}: "
                                          f"{response.get('diagnostics') or fault or response.get('error')}", gaps=gaps)
