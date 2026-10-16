@@ -839,8 +839,8 @@ def _review_startup_response(conversation, proposal, committed_facts, *,
 
 
 def _origin_key(name):
-    """Typed name key: the part before " (", casefolded ("Magic Initiate (Cleric)" -> "magic initiate")."""
-    return str(name or "").split(" (")[0].strip().casefold()
+    """Typed name key: the whole name, trimmed and casefolded; no part is cut off (#855)."""
+    return str(name or "").strip().casefold()
 
 
 def _check_background_origin_feat(character):
