@@ -2711,52 +2711,9 @@ def _resume_v2_location_transition(operation_id, *, publish=True, publication=No
     checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
     memory = checkpoint["legacy_memory"]
     if memory.get("status") == "pending":
-        # [travel-clean #209] Legacy companion-memory reconciliation is deferred until the
-        # voice/episodic line lands on main; CompanionMemoryManager.process_journal_operation
-        # is absent here. Mark the phase resolved so recovery converges, then skip the block.
+        # [travel-clean #209] The legacy companion-memory system (core/memories) was
+        # removed (keyword final scan O-1). Mark the phase resolved so recovery converges.
         memory["status"] = "not_applicable"
-        action_handler._write_location_transition_checkpoint(checkpoint)
-    if memory.get("status") == "__deferred_209__":
-        from core.memories.companion_memory import CompanionMemoryManager
-        from utils.npc_name_canonicalizer import get_canonical_name
-
-        canonical_npcs = []
-        for npc in party.get("partyNPCs", []):
-            npc_name = npc.get("name", "") if isinstance(npc, dict) else str(npc)
-            if npc_name:
-                canonical = get_canonical_name(npc_name)
-                if canonical:
-                    canonical_npcs.append(canonical)
-        memory["roster_before"] = canonical_npcs
-        action_handler._write_location_transition_checkpoint(checkpoint)
-        if canonical_npcs:
-            manager = CompanionMemoryManager()
-            manager.process_journal_operation(
-                checkpoint["departure_commit"]["journal_entry_after"],
-                canonical_npcs,
-                checkpoint["operation_id"],
-            )
-            try:
-                subprocess.run(
-                    [
-                        sys.executable,
-                        "scripts/memory_management/compress_memories.py",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=30,
-                    check=False,
-                )
-            except Exception as exc:
-                warning(
-                    "Legacy memory compression remained unavailable: %s"
-                    % type(exc).__name__,
-                    category="conversation_management",
-                )
-            memory["status"] = "committed"
-        else:
-            memory["status"] = "not_applicable"
-        checkpoint["phase"] = "enrichments_committed"
         action_handler._write_location_transition_checkpoint(checkpoint)
 
     checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
@@ -4737,81 +4694,10 @@ def _find_legacy_location_repair(conversation_history):
 
 
 def _prepare_legacy_memory_targets(journal_entry, party_tracker_data, operation_id):
-    """Compute legacy companion-memory mutations in an isolated temporary tree."""
-    # [travel-clean #209] Legacy companion-memory reconciliation is deferred until the
-    # voice/episodic line lands on main; CompanionMemoryManager.process_journal_operation
-    # is absent here, so there are no legacy-memory targets to prepare.
+    """The legacy companion-memory mutations of a transition: none."""
+    # [travel-clean #209] The legacy companion-memory system (core/memories) was
+    # removed (keyword final scan O-1); there are no legacy-memory targets to prepare.
     return []
-    source_dir = Path("data/companion_memories")
-    before = {
-        str(path): _legacy_json_target(path)
-        for path in source_dir.glob("*.json")
-    }
-    with tempfile.TemporaryDirectory(prefix="neq-legacy-memory-") as temporary:
-        temporary_root = Path(temporary)
-        temporary_data = temporary_root / "data" / "companion_memories"
-        temporary_data.parent.mkdir(parents=True, exist_ok=True)
-        if source_dir.exists():
-            shutil.copytree(source_dir, temporary_data)
-        else:
-            temporary_data.mkdir(parents=True, exist_ok=True)
-
-        original_cwd = Path.cwd()
-        repository_root = Path(__file__).resolve().parent
-        try:
-            os.chdir(temporary_root)
-            from core.memories.companion_memory import CompanionMemoryManager
-            from utils.npc_name_canonicalizer import get_canonical_name
-
-            party_npcs = []
-            for npc in party_tracker_data.get("partyNPCs", []):
-                name = npc.get("name", "") if isinstance(npc, dict) else str(npc)
-                if name:
-                    canonical = get_canonical_name(name)
-                    if canonical:
-                        party_npcs.append(canonical)
-            manager = CompanionMemoryManager()
-            manager.process_journal_operation(
-                copy.deepcopy(journal_entry), party_npcs, operation_id
-            )
-            compression = subprocess.run(
-                [
-                    sys.executable,
-                    str(
-                        repository_root
-                        / "scripts"
-                        / "memory_management"
-                        / "compress_memories.py"
-                    ),
-                ],
-                cwd=temporary_root,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-            if compression.returncode != 0:
-                raise RuntimeError(
-                    "legacy memory compression failed with exit code %s"
-                    % compression.returncode
-                )
-        finally:
-            os.chdir(original_cwd)
-
-        after_paths = list(temporary_data.glob("*.json"))
-        targets = []
-        relative_paths = set(before)
-        relative_paths.update(
-            str(Path("data/companion_memories") / path.name)
-            for path in after_paths
-        )
-        for relative in sorted(relative_paths):
-            temporary_path = temporary_root / relative
-            after = _legacy_json_target(temporary_path)
-            after["path"] = relative
-            prior = before.get(relative, _legacy_absent_target(relative))
-            if prior["exists"] != after["exists"] or prior["value"] != after["value"]:
-                targets.append({"before": prior, "after": after})
-        return targets
 
 
 def _apply_legacy_json_target(target):
