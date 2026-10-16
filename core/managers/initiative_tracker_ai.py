@@ -166,8 +166,9 @@ def _valid_ai_tracker(tracker_text, creatures, current_round):
 
     markers = {}
     for line, creature in zip(tracker_lines, sorted_creatures):
-        if "(player)" in line.lower() or "(npc)" in line.lower():
-            return False
+        # The line is matched whole against this creature's exact name and
+        # initiative, so a role tag beside the name ("Aldric (player) (5)")
+        # fails here; the state after " - " is the tracker's own words.
         name = creature.get("name", "Unknown")
         initiative = creature.get("initiative", 0)
         match = re.fullmatch(
@@ -352,15 +353,10 @@ def extract_recent_combat_messages(conversation, current_round):
             
         content = msg["content"]
         
-        # Look for round markers in user messages (combat state)
-        if msg["role"] == "user" and "Round:" in content:
-            match = re.search(r"Round:\s*(\d+)", content)
-            if match:
-                round_num = int(match.group(1))
-                round_markers.append({"index": i, "round": round_num})
-        
-        # Look for round markers in assistant messages
-        elif msg["role"] == "assistant":
+        # Round markers come from the DM's own combat_round field. User
+        # messages carry none the game writes ("Round: N" there could only
+        # be the player's words).
+        if msg["role"] == "assistant":
             json_match = re.search(r'"combat_round"\s*:\s*(\d+)', content)
             if json_match:
                 round_num = int(json_match.group(1))
