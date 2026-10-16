@@ -48,8 +48,11 @@ def segment_witness_names(messages: Sequence[Mapping[str, Any]]) -> List[str]:
     engine-authored 'Party NPCs: ... Party stats:' field in DM notes (never prose)."""
     names: List[str] = []
     for message in messages:
-        content = message.get("content") if isinstance(message, Mapping) else None
-        if not isinstance(content, str):
+        if not isinstance(message, Mapping) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        # Only the engine's turn note carries the field; DM narration never counts.
+        if not isinstance(content, str) or not content.startswith("Dungeon Master Note:"):
             continue
         # The engine's fields come before the player's words; only they are read.
         head = content.split(" Player: ", 1)[0]
