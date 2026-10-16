@@ -352,6 +352,45 @@ class SRDContextMatcher:
         return result
 
 
+SPELL_GUIDANCE_MARKER = "SRD spell guidance for "
+
+
+def sheet_spell_guidance(name, sheet, matcher=None):
+    """The SRD entry of every spell listed on one sheet, as DM context (r2 13b).
+
+    Keyed on the sheet alone, never on the player's words (D-KW-5): the rows
+    are the ones T096 gets as spellActionIndex. Empty for a sheet that lists
+    no SRD spell.
+    """
+    rows = (matcher or SRDContextMatcher()).legal_spell_index([(name, sheet)])
+    if not rows:
+        return ""
+    lines = [
+        "%s%s (the spells listed on this sheet, SRD 5.2.1). Use an entry only "
+        "for a spell being cast. The engine owns AC, hit points and every other "
+        "number." % (SPELL_GUIDANCE_MARKER, name)
+    ]
+    for row in rows:
+        slots = "; ".join(
+            "%s%s%s" % (
+                hint["name"],
+                " current=%s" % hint["current"] if hint.get("current") is not None else "",
+                " max=%s" % hint["max"] if hint.get("max") is not None else "",
+            )
+            for hint in row["resourceHints"]
+        )
+        lines.append(
+            "- %s (concentration: %s%s): %s"
+            % (
+                row["name"],
+                "yes" if row["concentration"] else "no",
+                "; slot keys: %s" % slots if slots else "",
+                row["guidance"],
+            )
+        )
+    return "\n".join(lines)
+
+
 def compact_rule_reference(match, actor=None):
     """Serialize one matcher result for a provider-facing context payload."""
     result = {
