@@ -26,6 +26,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from core.effects.clock import DAYS_PER_MONTH, SECONDS_PER_DAY
 from core.effects.effective import _effect_name_key
 from core.effects.model import _MODIFIER_DIE
+from core.leveling import tables as leveling_tables
 from core.nql import class_conditions, item_catalog, srd_stats, stats
 
 EQUIPMENT_VERSION = "nql-equipment-v1"
@@ -616,13 +617,28 @@ def _pool(cid: str, label: str, current: Any, maximum: Any, gaps: List[str]) -> 
     return cur, mx
 
 
+HIT_DICE_FIELD = "hitDice"  # {"d<N>": remaining}; written only from the engine's status
+
+
+def hit_dice_resource_id(die: int) -> str:
+    return f"hitdice:d{die}"
+
+
+def hit_die(sheet: Dict[str, Any]) -> Optional[int]:
+    """The sheet's class hit die size (leveling tables), or None without a known class."""
+    cls = leveling_tables.class_key(sheet)
+    return leveling_tables.hit_die(cls) if cls else None
+
+
 def pool_resources(sheet: Dict[str, Any], gaps: List[str]) -> List[Tuple[str, int, int]]:
-    """(resource id, current, max) for hit points, spell slots and feature use pools.
+    """(resource id, current, max) for hit points, spell slots, feature use and hit dice pools.
 
     Typed fields only: ``hitPoints``/``maxHitPoints``, ``spellcasting.spellSlots.levelN``
     ``{current, max}``, ``classFeatures[].usage {current, max}`` and then
-    ``feats[].usage`` (#891; a feat whose id a class feature holds is a gap). A pool the sheet
-    does not carry is simply absent; a spend against it is then a compile refusal.
+    ``feats[].usage`` (#891; a feat whose id a class feature holds is a gap), and
+    ``hitDice {"d<N>": remaining}`` for the class hit die with the level as its maximum
+    (a sheet without the field starts full). A pool the sheet does not carry is simply
+    absent; a spend against it is then a compile refusal.
     """
     cid = character_id(sheet)
     out: List[Tuple[str, int, int]] = []
@@ -655,6 +671,12 @@ def pool_resources(sheet: Dict[str, Any], gaps: List[str]) -> List[Tuple[str, in
         if p is not None:
             seen.add(rid)
             out.append((rid, p[0], p[1]))
+    die, level = hit_die(sheet), _int(sheet.get("level"))
+    if die and level and level > 0:
+        stored = sheet.get(HIT_DICE_FIELD) if isinstance(sheet.get(HIT_DICE_FIELD), dict) else {}
+        p = _pool(cid, f"{HIT_DICE_FIELD}.d{die}", stored.get(f"d{die}", level), level, gaps)
+        if p is not None:
+            out.append((hit_dice_resource_id(die), p[0], p[1]))
     return out
 
 

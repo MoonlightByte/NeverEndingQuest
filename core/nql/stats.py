@@ -39,6 +39,7 @@ ROLL_MODES_FIELD = "rollModes"
 XP_FIELD = "experience_points"  # a fact: the base of the engine stat "xp"
 XP_NEXT_FIELD = "exp_required_for_next_level"  # engine-written from xp:next
 LEVEL_UPS_FIELD = "levelUpsPending"  # engine-written from xp:pending
+HIT_DICE_FIELD = "hitDice"  # engine pool {"d<N>": remaining}, written by the rest (core/nql/resources)
 CONCENTRATION_FIELD = "concentration"  # code-written: {"name", "group", "targets", "expiration"} while the character concentrates
 # SRD states that are Incapacitated or include it (NQL 70352b9): a caster in one of
 # them cannot hold concentration, and the engine refuses a world that declares both.
@@ -546,6 +547,10 @@ def drop_model_totals(stored: Dict[str, Any], updates: Dict[str, Any]) -> List[s
     if CONCENTRATION_FIELD in updates:
         updates.pop(CONCENTRATION_FIELD)
         dropped.append(CONCENTRATION_FIELD)
+    # Hit dice are the engine's pool, spent and restored by the rest action (D-KWA-7).
+    if HIT_DICE_FIELD in updates:
+        updates.pop(HIT_DICE_FIELD)
+        dropped.append(HIT_DICE_FIELD)
     # AM: an ammunition row's count of recoverable shots is the engine's (core/nql/ammunition).
     rows = updates.get("ammunition")
     if isinstance(rows, list):

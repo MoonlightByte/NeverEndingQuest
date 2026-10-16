@@ -6,11 +6,13 @@
 The engine refills every pool the rest recovers on every party sheet in one
 request (core/nql/resources.rest): a long rest restores hit points, spell slots
 and every feature use pool; a short rest restores the pools tagged shortRest
-and, for a pact caster, spell slots. Hit dice are not tracked as a pool (house
-rule), but a short rest may spend them: the rest action's ``hitDice`` names how
+and, for a pact caster, spell slots. Hit dice are an engine pool per character
+(``hitdice:d<N>``, maximum = level, the sheet's ``hitDice``; a long rest restores
+all of them). A short rest may spend them: the rest action's ``hitDice`` names how
 many each character spends, code rolls them here (the class hit die plus the
-Constitution modifier per die, at least 1 each, at most the character's level)
-and the engine heals the total in the same request (#840). Any other extra
+Constitution modifier per die, at least 1 each) and the engine spends them from
+the pool and heals the total in the same request, refusing a spend the pool
+cannot pay (#840, D-KWA-7). Any other extra
 healing the table narrates on a short rest is an ordinary updateCharacterInfo
 change. Rest-bound temporary effects are cleared by the effects lifecycle after
 the sheets are written. All sheets are written together or none is.
@@ -47,8 +49,8 @@ def roll_hit_dice(sheets: List[Dict[str, Any]], hit_dice: Any,
 
     ``hit_dice`` maps a resting character's name to how many dice they spend.
     Each die is the class hit die plus the Constitution modifier, at least 1;
-    a character spends at most their level in dice and needs at least 1 hit
-    point to rest. Nothing is applied here.
+    a character needs at least 1 hit point to rest. How many dice are left is
+    the engine's pool (core/nql/resources.rest). Nothing is applied here.
     """
     if not hit_dice:
         return [], ""
@@ -68,9 +70,6 @@ def roll_hit_dice(sheets: List[Dict[str, Any]], hit_dice: Any,
         seen.add(name)
         if type(count) is not int or count < 1:
             return None, f"{name}'s hit dice must be a whole number of at least 1, not {count!r}"
-        level = sheet.get("level") if type(sheet.get("level")) is int else 1
-        if count > level:
-            return None, f"{name} is level {level} and can spend at most {level} hit dice on a short rest"
         cls = leveling_tables.class_key(sheet)
         if cls is None:
             return None, f"{name}'s class {sheet.get('class')!r} has no known hit die"
@@ -87,7 +86,7 @@ def roll_hit_dice(sheets: List[Dict[str, Any]], hit_dice: Any,
     return spends, ""
 
 
-def hit_dice_receipt(spend: Dict[str, Any], before: Any, after: Any, maximum: Any) -> str:
+def hit_dice_receipt(spend: Dict[str, Any], before: Any, after: Any, maximum: Any, left: Any = None) -> str:
     """The player-facing line for one character's spent hit dice."""
     modifier = spend["modifier"]
     sign = f"+{modifier}" if modifier >= 0 else str(modifier)
@@ -98,6 +97,8 @@ def hit_dice_receipt(spend: Dict[str, Any], before: Any, after: Any, maximum: An
             f"rolled {rolled}, regains {gained} hit point{'' if gained == 1 else 's'}")
     if type(after) is int and type(maximum) is int:
         line += f" ({after}/{maximum})"
+    if type(left) is int:
+        line += f"; d{spend['die']} hit dice left: {left}"
     return line + "."
 
 
@@ -122,7 +123,8 @@ def execute_rest(rest_type: Any, party_tracker: Optional[Dict[str, Any]] = None,
         spent["spends"] = spends
         spent["before"] = {str(s.get("name")): s.get("hitPoints") for s in sheets}
         return nql_resources.rest(sheets, kind, location=location,
-                                  hp_heals={s["name"]: s["total"] for s in spends})
+                                  hp_heals={s["name"]: s["total"] for s in spends},
+                                  hit_dice={s["name"]: s["count"] for s in spends})
 
     result = _run(paths, build, party)
     if not result.get("success"):
@@ -137,7 +139,8 @@ def execute_rest(rest_type: Any, party_tracker: Optional[Dict[str, Any]] = None,
     for spend in spent.get("spends") or []:
         sheet = after.get(spend["name"]) or {}
         receipts.append(hit_dice_receipt(spend, spent["before"].get(spend["name"]),
-                                         sheet.get("hitPoints"), sheet.get("maxHitPoints")))
+                                         sheet.get("hitPoints"), sheet.get("maxHitPoints"),
+                                         (sheet.get("hitDice") or {}).get(f"d{spend['die']}")))
     if receipts:
         message += " Hit dice rolled by code (the player sees this receipt): " + " ".join(receipts)
     from core.managers.effects_runtime import process_effect_lifecycle
