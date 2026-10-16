@@ -26,7 +26,7 @@ from pathlib import Path
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T092", "utils/startup_wizard.py", 1035)
-register_callsite("T093", "utils/startup_wizard.py", 2058)
+register_callsite("T093", "utils/startup_wizard.py", 2032)
 register_callsite("T124", "utils/startup_wizard.py", 826)
 from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
@@ -1197,32 +1197,6 @@ def sanitize_character_data(data):
         return data.strip()
     else:
         return data
-
-def get_character_name(conversation):
-    """Get character name from player"""
-    ai_prompt = """Ask the player what they'd like to name their character. Be encouraging and mention that they can choose any fantasy name they like. You can suggest that good 5th edition character names are often simple and memorable."""
-    
-    conversation.append({"role": "system", "content": ai_prompt})
-    response = get_ai_response(conversation)
-    print(f"Dungeon Master: {response}")
-    
-    while True:
-        try:
-            name = input("\nCharacter name: ").strip()
-            
-            # Skip empty inputs
-            if not name:
-                continue
-                
-            conversation.append({"role": "user", "content": name})
-            
-            if len(name) >= 2 and name.replace(" ", "").isalpha():
-                return name.title()
-            else:
-                print("Dungeon Master: Please enter a valid name (letters only, at least 2 characters)")
-                
-        except KeyboardInterrupt:
-            return None
 
 DWARVEN_TOUGHNESS_TRAIT = "dwarven toughness"
 
