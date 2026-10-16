@@ -342,6 +342,13 @@ def _intent_correction(exc, batch=None):
                 "batch still carries a remove op for this actor that cannot be matched, code drops "
                 "it as ruled and resolves the rest."
             )
+    keep_targets = feedback.get("keepTargets")
+    if isinstance(keep_targets, list) and keep_targets:
+        # R1: the stated hit stays; only playerRoll is corrected.
+        instruction += (
+            " Keep the rejected actor's targets and hpDelta exactly as given (%s); correct only "
+            "playerRoll." % json.dumps(keep_targets, sort_keys=True)
+        )
     if feedback.get("multiRollRequest"):
         instruction += (
             " requiresPlayerInput must ask for exactly one next roll or "
@@ -511,22 +518,44 @@ def _check_answered_roll_faces(encounter_path, encounter, pending, batch, voice_
         if roll is None:
             continue
         faces = roll.get("faces") if isinstance(roll, dict) else None
-        fits = (
+        shaped = (
             isinstance(faces, list)
             and len(faces) == len(terms)
             and all(
                 isinstance(group, list) and len(group) == count and all(type(face) is int for face in group)
                 for group, (count, _sides) in zip(faces, terms)
             )
-            and (phase is None or str(roll.get("phase") or "").strip().lower() == phase)
         )
-        if not fits:
+        labelled = phase is None or str(roll.get("phase") or "").strip().lower() == phase
+        hit = _stated_hit(intent)
+        if (shaped and not labelled and hit
+                and all(1 <= face <= sides for group, (_count, sides) in zip(faces, terms) for face in group)):
+            # R1: the requested faces are there and the intent states a hit;
+            # only the phase label is wrong, so the hit stands as answered.
+            record_combat_diagnostic(
+                record_type="window_outcome",
+                callsite="T096",
+                outcome="answered_roll_phase_relabelled",
+                encounter_id=encounter.get("encounterId"),
+                turn_id=pending.get("turnId"),
+                revision=(encounter.get("combatState") or {}).get("revision"),
+                round_number=(encounter.get("combatState") or {}).get("round"),
+                window_kind="player",
+                actor_count=len(pending.get("actorIds") or []),
+            )
+        elif not (shaped and labelled):
+            feedback = {"playerRoll": {"requestedRoll": previous.get("requestedRoll"), "phase": phase}}
+            if hit and phase == "damage":
+                # R1: a damage roll answers a hit already ruled; the correction
+                # is about playerRoll only, so the stated hit rides along and a
+                # retry that drops it can be held to it.
+                feedback["keepTargets"] = hit
             raise CombatIntentError(
                 "playerRoll must hold the player's faces for the requested %s%s: the phase and one "
                 "list of integers per die term, in order"
                 % (previous.get("requestedRoll"), " (%s)" % phase if phase else ""),
                 intent.get("actorId"),
-                {"playerRoll": {"requestedRoll": previous.get("requestedRoll"), "phase": phase}},
+                feedback,
             )
         for group, (_count, sides) in zip(faces, terms):
             if all(1 <= face <= sides for face in group):
@@ -569,6 +598,51 @@ def _check_answered_roll_faces(encounter_path, encounter, pending, batch, voice_
             roll["requestedDc"] = asked_dc
         else:
             roll.pop("requestedDc", None)
+
+
+def _stated_hit(intent):
+    """R1: copies of the intent's targets that take damage (an int hpDelta
+    below 0), or None."""
+    targets = intent.get("targets") if isinstance(intent, dict) else None
+    hit = [
+        deepcopy(target)
+        for target in (targets if isinstance(targets, list) else [])
+        if isinstance(target, dict) and type(target.get("hpDelta")) is int and target["hpDelta"] < 0
+    ]
+    return hit or None
+
+
+def _keep_stated_hit(batch, correction):
+    """R1 (never lose a stated hit): a damage roll's playerRoll correction
+    carries the hit the rejected intent stated (keepTargets, set only for a
+    damage request). A retry that answers it with no hit for that actor is
+    asked once more; a second such retry gets the model's own earlier hit
+    back instead of committing the answered damage on nobody."""
+    details = correction.get("details") if isinstance(correction, dict) else None
+    if not isinstance(details, dict):
+        return
+    keep = details.get("keepTargets")
+    asked = details.get("playerRoll")
+    actor_id = correction.get("actorId")
+    if not keep or not isinstance(asked, dict) or not isinstance(actor_id, str):
+        return
+    for intent in (batch.get("intents") if isinstance(batch, dict) else None) or []:
+        if not isinstance(intent, dict) or intent.get("actorId") != actor_id or _stated_hit(intent):
+            continue
+        if not details.get("keptHitAsked"):
+            raise CombatIntentError(
+                "the answered %s damage roll belongs to the hit stated before the correction: keep "
+                "this intent's targets and hpDelta exactly as given and correct only playerRoll"
+                % (asked.get("requestedRoll") or "requested"),
+                actor_id,
+                {"playerRoll": deepcopy(asked), "keepTargets": deepcopy(keep), "keptHitAsked": True},
+            )
+        intent["targets"] = deepcopy(keep)
+        record_combat_diagnostic(
+            record_type="window_outcome",
+            callsite="T096",
+            outcome="answered_roll_hit_kept",
+        )
 
 
 def _reconcile_validated_prefix(batch, correction):
@@ -2367,6 +2441,9 @@ def execute_agentic_turn(
         try:
             # #942: pass 2 spends the slot the answered roll was asked at.
             _check_asked_slot_level(encounter, pending, batch)
+            # R1: a retry answering a damage roll's playerRoll correction keeps
+            # the stated hit (before the faces check, which re-carries it).
+            _keep_stated_hit(batch, correction)
             # 3b: the answered roll's typed faces fit the typed request.
             _check_answered_roll_faces(encounter_path, encounter, pending, batch, immutable_voice_intents)
             # Item 10 (r2): the answered save keeps the DC it was asked at.
