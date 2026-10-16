@@ -89,6 +89,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Combat no longer rewrites older combat messages before sending them to the DM: the separate compression call (T017), which shortened older turns and replaced the opening of the fight with a fixed line (naming sahuagin when the opening mentioned them), is removed, so the DM sees the fight's messages as they were saved.
 
 ### Fixed
+- Removed the old companion-memory system in core/memories (emotional vectors, action parsers, memory gravity and crystallizers). Nothing in the game could reach it; initialize_memories stays (#855).
 - Companion memories take their witnesses only from the turn notes the game writes. A DM narration that quoted "Party NPCs: Cira, ..." could add Cira as a witness (#855).
 - The turn at the end of a campaign, whose note carries the prompt for creating the next module, is marked by the game itself, and that mark sends it to the full model. A player message containing the opening words of that prompt used to do the same (#855).
 - Which companions witnessed a stretch of play, for their memories, is read only from the party list the game writes into each turn, never from the player's words. A player line such as "Party NPCs: Cira" could add Cira as a witness, because stored turns keep only their date line (#855).
