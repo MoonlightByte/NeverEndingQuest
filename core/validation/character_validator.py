@@ -73,9 +73,9 @@ from typing import Dict, List, Any, Optional, Union
 from core.ai import api_client
 from utils.character_sheet_contract import repair_required_ammunition_field
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T051", "core/validation/character_validator.py", 1507)
-register_callsite("T052", "core/validation/character_validator.py", 1694)
-register_callsite("T054", "core/validation/character_validator.py", 2640)
+register_callsite("T051", "core/validation/character_validator.py", 1412)
+register_callsite("T052", "core/validation/character_validator.py", 1603)
+register_callsite("T054", "core/validation/character_validator.py", 2547)
 
 CHARACTER_VALIDATOR_SCHEMA = {
     "required": [
@@ -233,32 +233,6 @@ def _require_contract_integer(
             f"{path} must be at least {minimum}"
         )
     return normalized
-
-
-def _source_items_by_name(
-    items: Any,
-    path: str,
-    *,
-    name_field: str = "item_name",
-    reject_duplicates: bool = False,
-) -> Dict[str, Dict[str, Any]]:
-    if not isinstance(items, list):
-        raise CharacterValidationResponseError(f"{path} must be an array")
-    source: Dict[str, Dict[str, Any]] = {}
-    for index, item in enumerate(items):
-        if not isinstance(item, dict):
-            raise CharacterValidationResponseError(
-                f"{path}[{index}] must be an object"
-            )
-        name = _normalized_name(item.get(name_field))
-        if name:
-            if reject_duplicates and name in source:
-                raise CharacterValidationResponseError(
-                    f"{path} contains duplicate normalized name "
-                    f"'{item.get(name_field)}'"
-                )
-            source.setdefault(name, item)
-    return source
 
 
 _AMMUNITION_NAMES = (
@@ -456,6 +430,9 @@ _T051_ARMOR_FIELDS = (
     'equipped', 'ac_base', 'ac_bonus', 'dex_limit',
     'armor_category', 'stealth_disadvantage',
 )
+# A row carrying any of these is an armor row for T051 and the contract check,
+# whatever its name or item_type says.
+_ARMOR_ROW_FIELDS = _T051_ARMOR_FIELDS[1:]
 
 
 def malformed_armor_entry(item: Dict[str, Any]) -> bool:
@@ -588,11 +565,10 @@ class AICharacterValidator:
         Extract only the fields relevant for AC validation.
         This dramatically reduces token usage from ~7800 to ~500-800.
         
-        Based on Gemini consultation, includes all D&D 5e AC-affecting fields:
-        - Core context (class, race) for AC rules
-        - All ability scores needed for Unarmored Defense
-        - Equipment effects array with structured AC data
-        - Racial traits and feats that could affect AC
+        Includes:
+        - Core context (class, race) and the ability scores AC reads
+        - Equipment effects whose typed target is armor class
+        - The armor rows (typed armor or any armor field), with their index
         - Armor proficiencies for validation
         
         Args:
@@ -622,114 +598,44 @@ class AICharacterValidator:
         if 'armor' in proficiencies:
             ac_data['proficiencies'] = {'armor': proficiencies['armor']}
         
-        # Process equipment_effects array - HIGH PRIORITY (structured AC data)
+        # Equipment effects the engine attributes to armor class (typed target).
+        from core.nql.armor_class import AC_TARGET
+
         equipment_effects = character_data.get('equipment_effects', [])
-        ac_equipment_effects = []
-        for effect in equipment_effects:
-            # Include effects that explicitly target AC
-            if effect.get('target', '').upper() == 'AC' or 'ac' in effect.get('target', '').lower():
-                ac_equipment_effects.append(effect)
+        ac_equipment_effects = [
+            effect for effect in equipment_effects
+            if isinstance(effect, dict) and effect.get('target') == AC_TARGET
+        ]
         
         if ac_equipment_effects:
             ac_data['equipment_effects'] = ac_equipment_effects
         
-        # Filter equipment to only AC-relevant items (refined logic)
+        # The armor rows: typed armor, or any armor field present. Each keeps
+        # its equipment index, which a T051 answer names. Armor class itself is
+        # the engine's (armor_class.project), so no class feature, trait or
+        # feat text is offered.
         equipment = character_data.get('equipment', [])
         ac_relevant_equipment = []
         
-        for item in equipment:
-            item_name = item.get('item_name', '').lower()
-            item_type = item.get('item_type', '').lower()
-            description = item.get('description', '').lower()
-            equipped = item.get('equipped', False)
-            
-            # Include if it's armor, shield, or potentially magical AC item
-            include_item = False
-            
-            # Always include armor and shields
-            if item_type == 'armor' or 'armor' in item_name or 'shield' in item_name:
-                include_item = True
-            
-            # Check for explicit AC bonuses in item fields
-            elif 'ac_base' in item or 'ac_bonus' in item:
-                include_item = True
-            
-            # Include equipped items with specific AC patterns in description
-            elif equipped:
-                # Look for explicit AC bonuses like "+1 to AC", "bonus to AC"
-                if any(pattern in description for pattern in ['+1 to ac', '+2 to ac', 'bonus to ac', 'armor class']):
-                    include_item = True
-                # Check known AC-boosting item names
-                elif any(ac_item in item_name for ac_item in ['ring of protection', 'cloak of protection', 'bracers of defense']):
-                    include_item = True
-            
-            if include_item:
-                # Include all armor-related fields for proper validation
-                item_data = {
-                    'item_name': item.get('item_name'),
-                    'item_type': item.get('item_type'),
-                    'equipped': item.get('equipped', False),
-                    'description': item.get('description', '')[:200]  # Limit description length
-                }
-                
-                # Include armor-specific fields if present
-                for field in ['ac_base', 'ac_bonus', 'dex_limit', 'armor_category', 'stealth_disadvantage']:
-                    if field in item:
-                        item_data[field] = item[field]
-                
-                ac_relevant_equipment.append(item_data)
+        for index, item in enumerate(equipment):
+            if not isinstance(item, dict):
+                continue
+            typed_armor = str(item.get('item_type', '')).strip().lower() == 'armor'
+            if not typed_armor and not any(field in item for field in _ARMOR_ROW_FIELDS):
+                continue
+            item_data = {
+                'row': index,
+                'item_name': item.get('item_name'),
+                'item_type': item.get('item_type'),
+                'equipped': item.get('equipped', False),
+                'description': item.get('description', '')[:200]  # Limit description length
+            }
+            for field in _ARMOR_ROW_FIELDS:
+                if field in item:
+                    item_data[field] = item[field]
+            ac_relevant_equipment.append(item_data)
         
         ac_data['equipment'] = ac_relevant_equipment
-        
-        # Include class features that might affect AC (like Defense fighting style, Unarmored Defense)
-        class_features = character_data.get('classFeatures', [])
-        ac_relevant_features = []
-        
-        for feature in class_features:
-            feature_name = feature.get('name', '').lower()
-            feature_desc = feature.get('description', '').lower()
-            # Expanded keywords to catch Unarmored Defense and other AC features
-            if any(keyword in feature_name for keyword in ['defense', 'armor', 'ac', 'protection', 'shield', 'unarmored']):
-                ac_relevant_features.append(feature)
-            # Also check description for AC mentions
-            elif any(keyword in feature_desc for keyword in ['armor class', 'ac equal', 'ac bonus']):
-                ac_relevant_features.append(feature)
-        
-        if ac_relevant_features:
-            ac_data['classFeatures'] = ac_relevant_features
-        
-        # Include racial traits (for natural armor like Tortle)
-        racial_traits = character_data.get('racialTraits', [])
-        ac_relevant_traits = []
-        
-        for trait in racial_traits:
-            trait_name = trait.get('name', '').lower()
-            trait_desc = trait.get('description', '').lower()
-            if any(keyword in trait_name + trait_desc for keyword in ['armor', 'ac', 'natural armor', 'protection']):
-                ac_relevant_traits.append(trait)
-        
-        if ac_relevant_traits:
-            ac_data['racialTraits'] = ac_relevant_traits
-        
-        # Include feats (for Defensive Duelist, Medium Armor Master, etc.)
-        feats = character_data.get('feats', [])
-        ac_relevant_feats = []
-        
-        for feat in feats:
-            # If feat is a string, check the name
-            if isinstance(feat, str):
-                feat_lower = feat.lower()
-                if any(keyword in feat_lower for keyword in ['defense', 'armor', 'ac', 'duelist']):
-                    ac_relevant_feats.append(feat)
-            # If feat is a dict, check name and description
-            elif isinstance(feat, dict):
-                feat_name = feat.get('name', '').lower()
-                feat_desc = feat.get('description', '').lower()
-                if any(keyword in feat_name + feat_desc for keyword in ['defense', 'armor', 'ac', 'duelist']):
-                    ac_relevant_feats.append(feat)
-        
-        if ac_relevant_feats:
-            ac_data['feats'] = ac_relevant_feats
         
         # Include active effects if present (mage armor, shield spell, etc.)
         active_effects = character_data.get('activeEffects', [])
@@ -744,7 +650,6 @@ class AICharacterValidator:
         debug(f"[AC Extraction] Reduced data from {original_size:,} to {reduced_size:,} chars ({reduction_pct:.1f}% reduction)", category="character_validation")
         debug(f"[AC Extraction] Equipment: {len(equipment)} -> {len(ac_relevant_equipment)} items", category="character_validation")
         debug(f"[AC Extraction] Equipment effects: {len(equipment_effects)} -> {len(ac_equipment_effects)} AC-relevant", category="character_validation")
-        debug(f"[AC Extraction] Included: {len(ac_relevant_features)} class features, {len(ac_relevant_traits)} racial traits, {len(ac_relevant_feats)} feats", category="character_validation")
         
         return ac_data
     
@@ -1533,11 +1438,15 @@ class AICharacterValidator:
                     provider_ac_data,
                 )
 
-                # CRITICAL FIX: Merge the corrections into original data, don't replace!
-                # The AI only returns the extracted subset with corrections
-                # We need to merge those corrections back into the full character data
-                from updates.update_character_info import deep_merge_dict
-                merged_data = deep_merge_dict(character_data, corrected_data)
+                # Each equipment correction names its row; two rows with one
+                # name are two rows.
+                merged_data = copy.deepcopy(character_data)
+                merged_data['armorClass'] = corrected_data['armorClass']
+                for update in corrected_data.get('equipment', []):
+                    target = merged_data['equipment'][update['row']]
+                    for field, value in update.items():
+                        if field != 'row':
+                            target[field] = copy.deepcopy(value)
 
                 # The merged projection, not just the fields the model returned,
                 # must satisfy the frozen schema: an omitted poisoned item would
@@ -2032,22 +1941,20 @@ Provide the corrected character data with proper AC calculation."""
                 raise CharacterValidationResponseError(
                     "T051: validated_character_data.equipment must be an array"
                 )
-            source_equipment = _source_items_by_name(
-                original_data.get('equipment', []),
-                "T051: source equipment",
-                reject_duplicates=True,
-            )
-            seen_names = set()
-            immutable_equipment_fields = {'item_type', 'description', 'quantity'}
+            source_equipment = {
+                entry['row']: entry for entry in original_data.get('equipment', [])
+            }
+            seen_rows = set()
+            immutable_equipment_fields = {'item_name', 'item_type', 'description', 'quantity'}
             # A malformed armor entry (typed armor, no armor fields) may be
             # reclassified by the model to a non-armor type; every other
             # entry keeps its item_type.
             reclassifiable = {
-                name for name, entry in source_equipment.items()
+                row for row, entry in source_equipment.items()
                 if malformed_armor_entry(entry)
             }
             allowed_equipment_fields = {
-                'item_name', 'item_type', 'equipped', 'description',
+                'row', 'item_name', 'item_type', 'equipped', 'description',
                 'ac_base', 'ac_bonus', 'dex_limit', 'armor_category',
                 'stealth_disadvantage', 'quantity',
             }
@@ -2062,19 +1969,19 @@ Provide the corrected character data with proper AC calculation."""
                         "T051: equipment update contains unsupported field(s): "
                         + ", ".join(sorted(unknown_fields))
                     )
-                normalized_name = _normalized_name(item.get('item_name'))
-                if not normalized_name or normalized_name not in source_equipment:
+                row = item.get('row')
+                if type(row) is not int or row not in source_equipment:
                     raise CharacterValidationResponseError(
-                        f"T051: equipment[{index}] must reference source equipment"
+                        f"T051: equipment[{index}].row must be one of the rows shown: {sorted(source_equipment)}"
                     )
-                if normalized_name in seen_names:
+                if row in seen_rows:
                     raise CharacterValidationResponseError(
-                        f"T051: duplicate equipment update for '{item.get('item_name')}'"
+                        f"T051: duplicate equipment update for row {row}"
                     )
-                seen_names.add(normalized_name)
-                source_item = source_equipment[normalized_name]
+                seen_rows.add(row)
+                source_item = source_equipment[row]
                 reclassified = (
-                    normalized_name in reclassifiable
+                    row in reclassifiable
                     and 'item_type' in item
                     and item['item_type'] != 'armor'
                 )
@@ -2092,7 +1999,7 @@ Provide the corrected character data with proper AC calculation."""
                 # Every proposed armor value is checked against the frozen
                 # schema's letter; the model chooses any value inside it.
                 contract_errors = armor_contract_errors(
-                    [item], self._equipment_item_schema()
+                    [dict(item, item_name=source_item.get('item_name'))], self._equipment_item_schema()
                 )
                 if contract_errors:
                     raise CharacterValidationResponseError(
@@ -2100,7 +2007,7 @@ Provide the corrected character data with proper AC calculation."""
                         + "; ".join(contract_errors)
                     )
 
-                normalized_update = {'item_name': source_item['item_name']}
+                normalized_update = {'row': row}
                 if reclassified:
                     normalized_update['item_type'] = item['item_type']
                 for mutable_field in _T051_ARMOR_FIELDS:

@@ -455,6 +455,7 @@ _T051_AC_VALIDATION_SCHEMA = {
                     "items": {
                         "type": "object",
                         "properties": {
+                            "row": {"type": "integer"},
                             "item_name": {"type": "string"},
                             "item_type": {"type": "string"},
                             "equipped": {"type": "boolean"},
