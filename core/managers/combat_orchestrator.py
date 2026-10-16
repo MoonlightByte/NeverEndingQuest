@@ -24,7 +24,11 @@ from core.combat import (
 from core.combat.pipeline import _intent_for_actor, _ordered_intents
 from core.combat.resolver import (
     _action_entries,
+    declared_heal,
     feature_heal_key,
+    intent_feature_name,
+    pool_heal_options,
+    spent_heal_pool,
     open_player_spell_attack,
     open_player_spell_save,
     open_player_weapon_attack,
@@ -289,7 +293,16 @@ def _intent_correction(exc, batch=None):
             % spends
         )
     limits = feedback.get("featureHealLimits")
-    if isinstance(limits, list) and limits:
+    option_rows = [r for r in limits if isinstance(r, dict) and "options" in r] if isinstance(limits, list) else []
+    if option_rows:
+        # F1: the spent pool's options, by name (or Divine Spark's one other target).
+        instruction += (
+            " For the rejected actor, %s. Heal only as that allows, naming the option in featureName, "
+            "or spend nothing; for the player, return the intent with empty targets, resources and "
+            "effects and requiresPlayerInput {kind:'choice', prompt} saying so and asking what they do "
+            "instead." % _feature_heal_option_fact(option_rows[0])
+        )
+    elif isinstance(limits, list) and limits:
         # #669: the typed limits of a class-feature heal, by the numbers.
         rendered = "; ".join(
             "%s at most %s (HP %s/%s)" % (r.get("combatantId"), r.get("allowed"), r.get("hpBefore"), r.get("max"))
@@ -416,6 +429,34 @@ def _asked_slot_level(encounter, batch, actor_id, request):
     return level if type(level) is int and 1 <= level <= 9 else None
 
 
+def _asked_save_dc(request):
+    """Item 10 (r2): the typed dc of a player save request, or None."""
+    if not isinstance(request, dict) or str(request.get("phase") or "").strip().lower() != "save":
+        return None
+    dc = request.get("dc")
+    return dc if type(dc) is int and dc > 0 else None
+
+
+def _check_asked_save_dc(batch, corrected_actors):
+    """Item 10 (r2): the player's save is scored at the DC it was asked at
+    (playerRoll.requestedDc, typed when the request was made). A save.dc that
+    differs goes back once per actor as a correction naming the asked DC;
+    after that the engine scores the asked DC and journals the difference."""
+    for intent in (batch.get("intents") if isinstance(batch, dict) else None) or []:
+        if not isinstance(intent, dict) or intent.get("actorId") in corrected_actors:
+            continue
+        roll = intent.get("playerRoll")
+        asked = roll.get("requestedDc") if isinstance(roll, dict) else None
+        save = intent.get("save")
+        if type(asked) is not int or not isinstance(save, dict) or save.get("dc") == asked:
+            continue
+        raise CombatIntentError(
+            "the player's save was asked at DC %d; set save.dc to %d (not %r)" % (asked, asked, save.get("dc")),
+            intent.get("actorId"),
+            {"askedSaveDc": asked, "retryable": True},
+        )
+
+
 def _check_asked_slot_level(encounter, pending, batch):
     """#942 (D-942-1 A): the roll the player just answered was asked at a slot
     level (the previous exchange's requestedSlotLevel), so the human's cast
@@ -503,6 +544,7 @@ def _check_answered_roll_faces(encounter_path, encounter, pending, batch, voice_
                 npc_voice_intents=voice_intents,
                 requested_roll=previous.get("requestedRoll"),
                 requested_slot_level=previous.get("requestedSlotLevel"),
+                requested_dc=previous.get("requestedDc"),
             )
             record_combat_diagnostic(
                 record_type="window_outcome",
@@ -521,6 +563,12 @@ def _check_answered_roll_faces(encounter_path, encounter, pending, batch, voice_
             )
         roll["phase"] = phase
         roll["requestedRoll"] = previous.get("requestedRoll")
+        asked_dc = previous.get("requestedDc")
+        if phase == "save" and type(asked_dc) is int:
+            # Item 10 (r2): the save is scored at the DC it was asked at.
+            roll["requestedDc"] = asked_dc
+        else:
+            roll.pop("requestedDc", None)
 
 
 def _reconcile_validated_prefix(batch, correction):
@@ -555,8 +603,8 @@ def _apply_trusted_spell_durations(batch, spell_references, now_scalar=None):
     """Overlay exact fixed SRD durations onto matching provider effects.
 
     The provider still chooses whether an effect exists and its targets. This
-    only prevents a named, attached SRD spell from silently degrading to the
-    resolver's encounter-only default when the model omits duration fields.
+    only prevents a spell listed in spellActionIndex from silently degrading to
+    the resolver's encounter-only default when the model omits duration fields.
     """
     if (
         not isinstance(batch, dict)
@@ -567,11 +615,13 @@ def _apply_trusted_spell_durations(batch, spell_references, now_scalar=None):
     from core.effects.clock import display_iso_from_scalar, fixed_duration_seconds
     from core.effects.lifecycle import enter_combat_effect
 
-    references = spell_references.get("spellReferences")
-    if not isinstance(references, dict):
+    # Every spell on a window actor's sheet is listed there, so a cast keeps
+    # its fixed SRD duration whether or not the player's words named it.
+    references = spell_references.get("spellActionIndex")
+    if not isinstance(references, list):
         return batch
     trusted = {}
-    for reference in references.values():
+    for reference in references:
         if not isinstance(reference, dict):
             continue
         name = reference.get("name")
@@ -655,15 +705,31 @@ def _same_item_spent(events, refusals):
     )
 
 
+def _feature_heal_option_fact(row):
+    """F1: a refused pool heal's rule, said plainly: the pool's options the
+    actor has, none, or Divine Spark's one other target."""
+    if row.get("target"):
+        return "%s heals exactly one other creature, never the caster" % row.get("ability")
+    if row.get("options"):
+        return "%s heals only as %s" % (row.get("pool"), " or ".join(row["options"]))
+    return "%s has no heal option" % row.get("pool")
+
+
 def _same_feature_used(events, limits):
     """#669: True when the resolved events still use the class feature the
-    refused heal named, by the same actor (typed ability and actor, both read
-    by feature_heal_key, as the resolver matched them)."""
+    refused heal named, by the same actor (the typed featureName, else the
+    ability, read by feature_heal_key as the resolver matched it), or (F1)
+    still spend the refused pool."""
     wanted = {(r.get("actorId"), feature_heal_key(r.get("ability")))
               for r in limits or [] if isinstance(r, dict)}
+    pools = {(r.get("actorId"), feature_heal_key(r.get("pool")))
+             for r in limits or [] if isinstance(r, dict) and r.get("pool")}
     return any(
         isinstance(event, dict)
-        and (event.get("actorId"), feature_heal_key((event.get("intent") or {}).get("ability"))) in wanted
+        and ((event.get("actorId"), feature_heal_key(intent_feature_name(event.get("intent")))) in wanted
+             or any((event.get("actorId"), feature_heal_key(resource.get("name"))) in pools
+                    for resource in event.get("resources") or []
+                    if isinstance(resource, dict) and resource.get("kind") == "featureUse"))
         for event in events or []
     )
 
@@ -678,6 +744,9 @@ def _pause_for_refused_feature_heal(encounter_path, pending, limits, voice_inten
             continue
         _LOGGER.info("FH: paused for the player: %s limited to %s for %s",
                      limit.get("ability"), limit.get("allowed"), limit.get("combatantId"))
+        if "options" in limit:
+            parts.append(_feature_heal_option_fact(limit))
+            continue
         if limit.get("combatantId") is None:
             parts.append("%s has no target it can heal" % limit.get("ability"))
             continue
@@ -846,6 +915,9 @@ def _composed_player_input(pending, fallback):
             label = "Original player action" if not lines else "Player follow-up"
             lines.append("%s: %s" % (label, player_text))
         if request_text:
+            asked_dc = exchange.get("requestedDc")
+            if type(asked_dc) is int and asked_dc > 0:
+                request_text = "%s (save DC %d)" % (request_text, asked_dc)
             lines.append("DM requested: %s" % request_text)
     return "\n".join(lines) or str(fallback or "")
 
@@ -949,6 +1021,33 @@ def _validate_player_weapon_question(batch, encounter, characters):
             % weapon.strip(),
             intent.get("actorId"),
             {"retryable": True, "issue": "263", "weaponName": weapon.strip()},
+        )
+
+
+def _validate_feature_names(batch, encounter, characters):
+    """8b: a heal paid with a class feature's pooled use (POOL_HEALS) names
+    its option in the typed featureName, exactly as the actor's featureNames
+    list it (the options its sheet qualifies for). A missing or unlisted name
+    goes back to the model as a correction; the ability's wording is not
+    read. A pool with no option for the actor is the resolver's refusal."""
+    for intent in (batch or {}).get("intents", []) or []:
+        if not isinstance(intent, dict):
+            continue
+        actor = combatant_by_id(encounter, intent.get("actorId"))
+        sheet = (characters or {}).get((actor or {}).get("name"))
+        pool, _spends = spent_heal_pool(encounter, intent)
+        if pool is None or not any(declared_heal(entry) > 0 for entry in intent.get("targets") or []
+                                   if isinstance(entry, dict)):
+            continue
+        options = [option["name"] for option in pool_heal_options(sheet, pool)]
+        name = intent.get("featureName")
+        if not options or (isinstance(name, str) and name.strip() in options):
+            continue
+        raise CombatIntentError(
+            "%s pays for this heal: set featureName to %s, the option used"
+            % (pool, " or ".join(repr(option) for option in options)),
+            intent.get("actorId"),
+            {"retryable": True, "featureNames": options},
         )
 
 
@@ -2168,7 +2267,6 @@ def execute_agentic_turn(
 
             spell_references = build_contextual_spell_payload(
                 provider_characters,
-                provider_player_input,
                 actor_names=_pending_actor_names(encounter, pending),
                 encounter_context=(spell_references or {}).get("encounterContext"),
             )
@@ -2183,6 +2281,7 @@ def execute_agentic_turn(
     feature_heal_limits = None
     feature_heal_player = False
     removal_refused_actors = set()
+    asked_dc_corrected = set()
     window_kind = _window_kind(encounter, pending.get("actorIds", []))
     capability_count, rule_count = _diagnostic_context_counts(spell_references)
     attempt_number = 0
@@ -2270,6 +2369,8 @@ def execute_agentic_turn(
             _check_asked_slot_level(encounter, pending, batch)
             # 3b: the answered roll's typed faces fit the typed request.
             _check_answered_roll_faces(encounter_path, encounter, pending, batch, immutable_voice_intents)
+            # Item 10 (r2): the answered save keeps the DC it was asked at.
+            _check_asked_save_dc(batch, asked_dc_corrected)
             takeover = _player_weapon_takeover(encounter, characters, pending, batch)
             if takeover is not None:
                 # Item 3: the player's plain melee swing. Code asks for the
@@ -2324,6 +2425,7 @@ def execute_agentic_turn(
                 # The last attempt lets a genuine question through rather than
                 # leave the player's turn without an answer.
                 _validate_player_weapon_question(batch, encounter, characters)
+                _validate_feature_names(batch, encounter, characters)
             _validate_roll_request_phase(batch, encounter)
             try:
                 roll_audits = _audit_batch_spell_roll_requests(
@@ -2457,6 +2559,7 @@ def execute_agentic_turn(
                 npc_voice_intents=immutable_voice_intents,
                 requested_roll=typed_roll,
                 requested_slot_level=_asked_slot_level(encounter, batch, exc.actor_id, request),
+                requested_dc=_asked_save_dc(request),
             )
             raise CombatTurnPaused(
                 "Combat resolution requires more player input",
@@ -2489,6 +2592,10 @@ def execute_agentic_turn(
             if removal_refusals and isinstance(getattr(exc, "actor_id", None), str):
                 # #725 (D-725-1 A): one re-rule per actor per window.
                 removal_refused_actors.add(exc.actor_id)
+            if ((getattr(exc, "feedback", None) or {}) if isinstance(getattr(exc, "feedback", None), dict)
+                    else {}).get("askedSaveDc") is not None and isinstance(getattr(exc, "actor_id", None), str):
+                # Item 10: one correction per actor; then the engine scores the asked DC.
+                asked_dc_corrected.add(exc.actor_id)
             correction = _intent_correction(exc, batch=batch)
             failure_class = _resolution_failure_class(exc)
             rules_drift = (

@@ -785,17 +785,33 @@ def feature_heal_key(name):
 
 
 # #881: class-feature heals whose amount is a typed formula: count d sides
-# + the class level. Keyed like FEATURE_HEALS (feature_heal_key). The table
-# grows only on an observed failure.
+# plus a typed bonus (the class level, or F1's Wisdom modifier). Keyed like
+# FEATURE_HEALS (feature_heal_key). The table grows only on an observed
+# failure.
 FEATURE_HEAL_FORMULAS = {
     "Second Wind": {"class": "fighter", "count": 1, "sides": 10, "plus": "class_level"},
+    # F1 (D-FL-2): Divine Spark, SRD 5.2.1 p.36, a Cleric's Channel Divinity
+    # option from Cleric 2: 1d8 + Wisdom modifier (2d8/3d8/4d8 at Cleric
+    # 7/13/18) to one other creature, never the cleric.
+    "Divine Spark": {"class": "cleric", "min_level": 2, "count_by_level": ((18, 4), (13, 3), (7, 2), (2, 1)),
+                     "sides": 8, "plus": "wisdom_mod", "target": "other"},
+}
+
+# F1 (plan-feature-limit-engine-r0, D-FL-1): the heal options each featureUse
+# pool pays for, keyed like the tables above. A heal's limit follows the pool
+# the intent spends; the typed featureName (8b), else the ability, picks the
+# option, and a pool with one option needs no name. Pools not listed here
+# keep #669 and #881 as they were.
+POOL_HEALS = {
+    "Channel Divinity": ("Preserve Life", "Divine Spark"),
+    "Second Wind": ("Second Wind",),
 }
 
 
 def feature_heal_formula(sheet, feature_name):
-    """#881: {feature, count, sides, bonus, label} of a formula heal the
-    sheet's class uses, or None: no row, another class, or no typed level
-    (logged once)."""
+    """#881: {feature, count, sides, bonus, label, target} of a formula heal
+    the sheet's class uses, or None: no row, another class, below the row's
+    level, or no typed level or score (logged once)."""
     wanted = feature_heal_key(feature_name)
     key = next((k for k in FEATURE_HEAL_FORMULAS if feature_heal_key(k) == wanted), None)
     if key is None or not isinstance(sheet, dict):
@@ -804,7 +820,16 @@ def feature_heal_formula(sheet, feature_name):
     if str(sheet.get("class") or "").strip().casefold() != row["class"]:
         return None
     level = sheet.get("level")
-    if type(level) is not int or level < 1:
+    bonus = label = None
+    if type(level) is int and level >= row.get("min_level", 1):
+        if row["plus"] == "class_level":
+            bonus, label = level, "%s level %d" % (row["class"].capitalize(), level)
+        else:
+            score = (sheet.get("abilities") or {}).get("wisdom")
+            if type(score) is int:
+                bonus = (score - 10) // 2
+                label = "Wisdom modifier %+d" % bonus
+    if bonus is None:
         try:
             from utils.enhanced_logger import info as _info
             _info("FH: %s %s formula not applied (level %r)" % (sheet.get("name"), key, level),
@@ -812,30 +837,118 @@ def feature_heal_formula(sheet, feature_name):
         except Exception:
             pass
         return None
-    return {"feature": key, "count": row["count"], "sides": row["sides"], "bonus": level,
-            "label": "%s level %d" % (row["class"].capitalize(), level)}
+    count = row.get("count") or next(n for floor, n in row["count_by_level"] if level >= floor)
+    return {"feature": key, "count": count, "sides": row["sides"], "bonus": bonus, "label": label,
+            "target": row.get("target", "self")}
 
 
-def _feature_heal_formula(encounter, characters, proposal):
-    """#881: the formula of the actor's own featureUse spend in this intent
-    (the typed resource the engine debits, not the ability or action
-    words), or None."""
-    actor = combatant_by_id(encounter, proposal.get("actorId"))
-    name = (actor or {}).get("name")
+def declared_heal(entry):
+    """A target entry's declared hpDelta as an integer (0 when unreadable)."""
+    try:
+        return int((entry or {}).get("hpDelta", 0) or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def intent_feature_name(intent):
+    """8b: the name that picks a class-feature heal's rule: the typed
+    featureName, else (an older or untyped intent) the ability."""
+    name = (intent or {}).get("featureName")
+    return name if isinstance(name, str) and name.strip() else (intent or {}).get("ability")
+
+
+def pool_heal_options(sheet, pool):
+    """F1: the heal options of ``pool`` the sheet qualifies for, in table
+    order, as {option, name}. A FEATURE_HEALS option needs the class and its
+    own classFeatures row (H2), and ``name`` is that row as written; a
+    formula option needs the class and the row's minimum level."""
+    if not isinstance(sheet, dict):
+        return []
+    sheet_class = str(sheet.get("class") or "").strip().casefold()
+    level = sheet.get("level")
+    rows = {feature_heal_key(f["name"]): f["name"] for f in sheet.get("classFeatures") or []
+            if isinstance(f, dict) and isinstance(f.get("name"), str)}
+    options = []
+    for option in POOL_HEALS.get(pool, ()):
+        key = feature_heal_key(option)
+        if option in FEATURE_HEALS:
+            if sheet_class == FEATURE_HEALS[option]["class"] and key in rows:
+                options.append({"option": option, "name": rows[key]})
+            continue
+        row = FEATURE_HEAL_FORMULAS[option]
+        minimum = row.get("min_level")
+        if sheet_class != row["class"] or (minimum is not None and (type(level) is not int or level < minimum)):
+            continue
+        options.append({"option": option, "name": rows.get(key, option)})
+    return options
+
+
+def feature_heal_names(sheet):
+    """8b: the featureName values a sheet may use: the heal options it
+    qualifies for, over every POOL_HEALS pool it holds a classFeatures row
+    for (the list the T096 payload gives as featureNames)."""
+    held = {feature_heal_key(f.get("name")) for f in (sheet or {}).get("classFeatures") or [] if isinstance(f, dict)}
+    names = []
+    for pool in POOL_HEALS:
+        if feature_heal_key(pool) in held:
+            names.extend(o["name"] for o in pool_heal_options(sheet, pool) if o["name"] not in names)
+    return names
+
+
+def spent_heal_pool(encounter, proposal):
+    """F1: (POOL_HEALS key, its spend records) for the actor's own featureUse
+    spend of a pool with heal options, matched by the record's typed name
+    (the resource the engine debits), or (None, [])."""
+    owner = (combatant_by_id(encounter, proposal.get("actorId")) or {}).get("name")
     for record in proposal.get("resources") or []:
-        if (isinstance(record, dict) and record.get("kind") == "featureUse" and record.get("owner") == name
-                and type(record.get("delta")) is int and record["delta"] < 0
-                and any(feature_heal_key(k) == feature_heal_key(record.get("name")) for k in FEATURE_HEAL_FORMULAS)):
-            return feature_heal_formula((characters or {}).get(name), record.get("name"))
-    return None
+        if not (isinstance(record, dict) and record.get("kind") == "featureUse" and record.get("owner") == owner
+                and type(record.get("delta")) is int and record["delta"] < 0):
+            continue
+        pool = next((p for p in POOL_HEALS if feature_heal_key(p) == feature_heal_key(record.get("name"))), None)
+        if pool is not None:
+            return pool, [r for r in proposal.get("resources") or [] if isinstance(r, dict)
+                          and r.get("kind") == "featureUse" and r.get("owner") == owner
+                          and feature_heal_key(r.get("name")) == feature_heal_key(pool)]
+    return None, []
 
 
-def _feature_heal_rule(encounter, characters, proposal):
-    """(feature name, pool) when the intent's typed ability is one of the
-    actor's own class features with a FEATURE_HEALS rule, else (None, None).
-    The pool is None when the class level cannot be read from typed fields
-    (the check is then skipped and logged once)."""
-    ability = proposal.get("ability")
+def _feature_heal_selection(encounter, characters, proposal, targets):
+    """F1: how one intent's class-feature heal is limited, as (feature, pool,
+    formula, refusal).
+
+    With the actor's own spend of a POOL_HEALS pool, the option the typed
+    featureName (8b), else the ability, names picks the rule: a FEATURE_HEALS
+    option gives #669's (feature, pool), a formula option its #881 formula.
+    A spend that names none of the actor's options for that pool but
+    declares a heal is a refusal {pool, options, ability}. Without such a
+    spend #669's name-keyed rule stands as before."""
+    picked = intent_feature_name(proposal)
+    pool, spends = spent_heal_pool(encounter, proposal)
+    if pool is None:
+        feature, amount = _feature_heal_rule(encounter, characters, proposal, picked)
+        return feature, amount, None, None
+    sheet = (characters or {}).get((combatant_by_id(encounter, proposal.get("actorId")) or {}).get("name"))
+    options = pool_heal_options(sheet, pool)
+    chosen = next((o for o in options if feature_heal_key(o["option"]) == feature_heal_key(picked)), None)
+    if chosen is None and len(POOL_HEALS[pool]) == 1 and options:
+        chosen = options[0]
+    if chosen is None:
+        if not any(declared_heal(entry) > 0 for entry in targets):
+            return None, None, None, None
+        return None, None, None, {"pool": spends[0].get("name"), "options": [o["name"] for o in options],
+                                  "ability": picked}
+    if chosen["option"] in FEATURE_HEALS:
+        feature, amount = _feature_heal_rule(encounter, characters, proposal, chosen["name"])
+        return feature, amount, None, None
+    return None, None, feature_heal_formula(sheet, chosen["option"]), None
+
+
+def _feature_heal_rule(encounter, characters, proposal, name=None):
+    """(feature name, pool) when the intent's typed ability (or ``name``) is
+    one of the actor's own class features with a FEATURE_HEALS rule, else
+    (None, None). The pool is None when the class level cannot be read from
+    typed fields (the check is then skipped and logged once)."""
+    ability = proposal.get("ability") if name is None else name
     actor = combatant_by_id(encounter, proposal.get("actorId"))
     sheet = (characters or {}).get((actor or {}).get("name"))
     if not isinstance(ability, str) or not isinstance(sheet, dict):
@@ -892,6 +1005,45 @@ def _feature_heal_unspent(event, resolution, encounter, proposal, feature, rows,
         "kind": "featureHeal", "ability": feature, "combatantId": None,
         "supplied": 0, "allowed": 0, "unspent": [record.get("name") for record in spends]})
     resolution["featureHealUnspent"] = rows
+
+
+def _feature_heal_refused(event, resolution, encounter, proposal, refusal, targets, clamp):
+    """F1: a heal paid with a POOL_HEALS pool that names none of the actor's
+    options for it, or a Divine Spark that does not heal exactly one other
+    creature, heals nothing. The violation names the options so the
+    correction can pick one; on the corrected pass the spend is dropped and
+    journaled and the resolution says so (featureHealUnspent), as #669 does
+    for a heal that restores nothing."""
+    declared = sum(max(0, declared_heal(entry)) for entry in targets)
+    row = {"actorId": proposal.get("actorId"), "ability": refusal["ability"], "combatantId": None,
+           "hpBefore": None, "max": None, "allowed": 0, "declared": declared,
+           "pool": refusal["pool"], "options": list(refusal["options"])}
+    if refusal.get("target"):
+        row["target"] = refusal["target"]
+        text = ("feature heal: %s heals exactly one other creature, never %s; heal one other target, "
+                "or spend nothing" % (refusal["ability"], proposal.get("actorId")))
+    elif refusal["options"]:
+        text = ("feature heal: %s heals only as %s; name one in featureName, or spend nothing"
+                % (refusal["pool"], " or ".join(refusal["options"])))
+    else:
+        text = "feature heal: %s has no heal option for this actor; spend nothing on a heal" % refusal["pool"]
+    if not clamp:
+        resolution["violations"].append(text)
+        resolution.setdefault("featureHealLimits", []).append(row)
+        return
+    owner = (combatant_by_id(encounter, proposal.get("actorId")) or {}).get("name")
+    spends = [
+        record for record in event.get("resources") or []
+        if record.get("kind") == "featureUse" and record.get("owner") == owner
+        and feature_heal_key(record.get("name")) == feature_heal_key(refusal["pool"])
+        and isinstance(record.get("delta"), int) and record["delta"] < 0
+    ]
+    event["resources"] = [record for record in event.get("resources") or [] if record not in spends]
+    event.setdefault("normalizations", []).append({
+        "kind": "featureHeal", "ability": refusal["ability"], "combatantId": None,
+        "supplied": declared, "allowed": 0, "unspent": [record.get("name") for record in spends],
+        "options": list(refusal["options"])})
+    resolution["featureHealUnspent"] = [row]
 
 
 def _feature_heal_allowed(hp_now, max_hp, pool_left):
@@ -2869,6 +3021,22 @@ def _player_save_faces(proposal, target):
     return group or None
 
 
+def _player_save_dc(proposal, target, save_spec, player_faces, event):
+    """Item 10 (r2): the DC of the player's own save. When the player
+    answered a save request asked at a DC (playerRoll.requestedDc, typed
+    when the request was made), that DC; a different supplied dc is
+    journaled. Otherwise the supplied dc, 10 when none."""
+    roll = proposal.get("playerRoll")
+    asked = roll.get("requestedDc") if player_faces and isinstance(roll, dict) else None
+    if type(asked) is not int:
+        return save_spec.get("dc", 10) or 10
+    if save_spec.get("dc") != asked:
+        event.setdefault("normalizations", []).append({
+            "kind": "askedSaveDc", "combatantId": target.get("combatantId"),
+            "supplied": save_spec.get("dc"), "applied": asked})
+    return asked
+
+
 def _spell_save_rule(encounter, characters, proposal, save_spec, targets, event):
     """#703: the typed save of a spell with a record, or None (today's path).
 
@@ -3824,8 +3992,15 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
             "a declared save requires at least one target (use hpDelta 0 for control)"
         )
 
-    heal_feature, heal_pool = _feature_heal_rule(encounter, characters, proposal)
-    heal_formula = _feature_heal_formula(encounter, characters, proposal)
+    heal_feature, heal_pool, heal_formula, heal_refusal = _feature_heal_selection(
+        encounter, characters, proposal, targets)
+    if heal_formula is not None and heal_formula["target"] == "other":
+        # F1: Divine Spark heals exactly one creature, never its caster.
+        healed_ids = [entry.get("combatantId") for entry in targets if declared_heal(entry) > 0]
+        if healed_ids and (len(healed_ids) != 1 or healed_ids[0] == proposal.get("actorId")):
+            heal_refusal = {"pool": spent_heal_pool(encounter, proposal)[1][0].get("name"),
+                            "options": [], "ability": heal_formula["feature"], "target": "other"}
+            heal_formula = None
     formula_heal_declared = False
     heal_rows = []
     for entry in targets:
@@ -3846,8 +4021,12 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                 % target["combatantId"]
             )
             continue
+        if heal_refusal is not None and hp_delta > 0:
+            # F1: the spent pool pays for no heal named here; nothing is healed.
+            continue
         feature_heal = None
-        if heal_formula is not None and hp_delta > 0 and target["combatantId"] == proposal.get("actorId"):
+        if (heal_formula is not None and hp_delta > 0
+                and (target["combatantId"] == proposal.get("actorId")) == (heal_formula["target"] == "self")):
             formula_heal_declared = True
             # #881: code does the arithmetic, the typed die face (rolled) plus
             # the class level; with no rolled the declared heal is held to the
@@ -3934,8 +4113,9 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
             # unavailable engine keep the arithmetic below.
             save_sheet = _sheet_backed_target(characters, target)
             player_faces = _player_save_faces(proposal, target)
+            save_dc = _player_save_dc(proposal, target, save_spec, player_faces, event)
             engine_save = (
-                _engine_save(save_sheet, save_spec.get("type"), save_spec.get("dc", 10) or 10,
+                _engine_save(save_sheet, save_spec.get("type"), save_dc,
                              rolls, proposal.get("actorId"), target.get("combatantId"),
                              player_faces=player_faces)
                 if save_sheet is not None else None
@@ -3966,7 +4146,7 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                 )
                 bonus = _save_bonus(encounter, characters, target, save_spec.get("type"))
                 added = _save_added_dice(encounter, characters, target, save_spec.get("type"), rolls)
-                saved = die + bonus + sum(roll["value"] for roll in added) >= int(save_spec.get("dc", 10) or 10)
+                saved = die + bonus + sum(roll["value"] for roll in added) >= int(save_dc)
                 record = {"die": "d20", "value": die, "purpose": "save",
                           "combatantId": target["combatantId"],
                           "bonus": bonus, "success": saved}
@@ -4049,13 +4229,16 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
             resolution["charDeltas"][target["name"]] = _sheet_delta(
                 working, hp_after, status_after, target, temp_before)
 
-    if heal_formula is not None and not formula_heal_declared:
+    if heal_formula is not None and heal_formula["target"] == "self" and not formula_heal_declared:
         # #939 (#352 shape): the actor spends a formula heal but declares no
         # heal on itself, so the use would be spent and nothing restored.
         resolution["violations"].append(
             "feature heal: %s spends a use but declares no heal on %s; declare it as a target on %s with "
             "hpDelta and the d%d face in rolled, or spend nothing"
             % (heal_formula["feature"], proposal.get("actorId"), proposal.get("actorId"), heal_formula["sides"]))
+    if heal_refusal is not None:
+        _feature_heal_refused(event, resolution, encounter, proposal, heal_refusal, targets,
+                              clamp_feature_heals)
     if heal_pool is not None and not resolution.get("featureHealLimits"):
         _feature_heal_unspent(event, resolution, encounter, proposal, heal_feature, heal_rows,
                               clamp_feature_heals)
