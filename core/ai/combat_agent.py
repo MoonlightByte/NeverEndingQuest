@@ -273,6 +273,10 @@ An adjudicated intent may contain:
 - description: mechanical ruling
 - save: {type, dc, halfOnSave} when targets roll a save
 - targets: [{combatantId, hpDelta}], negative damage / positive healing
+- featureName: when the intent heals with a class feature's pooled use (a
+  featureUse resource such as Channel Divinity or Second Wind), the option
+  used, exactly as featureNames lists it for that actor; code takes the
+  heal's limit from it
 - resources: [{owner, kind, name, delta}], using exact sheet names; kind is
   ammunition, spellSlot, featureUse, or item (a feat's use, FEAT ... uses, is
   kind featureUse with the feat's exact name, and a spell cast with it spends
@@ -444,7 +448,8 @@ When the request is about a weapon, set weaponName to the exact item or
 action name from the player's sheet; leave weaponName out when the player
 uses something not on their sheet (an improvised or picked-up weapon). A
 roll with phase 'save' sets saverId to the combatantId of the creature
-making the save, which is always the player actor itself.
+making the save, which is always the player actor itself, and dc, the
+save's DC as an integer; code scores the player's answer at that dc.
 One requiresPlayerInput represents exactly ONE next player roll or choice.
 Never combine two rolls or two spells in one request. For a multi-action turn,
 ask only for the earliest unresolved player roll; after the player supplies it,
@@ -533,6 +538,17 @@ def request_intent_batch(
             selected_voice[actor_id] = entry
         if selected_voice:
             payload["npcVoiceIntents"] = selected_voice
+    # 8b: the featureName values each window actor may use (the heal
+    # options its sheet qualifies for), typed from the sheet.
+    from core.combat.resolver import feature_heal_names
+    feature_names = {}
+    for actor_id in pending_ids:
+        creature = combatant_by_id(encounter, actor_id)
+        names = feature_heal_names((characters or {}).get((creature or {}).get("name")))
+        if names:
+            feature_names[actor_id] = names
+    if feature_names:
+        payload["featureNames"] = feature_names
     if contextual_payload:
         payload["spellActionIndex"] = contextual_payload.get("spellActionIndex", [])
         if contextual_payload.get("encounterContext"):
