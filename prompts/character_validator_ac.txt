@@ -127,13 +127,13 @@ The character data you receive is an AC-only projection of the sheet. Your reply
 rules and rejected as a whole if any one is broken, so follow them exactly:
 
 1. In `validated_character_data`, only `armorClass` and `equipment` may differ from the input. Every other
-   field (name, class, race, abilities, proficiencies, equipment_effects, classFeatures, racialTraits, feats,
-   and anything else present) must be echoed exactly as received or omitted. Never add a field that was not
+   field (name, class, race, abilities, proficiencies, equipment_effects, and anything else present) must
+   be echoed exactly as received or omitted. Never add a field that was not
    in the input.
 2. `equipment_effects` is read-only context. If an effect looks wrong (for example a shield effect that says
    +0 AC), compute the correct AC from the equipment records anyway and mention the discrepancy in
    `corrections_made`. Do not edit, add or remove effects.
-3. Each `equipment` entry must reference an input item by its exact `item_name`. You may change only
+3. Each `equipment` entry must reference an input item by its `row` number. You may change only
    `ac_base`, `ac_bonus`, `dex_limit`, `armor_category`, `stealth_disadvantage` and (within rule 4) `equipped`.
    Never change `description` or `quantity`. Never add new items and never list the same item
    twice. Items you do not change may be omitted from `equipment`.
@@ -164,7 +164,7 @@ You must respond with a JSON object containing:
   "validated_character_data": {
     "armorClass": 17,
     "equipment": [
-      {"item_name": "Scale Mail", "equipped": true, "ac_base": 14, "dex_limit": 2, "armor_category": "medium", "stealth_disadvantage": true}
+      {"row": 3, "equipped": true, "ac_base": 14, "dex_limit": 2, "armor_category": "medium", "stealth_disadvantage": true}
     ]
   },
   "corrections_made": [

@@ -455,6 +455,7 @@ _T051_AC_VALIDATION_SCHEMA = {
                     "items": {
                         "type": "object",
                         "properties": {
+                            "row": {"type": "integer"},
                             "item_name": {"type": "string"},
                             "item_type": {"type": "string"},
                             "equipped": {"type": "boolean"},
@@ -492,7 +493,7 @@ _T052_INVENTORY_VALIDATION_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "item_name": {"type": "string"},
+                    "row": {"type": "integer"},
                     "item_type": {"type": "string"},
                 },
             },
