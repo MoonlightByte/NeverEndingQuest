@@ -112,7 +112,8 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
     after = copy.deepcopy(after)
     genesis.assign_ids(before, reserved=reserved)
     # Carry ids into the merged entries by exact name for entries that have none
-    # (the T079 delta never carries nql_id), then mint for genuinely new ones.
+    # (an entry that names its nql_id was merged into that row and keeps it), then
+    # mint for genuinely new ones.
     by_name = {}
     for e in before.get("equipment") or []:
         if isinstance(e, dict) and e.get("item_name") and e.get("item_name") not in by_name:
