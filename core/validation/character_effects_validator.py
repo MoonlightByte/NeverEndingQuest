@@ -17,11 +17,10 @@
 # KEY RESPONSIBILITIES:
 # - Equipment effects and armor class through the engine's projection
 # - Time-based expiry of legacy temporary effects (unmigrated campaigns)
-# - Class feature usage tracking
 #
 
 """Character effects upkeep after a sheet update: equipment effects and armor
-class, expiry of legacy temporary effects, class feature usage."""
+class, expiry of legacy temporary effects."""
 
 import json
 import logging
@@ -66,7 +65,6 @@ class AICharacterEffectsValidator:
             if campaign_effects_migrated():
                 corrected_data = copy.deepcopy(character_data)
                 corrected_data = self.calculate_equipment_effects(corrected_data)
-                corrected_data = self.initialize_class_feature_usage(corrected_data)
                 return corrected_data
         except Exception as exc:
             if self.require_complete:
@@ -90,9 +88,10 @@ class AICharacterEffectsValidator:
         
         # Step 3: Expire outdated temporary effects
         corrected_data = self.expire_temporary_effects(corrected_data, game_time)
-        
-        # Step 4: Initialize class feature usage if needed
-        corrected_data = self.initialize_class_feature_usage(corrected_data)
+
+        # Use pools come from the SRD tables (raised in calculate_equipment_effects,
+        # #704) and a writer's typed usage; none is read from description text
+        # (keyword validation V6).
         
         return corrected_data
     
@@ -234,54 +233,6 @@ class AICharacterEffectsValidator:
             minute=int(time_parts[1]),
             second=int(time_parts[2]) if len(time_parts) > 2 else 0
         )
-    
-    def initialize_class_feature_usage(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Initialize usage tracking for class features that don't have it
-        
-        Args:
-            character_data: Character JSON data
-            
-        Returns:
-            Character data with initialized usage tracking
-        """
-        if 'classFeatures' not in character_data:
-            return character_data
-        
-        features_updated = 0
-        
-        for feature in character_data['classFeatures']:
-            # Check if this feature needs usage tracking
-            name_lower = feature.get('name', '').lower()
-            desc_lower = feature.get('description', '').lower()
-            
-            # Skip if already has usage
-            if 'usage' in feature:
-                continue
-            
-            # Pattern matching for limited use features
-            if any(phrase in desc_lower for phrase in ['once per short rest', 'once per long rest', 
-                                                       'uses per', 'times per', 'charges']):
-                # Try to determine usage pattern
-                if 'once per short rest' in desc_lower:
-                    feature['usage'] = {
-                        'current': 1,
-                        'max': 1,
-                        'refreshOn': 'shortRest'
-                    }
-                    features_updated += 1
-                elif 'once per long rest' in desc_lower:
-                    feature['usage'] = {
-                        'current': 1,
-                        'max': 1,
-                        'refreshOn': 'longRest'
-                    }
-                    features_updated += 1
-        
-        if features_updated > 0:
-            self.corrections_made.append(f"Initialized usage tracking for {features_updated} class features")
-        
-        return character_data
     
     def validate_character_effects_safe(self, file_path: str) -> tuple[Dict[str, Any], bool]:
         """
