@@ -682,17 +682,14 @@ def _packet_recent_events(records: Iterable[Mapping[str, Any]]) -> list[Dict[str
     return result
 
 
+_UNAVAILABLE_STATUSES = frozenset({"dead", "defeated", "unconscious"})
+
+
 def _is_eligible_sheet(sheet: Mapping[str, Any]) -> bool:
-    unavailable = " ".join(
-        (
-            _string(sheet.get("status")),
-            _string(sheet.get("condition")),
-        )
-    ).casefold()
-    return not any(
-        marker in unavailable
-        for marker in ("dead", "defeated", "unconscious")
-    )
+    """A companion speaks unless its typed status or condition says it cannot."""
+    status = _string(sheet.get("status")).casefold()
+    condition = _string(sheet.get("condition")).casefold()
+    return status not in _UNAVAILABLE_STATUSES and condition != "unconscious"
 
 
 def _sidecar_identity_inactive(
