@@ -42,6 +42,8 @@ LOCATION_SUMMARY = "location_summary"
 CHRONICLE = "chronicle"
 ROLLING_SUMMARY = "rolling_summary"
 VALIDATION_ERROR = "validation_error"
+# The note the game adds at load when the player returns to a saved game.
+RETURN_NOTE = "return_note"
 
 SUMMARY_KINDS = (LOCATION_SUMMARY, CHRONICLE)
 MODULE_KINDS = (MODULE_TRANSITION, ARCHIVED_MODULE_TRANSITION)
@@ -55,6 +57,7 @@ _LEGACY_OPENINGS = (
     ("user", "Error Note: Your previous response failed validation", VALIDATION_ERROR),
     ("assistant", "=== LOCATION SUMMARY ===", LOCATION_SUMMARY),
     ("assistant", "[SUMMARY OF EVENTS AT THIS LOCATION]", ROLLING_SUMMARY),
+    ("user", "Dungeon Master Note: Resume the game, the player has returned", RETURN_NOTE),
 )
 
 

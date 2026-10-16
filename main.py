@@ -90,7 +90,6 @@ register_callsite("T013", "main.py", 1541)
 register_callsite("T063", "main.py", 1659)
 register_callsite("T064", "main.py", 1778)
 register_callsite("T065", "main.py", 1946)
-register_callsite("T066", "main.py", 2450)
 register_callsite("T067", "main.py", 3817)
 from datetime import datetime, timedelta
 from termcolor import colored
@@ -1530,8 +1529,7 @@ def check_and_inject_return_message(conversation_history, is_combat_active=False
         return conversation_history, False
     
     # Check if last message is already a return message
-    last_content = last_message.get("content", "")
-    if "Resume the game, the player has returned" in last_content:
+    if hm.is_marker(last_message, hm.RETURN_NOTE):
         debug("STATE_CHANGE: Return message already present, skipping injection", category="session_management")
         return conversation_history, False
     
@@ -1554,14 +1552,15 @@ def check_and_inject_return_message(conversation_history, is_combat_active=False
         debug("STATE_CHANGE: Added combat recovery marker", category="session_management")
         return conversation_history, True
     
-    # Normal (non-combat) resume message injection. The optional location_note
-    # (authoritative "current location" clause) is inserted AFTER the idempotency
-    # key phrase ("Resume the game, the player has returned") so the guard at the
-    # top of this function still matches; empty keeps the note byte-identical.
-    return_message = {
-        "role": "user",
-        "content": "Dungeon Master Note: Resume the game, the player has returned. " + location_note + _resume_guidance()
-    }
+    # Normal (non-combat) resume message injection, marked as the game's own
+    # return note so the guard at the top of this function finds it by its kind.
+    # The optional location_note (authoritative "current location" clause) keeps
+    # its place after the opening; empty keeps the text byte-identical.
+    return_message = hm.marker(
+        "user",
+        "Dungeon Master Note: Resume the game, the player has returned. " + location_note + _resume_guidance(),
+        hm.RETURN_NOTE,
+    )
     conversation_history.append(return_message)
     debug("STATE_CHANGE: Injected 'player has returned' message at startup", category="session_management")
     return conversation_history, True
@@ -2876,43 +2875,6 @@ def _resume_v2_location_transition(operation_id, *, publish=True, publication=No
         "terminal_action": terminal_action,
         "published_here": published_here,
     }
-
-
-def replace_transition_narration(
-    conversation_history, narration, expected_placeholder=None
-):
-    """Replace the T013 placeholder belonging to the latest transition only.
-
-    Searching backward for an arbitrary assistant message can overwrite output
-    from another action that completed while T063/T064 were running.  The
-    transition marker narrows the search and the exact value returned by T013
-    identifies its placeholder even if a parallel completion lands first.
-    """
-    transition_index = None
-    for index in range(len(conversation_history) - 1, -1, -1):
-        message = conversation_history[index]
-        if (
-            message.get("role") == "user"
-            and "Location transition:" in message.get("content", "")
-        ):
-            transition_index = index
-            break
-
-    if transition_index is None:
-        return False
-
-    for index in range(transition_index + 1, len(conversation_history)):
-        message = conversation_history[index]
-        if (
-            message.get("role") == "assistant"
-            and (
-                expected_placeholder is None
-                or message.get("content") == expected_placeholder
-            )
-        ):
-            conversation_history[index]["content"] = narration
-            return True
-    return False
 
 
 # Message combination system helper functions
@@ -5051,303 +5013,6 @@ def check_and_process_location_transitions(conversation_history, party_tracker_d
             return conversation_history
         action_handler._write_location_transition_checkpoint(checkpoint)
     return _apply_legacy_repair_checkpoint(checkpoint, conversation_history)
-
-def check_and_process_module_transitions(conversation_history, party_tracker_data):
-    """
-    Check if there are any unprocessed module transitions in the conversation history
-    and process them to create summaries and compress the history.
-    Mirrors the logic of check_and_process_location_transitions().
-    """
-    # Find the most recent transition that hasn't been processed yet
-    last_transition_index = None
-    last_transition_content = None
-    
-    for i in range(len(conversation_history) - 1, -1, -1):
-        msg = conversation_history[i]
-        if msg.get("role") == "user" and "Module transition:" in msg.get("content", ""):
-            last_transition_index = i
-            last_transition_content = msg.get("content", "")
-            break
-    
-    if last_transition_index is None:
-        # No module transitions found
-        return conversation_history
-    
-    # Check if this transition has already been processed (has a summary right before it)
-    if last_transition_index > 0:
-        prev_msg = conversation_history[last_transition_index - 1]
-        if prev_msg.get("role") == "user" and prev_msg.get("content", "").startswith("Module summary:"):
-            # This transition has already been processed
-            return conversation_history
-    
-    # Check if there's already conversation after this transition
-    # If there are regular conversation messages after the transition, we should process it
-    has_conversation_after = False
-    for i in range(last_transition_index + 1, len(conversation_history)):
-        msg = conversation_history[i]
-        # Skip system messages and DM notes
-        if msg.get("role") == "assistant" or (msg.get("role") == "user" and "Dungeon Master Note:" not in msg.get("content", "")):
-            has_conversation_after = True
-            break
-    
-    if not has_conversation_after:
-        # No conversation after the transition yet, wait for next round
-        return conversation_history
-    
-    # Extract the leaving module from the transition message
-    # Format: "Module transition: [from_module] to [to_module]"
-    try:
-        import re
-        pattern = r'Module transition: (.+?) to (.+?)$'
-        match = re.match(pattern, last_transition_content)
-        
-        if match:
-            leaving_module_name = match.group(1)
-            arriving_module_name = match.group(2)
-            debug(f"STATE_CHANGE: Extracted module transition - From: {leaving_module_name}, To: {arriving_module_name}", category="module_transitions")
-        else:
-            warning("VALIDATION: Could not parse module transition message format", category="module_transitions")
-            return conversation_history
-    except Exception as e:
-        error(f"FAILURE: Error parsing module transition message", exception=e, category="module_transitions")
-        return conversation_history
-    
-    debug(f"STATE_CHANGE: Processing module transition from {leaving_module_name}", category="module_transitions")
-    
-    try:
-        # Generate module summary using similar logic to location summaries
-        module_summary = generate_module_summary(
-            conversation_history,
-            party_tracker_data,
-            leaving_module_name,
-            last_transition_index
-        )
-        
-        if module_summary:
-            # Compress conversation history for module transition
-            compressed_history = compress_conversation_history_on_module_transition(
-                conversation_history,
-                leaving_module_name,
-                module_summary,
-                last_transition_index
-            )
-            
-            debug("SUCCESS: Module summary and compression completed", category="module_transitions")
-            return compressed_history
-        else:
-            debug("STATE_CHANGE: No module summary generated", category="module_transitions")
-            return conversation_history
-            
-    except Exception as e:
-        error(f"FAILURE: Failed to process module transition", exception=e, category="module_transitions")
-        import traceback
-        traceback.print_exc()
-        return conversation_history
-
-def generate_module_summary(conversation_history, party_tracker_data, module_name, transition_index):
-    """Generate a summary for a module transition"""
-    
-    # Condition 1: Look for previous module transition OR module summary first
-    boundary_index = None
-    
-    for i in range(transition_index - 1, -1, -1):
-        msg = conversation_history[i]
-        content = msg.get("content", "")
-        
-        # Look for either previous module transition or existing module summary
-        if (msg.get("role") == "user" and 
-            ("Module transition:" in content or "Module summary:" in content)):
-            boundary_index = i + 1  # Start after previous transition/summary
-            debug(f"VALIDATION: CONDITION 1 - Found previous module marker at index {i}, boundary at {boundary_index}", category="conversation_management")
-            break
-    
-    # Condition 2: If no previous module transition/summary, find last system message
-    if boundary_index is None:
-        for i in range(transition_index - 1, -1, -1):
-            msg = conversation_history[i]
-            if msg.get("role") == "system":
-                boundary_index = i + 1  # Start after last system message
-                debug(f"VALIDATION: CONDITION 2 - Found last system message at index {i}, boundary at {boundary_index}", category="conversation_management")
-                break
-        
-        # Fallback if no system message found (shouldn't happen)
-        if boundary_index is None:
-            boundary_index = 0
-            debug(f"VALIDATION: FALLBACK - No system message found, using boundary at {boundary_index}", category="conversation_management")
-    
-    # Extract ONLY the conversation from boundary to transition (actual gameplay)
-    module_conversation = conversation_history[boundary_index:transition_index]
-    debug(f"STATE_CHANGE: Extracting {len(module_conversation)} messages from index {boundary_index} to {transition_index} for summary", category="conversation_management")
-    
-    # Generate summary from ACTUAL conversation history, not plot files
-    try:
-        # Filter out system messages and technical messages from the conversation
-        meaningful_messages = []
-        for msg in module_conversation:
-            content = msg.get("content", "")
-            role = msg.get("role", "")
-            
-            # Skip technical messages but keep actual gameplay
-            if (role in ["user", "assistant"] and 
-                not content.startswith(("Location transition:", "Module transition:", 
-                                      "Module summary:", "Dungeon Master Note:", "Error Note:"))):
-                meaningful_messages.append(msg)
-        
-        debug(f"STATE_CHANGE: Found {len(meaningful_messages)} meaningful conversation messages to summarize", category="summary_building")
-        
-        # If we have substantial conversation, generate AI summary from actual gameplay
-        if len(meaningful_messages) >= 3:
-            try:
-                import config
-
-                # Prepare conversation for summarization
-                conversation_text = ""
-                for msg in meaningful_messages:  # All meaningful messages from this module
-                    role = "Player" if msg.get("role") == "user" else "DM"
-                    content = msg.get("content", "")
-                    conversation_text += f"{role}: {content}\n\n"
-                
-                summary_prompt = f"""You are creating an adventure chronicle for a 5th edition session. Summarize this actual gameplay conversation from the {module_name} module into a compelling narrative story.
-
-IMPORTANT: Only include events that actually happened in the conversation. Do not add events from other sources.
-
-Focus on:
-- Actual player actions and decisions made
-- NPCs encountered and interactions that occurred  
-- Locations visited and described
-- Plot developments that happened
-- Character relationships and moments
-
-Write in an elevated fantasy prose style, like a chronicle or epic tale. Make it engaging but accurate to what actually occurred.
-
-ACTUAL GAMEPLAY CONVERSATION:
-{conversation_text}
-
-Write a compelling chronicle of these actual events:"""
-
-                from model_config import MODEL_PROVIDER
-                if MODEL_PROVIDER == "openai":
-                    summ_config = config.DM_SUMM_GPT54MINI_NONE
-                elif MODEL_PROVIDER == "gemini":
-                    summ_config = config.DM_SUMM_GEMINI_FLASH_LOW
-                elif MODEL_PROVIDER == "lmstudio":
-                    summ_config = config.DM_SUMM_LMSTUDIO
-                else:  # legacy
-                    summ_config = config.DM_SUMM_LEGACY
-
-                response = capture_and_fanout("T066", api_client.create_completion,
-                    _request_provider=MODEL_PROVIDER,
-                    messages=[
-                        {"role": "system", "content": "You are an expert at creating beautiful adventure chronicles from 5th edition gameplay, focusing only on events that actually occurred. Do NOT use markdown formatting (no **, no ###, no bullet points). Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode."},
-                        {"role": "user", "content": summary_prompt}
-                    ],
-                    model=summ_config["model"],
-                    temperature=0.7,
-                    response_format=None,
-                    **{k: v for k, v in summ_config.items() if k != "model"})
-
-                # Log API call to master log
-                try:
-                    from utils.api_logger import log_api_call
-                    log_api_call("module_summary", [
-                        {"role": "system", "content": "You are an expert at creating beautiful adventure chronicles from 5th edition gameplay, focusing only on events that actually occurred. Do NOT use markdown formatting (no **, no ###, no bullet points). Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode."},
-                        {"role": "user", "content": summary_prompt}
-                    ], response, metadata={"temperature": 0.7, "module": module_name})
-                except Exception as e:
-                    print(f"[API_LOG] Warning: Failed to log summary call: {e}")
-
-                # Track token usage with context for telemetry
-                if USAGE_TRACKING_AVAILABLE:
-                    try:
-                        from utils.openai_usage_tracker import get_global_tracker
-                        tracker = get_global_tracker()
-                        tracker.track(response, context={'endpoint': 'module_summary', 'purpose': 'generate_module_summary', 'module': module_name})
-                    except:
-                        pass
-                
-                ai_summary = response.choices[0].message.content.strip()
-                if not ai_summary:
-                    raise ValueError("T066 returned an empty module chronicle")
-                ai_summary = sanitize_text(ai_summary).strip()
-                if not ai_summary:
-                    raise ValueError("T066 chronicle was empty after sanitization")
-                formatted_summary = f"=== MODULE SUMMARY ===\n\n{module_name}:\n------------------------------\n{ai_summary}"
-                debug(f"SUCCESS: Generated AI summary from actual conversation for {module_name}", category="summary_building")
-                return formatted_summary
-                
-            except Exception as e:
-                warning(f"FAILURE: Error generating AI summary from conversation, using fallback", category="summary_building")
-        
-        debug(f"STATE_CHANGE: Not enough meaningful conversation for AI summary ({len(meaningful_messages)} messages), using fallback", category="summary_building")
-        
-    except Exception as e:
-        error(f"FAILURE: Error processing conversation for summary, using fallback", exception=e, category="summary_building")
-    
-    # Fallback to simple summary if no AI summary available
-    meaningful_messages = [
-        msg for msg in module_conversation 
-        if msg.get("role") in ["user", "assistant"] and 
-        not msg.get("content", "").startswith(("Location transition:", "Module transition:", "Module summary:"))
-    ]
-    
-    if len(meaningful_messages) < 2:
-        return f"Brief activities in {module_name}."
-    elif len(meaningful_messages) <= 5:
-        return f"Short adventure in {module_name} with several interactions."
-    else:
-        return f"Extended adventure in {module_name} with multiple significant events and discoveries."
-
-def compress_conversation_history_on_module_transition(conversation_history, module_name, summary_text, transition_index):
-    """Compress conversation history by replacing conversation segment with summary, preserving previous summaries"""
-    
-    # Find the boundary for compression - same logic as generate_module_summary
-    boundary_index = None
-    
-    for i in range(transition_index - 1, -1, -1):
-        msg = conversation_history[i]
-        content = msg.get("content", "")
-        
-        # Look for either previous module transition or existing module summary
-        if (msg.get("role") == "user" and 
-            ("Module transition:" in content or "Module summary:" in content)):
-            boundary_index = i + 1  # Start after previous transition/summary
-            debug(f"VALIDATION: COMPRESSION - Found previous module marker at index {i}, boundary at {boundary_index}", category="conversation_management")
-            break
-    
-    # If no previous module marker, find last system message
-    if boundary_index is None:
-        for i, msg in enumerate(conversation_history):
-            if msg.get("role") == "system":
-                boundary_index = i + 1  # Start after system message
-                debug(f"VALIDATION: COMPRESSION - Found system message at index {i}, boundary at {boundary_index}", category="conversation_management")
-                break
-        
-        if boundary_index is None:
-            boundary_index = 0
-            debug(f"VALIDATION: COMPRESSION - No system message found, using boundary at {boundary_index}", category="conversation_management")
-    
-    # Create summary message
-    summary_message = {
-        "role": "user",
-        "content": f"Module summary: {summary_text}"
-    }
-    
-    # Build compressed history: everything before boundary + summary + transition + everything after
-    compressed_history = []
-    
-    # Keep everything before the boundary (includes system message + previous summaries)
-    compressed_history.extend(conversation_history[:boundary_index])
-    
-    # Add the new summary for this module  
-    compressed_history.append(summary_message)
-    
-    # Add transition marker and everything after
-    compressed_history.extend(conversation_history[transition_index:])
-    
-    debug(f"SUCCESS: Compressed module conversation from {len(conversation_history)} to {len(compressed_history)} messages", category="conversation_management")
-    debug(f"STATE_CHANGE: Preserved {boundary_index} messages before boundary, added 1 summary, kept {len(conversation_history) - transition_index} messages after transition", category="conversation_management")
-    debug("STATE_CHANGE: Result structure: main system message + module summary + transition + new conversation", category="conversation_management")
-    return compressed_history
 
 def extract_json_from_codeblock(text):
     match = re.search(r'```json\n(.*?)```', text, re.DOTALL)
@@ -9519,8 +9184,6 @@ def _main_game_loop(startup_authority, turn_authority):
             save_conversation_history(conversation_history)
             needs_conversation_history_update = False
 
-        # DISABLED: Module summary insertion now handled by inject_campaign_summaries with separate system messages
-        # conversation_history = check_and_process_module_transitions(conversation_history, party_tracker_data)
         save_conversation_history(conversation_history)
     
         # Item charges (H2): count the recharge of the party's due charged

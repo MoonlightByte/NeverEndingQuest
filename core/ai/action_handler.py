@@ -83,7 +83,6 @@ from core.managers.status_manager import (
     status_updating_plot, status_advancing_time, status_processing_levelup
 )
 from utils.location_path_finder import LocationGraph
-from core.ai.conversation_utils import handle_module_conversation_segmentation
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from core.nql.journal import entry_id as journal_entry_id
 
