@@ -9293,7 +9293,10 @@ def _main_game_loop(startup_authority, turn_authority):
         completed_checks = take_player_rolls(input)
 
         # A dice submission is the next player input; narrate its authoritative
-        # result without requiring an unrelated command or rolling again.
+        # result without requiring an unrelated command or rolling again. The
+        # line is the engine's, not the player's: its turn is saved as a
+        # check_continuation marker and runs no companion recall.
+        check_continuation = bool(completed_checks)
         if completed_checks:
             user_input_text = "Continue with the outcome of my submitted check."
         elif player_data_current:
@@ -9745,8 +9748,14 @@ def _main_game_loop(startup_authority, turn_authority):
         # The player's durable turn input belongs to the same serialized
         # logical operation as T067. Claim before the first history write so
         # a concurrent Load/Reset cannot be overwritten by an unclaimed turn.
-        # #449: the player's own words ride beside the envelope, typed.
-        conversation_history.append(hm.player_turn(user_input_with_note, user_input_text))
+        # #449: the player's own words ride beside the envelope, typed. After a
+        # dice submission the words are the engine's, so the turn is a marker.
+        if check_continuation:
+            conversation_history.append(
+                hm.marker("user", user_input_with_note, hm.CHECK_CONTINUATION)
+            )
+        else:
+            conversation_history.append(hm.player_turn(user_input_with_note, user_input_text))
         initial_history_persisted = persist_t067_history_if_current(
             conversation_history
         )
@@ -9766,6 +9775,7 @@ def _main_game_loop(startup_authority, turn_authority):
                     location_data=location_data,
                     conversation_prefix=conversation_history[:-1],
                     path_manager=path_manager,
+                    recall=not check_continuation,
                 )
             except Exception as voice_error:
                 debug(
