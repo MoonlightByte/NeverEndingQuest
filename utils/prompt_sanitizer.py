@@ -1,63 +1,37 @@
 #!/usr/bin/env python3
 """
-Prompt sanitization for DALL-E content policy violations.
-Only used after a failure - no pre-processing.
+Prompt rewrite after a DALL-E content-policy refusal (T089).
+Only used after a refusal - no pre-processing. The model returns a typed
+{"prompt": "..."} object; code uses that field or makes no rewrite (#855).
 """
 
-import re
+import json
+from typing import Optional
 
 from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T089", "utils/prompt_sanitizer.py", 87)
+register_callsite("T089", "utils/prompt_sanitizer.py", 61)
 
 
-_SAFE_REPLACEMENTS = (
-    (r"\bslit (?:their|his|her|my|your) throat\b", "seriously harm them"),
-    (r"\bgut (?:me|him|her|them|you)\b", "harm them"),
-    (r"\bdisembowel(?:ed|ing)?\b", "gravely injure"),
-    (r"\bgore\b", "signs of violence"),
-    (r"\bcult(?:ist|ists|s)?\b", "shadowy group"),
-    (r"\b(?:hallucinogen|narcotic|opium)\w*\b", "strange brew"),
-)
+def rewritten_prompt(original: str, raw) -> Optional[str]:
+    """The typed ``prompt`` field of a T089 reply when it is a non-empty string
+    that differs from the original prompt; otherwise None (no rewrite)."""
+    try:
+        value = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    candidate = value.get("prompt") if isinstance(value, dict) else None
+    if not isinstance(candidate, str) or not candidate.strip():
+        return None
+    candidate = candidate.strip()
+    return None if candidate == str(original or "").strip() else candidate
 
 
-def deterministic_sanitize_prompt(prompt: str) -> str:
-    """Provide a local recovery prompt when the T089 provider is unavailable."""
-    cleaned = " ".join(str(prompt or "").split())
-    for pattern, replacement in _SAFE_REPLACEMENTS:
-        cleaned = re.sub(pattern, replacement, cleaned, flags=re.IGNORECASE)
-    cleaned = re.sub(
-        r"\b(?:blood-soaked|bloodied|bloody|mutilated)\b",
-        "weathered",
-        cleaned,
-        flags=re.IGNORECASE,
-    )
-    if cleaned == " ".join(str(prompt or "").split()):
-        cleaned = (
-            "Atmospheric dark-fantasy scene with implied danger, no graphic "
-            f"violence: {cleaned}"
-        )
-    return cleaned.strip()
-
-
-def _usable_sanitized_prompt(original: str, candidate: str) -> bool:
-    if not isinstance(candidate, str):
-        return False
-    normalized = candidate.strip()
-    if not normalized or normalized == str(original or "").strip():
-        return False
-    if "```" in normalized or normalized.startswith(("{", "[")):
-        return False
-    lower = normalized.lower()
-    if lower.startswith(("here is", "sanitized prompt:", "explanation:")):
-        return False
-    return True
-
-def sanitize_prompt(prompt: str) -> str:
+def sanitize_prompt(prompt: str) -> Optional[str]:
     """
-    Sanitize a prompt that was rejected by DALL-E.
-    Uses AI to clean problematic content while preserving narrative.
+    Rewrite a prompt that DALL-E refused, keeping the narrative.
+    Returns the rewritten prompt, or None when T089 gives no usable rewrite.
     """
     sanitization_request = """You are a prompt sanitizer for DALL-E 3. The following prompt was rejected for content policy violations.
 
@@ -71,7 +45,7 @@ Your task is to rewrite it to be safe while preserving the dark fantasy atmosphe
 
 Original prompt: """ + prompt + """
 
-Return ONLY the sanitized prompt, no explanations."""
+Return a JSON object with one field: {"prompt": "<the rewritten prompt>"}."""
 
     from model_config import MODEL_PROVIDER
     if MODEL_PROVIDER == "openai":
@@ -87,17 +61,13 @@ Return ONLY the sanitized prompt, no explanations."""
         response = capture_and_fanout("T089", api_client.create_completion,
             _request_provider=MODEL_PROVIDER,
             messages=[
-                {"role": "system", "content": "You are a prompt sanitizer. Return only the cleaned prompt text."},
+                {"role": "system", "content": "You are a prompt sanitizer. Return a JSON object with one field, prompt."},
                 {"role": "user", "content": sanitization_request}
             ],
             model=mini_cfg["model"],
             temperature=0.3,
-            response_format=None,
+            response_format={"type": "json_object"},
             **{k: v for k, v in mini_cfg.items() if k != "model"})
-        candidate = response.choices[0].message.content.strip()
-        if _usable_sanitized_prompt(prompt, candidate):
-            return candidate
+        return rewritten_prompt(prompt, response.choices[0].message.content)
     except Exception:
-        pass
-
-    return deterministic_sanitize_prompt(prompt)
+        return None
