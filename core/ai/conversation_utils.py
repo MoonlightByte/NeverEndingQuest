@@ -976,6 +976,17 @@ def _feats_text(feats):
     return ", ".join(parts)
 
 
+def _spell_guidance_message(sheet):
+    """r2 13b: the SRD entries of the spells on a player's sheet (never the words)."""
+    try:
+        from core.ai.srd_reference import sheet_spell_guidance
+
+        return sheet_spell_guidance(sheet.get("name"), sheet)
+    except Exception as exc:  # noqa: BLE001 - guidance is enrichment; the turn goes on
+        warning(f"SRD spell guidance unavailable: {exc}", category="conversation_management")
+        return ""
+
+
 def update_character_data(conversation_history, party_tracker_data):
     updated_history = conversation_history.copy()
 
@@ -987,7 +998,8 @@ def update_character_data(conversation_history, party_tracker_data):
             entry["role"] == "system"
             and ("Here's the updated character data for" in entry["content"]
                  or "Here's the NPC data for" in entry["content"]
-                 or DOWN_RULES_MARKER in entry["content"])
+                 or DOWN_RULES_MARKER in entry["content"]
+                 or entry["content"].startswith("SRD spell guidance for "))
         )
     ]
 
@@ -1093,6 +1105,11 @@ FLAWS: {member_data['flaws']}
 """
                     character_message = f"Here's the updated character data for {name}:\n{formatted_data}\n"
                     character_data.append({"role": "system", "content": character_message})
+                    # r2 13b: the SRD entries of this sheet's spells, beside the
+                    # sheet and replaced with it each turn.
+                    spell_guidance = _spell_guidance_message(member_data)
+                    if spell_guidance:
+                        character_data.append({"role": "system", "content": spell_guidance})
                     loaded_sheets.append(member_data)
             except FileNotFoundError:
                 print(f"{member_file} not found. Skipping JSON data for {name}.")

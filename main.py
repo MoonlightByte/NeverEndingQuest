@@ -3634,6 +3634,28 @@ def _compact_character_evidence(character_records):
         return json.dumps(character_records, ensure_ascii=True)
 
 
+def _validator_spell_guidance(character_records, party_tracker_data):
+    """r2 13b: the SRD spell entries the DM got, for the player records."""
+    players = {
+        name for name in (party_tracker_data or {}).get("partyMembers", []) if isinstance(name, str)
+    }
+    blocks = []
+    try:
+        from core.ai.srd_reference import sheet_spell_guidance
+
+        for record in character_records:
+            sheet = record.get("sheet")
+            if record.get("status") != "available" or record.get("name") not in players or not isinstance(sheet, dict):
+                continue
+            text = sheet_spell_guidance(sheet.get("name") or record.get("name"), sheet)
+            if text:
+                blocks.append("\n\n" + text)
+    except Exception as exc:  # noqa: BLE001 - evidence never stops a turn
+        warning(f"VALIDATION: SRD spell guidance unavailable: {exc}", category="ai_validation")
+        return ""
+    return "".join(blocks)
+
+
 _DM_BLOCK_HEADERS = (
     ("system_prompt", "You are the Dungeon Master for the world's most popular roleplaying game"),
     ("system_prompt", "You are a world-class 5th edition Dungeon Master"),
@@ -3645,6 +3667,7 @@ _DM_BLOCK_HEADERS = (
     ("current_location", "Current Location:"),
     ("character_sheets", "Here's the updated character data"),
     ("character_sheets", "Here's the NPC data"),
+    ("spell_guidance", "SRD spell guidance for "),
     ("companion", "=== ACTIVE COMPANION CANONICAL CONTEXT ==="),
     ("companion", "=== COMPANION MEMORIES"),
     ("travel_review_facts", "Travel review facts"),
@@ -4304,6 +4327,7 @@ def validate_ai_response(
             "your review contract. Return your existing verdict only; do not request a "
             "no-op update merely to inspect a sheet.\n"
             + _compact_character_evidence(character_records)
+            + _validator_spell_guidance(character_records, party_tracker_data)
         ),
     }]
     character_records_context = validation_messages_to_send[-1]["content"]
