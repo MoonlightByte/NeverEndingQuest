@@ -2679,8 +2679,9 @@ def pre_validate_transition(
             player_request = turn_context.get("player_input")
         else:
             for msg in reversed(conversation_history):
-                if msg.get("role") == "user" and not msg.get("content", "").startswith("Error Note:"):
-                    player_request = msg.get("content", "")
+                words = hm.player_input(msg)
+                if words:
+                    player_request = words
                     break
 
         # Call transition intelligence agent

@@ -401,15 +401,6 @@ _declare(
     ),
 )
 _declare(
-    "T053",
-    _profiles(
-        "OPENAI_GPT56_LUNA_NONE",
-        "CHAR_VALIDATOR_T053_GEMINI_FLASH_LOW",
-        "CHAR_VALIDATOR_LEGACY",
-        "CHAR_VALIDATOR_LMSTUDIO",
-    ),
-)
-_declare(
     "T054",
     _profiles(
         "OPENAI_GPT56_LUNA_NONE",
@@ -744,7 +735,6 @@ OPENAI_OUTPUT_CEILING_CHARS: Mapping[str, int] = {
     "T049": 1168,  # n=60 p95=292 max=309
     "T051": 14628,  # n=117 p95=3657 max=3906
     "T052": 4204,  # n=38 p95=1051 max=1518
-    "T053": 10568,  # n=39 p95=2642 max=2690
     "T063": 4680,  # n=55 p95=1170 max=1226
     "T064": 7960,  # n=56 p95=1990 max=2012
     "T065": 1564,  # n=706 p95=391 max=584
@@ -773,14 +763,14 @@ def openai_output_ceiling(task_id):
     """The output ceiling for one callsite on the openai provider, or None."""
     value = OPENAI_OUTPUT_CEILING_CHARS.get(task_id)
     return value if isinstance(value, int) and value > 0 else None
-# Reviewed source inventory: 86 registered callsite IDs (T014 and T091 retired in P4-e/P4-f, T024 in keyword GEN-11, T066 in keyword H5) plus enabled T104, plus the
+# Reviewed source inventory: 85 registered callsite IDs (T014 and T091 retired in P4-e/P4-f, T024 in keyword GEN-11, T066 in keyword H5, T053 in keyword validation DS-3) plus enabled T104, plus the
 # NPC-voice family T105 (voice+affinity) and T107 (profile seed). Keep this
 # independent from _DECLARATIONS so deleting/adding a binding cannot make the
 # expected set silently redefine itself.
 REGISTERED_TASK_IDS = tuple(
     "T012 T013 T015 T016 T017 T018 T019 T020 T021 T022 T023 T025 "
     "T026 T027 T028 T029 T030 T031 T032 T033 T034 T035 T036 T037 T038 T039 "
-    "T040 T041 T042 T043 T044 T045 T046 T047 T048 T049 T050 T051 T052 T053 "
+    "T040 T041 T042 T043 T044 T045 T046 T047 T048 T049 T050 T051 T052 "
     "T054 T059 T063 T064 T065 T067 T078 T079 T081 T082 T083 T084 "
     "T085 T086 T087 T088 T089 T090 T092 T093 T094 T095 T096 T097 T098 "
     "T099 T100 T101 T102 T103 T105 T107 T108 T112 T113 T114 "

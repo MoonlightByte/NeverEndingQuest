@@ -430,13 +430,15 @@ def _source_turn_witnessed(user_content: Any, npc_name: str) -> bool:
         "Dungeon Master Note:"
     ):
         return True
+    # The engine's fields come before the player's words; only they are read.
+    head = user_content.split(" Player: ", 1)[0]
     marker = "Party NPCs: "
     end_marker = " Party stats:"
-    start = user_content.find(marker)
-    end = user_content.find(end_marker, start + len(marker))
+    start = head.find(marker)
+    end = head.find(end_marker, start + len(marker))
     if start < 0 or end < 0:
         return True
-    roster_text = user_content[start + len(marker) : end]
+    roster_text = head[start + len(marker) : end]
     return "%s (" % npc_name in roster_text
 
 
@@ -466,7 +468,7 @@ def _accepted_evidence_summary(
                 continue
             user_content = user.get("content")
             player_text = _raw_player_text(user)
-            if not player_text or player_text.startswith("Error Note:"):
+            if not player_text:
                 continue
             summary = "Player: %s Result: %s" % (player_text, narration)
             return (
@@ -490,7 +492,7 @@ def _recent_scene_window(
         content = message.get("content")
         if role == "user":
             text = _raw_player_text(dict(message))
-            if text and not text.startswith("Error Note:"):
+            if text:
                 rows.append({"speaker": player_name, "kind": "player", "text": text})
         elif role == "assistant" and isinstance(content, str):
             try:

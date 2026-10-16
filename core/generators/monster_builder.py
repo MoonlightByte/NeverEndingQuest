@@ -63,6 +63,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 
 from core.ai import api_client
 from jsonschema import validate, ValidationError
+from core.combat.attacks import typed_multiattack_issue
 import config
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -177,7 +178,7 @@ ACTIONS AND SPECIAL ABILITIES - write each entry the way the SRD stat block stat
 - kind "trait": a passive feature with no roll (Web Sense, Spider Climb, Pack Tactics, Keen Smell): attackBonus 0, damageDice "0d0", damageBonus 0, damageType "none", and the rule text in "description". Traits go in specialAbilities; attack and save abilities that the creature uses on its turn go in actions.
 - "recharge": {min, max} on an action that recharges on a d6 (Recharge 5-6 is {"min": 5, "max": 6}); omit it otherwise.
 - "description": the SRD sentence for every entry (range, area, escape DC, what happens). Never put rule text in damageType; never leave a saving throw described only in prose.
-- Multiattack: a single entry named "Multiattack" with attackBonus 0, damageDice "0d0", damageBonus 0, damageType "none" and the description stating the attacks it makes; the component attacks are their own entries.
+- Multiattack: a single entry named "Multiattack" with attackBonus 0, damageDice "0d0", damageBonus 0, damageType "none" and the description stating the attacks it makes; the component attacks are their own entries. Also write the top-level "multiattackSequence": the swings one Attack action makes, in order, one {"name", "count"} per component attack, each name exactly one of this monster's own attack entries (for example [{"name": "Claw", "count": 2}, {"name": "Bite", "count": 1}]). Combat plays exactly this list; it never reads the description. Omit multiattackSequence when the monster has no Multiattack.
 
 `skills` and `senses` are objects mapping a skill or sense name to its number; write {} when the creature has none. `savingThrows`, `damageVulnerabilities`, `damageResistances`, `damageImmunities` and `conditionImmunities` are arrays of strings.
 
@@ -273,6 +274,7 @@ Schema: {json.dumps(schema)}"""
                 last_parsed_data = monster_data
                 validate(instance=monster_data, schema=schema)
                 require_stated_abilities(monster_data)
+                require_typed_multiattack(monster_data)
                 return monster_data
             except json.JSONDecodeError as e:
                 last_json_err = e
@@ -347,6 +349,19 @@ def require_stated_abilities(monster_data):
                     "%s entry %r carries a save object but kind %r (a save on a hit belongs in rider)"
                     % (family, entry.get("name"), kind)
                 )
+
+
+def require_typed_multiattack(monster_data):
+    """MA-2: a Multiattack carries its typed swings.
+
+    Combat plays exactly the swings in ``multiattackSequence``; the Multiattack
+    entry's description is for the DM and is never parsed. The rule is
+    combat's own (core/combat/attacks.typed_multiattack_issue); a block it
+    names is a ValidationError so the retry loop asks the model again.
+    """
+    issue = typed_multiattack_issue(monster_data)
+    if issue:
+        raise ValidationError(issue, path=["multiattackSequence"])
 
 
 # mon_schema types these as objects (a skill or sense name -> its number).
