@@ -423,6 +423,20 @@
           ]
         }
       },
+      "multiattackSequence": {
+        "type": "array",
+        "description": "Typed Multiattack: the swings one Attack action makes, in order. Each name is an executable entry in actions.",
+        "minItems": 1,
+        "items": {
+          "type": "object",
+          "properties": {
+            "name": {"type": "string", "minLength": 1},
+            "count": {"type": "integer", "minimum": 1}
+          },
+          "required": ["name", "count"],
+          "additionalProperties": false
+        }
+      },
       "legendaryActions": {
         "type": "array",
         "items": {

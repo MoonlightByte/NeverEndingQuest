@@ -159,6 +159,10 @@ def _response_contract(production_schema: Mapping[str, Any]) -> Dict[str, Any]:
     contract = strict_internal_contract(mutable_copy(production_schema))
     contract["properties"].pop("skills")
     contract["required"].remove("skills")
+    # Typed Multiattack is optional in the production schema; story-first does not
+    # write it yet (MA-3), so the strict contract leaves it out.
+    contract["properties"].pop("multiattackSequence")
+    contract["required"].remove("multiattackSequence")
     contract["properties"]["skillBonuses"] = {
         "type": "array",
         "items": {
