@@ -875,11 +875,12 @@ def record_pending_player_request(
     requested_phase=None,
     requested_roll=None,
     requested_slot_level=None,
+    requested_dc=None,
 ):
     """Persist the DM's complete question beside the action it clarifies,
     with the typed die and (#853) the typed phase of a roll request,
-    (#877) its full typed dice, and (#942) the slot level its dice are
-    asked at."""
+    (#877) its full typed dice, (#942) the slot level its dice are
+    asked at, and (r2 item 10) the DC a save is asked at."""
     rendered = _player_text(player_message)
     with path_transaction_lock(
         encounter_path,
@@ -907,6 +908,8 @@ def record_pending_player_request(
             exchanges[-1]["requestedRoll"] = roll
         if type(requested_slot_level) is int and 1 <= requested_slot_level <= 9:
             exchanges[-1]["requestedSlotLevel"] = requested_slot_level
+        if type(requested_dc) is int and requested_dc > 0:
+            exchanges[-1]["requestedDc"] = requested_dc
         pending["playerExchanges"] = exchanges
         existing_voice_envelope = normalize_npc_voice_intents(
             pending.get("npcVoiceIntents")

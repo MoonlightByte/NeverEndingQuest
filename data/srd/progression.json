@@ -153,7 +153,7 @@
   "No SRD 5.2.1 class is a third caster; caster_kind third is unused.",
   "Subclass features appear as the SRD's 'Subclass feature' entry; subclass tables are not included.",
   "table_columns holds the class table's other columns (for example Rages or Sneak Attack) exactly as printed.",
-  "srd-progression/2 (NUM): classes.<class>.use_pools lists every class feature (not subclass) whose uses are counted and restored by a rest: maximum is {column} (the class table), {fixed}, {by_level}, {ability_modifier, minimum} or {class_level_times}; refresh is a list of steps from a class level, short_rest and long_rest each one, all or null. use_pools_not_modeled names the three whose limits are not a count. ac_formulas: unarmored base Armor Class features. hp_bonuses: typed Hit Point maximum increases (SRD 5.2.1 has no Tough feat)."
+  "srd-progression/2 (NUM): classes.<class>.use_pools lists every class feature (not subclass) whose uses are counted and restored by a rest: maximum is {column} (the class table), {fixed}, {by_level}, {ability_modifier, minimum} or {class_level_times}; refresh is a list of steps from a class level, short_rest and long_rest each one, all or null. use_pools_not_modeled names the three whose limits are not a count. ac_formulas: unarmored base Armor Class features. hp_bonuses: typed Hit Point maximum increases (SRD 5.2.1 has no Tough feat). table_names (keyword validation V4): the class table rows printed for a pool's feature (\"Action Surge (one use)\"), each matched as a whole name."
  ],
  "xp_thresholds": {
   "1": 0,
@@ -1803,6 +1803,10 @@
     },
     {
      "feature": "Action Surge",
+     "table_names": [
+      "Action Surge (one use)",
+      "Action Surge (two uses)"
+     ],
      "level": 2,
      "maximum": {
       "by_level": {
@@ -1827,6 +1831,11 @@
     },
     {
      "feature": "Indomitable",
+     "table_names": [
+      "Indomitable (one use)",
+      "Indomitable (two uses)",
+      "Indomitable (three uses)"
+     ],
      "level": 9,
      "maximum": {
       "by_level": {

@@ -208,6 +208,10 @@
       "items": {
         "type": "object",
         "properties": {
+          "srd_name": {
+            "type": ["string", "null"],
+            "description": "The SRD 5.2.1 feature this entry is, named once by T125 for a name that is not one (a decorated legacy name such as \"Channel Divinity (2/rest)\"); null: checked, no SRD feature. Pools and level-up match by it (keyword validation V4)."
+          },
           "name": {"type": "string"},
           "description": {"type": "string"},
           "source": {"type": "string"},

@@ -253,6 +253,7 @@ _AGENTIC_COMBAT_INTENT_SCHEMA = {
                     "mode": {"type": "string", "enum": ["known", "adjudicated"]},
                     "action": {"type": "string"},
                     "ability": {"type": "string"},
+                    "featureName": {"type": "string"},
                     "targetId": {"type": "string"},
                     "description": {"type": "string"},
                     "save": {"type": "object"},
@@ -438,6 +439,7 @@ _T051_AC_VALIDATION_SCHEMA = {
                     "items": {
                         "type": "object",
                         "properties": {
+                            "row": {"type": "integer"},
                             "item_name": {"type": "string"},
                             "item_type": {"type": "string"},
                             "equipped": {"type": "boolean"},
@@ -475,7 +477,7 @@ _T052_INVENTORY_VALIDATION_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "item_name": {"type": "string"},
+                    "row": {"type": "integer"},
                     "item_type": {"type": "string"},
                 },
             },
@@ -483,46 +485,23 @@ _T052_INVENTORY_VALIDATION_SCHEMA = {
     },
 }
 
-_T054_CURRENCY_CONSOLIDATION_SCHEMA = {
+_T054_AMMUNITION_CONSOLIDATION_SCHEMA = {
     "type": "object",
     "properties": {
-        "currency": {
-            "type": "object",
-            "properties": {
-                "platinum": {"type": "integer"},
-                "gold": {"type": "integer"},
-                "electrum": {"type": "integer"},
-                "silver": {"type": "integer"},
-                "copper": {"type": "integer"},
-            },
-        },
-        "ammunition": {
+        "rows": {
             "type": "array",
             "items": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string"},
-                    "quantity": {"type": "integer"},
+                    "row": {"type": "integer"},
+                    "action": {"type": "string", "enum": ["merge", "duplicate", "keep"]},
+                    "ammunition": {"type": "string"},
                 },
+                "required": ["row", "action"],
             },
-        },
-        "equipment": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "item_name": {"type": "string"},
-                    "new_item_name": {"type": "string"},
-                    "_remove": {"type": "boolean"},
-                    "_update": {"type": "boolean"},
-                },
-            },
-        },
-        "consolidations_made": {
-            "type": "array",
-            "items": {"type": "string"},
         },
     },
+    "required": ["rows"],
 }
 CHAR_VALIDATOR_T051_GEMINI_FLASH_LOW = {
     "model": "gemini-3-flash-preview",
@@ -538,7 +517,7 @@ CHAR_VALIDATOR_T054_GEMINI_FLASH_LOW = {
     "model": "gemini-3-flash-preview",
     "thinking_level": "low",
     "response_schema": convert_to_gemini_schema(
-        _T054_CURRENCY_CONSOLIDATION_SCHEMA
+        _T054_AMMUNITION_CONSOLIDATION_SCHEMA
     ),
 }
 
@@ -548,7 +527,7 @@ CHAR_VALIDATOR_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 # LM Studio (local passthrough)
 CHAR_VALIDATOR_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
-# ----- T050 Effects Gemini Config -----
+# ----- Validator Gemini config without a response schema (T125) -----
 # T054 has a dedicated schema-bearing config above.
 CHAR_VALIDATOR_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 

@@ -163,10 +163,7 @@ from core.managers.status_manager import (
 from utils.file_operations import safe_write_json, safe_read_json
 from utils.module_path_manager import ActiveModuleUnavailable, ModulePathManager
 from core.managers.campaign_manager import CampaignManager
-from core.ai.inventory_context_integration import (
-    build_enhanced_dm_note,
-    build_srd_context,
-)
+from core.ai.inventory_context_integration import build_enhanced_dm_note
 from utils.reconcile_campaign_state import reconcile_campaign_state
 
 # Import training data collection
@@ -3561,7 +3558,7 @@ def _select_validation_history(conversation_history, raw_user_input):
         if not isinstance(content, str):
             continue
 
-        if role == "user" and content.startswith("Error Note:"):
+        if role == "user" and hm.is_marker(message, hm.VALIDATION_ERROR):
             skip_next_assistant = True
             continue
         if role == "assistant" and skip_next_assistant:
@@ -3703,7 +3700,6 @@ def _assemble_validation_messages(
     raw_user_input,
     candidate_response,
     compress_prefix=None,
-    srd_context=None,
     npc_voice_batch=None,
     local_template_tail=False,
 ):
@@ -3722,8 +3718,6 @@ def _assemble_validation_messages(
     prefix = [dict(message) for message in validation_prefix]
     if compress_prefix is not None:
         prefix = compress_prefix(prefix)
-    if srd_context:
-        prefix.append({"role": "system", "content": srd_context})
     messages = prefix + [
         {"role": "user", "content": str(raw_user_input or "")},
         {"role": "assistant", "content": candidate_response},
@@ -3805,7 +3799,6 @@ def validate_ai_response(
     validation_prompt_text,
     conversation_history,
     party_tracker_data,
-    srd_context=None,
     npc_voice_batch=None,
     transition_facts=None,
     invocation_claim=None,
@@ -4354,7 +4347,6 @@ def validate_ai_response(
         validation_messages_to_send,
         user_input,
         response_to_validate,
-        srd_context=srd_context,
         npc_voice_batch=npc_voice_batch,
         local_template_tail=(_val_provider == "lmstudio"),
     )
@@ -4446,7 +4438,6 @@ def validate_ai_response(
                                       "locations": location_records_context,
                                       "characters": character_records_context,
                                       "review_feedback": review_feedback_context,
-                                      "srd": srd_context,
                                   })})
         except Exception as e:
             print(f"[API_LOG] Warning: Failed to log validation call: {e}")
@@ -4721,10 +4712,7 @@ def _find_legacy_location_repair(conversation_history):
             copy.deepcopy(item)
             for item in source_entries
             if item.get("role") != "system"
-            and not (
-                item.get("role") == "user"
-                and item.get("content", "").startswith("Error Note:")
-            )
+            and not hm.is_marker(item, hm.VALIDATION_ERROR)
         ]
         if not summary_messages:
             continue
@@ -7079,7 +7067,6 @@ def resolve_retryable_ai_result(
                 accepted_history=copy.deepcopy(conversation_history),
                 player_input=review_context["player_input"], party=party_tracker_data,
                 validation_prompt=load_validation_prompt(),
-                srd_context=review_context["srd_context"],
                 npc_voice_batch=review_context["npc_voice_batch"],
                 invocation_claim=invocation_claim,
                 live_turn_scope=get_live_provider_scope(),
@@ -7108,7 +7095,6 @@ def resolve_retryable_ai_result(
                 "review_feedback": copy.deepcopy(reviewed["review_feedback"]),
                 "accepted_history": copy.deepcopy(conversation_history),
                 "player_input": review_context["player_input"],
-                "srd_context": review_context["srd_context"],
                 "npc_voice_batch": review_context["npc_voice_batch"],
                 "party_snapshot": copy.deepcopy(party_tracker_data),
                 "campaign_end": review_context["campaign_end"],
@@ -7273,13 +7259,13 @@ def _get_ai_response_impl(
     
     # Get the last user message for action prediction
     user_input = ""
+    has_module_creation_prompt = False
     for msg in reversed(conversation_history):
         if msg.get("role") == "user":
             user_input = msg.get("content", "")
+            # The game marks the turn whose note carries the module creation prompt.
+            has_module_creation_prompt = bool(msg.get(hm.MODULE_CREATION_FIELD))
             break
-    
-    # Check if module creation prompt is present in user input
-    has_module_creation_prompt = "You are a master storyteller, cartographer of myth" in user_input
     
     # Predict if actions will be required (unless we're in a validation retry or module creation prompt)
     if detached_context:
@@ -9459,6 +9445,7 @@ def _main_game_loop(startup_authority, turn_authority):
 
         # #602: this turn's campaign-end prompt, if any; also the validator's fact.
         module_creation_prompt = ""
+        module_creation_prompt_in_note = False
         if party_members_stats:
             world_conditions = party_tracker_data["worldConditions"]
             # Use enhanced time formatting with context
@@ -9641,6 +9628,7 @@ def _main_game_loop(startup_authority, turn_authority):
             if not should_inject_creation_prompt:
                 dm_note += f" Open plot points located in this area: {plot_here_str} (see ADVENTURE PLOT STATUS)."
             dm_note += f"{module_creation_prompt}"
+            module_creation_prompt_in_note = bool(module_creation_prompt)
         else:
             dm_note = "Dungeon Master Note: Remember to take actions if necessary such as updating the plot, time, character sheets, and location if changes occur."
 
@@ -9650,20 +9638,10 @@ def _main_game_loop(startup_authority, turn_authority):
 
         dm_note += check_results_note(sum(1 for m in conversation_history if isinstance(m, dict) and m.get("role") == "assistant"))
 
-        # Resolve the named rule once. The same exact bounded block guides the
-        # primary call, semantic validator, and any correction retry.
-        turn_srd_context = build_srd_context(
-            user_input_text,
-            player_data_current,
-        )
-
-        # The player's own words, never annotated with guessed items (D-KW-5):
-        # the DM already sees every item on the party sheets.
-        user_input_with_note = build_enhanced_dm_note(
-            dm_note,
-            user_input_text,
-            srd_context=turn_srd_context,
-        )
+        # The player's own words, never annotated with guessed items or a
+        # word-matched SRD block (D-KW-5): the DM already sees every item and
+        # spell on the party sheets.
+        user_input_with_note = build_enhanced_dm_note(dm_note, user_input_text)
         
         from utils.capture.live_provider_call import open_live_turn_scope
 
@@ -9751,11 +9729,12 @@ def _main_game_loop(startup_authority, turn_authority):
         # #449: the player's own words ride beside the envelope, typed. After a
         # dice submission the words are the engine's, so the turn is a marker.
         if check_continuation:
-            conversation_history.append(
-                hm.marker("user", user_input_with_note, hm.CHECK_CONTINUATION)
-            )
+            turn_message = hm.marker("user", user_input_with_note, hm.CHECK_CONTINUATION)
         else:
-            conversation_history.append(hm.player_turn(user_input_with_note, user_input_text))
+            turn_message = hm.player_turn(user_input_with_note, user_input_text)
+        if module_creation_prompt_in_note:
+            turn_message[hm.MODULE_CREATION_FIELD] = True
+        conversation_history.append(turn_message)
         initial_history_persisted = persist_t067_history_if_current(
             conversation_history
         )
@@ -9807,7 +9786,7 @@ def _main_game_loop(startup_authority, turn_authority):
                     None, accepted_history=copy.deepcopy(conversation_history),
                     player_input=user_input_text, party=party_tracker_data,
                     validation_prompt=validation_prompt_text,
-                    srd_context=turn_srd_context, npc_voice_batch=npc_voice_batch,
+                    npc_voice_batch=npc_voice_batch,
                     invocation_claim=t067_claim, live_turn_scope=live_turn_scope,
                     path_manager=path_manager, location_graph=location_graph,
                     module_snapshot=prepared_context["module_snapshot"],
@@ -9895,7 +9874,7 @@ def _main_game_loop(startup_authority, turn_authority):
                     player_input=user_input_text,
                     review_context=_dm_review_context(
                         review_result, conversation_history, user_input_text,
-                        turn_srd_context, npc_voice_batch,
+                        npc_voice_batch,
                         party_snapshot=party_tracker_data,
                         campaign_end=bool(module_creation_prompt),
                     ),
@@ -10157,7 +10136,7 @@ def _main_game_loop(startup_authority, turn_authority):
         if not _travel_recovery_pending():
             status_ready()
 
-def _dm_review_context(reviewed, accepted_history, player_input, srd_context=None, npc_voice_batch=None, *, party_snapshot, campaign_end):
+def _dm_review_context(reviewed, accepted_history, player_input, npc_voice_batch=None, *, party_snapshot, campaign_end):
     """Transient processor handoff, not a persisted approval or story message."""
     if "review_feedback" not in reviewed:
         # The unchanged nonmembership bypass did not run the shared reviewer.
@@ -10167,7 +10146,6 @@ def _dm_review_context(reviewed, accepted_history, player_input, srd_context=Non
         "review_feedback": copy.deepcopy(reviewed["review_feedback"]),
         "accepted_history": copy.deepcopy(accepted_history),
         "player_input": player_input,
-        "srd_context": srd_context,
         "npc_voice_batch": npc_voice_batch,
         "party_snapshot": copy.deepcopy(party_snapshot),
         "campaign_end": campaign_end,
@@ -10193,7 +10171,7 @@ def _review_fresh_membership_candidate(
     return _review_dm_candidate(
         response, accepted_history=copy.deepcopy(accepted_history),
         player_input=player_input, party=party,
-        validation_prompt=load_validation_prompt(), srd_context=None,
+        validation_prompt=load_validation_prompt(),
         npc_voice_batch=None, invocation_claim=invocation_claim,
         live_turn_scope=get_live_provider_scope(),
         path_manager=ModulePathManager(str(party.get("module") or "").replace(" ", "_")),
@@ -10435,7 +10413,7 @@ def _acquire_catalog_refusal(actions):
 
 def _review_dm_candidate(
     initial_candidate, *, accepted_history, player_input, party,
-    validation_prompt, srd_context, npc_voice_batch, invocation_claim,
+    validation_prompt, npc_voice_batch, invocation_claim,
     live_turn_scope, path_manager, location_graph, detached_context=None,
     normalization=None, module_snapshot=None, installed_module_references="",
     atlas_stamps=None,
@@ -11116,7 +11094,7 @@ def _review_dm_candidate(
             retry_stage = "validator"
             validation_result = validate_ai_response(
                 ai_response_content, player_input, validation_prompt,
-                accepted_history, party, srd_context=srd_context,
+                accepted_history, party,
                 npc_voice_batch=npc_voice_batch, transition_facts=planner_projection,
                 invocation_claim=invocation_claim, normalization=normalization,
                 review_feedback=review_feedback, detached_context=detached_context,
@@ -11150,11 +11128,10 @@ def _review_dm_candidate(
                     if consecutive_semantic_rejections >= 2:
                         warning("VALIDATION: Repeated semantic rejection remains in the "
                                 "same visible logical operation.", category="ai_validation")
-                    correction_context = ("\n\n%s" % srd_context if srd_context else "")
                     retry_correction = (
                         "Your previous response failed semantic validation. "
                         f"Reason: {validation_reason}. Return the complete corrected "
-                        f"JSON response.{correction_context}"
+                        "JSON response."
                     )
                 else:
                     warning("VALIDATION: Unusable validation result; correcting latest draft",

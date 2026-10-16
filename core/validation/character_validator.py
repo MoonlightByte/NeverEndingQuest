@@ -73,9 +73,9 @@ from typing import Dict, List, Any, Optional, Union
 from core.ai import api_client
 from utils.character_sheet_contract import repair_required_ammunition_field
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T051", "core/validation/character_validator.py", 2082)
-register_callsite("T052", "core/validation/character_validator.py", 2269)
-register_callsite("T054", "core/validation/character_validator.py", 3208)
+register_callsite("T051", "core/validation/character_validator.py", 1412)
+register_callsite("T052", "core/validation/character_validator.py", 1603)
+register_callsite("T054", "core/validation/character_validator.py", 2547)
 
 CHARACTER_VALIDATOR_SCHEMA = {
     "required": [
@@ -235,73 +235,6 @@ def _require_contract_integer(
     return normalized
 
 
-def _source_items_by_name(
-    items: Any,
-    path: str,
-    *,
-    name_field: str = "item_name",
-    reject_duplicates: bool = False,
-) -> Dict[str, Dict[str, Any]]:
-    if not isinstance(items, list):
-        raise CharacterValidationResponseError(f"{path} must be an array")
-    source: Dict[str, Dict[str, Any]] = {}
-    for index, item in enumerate(items):
-        if not isinstance(item, dict):
-            raise CharacterValidationResponseError(
-                f"{path}[{index}] must be an object"
-            )
-        name = _normalized_name(item.get(name_field))
-        if name:
-            if reject_duplicates and name in source:
-                raise CharacterValidationResponseError(
-                    f"{path} contains duplicate normalized name "
-                    f"'{item.get(name_field)}'"
-                )
-            source.setdefault(name, item)
-    return source
-
-
-def _require_unique_source_ammunition(items: Any, path: str) -> None:
-    """Ensure the ammunition merge cannot collapse or drop source identities."""
-
-    if not isinstance(items, list):
-        raise CharacterValidationResponseError(f"{path} must be an array")
-    seen_names = set()
-    for index, item in enumerate(items):
-        if not isinstance(item, dict):
-            raise CharacterValidationResponseError(
-                f"{path}[{index}] must be an object"
-            )
-        normalized_name = _normalized_name(item.get("name"))
-        if not normalized_name:
-            raise CharacterValidationResponseError(
-                f"{path}[{index}] requires a nonempty name"
-            )
-        # Standard ammunition has a singular/plural canonical identity.  The
-        # downstream merge uses that identity, so fail closed before a pair
-        # such as ``Arrow``/``Arrows`` can be collapsed behind the parser.
-        source_identity = (
-            _canonical_ammunition_name(normalized_name) or normalized_name
-        )
-        if source_identity in seen_names:
-            raise CharacterValidationResponseError(
-                f"{path} contains duplicate normalized/canonical name "
-                f"'{item.get('name')}'"
-            )
-        seen_names.add(source_identity)
-
-
-_CURRENCY_ALIASES = {
-    "platinum": ("platinum", "pp"),
-    "gold": ("gold", "gp"),
-    "electrum": ("electrum", "ep"),
-    "silver": ("silver", "sp"),
-    "copper": ("copper", "cp"),
-}
-_SPECIAL_AMMUNITION_MARKERS = (
-    "+1", "+2", "+3", "flaming", "frost", "slaying", "silvered",
-    "adamantine", "magical", "enchanted",
-)
 _AMMUNITION_NAMES = (
     ("crossbow bolts", ("crossbow bolt", "crossbow bolts")),
     ("sling bullets", ("sling bullet", "sling bullets")),
@@ -312,39 +245,9 @@ _AMMUNITION_NAMES = (
     ("darts", ("dart", "darts")),
     ("needles", ("needle", "needles")),
 )
-_NUMBER_WORD_TOKENS = frozenset({
-    "one", "two", "three", "four", "five", "six", "seven", "eight",
-    "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
-    "fifteen", "sixteen", "seventeen", "eighteen", "nineteen",
-    "twenty", "thirty", "forty", "fifty", "sixty", "seventy",
-    "eighty", "ninety", "hundred", "thousand",
-})
-_CURRENCY_SOURCE_TOKENS = _NUMBER_WORD_TOKENS.union({
-    "a", "an", "the", "of", "with", "containing", "contains", "holding",
-    "holds", "bag", "pouch", "purse", "stack", "pile", "bundle", "loose",
-    "coin", "coins", "piece", "pieces", "currency", "money", "available",
-    "emptied", "empty", "opened", "open", "collected", "from", "table",
-    "small", "large", "leather", "canvas", "simple", "ordinary", "old",
-    "platinum", "pp", "gold", "gp", "electrum", "ep", "silver", "sp",
-    "copper", "cp",
-})
-_AMMUNITION_SOURCE_TOKENS = _NUMBER_WORD_TOKENS.union({
-    "a", "an", "the", "of", "with", "containing", "contains", "holding",
-    "holds", "bundle", "stack", "pile", "loose", "standard", "ordinary",
-    "ammunition", "ammo", "arrow", "arrows", "bolt", "bolts", "crossbow",
-    "bullet", "bullets", "sling", "needle", "needles", "blowgun", "dart",
-    "darts", "quiver", "case", "full", "empty", "leather", "wooden",
-    "simple", "ready", "to", "consolidate", "carrying", "carry", "for",
-    "use", "bow", "bows", "longbow", "shortbow", "crossbows", "or", "x",
-})
-_CONTAINER_BOOLEAN_STATE_FIELDS = ("full", "is_full", "loaded")
-_CONTAINER_COUNT_STATE_FIELDS = (
-    "ammo_count", "arrow_count", "bolt_count", "current_load",
-)
-_CONTAINER_TEXT_STATE_FIELDS = ("container_state", "state")
-_CONTAINER_STRUCTURED_CONTENT_FIELDS = ("contents", "contained_items")
 _DESTRUCTIVE_SOURCE_BASE_FIELDS = frozenset({
     "item_name",
+    "catalog_id",
     "item_type",
     "nql_id",
     "description",
@@ -353,46 +256,6 @@ _DESTRUCTIVE_SOURCE_BASE_FIELDS = frozenset({
     "magical",
     "item_subtype",
 })
-
-
-def _reject_unsupported_number_words(
-    texts: tuple,
-    path: str,
-) -> None:
-    """Reject word quantities that the conservation parser cannot bind."""
-
-    for text in texts:
-        for token in re.findall(r"[a-z]+", text.casefold().replace("-", " ")):
-            if token in _NUMBER_WORD_TOKENS:
-                raise CharacterValidationResponseError(
-                    f"{path} contains unsupported word quantity token '{token}'"
-                )
-
-
-def _source_text_is_pure(value: Any, allowed_tokens: frozenset) -> bool:
-    """Accept only narrow, item-kind-specific prose for destructive evidence."""
-
-    if value is None or value == "":
-        return True
-    if not isinstance(value, str):
-        return False
-    tokens = re.findall(r"[a-z]+|\d+", value.casefold().replace("-", " "))
-    return bool(tokens) and all(token.isdigit() or token in allowed_tokens for token in tokens)
-
-
-def _source_quantity(item: Dict[str, Any], path: str) -> int:
-    return _require_contract_integer(item.get("quantity", 1), path, minimum=1)
-
-
-def _explicit_source_quantity(
-    item: Dict[str, Any],
-    path: str,
-) -> Optional[int]:
-    """Return an explicitly persisted quantity, never an inferred default."""
-
-    if "quantity" not in item:
-        return None
-    return _require_contract_integer(item["quantity"], path, minimum=1)
 
 
 def _require_destructively_safe_source_item(
@@ -432,125 +295,29 @@ def _require_destructively_safe_source_item(
         )
 
 
-def _parse_positive_amount(value: str, path: str) -> int:
-    """Parse a positive integer with optional conventional thousands commas."""
-
-    if "," in value and not re.fullmatch(r"\d{1,3}(?:,\d{3})+", value):
-        raise CharacterValidationResponseError(
-            f"{path} has an ambiguous numeric amount"
-        )
-    amount = int(value.replace(",", ""))
-    if amount <= 0:
-        raise CharacterValidationResponseError(
-            f"{path} amount must be positive"
-        )
-    return amount
+def _catalog_ammunition() -> Dict[str, Dict[str, Any]]:
+    """The catalog's ammunition entries by casefolded name: the closed list T054 names from."""
+    return {
+        entry["name"].casefold(): entry
+        for entry in item_catalog.entries().values()
+        if entry.get("kind") == "ammunition" and isinstance(entry.get("name"), str)
+    }
 
 
-def _currency_evidence_from_item(
-    item: Dict[str, Any],
-    path: str,
-) -> Dict[str, int]:
-    """Return exact denomination totals encoded by a removable source item.
+def _typed_ammunition_row(item: Dict[str, Any]) -> bool:
+    """An equipment row typed as ammunition: its catalog_id names a catalog
+    ammunition entry, or, without a catalog entry, its item_type is ammunition."""
+    found = item_catalog.entry(item.get("catalog_id"))
+    if found is not None:
+        return found.get("kind") == "ammunition"
+    item_type = item.get("item_type")
+    return isinstance(item_type, str) and item_type.strip().casefold() == "ammunition"
 
-    Only common numeric forms are accepted. Word-only or value-estimate prose is
-    intentionally treated as ambiguous so a model cannot manufacture a balance.
-    """
 
-    name = str(item.get("item_name", "")).casefold()
-    description = str(item.get("description", "")).casefold()
-    combined = f"{name} {description}"
-    _reject_unsupported_number_words((name, description), path)
-    if any(
-        field in item and item[field] not in (None, "", [], {})
-        for field in _CONTAINER_STRUCTURED_CONTENT_FIELDS
-    ):
-        return {}
-    if any(
-        marker in combined
-        for marker in (
-            "worth", "valued at", "value of", "locked", "sealed", "trapped",
-            "unopened", "valuable", "closed container", "closed chest",
-            "closed coffer", "closed strongbox", "closed vault",
-        )
-    ):
-        return {}
-    if not all(
-        _source_text_is_pure(text, _CURRENCY_SOURCE_TOKENS)
-        for text in (name, description)
-    ):
-        return {}
-    if any(re.search(r"[+\-/]\s*\d", text) for text in (name, description)):
-        raise CharacterValidationResponseError(
-            f"{path} contains an ambiguous signed or ranged amount"
-        )
-
-    quantity = _source_quantity(item, f"{path}.quantity")
-    evidence: Dict[str, int] = {}
-    matched_amount_spans = {0: set(), 1: set()}
-    amount_token = r"(?:\d{1,3}(?:,\d{3})+|\d+)"
-    for denomination, aliases in _CURRENCY_ALIASES.items():
-        alias_pattern = "|".join(re.escape(alias) for alias in aliases)
-        amount_pattern = re.compile(
-            rf"(?<![\w.,+\-/])({amount_token})\s*(?:{alias_pattern})"
-            rf"(?:\s*(?:pieces?|coins?))?\b",
-            re.IGNORECASE,
-        )
-        amounts = set()
-        amount_counts = [0, 0]
-        for text_index, text in enumerate((name, description)):
-            for match in amount_pattern.finditer(text):
-                amount_counts[text_index] += 1
-                amounts.add(
-                    _parse_positive_amount(
-                        match.group(1),
-                        f"{path}.{denomination}",
-                    )
-                )
-                matched_amount_spans[text_index].add(match.span(1))
-        if len(amounts) > 1 or any(count > 1 for count in amount_counts):
-            raise CharacterValidationResponseError(
-                f"{path} has ambiguous {denomination} quantities"
-            )
-        if amounts:
-            evidence[denomination] = next(iter(amounts)) * quantity
-            continue
-
-        normalized_name = re.sub(r"\s+", " ", name).strip()
-        if any(
-            normalized_name in {
-                alias,
-                f"{alias} piece",
-                f"{alias} pieces",
-                f"{alias} coin",
-                f"{alias} coins",
-            }
-            for alias in aliases
-        ):
-            explicit_quantity = _explicit_source_quantity(
-                item,
-                f"{path}.quantity",
-            )
-            if explicit_quantity is not None:
-                evidence[denomination] = explicit_quantity
-
-    # If currency language is present, every digit group must belong to one of
-    # the exact denomination amounts above. This rejects ranges, signs, broken
-    # comma grouping, and unrelated counts instead of partially parsing them.
-    currency_alias_pattern = "|".join(
-        re.escape(alias)
-        for aliases in _CURRENCY_ALIASES.values()
-        for alias in aliases
-    )
-    if re.search(rf"\b(?:{currency_alias_pattern})\b", combined):
-        for text_index, text in enumerate((name, description)):
-            for match in re.finditer(r"\d[\d,]*", text):
-                if match.span() not in matched_amount_spans[text_index]:
-                    raise CharacterValidationResponseError(
-                        f"{path} contains an ambiguous or unbound numeric amount"
-                    )
-
-    return evidence
+def _row_catalog_ammunition(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The catalog ammunition an equipment row is: its catalog_id, else its
+    exact catalog or #552 legacy name (item_catalog.ammunition_entry), else None."""
+    return item_catalog.ammunition_entry({"name": item.get("item_name"), "catalog_id": item.get("catalog_id")})
 
 
 def _canonical_ammunition_name(value: Any) -> Optional[str]:
@@ -582,308 +349,6 @@ def _exact_metadata_equal(left: Any, right: Any) -> bool:
         return bool(left == right)
     except (TypeError, ValueError):
         return False
-
-
-def _ammunition_evidence_from_item(
-    item: Dict[str, Any],
-    path: str,
-) -> Dict[str, int]:
-    """Return exact standard-ammunition totals encoded by a source item."""
-
-    name = str(item.get("item_name", "")).casefold()
-    description = str(item.get("description", "")).casefold()
-    combined = f"{name} {description}"
-    _reject_unsupported_number_words((name, description), path)
-    if any(
-        field in item and item[field] not in (None, "", [], {})
-        for field in _CONTAINER_STRUCTURED_CONTENT_FIELDS
-    ):
-        return {}
-    has_empty_state = bool(re.search(r"\bempty\b", combined))
-    has_full_state = bool(re.search(r"\b(?:full|filled|loaded)\b", combined))
-    if has_empty_state and has_full_state:
-        raise CharacterValidationResponseError(
-            f"{path} has contradictory ammunition-container state"
-        )
-    if any(marker in combined for marker in _SPECIAL_AMMUNITION_MARKERS):
-        raise CharacterValidationResponseError(
-            f"{path} is special ammunition and may not be consolidated"
-        )
-    source_text_is_pure = all(
-        _source_text_is_pure(text, _AMMUNITION_SOURCE_TOKENS)
-        for text in (name, description)
-    )
-    if not source_text_is_pure:
-        if any(re.search(r"\bx\b", text) for text in (name, description)):
-            raise CharacterValidationResponseError(
-                f"{path} contains an unbound ammunition x token"
-            )
-        return {}
-
-    quantity = _source_quantity(item, f"{path}.quantity")
-    amount_token = r"(?:\d{1,3}(?:,\d{3})+|\d+)"
-    aliases = sorted(
-        {
-            alias
-            for _canonical, canonical_aliases in _AMMUNITION_NAMES
-            for alias in canonical_aliases
-        },
-        key=len,
-        reverse=True,
-    )
-    alias_pattern = "|".join(re.escape(alias) for alias in aliases)
-    text_patterns = (
-        re.compile(
-            rf"^(?:a |an |the )?(?:(?:bundle|stack|pile) of |"
-            rf"(?:quiver|bolt case|case) (?:with|containing) )?"
-            rf"({amount_token})\s*(?:(?:standard|ordinary)\s+)?"
-            rf"({alias_pattern})(?: pieces?)?\.?$"
-        ),
-        re.compile(
-            rf"^(?:a |an |the )?({alias_pattern})\s*(x|×|:)\s*"
-            rf"({amount_token})\.?$"
-        ),
-    )
-
-    normalized_texts = [
-        re.sub(r"\s+", " ", text).strip()
-        for text in (name, description)
-    ]
-    evidence_candidates = []
-    matched_amount_spans = {0: set(), 1: set()}
-    matched_x_spans = {0: set(), 1: set()}
-    for text_index, normalized_text in enumerate(normalized_texts):
-        canonical_exact = _canonical_ammunition_name(normalized_text.rstrip("."))
-        if canonical_exact is not None:
-            explicit_quantity = _explicit_source_quantity(
-                item,
-                f"{path}.quantity",
-            )
-            if explicit_quantity is not None:
-                evidence_candidates.append({canonical_exact: explicit_quantity})
-            continue
-        if re.fullmatch(r"(?:a |an |the )?full(?: leather)? quiver\.?", normalized_text):
-            evidence_candidates.append({"arrows": 20 * quantity})
-            continue
-        if re.fullmatch(
-            r"(?:a |an |the )?quiver full of arrows\.?",
-            normalized_text,
-        ):
-            evidence_candidates.append({"arrows": 20 * quantity})
-            continue
-        if re.fullmatch(r"(?:a |an |the )?full(?: leather)? bolt case\.?", normalized_text):
-            evidence_candidates.append({"crossbow bolts": 20 * quantity})
-            continue
-        for pattern_index, pattern in enumerate(text_patterns):
-            match = pattern.fullmatch(normalized_text)
-            if not match:
-                continue
-            if pattern_index == 0:
-                amount, ammo_name = match.groups()
-                amount_group = 1
-            else:
-                ammo_name, multiplier, amount = match.groups()
-                amount_group = 3
-                if multiplier == "x":
-                    matched_x_spans[text_index].add(match.span(2))
-            canonical = _canonical_ammunition_name(ammo_name)
-            if canonical is not None:
-                parsed_amount = _parse_positive_amount(
-                    amount,
-                    f"{path}.ammunition",
-                )
-                evidence_candidates.append({canonical: parsed_amount * quantity})
-                matched_amount_spans[text_index].add(match.span(amount_group))
-            break
-
-    # A destructive conversion is valid only when every persisted numeric
-    # token is part of the exact amount evidence.  Never partially parse a row
-    # such as name="10 arrows", description="20 standard arrows" or accept an
-    # "empty" container whose prose still carries a count.
-    for text_index, normalized_text in enumerate(normalized_texts):
-        for match in re.finditer(r"\d[\d,]*", normalized_text):
-            if match.span() not in matched_amount_spans[text_index]:
-                raise CharacterValidationResponseError(
-                    f"{path} contains an ambiguous or unbound ammunition amount"
-                )
-        for match in re.finditer(r"\bx\b", normalized_text):
-            if match.span() not in matched_x_spans[text_index]:
-                raise CharacterValidationResponseError(
-                    f"{path} contains an unbound ammunition x token"
-                )
-
-    if not evidence_candidates:
-        return {}
-    first = evidence_candidates[0]
-    if any(candidate != first for candidate in evidence_candidates[1:]):
-        raise CharacterValidationResponseError(
-            f"{path} has ambiguous ammunition quantities"
-        )
-    if has_empty_state:
-        raise CharacterValidationResponseError(
-            f"{path} has contradictory ammunition-container state"
-        )
-    return first
-
-
-def _supported_container_rename(item: Dict[str, Any]) -> Optional[str]:
-    """Return the canonical name for a narrowly recognized ammo container."""
-
-    name = re.sub(
-        r"\s+",
-        " ",
-        str(item.get("item_name", "")).casefold().replace("-", " "),
-    ).strip()
-    description = str(item.get("description", "")).casefold()
-    if not all(
-        _source_text_is_pure(text, _AMMUNITION_SOURCE_TOKENS)
-        for text in (name, description)
-    ):
-        return None
-    for field in _CONTAINER_STRUCTURED_CONTENT_FIELDS:
-        if field in item and item[field] not in (None, "", [], {}):
-            return None
-    for field in _CONTAINER_BOOLEAN_STATE_FIELDS:
-        if field in item and type(item[field]) is not bool:
-            return None
-    for field in _CONTAINER_COUNT_STATE_FIELDS:
-        if field in item and (
-            type(item[field]) is not int or item[field] < 0
-        ):
-            return None
-    for field in _CONTAINER_TEXT_STATE_FIELDS:
-        if field in item and (
-            not isinstance(item[field], str)
-            or item[field].strip().casefold()
-            not in {"empty", "full", "loaded", "filled"}
-        ):
-            return None
-
-    quiver_name = re.fullmatch(
-        r"(?:empty|full) quiver|quiver (?:full of arrows|with \d+ arrows?)",
-        name,
-    )
-    bolt_case_name = re.fullmatch(
-        r"(?:empty|full) bolt case|bolt case (?:full of crossbow bolts|with \d+ crossbow bolts?)",
-        name,
-    )
-    description_has_quiver_state = bool(
-        re.search(r"\b(?:empty|full)\b.*\bquiver\b", description)
-        or re.search(r"\bquiver\b.*\b\d+\s+arrows?\b", description)
-    )
-    description_has_bolt_case_state = bool(
-        re.search(r"\b(?:empty|full)\b.*\bbolt case\b", description)
-        or re.search(
-            r"\bbolt case\b.*\b\d+\s+crossbow bolts?\b",
-            description,
-        )
-    )
-    canonical_name = None
-    if quiver_name or (name == "quiver" and description_has_quiver_state):
-        canonical_name = "Quiver"
-    elif bolt_case_name or (
-        name == "bolt case" and description_has_bolt_case_state
-    ):
-        canonical_name = "Bolt case"
-    if canonical_name is None:
-        return None
-
-    try:
-        evidence = _ammunition_evidence_from_item(item, "container state")
-    except CharacterValidationResponseError:
-        return None
-    evidence_key = "arrows" if canonical_name == "Quiver" else "crossbow bolts"
-    evidenced_count = evidence.get(evidence_key, 0)
-    relevant_count_field = (
-        "arrow_count" if canonical_name == "Quiver" else "bolt_count"
-    )
-    for field in (relevant_count_field, "ammo_count", "current_load"):
-        if field in item and item[field] != evidenced_count:
-            return None
-    irrelevant_count_field = (
-        "bolt_count" if canonical_name == "Quiver" else "arrow_count"
-    )
-    if item.get(irrelevant_count_field, 0):
-        return None
-    # Reconcile every persisted state field independently against the same
-    # evidenced count.  Using one field as a fallback for another lets
-    # contradictory pairs (container_state="full", state="empty") through.
-    for field in ("full", "is_full"):
-        if field not in item:
-            continue
-        if item[field] is True and evidenced_count != 20:
-            return None
-        if item[field] is False and evidenced_count == 20:
-            return None
-    if "loaded" in item:
-        if item["loaded"] is True and evidenced_count <= 0:
-            return None
-        if item["loaded"] is False and evidenced_count != 0:
-            return None
-    for field in _CONTAINER_TEXT_STATE_FIELDS:
-        if field not in item:
-            continue
-        state_value = item[field].strip().casefold()
-        if state_value == "empty" and evidenced_count != 0:
-            return None
-        if state_value in {"full", "filled"} and evidenced_count != 20:
-            return None
-        if state_value == "loaded" and evidenced_count <= 0:
-            return None
-    return canonical_name
-
-
-def _consumed_container_update(
-    source_item: Dict[str, Any],
-    canonical_name: str,
-    canonical_description: str,
-) -> Dict[str, Any]:
-    """Build a non-destructive container update with consumable state cleared."""
-
-    update = {
-        "item_name": canonical_name,
-        "description": canonical_description,
-    }
-    for field in _CONTAINER_BOOLEAN_STATE_FIELDS:
-        if field in source_item:
-            update[field] = False
-    for field in _CONTAINER_COUNT_STATE_FIELDS:
-        if field in source_item:
-            update[field] = 0
-    for field in _CONTAINER_TEXT_STATE_FIELDS:
-        if field in source_item:
-            update[field] = "empty"
-    for field in _CONTAINER_STRUCTURED_CONTENT_FIELDS:
-        if field in source_item:
-            update[field] = copy.deepcopy(source_item[field])
-    return update
-
-
-def _aggregate_evidence(
-    items: List[Dict[str, Any]],
-    extractor,
-    path: str,
-) -> Dict[str, int]:
-    aggregate: Dict[str, int] = {}
-    for index, item in enumerate(items):
-        evidence = extractor(item, f"{path}[{index}]")
-        for key, amount in evidence.items():
-            aggregate[key] = aggregate.get(key, 0) + amount
-    return aggregate
-
-
-def _require_exact_conservation(
-    kind: str,
-    actual: Dict[str, int],
-    evidenced: Dict[str, int],
-) -> None:
-    actual_nonzero = {key: value for key, value in actual.items() if value}
-    evidence_nonzero = {key: value for key, value in evidenced.items() if value}
-    if actual_nonzero != evidence_nonzero:
-        raise CharacterValidationResponseError(
-            f"{kind} conservation mismatch: changes={actual_nonzero}, "
-            f"removed_source={evidence_nonzero}"
-        )
 
 
 def _load_response_object(ai_response: str, contract_name: str) -> Dict[str, Any]:
@@ -965,6 +430,9 @@ _T051_ARMOR_FIELDS = (
     'equipped', 'ac_base', 'ac_bonus', 'dex_limit',
     'armor_category', 'stealth_disadvantage',
 )
+# A row carrying any of these is an armor row for T051 and the contract check,
+# whatever its name or item_type says.
+_ARMOR_ROW_FIELDS = _T051_ARMOR_FIELDS[1:]
 
 
 def malformed_armor_entry(item: Dict[str, Any]) -> bool:
@@ -1097,11 +565,10 @@ class AICharacterValidator:
         Extract only the fields relevant for AC validation.
         This dramatically reduces token usage from ~7800 to ~500-800.
         
-        Based on Gemini consultation, includes all D&D 5e AC-affecting fields:
-        - Core context (class, race) for AC rules
-        - All ability scores needed for Unarmored Defense
-        - Equipment effects array with structured AC data
-        - Racial traits and feats that could affect AC
+        Includes:
+        - Core context (class, race) and the ability scores AC reads
+        - Equipment effects whose typed target is armor class
+        - The armor rows (typed armor or any armor field), with their index
         - Armor proficiencies for validation
         
         Args:
@@ -1131,114 +598,44 @@ class AICharacterValidator:
         if 'armor' in proficiencies:
             ac_data['proficiencies'] = {'armor': proficiencies['armor']}
         
-        # Process equipment_effects array - HIGH PRIORITY (structured AC data)
+        # Equipment effects the engine attributes to armor class (typed target).
+        from core.nql.armor_class import AC_TARGET
+
         equipment_effects = character_data.get('equipment_effects', [])
-        ac_equipment_effects = []
-        for effect in equipment_effects:
-            # Include effects that explicitly target AC
-            if effect.get('target', '').upper() == 'AC' or 'ac' in effect.get('target', '').lower():
-                ac_equipment_effects.append(effect)
+        ac_equipment_effects = [
+            effect for effect in equipment_effects
+            if isinstance(effect, dict) and effect.get('target') == AC_TARGET
+        ]
         
         if ac_equipment_effects:
             ac_data['equipment_effects'] = ac_equipment_effects
         
-        # Filter equipment to only AC-relevant items (refined logic)
+        # The armor rows: typed armor, or any armor field present. Each keeps
+        # its equipment index, which a T051 answer names. Armor class itself is
+        # the engine's (armor_class.project), so no class feature, trait or
+        # feat text is offered.
         equipment = character_data.get('equipment', [])
         ac_relevant_equipment = []
         
-        for item in equipment:
-            item_name = item.get('item_name', '').lower()
-            item_type = item.get('item_type', '').lower()
-            description = item.get('description', '').lower()
-            equipped = item.get('equipped', False)
-            
-            # Include if it's armor, shield, or potentially magical AC item
-            include_item = False
-            
-            # Always include armor and shields
-            if item_type == 'armor' or 'armor' in item_name or 'shield' in item_name:
-                include_item = True
-            
-            # Check for explicit AC bonuses in item fields
-            elif 'ac_base' in item or 'ac_bonus' in item:
-                include_item = True
-            
-            # Include equipped items with specific AC patterns in description
-            elif equipped:
-                # Look for explicit AC bonuses like "+1 to AC", "bonus to AC"
-                if any(pattern in description for pattern in ['+1 to ac', '+2 to ac', 'bonus to ac', 'armor class']):
-                    include_item = True
-                # Check known AC-boosting item names
-                elif any(ac_item in item_name for ac_item in ['ring of protection', 'cloak of protection', 'bracers of defense']):
-                    include_item = True
-            
-            if include_item:
-                # Include all armor-related fields for proper validation
-                item_data = {
-                    'item_name': item.get('item_name'),
-                    'item_type': item.get('item_type'),
-                    'equipped': item.get('equipped', False),
-                    'description': item.get('description', '')[:200]  # Limit description length
-                }
-                
-                # Include armor-specific fields if present
-                for field in ['ac_base', 'ac_bonus', 'dex_limit', 'armor_category', 'stealth_disadvantage']:
-                    if field in item:
-                        item_data[field] = item[field]
-                
-                ac_relevant_equipment.append(item_data)
+        for index, item in enumerate(equipment):
+            if not isinstance(item, dict):
+                continue
+            typed_armor = str(item.get('item_type', '')).strip().lower() == 'armor'
+            if not typed_armor and not any(field in item for field in _ARMOR_ROW_FIELDS):
+                continue
+            item_data = {
+                'row': index,
+                'item_name': item.get('item_name'),
+                'item_type': item.get('item_type'),
+                'equipped': item.get('equipped', False),
+                'description': item.get('description', '')[:200]  # Limit description length
+            }
+            for field in _ARMOR_ROW_FIELDS:
+                if field in item:
+                    item_data[field] = item[field]
+            ac_relevant_equipment.append(item_data)
         
         ac_data['equipment'] = ac_relevant_equipment
-        
-        # Include class features that might affect AC (like Defense fighting style, Unarmored Defense)
-        class_features = character_data.get('classFeatures', [])
-        ac_relevant_features = []
-        
-        for feature in class_features:
-            feature_name = feature.get('name', '').lower()
-            feature_desc = feature.get('description', '').lower()
-            # Expanded keywords to catch Unarmored Defense and other AC features
-            if any(keyword in feature_name for keyword in ['defense', 'armor', 'ac', 'protection', 'shield', 'unarmored']):
-                ac_relevant_features.append(feature)
-            # Also check description for AC mentions
-            elif any(keyword in feature_desc for keyword in ['armor class', 'ac equal', 'ac bonus']):
-                ac_relevant_features.append(feature)
-        
-        if ac_relevant_features:
-            ac_data['classFeatures'] = ac_relevant_features
-        
-        # Include racial traits (for natural armor like Tortle)
-        racial_traits = character_data.get('racialTraits', [])
-        ac_relevant_traits = []
-        
-        for trait in racial_traits:
-            trait_name = trait.get('name', '').lower()
-            trait_desc = trait.get('description', '').lower()
-            if any(keyword in trait_name + trait_desc for keyword in ['armor', 'ac', 'natural armor', 'protection']):
-                ac_relevant_traits.append(trait)
-        
-        if ac_relevant_traits:
-            ac_data['racialTraits'] = ac_relevant_traits
-        
-        # Include feats (for Defensive Duelist, Medium Armor Master, etc.)
-        feats = character_data.get('feats', [])
-        ac_relevant_feats = []
-        
-        for feat in feats:
-            # If feat is a string, check the name
-            if isinstance(feat, str):
-                feat_lower = feat.lower()
-                if any(keyword in feat_lower for keyword in ['defense', 'armor', 'ac', 'duelist']):
-                    ac_relevant_feats.append(feat)
-            # If feat is a dict, check name and description
-            elif isinstance(feat, dict):
-                feat_name = feat.get('name', '').lower()
-                feat_desc = feat.get('description', '').lower()
-                if any(keyword in feat_name + feat_desc for keyword in ['defense', 'armor', 'ac', 'duelist']):
-                    ac_relevant_feats.append(feat)
-        
-        if ac_relevant_feats:
-            ac_data['feats'] = ac_relevant_feats
         
         # Include active effects if present (mage armor, shield spell, etc.)
         active_effects = character_data.get('activeEffects', [])
@@ -1253,173 +650,106 @@ class AICharacterValidator:
         debug(f"[AC Extraction] Reduced data from {original_size:,} to {reduced_size:,} chars ({reduction_pct:.1f}% reduction)", category="character_validation")
         debug(f"[AC Extraction] Equipment: {len(equipment)} -> {len(ac_relevant_equipment)} items", category="character_validation")
         debug(f"[AC Extraction] Equipment effects: {len(equipment_effects)} -> {len(ac_equipment_effects)} AC-relevant", category="character_validation")
-        debug(f"[AC Extraction] Included: {len(ac_relevant_features)} class features, {len(ac_relevant_traits)} racial traits, {len(ac_relevant_feats)} feats", category="character_validation")
         
         return ac_data
     
     def extract_inventory_data(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Extract only inventory-relevant data for validation.
-        Focus on items that commonly have categorization issues.
-        
-        Based on Gemini consultation:
-        - Check equipment items that might be miscategorized as miscellaneous
-        - Exclude high-confidence miscellaneous items
-        - Include ambiguous items like scrolls regardless of type
-        
+        Extract the rows T052 types: the typed focus, never a word list.
+
+        A row whose item_type is not a schema type is always offered. With a
+        pre-write sheet (check_validation_needs), so is a row the write
+        introduced (_entries_needing_typing) with the catch-all type
+        "miscellaneous"; a row its writer gave any other schema type keeps it
+        (owner, keyword validation V2). A catalog row is typed by its pack
+        entry and is never offered. Each row keeps its equipment index, which
+        the answer names.
+
         Args:
             character_data: Full character JSON data
-            
+
         Returns:
-            Minimal data needed for inventory validation
+            The offered rows with their equipment index
         """
         inventory_data = {
             'name': character_data.get('name', 'Unknown'),
             'equipment': []
         }
-        
+
         equipment = character_data.get('equipment', [])
-        
-        # Filter to items most likely to need validation
+        if not isinstance(equipment, list):
+            return inventory_data
         focus_names = getattr(self, '_focus_names', None)
-        for item in equipment:
-            if focus_names is not None and str(item.get('item_name')) not in focus_names:
+        for index, item in enumerate(equipment):
+            if not isinstance(item, dict):
                 continue
-            item_name = item.get('item_name', '').lower()
-            item_type = item.get('item_type', '').lower()
-            description = item.get('description', '').lower()
-            
+            if item_catalog.row_entry(item)[0] is not None:
+                continue
+            item_type = str(item.get('item_type', '')).strip().lower()
             include = item_type not in VALID_INVENTORY_ITEM_TYPES
-            
-            # 1. Check miscellaneous items (but exclude high-confidence ones)
-            if item_type == 'miscellaneous':
-                # Exclude items that are almost certainly correct miscellaneous
-                high_confidence_misc = ['gemstone', 'coin', 'gold', 'silver', 'copper', 
-                                       'signet', 'deed', 'letter', 'page', 'parchment',
-                                       'medallion', 'brooch', 'locket', 'chalice', 'goblet',
-                                       'crown', 'ingot', 'relic']
-                
-                # Don't validate if it's a high-confidence miscellaneous item
-                if not any(keyword in item_name for keyword in high_confidence_misc):
-                    # But DO include if it might be something else
-                    if any(keyword in item_name for keyword in ['arrow', 'bolt', 'bullet', 'dart']):
-                        include = True  # Likely ammunition
-                    elif any(keyword in item_name for keyword in ['ration', 'food', 'bread', 'meat', 'potion', 'scroll', 'elixir']):
-                        include = True  # Likely consumable
-                    elif any(keyword in item_name for keyword in ['torch', 'rope', 'tools', 'kit', 'pack', 'bedroll', 'tent']):
-                        include = True  # Likely equipment
-                    else:
-                        # Include other miscellaneous for review (but not high-confidence ones)
-                        include = True
-            
-            # 2. Check equipment items that might be miscellaneous (rings, amulets, etc)
-            elif item_type == 'equipment':
-                # These are often miscategorized as equipment when they should be miscellaneous
-                if any(keyword in item_name for keyword in ['ring', 'amulet', 'talisman', 'symbol', 'pendant', 'necklace']):
-                    include = True  # Often should be miscellaneous
-                # Check for scrolls which are ambiguous
-                elif 'scroll' in item_name:
-                    include = True  # Could be consumable or equipment
-                # Include items with special/magical effects that might be miscellaneous
-                elif any(keyword in description for keyword in ['summon', 'magical', 'enchanted', 'artifact']):
-                    include = True  # Might be miscellaneous
-            
-            # 3. Check weapons that might be ammunition
-            elif item_type == 'weapon' and any(keyword in item_name for keyword in ['arrow', 'bolt', 'bullet', 'dart']):
-                include = True  # Ammunition miscategorized as weapon
-            
-            # 4. Check for consumables miscategorized as other types
-            elif item_type != 'consumable' and any(keyword in item_name for keyword in ['potion', 'elixir', 'ration', 'food', 'water', 'ale', 'wine']):
-                include = True  # Should be consumable
-            
-            # 5. Check for equipment miscategorized as other types  
-            elif item_type != 'equipment' and any(keyword in item_name for keyword in ['rope', 'torch', 'lantern', 'tools', 'kit', 'pack', 'bedroll', 'tent', 'map']):
-                include = True  # Should be equipment
-            
-            # 6. Always check items with "scroll" regardless of current type (ambiguous)
-            elif 'scroll' in item_name:
-                include = True  # Scrolls are ambiguous - could be consumable or equipment/misc
-            
+            if focus_names is not None:
+                include = str(item.get('item_name')) in focus_names and (include or item_type == 'miscellaneous')
             if include:
-                # Only include necessary fields
                 inventory_data['equipment'].append({
+                    'row': index,
                     'item_name': item.get('item_name'),
                     'item_type': item.get('item_type'),
-                    'description': item.get('description', '')[:150],  # Slightly longer for context
+                    'description': str(item.get('description', ''))[:150],
                     'quantity': item.get('quantity', 1)
                 })
-        
-        # Log the reduction
-        original_count = len(equipment)
-        filtered_count = len(inventory_data['equipment'])
-        
-        debug(f"[Inventory Extraction] Filtered items from {original_count} to {filtered_count} for validation", category="character_validation")
-        
+
+        debug(f"[Inventory Extraction] {len(inventory_data['equipment'])} of {len(equipment)} equipment rows offered to T052", category="character_validation")
+
         return inventory_data
     
     def extract_currency_consolidation_data(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Extract only items relevant for currency and ammunition consolidation.
-        Focus on items that might be loose coins or ammunition to consolidate.
-        
-        Enhanced based on Gemini consultation:
-        - Expanded exclusion list for false positives
-        - Added locked/sealed container detection
-        - Improved container keywords
-        - Consolidated ammunition checks
-        
+        Extract the rows T054 decides on: equipment rows typed as ammunition.
+
+        A row is offered only when its typed facts let the engine remove it: a
+        catalog ammunition id or item_type ammunition, a whole quantity of at
+        least 1, no metadata a removal would discard, and a name no other
+        equipment row shares (the engine removes rows by name). Names and
+        descriptions are shown to the model; code does not read them.
+
         Args:
             character_data: Full character JSON data
-            
+
         Returns:
-            Minimal data needed for consolidation validation
+            The sheet's ammunition stocks and the offered rows with their
+            equipment index
         """
         consolidation_data = {
             'name': character_data.get('name', 'Unknown'),
-            'currency': character_data.get('currency', {}),
             'ammunition': character_data.get('ammunition', []),
             'equipment': []
         }
-        
-        equipment = character_data.get('equipment', [])
 
-        # Only send candidates the deterministic parser could prove safe. This
-        # avoids spending a provider call on mixed/ambiguous inventory and makes
-        # a consumed canonical container disappear from fresh-cache replays.
+        equipment = character_data.get('equipment', [])
+        if not isinstance(equipment, list) or not _catalog_ammunition():
+            return consolidation_data
+        name_counts = {}
         for item in equipment:
-            if not isinstance(item, dict):
+            if isinstance(item, dict):
+                name_counts[item.get('item_name')] = name_counts.get(item.get('item_name'), 0) + 1
+        focus_names = getattr(self, '_focus_names', None)
+        for index, item in enumerate(equipment):
+            if not isinstance(item, dict) or not _typed_ammunition_row(item):
                 continue
-            # The prompt builder exposes only the four fields it needs, while
-            # the parser retains this complete private source row so a safe
-            # container rename cannot discard unrelated item metadata.
-            focus_names = getattr(self, '_focus_names', None)
             if focus_names is not None and str(item.get('item_name')) not in focus_names:
                 continue
-            candidate = copy.deepcopy(item)
+            if not isinstance(item.get('item_name'), str) or name_counts[item['item_name']] != 1:
+                continue
+            if type(item.get('quantity')) is not int or item['quantity'] < 1:
+                continue
             try:
-                supported_rename = _supported_container_rename(candidate)
-                destructive_evidence = False
-                if supported_rename is None:
-                    _require_destructively_safe_source_item(
-                        candidate,
-                        "T054 extraction",
-                    )
-                    destructive_evidence = bool(
-                        _currency_evidence_from_item(candidate, "T054 extraction")
-                        or _ammunition_evidence_from_item(candidate, "T054 extraction")
-                    )
-                include = bool(supported_rename or destructive_evidence)
+                _require_destructively_safe_source_item(item, "T054 extraction")
             except CharacterValidationResponseError:
-                include = False
-            if include:
-                consolidation_data['equipment'].append(candidate)
-        
-        # Log the reduction
-        original_count = len(equipment)
-        filtered_count = len(consolidation_data['equipment'])
-        
-        debug(f"[Currency Extraction] Filtered items from {original_count} to {filtered_count} for consolidation", category="character_validation")
-        
+                continue
+            consolidation_data['equipment'].append({'row': index, 'item': copy.deepcopy(item)})
+
+        debug(f"[Ammunition Extraction] {len(consolidation_data['equipment'])} of {len(equipment)} equipment rows typed as ammunition offered to T054", category="character_validation")
+
         return consolidation_data
     
     def _load_cache(self) -> Dict[str, Any]:
@@ -1687,6 +1017,17 @@ class AICharacterValidator:
 
         return self.validate_and_correct_character_with_result(character_data).data
     
+    def _name_legacy_features(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
+        """T125 once for legacy classFeatures names a table lookup misses; journaled.
+        A failed naming leaves the sheet unchanged and is asked again next time."""
+        from core.leveling import feature_names
+
+        named = feature_names.name_features(
+            character_data, scope=self.provider_scope, status=self.provider_status,
+            live_selected='advisory' if self.provider_scope is not None else None)
+        self.corrections_made.extend(named.notes)
+        return named.sheet
+
     def _raise_pools_to_tables(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
         """Raise use pool and spell slot maxima below the SRD class table (#704); journaled."""
         from core.leveling import tables
@@ -1855,6 +1196,10 @@ class AICharacterValidator:
         # Use pools and spell slots below the class table for the hero's level
         # are raised (never lowered, current untouched) before the projection,
         # so genesis declares them at their table maximum (#704).
+        # A legacy feature name the SRD tables miss ("Channel Divinity (2/rest)")
+        # is named once by T125 as a typed srd_name, so the pools below and
+        # level-up find it without cutting the name (keyword validation V4).
+        corrected_data = self._name_legacy_features(corrected_data)
         corrected_data = self._raise_pools_to_tables(corrected_data)
 
         if needs['ac']:
@@ -2108,11 +1453,15 @@ class AICharacterValidator:
                     provider_ac_data,
                 )
 
-                # CRITICAL FIX: Merge the corrections into original data, don't replace!
-                # The AI only returns the extracted subset with corrections
-                # We need to merge those corrections back into the full character data
-                from updates.update_character_info import deep_merge_dict
-                merged_data = deep_merge_dict(character_data, corrected_data)
+                # Each equipment correction names its row; two rows with one
+                # name are two rows.
+                merged_data = copy.deepcopy(character_data)
+                merged_data['armorClass'] = corrected_data['armorClass']
+                for update in corrected_data.get('equipment', []):
+                    target = merged_data['equipment'][update['row']]
+                    for field, value in update.items():
+                        if field != 'row':
+                            target[field] = copy.deepcopy(value)
 
                 # The merged projection, not just the fields the model returned,
                 # must satisfy the frozen schema: an omitted poisoned item would
@@ -2289,16 +1638,17 @@ class AICharacterValidator:
                 if not strict:
                     ai_response = ai_response.strip()
                 
-                # Parse AI response to get inventory updates only
-                inventory_updates = self.parse_inventory_validation_response(
+                # Each correction names its equipment row; two rows with one
+                # name are two rows.
+                retyped = self.parse_inventory_validation_response(
                     ai_response,
                     inventory_data,
                 )
                 
-                if inventory_updates:
-                    # Apply updates using deep merge (same pattern as main character updater)
-                    from updates.update_character_info import deep_merge_dict
-                    corrected_data = deep_merge_dict(character_data, inventory_updates)
+                if retyped:
+                    corrected_data = copy.deepcopy(character_data)
+                    for row, item_type in retyped:
+                        corrected_data['equipment'][row]['item_type'] = item_type
                 else:
                     # No changes needed
                     corrected_data = character_data
@@ -2606,22 +1956,20 @@ Provide the corrected character data with proper AC calculation."""
                 raise CharacterValidationResponseError(
                     "T051: validated_character_data.equipment must be an array"
                 )
-            source_equipment = _source_items_by_name(
-                original_data.get('equipment', []),
-                "T051: source equipment",
-                reject_duplicates=True,
-            )
-            seen_names = set()
-            immutable_equipment_fields = {'item_type', 'description', 'quantity'}
+            source_equipment = {
+                entry['row']: entry for entry in original_data.get('equipment', [])
+            }
+            seen_rows = set()
+            immutable_equipment_fields = {'item_name', 'item_type', 'description', 'quantity'}
             # A malformed armor entry (typed armor, no armor fields) may be
             # reclassified by the model to a non-armor type; every other
             # entry keeps its item_type.
             reclassifiable = {
-                name for name, entry in source_equipment.items()
+                row for row, entry in source_equipment.items()
                 if malformed_armor_entry(entry)
             }
             allowed_equipment_fields = {
-                'item_name', 'item_type', 'equipped', 'description',
+                'row', 'item_name', 'item_type', 'equipped', 'description',
                 'ac_base', 'ac_bonus', 'dex_limit', 'armor_category',
                 'stealth_disadvantage', 'quantity',
             }
@@ -2636,19 +1984,19 @@ Provide the corrected character data with proper AC calculation."""
                         "T051: equipment update contains unsupported field(s): "
                         + ", ".join(sorted(unknown_fields))
                     )
-                normalized_name = _normalized_name(item.get('item_name'))
-                if not normalized_name or normalized_name not in source_equipment:
+                row = item.get('row')
+                if type(row) is not int or row not in source_equipment:
                     raise CharacterValidationResponseError(
-                        f"T051: equipment[{index}] must reference source equipment"
+                        f"T051: equipment[{index}].row must be one of the rows shown: {sorted(source_equipment)}"
                     )
-                if normalized_name in seen_names:
+                if row in seen_rows:
                     raise CharacterValidationResponseError(
-                        f"T051: duplicate equipment update for '{item.get('item_name')}'"
+                        f"T051: duplicate equipment update for row {row}"
                     )
-                seen_names.add(normalized_name)
-                source_item = source_equipment[normalized_name]
+                seen_rows.add(row)
+                source_item = source_equipment[row]
                 reclassified = (
-                    normalized_name in reclassifiable
+                    row in reclassifiable
                     and 'item_type' in item
                     and item['item_type'] != 'armor'
                 )
@@ -2666,7 +2014,7 @@ Provide the corrected character data with proper AC calculation."""
                 # Every proposed armor value is checked against the frozen
                 # schema's letter; the model chooses any value inside it.
                 contract_errors = armor_contract_errors(
-                    [item], self._equipment_item_schema()
+                    [dict(item, item_name=source_item.get('item_name'))], self._equipment_item_schema()
                 )
                 if contract_errors:
                     raise CharacterValidationResponseError(
@@ -2674,7 +2022,7 @@ Provide the corrected character data with proper AC calculation."""
                         + "; ".join(contract_errors)
                     )
 
-                normalized_update = {'item_name': source_item['item_name']}
+                normalized_update = {'row': row}
                 if reclassified:
                     normalized_update['item_type'] = item['item_type']
                 for mutable_field in _T051_ARMOR_FIELDS:
@@ -2861,18 +2209,18 @@ You must validate that each item in the character's inventory has the correct it
     - Bracers of defense or with AC bonus -> "armor"
 
 ### OUTPUT FORMAT:
-Return a JSON object with ONLY the changes needed:
+Every item you are shown has a row number. Return a JSON object with ONLY the changes needed:
 {
   "corrections_made": ["list of corrections"],
   "equipment": [
     {
-      "item_name": "exact item name",
+      "row": 4,
       "item_type": "corrected_type"
     }
   ]
 }
 
-CRITICAL: Only return items that need their item_type corrected. Do NOT return items that are already correctly categorized. Do NOT return the complete character data - only the equipment items that need item_type fixes.
+CRITICAL: Only return items that need their item_type corrected, each by the row number shown. Do NOT return items that are already correctly categorized. Do NOT return the complete character data - only the rows that need item_type fixes.
 """
     
     def build_inventory_validation_prompt(self, character_data: Dict[str, Any]) -> str:
@@ -2894,14 +2242,14 @@ CHARACTER NAME: {character_data.get('name', 'Unknown')}
 CURRENT INVENTORY:
 """
         
-        for i, item in enumerate(equipment):
+        for item in equipment:
             item_name = item.get('item_name', 'Unknown Item')
             item_type = item.get('item_type', 'Unknown')
             description = item.get('description', 'No description')
             quantity = item.get('quantity', 1)
             
             prompt += f"""
-Item #{i+1}:
+Row {item['row']}:
 - Name: {item_name}
 - Current Type: {item_type}
 - Description: {description}
@@ -2916,20 +2264,23 @@ Validate each item's categorization and correct any that are wrong. Focus especi
 - Food/rations that should be "consumable"  
 - Tools/torches that should be "equipment"
 
-IMPORTANT: Return ONLY the items that need their item_type corrected. Do not include items that are already correctly categorized."""
+IMPORTANT: Return ONLY the rows that need their item_type corrected, by row number. Do not include items that are already correctly categorized."""
         
         return prompt
     
-    def parse_inventory_validation_response(self, ai_response: str, original_data: Dict[str, Any]) -> Dict[str, Any]:
+    def parse_inventory_validation_response(self, ai_response: str, original_data: Dict[str, Any]) -> List[tuple]:
         """
-        Parse AI inventory validation response - returns only the updates/changes
-        
+        Check a T052 answer against the rows it was shown.
+
+        Each correction names one offered row by its number and a schema
+        item_type that differs from the row's. Returns (row, item_type) pairs.
+
         Args:
             ai_response: AI response string
-            original_data: Original character data
-            
+            original_data: The offered rows (extract_inventory_data)
+
         Returns:
-            Dictionary with only the changes to apply (or empty dict if no changes)
+            The checked corrections (empty when none are needed)
         """
         parsed_response = _load_response_object(ai_response, "T052")
         if set(parsed_response) != {'corrections_made', 'equipment'}:
@@ -2943,66 +2294,52 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
                 "T052: 'equipment' must be an array"
             )
         _require_string_list(corrections, "T052: 'corrections_made'")
-        source_equipment = _source_items_by_name(
-            original_data.get('equipment', []),
-            "T052: source equipment",
-            reject_duplicates=True,
-        )
-        normalized_equipment = []
-        seen_names = set()
+        offered = {item['row']: item for item in original_data.get('equipment', [])}
+        retyped = []
         for index, item in enumerate(equipment):
             if not isinstance(item, dict):
                 raise CharacterValidationResponseError(
                     f"T052: equipment[{index}] must be an object"
                 )
-            unknown_fields = set(item).difference({'item_name', 'item_type'})
+            unknown_fields = set(item).difference({'row', 'item_type'})
             if unknown_fields:
                 raise CharacterValidationResponseError(
                     "T052: equipment update contains unsupported field(s): "
                     + ", ".join(sorted(unknown_fields))
                 )
-            if not isinstance(item.get('item_name'), str) or not isinstance(
-                item.get('item_type'), str
-            ):
+            row = item.get('row')
+            if type(row) is not int or row not in offered:
                 raise CharacterValidationResponseError(
-                    f"T052: equipment[{index}] requires string item_name/item_type"
+                    f"T052: equipment[{index}].row must be one of the rows shown: {sorted(offered)}"
                 )
-            normalized_name = _normalized_name(item['item_name'])
-            if normalized_name not in source_equipment:
+            if any(done == row for done, _type in retyped):
                 raise CharacterValidationResponseError(
-                    f"T052: equipment[{index}] must reference a source candidate"
+                    f"T052: equipment[{index}] corrects row {row} a second time"
                 )
-            if normalized_name in seen_names:
+            if not isinstance(item.get('item_type'), str):
                 raise CharacterValidationResponseError(
-                    f"T052: duplicate correction for '{item['item_name']}'"
+                    f"T052: equipment[{index}] requires a string item_type"
                 )
-            seen_names.add(normalized_name)
-
             normalized_type = item['item_type'].strip().lower()
             if normalized_type not in VALID_INVENTORY_ITEM_TYPES:
                 raise CharacterValidationResponseError(
                     f"T052: equipment[{index}].item_type is not allowed"
                 )
-            source_item = source_equipment[normalized_name]
-            source_type = str(source_item.get('item_type', '')).strip().lower()
+            source_type = str(offered[row].get('item_type', '')).strip().lower()
             if normalized_type == source_type:
                 raise CharacterValidationResponseError(
                     f"T052: equipment[{index}] does not change item_type"
                 )
-            normalized_equipment.append({
-                'item_name': source_item['item_name'],
-                'item_type': normalized_type,
-            })
+            retyped.append((row, normalized_type))
 
         for correction in corrections:
             debug(f"[Inventory Correction] {correction}", category="character_validation")
             self.logger.info(f"AI Inventory Correction: {correction}")
             self.corrections_made.append(f"Inventory: {correction}")
 
-        if normalized_equipment:
-            return {"equipment": normalized_equipment}
-        self.logger.debug("No inventory corrections needed")
-        return {}
+        if not retyped:
+            self.logger.debug("No inventory corrections needed")
+        return retyped
     
     def validate_status_condition_consistency(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -3074,61 +2411,78 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
     def _apply_consolidation_through_engine(
         self,
         character_data: Dict[str, Any],
-        updates: Dict[str, Any],
+        directives: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        """Execute a parsed T054 proposal: removals and coin credits through the
-        engine, then the non-engine parts (ammunition rows, container renames)
-        merged by name. A refusal raises the validator's contract error so the
-        loop retries or fails open with the sheet unchanged."""
+        """Execute checked T054 directives through the engine: each merged or
+        duplicate row is removed (core/nql/consolidate), then each merged row's
+        typed quantity is added to its ammunition stock (core/nql/ammunition);
+        a merge with no stock of that catalog ammunition starts a catalog row.
+        A refusal raises the validator's contract error so the loop retries or
+        fails open with the sheet unchanged."""
+        from core.nql import ammunition as nql_ammunition
         from core.nql import consolidate as nql_consolidate
-        from updates.update_character_info import deep_merge_dict
 
-        directives = updates.get('equipment') or []
-        removals = [d['item_name'] for d in directives if isinstance(d, dict) and d.get('_remove') is True]
-        host_equipment = [d for d in directives if isinstance(d, dict) and d.get('_remove') is not True]
-        current = character_data.get('currency') if isinstance(character_data.get('currency'), dict) else {}
-        delta = {}
-        for coin, total in (updates.get('currency') or {}).items():
-            change = int(total) - int(current.get(coin, 0) or 0)
-            if change:
-                delta[coin] = change
-        outcome = nql_consolidate.transact(character_data, removals, delta, reserved=nql_consolidate.genesis.held_ids_on_disk())
+        removals = [d['item_name'] for d in directives if d['action'] in ('merge', 'duplicate')]
+        if not removals:
+            return character_data
+        outcome = nql_consolidate.transact(character_data, removals, {}, reserved=nql_consolidate.genesis.held_ids_on_disk())
         for gap in outcome.gaps:
             debug(f"[Consolidation Engine] {character_data.get('name')}: {gap}", category="character_validation")
         if not outcome.ok:
             raise CharacterValidationResponseError(
-                f"T054: the rules engine refused the consolidation: {outcome.reason}"
+                f"T054: the rules engine refused the removal: {outcome.reason}"
             )
-        host = {}
-        if host_equipment:
-            host['equipment'] = host_equipment
-        if updates.get('ammunition'):
-            host['ammunition'] = updates['ammunition']
-        return deep_merge_dict(outcome.sheet, host) if host else outcome.sheet
+        sheet = outcome.sheet
+        for directive in directives:
+            entry = directive['entry']
+            if directive['action'] == 'duplicate':
+                self.corrections_made.append(
+                    f"Removed equipment row '{directive['item_name']}' ({directive['quantity']}): "
+                    f"the ammunition section already counts these {entry['name']}")
+                continue
+            if directive['action'] != 'merge':
+                continue
+            held = nql_ammunition.declared_row_for_catalog(sheet, entry['name'], entry['id'])
+            if held is None:
+                sheet.setdefault('ammunition', []).append({
+                    'name': entry['name'],
+                    'quantity': directive['quantity'],
+                    'description': directive['description'] if isinstance(directive['description'], str) else entry['name'],
+                    'catalog_id': entry['id'],
+                })
+                self.corrections_made.append(
+                    f"Moved '{directive['item_name']}' ({directive['quantity']}) to a new {entry['name']} ammunition row")
+                continue
+            row = held[1]
+            before = row['quantity']
+            added = nql_ammunition.add(sheet, row['name'], directive['quantity'])
+            if not added.ok:
+                raise CharacterValidationResponseError(
+                    f"T054: the rules engine refused adding {directive['quantity']} to {row['name']!r}: {added.reason}"
+                )
+            nql_ammunition.write_back(row, added)
+            self.corrections_made.append(
+                f"Moved '{directive['item_name']}' ({directive['quantity']}) into {row['name']}: "
+                f"{before} -> {row['quantity']} [engine]")
+        return sheet
 
     def ai_consolidate_inventory_with_result(
         self,
         character_data: Dict[str, Any],
     ) -> CharacterValidationResult:
         """
-        Use AI to consolidate loose currency and ammunition into their proper sections with caching
-        Following the main character updater pattern: return only changes, use deep merge
-        
-        Consolidates:
-        - Loose coins (e.g., "5 gold pieces") into currency
-        - Emptied coin bags (e.g., "bag of 50 gold") into currency
-        - Ammunition items (e.g., "Crossbow bolts x 10") into ammunition section
-        
-        Preserves:
-        - Gems and valuables (e.g., "ruby worth 150 gold")
-        - Containers with contents (e.g., "chest containing 1000 gold")
-        - Art objects and trade goods
-        
+        T054: the model decides, for each equipment row typed as ammunition,
+        whether it is extra stock (merge), stock the ammunition section already
+        counts (duplicate) or an item to keep. Code checks the answer against the
+        typed rows and the engine executes it; amounts are the rows' typed
+        quantities. Coins are never consolidated here: they reach the purse
+        through the typed currency change.
+
         Args:
             character_data: Character JSON data
             
         Returns:
-            Character data with consolidated currency and ammunition (from cache if unchanged)
+            Character data with the decided rows moved through the engine (from cache if unchanged)
         """
         
         # Extract only currency/ammo relevant data
@@ -3228,20 +2582,14 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
                 if not strict:
                     ai_response = ai_response.strip()
                 
-                # Parse AI response to get consolidation updates only
-                consolidation_updates = self.parse_currency_consolidation_response(
+                directives = self.parse_ammunition_consolidation_response(
                     ai_response,
                     consolidation_data,
+                    character_data,
                 )
-                
-                if consolidation_updates:
-                    # The engine consumes the source entries and credits the
-                    # coins in one request (core/nql/consolidate); ammunition
-                    # rows and container renames are merged by name after it.
-                    corrected_data = self._apply_consolidation_through_engine(character_data, consolidation_updates)
-                else:
-                    # No consolidation needed
-                    corrected_data = character_data
+                # The engine removes the merged and duplicate rows and adds
+                # each merged row's typed quantity to its stock.
+                corrected_data = self._apply_consolidation_through_engine(character_data, directives)
 
                 # Cache only a successfully merged final state. A failed later
                 # file write leaves a different source hash and therefore cannot
@@ -3283,550 +2631,130 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
         return self.ai_consolidate_inventory_with_result(character_data).data
     
     def get_inventory_consolidation_system_prompt(self) -> str:
-        """
-        System prompt for AI inventory consolidation (currency and ammunition)
-        
-        Returns:
-            System prompt with consolidation rules and examples
-        """
-        return """You are an expert inventory manager for the 5th edition of the world's most popular role playing game. Your job is to consolidate loose currency items and ammunition into their proper sections while preserving player agency over containers and valuables.
+        """System prompt for T054: one decision per equipment row typed as ammunition."""
+        return """You keep a character's ammunition in one place for the 5th edition of the world's most popular role playing game.
 
-## PRIMARY TASKS: CURRENCY AND AMMUNITION CONSOLIDATION
+The character sheet has an AMMUNITION SECTION: the stocks that attacks spend. Some EQUIPMENT ROWS are typed as ammunition too. For every equipment row you are shown, decide what it is:
+- "merge": ammunition the character carries IN ADDITION to the ammunition section, for example a bundle found or bought and written into equipment. The row is removed and its quantity is added to the stock of the catalog ammunition you name.
+- "duplicate": the same ammunition the ammunition section already counts, for example starting gear written into both places, often with an older count. The row is removed and the ammunition section stays as it is.
+- "keep": anything that must stay an item: magical or special ammunition (+1, silvered, adamantine, elemental), a sealed or unopened bundle, or a row you are unsure about.
 
-You must:
-1. Identify loose currency that should be added to the character's currency totals and remove those items from inventory
-2. Identify ammunition items in equipment that should be moved to the ammunition section
+When the ammunition section already holds a stock of the same ammunition and nothing shows the character gained more, the row is a "duplicate". Never "merge" a row unless the sheet shows it is carried in addition to the ammunition section. When unsure, answer "keep".
 
-### CONSOLIDATION RULES:
+Name the ammunition with exactly one of the catalog names you are given. Do not state counts: the row's quantity is the amount.
 
-**DO CONSOLIDATE (add to currency and remove from inventory):**
-- Loose coins with exact counts: "5 gold pieces", "10 silver", "30 copper"
-- Emptied coin bags: "bag of 50 gold", "pouch with 100 silver"
-- Clearly available counted currency: "20 gold from the table"
-- Currency with clear amounts: "15 gp", "stack of 30 silver coins"
-
-**DO NOT CONSOLIDATE (preserve as inventory items):**
-- Gems/jewelry: "ruby worth 150 gold", "diamond (500gp value)", "golden necklace"
-- Containers with contents: "chest containing 1000 gold", "locked strongbox with coins"
-- Trapped/locked items: "trapped chest", "locked coffer", "sealed vault"
-- Art objects: "golden statue worth 250gp", "ornate painting valued at 100gp"
-- Trade goods: "silk worth 100gp", "rare spices (50gp value)"
-- Ambiguous containers: Items where it's unclear if the player has opened them
-
-### AMMUNITION CONSOLIDATION RULES:
-
-**DO CONSOLIDATE (move to ammunition section and remove from equipment):**
-- Clear ammunition items: "Arrows x 20", "Crossbow bolts x 10", "20 arrows"
-- Ammunition with quantities: "Quiver with 30 arrows", "Bundle of 15 bolts"
-- Only ammunition with an explicit numeric quantity (or a standard full container)
-
-**DO NOT CONSOLIDATE (keep in equipment -- these are SPECIAL and must stay as inventory items):**
-- Magical ammunition: "+1 arrows", "flaming arrows", "arrows of slaying", any item with "+" prefix
-- Special ammunition: "silvered arrows", "adamantine bolts"
-- CRITICAL: If an ammunition item name contains "+1", "+2", "+3", "flaming", "frost", "slaying", "silvered", "adamantine", or any other magical/special descriptor, it MUST remain in equipment. Do NOT move it to the ammunition section.
-- Ammunition containers without clear count: "empty quiver", "bolt case"
-- Non-standard ammunition: "ballista bolts", "special ammunition"
-
-### AMMUNITION CONTAINER STANDARDIZATION:
-**ALWAYS standardize container names:**
-- "full quiver", "empty quiver", "quiver with 30 arrows" → "Quiver"
-- "full bolt case", "empty bolt case", "bolt case with 20 crossbow bolts" → "Bolt case"
-
-**If container is described as "full" or contains ammo:**
-- Rename to standard name ("Quiver" or "Bolt case")
-- Add appropriate ammunition to ammunition section:
-  - "full quiver" → Add 20 arrows to ammunition
-  - "quiver with 30 arrows" → Add 30 arrows to ammunition
-  - "full bolt case" → Add 20 crossbow bolts to ammunition
-  
-**If container is explicitly "empty":**
-- Rename to standard name but don't add ammunition
-
-### CURRENCY TYPES:
-- platinum (pp) = 10 gold
-- gold (gp) = 1 gold
-- electrum (ep) = 0.5 gold
-
-IMPORTANT: Include ALL currency types that change in the output, including electrum and platinum if they change. Do not omit any denomination.
-- silver (sp) = 0.1 gold  
-- copper (cp) = 0.01 gold
-
-### OUTPUT FORMAT:
-Return a JSON object with ONLY the changes needed:
+Return only this JSON object, with one entry for every row you are shown:
 {
-  "currency": {
-    "gold": 125,
-    "silver": 50
-  },
-  "ammunition": [
-    {
-      "name": "Arrows",
-      "quantity": 20
-    },
-    {
-      "name": "Crossbow bolt",
-      "quantity": 50
-    }
-  ],
-  "equipment": [
-    {"item_name": "full quiver", "new_item_name": "Quiver", "_update": true},
-    {"item_name": "Crossbow bolts x 10", "_remove": true},
-    {"item_name": "5 gold pieces", "_remove": true}
-  ],
-  "consolidations_made": [
-    "Consolidated X gold pieces into currency",
-    "Emptied bag of Y gold into currency",
-    "Total gold increased from A to B",
-    "Renamed 'full quiver' to 'Quiver' and added 20 arrows",
-    "Moved 'Crossbow bolts x 10' to ammunition section",
-    "Ammunition 'Crossbow bolt' increased from 40 to 50"
+  "rows": [
+    {"row": 7, "action": "duplicate", "ammunition": "Arrows"},
+    {"row": 9, "action": "merge", "ammunition": "Bolts"},
+    {"row": 12, "action": "keep"}
   ]
 }
-
-CRITICAL: 
-- Only return currency fields that changed
-- Only return ammunition entries that changed
-- Currency goes in the top-level "currency" object, never under "inventory"
-- Every positive currency delta must exactly equal the explicit numeric currency in items listed with _remove=true
-- Every positive ammunition delta must exactly equal the explicit numeric ammunition in items listed with _remove=true or a supported full-container rename
-- Every value-bearing item that is removed must be fully represented in the matching currency or ammunition delta; never discard value
-- A source item must contain only the currency or ammunition being consolidated; mixed-content items (for example, arrows plus a potion or coins plus a gem) must remain untouched
-- A removal has exactly {"item_name": source name, "_remove": true}; _remove may never be false
-- A container rename has exactly {"item_name": source name, "new_item_name": "Quiver" or "Bolt case", "_update": true}
-- Never use _remove for a quiver or bolt case; preserve it with the supported rename directive, including when the canonical name is already unchanged
-- Calculate new totals by adding consolidated amounts to existing currency/ammunition
-- Every ammunition quantity is the absolute new total, never an amount-to-add delta
-- Use standard ammunition names already present when possible
-- Do not return ammunition descriptions; consolidation changes counts, not prose
-- Preserve player agency - when in doubt, don't consolidate
-- Word-only quantities such as "handful", "some", or "many" are ambiguous; do not consolidate them
-- If names/descriptions contain conflicting quantities, do not consolidate them
-- Trade goods with gold values (silk worth 100gp, rare spices) are NOT currency -- keep in inventory
-- Locked, sealed, trapped, unopened, closed, or valuable containers MUST stay in inventory"""
+- "row" is the row number shown.
+- "ammunition" is required for merge and duplicate, and left out for keep."""
     
-    def build_inventory_consolidation_prompt(self, character_data: Dict[str, Any]) -> str:
-        """
-        Build consolidation prompt with character inventory
-        
-        Args:
-            character_data: Character JSON data
-            
-        Returns:
-            Formatted prompt for AI consolidation
-        """
-        equipment = character_data.get('equipment', [])
-        # Character sheets store currency at the top level. Keep a fallback for
-        # older callers that may still provide the former nested shape.
-        current_currency = character_data.get('currency')
-        if not isinstance(current_currency, dict):
-            current_currency = character_data.get('inventory', {}).get('currency', {})
-        current_ammunition = character_data.get('ammunition', [])
-        
-        prompt = f"""Please consolidate loose currency and ammunition for this character:
+    def build_inventory_consolidation_prompt(self, consolidation_data: Dict[str, Any]) -> str:
+        """The T054 user prompt: the ammunition section, the catalog names and the offered rows."""
+        lines = [f"CHARACTER NAME: {consolidation_data.get('name', 'Unknown')}", "", "AMMUNITION SECTION (the stocks attacks spend):"]
+        stocks = [row for row in consolidation_data.get('ammunition') or [] if isinstance(row, dict)]
+        for row in stocks:
+            entry = item_catalog.ammunition_entry(row)
+            catalog = f" (catalog: {entry['name']})" if entry else ""
+            lines.append(f"- {row.get('name', 'Unknown')}: {row.get('quantity', 0)}{catalog}")
+        if not stocks:
+            lines.append("- None")
+        lines += ["", "CATALOG AMMUNITION NAMES: " + ", ".join(sorted(e['name'] for e in _catalog_ammunition().values())),
+                  "", "EQUIPMENT ROWS TYPED AS AMMUNITION:"]
+        for candidate in consolidation_data.get('equipment', []):
+            item = candidate['item']
+            lines += ["", f"Row {candidate['row']}:",
+                      f"- Name: {item.get('item_name')}",
+                      f"- Type: {item.get('item_type', 'Unknown')}",
+                      f"- Quantity: {item.get('quantity')}",
+                      f"- Description: {item.get('description', 'No description')}"]
+            own = _row_catalog_ammunition(item)
+            if own is not None:
+                lines.append(f"- Catalog ammunition: {own.get('name')}")
+        lines += ["", "Answer merge, duplicate or keep for every row."]
+        return "\n".join(lines)
 
-CHARACTER NAME: {character_data.get('name', 'Unknown')}
+    def parse_ammunition_consolidation_response(
+        self,
+        ai_response: str,
+        consolidation_data: Dict[str, Any],
+        character_data: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """Check a T054 answer against the typed rows it was shown.
 
-CURRENT CURRENCY:
-- Platinum: {current_currency.get('platinum', 0)}
-- Gold: {current_currency.get('gold', 0)}
-- Electrum: {current_currency.get('electrum', 0)}
-- Silver: {current_currency.get('silver', 0)}
-- Copper: {current_currency.get('copper', 0)}
+        Every offered row is answered exactly once with merge, duplicate or
+        keep. Merge and duplicate name a catalog ammunition entry (the row's own
+        when its catalog id or exact name is one). A duplicate needs a stock of that ammunition
+        on the sheet; a merge allows at most one, which receives the row's typed
+        quantity. Returns the directives with each row's name and quantity."""
+        from core.nql import genesis
 
-CURRENT AMMUNITION:
-"""
-        for ammo in current_ammunition:
-            prompt += f"- {ammo.get('name', 'Unknown')}: {ammo.get('quantity', 0)}\n"
-        
-        if not current_ammunition:
-            prompt += "- None\n"
-            
-        prompt += """
-CURRENT INVENTORY:
-"""
-        
-        for i, item in enumerate(equipment):
-            item_name = item.get('item_name', 'Unknown Item')
-            item_type = item.get('item_type', 'Unknown')
-            description = item.get('description', 'No description')
-            quantity = item.get('quantity', 1)
-            
-            prompt += f"""
-Item #{i+1}:
-- Name: {item_name}
-- Type: {item_type}
-- Description: {description}
-- Quantity: {quantity}
-"""
-        
-        prompt += """
-
-Identify loose currency items AND ammunition that should be consolidated. Remember:
-- Consolidate loose coins and emptied bags into currency
-- Move ammunition items (arrows, bolts) to the ammunition section
-- Standardize container names (e.g., "full quiver" → "Quiver")
-- If a container is "full", add ammo and rename container
-- Preserve gems, containers, and valuables
-- Calculate new totals after consolidation
-- Return only the changes needed for both currency and ammunition"""
-        
-        return prompt
-    
-    def parse_currency_consolidation_response(self, ai_response: str, original_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Parse AI currency consolidation response - returns only the updates/changes
-        
-        Args:
-            ai_response: AI response string
-            original_data: Original character data
-            
-        Returns:
-            Dictionary with only the changes to apply (or empty dict if no changes)
-        """
-        parsed_response = _load_response_object(ai_response, "T054")
-        recognized_fields = {
-            'inventory', 'currency', 'ammunition', 'equipment',
-            'consolidations_made',
-        }
-        unknown_fields = set(parsed_response).difference(recognized_fields)
-        if unknown_fields:
+        parsed = _load_response_object(ai_response, "T054")
+        unknown = set(parsed).difference({'rows'})
+        if unknown:
             raise CharacterValidationResponseError(
-                "T054: response contains unsupported field(s): "
-                + ", ".join(sorted(unknown_fields))
+                "T054: response contains unsupported field(s): " + ", ".join(sorted(unknown))
             )
-        if not recognized_fields.intersection(parsed_response):
-            raise CharacterValidationResponseError(
-                "T054: response contains no recognized consolidation fields"
-            )
-        for field in ('ammunition', 'equipment', 'consolidations_made'):
-            if field in parsed_response and not isinstance(parsed_response[field], list):
-                raise CharacterValidationResponseError(
-                    f"T054: '{field}' must be an array"
-                )
-        if 'inventory' in parsed_response and not isinstance(
-            parsed_response['inventory'], dict
-        ):
-            raise CharacterValidationResponseError(
-                "T054: 'inventory' must be an object"
-            )
-        if 'currency' in parsed_response and not isinstance(
-            parsed_response['currency'], dict
-        ):
-            raise CharacterValidationResponseError(
-                "T054: 'currency' must be an object"
-            )
-
-        updates = {}
-        source_currency = original_data.get('currency', {})
-        if not isinstance(source_currency, dict):
-            raise CharacterValidationResponseError(
-                "T054: source currency must be an object"
-            )
-        source_equipment = _source_items_by_name(
-            original_data.get('equipment', []),
-            "T054: source equipment",
-            reject_duplicates=True,
-        )
-
-        # First validate removal/rename directives. They are the authoritative
-        # source side of the conservation equation and are never persisted.
-        normalized_equipment = []
-        removal_items = []
-        rename_items = []
-        seen_equipment = set()
-        rename_destinations = set()
-        for index, directive in enumerate(parsed_response.get('equipment', [])):
-            if not isinstance(directive, dict):
-                raise CharacterValidationResponseError(
-                    f"T054: equipment[{index}] must be an object"
-                )
-            source_name = _normalized_name(directive.get('item_name'))
-            if source_name not in source_equipment:
-                raise CharacterValidationResponseError(
-                    f"T054: equipment[{index}] must reference a source candidate"
-                )
-            if source_name in seen_equipment:
-                raise CharacterValidationResponseError(
-                    f"T054: duplicate equipment directive for '{directive.get('item_name')}'"
-                )
-            seen_equipment.add(source_name)
-            source_item = source_equipment[source_name]
-
-            if '_remove' in directive:
-                if set(directive) != {'item_name', '_remove'}:
-                    raise CharacterValidationResponseError(
-                        f"T054: equipment[{index}] removal contains unsupported fields"
-                    )
-                if directive['_remove'] is not True:
-                    raise CharacterValidationResponseError(
-                        f"T054: equipment[{index}]._remove must be true"
-                    )
-                if _supported_container_rename(source_item) is not None:
-                    raise CharacterValidationResponseError(
-                        f"T054: equipment[{index}] must preserve and rename the "
-                        "ammunition container instead of removing it"
-                    )
-                _require_destructively_safe_source_item(
-                    source_item,
-                    f"T054: equipment[{index}] source",
-                )
-                normalized_equipment.append({
-                    'item_name': source_item['item_name'],
-                    '_remove': True,
-                })
-                removal_items.append(source_item)
+        answers = parsed.get('rows')
+        if not isinstance(answers, list):
+            raise CharacterValidationResponseError("T054: 'rows' must be an array")
+        offered = {candidate['row']: candidate['item'] for candidate in consolidation_data.get('equipment', [])}
+        catalog = _catalog_ammunition()
+        stocks = [row for _stock, row in genesis.ammunition_rows(character_data, [])]
+        directives = []
+        for index, answer in enumerate(answers):
+            path = f"T054: rows[{index}]"
+            if not isinstance(answer, dict) or set(answer).difference({'row', 'action', 'ammunition'}):
+                raise CharacterValidationResponseError(f"{path} must be an object with only row, action and ammunition")
+            row = answer.get('row')
+            if type(row) is not int or row not in offered:
+                raise CharacterValidationResponseError(f"{path}.row must be one of the rows shown: {sorted(offered)}")
+            if any(directive['row'] == row for directive in directives):
+                raise CharacterValidationResponseError(f"{path} answers row {row} a second time")
+            action = answer.get('action')
+            if action not in ('merge', 'duplicate', 'keep'):
+                raise CharacterValidationResponseError(f"{path}.action must be merge, duplicate or keep")
+            item = offered[row]
+            directive = {'row': row, 'action': action, 'item_name': item['item_name'],
+                         'quantity': item['quantity'], 'description': item.get('description'), 'entry': None}
+            if action == 'keep':
+                if 'ammunition' in answer:
+                    raise CharacterValidationResponseError(f"{path}: keep takes no ammunition")
+                directives.append(directive)
                 continue
-
-            if '_update' in directive:
-                if set(directive) != {'item_name', 'new_item_name', '_update'}:
-                    raise CharacterValidationResponseError(
-                        f"T054: equipment[{index}] rename contains unsupported fields"
-                    )
-                if directive['_update'] is not True:
-                    raise CharacterValidationResponseError(
-                        f"T054: equipment[{index}]._update must be true"
-                    )
-                new_name = directive.get('new_item_name')
-                if not isinstance(new_name, str) or not new_name.strip():
-                    raise CharacterValidationResponseError(
-                        f"T054: equipment[{index}].new_item_name must be nonempty"
-                    )
-                normalized_new_name = _normalized_name(new_name)
-                canonical_name = _supported_container_rename(source_item)
-                if canonical_name == 'Quiver' and normalized_new_name == 'quiver':
-                    canonical_description = 'A standard quiver for carrying arrows.'
-                elif canonical_name == 'Bolt case' and normalized_new_name == 'bolt case':
-                    canonical_description = 'A standard case for carrying crossbow bolts.'
-                else:
-                    raise CharacterValidationResponseError(
-                        f"T054: equipment[{index}] is not a supported container rename"
-                    )
-                if normalized_new_name in rename_destinations:
-                    raise CharacterValidationResponseError(
-                        f"T054: equipment[{index}] converges on duplicate rename "
-                        f"destination '{canonical_name}'"
-                    )
-                rename_destinations.add(normalized_new_name)
-                if (
-                    normalized_new_name in source_equipment
-                    and normalized_new_name != source_name
-                ):
-                    raise CharacterValidationResponseError(
-                        f"T054: equipment[{index}] rename collides with existing equipment"
-                    )
-                # A model sometimes emits `Quiver -> Quiver` solely to move
-                # its contents. Do not mark the same source row for deletion.
-                consumed_update = _consumed_container_update(
-                    source_item,
-                    canonical_name,
-                    canonical_description,
-                )
-                if source_item.get('item_name') != canonical_name:
-                    replacement = copy.deepcopy(source_item)
-                    replacement.update(consumed_update)
-                    replacement.pop('_remove', None)
-                    replacement.pop('_update', None)
-                    replacement.pop('new_item_name', None)
-                    normalized_equipment.extend([
-                        {'item_name': source_item['item_name'], '_remove': True},
-                        replacement,
-                    ])
-                else:
-                    normalized_equipment.append(consumed_update)
-                rename_items.append(source_item)
-                continue
-
-            raise CharacterValidationResponseError(
-                f"T054: equipment[{index}] requires _remove=true or _update=true"
-            )
-
-        currency_source_items = []
-        ammunition_source_items = []
-        for index, source_item in enumerate(removal_items + rename_items):
-            currency_evidence = _currency_evidence_from_item(
-                source_item,
-                f"T054: equipment source[{index}]",
-            )
-            ammo_evidence = _ammunition_evidence_from_item(
-                source_item,
-                f"T054: equipment source[{index}]",
-            )
-            if currency_evidence and ammo_evidence:
+            name = answer.get('ammunition')
+            entry = catalog.get(name.strip().casefold()) if isinstance(name, str) else None
+            if entry is None:
                 raise CharacterValidationResponseError(
-                    "T054 conservation source ambiguously contains currency and ammunition"
+                    f"{path}.ammunition must be one of {sorted(e['name'] for e in catalog.values())}"
                 )
-            if currency_evidence:
-                currency_source_items.append(source_item)
-            elif ammo_evidence:
-                ammunition_source_items.append(source_item)
-            elif source_item in removal_items:
+            own = _row_catalog_ammunition(item)
+            if own is not None and own.get('id') != entry.get('id'):
                 raise CharacterValidationResponseError(
-                    "T054 conservation cannot remove an item without unambiguous value"
+                    f"{path}: row {row} is catalog {own.get('name')!r}, not {entry['name']!r}"
                 )
-
-        # Normalize the legacy nested currency shape, but publish canonical
-        # top-level currency only.
-        inventory_updates = parsed_response.get('inventory')
-        if isinstance(inventory_updates, dict):
-            inventory_unknown = set(inventory_updates).difference({'currency'})
-            if inventory_unknown:
+            held = [stock for stock in stocks if (item_catalog.ammunition_entry(stock) or {}).get('id') == entry.get('id')]
+            if action == 'duplicate' and not held:
                 raise CharacterValidationResponseError(
-                    "T054: inventory contains unsupported field(s): "
-                    + ", ".join(sorted(inventory_unknown))
+                    f"{path}: the ammunition section holds no {entry['name']} stock, so row {row} "
+                    "is not a duplicate; answer merge or keep"
                 )
-        nested_currency = (
-            inventory_updates.get('currency')
-            if isinstance(inventory_updates, dict)
-            else None
-        )
-        if nested_currency is not None and not isinstance(nested_currency, dict):
-            raise CharacterValidationResponseError(
-                "T054: inventory.currency must be an object"
-            )
-        top_level_currency = parsed_response.get('currency')
-        if top_level_currency is not None and nested_currency is not None:
-            raise CharacterValidationResponseError(
-                "T054: currency must use one canonical location"
-            )
-        currency_updates = top_level_currency if top_level_currency is not None else nested_currency
-        normalized_currency = {}
-        currency_deltas = {}
-        if currency_updates is not None:
-            unknown_currency = set(currency_updates).difference(VALID_CURRENCY_FIELDS)
-            if unknown_currency:
+            if action == 'merge' and len(held) > 1:
                 raise CharacterValidationResponseError(
-                    "T054: currency contains unsupported denomination(s): "
-                    + ", ".join(sorted(unknown_currency))
+                    f"{path}: {len(held)} ammunition rows hold {entry['name']}; answer duplicate or keep"
                 )
-            for denomination, value in currency_updates.items():
-                new_total = _require_contract_integer(
-                    value,
-                    f"T054: currency.{denomination}",
-                    minimum=0,
-                )
-                current_total = _require_contract_integer(
-                    source_currency.get(denomination, 0),
-                    f"T054: source currency.{denomination}",
-                    minimum=0,
-                )
-                if new_total < current_total:
-                    raise CharacterValidationResponseError(
-                        f"T054: currency.{denomination} may not decrease during consolidation"
-                    )
-                if new_total != current_total:
-                    normalized_currency[denomination] = new_total
-                    currency_deltas[denomination] = new_total - current_total
+            directive['entry'] = entry
+            directives.append(directive)
+        missing = sorted(set(offered).difference(directive['row'] for directive in directives))
+        if missing:
+            raise CharacterValidationResponseError(f"T054: rows {missing} were not answered")
+        return directives
 
-        currency_evidence = _aggregate_evidence(
-            currency_source_items,
-            _currency_evidence_from_item,
-            "T054: currency sources",
-        )
-        _require_exact_conservation(
-            "T054 currency",
-            currency_deltas,
-            currency_evidence,
-        )
-        if normalized_currency:
-            updates['currency'] = normalized_currency
-
-        # Provider ammunition values are absolute totals. Convert only after
-        # proving their positive deltas exactly match removed source quantities.
-        current_ammunition = {}
-        source_ammunition_rows = original_data.get('ammunition', [])
-        _require_unique_source_ammunition(
-            source_ammunition_rows,
-            "T054: source ammunition",
-        )
-        for source_index, source_ammo in enumerate(source_ammunition_rows):
-            if not isinstance(source_ammo, dict):
-                raise CharacterValidationResponseError(
-                    f"T054: source ammunition[{source_index}] must be an object"
-                )
-            canonical_name = _canonical_ammunition_name(source_ammo.get('name'))
-            if canonical_name is None:
-                continue
-            amount = _require_contract_integer(
-                source_ammo.get('quantity', 0),
-                f"T054: source ammunition[{source_index}].quantity",
-                minimum=0,
-            )
-            entry = current_ammunition.setdefault(
-                canonical_name,
-                {'name': source_ammo.get('name'), 'quantity': 0},
-            )
-            entry['quantity'] += amount
-
-        ammunition_updates = []
-        ammunition_deltas = {}
-        seen_ammunition = set()
-        for index, ammo in enumerate(parsed_response.get('ammunition', [])):
-            if not isinstance(ammo, dict) or set(ammo).difference(
-                {'name', 'quantity', 'description'}
-            ):
-                raise CharacterValidationResponseError(
-                    f"T054: ammunition[{index}] is invalid"
-                )
-            canonical_name = _canonical_ammunition_name(ammo.get('name'))
-            if canonical_name is None or canonical_name in seen_ammunition:
-                raise CharacterValidationResponseError(
-                    f"T054: ammunition[{index}] requires a unique standard name"
-                )
-            seen_ammunition.add(canonical_name)
-            current_entry = current_ammunition.get(canonical_name, {})
-            current_total = _require_contract_integer(
-                current_entry.get('quantity', 0),
-                f"T054: source ammunition[{canonical_name}].quantity",
-                minimum=0,
-            )
-            new_total = _require_contract_integer(
-                ammo.get('quantity'),
-                f"T054: ammunition[{index}].quantity",
-                minimum=0,
-            )
-            if new_total < current_total:
-                raise CharacterValidationResponseError(
-                    f"T054: ammunition total for '{ammo.get('name')}' may not decrease"
-                )
-            delta_amount = new_total - current_total
-            if delta_amount:
-                normalized_ammo = copy.deepcopy(ammo)
-                normalized_ammo['name'] = current_entry.get(
-                    'name',
-                    ammo['name'].strip(),
-                )
-                normalized_ammo['quantity'] = delta_amount
-                normalized_ammo.pop('description', None)
-                ammunition_updates.append(normalized_ammo)
-                ammunition_deltas[canonical_name] = delta_amount
-
-        ammunition_evidence = _aggregate_evidence(
-            ammunition_source_items,
-            _ammunition_evidence_from_item,
-            "T054: ammunition sources",
-        )
-        _require_exact_conservation(
-            "T054 ammunition",
-            ammunition_deltas,
-            ammunition_evidence,
-        )
-        if ammunition_updates:
-            updates['ammunition'] = ammunition_updates
-        if normalized_equipment:
-            updates['equipment'] = normalized_equipment
-
-        consolidations = _require_string_list(
-            parsed_response.get('consolidations_made', []),
-            "T054: 'consolidations_made'",
-        )
-        for consolidation in consolidations:
-            print(f"DEBUG: [Consolidation] {consolidation}")
-            info(f"[Consolidation] {consolidation}", category="character_validation")
-            self.logger.info(f"AI Currency Consolidation: {consolidation}")
-            self.corrections_made.append(consolidation)
-
-        return updates if updates else {}
-    
     def ensure_currency_integrity(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Ensure currency object has all required fields (gold, silver, copper).

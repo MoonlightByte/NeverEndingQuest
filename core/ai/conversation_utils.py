@@ -329,7 +329,7 @@ def _latest_player_input(conversation_history):
     for message in reversed(conversation_history):
         if isinstance(message, dict) and message.get("role") == "user":
             value = _raw_player_text(message)
-            if value and not value.startswith("Error Note:"):
+            if value:
                 return value
     return ""
 

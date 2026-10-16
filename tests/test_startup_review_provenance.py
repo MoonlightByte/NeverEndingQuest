@@ -618,10 +618,15 @@ def test_raise_never_lowers_and_leaves_ability_pools_to_level_up(wizard, authore
     bard["spellcasting"]["spellSlots"]["level1"] = {"current": 2, "max": 2}
     before = copy.deepcopy(bard)
     assert tables.raise_to_tables(bard) == [] and bard == before
-    # A pool feature written with a suffix is matched as level-up matches it.
+    # A pool feature written with a suffix is matched by the typed srd_name T125
+    # gave it, as level-up matches it; its whole name alone is no pool (keyword
+    # validation V4: no name is cut).
     cleric = _as_class(copy.deepcopy(authored["character"]), "Cleric",
                        [("Channel Divinity (2/rest)", _pool(1, 1, "shortRest"))])
     cleric["level"] = 2
+    unnamed = copy.deepcopy(cleric)
+    assert not [note for note in tables.raise_to_tables(unnamed) if note.startswith("Channel Divinity")]
+    next(f for f in cleric["classFeatures"] if f["name"] == "Channel Divinity (2/rest)")["srd_name"] = "Channel Divinity"
     assert tables.raise_to_tables(cleric)[0] == "Channel Divinity (2/rest) max 1 -> 2 (SRD Cleric level 2)"
     assert _usage(cleric, "Channel Divinity (2/rest)") == _pool(1, 2, "shortRest")
     # H4-Q4 (a): a stale Warlock 3's pact slots move to level 2 as one set; they
