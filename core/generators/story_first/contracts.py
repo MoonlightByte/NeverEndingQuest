@@ -209,6 +209,9 @@ def strict_internal_contract(schema: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+SCENE_SCALES = ("area_mass", "site", "confined", "unclassified")
+
+
 def outline_schema() -> Dict[str, Any]:
     truth = _obj(
         {
@@ -264,6 +267,7 @@ def outline_schema() -> Dict[str, Any]:
             },
             "isCrescendo": {"type": "boolean"},
             "optionalTerminal": {"type": "boolean"},
+            "sceneScale": {"type": "string", "enum": list(SCENE_SCALES)},
         }
     )
     thread = _obj(
@@ -281,6 +285,8 @@ def outline_schema() -> Dict[str, Any]:
             "concept": {"type": "string", "minLength": 20},
             "storyRole": {"type": "string", "minLength": 10},
             "targetCR": {"type": "number", "minimum": 0},
+            "requiresSubmergedMovement": {"type": "boolean"},
+            "requiresUnsupportedSense": {"type": "boolean"},
         }
     )
     return _obj(
@@ -319,6 +325,7 @@ def area_binding_schema(
                 "type": "array",
                 "items": {"type": "string", "pattern": "^B[0-9]{3}$"},
             },
+            "sceneScale": {"type": "string", "enum": list(SCENE_SCALES)},
         }
     )
     area = _obj(
@@ -412,14 +419,31 @@ def npc_repair_schema(location_ids, loca_schema):
     )
 
 
-def hardening_schema(location_ids, loca_schema):
+def hardening_schema(location_ids, loca_schema, entity_names, level_min, level_max):
     dm = copy.deepcopy(
         loca_schema["properties"]["locations"]["items"]["properties"]["dmInstructions"]
+    )
+    name = {"type": "string"}
+    if entity_names:
+        name["enum"] = sorted(set(entity_names))
+    guard = _obj(
+        {
+            "name": name,
+            "switchWhen": {"type": "string", "minLength": 10},
+        }
+    )
+    level = _obj(
+        {
+            "level": {"type": "integer", "minimum": level_min, "maximum": level_max},
+            "guidance": {"type": "string", "minLength": 10},
+        }
     )
     repair = _obj(
         {
             "locationId": {"type": "string", "enum": list(location_ids)},
             "dmInstructions": dm,
+            "sameEntityGuards": {"type": "array", "items": guard},
+            "levelGuidance": {"type": "array", "items": level},
         }
     )
     return _obj(

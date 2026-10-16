@@ -359,8 +359,8 @@ the frozen skills object uses dynamic keys that provider structured output canno
 return skillBonuses as an array of unique {name, bonus} objects and do not return skills; the
 adapter converts that transport field to the frozen skills object before validation. A new
 creature has equal hitPoints/maxHitPoints, condition Alive, and at least one complete named
-action. It must have speed above zero or explicitly state a positive fly, hover, swim,
-burrow, or climb distance in specialAbilities text.
+action. It must have speed above zero or a positive alternateSpeeds value: alternateSpeeds
+gives its fly, swim, burrow and climb speeds in feet, 0 for each it lacks.
 Actions and specialAbilities can represent only complete attack-shaped mechanics; emit a
 complete executable entry or omit it. Never emit hollow prose or Multiattack. The frozen
 legendaryActions shape has no executable mechanics, so return an empty array. Set

@@ -4,7 +4,6 @@ import copy
 import hashlib
 import json
 import os
-import re
 import shutil
 import stat
 from uuid import uuid4
@@ -286,16 +285,10 @@ class NpcReconciler:
 
     def get_canonical_name(self, original_name: str) -> str:
         """Finds the canonical name for a given NPC name."""
-        # First, try a direct match in our map
+        # Every built name is registered exactly through add_npc; a name that is
+        # not in the map stays as written (keyword program GEN-14).
         if original_name in self.canonical_map:
             return self.canonical_map[original_name]
-        
-        # If not found, try matching the base name (without parentheses)
-        base_name = re.sub(r'\s*\([^)]*\)\s*', '', original_name).strip()
-        if base_name in self.canonical_map:
-            return self.canonical_map[base_name]
-            
-        # If still not found, return the original name as a fallback
         print(f"WARNING: [NpcReconciler] Could not find canonical name for '{original_name}'. Using original.")
         return original_name
 

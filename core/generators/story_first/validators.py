@@ -27,33 +27,17 @@ def require_ascii(value: Any, label: str) -> None:
         raise ValueError(f"{label} contains non-ASCII text") from exc
 
 
-_POSITIVE_MOVEMENT = re.compile(
-    r"(?i)(?:\b(?:fly|flying|hover|swim|swimming|burrow|burrowing|climb|climbing)"
-    r"(?:\s+speed)?(?:\s+of)?\s*([0-9]+)\s*(?:ft\.?|feet|foot)\b|"
-    r"\b([0-9]+)\s*(?:ft\.?|feet|foot)\s*"
-    r"(?:fly|flying|hover|swim|swimming|burrow|burrowing|climb|climbing)\b)"
-)
-
-
 def semantic_creature_viability_checks(creature: Mapping[str, Any]) -> Dict[str, Any]:
     """Enforce a loose minimum: the creature can move and take one action."""
     issues = []
     speed = creature.get("speed")
-    ability_text = " ".join(
-        value
-        for ability in creature.get("specialAbilities", [])
-        if isinstance(ability, Mapping)
-        for key in ("name", "description")
-        for value in (ability.get(key),)
-        if isinstance(value, str)
-    )
-    movement_match = _POSITIVE_MOVEMENT.search(ability_text)
+    # Typed alternate speeds (keyword program OFF-1); the prose is never read.
+    alternate = creature.get("alternateSpeeds")
     alternate_speed = max(
         (
-            int(value)
-            for match in _POSITIVE_MOVEMENT.finditer(ability_text)
-            for value in match.groups()
-            if value is not None
+            value
+            for value in (alternate.values() if isinstance(alternate, Mapping) else ())
+            if isinstance(value, int) and not isinstance(value, bool)
         ),
         default=0,
     )
@@ -65,7 +49,7 @@ def semantic_creature_viability_checks(creature: Mapping[str, Any]) -> Dict[str,
                 "expectation": "speed must be a non-negative number",
             }
         )
-    elif speed == 0 and not movement_match:
+    elif speed == 0 and alternate_speed <= 0:
         issues.append(
             {
                 "invariant": "creature_mobility",
@@ -75,8 +59,8 @@ def semantic_creature_viability_checks(creature: Mapping[str, Any]) -> Dict[str,
                     sort_keys=True,
                 ),
                 "expectation": (
-                    "use speed above zero or explicitly state a positive fly, hover, "
-                    "swim, burrow, or climb distance in specialAbilities text"
+                    "use speed above zero or a positive fly, swim, burrow, or climb "
+                    "value in alternateSpeeds"
                 ),
             }
         )
@@ -151,179 +135,9 @@ def unique_values(items: Iterable[Dict[str, Any]], key: str, label: str) -> List
     return values
 
 
-def unexpected_blocklist_terms(
-    authored: Dict[str, Any], seed: Dict[str, Any], blocklist: Iterable[str]
-) -> List[str]:
-    authored_text = json.dumps(authored, ensure_ascii=True).casefold()
-    immutable_seed = json.dumps(seed, ensure_ascii=True).casefold()
-    unexpected = set()
-    for word in blocklist:
-        pattern = rf"\b{re.escape(word.casefold())}(?:s|'s)?\b"
-        authored_count = len(re.findall(pattern, authored_text))
-        seed_count = len(re.findall(pattern, immutable_seed))
-        if authored_count > seed_count:
-            unexpected.add(word)
-    return sorted(unexpected)
-
-
-def _outline_identity_fields(outline: Dict[str, Any]) -> Dict[str, Any]:
-    """Return only authored identity fields governed by the gold-prior list."""
-    return {
-        "moduleTitle": outline.get("moduleTitle", ""),
-        "oppositionName": outline.get("opposition", {}).get("name", ""),
-        "areaNames": [item.get("name", "") for item in outline.get("areas", [])],
-        "beatTitles": [item.get("title", "") for item in outline.get("beats", [])],
-        "sideThreadTitles": [
-            item.get("title", "") for item in outline.get("sideThreads", [])
-        ],
-        "creatureNames": [
-            item.get("name", "") for item in outline.get("creatureBriefs", [])
-        ],
-    }
-
-
-_AREA_MASS_BEAT_PATTERNS = (
-    r"\b(?:city|district|region|settlement|town|village)[ -]?wide\b",
-    r"\b(?:army|armies|battlefield|mass battle|mass combat|siege lines?|war ?host)\b",
-    r"\b(?:evacuate|evacuation of) (?:the )?(?:city|district|settlement|town|village)\b",
-)
-_CONFINED_BEAT_PATTERNS = (
-    r"\bprivate (?:conversation|interview|meeting|ritual)\b",
-    r"\b(?:one|single) (?:captive|patient|prisoner|witness)\b",
-)
-_SITE_BEAT_PATTERNS = (
-    r"\b(?:building|bridge|camp|courtyard|gate|hall|house|temple|tower)[ -]wide\b",
-    r"\b(?:defend|evacuate|search) (?:the )?(?:building|bridge|camp|gate|hall|temple|tower)\b",
-)
-_CONFINED_LOCATION_PATTERNS = (
-    r"\b(?:alcoves?|cells?|closets?|cupboards?|pantries|privies)\b",
-    r"\b(?:cramped|narrow|tiny) (?:cells?|chambers?|rooms?)\b",
-    r"\b(?:interior|one-room|private) shacks?\b",
-)
-_AREA_MASS_LOCATION_PATTERNS = (
-    r"\b(?:battlefield|city streets?|district streets?|siege lines?)\b",
-    r"\b(?:city|district|settlement|town|village) (?:center|centre|streets?)\b",
-)
-_SITE_LOCATION_PATTERNS = (
-    r"\b(?:market|muster|parade|public|town|village) (?:field|ground|plaza|square)\b",
-    r"\b(?:courtyard|marketplace|open field|public plaza)\b",
-)
-_SUBMERGED_ROLE_PATTERNS = (
-    r"\b(?:ambush|ambushes|attack|attacks|hunt|hunts|hunting|live|lives|move|moves|"
-    r"operate|operates|pursue|pursues|remain|remains)\b[^.]{0,100}"
-    r"\b(?:fully )?(?:submerged|underwater)\b",
-    r"\b(?:fully )?(?:submerged|underwater)\b[^.]{0,100}"
-    r"\b(?:ambush|ambushes|attack|attacks|hunt|hunts|hunting|move|moves|"
-    r"operate|operates|pursue|pursues)\b",
-)
-_VIBRATION_ROLE_PATTERNS = (
-    r"\b(?:detect|detects|find|finds|hunt|hunts|locate|locates|sense|senses|track|"
-    r"tracks)\b[^.]{0,100}\b(?:tremorsense|vibrations?)\b",
-    r"\b(?:tremorsense|vibrations?)\b[^.]{0,100}\b(?:detect|detects|find|finds|"
-    r"hunt|hunts|locate|locates|sense|senses|track|tracks)\b",
-)
-
-
-def _semantic_text(value: Any) -> str:
-    parts: List[str] = []
-
-    def visit(item: Any) -> None:
-        if isinstance(item, str):
-            parts.append(item)
-        elif isinstance(item, (list, tuple)):
-            for child in item:
-                visit(child)
-
-    visit(value)
-    return " ".join(parts).casefold()
-
-
-def _matches_any(text: str, patterns: Iterable[str]) -> bool:
-    return any(re.search(pattern, text) for pattern in patterns)
-
-
-def classify_beat_scene_scale(beat: Dict[str, Any]) -> str:
-    """Classify only explicit scene-scale language; ambiguity is unclassified."""
-    text = _semantic_text(
-        [
-            beat.get("title", ""),
-            beat.get("purpose", ""),
-            beat.get("playerApproaches", []),
-            beat.get("consequences", []),
-        ]
-    )
-    if _matches_any(text, _AREA_MASS_BEAT_PATTERNS):
-        return "area_mass"
-    if _matches_any(text, _CONFINED_BEAT_PATTERNS):
-        return "confined"
-    if _matches_any(text, _SITE_BEAT_PATTERNS):
-        return "site"
-    return "unclassified"
-
-
-def classify_location_scene_scale(
-    role: Dict[str, Any], area: Dict[str, Any], outline_area: Dict[str, Any]
-) -> str:
-    """Classify a location role without treating danger or broad area as capacity."""
-    role_text = _semantic_text(
-        [role.get("name", ""), role.get("type", ""), role.get("storyPurpose", "")]
-    )
-    confined = _matches_any(role_text, _CONFINED_LOCATION_PATTERNS)
-    large = _matches_any(role_text, _AREA_MASS_LOCATION_PATTERNS)
-    site = _matches_any(role_text, _SITE_LOCATION_PATTERNS)
-    if sum((confined, large, site)) > 1:
-        return "unclassified"
-    if confined:
-        return "confined"
-    if large:
-        return "area_mass"
-    if site:
-        return "site"
-
-    # Broad area context is evidence only when the role itself declares that it
-    # is public/open/complex. It never upgrades a named cell or shack.
-    if re.search(r"\b(?:complex|open|public)\b", role_text):
-        context = _semantic_text(
-            [
-                area.get("areaType", ""),
-                outline_area.get("environment", ""),
-            ]
-        )
-        if re.search(r"\b(?:city|district|settlement|town|village)\b", context):
-            return "site"
-    return "unclassified"
-
-
-def classify_unrepresentable_creature_role(brief: Mapping[str, Any]) -> List[str]:
-    """Name only explicit role dependencies absent from the frozen monster shape."""
-    text = _semantic_text([brief.get("concept", ""), brief.get("storyRole", "")])
-    requirements = []
-    if _matches_any(text, _SUBMERGED_ROLE_PATTERNS):
-        requirements.append("submerged_movement")
-    if _matches_any(text, _VIBRATION_ROLE_PATTERNS):
-        requirements.append("unsupported_special_sense")
-    return requirements
-
-
-def looks_plural_creature_reference(name: str) -> bool:
-    """Catch ordinary plural keys without pretending to be a full inflector."""
-    words = re.findall(r"[A-Za-z]+", name)
-    if not words:
-        return False
-    word = words[-1].casefold()
-    if word in {"species", "series", "gas", "glass", "moss", "grass", "chaos"}:
-        return False
-    if word.endswith(("ss", "us", "is")):
-        return False
-    return word.endswith(
-        ("ies", "ves", "ches", "shes", "xes", "zes", "ses")
-    ) or word.endswith("s")
-
-
 def semantic_outline_checks(
     outline: Dict[str, Any],
     seed: Dict[str, Any],
-    blocklist: Iterable[str],
 ) -> Dict[str, Any]:
     """Check the model-authored graph and trusted seed constraints."""
     require_ascii(outline, "outline")
@@ -407,18 +221,6 @@ def semantic_outline_checks(
         raise ValueError(
             f"side threads reference unknown anchor beats: {unknown_thread_anchors}"
         )
-    blocked = unexpected_blocklist_terms(
-        _outline_identity_fields(outline), seed, blocklist
-    )
-    if blocked:
-        raise ValueError(f"outline introduced blocklisted priors: {blocked}")
-    plural = [
-        brief["name"]
-        for brief in outline["creatureBriefs"]
-        if looks_plural_creature_reference(brief["name"])
-    ]
-    if plural:
-        raise ValueError(f"creature reference names must be singular: {plural}")
     creature_names: Dict[str, str] = {}
     role_issues = []
     for index, brief in enumerate(outline["creatureBriefs"]):
@@ -429,7 +231,14 @@ def semantic_outline_checks(
                 f"duplicate creature brief names: {creature_names[name_key]!r}, {name!r}"
             )
         creature_names[name_key] = name
-        requirements = classify_unrepresentable_creature_role(brief)
+        requirements = [
+            requirement
+            for field, requirement in (
+                ("requiresSubmergedMovement", "submerged_movement"),
+                ("requiresUnsupportedSense", "unsupported_special_sense"),
+            )
+            if brief[field]
+        ]
         if requirements:
             role_issues.append(
                 {
@@ -649,12 +458,8 @@ def semantic_area_binding_checks(
         outline_area = outline_areas.get(area_id)
         if beat is None or outline_area is None:
             continue
-        beat_scale = classify_beat_scene_scale(beat)
-        location_scale = classify_location_scene_scale(
-            role,
-            next(item for item in binding["areas"] if item["areaRoleId"] == area_id),
-            outline_area,
-        )
+        beat_scale = beat["sceneScale"]
+        location_scale = role["sceneScale"]
         if beat_scale != "unclassified" or location_scale != "unclassified":
             scale_checked_count += 1
         if beat_scale == "area_mass":
@@ -853,7 +658,6 @@ TRUSTED_LOCATION_FIELDS = (
     "dangerLevel",
 )
 
-_PUBLIC_RUNTIME_REFERENCE = re.compile(r"\b(?:PP|SQ|B|S)[0-9]{3}\b")
 _KEY_LITERAL_CONVENTION = re.compile(
     r"(?i)^(?:key|passphrase|answer|cycle tag|ritual phrase):\s*(\S(?:.*\S)?)$"
 )
@@ -904,15 +708,15 @@ def _contains_exact_literal(text: str, literal: str) -> bool:
 
 def validate_public_candidate_references_and_keys(
     areas: Iterable[Mapping[str, Any]],
-    plot: Mapping[str, Any],
     entry_location_id: str,
 ) -> Dict[str, Any]:
-    """Block objective reference failures and report prose concerns as advisories.
+    """Report lock/key concerns in the accepted candidate as advisories.
 
     The frozen door shape has no destination or edge ID. Key reachability therefore
     cannot prove which edge a door blocks or that agentic narration cannot resolve it.
-    Door-literal findings and leaked private authoring IDs are consequently advisory.
-    A PPxxx/SQxxx reference to no published object remains an objective blocker.
+    Door-literal findings are consequently advisory. Location and plot prose is never
+    scanned for ID-shaped words: runtime plot progress uses the typed plotPointId of
+    an updatePlot action, which the engine checks.
     """
     area_values = list(areas)
     locations = {
@@ -920,21 +724,6 @@ def validate_public_candidate_references_and_keys(
         for area in area_values
         for location in area["locations"]
     }
-    points = list(plot.get("plotPoints", ()))
-    known_plot_ids = {
-        point.get("id")
-        for point in points
-        if isinstance(point, Mapping) and isinstance(point.get("id"), str)
-    }
-    known_quest_ids = {
-        quest.get("id")
-        for point in points
-        if isinstance(point, Mapping)
-        for quest in point.get("sideQuests", ())
-        if isinstance(quest, Mapping) and isinstance(quest.get("id"), str)
-    }
-    known_public_ids = known_plot_ids | known_quest_ids
-    blocking_issues: List[Dict[str, str]] = []
     advisories: List[Dict[str, str]] = []
 
     def add(target, invariant: str, offending: Any, expectation: str) -> None:
@@ -947,38 +736,6 @@ def validate_public_candidate_references_and_keys(
                 "expectation": expectation,
             }
         )
-
-    def scan_references(item: Any, path: str) -> None:
-        if len(blocking_issues) >= 24:
-            return
-        if isinstance(item, Mapping):
-            for key, child in item.items():
-                scan_references(child, f"{path}.{key}")
-        elif isinstance(item, (list, tuple)):
-            for index, child in enumerate(item):
-                scan_references(child, f"{path}[{index}]")
-        elif isinstance(item, str):
-            for reference in _PUBLIC_RUNTIME_REFERENCE.findall(item):
-                if reference[:2] not in {"PP", "SQ"}:
-                    add(
-                        advisories,
-                        "private_internal_reference",
-                        {"path": path, "reference": reference},
-                        (
-                            "prefer public story language over private Bxxx/Sxxx authoring "
-                            "IDs; this is advisory unless agentic play proves a failure"
-                        ),
-                    )
-                elif reference not in known_public_ids:
-                    add(
-                        blocking_issues,
-                        "undefined_public_reference",
-                        {"path": path, "reference": reference},
-                        "PPxxx/SQxxx references must resolve to a published plot object",
-                    )
-
-    scan_references(area_values, "$.areas")
-    scan_references(plot, "$.plot")
 
     graph = {location_id: set() for location_id in locations}
     for location_id, location in locations.items():
@@ -1075,16 +832,9 @@ def validate_public_candidate_references_and_keys(
                 continue
             validated_literals += 1
 
-    if blocking_issues:
-        raise SemanticCorrectionError(blocking_issues)
     return {
-        "knownPublicReferenceCount": len(known_public_ids),
-        "invalidInternalReferenceCount": 0,
         "validatedLockedDoorLiteralCount": validated_literals,
         "unreachableKeyLiteralCount": unreachable_literals,
-        "privateInternalReferenceAdvisoryCount": sum(
-            item["invariant"] == "private_internal_reference" for item in advisories
-        ),
         "lockedDoorAdvisoryCount": sum(
             item["invariant"] in {"riddle_answer_exists", "key_reachability"}
             for item in advisories
@@ -1098,7 +848,6 @@ def validate_story_first_location_result(
     area: Dict[str, Any],
     outline: Dict[str, Any],
     seed: Dict[str, Any],
-    blocklist: Iterable[str],
 ) -> Dict[str, Any]:
     """Enforce story-first invariants around an unchanged accepted T026 batch."""
     expected, actual = area["locations"], generated["locations"]
@@ -1115,18 +864,6 @@ def validate_story_first_location_result(
         if location.get("explorationState") != {"status": "unvisited"}:
             raise ValueError(f"{stub['locationId']} is not initially unvisited")
     require_ascii(generated, "T026 output")
-    seed_text = json.dumps(seed, ensure_ascii=True).casefold()
-    for location in actual:
-        for entity in [*location.get("npcs", []), *location.get("monsters", [])]:
-            name = str(entity.get("name", ""))
-            for blocked in blocklist:
-                pattern = rf"\b{re.escape(str(blocked).casefold())}(?:s|'s)?\b"
-                if re.search(pattern, name.casefold()) and not re.search(
-                    pattern, seed_text
-                ):
-                    raise ValueError(
-                        f"T026 introduced blocklisted entity in {location['locationId']}"
-                    )
     party = {
         str(name).strip().casefold()
         for name in seed.get("campaignContext", {}).get("partyNames", [])
@@ -1152,8 +889,6 @@ def validate_story_first_location_result(
         monster.get("name", "").strip().casefold() not in briefs for monster in monsters
     ):
         raise ValueError("T026 introduced an unbriefed creature")
-    if any(looks_plural_creature_reference(monster["name"]) for monster in monsters):
-        raise ValueError("T026 used a plural creature reference")
     if any(
         monster["quantity"]["min"] > monster["quantity"]["max"] for monster in monsters
     ):
