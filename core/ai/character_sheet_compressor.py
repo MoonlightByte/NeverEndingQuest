@@ -13,13 +13,10 @@ Features:
 
 Usage:
   python3 core/ai/character_sheet_compressor.py --char path/to/character.json
-
-Optional flags:
-  --keep-paren-info   Keep parenthetical info in EQUIP item names (default: removed).
 """
 
 import json, re, argparse
-from typing import Any, Dict, List, Tuple, Optional
+from typing import Any, Dict, List
 
 def slug(s: str) -> str:
     return re.sub(r'[^a-z0-9]+', '_', str(s).lower()).strip('_')
@@ -35,14 +32,6 @@ def describe_text(s) -> str:
     if s is None or isinstance(s, (bool, list, dict)):
         return ''
     return compact(str(s)).replace(';', ',')
-
-def strip_parens(text: str) -> Tuple[str, Optional[str]]:
-    # Don't strip +N modifiers for weapons/armor
-    if re.search(r'\+\d+', text):
-        return text, None
-    infos = re.findall(r'\(([^()]*)\)', text)
-    base = re.sub(r'\s*\([^)]*\)', '', text).strip()
-    return base, ('; '.join(compact(x) for x in infos) if infos else None)
 
 def squeeze_name(name: str) -> str:
     """Blessing of the Silent King -> BlessingSilentKing"""
@@ -92,7 +81,7 @@ def get_dict(d: Dict[str, Any], *keys) -> Dict[str, Any]:
             return d[k]
     return {}
 
-def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> str:
+def format_flatlist(character: Dict[str, Any]) -> str:
     try:
         from core.effects.effective import effective_sheet
         character = effective_sheet(character)
@@ -240,13 +229,12 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
             desc = describe_text(it.get('description'))
         else:
             raw, qty, desc = str(it), 1, ''
-        base, _ = strip_parens(raw) if not keep_paren_info else (raw, None)
-        nm = compact(base)
+        # The item's name as the sheet writes it, parentheses included.
+        nm = compact(raw)
         nm_qty = f"{nm} x{qty}" if qty and qty > 1 else nm
         if isinstance(it, dict) and it.get('equipped') is True:
             nm_qty = f"{nm_qty} [equipped]"
-        # D-242-D: the item's whole description after a colon (never inside
-        # parentheses, which strip_parens keys on for names).
+        # D-242-D: the item's whole description after a colon.
         equip_names.append(f"{nm_qty}: {desc}" if desc else nm_qty)
     equip_out = '[' + ','.join(equip_names) + ']'
 
@@ -368,11 +356,10 @@ def format_flatlist(character: Dict[str, Any], keep_paren_info: bool=False) -> s
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--char', required=True, help='Path to character JSON')
-    ap.add_argument('--keep-paren-info', action='store_true', help='Keep parenthetical info in EQUIP item names')
     args = ap.parse_args()
     with open(args.char, 'r', encoding='utf-8') as f:
         data = json.load(f)
-    print(format_flatlist(data, keep_paren_info=args.keep_paren_info))
+    print(format_flatlist(data))
 
 if __name__ == '__main__':
     main()
