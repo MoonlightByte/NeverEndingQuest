@@ -358,6 +358,8 @@ class RestOutcome:
     receipt: Optional[Dict[str, Any]] = None
     reason: str = ""
     gaps: List[str] = field(default_factory=list)
+    rolls: List[Dict[str, Any]] = field(default_factory=list)     # one engine roll record per hit die spent
+    refused: Dict[str, str] = field(default_factory=dict)         # companion name -> why their hit dice were not spent
 
 
 def _class_names(sheet: Dict[str, Any]) -> List[str]:
@@ -401,29 +403,97 @@ def rest_lines(sheet: Dict[str, Any], kind: str, gaps: List[str]) -> List[Tuple[
     return out
 
 
+def _hit_dice_refusal(response: Dict[str, Any], sheets: List[Dict[str, Any]], ids: List[str],
+                      hit_dice: Dict[str, int]) -> str:
+    """The player-facing reason the engine refused a hit-die request."""
+    fault = response.get("fault") or {}
+    if fault.get("code") == "E_INSUFFICIENT_RESOURCE" and str(fault.get("field", "")).startswith("hitdice:"):
+        sheet = next((s for s, c in zip(sheets, ids) if c == fault.get("subject")), None)
+        if sheet is not None:
+            left = {r: (c, m) for r, c, m in genesis.pool_resources(sheet, [])}.get(fault["field"], (0, 0))
+            return (f"{sheet.get('name')} has {left[0]} of {left[1]} {fault['field'].split(':', 1)[1]} hit dice left and "
+                    f"cannot spend {hit_dice.get(str(sheet.get('name')))}; spent hit dice return on a long rest")
+    problem = fault or next(iter(response.get("diagnostics") or []), None) or {}
+    if problem.get("code") == "E_ROLL":
+        return f"the engine refused the hit die face (E_ROLL): it must be {problem.get('expected')}, not {problem.get('actual')}"
+    return f"engine refused the hit dice at {response.get('phase')}: {problem or response.get('error')}"
+
+
+def _spend_hit_dice(sheets: List[Dict[str, Any]], ids: List[str], spenders: List[int], actor: int,
+                    rolls_by_die: Dict[int, List[str]], hit_dice: Dict[str, int], location: str, clock_tick: int,
+                    root: str, binary: Optional[str]) -> Tuple[Optional[List[Dict[str, Any]]], str]:
+    """One hit-die request: ``actor`` (a sheet index) invokes one hit-die Ability per die for each sheet in
+    ``spenders``. The request actor is the dice controller: the party root rolls with the player's faces
+    (``roll 1 { face n; }``) or declines them (``roll 1 engine;``); any other actor is the engine's.
+    A fresh Battle seed per request. On success the hit points and hit dice are written onto ``sheets``
+    and the engine's roll records are returned; nothing changes on a refusal."""
+    from core.nql import checks
+
+    world = genesis.hit_die_world(sheets, root, location, clock_tick, checks.fresh_seed())
+    actions: List[str] = []
+    for index in spenders:
+        die = genesis.hit_die(sheets[index])
+        for roll in rolls_by_die[index]:
+            actions.append(f'invoke {_q(genesis.hit_die_ability_id(die))} {{ "actor" = character {_q(ids[actor])}; '
+                           f'"target" = character {_q(ids[index])};{roll} }};')
+    try:
+        response = apply.call({"world": world.source, "world_name": "rest-hitdice.nql", "actions": "\n".join(actions),
+                               "actions_name": "rest-hitdice-actions.nql",
+                               "actor": {"kind": "character", "id": ids[actor]},
+                               "request": f"rest:hitdice:{uuid.uuid4().hex}",
+                               "status": [ids[index] for index in spenders]}, binary=binary)
+    except apply.EngineUnavailable as error:
+        return None, str(error)
+    if not response.get("ok"):
+        return None, _hit_dice_refusal(response, sheets, ids, hit_dice)
+    statuses = {s["character"]["id"]: s.get("resources") or {} for s in response.get("status") or []
+                if isinstance(s.get("character"), dict)}
+    for index in spenders:
+        values = statuses.get(ids[index]) or {}
+        die = genesis.hit_die(sheets[index])
+        pool = genesis.hit_dice_resource_id(die)
+        if not (isinstance(values.get("hp"), dict) and isinstance(values.get(pool), dict)):
+            return None, "engine returned no hit points or hit dice for a resting character"
+        sheets[index]["hitPoints"] = int(values["hp"]["current"])
+        stored = sheets[index].get(genesis.HIT_DICE_FIELD)
+        sheets[index][genesis.HIT_DICE_FIELD] = {**(stored if isinstance(stored, dict) else {}),
+                                                 f"d{die}": int(values[pool]["current"])}
+    names = {c: str(s.get("name")) for s, c in zip(sheets, ids)}
+    rolls = []
+    for event in (response.get("receipt") or {}).get("events") or []:
+        record = event.get("resource_roll") if isinstance(event, dict) else None
+        if isinstance(record, dict) and record.get("target") in names:
+            rolls.append({"name": names[record["target"]], "sides": record.get("sides"), "faces": record.get("faces"),
+                          "source": record.get("source"), "engine_drawn": bool(record.get("engine_drawn")),
+                          "bonus": record.get("bonus"), "actual": int(record.get("actual") or 0)})
+    return rolls, ""
+
+
 def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", request_id: Optional[str] = None,
-         binary: Optional[str] = None, hp_heals: Optional[Dict[str, int]] = None,
-         hit_dice: Optional[Dict[str, int]] = None) -> RestOutcome:
+         binary: Optional[str] = None, hit_dice: Optional[Dict[str, int]] = None,
+         faces: Optional[List[Any]] = None, root: Optional[str] = None, clock_tick: int = 0) -> RestOutcome:
     """Refill every pool the rest recovers on every sheet, one engine request.
 
     The engine's ``restore`` sets a pool to its maximum; a pool already full is
     a no-op. A Short Rest's partial regain is ``heal ... by n``, which the engine
-    caps at the maximum and never refuses. ``hp_heals`` (sheet name -> positive
-    amount, a Short Rest only) heals hit points in the same request: the hit
-    dice spent on the rest, rolled by the caller. ``hit_dice`` (sheet name ->
-    dice spent) spends them from the sheet's ``hitdice:d<N>`` pool in the same
-    request; the engine refuses a spend the pool cannot pay and nothing changes.
+    caps at the maximum and never refuses. ``hit_dice`` (sheet name -> dice spent,
+    a Short Rest only) are rolled first by the engine in the hit-die world: the
+    player's own dice (``root``, the player's sheet name) in one request with
+    ``faces`` (one per die: a whole number the player typed, or "engine" to let
+    the engine roll), then every other character's in one request whose actor is
+    the first of them, so the engine rolls theirs. The player's request refused
+    refuses the rest; a refused second request leaves those characters'
+    hit points and hit dice as they were and names them in ``refused`` (D-KWA-7e).
     All sheets are rebuilt from the engine's values together.
     """
     if kind not in REST_KINDS:
         return RestOutcome(False, reason=f"unknown rest kind {kind!r}; use short or long")
-    hp_heals = {str(name): amount for name, amount in (hp_heals or {}).items()}
     hit_dice = {str(name): count for name, count in (hit_dice or {}).items()}
-    if (hp_heals or hit_dice) and kind != "short":
+    if hit_dice and kind != "short":
         return RestOutcome(False, reason="hit dice are spent on a short rest; a long rest restores every hit point")
-    if any(type(amount) is not int or amount < 1 for amount in list(hp_heals.values()) + list(hit_dice.values())):
-        return RestOutcome(False, reason="a rest heal must be a positive whole number")
-    unknown = sorted((set(hp_heals) | set(hit_dice)) - {str(s.get("name")) for s in sheets})
+    if any(type(count) is not int or count < 1 for count in hit_dice.values()):
+        return RestOutcome(False, reason="hit dice spent must be a positive whole number")
+    unknown = sorted(set(hit_dice) - {str(s.get("name")) for s in sheets})
     if unknown:
         return RestOutcome(False, reason=f"no resting character is named {', '.join(unknown)}")
     sheets = [copy.deepcopy(s) for s in sheets]
@@ -434,10 +504,44 @@ def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", re
         # but no pool yet gets it, full, on its first Long Rest.
         for sheet in sheets:
             add_feat_usage(sheet)
-    world = genesis.build_world(sheets, location)
     ids = [genesis.character_id(s) for s in sheets]
     if len(set(ids)) != len(ids):
-        return RestOutcome(False, reason="two of the characters resolve to the same engine id", gaps=world.gaps)
+        return RestOutcome(False, reason="two of the characters resolve to the same engine id")
+    rolls: List[Dict[str, Any]] = []
+    refused: Dict[str, str] = {}
+    if hit_dice:
+        names = [str(s.get("name")) for s in sheets]
+        root_index = names.index(root) if root in names else 0
+        for name in hit_dice:
+            sheet = sheets[names.index(name)]
+            die = genesis.hit_die(sheet)
+            if not die or genesis.hit_dice_resource_id(die) not in {r for r, _, _ in genesis.pool_resources(sheet, [])}:
+                return RestOutcome(False, reason=f"{name} has no hit dice pool (no known class and level)")
+        player = names[root_index] if names[root_index] in hit_dice else None
+        answers = list(faces) if faces is not None else ["engine"] * hit_dice.get(player or "", 0)
+        if player and len(answers) != hit_dice[player]:
+            return RestOutcome(False, reason=f"{player} spends {hit_dice[player]} hit dice but {len(answers)} were rolled")
+        if any(not (answer == "engine" or (type(answer) is int)) for answer in answers):
+            return RestOutcome(False, reason="a hit die is a whole number the player rolled, or the engine's roll")
+        # The player's dice carry their answers; every other character's carry no roll input.
+        rolls_by_die = {names.index(name): ([" roll 1 engine;" if answer == "engine" else f" roll 1 {{ face {answer}; }};"
+                                             for answer in answers] if name == player else [""] * count)
+                        for name, count in hit_dice.items()}
+        if player:
+            got, why = _spend_hit_dice(sheets, ids, [root_index], root_index, rolls_by_die, hit_dice, location,
+                                       clock_tick, ids[root_index], binary)
+            if got is None:
+                return RestOutcome(False, reason=why)
+            rolls.extend(got)
+        others = [index for index in rolls_by_die if index != root_index]
+        if others:
+            got, why = _spend_hit_dice(sheets, ids, others, others[0], rolls_by_die, hit_dice, location, clock_tick,
+                                       ids[root_index], binary)
+            if got is None:
+                refused.update({names[index]: why for index in others})
+            else:
+                rolls.extend(got)
+    world = genesis.build_world(sheets, location)
     gaps = list(world.gaps)
     actions: List[str] = []
     labels: Dict[str, List[Tuple[str, str]]] = {}
@@ -445,25 +549,16 @@ def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", re
         labels[cid] = rest_lines(sheet, kind, gaps)
         actions.extend(f'heal {_q(cid)} resource {_q(rid)} by {regain};' if regain else
                        f'restore {_q(cid)} resource {_q(rid)};' for rid, _, regain in labels[cid])
-        spend = hit_dice.get(str(sheet.get("name")))
-        if spend:
-            die = genesis.hit_die(sheet)
-            rid = genesis.hit_dice_resource_id(die) if die else None
-            if rid is None or rid not in {r for r, _, _ in genesis.pool_resources(sheet, [])}:
-                return RestOutcome(False, reason=f"{sheet.get('name')} has no hit dice pool (no known class and level)",
-                                   gaps=gaps)
-            actions.append(f'spend {_q(cid)} resource {_q(rid)} by {spend};')
-        heal = hp_heals.get(str(sheet.get("name")))
-        if heal:
-            labels[cid].append(("hp", "hit points (hit dice)", heal))
-            actions.append(f'heal {_q(cid)} resource "hp" by {heal};')
         level = stats.exhaustion_level(sheet, gaps)
         if kind == "long" and level > 0:
             # SRD: a Long Rest removes one level of exhaustion (the highest instance).
             iid = stats.exhaustion_instance(level) + ":" + cid.split(":", 1)[1]
             actions.append(f'remove condition {_q(iid)} from {_q(cid)};')
+    healed = {roll["name"] for roll in rolls}
+    restored: Dict[str, List[str]] = {str(s.get("name")): (["hit points (hit dice)"] if str(s.get("name")) in healed else [])
+                                      for s in sheets}
     if not actions:
-        return RestOutcome(True, sheets=sheets, gaps=gaps)
+        return RestOutcome(True, sheets=sheets, restored=restored, gaps=gaps, rolls=rolls, refused=refused)
     try:
         response = apply.call({"world": world.source, "world_name": "rest-genesis.nql",
                                "actions": "\n".join(actions), "actions_name": "rest.nql",
@@ -474,17 +569,9 @@ def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", re
         return RestOutcome(False, reason=str(error), gaps=gaps)
     if not response.get("ok"):
         fault = response.get("fault") or {}
-        if fault.get("code") == "E_INSUFFICIENT_RESOURCE" and str(fault.get("field", "")).startswith("hitdice:"):
-            sheet = next((s for s, c in zip(sheets, ids) if c == fault.get("subject")), None)
-            if sheet is not None:
-                left = {r: (c, m) for r, c, m in genesis.pool_resources(sheet, [])}.get(fault["field"], (0, 0))
-                return RestOutcome(False, reason=(
-                    f"{sheet.get('name')} has {left[0]} of {left[1]} {fault['field'].split(':', 1)[1]} hit dice left and cannot "
-                    f"spend {hit_dice.get(str(sheet.get('name')))}; spent hit dice return on a long rest"), gaps=gaps)
         return RestOutcome(False, reason=f"engine refused at {response.get('phase')}: "
                                          f"{response.get('diagnostics') or fault or response.get('error')}", gaps=gaps)
     statuses = {s["character"]["id"]: s for s in response.get("status") or [] if isinstance(s.get("character"), dict)}
-    restored: Dict[str, List[str]] = {}
     for sheet, cid in zip(sheets, ids):
         before = {rid: cur for rid, cur, _ in genesis.pool_resources(sheet, [])}
         level_before = stats.exhaustion_level(sheet, [])
@@ -494,8 +581,9 @@ def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", re
         if problem:
             return RestOutcome(False, reason=problem, gaps=gaps)
         after = {rid: cur for rid, cur, _ in genesis.pool_resources(sheet, [])}
-        restored[str(sheet.get("name"))] = [label for rid, label, _ in labels[cid] if after.get(rid) != before.get(rid)]
+        restored[str(sheet.get("name"))] += [label for rid, label, _ in labels[cid] if after.get(rid) != before.get(rid)]
         level_after = stats.exhaustion_level(sheet, [])
         if level_after != level_before:
             restored[str(sheet.get("name"))].append(f"exhaustion level {level_before} -> {level_after}")
-    return RestOutcome(True, sheets=sheets, restored=restored, receipt=response.get("receipt"), gaps=gaps)
+    return RestOutcome(True, sheets=sheets, restored=restored, receipt=response.get("receipt"), gaps=gaps,
+                       rolls=rolls, refused=refused)

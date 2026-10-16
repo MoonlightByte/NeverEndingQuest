@@ -31,8 +31,10 @@ MARKER_FIELD = "nql_marker"
 PLAYER_INPUT_FIELD = "nql_player_input"
 # The combat round a combat history message belongs to, written by the game.
 ROUND_FIELD = "nql_round"
+# True on the turn whose DM note carries the module creation prompt, written by the game.
+MODULE_CREATION_FIELD = "nql_module_creation_prompt"
 # The game's own fields on a history message; providers never receive them.
-GAME_FIELDS = (MARKER_FIELD, PLAYER_INPUT_FIELD, ROUND_FIELD)
+GAME_FIELDS = (MARKER_FIELD, PLAYER_INPUT_FIELD, ROUND_FIELD, MODULE_CREATION_FIELD)
 
 LOCATION_TRANSITION = "location_transition"
 MODULE_TRANSITION = "module_transition"
@@ -64,7 +66,10 @@ _ARCHIVED_PREFIX = "[Archived] "
 _LEGACY_OPENINGS = (
     ("user", "Location transition:", LOCATION_TRANSITION),
     ("user", "Module transition:", MODULE_TRANSITION),
-    ("user", "Error Note: Your previous response failed validation", VALIDATION_ERROR),
+    # Every "Error Note:" the game wrote asked the DM to correct its last
+    # reply (failed validation, a refused transition, an unavailable reply);
+    # a player's turn opens with the engine's envelope, never with this.
+    ("user", "Error Note:", VALIDATION_ERROR),
     ("assistant", "=== LOCATION SUMMARY ===", LOCATION_SUMMARY),
     ("assistant", "[SUMMARY OF EVENTS AT THIS LOCATION]", ROLLING_SUMMARY),
     ("user", "Dungeon Master Note: Resume the game, the player has returned", RETURN_NOTE),
