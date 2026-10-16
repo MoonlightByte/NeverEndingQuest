@@ -13,12 +13,10 @@ preserving critical game information while compressing narrative content.
 
 import json
 import os
-import re
 import time
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
-from dataclasses import dataclass
 
 # Import local modules
 from utils.token_estimator import TokenEstimator
@@ -29,129 +27,10 @@ from utils.transient_filesystem import ReadOnlySaveStop
 import config
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T027", "core/generators/location_summarizer.py", 651)
+register_callsite("T027", "core/generators/location_summarizer.py", 196)
 
 # Set script name for logging
 set_script_name("location_summarizer")
-
-
-@dataclass
-class GameEvent:
-    """Represents a critical game event that must be preserved"""
-    event_type: str  # combat, npc_interaction, inventory, character_state, discovery, plot
-    location: str
-    description: str
-    details: Dict[str, Any]
-    importance: str  # critical, important, minor
-
-
-def _fold_chronicle_anchor(value: str) -> str:
-    """Normalize prose and location labels for deterministic anchor checks."""
-    words = re.findall(r"[a-z0-9]+", str(value).casefold())
-    if words and words[0] == "the":
-        words = words[1:]
-    return " ".join(words)
-
-
-def _missing_chronicle_location_segments(
-    chronicle: str,
-    locations: List[str],
-) -> List[str]:
-    """Return named journey segments missing or out of order in a chronicle.
-
-    Compound labels such as ``Village - Market Square`` are checked as two
-    anchors because natural prose commonly separates the area and room names.
-    """
-    folded_chronicle = _fold_chronicle_anchor(chronicle)
-    missing = []
-    cursor = 0
-    seen = set()
-    for location in locations:
-        for segment in re.split(r"\s+-\s+", str(location)):
-            folded_segment = _fold_chronicle_anchor(segment)
-            if not folded_segment or folded_segment in seen:
-                continue
-            seen.add(folded_segment)
-            position = folded_chronicle.find(folded_segment, cursor)
-            if position >= 0:
-                cursor = position + len(folded_segment)
-            elif folded_segment in folded_chronicle:
-                missing.append(f"{segment.strip()} (out of order)")
-            else:
-                missing.append(segment.strip())
-    return missing
-
-
-_SENSITIVE_CHRONICLE_PATTERNS = (
-    (
-        "nickname or endearment",
-        re.compile(
-            r"\b(?:nickname|pet name|term of endearment|trouble magnet)s?\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "romance or physical affection",
-        re.compile(
-            r"\b(?:romance|romantic|lover|lovers|kiss|kissed|kissing|"
-            r"embrace|embraced|caress|caressed|flirt|flirted|affection|"
-            r"passion|intimate|intimacy|yearning|jealousy|devotion)\b",
-            re.IGNORECASE,
-        ),
-    ),
-    (
-        "unsupported personal trait",
-        re.compile(
-            r"\b(?:phobia|claustrophobia|quirk|ritualistic obsession|"
-            r"lavender|pack-mule|amber eyes|lopsided smile|souls entwined)\b",
-            re.IGNORECASE,
-        ),
-    ),
-)
-
-
-def _quoted_chronicle_phrases(value: str) -> List[str]:
-    """Extract double-quoted phrases while tolerating curly quote output."""
-    return re.findall(r'["\u201c]([^"\u201d]+)["\u201d]', str(value))
-
-
-def _validate_chronicle_contract(
-    chronicle: str,
-    locations: List[str],
-    source_text: str,
-) -> List[str]:
-    """Return deterministic source-closure violations for a T027 draft."""
-    if not isinstance(chronicle, str) or not chronicle.strip():
-        return ["draft was empty"]
-
-    violations = []
-    location_issues = _missing_chronicle_location_segments(chronicle, locations)
-    if location_issues:
-        violations.append(
-            "journey names missing or out of order: " + ", ".join(location_issues)
-        )
-
-    source_context = "\n".join([source_text, *[str(item) for item in locations]])
-    source_numbers = set(re.findall(r"(?<!\w)[+-]?\d+(?:\.\d+)?(?!\w)", source_context))
-    output_numbers = set(re.findall(r"(?<!\w)[+-]?\d+(?:\.\d+)?(?!\w)", chronicle))
-    novel_numbers = sorted(output_numbers - source_numbers)
-    if novel_numbers:
-        violations.append("invented numeric values: " + ", ".join(novel_numbers))
-
-    folded_source = _fold_chronicle_anchor(source_context)
-    novel_quotes = []
-    for phrase in _quoted_chronicle_phrases(chronicle):
-        folded_phrase = _fold_chronicle_anchor(phrase)
-        if folded_phrase and folded_phrase not in folded_source:
-            novel_quotes.append(phrase.strip())
-    if novel_quotes:
-        violations.append("invented quoted phrases: " + ", ".join(novel_quotes))
-
-    for label, pattern in _SENSITIVE_CHRONICLE_PATTERNS:
-        if pattern.search(chronicle) and not pattern.search(source_context):
-            violations.append(f"invented {label}")
-
-    return violations
 
 
 class LocationSummarizer:
@@ -181,15 +60,9 @@ class LocationSummarizer:
         if not messages:
             return self._create_empty_summary(start_location, end_location)
         
-        # Extract key events from messages
-        events = self.extract_key_events(messages)
-        
-        # Preserve critical data
-        preserved_data = self.preserve_critical_data(events)
-        
         # Generate location summary
         summary = self.generate_location_summary(
-            start_location, end_location, intermediate_locations or [], preserved_data, messages
+            start_location, end_location, intermediate_locations or [], messages
         )
         
         # Calculate compression metrics
@@ -203,15 +76,12 @@ class LocationSummarizer:
             'original_tokens': original_tokens,
             'summary_tokens': summary_tokens,
             'compression_ratio': (original_tokens - summary_tokens) / original_tokens if original_tokens > 0 else 0,
-            'events_preserved': len(events),
             'locations_covered': [start_location] + (intermediate_locations or []) + [end_location],
             'timestamp': datetime.now().isoformat(),
             'metadata': {
                 'start_location': start_location,
                 'end_location': end_location,
                 'intermediate_locations': intermediate_locations or [],
-                'critical_events': [e for e in events if e.importance == 'critical'],
-                'summary_quality': self._assess_summary_quality(original_tokens, summary_tokens, events)
             }
         }
         
@@ -220,335 +90,11 @@ class LocationSummarizer:
         
         return compression_result
     
-    def extract_key_events(self, messages: List[Dict]) -> List[GameEvent]:
-        """
-        Parse messages for critical game events
-        
-        Returns list of GameEvent objects representing important occurrences
-        """
-        events = []
-        
-        for i, message in enumerate(messages):
-            content = message.get('content', '')
-            role = message.get('role', '')
-            
-            # Skip system messages
-            if role == 'system':
-                continue
-                
-            # Detect combat encounters
-            combat_events = self._extract_combat_events(content, i)
-            events.extend(combat_events)
-            
-            # Detect NPC interactions
-            npc_events = self._extract_npc_interactions(content, i)
-            events.extend(npc_events)
-            
-            # Detect inventory changes
-            inventory_events = self._extract_inventory_changes(content, i)
-            events.extend(inventory_events)
-            
-            # Detect character state changes
-            character_events = self._extract_character_changes(content, i)
-            events.extend(character_events)
-            
-            # Detect environmental discoveries
-            discovery_events = self._extract_discoveries(content, i)
-            events.extend(discovery_events)
-            
-            # Detect plot progression
-            plot_events = self._extract_plot_progression(content, i)
-            events.extend(plot_events)
-        
-        return events
-    
-    def _extract_combat_events(self, content: str, message_index: int) -> List[GameEvent]:
-        """Extract combat-related events"""
-        events = []
-        
-        # Look for combat indicators
-        combat_patterns = [
-            r'(attack|damage|hit points?|initiative|combat|battle|fight)',
-            r'(\d+\s*damage|takes?\s*\d+|deals?\s*\d+)',
-            r'(roll|rolled|d20|saving throw|check)',
-            r'(defeated|killed|destroyed|dies?|death)'
-        ]
-        
-        combat_score = 0
-        for pattern in combat_patterns:
-            if re.search(pattern, content, re.IGNORECASE):
-                combat_score += 1
-        
-        if combat_score >= 2:  # Multiple combat indicators
-            importance = 'critical' if 'death' in content.lower() or 'defeated' in content.lower() else 'important'
-            events.append(GameEvent(
-                event_type='combat',
-                location='',  # Will be filled by caller
-                description=self._extract_combat_summary(content),
-                details={'message_index': message_index, 'combat_score': combat_score},
-                importance=importance
-            ))
-        
-        return events
-    
-    def _extract_npc_interactions(self, content: str, message_index: int) -> List[GameEvent]:
-        """Extract NPC interaction events"""
-        events = []
-        
-        # Look for dialogue and NPC mentions
-        npc_patterns = [
-            r'"([^"]+)"',  # Quoted dialogue
-            r'says?|tells?|asks?|responds?|replies?',
-            r'(npc|character|person|guard|merchant|villager)',
-            r'(quest|task|mission|information|rumor)'
-        ]
-        
-        dialogue_count = len(re.findall(r'"[^"]+"', content))
-        npc_score = dialogue_count
-        
-        for pattern in npc_patterns[1:]:  # Skip dialogue pattern
-            if re.search(pattern, content, re.IGNORECASE):
-                npc_score += 1
-        
-        if npc_score >= 2 or dialogue_count > 0:
-            importance = 'critical' if 'quest' in content.lower() else 'important'
-            events.append(GameEvent(
-                event_type='npc_interaction',
-                location='',
-                description=self._extract_npc_summary(content),
-                details={'message_index': message_index, 'dialogue_count': dialogue_count},
-                importance=importance
-            ))
-        
-        return events
-    
-    def _extract_inventory_changes(self, content: str, message_index: int) -> List[GameEvent]:
-        """Extract inventory change events"""
-        events = []
-        
-        inventory_patterns = [
-            r'(find|found|discover|take|pick up|receive|give|drop|lose|use)',
-            r'(gold|silver|copper|coin|treasure|item|weapon|armor|potion)',
-            r'(inventory|equipment|gear|belongings)'
-        ]
-        
-        inventory_score = 0
-        for pattern in inventory_patterns:
-            if re.search(pattern, content, re.IGNORECASE):
-                inventory_score += 1
-        
-        if inventory_score >= 2:
-            events.append(GameEvent(
-                event_type='inventory',
-                location='',
-                description=self._extract_inventory_summary(content),
-                details={'message_index': message_index, 'inventory_score': inventory_score},
-                importance='important'
-            ))
-        
-        return events
-    
-    def _extract_character_changes(self, content: str, message_index: int) -> List[GameEvent]:
-        """Extract character state change events"""
-        events = []
-        
-        character_patterns = [
-            r'(level up|experience|xp|gained)',
-            r'(hit points?|hp|health|healing|damage)',
-            r'(spell slots?|magic|cast|spells?)',
-            r'(condition|effect|curse|blessing)',
-            r'(rest|sleep|recover)'
-        ]
-        
-        character_score = 0
-        for pattern in character_patterns:
-            if re.search(pattern, content, re.IGNORECASE):
-                character_score += 1
-        
-        if character_score >= 1:
-            importance = 'critical' if 'level up' in content.lower() else 'important'
-            events.append(GameEvent(
-                event_type='character_state',
-                location='',
-                description=self._extract_character_summary(content),
-                details={'message_index': message_index, 'character_score': character_score},
-                importance=importance
-            ))
-        
-        return events
-    
-    def _extract_discoveries(self, content: str, message_index: int) -> List[GameEvent]:
-        """Extract environmental discovery events"""
-        events = []
-        
-        discovery_patterns = [
-            r'(secret|hidden|trap|door|passage|room)',
-            r'(discover|find|notice|spot|see|reveal)',
-            r'(search|investigate|examine|explore)',
-            r'(treasure|chest|artifact|clue|evidence)'
-        ]
-        
-        discovery_score = 0
-        for pattern in discovery_patterns:
-            if re.search(pattern, content, re.IGNORECASE):
-                discovery_score += 1
-        
-        if discovery_score >= 2:
-            importance = 'critical' if 'secret' in content.lower() or 'treasure' in content.lower() else 'important'
-            events.append(GameEvent(
-                event_type='discovery',
-                location='',
-                description=self._extract_discovery_summary(content),
-                details={'message_index': message_index, 'discovery_score': discovery_score},
-                importance=importance
-            ))
-        
-        return events
-    
-    def _extract_plot_progression(self, content: str, message_index: int) -> List[GameEvent]:
-        """Extract plot progression events"""
-        events = []
-        
-        plot_patterns = [
-            r'(quest|mission|objective|goal)',
-            r'(complete|finish|accomplish|succeed)',
-            r'(plot|story|narrative|lore)',
-            r'(important|significant|major|crucial)'
-        ]
-        
-        plot_score = 0
-        for pattern in plot_patterns:
-            if re.search(pattern, content, re.IGNORECASE):
-                plot_score += 1
-        
-        if plot_score >= 2:
-            events.append(GameEvent(
-                event_type='plot',
-                location='',
-                description=self._extract_plot_summary(content),
-                details={'message_index': message_index, 'plot_score': plot_score},
-                importance='critical'
-            ))
-        
-        return events
-    
-    def preserve_critical_data(self, events: List[GameEvent]) -> Dict[str, Any]:
-        """
-        Ensure no loss of critical game data
-        
-        Returns structured data for AI consumption
-        """
-        preserved = {
-            'critical_events': [],
-            'combat_summary': {},
-            'character_progression': {},
-            'npc_relationships': {},
-            'inventory_changes': {},
-            'location_discoveries': {},
-            'plot_developments': {}
-        }
-        
-        for event in events:
-            if event.importance == 'critical':
-                preserved['critical_events'].append({
-                    'type': event.event_type,
-                    'description': event.description,
-                    'details': event.details
-                })
-            
-            # Categorize events
-            if event.event_type == 'combat':
-                preserved['combat_summary'][event.details['message_index']] = event.description
-            elif event.event_type == 'character_state':
-                preserved['character_progression'][event.details['message_index']] = event.description
-            elif event.event_type == 'npc_interaction':
-                preserved['npc_relationships'][event.details['message_index']] = event.description
-            elif event.event_type == 'inventory':
-                preserved['inventory_changes'][event.details['message_index']] = event.description
-            elif event.event_type == 'discovery':
-                preserved['location_discoveries'][event.details['message_index']] = event.description
-            elif event.event_type == 'plot':
-                preserved['plot_developments'][event.details['message_index']] = event.description
-        
-        return preserved
-    
-    def generate_location_summary(self, start_loc: str, end_loc: str, 
-                                intermediate_locs: List[str], preserved_data: Dict[str, Any],
+    def generate_location_summary(self, start_loc: str, end_loc: str,
+                                intermediate_locs: List[str],
                                 original_messages: List[Dict] = None) -> str:
-        """
-        Generate AI-powered chronicle summary using the narrative design prompt
-        
-        This uses the agentic approach with the prompt from claude.txt to create
-        rich, detailed narrative summaries that preserve actual story content.
-        """
-        # Prepare the AI prompt based on claude.txt format
-        system_prompt = """You are a narrative design assistant trained to convert sequential TTRPG-style location logs into richly detailed, emotionally resonant summary chronicles. You write with a tone that blends atmospheric storytelling, declarative clarity, and key-detail preservation. You must retain character actions, important items, magical effects, social or emotional beats, combat outcomes, boss confrontations, and environmental changes, while compressing multiple locations into a seamless chronicle that reads like a chapter from a dark fantasy journal or campaign codex."""
-        
-        user_prompt = f"""Given the following sequential location transitions and logs, generate a single, highly detailed chronicle summary that:
-
-1. **Compresses all location segments** into one fluid narrative without headers or bullet points.
-2. **Maintains chronological continuity**, including who did what, where, and why.
-3. **Includes all key discoveries**, magical items, ritual effects, emotional reactions, decisions, and changes in setting or mood.
-4. **Uses elevated, immersive fantasy prose** -- not modern or casual.
-5. **Depict combat sequences, monster encounters, and boss battles with intensity**. Describe the foes, their abilities, how the party fought, who was wounded or heroic, and the aftermath. Convey the stakes.
-6. **Preserve any player character sacrifices, wounds, or major successes**. If a battle was hard-fought, show the exhaustion and toll.
-7. **Concludes with a reflective or forward-facing insight**, setting up what may come next.
-8. **Avoids generic or vague phrasing** -- always prefer specificity (e.g., "Norn plunged the dagger into the specter's core" instead of "a character won a fight").
-9. **Assumes no events should be omitted**, even if there was no combat. Silence, ambiance, and tension are part of the story.
-10. **Narrate the complete journey through each location**: You MUST explicitly mention moving through or arriving at each location listed below. Weave each location name naturally into the narrative as the party travels through them. Use transitions like "descended from [Location A] into", "emerged at [Location B] to find", "the path through [Location C] revealed", etc.
-
-REQUIRED JOURNEY PROGRESSION (all locations must appear in your narrative):
-Starting at: {start_loc}
-Traveling through (in order): {' -> '.join(intermediate_locs)}
-Ending at: {end_loc}
-
-You MUST narrate the party's movement through EACH of these {len(intermediate_locs) + 2} locations in sequence.
-
-PRESERVED STORY ELEMENTS:
-{self._format_preserved_data_for_ai(preserved_data)}
-
-CRITICAL: Your narrative must include all location names from the journey above. Each location should appear naturally within the story as the party progresses through them.
-
-Produce a narrative in the style of a campaign journal or game codex entry. Do not use headings, bullet points, or dialogue labels. Do not refer to the logs or metadata -- only write the compressed, immersive story that shows the party's journey through every listed location."""
-        
-        # Generate actual AI-powered chronicle summary
-        return self._generate_ai_chronicle(start_loc, end_loc, intermediate_locs, preserved_data, original_messages)
-    
-    def _format_preserved_data_for_ai(self, preserved_data: Dict[str, Any]) -> str:
-        """Format preserved data for AI consumption"""
-        formatted_sections = []
-        
-        # Critical events
-        if preserved_data.get('critical_events'):
-            events = []
-            for event in preserved_data['critical_events']:  # All events
-                if hasattr(event, 'description'):
-                    events.append(event.description)
-                else:
-                    events.append(event.get('description', ''))
-            formatted_sections.append(f"CRITICAL EVENTS: {'; '.join(events)}")
-        
-        # Combat encounters
-        if preserved_data.get('combat_summary'):
-            combat_list = list(preserved_data['combat_summary'].values())
-            formatted_sections.append(f"COMBAT: {'; '.join(combat_list)}")  # All combat
-        
-        # NPC interactions
-        if preserved_data.get('npc_relationships'):
-            npc_list = list(preserved_data['npc_relationships'].values())
-            formatted_sections.append(f"NPC INTERACTIONS: {'; '.join(npc_list)}")  # All NPCs
-        
-        # Discoveries
-        if preserved_data.get('location_discoveries'):
-            discovery_list = list(preserved_data['location_discoveries'].values())
-            formatted_sections.append(f"DISCOVERIES: {'; '.join(discovery_list)}")  # All discoveries
-        
-        # Plot developments
-        if preserved_data.get('plot_developments'):
-            plot_list = list(preserved_data['plot_developments'].values())
-            formatted_sections.append(f"PLOT: {'; '.join(plot_list)}")
-        
-        return '\n'.join(formatted_sections) if formatted_sections else "No specific events recorded."
+        """Generate the AI chronicle (T027) for a journey from its source logs."""
+        return self._generate_ai_chronicle(start_loc, end_loc, intermediate_locs, original_messages)
     
     def _format_messages_for_compression(self, messages: List[Dict]) -> str:
         """Format the actual conversation messages for AI compression"""
@@ -565,7 +111,7 @@ Produce a narrative in the style of a campaign journal or game codex entry. Do n
         return formatted_text.strip()
     
     def _generate_ai_chronicle(self, start_loc: str, end_loc: str, 
-                              intermediate_locs: List[str], preserved_data: Dict[str, Any], 
+                              intermediate_locs: List[str],
                               original_messages: List[Dict] = None) -> str:
         """
         Generate AI-powered chronicle summary using exact prompts from claude.txt
@@ -573,7 +119,6 @@ Produce a narrative in the style of a campaign journal or game codex entry. Do n
         """
         max_retries = 3
         retry_delay = 2  # seconds
-        contract_validation_feedback = ""
         
         for attempt in range(max_retries):
             try:
@@ -637,9 +182,6 @@ CRITICAL: Your narrative must include all location names from the journey progre
 
 Your output should read like a published game codex, narrative recap, or campaign journal entry. Never reference this prompt or the data format -- just write the immersive, source-faithful chronicle."""
 
-                if contract_validation_feedback:
-                    user_prompt += contract_validation_feedback
-
                 # Select model config per provider
                 from model_config import MODEL_PROVIDER
                 if MODEL_PROVIDER == "openai":
@@ -665,30 +207,6 @@ Your output should read like a published game codex, narrative recap, or campaig
                 # Extract the generated chronicle
                 chronicle = response.choices[0].message.content.strip()
 
-                contract_violations = _validate_chronicle_contract(
-                    chronicle,
-                    [start_loc, *intermediate_locs, end_loc],
-                    conversation_text,
-                )
-                if contract_violations:
-                    violation_text = "; ".join(contract_violations)
-                    if attempt < max_retries - 1:
-                        contract_validation_feedback = (
-                            "\n\nCORRECTION REQUIRED: The previous draft was rejected: "
-                            f"{violation_text}. Rewrite the full chronicle from "
-                            "<source_logs>, preserving the journey order and adding no facts."
-                        )
-                        warning(
-                            "AI_RETRY: Chronicle contract rejected attempt "
-                            f"{attempt + 1}: {violation_text}",
-                            category="summarization",
-                        )
-                        continue
-                    raise ValueError(
-                        "chronicle contract failed after "
-                        f"{max_retries} attempts: {violation_text}"
-                    )
-                
                 # Add a note about AI generation
                 return f"{chronicle}\n\n[AI-Generated Chronicle Summary]"
                 
@@ -715,84 +233,14 @@ Your output should read like a published game codex, narrative recap, or campaig
                 f"Brief transition from {start_location} to {end_location}."
             ),
             'compression_ratio': 0.0,
-            'events_preserved': 0,
             'locations_covered': [start_location, end_location],
             'timestamp': datetime.now().isoformat(),
             'metadata': {
                 'start_location': start_location,
                 'end_location': end_location,
                 'intermediate_locations': [],
-                'critical_events': [],
-                'summary_quality': 'minimal'
             }
         }
-    
-    def _assess_summary_quality(self, original_tokens: int, summary_tokens: int, events: List[GameEvent]) -> str:
-        """Simple quality assessment - no artificial thresholds"""
-        if original_tokens == 0:
-            return 'minimal'
-        return 'agentic'  # Let AI determine quality, not coded rules
-    
-    # Helper methods for extracting specific event summaries
-    def _extract_combat_summary(self, content: str) -> str:
-        """Extract concise combat summary"""
-        # Look for damage numbers, outcomes, participants
-        damage_match = re.search(r'(\d+)\s*damage', content, re.IGNORECASE)
-        damage_info = f"{damage_match.group(1)} damage dealt" if damage_match else "combat encounter"
-        
-        if 'defeated' in content.lower() or 'killed' in content.lower():
-            return f"Combat victory - {damage_info}"
-        else:
-            return f"Combat engagement - {damage_info}"
-    
-    def _extract_npc_summary(self, content: str) -> str:
-        """Extract concise NPC interaction summary"""
-        # Look for NPC names and key dialogue
-        dialogue_matches = re.findall(r'"([^"]+)"', content)
-        if dialogue_matches:
-            return f"Dialogue with NPC: {dialogue_matches[0]}"
-        else:
-            return "NPC interaction occurred"
-    
-    def _extract_inventory_summary(self, content: str) -> str:
-        """Extract concise inventory change summary"""
-        if 'find' in content.lower() or 'found' in content.lower():
-            return "Items found and collected"
-        elif 'give' in content.lower() or 'trade' in content.lower():
-            return "Items exchanged or traded"
-        else:
-            return "Inventory changes made"
-    
-    def _extract_character_summary(self, content: str) -> str:
-        """Extract concise character change summary"""
-        if 'level up' in content.lower():
-            return "Character leveled up"
-        elif 'damage' in content.lower():
-            return "Character took damage"
-        elif 'healing' in content.lower() or 'heal' in content.lower():
-            return "Character healed"
-        else:
-            return "Character state changed"
-    
-    def _extract_discovery_summary(self, content: str) -> str:
-        """Extract concise discovery summary"""
-        if 'secret' in content.lower():
-            return "Secret discovered"
-        elif 'trap' in content.lower():
-            return "Trap found"
-        elif 'treasure' in content.lower():
-            return "Treasure discovered"
-        else:
-            return "Environmental discovery made"
-    
-    def _extract_plot_summary(self, content: str) -> str:
-        """Extract concise plot progression summary"""
-        if 'complete' in content.lower() or 'finish' in content.lower():
-            return "Quest objective completed"
-        elif 'quest' in content.lower():
-            return "Quest progression made"
-        else:
-            return "Plot development occurred"
     
     def get_summarization_history(self) -> List[Dict]:
         """Get history of all summarizations performed"""
