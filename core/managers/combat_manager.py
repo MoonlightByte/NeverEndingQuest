@@ -647,110 +647,6 @@ def save_json_file(file_path, data):
     except Exception as e:
         error(f"FILE_OP: Failed to save {file_path}: {str(e)}", category="file_operations")
 
-def clean_combat_state_blocks(conversation_history):
-    """
-    Remove the instructional combat state blocks from all but the most recent user message.
-    This prevents bloating the conversation with repeated instructions while preserving
-    the actual player actions and narrative.
-    """
-    # Find all user messages that contain combat state blocks
-    user_messages_with_state = []
-    for i, message in enumerate(conversation_history):
-        if (message.get("role") == "user" and 
-            "--- CURRENT COMBAT STATE ---" in message.get("content", "")):
-            user_messages_with_state.append(i)
-    
-    # If we have more than one, clean all but the last one
-    if len(user_messages_with_state) > 1:
-        for idx in user_messages_with_state[:-1]:  # All except the last one
-            content = conversation_history[idx]["content"]
-            
-            # Extract just the player's actual message
-            # Look for the pattern "Player: " after the state block ends
-            if "Player: " in content:
-                # Find where the state block ends (after "--- END OF STATE & DICE ---")
-                if "--- END OF STATE & DICE ---" in content:
-                    # Split on the end marker and then find the player message
-                    parts = content.split("--- END OF STATE & DICE ---", 1)
-                    if len(parts) == 2 and "Player: " in parts[1]:
-                        # Extract just the player's message
-                        player_parts = parts[1].split("Player: ", 1)
-                        if len(player_parts) == 2:
-                            player_msg = player_parts[1].split("\n\nNow, continue the combat flow", 1)[0].strip()
-                            # Replace the entire message with just the player's input
-                            conversation_history[idx]["content"] = f"Player: {player_msg}"
-                            continue
-            
-            # Fallback: If we can't extract cleanly, at least remove the bulk of the state
-            # but keep any player message
-            if "Player: " in content:
-                player_split = content.split("Player: ", 1)
-                if len(player_split) == 2:
-                    player_msg = player_split[1].split("\n\nNow, continue the combat flow", 1)[0].strip()
-                    conversation_history[idx]["content"] = f"Player: {player_msg}"
-    
-    return conversation_history
-
-def clean_old_dm_notes(conversation_history):
-    """
-    Clean up old Dungeon Master Notes from conversation history while preserving critical information.
-    Keeps round tracking, HP status, and basic combat state for the last 2 rounds.
-    This reduces token usage while maintaining enough context for proper combat flow.
-    """
-    # Find all DM note indices
-    dm_note_indices = []
-    for i, message in enumerate(conversation_history):
-        if message.get("role") == "user" and "Dungeon Master Note:" in message.get("content", ""):
-            dm_note_indices.append(i)
-    
-    # Keep the last 3 DM notes fully intact, clean older ones
-    keep_full_count = 3
-    
-    for i, message in enumerate(conversation_history):
-        if (message.get("role") == "user" and 
-            "Dungeon Master Note:" in message.get("content", "")):
-            
-            # Check if this is one of the recent DM notes to keep
-            note_index_in_list = dm_note_indices.index(i) if i in dm_note_indices else -1
-            if note_index_in_list >= len(dm_note_indices) - keep_full_count:
-                # Keep this note fully intact
-                continue
-            
-            # Clean older DM notes but preserve essential information
-            content = message["content"]
-            
-            # Extract round information
-            round_match = re.search(r"COMBAT ROUND (\d+)", content)
-            round_info = f"Round {round_match.group(1)}" if round_match else ""
-            
-            # Extract HP state information
-            hp_pattern = r"HP: \d+/\d+"
-            hp_matches = re.findall(hp_pattern, content)
-            hp_info = ", ".join(hp_matches) if hp_matches else ""
-            
-            # Extract player's message
-            player_split = content.split("Player:", 1)
-            player_msg = player_split[1].strip() if len(player_split) == 2 else ""
-            
-            # Construct cleaned message with essential info
-            cleaned_parts = []
-            if round_info:
-                cleaned_parts.append(round_info)
-            if hp_info:
-                cleaned_parts.append(f"HP: {hp_info}")
-            if player_msg:
-                cleaned_parts.append(f"Player: {player_msg}")
-            
-            if cleaned_parts:
-                message["content"] = f"Dungeon Master Note: {'. '.join(cleaned_parts)}"
-            else:
-                # Keep the original message to see what's not being extracted
-                # This helps identify what other user messages are in the conversation
-                # (e.g., "resuming combat", system messages, etc.)
-                pass  # Don't modify the message - keep original content
-    
-    return conversation_history
-
 def is_valid_json(json_string):
     try:
         json_object = json.loads(json_string)
@@ -5510,14 +5406,13 @@ This is narration only. Do not advance the round or apply any combat action."""
        # DON'T add (player) markers - the tracker handles this properly now
        marked_initiative_display = initiative_display
        
-       # Extract current turn from initiative display if available
-       current_turn_marker = "[>]"
-       current_turn_line = ""
-       if current_turn_marker in marked_initiative_display:
-           for line in marked_initiative_display.split('\n'):
-               if current_turn_marker in line:
-                   current_turn_line = line.strip()
-                   break
+       # Whose turn the tracker points at: the creatures whose own tracker
+       # line carries [>], each line matched whole against its creature.
+       from .initiative_tracker_ai import tracker_current_turn_names
+
+       current_turn_names = tracker_current_turn_names(
+           marked_initiative_display, encounter_data.get("creatures", [])
+       )
        
        # Build turn window info if available
        turn_window_text = ""
@@ -5553,8 +5448,7 @@ constraints:
 """
        elif (
            not automatic_initiative_step
-           and current_turn_line
-           and player_character_name in current_turn_line
+           and player_character_name in current_turn_names
        ):
            submitted_window = _living_turn_window_from_player(encounter_data)
            if submitted_window:
@@ -5670,10 +5564,6 @@ Rules:
 {user_input_text}
 
 {required_response}"""
-       
-       # Clean old DM notes and combat state blocks before adding new user input
-       conversation_history = clean_old_dm_notes(conversation_history)
-       conversation_history = clean_combat_state_blocks(conversation_history)
        
        # Add user input to conversation history
        conversation_history.append({"role": "user", "content": user_input_with_note})

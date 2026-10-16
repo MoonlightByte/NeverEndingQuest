@@ -307,6 +307,38 @@ def _valid_ai_tracker(tracker_text, creatures, current_round):
     return True
 
 
+def tracker_current_turn_names(tracker_text, creatures):
+    """The names of the creatures a tracker points at with [>].
+
+    Each "- [m] Name (initiative) - ..." line is matched whole against its own
+    creature, in initiative order, the way _valid_ai_tracker reads it, so a
+    name is never found inside another name ("Kira" is not "Kiran"). Lines
+    that do not line up with the creatures give [] (no current turn).
+    """
+    if not isinstance(tracker_text, str):
+        return []
+    start = tracker_text.find("**Live Initiative Tracker:**")
+    if start < 0:
+        return []
+    lines = [line.strip() for line in tracker_text[start:].splitlines() if line.strip().startswith("- [")]
+    ordered = sorted(creatures or [], key=lambda creature: creature.get("initiative", 0), reverse=True)
+    if len(lines) != len(ordered):
+        return []
+    names = []
+    for line, creature in zip(lines, ordered):
+        name = creature.get("name", "Unknown")
+        match = re.fullmatch(
+            rf"- \[(X|>| |D)\] (?:\*\*)?{re.escape(name)} "
+            rf"\({re.escape(str(creature.get('initiative', 0)))}\)(?:\*\*)? - .+",
+            line,
+        )
+        if not match:
+            return []
+        if match.group(1) == ">":
+            names.append(name)
+    return names
+
+
 def extract_recent_combat_messages(conversation, current_round):
     """Extract messages relevant to the current and previous round."""
     # Filter out system messages
