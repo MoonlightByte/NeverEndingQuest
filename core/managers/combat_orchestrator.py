@@ -1448,83 +1448,6 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
     return pending, prompt
 
 
-def _player_roll_contract_error(pending):
-    """Reject an explicitly wrong die before spending another provider call."""
-    exchanges = pending.get("playerExchanges") if isinstance(pending, dict) else None
-    if not isinstance(exchanges, list) or len(exchanges) < 2:
-        return None
-    previous = exchanges[-2] if isinstance(exchanges[-2], dict) else {}
-    current = exchanges[-1] if isinstance(exchanges[-1], dict) else {}
-    # #853: a typed request (its phase stored beside the die) is checked
-    # against its stored die only; an exchange written before that keeps
-    # today's reading of its request text.
-    request = "" if isinstance(previous.get("requestedPhase"), str) else str(previous.get("dmRequest") or "")
-    # An exchange saved before the inventory notes were removed (D-KW-5) may
-    # carry them after the player's words; their weapon dice are not the
-    # player's answer (#1008).
-    answer = str(current.get("playerInput") or "").split("\n[Inventory Context:", 1)[0]
-    expected_sequence = [
-        int(value)
-        for value in re.findall(
-            r"\b(?:\d+)?d(4|6|8|10|12|20|100)\b",
-            request.lower(),
-        )
-    ]
-    expected_sides = set(expected_sequence)
-    persisted_primary = re.fullmatch(
-        r"(?:\d+)?d(4|6|8|10|12|20|100)",
-        str(previous.get("requestedDie") or "").strip().lower(),
-    )
-    primary_sides = (
-        int(persisted_primary.group(1))
-        if persisted_primary
-        else expected_sequence[0]
-        if expected_sequence
-        else None
-    )
-    claimed_sides = {
-        int(value)
-        for value in re.findall(
-            r"\b(?:\d+)?d(4|6|8|10|12|20|100)\b",
-            answer.lower(),
-        )
-    }
-    # Extra dice may be volunteered in natural table talk. Require overlap,
-    # not a strict subset, while still requiring the primary requested die
-    # below (important when a later die is only optional Sneak Attack damage).
-    wrong_family = (
-        expected_sides
-        and claimed_sides
-        and not (claimed_sides & expected_sides)
-    )
-    missing_primary = (
-        primary_sides is not None
-        and claimed_sides
-        and primary_sides not in claimed_sides
-    )
-    if wrong_family or missing_primary:
-        required_sides = (
-            {primary_sides} if missing_primary else expected_sides
-        )
-        expected = "/".join("d%d" % sides for sides in sorted(required_sides))
-        return (
-            "That die does not match this action. It calls for %s. Please "
-            "roll %s and send the result; your turn is still waiting."
-            % (expected, expected)
-        )
-    for value, sides in re.findall(
-        r"\b(?:rolled?|got)\s+(\d+)\s+(?:on\s+)?(?:the\s+)?d(4|6|8|10|12|20|100)\b",
-        answer.lower(),
-    ):
-        if int(value) < 1 or int(value) > int(sides):
-            return (
-                "A d%s result must be between 1 and %s. Please roll it again; "
-                "your turn is still waiting."
-                % (sides, sides)
-            )
-    return None
-
-
 def _defend_batch(encounter, pending):
     revision = (encounter.get("combatState") or {}).get("revision")
     return {
@@ -2184,38 +2107,6 @@ def execute_agentic_turn(
             encounter_path, encounter, characters, pending,
         )
     provider_player_input = _composed_player_input(pending, player_input)
-    roll_contract_error = None if events is not None else _player_roll_contract_error(pending)
-    if roll_contract_error:
-        previous_exchange = (
-            pending.get("playerExchanges", [])[-2]
-            if len(pending.get("playerExchanges", [])) >= 2
-            else {}
-        )
-        record_pending_player_request(
-            encounter_path,
-            pending.get("turnId"),
-            roll_contract_error,
-            requested_die=previous_exchange.get("requestedDie"),
-            requested_phase=previous_exchange.get("requestedPhase"),
-            npc_voice_intents=immutable_voice_intents,
-            requested_roll=previous_exchange.get("requestedRoll"),
-            requested_slot_level=previous_exchange.get("requestedSlotLevel"),
-        )
-        record_combat_diagnostic(
-            record_type="window_outcome",
-            callsite="T096",
-            outcome="player_roll_rejected",
-            encounter_id=encounter.get("encounterId"),
-            turn_id=pending.get("turnId"),
-            revision=(encounter.get("combatState") or {}).get("revision"),
-            round_number=(encounter.get("combatState") or {}).get("round"),
-            window_kind="player",
-            actor_count=len(pending.get("actorIds") or []),
-        )
-        raise CombatTurnPaused(
-            "Player supplied a die outside the pending roll contract",
-            player_message=roll_contract_error,
-        )
     if events is None and not _all_non_player(encounter, pending.get("actorIds", [])):
         try:
             from core.ai.combat_agent import build_contextual_spell_payload
