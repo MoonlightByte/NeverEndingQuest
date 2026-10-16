@@ -915,6 +915,9 @@ def _composed_player_input(pending, fallback):
             label = "Original player action" if not lines else "Player follow-up"
             lines.append("%s: %s" % (label, player_text))
         if request_text:
+            asked_dc = exchange.get("requestedDc")
+            if type(asked_dc) is int and asked_dc > 0:
+                request_text = "%s (save DC %d)" % (request_text, asked_dc)
             lines.append("DM requested: %s" % request_text)
     return "\n".join(lines) or str(fallback or "")
 
