@@ -2256,7 +2256,7 @@ Your primary goal is to generate the smallest possible valid JSON object that re
    - To **MODIFY** an existing item: Return an array containing an object with the item's identifier (`item_name` for equipment, `name` for ammunition) and ONLY the fields that changed.
      - *Example:* `{{ "equipment": [{{ "item_name": "Shield", "equipped": false }}] }}`
    - To **EQUIP ONE** of a stack (draws one of two daggers): `{{ "equipment": [{{ "item_name": "Dagger", "equipped": true }}] }}`; the engine wears one unit and the rest stays carried.
-   - When several sheet rows share the `item_name` (one worn, one carried), add that row's `nql_id` exactly as on the sheet to say which one changes (`equipped` true for the worn row or false for the carried row also says which when no `nql_id` is given).
+   - For an item already on the sheet, add its row's `nql_id` exactly as on the sheet; when several rows share the `item_name` (one worn, one carried), the `nql_id` says which one changes (`equipped` true for the worn row or false for the carried row also says which when no `nql_id` is given).
    - To **ADD** a new item (its name is NOT on the sheet): Return an array containing an object with the full details of ONLY the new item; `quantity` is how many were acquired.
      - *Example:* `{{ "equipment": [{{ "item_name": "Potion of Healing", "item_type": "consumable", "quantity": 1 }}] }}`
    - To **CHANGE HOW MANY** of an item already on the sheet (bought more, found more, used some, gave some away): `quantityDelta` = the signed change, with the `item_name` exactly as on the sheet. NEVER compute or return the new count; the engine applies the change to the real stack and refuses using more than the character has.
@@ -2416,7 +2416,7 @@ CRITICAL INSTRUCTIONS:
 7. NEVER return partial nested objects that would delete existing important data
 8. Spell slot counts never appear inside 'spellcasting'; a cast or a refill is spellSlotDelta. Edit 'spellcasting' only for spells known/prepared or a change of casting ability, and then include ability, spellSaveDC, spellAttackBonus, and spells fields as they are (the DC and bonus are derived by the rules engine; any value you write for them is replaced)
 9. SPELL SLOT RULE: Cantrips (0-level spells) do NOT consume spell slots. Only deduct spell slots for leveled spells (1st-9th level).
-10. HIT DICE RULE: IGNORE all references to hit dice, Hit Dice, HD, or hit dice restoration. Do NOT add hitDice, hitDiceRestored, or maxHitDice fields. The system does not track hit dice.
+10. HIT DICE RULE: The rules engine keeps hit dice: the rest action spends them and a long rest restores them. A note about hit dice spent or restored changes nothing you return; never write `hitDice`, `hitDiceRestored` or `maxHitDice`.
 11. REST HEALING: Rests are applied by the rest action, not by you. A rest note reaching you carries only an extra narrated amount ("Regains 9 hit points"): return it as a positive hpDelta. Never refill slots or pools from a rest note; the engine already did. Do not implement hit dice mechanics.
 12. CURRENCY MANAGEMENT - CRITICAL RULES:
     a) Coins are owned by the rules engine. Report the CHANGE, never the balance: return
