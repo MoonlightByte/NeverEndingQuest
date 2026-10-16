@@ -441,6 +441,88 @@ def _check_asked_slot_level(encounter, pending, batch):
                 intent.get("actorId"), {"askedSlotLevel": asked})
 
 
+def _check_answered_roll_faces(encounter_path, encounter, pending, batch, voice_intents=None):
+    """3b (D-KW-8): the faces of the roll the player just answered are a typed
+    field, playerRoll={phase, faces: one list per die term}; code never reads
+    them from the player's sentence. The model copies the player's numbers;
+    when the game rolled them (#877) code writes them from the stored faces.
+    They are checked against the typed request (the previous exchange's
+    requestedRoll): a wrong shape is a correction, a face the die cannot show
+    asks the player again, and a playerRoll with no typed request behind it is
+    dropped. The engine scores a checked save (resolver)."""
+    exchanges = (pending or {}).get("playerExchanges") or []
+    previous = exchanges[-2] if len(exchanges) >= 2 and isinstance(exchanges[-2], dict) else {}
+    last = exchanges[-1] if exchanges and isinstance(exchanges[-1], dict) else {}
+    terms = (_roll_die_terms(previous.get("requestedRoll"))
+             if previous.get("dmRequest") and not last.get("dmRequest") else None)
+    phase = previous.get("requestedPhase")
+    phase = phase.strip().lower() if isinstance(phase, str) else None
+    for intent in (batch.get("intents") if isinstance(batch, dict) else None) or []:
+        if not isinstance(intent, dict):
+            continue
+        actor = combatant_by_id(encounter, intent.get("actorId"))
+        if not terms or not _is_human_controlled(encounter, actor):
+            intent.pop("playerRoll", None)
+            continue
+        if last.get("rolledBy") == "game" and isinstance(last.get("rolledFaces"), list):
+            intent["playerRoll"] = {"phase": phase, "faces": deepcopy(last["rolledFaces"])}
+        roll = intent.get("playerRoll")
+        if roll is None:
+            continue
+        faces = roll.get("faces") if isinstance(roll, dict) else None
+        fits = (
+            isinstance(faces, list)
+            and len(faces) == len(terms)
+            and all(
+                isinstance(group, list) and len(group) == count and all(type(face) is int for face in group)
+                for group, (count, _sides) in zip(faces, terms)
+            )
+            and (phase is None or str(roll.get("phase") or "").strip().lower() == phase)
+        )
+        if not fits:
+            raise CombatIntentError(
+                "playerRoll must hold the player's faces for the requested %s%s: the phase and one "
+                "list of integers per die term, in order"
+                % (previous.get("requestedRoll"), " (%s)" % phase if phase else ""),
+                intent.get("actorId"),
+                {"playerRoll": {"requestedRoll": previous.get("requestedRoll"), "phase": phase}},
+            )
+        for group, (_count, sides) in zip(faces, terms):
+            if all(1 <= face <= sides for face in group):
+                continue
+            message = (
+                "A d%s result must be between 1 and %s. Please roll it again; "
+                "your turn is still waiting." % (sides, sides)
+            )
+            record_pending_player_request(
+                encounter_path,
+                pending.get("turnId"),
+                message,
+                requested_die=previous.get("requestedDie"),
+                requested_phase=previous.get("requestedPhase"),
+                npc_voice_intents=voice_intents,
+                requested_roll=previous.get("requestedRoll"),
+                requested_slot_level=previous.get("requestedSlotLevel"),
+            )
+            record_combat_diagnostic(
+                record_type="window_outcome",
+                callsite="T096",
+                outcome="player_roll_rejected",
+                encounter_id=encounter.get("encounterId"),
+                turn_id=pending.get("turnId"),
+                revision=(encounter.get("combatState") or {}).get("revision"),
+                round_number=(encounter.get("combatState") or {}).get("round"),
+                window_kind="player",
+                actor_count=len(pending.get("actorIds") or []),
+            )
+            raise CombatTurnPaused(
+                "Player supplied a face outside the typed roll request",
+                player_message=message,
+            )
+        roll["phase"] = phase
+        roll["requestedRoll"] = previous.get("requestedRoll")
+
+
 def _reconcile_validated_prefix(batch, correction):
     """#435: the intents the last correction validated are kept as validated.
 
@@ -819,45 +901,28 @@ def _audit_batch_spell_roll_requests(batch, encounter, characters):
     return audits
 
 
-# #263: weapon words a player may use to describe an enemy ("the crossbow
-# bandit", "the one with the axe"). Plurals are matched by the pattern below.
-_WEAPON_WORDS = (
-    "battleaxe", "blowgun", "bow", "club", "crossbow", "dagger", "dart", "flail",
-    "glaive", "greataxe", "greatclub", "greatsword", "halberd", "hammer", "handaxe",
-    "javelin", "lance", "longbow", "longsword", "mace", "maul", "morningstar", "net",
-    "pike", "quarterstaff", "rapier", "scimitar", "shortbow", "shortsword", "sickle",
-    "sling", "spear", "staff", "sword", "trident", "warhammer", "whip", "axe",
-)
-
-
-def _owned_weapon_text(sheet):
-    """Lower-cased names of everything the sheet lists as an item or action."""
-    names = []
+def _sheet_item_and_action_names(sheet):
+    """The whole names of everything the sheet lists as an item or action,
+    case-folded: equipment item names and the attack/action rows the engine
+    scores."""
+    names = set()
     for item in (sheet or {}).get("equipment", []) or []:
         if isinstance(item, dict):
-            names.append(str(item.get("item_name") or item.get("name") or ""))
+            names.add(str(item.get("item_name") or item.get("name") or "").strip().casefold())
     for entry in _action_entries(sheet or {}):
         if isinstance(entry, dict):
-            names.append(str(entry.get("name") or ""))
-    return " | ".join(names).casefold()
+            names.add(str(entry.get("name") or "").strip().casefold())
+    names.discard("")
+    return names
 
 
-def _validate_player_weapon_question(batch, encounter, characters, pending):
-    """#263: send back a player question about a weapon the player never said
-    they were using.
-
-    "I shoot the crossbow bandit" names a target. When the model asks the
-    player about (or refuses) a crossbow the sheet does not list, and the
-    player's words only used it to describe someone, the request goes back to
-    the model as a correction instead of reaching the player.
-    """
-    exchanges = pending.get("playerExchanges") if isinstance(pending, dict) else None
-    player_text = ""
-    if isinstance(exchanges, list) and exchanges and isinstance(exchanges[-1], dict):
-        player_text = str(exchanges[-1].get("playerInput") or "")
-    player_text = player_text.split("\n[Inventory Context:", 1)[0].casefold()
-    if not player_text:
-        return
+def _validate_player_weapon_question(batch, encounter, characters):
+    """#263 (item 4): a player question about a weapon names it in the typed
+    weaponName, the exact item or action name from the player's sheet. A name
+    the sheet does not list goes back to the model as a correction instead of
+    reaching the player. A request with no weaponName (an improvised or
+    picked-up weapon) is the model's adjudication and is not checked. Neither
+    the request's wording nor the player's words are read."""
     for intent in (batch or {}).get("intents", []) or []:
         if not isinstance(intent, dict):
             continue
@@ -869,38 +934,29 @@ def _validate_player_weapon_question(batch, encounter, characters, pending):
             or not isinstance(request, dict)
         ):
             continue
-        prompt = str(request.get("prompt") or "").casefold()
-        owned = _owned_weapon_text((characters or {}).get(actor.get("name")))
-        for word in _WEAPON_WORDS:
-            pattern = r"\b%s(?:e?s)?\b" % word
-            if not (re.search(pattern, prompt) and re.search(pattern, player_text)):
-                continue
-            if re.search(r"\b%s\b" % word, owned):
-                continue
-            if re.search(r"\b(?:my|own)\s+(?:\w+\s+)?%s\b" % word, player_text):
-                continue
-            if re.search(r"\bwith\s+(?:a|an)\s+(?:\w+\s+)?%s\b" % word, player_text):
-                continue
-            raise CombatIntentError(
-                (
-                    "The player did not say they are using a %s: in their words "
-                    "\"%s\" the %s describes the target. Do not ask about or refuse "
-                    "it. Choose the player's own listed weapon that fits the verb "
-                    "(shoot or fire means their ranged weapon) and resolve the action."
-                )
-                % (word, player_text.strip()[:160], word),
-                intent.get("actorId"),
-                {"retryable": True, "issue": "263"},
+        weapon = request.get("weaponName")
+        if not isinstance(weapon, str) or not weapon.strip():
+            continue
+        names = _sheet_item_and_action_names((characters or {}).get(actor.get("name")))
+        if weapon.strip().casefold() in names:
+            continue
+        raise CombatIntentError(
+            (
+                "The sheet has no %s; ask about the weapon the player is actually "
+                "using, or leave weaponName out if the player is using something "
+                "not on their sheet."
             )
+            % weapon.strip(),
+            intent.get("actorId"),
+            {"retryable": True, "issue": "263", "weaponName": weapon.strip()},
+        )
 
 
 def _validate_player_input_request_ownership(batch, encounter):
-    """Reject high-confidence requests that ask the player for another actor's save."""
-    creatures = [
-        creature
-        for creature in (encounter or {}).get("creatures", []) or []
-        if isinstance(creature, dict) and not _is_human_controlled(encounter, creature)
-    ]
+    """A player roll request with phase 'save' names the creature making the
+    save in the typed saverId. The player is only asked for their own save:
+    another creature's save goes in the intent's save field, where code rolls
+    it. Nothing is read from the request's wording."""
     for intent in (batch or {}).get("intents", []) or []:
         if not isinstance(intent, dict):
             continue
@@ -911,35 +967,34 @@ def _validate_player_input_request_ownership(batch, encounter):
             or not _is_human_controlled(encounter, actor)
             or not isinstance(request, dict)
             or request.get("kind") != "roll"
+            or str(request.get("phase") or "").strip().lower() != "save"
         ):
             continue
-        prompt = str(request.get("prompt") or "")
-        if not re.search(r"\bsav(?:e|ing throw)\b", prompt, re.IGNORECASE):
-            continue
-        for creature in creatures:
-            name = str(creature.get("name") or "").replace("_", " ").strip()
-            if not name:
-                continue
-            subject_pattern = (
-                r"\b(?:the\s+(?:closest|nearest)\s+)?"
-                + re.escape(name)
-                + r"\b.{0,48}\b(?:must|needs?\s+to|should)\s+"
-                r"(?:make|roll)\b"
+        saver = request.get("saverId")
+        if not isinstance(saver, str) or not saver.strip():
+            raise CombatIntentError(
+                "a requiresPlayerInput roll with phase 'save' must set saverId, the "
+                "combatantId of the creature making the save",
+                intent.get("actorId"),
+                {"requestOwnership": "missing_saver"},
             )
-            if re.search(subject_pattern, prompt.replace("_", " "), re.IGNORECASE):
-                raise CombatIntentError(
-                    (
-                        "requiresPlayerInput cannot ask the player to make %s's "
-                        "saving throw; declare the target save in the intent so "
-                        "code rolls it, and ask only for any player-owned damage roll"
-                    )
-                    % name,
-                    intent.get("actorId"),
-                    {
-                        "requestOwnership": "non_player_save",
-                        "nonPlayerCombatantId": creature.get("combatantId"),
-                    },
-                )
+        if saver.strip() == actor.get("combatantId"):
+            continue
+        creature = combatant_by_id(encounter, saver.strip())
+        name = str((creature or {}).get("name") or saver.strip())
+        raise CombatIntentError(
+            (
+                "requiresPlayerInput cannot ask the player to make %s's "
+                "saving throw; declare the target save in the intent so "
+                "code rolls it, and ask only for any player-owned damage roll"
+            )
+            % name,
+            intent.get("actorId"),
+            {
+                "requestOwnership": "non_player_save",
+                "nonPlayerCombatantId": saver.strip(),
+            },
+        )
 
 
 # #853: the labels a non-spell player roll may name; a spell names its own
@@ -1446,83 +1501,6 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
         requested_phase=record.get("phase") if prompt else None,
     )
     return pending, prompt
-
-
-def _player_roll_contract_error(pending):
-    """Reject an explicitly wrong die before spending another provider call."""
-    exchanges = pending.get("playerExchanges") if isinstance(pending, dict) else None
-    if not isinstance(exchanges, list) or len(exchanges) < 2:
-        return None
-    previous = exchanges[-2] if isinstance(exchanges[-2], dict) else {}
-    current = exchanges[-1] if isinstance(exchanges[-1], dict) else {}
-    # #853: a typed request (its phase stored beside the die) is checked
-    # against its stored die only; an exchange written before that keeps
-    # today's reading of its request text.
-    request = "" if isinstance(previous.get("requestedPhase"), str) else str(previous.get("dmRequest") or "")
-    # An exchange saved before the inventory notes were removed (D-KW-5) may
-    # carry them after the player's words; their weapon dice are not the
-    # player's answer (#1008).
-    answer = str(current.get("playerInput") or "").split("\n[Inventory Context:", 1)[0]
-    expected_sequence = [
-        int(value)
-        for value in re.findall(
-            r"\b(?:\d+)?d(4|6|8|10|12|20|100)\b",
-            request.lower(),
-        )
-    ]
-    expected_sides = set(expected_sequence)
-    persisted_primary = re.fullmatch(
-        r"(?:\d+)?d(4|6|8|10|12|20|100)",
-        str(previous.get("requestedDie") or "").strip().lower(),
-    )
-    primary_sides = (
-        int(persisted_primary.group(1))
-        if persisted_primary
-        else expected_sequence[0]
-        if expected_sequence
-        else None
-    )
-    claimed_sides = {
-        int(value)
-        for value in re.findall(
-            r"\b(?:\d+)?d(4|6|8|10|12|20|100)\b",
-            answer.lower(),
-        )
-    }
-    # Extra dice may be volunteered in natural table talk. Require overlap,
-    # not a strict subset, while still requiring the primary requested die
-    # below (important when a later die is only optional Sneak Attack damage).
-    wrong_family = (
-        expected_sides
-        and claimed_sides
-        and not (claimed_sides & expected_sides)
-    )
-    missing_primary = (
-        primary_sides is not None
-        and claimed_sides
-        and primary_sides not in claimed_sides
-    )
-    if wrong_family or missing_primary:
-        required_sides = (
-            {primary_sides} if missing_primary else expected_sides
-        )
-        expected = "/".join("d%d" % sides for sides in sorted(required_sides))
-        return (
-            "That die does not match this action. It calls for %s. Please "
-            "roll %s and send the result; your turn is still waiting."
-            % (expected, expected)
-        )
-    for value, sides in re.findall(
-        r"\b(?:rolled?|got)\s+(\d+)\s+(?:on\s+)?(?:the\s+)?d(4|6|8|10|12|20|100)\b",
-        answer.lower(),
-    ):
-        if int(value) < 1 or int(value) > int(sides):
-            return (
-                "A d%s result must be between 1 and %s. Please roll it again; "
-                "your turn is still waiting."
-                % (sides, sides)
-            )
-    return None
 
 
 def _defend_batch(encounter, pending):
@@ -2184,38 +2162,6 @@ def execute_agentic_turn(
             encounter_path, encounter, characters, pending,
         )
     provider_player_input = _composed_player_input(pending, player_input)
-    roll_contract_error = None if events is not None else _player_roll_contract_error(pending)
-    if roll_contract_error:
-        previous_exchange = (
-            pending.get("playerExchanges", [])[-2]
-            if len(pending.get("playerExchanges", [])) >= 2
-            else {}
-        )
-        record_pending_player_request(
-            encounter_path,
-            pending.get("turnId"),
-            roll_contract_error,
-            requested_die=previous_exchange.get("requestedDie"),
-            requested_phase=previous_exchange.get("requestedPhase"),
-            npc_voice_intents=immutable_voice_intents,
-            requested_roll=previous_exchange.get("requestedRoll"),
-            requested_slot_level=previous_exchange.get("requestedSlotLevel"),
-        )
-        record_combat_diagnostic(
-            record_type="window_outcome",
-            callsite="T096",
-            outcome="player_roll_rejected",
-            encounter_id=encounter.get("encounterId"),
-            turn_id=pending.get("turnId"),
-            revision=(encounter.get("combatState") or {}).get("revision"),
-            round_number=(encounter.get("combatState") or {}).get("round"),
-            window_kind="player",
-            actor_count=len(pending.get("actorIds") or []),
-        )
-        raise CombatTurnPaused(
-            "Player supplied a die outside the pending roll contract",
-            player_message=roll_contract_error,
-        )
     if events is None and not _all_non_player(encounter, pending.get("actorIds", [])):
         try:
             from core.ai.combat_agent import build_contextual_spell_payload
@@ -2322,6 +2268,8 @@ def execute_agentic_turn(
         try:
             # #942: pass 2 spends the slot the answered roll was asked at.
             _check_asked_slot_level(encounter, pending, batch)
+            # 3b: the answered roll's typed faces fit the typed request.
+            _check_answered_roll_faces(encounter_path, encounter, pending, batch, immutable_voice_intents)
             takeover = _player_weapon_takeover(encounter, characters, pending, batch)
             if takeover is not None:
                 # Item 3: the player's plain melee swing. Code asks for the
@@ -2375,7 +2323,7 @@ def execute_agentic_turn(
             if attempt_number < max(2, int(max_intent_attempts or 3)):
                 # The last attempt lets a genuine question through rather than
                 # leave the player's turn without an answer.
-                _validate_player_weapon_question(batch, encounter, characters, pending)
+                _validate_player_weapon_question(batch, encounter, characters)
             _validate_roll_request_phase(batch, encounter)
             try:
                 roll_audits = _audit_batch_spell_roll_requests(

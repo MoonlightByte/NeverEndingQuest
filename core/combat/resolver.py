@@ -2796,7 +2796,7 @@ def _engine_added_dice(dice, rolls):
     return journal, groups
 
 
-def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id):
+def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id, player_faces=None):
     """CS: the rules engine rolls one party member's saving throw.
 
     The engine knows the sheet's save total and the roll mode its conditions
@@ -2805,6 +2805,9 @@ def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id):
     persisted d20 faces (none for an automatic failure, two for advantage or
     disadvantage, else one) so the journal stays the replay authority, and
     hands them to the engine, with the faces of any added die (Bless, #889).
+    3b: ``player_faces`` are the checked d20 faces the player rolled for
+    this save; they are used first, and only a face the roll mode needs
+    beyond them comes from the persisted pool.
     Returns (result, faces, added) or None when the engine
     is unavailable or refuses, in which case the caller keeps today's
     arithmetic (fail forward, the fight never pauses for the engine).
@@ -2820,9 +2823,11 @@ def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id):
         mode = nql_checks.net_mode(sheet, stat)
         if mode.reason:
             return None
-        faces = [
+        needed = nql_checks.faces_needed(mode.mode)
+        faces = list(player_faces or [])[:needed]
+        faces += [
             _take_roll(rolls, "d20", "save", actor_id=actor_id, target_id=target_id, ability=ability)
-            for _ in range(nql_checks.faces_needed(mode.mode))
+            for _ in range(needed - len(faces))
         ]
         added, groups = ([], []) if mode.mode == "fail" else _engine_added_dice(mode.dice, rolls)
         result = nql_checks.resolve(sheet, stat, dc=int(dc), faces=faces or None, added=groups or None)
@@ -2838,6 +2843,22 @@ def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id):
     except Exception:
         pass
     return result, faces, added
+
+
+def _player_save_faces(proposal, target):
+    """3b: the d20 faces the player rolled for their own save, as checked
+    against the typed request by the orchestrator, or None."""
+    roll = proposal.get("playerRoll")
+    if not isinstance(roll, dict) or roll.get("phase") != "save":
+        return None
+    if roll.get("requestedRoll") not in ("1d20", "2d20", "d20"):
+        return None
+    if target.get("combatantId") != proposal.get("actorId"):
+        return None
+    faces = roll.get("faces")
+    group = faces[0] if isinstance(faces, list) and faces and isinstance(faces[0], list) else []
+    group = [face for face in group if type(face) is int and 1 <= face <= 20]
+    return group or None
 
 
 def _spell_save_rule(encounter, characters, proposal, save_spec, targets, event):
@@ -3897,9 +3918,11 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
             # roll modes, the sheet's total, the verdict); monsters and an
             # unavailable engine keep the arithmetic below.
             save_sheet = _sheet_backed_target(characters, target)
+            player_faces = _player_save_faces(proposal, target)
             engine_save = (
                 _engine_save(save_sheet, save_spec.get("type"), save_spec.get("dc", 10) or 10,
-                             rolls, proposal.get("actorId"), target.get("combatantId"))
+                             rolls, proposal.get("actorId"), target.get("combatantId"),
+                             player_faces=player_faces)
                 if save_sheet is not None else None
             )
             if engine_save is not None:
@@ -3914,10 +3937,11 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                     "faces": faces, "kept": result.kept, "mode": result.mode,
                     "sources": result.sources, "total": result.total, "margin": result.margin,
                     **({"added": added} if added else {}),
+                    **({"rolledBy": "player"} if player_faces else {}),
                 })
                 event.setdefault("engineChecks", []).append(save_line)
             else:
-                die = _take_roll(
+                die = player_faces[0] if player_faces else _take_roll(
                     rolls,
                     "d20",
                     "save",
@@ -3933,6 +3957,8 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                           "bonus": bonus, "success": saved}
                 if added:
                     record["added"] = added
+                if player_faces:
+                    record["rolledBy"] = "player"
                 if save_sheet is not None:
                     record["engine"] = False
                 event["rolls"].append(record)

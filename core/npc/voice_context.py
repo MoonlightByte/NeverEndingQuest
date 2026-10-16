@@ -214,10 +214,15 @@ class PreparedOocVoiceHandle:
         self, raw_input, packets, episodes_by_npc, current_location_id, scope
     ):
         try:
-            from core.npc.episode_recall import parse_anchors, select_episodes, _tokens
+            from core.npc.episode_recall import select_recalled_episodes
 
-            anchors = parse_anchors(raw_input, advisory_scope=scope)
-            if anchors is None:
+            selected = select_recalled_episodes(
+                raw_input,
+                episodes_by_npc,
+                current_location_id,
+                advisory_scope=scope,
+            )
+            if selected is None:
                 if scope.is_superseded():
                     self.recall_disposition = "stale_rejected"
                     self._service.telemetry.record_disposition(
@@ -237,22 +242,6 @@ class PreparedOocVoiceHandle:
                             completion_required=True,
                         )
                 return
-            selected = {}
-            for npc_id, episodes in episodes_by_npc.items():
-                ignore = set()
-                for episode in episodes:
-                    for fact in episode.get("salientFacts", []) or []:
-                        subject = fact.get("subject") if isinstance(fact, Mapping) else None
-                        if isinstance(subject, Mapping) and subject.get("id") == npc_id:
-                            ignore |= _tokens(subject.get("label"))
-                scored = select_episodes(
-                    anchors,
-                    episodes,
-                    current_location_id=current_location_id,
-                    ignore_terms=ignore,
-                )
-                if scored:
-                    selected[npc_id] = [row["episode"] for row in scored[:2]]
             enriched = []
             for packet in packets:
                 value = copy.deepcopy(packet)

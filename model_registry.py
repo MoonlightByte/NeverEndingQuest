@@ -643,9 +643,9 @@ _declare(
         "NPC_RECALL_T112_LEGACY",
         "NPC_RECALL_T112_LMSTUDIO",
     ),
-    note="Episodic RECALL anchor-parse: parses a player's 'remember when...' line into "
-         "structured anchors; CODE selects the matching episodeIds from the NPC's own "
-         "index (model never selects episodes -> cannot fabricate). Always "
+    note="Episodic RECALL selection: reads a player's 'remember when...' line with each "
+         "companion's own witnessed episodes and returns the episodeIds it refers to; CODE "
+         "drops any id outside that companion's witnessed set (cannot fabricate). Always "
          "on. OpenAI luna|low. Service: core/npc/episode_recall.py.",
 )
 _declare(
