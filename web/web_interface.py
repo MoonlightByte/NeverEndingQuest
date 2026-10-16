@@ -3986,11 +3986,12 @@ def handle_party_data_request(data=None):
                     npc_name = npc.get('name') if isinstance(npc, dict) else npc
                     if npc_name:
                         npc_names.append(npc_name)
+            # A person already in the party is not listed again: the same exact
+            # sheet key as a party member's name, never a part of it (#855).
+            party_keys = {normalize_character_name(member['name']) for member in party_members
+                          if member.get('name')}
             for npc_name in npc_names:
-                # Exclude NPCs that are already in the player's party
-                # Also exclude NPCs whose names are contained within any party member's name
-                # Example: "Eirik" should be excluded if "Eirik Hearthwise" is in the party
-                if any(npc_name.lower() in member['name'].lower() for member in party_members):
+                if normalize_character_name(npc_name) in party_keys:
                     continue
                 # Try to load NPC data for HP info
                 npc_data_dict = {'name': npc_name, 'type': 'location_npc'}
