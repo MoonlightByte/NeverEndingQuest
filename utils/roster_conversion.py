@@ -80,10 +80,6 @@ def key(name):
     return s[:-1] if s.endswith("s") else s
 
 
-def words(name):
-    return set(re.findall(r"[a-z]+", (name or "").lower()))
-
-
 def base_name(name):
     """An encounter copy "Giant Rat_2" is a "Giant Rat"."""
     return re.sub(r"_\d+$", "", name or "")
@@ -203,25 +199,26 @@ class Game:
         self.encounters.sort(key=lambda e: (e[0], e[1]))
 
     def party(self):
-        """Personal names of the party: every word of a member's name or ID,
-        and the last word of a party NPC's name ("Ranger Thane": Thane)."""
+        """The party by exact sheet key: each partyMembers entry and each
+        partyNPCs name, keyed by slug() ("Ranger Thane": ranger_thane)."""
         out = {}
         for member in self.tracker.get("partyMembers", []) or []:
             label = " ".join(w.capitalize() for w in re.split(r"[^A-Za-z]+", member) if w)
-            for w in words(member):
-                if len(w) >= 3:
-                    out[w] = label
+            if str(member).strip():
+                out[slug(member)] = label
         for npc in self.tracker.get("partyNPCs", []) or []:
-            ws = re.findall(r"[a-z]+", (npc.get("name") or "").lower())
-            if ws:
-                out[ws[-1]] = npc["name"]
+            if str(npc.get("name") or "").strip():
+                out[slug(npc["name"])] = npc["name"]
         return out
 
 
-def party_match(name, persons):
-    for w in sorted(words(name)):
-        if w in persons:
-            return persons[w]
+def party_match(names, persons):
+    """The party member one of names is, by exact sheet key: the rule
+    occupants._person_matches applies to an occupant's name and aliases.
+    No word of a name is matched on its own (#855)."""
+    for name in [names] if isinstance(names, str) else names:
+        if str(name or "").strip() and slug(name) in persons:
+            return persons[slug(name)]
     return None
 
 
@@ -795,7 +792,7 @@ def monster_decision(game, s, fights, played, persons):
         if played is None and left:
             # Gone from the played file: those the fights left standing went
             # the way of rule 3.
-            who = party_match(s.name, persons)
+            who = party_match([s.name] + s.aliases, persons)
             outcome, d.reason = ("joined", "now in the party as %s" % who) if who else ("departed", DEFAULT_REASON)
             d.actions.append(resolve(s.id, outcome, None, d.reason))
             d.summary += "; the %d left standing are gone from the played file: %s" % (left, outcome)
@@ -825,7 +822,7 @@ def monster_decision(game, s, fights, played, persons):
             d.flags.append("the played file has %d, more than the authored %s; kept %d" % (c, "%d" % hi if fixed else "%d to %d" % (lo, hi), size))
         d.size, d.expect = size, (present, tally)
         return d
-    who = party_match(s.name, persons)
+    who = party_match([s.name] + s.aliases, persons)
     if who:
         d = Decision(s.id, s.name, s.place, "3j", "gone from the played file; shares a party member's name: joined")
         d.reason, outcome = "now in the party as %s" % who, "joined"
@@ -859,7 +856,7 @@ def twin_decision(s, twin):
 
 def npc_decision(game, s, fights, played, persons, played_lists, claimed):
     d = None
-    who = party_match(s.name, persons)
+    who = party_match([s.name] + s.aliases, persons)
     beaten_here = [(e, o) for e, o, _ in fights if o]
     if beaten_here:
         enc, outcome = beaten_here[0]

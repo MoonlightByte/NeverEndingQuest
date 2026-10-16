@@ -25,9 +25,9 @@ from datetime import datetime
 from pathlib import Path
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T092", "utils/startup_wizard.py", 1539)
-register_callsite("T093", "utils/startup_wizard.py", 1665)
-register_callsite("T124", "utils/startup_wizard.py", 765)
+register_callsite("T092", "utils/startup_wizard.py", 1035)
+register_callsite("T093", "utils/startup_wizard.py", 2058)
+register_callsite("T124", "utils/startup_wizard.py", 826)
 from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
 from utils.startup_prompt_builder import build_character_creation_system_prompt as _build_character_creation_system_prompt
@@ -725,6 +725,21 @@ def build_character_creation_system_prompt():
     """Build and return the startup wizard character-creation system prompt."""
     return _build_character_creation_system_prompt()
 
+def _paused_player_indexes(conversation):
+    """Player inputs whose request to stop setup a published pause_setup already honored."""
+    indexes = set()
+    for message in conversation:
+        if message.get("role") != "assistant":
+            continue
+        try:
+            proposal = json.loads(message.get("content", ""))
+        except (TypeError, json.JSONDecodeError):
+            continue
+        if isinstance(proposal, dict) and proposal.get("decision") == "pause_setup":
+            indexes.add((proposal.get("confirmation") or {}).get("player_message_index"))
+    return indexes
+
+
 def _latest_player_index(conversation):
     return next((i for i in range(len(conversation) - 1, -1, -1)
                  if conversation[i].get("role") == "user"), None)
@@ -937,8 +952,8 @@ def _prepare_startup_proposal(authored_proposal):
         raise ValueError(detail)
     character, mechanics = startup_mechanics(character, provenance=provenance)
     provenance["mechanics_notes"] = mechanics
-    # The ordinary-armor check reads the sheet as the engine left it: a Fighting
-    # Style recorded as level-up writes it, and the engine's armorClass.
+    # Equipment checks read the sheet as the engine left it; armorClass is the
+    # engine's projection above (#531), not derived again here.
     from utils.startup_mechanics import validate_startup_mechanics
     valid, detail = validate_startup_mechanics(character)
     if not valid:
@@ -1022,6 +1037,10 @@ def ai_character_interview(conversation, module):
                 try:
                     authored_proposal = copy.deepcopy(
                         parse_startup_response(raw, latest_user_index=current_index))
+                    if (authored_proposal["decision"] == "pause_setup"
+                            and current_index in _paused_player_indexes(conversation)):
+                        raise ValueError("That request to stop was already honored; the player is "
+                                         "back, so continue the interview")
                     proposal, provenance = _prepare_startup_proposal(authored_proposal)
                     if proposal["decision"] == "finalize_character":
                         mechanics = provenance["mechanics_notes"]
@@ -1081,6 +1100,9 @@ def ai_character_interview(conversation, module):
                     return proposal["character"]
                 _set_startup_progress(conversation, live_scope=scope, phase="interview")
                 print(f"\nDungeon Master: {proposal['narration']}")
+                if proposal["decision"] == "pause_setup":
+                    # The reviewed typed decision, never the player's words (#855).
+                    raise StartupCancelled()
                 break
         except LiveProviderSuperseded:
             raise
@@ -1095,8 +1117,6 @@ def ai_character_interview(conversation, module):
                     break
         except (EOFError, KeyboardInterrupt):
             raise StartupCancelled() from None
-        if user_input.lower() in {"quit", "exit", "cancel"}:
-            raise StartupCancelled()
         conversation.append({"role": "user", "content": user_input})
 
 def load_text_file(filename):
@@ -1203,484 +1223,6 @@ def get_character_name(conversation):
                 
         except KeyboardInterrupt:
             return None
-
-def get_character_race(conversation):
-    """Get character race selection"""
-    races = {
-        1: ("Human", "Versatile and ambitious, humans adapt quickly to any situation."),
-        2: ("Elf", "Graceful and long-lived, with keen senses and natural magic."),
-        3: ("Dwarf", "Hardy and resilient, masters of stone and metal."), 
-        4: ("Halfling", "Small but brave, lucky and good-natured."),
-        5: ("Dragonborn", "Proud dragon-descended folk with breath weapons."),
-        6: ("Gnome", "Small and clever, with natural curiosity and magic."),
-        7: ("Half-Elf", "Walking between two worlds, charismatic and adaptable."),
-        8: ("Half-Orc", "Strong and fierce, struggling with their dual nature."),
-        9: ("Tiefling", "Bearing infernal heritage, often misunderstood but determined.")
-    }
-    
-    race_list = "\n".join([f"{num}. **{race}** - {desc}" for num, (race, desc) in races.items()])
-    
-    ai_prompt = f"""Present the available character races to the player and ask them to choose one. Explain that each race has unique traits and abilities.
-
-Available Races:
-{race_list}
-
-Ask them to choose by number (1-9) or race name. Be enthusiastic about whichever they choose!"""
-    
-    conversation.append({"role": "system", "content": ai_prompt})
-    response = get_ai_response(conversation)
-    print(f"Dungeon Master: {response}")
-    
-    while True:
-        try:
-            choice = input("\nChoose your race: ").strip()
-            
-            # Skip empty inputs
-            if not choice:
-                continue
-                
-            conversation.append({"role": "user", "content": choice})
-            
-            # Try number selection
-            try:
-                num = int(choice)
-                if num in races:
-                    race_name = races[num][0]
-                    print(f"Dungeon Master: Great choice! You've chosen {race_name}.")
-                    return race_name
-                else:
-                    print(f"Dungeon Master: Please choose a number between 1 and {len(races)}")
-                    continue
-            except ValueError:
-                pass
-            
-            # Try name matching
-            choice_lower = choice.lower()
-            for num, (race, desc) in races.items():
-                if choice_lower in race.lower():
-                    print(f"Dungeon Master: Great choice! You've chosen {race}.")
-                    return race
-            
-            print("Dungeon Master: I didn't recognize that race. Please choose a number (1-9) or race name from the list.")
-            
-        except KeyboardInterrupt:
-            return None
-
-def get_character_class(conversation, module):
-    """Get character class selection"""
-    classes = {
-        1: ("Fighter", "Masters of weapons and armor, versatile warriors."),
-        2: ("Wizard", "Scholars of magic, wielding arcane power through study."),
-        3: ("Rogue", "Skilled in stealth and trickery, masters of precision."),
-        4: ("Cleric", "Divine spellcasters, healers and champions of their gods."),
-        5: ("Ranger", "Wilderness warriors, trackers and beast masters."),
-        6: ("Barbarian", "Fierce warriors who channel primal rage in battle."),
-        7: ("Bard", "Magical performers who inspire allies and confound foes."),
-        8: ("Paladin", "Holy warriors bound by sacred oaths."),
-        9: ("Warlock", "Those who made a pact with otherworldly beings for power."),
-        10: ("Sorcerer", "Born with innate magical power flowing through their veins.")
-    }
-    
-    # Get module level range for recommendation
-    level_range = module.get('level_range', {'min': 1, 'max': 3})
-    
-    class_list = "\n".join([f"{num}. **{cls}** - {desc}" for num, (cls, desc) in classes.items()])
-    
-    ai_prompt = f"""Present the available character classes to the player. This adventure is designed for levels {level_range.get('min', 1)}-{level_range.get('max', 3)}, so all classes will work well. Explain that classes determine what abilities and skills they'll have.
-
-Available Classes:
-{class_list}
-
-Ask them to choose by number (1-10) or class name. Mention that they can't go wrong with any choice!"""
-    
-    conversation.append({"role": "system", "content": ai_prompt})
-    response = get_ai_response(conversation)
-    print(f"Dungeon Master: {response}")
-    
-    while True:
-        try:
-            choice = input("\nChoose your class: ").strip()
-            
-            # Skip empty inputs
-            if not choice:
-                continue
-                
-            conversation.append({"role": "user", "content": choice})
-            
-            # Try number selection
-            try:
-                num = int(choice)
-                if num in classes:
-                    class_name = classes[num][0]
-                    print(f"Dungeon Master: Excellent! You've chosen {class_name}.")
-                    return class_name
-                else:
-                    print(f"Dungeon Master: Please choose a number between 1 and {len(classes)}")
-                    continue
-            except ValueError:
-                pass
-            
-            # Try name matching
-            choice_lower = choice.lower()
-            for num, (cls, desc) in classes.items():
-                if choice_lower in cls.lower():
-                    print(f"Dungeon Master: Excellent! You've chosen {cls}.")
-                    return cls
-            
-            print("Dungeon Master: I didn't recognize that class. Please choose a number (1-10) or class name from the list.")
-            
-        except KeyboardInterrupt:
-            return None
-
-def get_character_background(conversation):
-    """Get character background selection"""
-    backgrounds = {
-        1: ("Acolyte", "You spent your life in service to a temple or religious order."),
-        2: ("Criminal", "You have experience in the criminal underworld."),
-        3: ("Folk Hero", "You're a champion of the common people."),
-        4: ("Noble", "You were born into wealth and privilege."),
-        5: ("Sage", "You spent years learning the lore of the multiverse."),
-        6: ("Soldier", "You had a military career before becoming an adventurer."),
-        7: ("Charlatan", "You lived by your wits, using deception and tricks."),
-        8: ("Entertainer", "You thrived in front of audiences with your performances."),
-        9: ("Guild Artisan", "You learned a trade and belonged to a guild."),
-        10: ("Hermit", "You lived in seclusion, seeking enlightenment or answers.")
-    }
-    
-    bg_list = "\n".join([f"{num}. **{bg}** - {desc}" for num, (bg, desc) in backgrounds.items()])
-    
-    ai_prompt = f"""Present the available character backgrounds to the player. Explain that backgrounds represent what their character did before becoming an adventurer and provide additional skills and equipment.
-
-Available Backgrounds:
-{bg_list}
-
-Ask them to choose by number (1-10) or background name. Emphasize that this helps define their character's past and personality!"""
-    
-    conversation.append({"role": "system", "content": ai_prompt})
-    response = get_ai_response(conversation)
-    print(f"Dungeon Master: {response}")
-    
-    while True:
-        try:
-            choice = input("\nChoose your background: ").strip()
-            
-            # Skip empty inputs
-            if not choice:
-                continue
-                
-            conversation.append({"role": "user", "content": choice})
-            
-            # Try number selection
-            try:
-                num = int(choice)
-                if num in backgrounds:
-                    bg_name = backgrounds[num][0]
-                    print(f"Dungeon Master: Perfect! You've chosen {bg_name}.")
-                    return bg_name
-                else:
-                    print(f"Dungeon Master: Please choose a number between 1 and {len(backgrounds)}")
-                    continue
-            except ValueError:
-                pass
-            
-            # Try name matching
-            choice_lower = choice.lower()
-            for num, (bg, desc) in backgrounds.items():
-                if choice_lower in bg.lower() or choice_lower in bg.replace(" ", "").lower():
-                    print(f"Dungeon Master: Perfect! You've chosen {bg}.")
-                    return bg
-            
-            print("Dungeon Master: I didn't recognize that background. Please choose a number (1-10) or background name from the list.")
-            
-        except KeyboardInterrupt:
-            return None
-
-def get_ability_scores(conversation):
-    """Get ability score assignments using standard array"""
-    standard_array = [15, 14, 13, 12, 10, 8]
-    abilities = ['Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma']
-    
-    ai_prompt = f"""Now we'll assign your character's ability scores! In 5th edition, characters have six abilities that determine what they're good at:
-
-- **Strength** - Physical power (melee attacks, carrying capacity)
-- **Dexterity** - Agility and reflexes (ranged attacks, stealth, initiative)  
-- **Constitution** - Health and stamina (hit points, endurance)
-- **Intelligence** - Reasoning and memory (knowledge, investigation)
-- **Wisdom** - Awareness and insight (perception, survival, willpower)
-- **Charisma** - Force of personality (persuasion, deception, leadership)
-
-We'll use the "standard array" which gives you these scores to assign: {', '.join(map(str, standard_array))}
-
-You'll assign each score to one ability. Think about what fits your character concept! For example:
-- Fighters often want high Strength or Dexterity
-- Wizards need high Intelligence  
-- Clerics benefit from high Wisdom
-- Rogues want high Dexterity
-
-We'll go through each ability and you can tell me which score (from the remaining ones) you want to assign to it."""
-    
-    conversation.append({"role": "system", "content": ai_prompt})
-    response = get_ai_response(conversation)
-    print(f"Dungeon Master: {response}")
-    
-    remaining_scores = standard_array.copy()
-    assigned_abilities = {}
-    
-    for ability in abilities:
-        while True:
-            try:
-                print(f"\nRemaining scores: {', '.join(map(str, remaining_scores))}")
-                score_input = input(f"Assign score to {ability}: ").strip()
-                
-                # Skip empty inputs
-                if not score_input:
-                    continue
-                    
-                conversation.append({"role": "user", "content": f"{ability}: {score_input}"})
-                
-                try:
-                    score = int(score_input)
-                    if score in remaining_scores:
-                        assigned_abilities[ability.lower()] = score
-                        remaining_scores.remove(score)
-                        print(f"Dungeon Master: {ability}: {score}")
-                        break
-                    else:
-                        print(f"Dungeon Master: Score {score} not available. Choose from: {', '.join(map(str, remaining_scores))}")
-                except ValueError:
-                    print(f"Dungeon Master: Please enter a number from: {', '.join(map(str, remaining_scores))}")
-                    
-            except KeyboardInterrupt:
-                return None
-    
-    return assigned_abilities
-
-def get_character_personality(conversation, character_data):
-    """Get character personality traits, ideals, bonds, and flaws (simplified)"""
-    ai_prompt = """Now let's add some personality to your character! We'll keep this simple - just ask for a brief description of each aspect. Don't worry about making it perfect, you can always develop your character more during play.
-
-We need four things:
-1. **Personality Traits** - How does your character act? What are their mannerisms?
-2. **Ideals** - What principles or goals drive your character?  
-3. **Bonds** - What connections does your character have? (people, places, things they care about)
-4. **Flaws** - What weaknesses or vices does your character have?
-
-Ask for each one separately, and suggest they can keep it short and simple - just a sentence or two for each."""
-    
-    conversation.append({"role": "system", "content": ai_prompt})
-    response = get_ai_response(conversation)
-    print(f"Dungeon Master: {response}")
-    
-    # Get each personality aspect
-    aspects = [
-        ("personality_traits", "personality traits"),
-        ("ideals", "ideals"),  
-        ("bonds", "bonds"),
-        ("flaws", "flaws")
-    ]
-    
-    for key, name in aspects:
-        try:
-            user_input = input(f"\nYour character's {name}: ").strip()
-            conversation.append({"role": "user", "content": user_input})
-            character_data[key] = user_input if user_input else f"To be developed (new {name.replace('_', ' ')})"
-        except KeyboardInterrupt:
-            character_data[key] = f"To be developed (new {name.replace('_', ' ')})"
-
-def set_background_feature(character_data):
-    """Set background feature based on selected background"""
-    background = character_data.get('background', '').lower()
-    
-    # Background features from SRD 5.2.1
-    background_features = {
-        'acolyte': {
-            'name': 'Shelter of the Faithful',
-            'description': 'You command the respect of those who share your faith, and you can perform the religious ceremonies of your deity. You can expect to receive free healing and care at a temple, shrine, or other established presence of your faith.',
-            'source': 'Acolyte background'
-        },
-        'criminal': {
-            'name': 'Criminal Contact',
-            'description': 'You have a reliable and trustworthy contact who acts as your liaison to a network of other criminals. You know how to get messages to and from your contact, even over great distances.',
-            'source': 'Criminal background'
-        },
-        'folk hero': {
-            'name': 'Rustic Hospitality',
-            'description': 'Since you come from the ranks of the common folk, you fit in among them with ease. You can find a place to hide, rest, or recuperate among other commoners, unless you have shown yourself to be a danger to them.',
-            'source': 'Folk Hero background'
-        },
-        'noble': {
-            'name': 'Position of Privilege',
-            'description': 'Thanks to your noble birth, people are inclined to think the best of you. You are welcome in high society, and people assume you have the right to be wherever you are.',
-            'source': 'Noble background'
-        },
-        'sage': {
-            'name': 'Researcher',
-            'description': 'When you attempt to learn or recall a piece of lore, if you do not know that information, you often know where and from whom you can obtain it.',
-            'source': 'Sage background'
-        },
-        'soldier': {
-            'name': 'Military Rank',
-            'description': 'Soldiers loyal to your former military organization still recognize your authority and military rank. They will defer to you if they are of a lower rank, and you can invoke your rank to exert influence over other soldiers.',
-            'source': 'Soldier background'
-        }
-    }
-    
-    # Set background feature
-    if background in background_features:
-        character_data['backgroundFeature'] = background_features[background]
-    else:
-        # Default background feature for unrecognized backgrounds
-        character_data['backgroundFeature'] = {
-            'name': f'{character_data.get("background", "Unknown")} Feature',
-            'description': 'A unique feature from your background that provides social connections or specialized knowledge.',
-            'source': f'{character_data.get("background", "Unknown")} background'
-        }
-
-def calculate_derived_stats(character_data):
-    """Calculate HP, AC, and other derived statistics"""
-    # Get ability modifiers
-    abilities = character_data['abilities']
-    con_mod = (abilities.get('constitution', 10) - 10) // 2
-    dex_mod = (abilities.get('dexterity', 10) - 10) // 2
-    wis_mod = (abilities.get('wisdom', 10) - 10) // 2
-    
-    # Calculate HP based on class
-    class_name = character_data['class'].lower()
-    class_hp = {
-        'barbarian': 12, 'fighter': 10, 'paladin': 10, 'ranger': 10,
-        'bard': 8, 'cleric': 8, 'druid': 8, 'monk': 8, 'rogue': 8, 'warlock': 8,
-        'sorcerer': 6, 'wizard': 6
-    }
-    
-    base_hp = class_hp.get(class_name, 8)  # Default to 8 if class not found
-    max_hp = base_hp + con_mod
-    character_data['maxHitPoints'] = max(1, max_hp)  # Minimum 1 HP
-    character_data['hitPoints'] = character_data['maxHitPoints']
-    
-    # Calculate AC (10 + Dex mod, will be higher with armor)
-    character_data['armorClass'] = 10 + dex_mod
-    
-    # Calculate initiative
-    character_data['initiative'] = dex_mod
-    
-    # Calculate passive perception
-    character_data['senses']['passivePerception'] = 10 + wis_mod
-    
-    # Initialize skills using new array format
-    # Skills should be populated by the AI during character creation interview
-    # The AI will guide players through selecting skills based on class and background
-    if 'skills' not in character_data:
-        character_data['skills'] = []
-    
-    # Set saving throws based on class (this is standard 5th edition of the world's most popular roleplaying game and doesn't change)
-    saving_throws_by_class = {
-        'fighter': ["Strength", "Constitution"],
-        'wizard': ["Intelligence", "Wisdom"],
-        'rogue': ["Dexterity", "Intelligence"],
-        'cleric': ["Wisdom", "Charisma"],
-        'ranger': ["Strength", "Dexterity"],
-        'barbarian': ["Strength", "Constitution"],
-        'bard': ["Dexterity", "Charisma"],
-        'druid': ["Intelligence", "Wisdom"],
-        'monk': ["Strength", "Dexterity"],
-        'paladin': ["Wisdom", "Charisma"],
-        'sorcerer': ["Constitution", "Charisma"],
-        'warlock': ["Wisdom", "Charisma"]
-    }
-    
-    character_data['savingThrows'] = saving_throws_by_class.get(class_name, ["Strength", "Constitution"])
-    
-    # Class-specific features
-    if class_name == 'fighter':
-        character_data['classFeatures'].append({
-            "name": "Second Wind",
-            "description": "Once per short rest, regain 1d10 + fighter level HP as a bonus action",
-            "source": "Fighter feature"
-        })
-    elif class_name == 'wizard':
-        character_data['spellSlots'] = {"1": {"current": 2, "max": 2}}
-    elif class_name == 'rogue':
-        character_data['classFeatures'].append({
-            "name": "Sneak Attack",
-            "description": "Deal extra 1d6 damage when you have advantage or an ally is within 5 feet of target",
-            "source": "Rogue feature"
-        })
-    # Add more class features as needed...
-    
-    # Set alignment to neutral good by default
-    character_data['alignment'] = "neutral good"
-
-def final_character_review(conversation, character_data):
-    """Show final character for player review and confirmation"""
-    # Build character summary
-    char_summary = f"""
-**{character_data['name']}**
-Level {character_data['level']} {character_data['race']} {character_data['class']}
-Background: {character_data['background']}
-
-**Abilities:**
-  * Strength: {character_data['abilities']['strength']}
-  * Dexterity: {character_data['abilities']['dexterity']} 
-  * Constitution: {character_data['abilities']['constitution']}
-  * Intelligence: {character_data['abilities']['intelligence']}
-  * Wisdom: {character_data['abilities']['wisdom']}
-  * Charisma: {character_data['abilities']['charisma']}
-
-**Combat Stats:**
-  * Hit Points: {character_data['hitPoints']}/{character_data['maxHitPoints']}
-  * Armor Class: {character_data['armorClass']}
-  * Initiative: +{character_data['initiative']}
-"""
-    
-    print(char_summary)
-    
-    ai_prompt = f"""The player has finished creating their character. Show them this summary and ask if they're happy with their character or if they'd like to make any changes. Be encouraging about their choices!
-
-Character Summary:
-{char_summary}
-
-Ask if they want to confirm this character and start their adventure, or if they'd like to make changes. They can say "yes", "confirm", "looks good" to proceed, or mention specific things they want to change."""
-    
-    conversation.append({"role": "system", "content": ai_prompt})
-    response = get_ai_response(conversation)
-    print(f"Dungeon Master: {response}")
-    
-    while True:
-        try:
-            user_input = input("\nYour decision: ").strip().lower()
-            
-            # Skip empty inputs
-            if not user_input:
-                continue
-                
-            conversation.append({"role": "user", "content": user_input})
-            
-            if any(word in user_input for word in ['yes', 'confirm', 'looks good', 'perfect', 'great', 'ready']):
-                print("Dungeon Master: Excellent! Your character is ready for adventure!")
-                return True
-            elif any(word in user_input for word in ['no', 'change', 'different', 'redo']):
-                print("Dungeon Master: Character creation would restart here - for now, let's proceed with this character.")
-                return True  # For now, just proceed
-            else:
-                print("Dungeon Master: Please say 'yes' to confirm your character or 'no' if you'd like to make changes.")
-                
-        except KeyboardInterrupt:
-            return False
-
-def validate_character(character_data):
-    """Validate character against char_schema.json"""
-    try:
-        schema = safe_json_load("schemas/char_schema.json")
-        if not schema:
-            return False, "Could not load character schema"
-        
-        validate(character_data, schema)
-        return True, None
-        
-    except ValidationError as e:
-        return False, f"Schema validation error: {e.message}"
-    except Exception as e:
-        return False, f"Validation error: {str(e)}"
 
 DWARVEN_TOUGHNESS_TRAIT = "dwarven toughness"
 
