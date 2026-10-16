@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Dict, Optional
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T087", "utils/npc_name_canonicalizer.py", 162)
+register_callsite("T087", "utils/npc_name_canonicalizer.py", 122)
 import config
 from utils.atomic_json_cache import (
     merge_json_mapping,
@@ -78,46 +78,6 @@ def save_name_cache(cache: Dict[str, str]) -> bool:
     """Save the name normalization cache to disk"""
     replace_json_mapping(CACHE_FILE, cache)
     return True
-
-
-def simple_name_extraction(full_name: str) -> str:
-    """Fallback heuristic for name extraction when AI is unavailable
-
-    This is a last resort and not comprehensive - AI normalization is preferred.
-    """
-    if not full_name:
-        return full_name
-
-    # Split on spaces
-    parts = full_name.split()
-
-    if len(parts) == 1:
-        return parts[0]
-
-    # Common D&D titles to skip (expanded list)
-    titles = {
-        'Sir', 'Lord', 'Lady', 'Dame', 'Baron', 'Baroness', 'Count', 'Countess',
-        'Duke', 'Duchess', 'King', 'Queen', 'Prince', 'Princess',
-        'Captain', 'Commander', 'Lieutenant', 'Sergeant', 'General',
-        'Scout', 'Ranger', 'Hunter', 'Tracker',
-        'Cleric', 'Priest', 'Priestess', 'Brother', 'Sister', 'Father', 'Mother',
-        'Elder', 'Ancient', 'Wise',
-        'Knight', 'Paladin', 'Champion', 'Defender',
-        'Wizard', 'Mage', 'Sorcerer', 'Warlock',
-        'Bard', 'Minstrel', 'Troubadour',
-        'Rogue', 'Thief', 'Assassin',
-        'Fighter', 'Warrior', 'Gladiator',
-        'Monk', 'Master',
-        'Druid', 'Shaman',
-        'Artificer', 'Inventor'
-    }
-
-    # If first word is a title, use second word
-    if parts[0] in titles and len(parts) > 1:
-        return parts[1]
-
-    # Otherwise use first word
-    return parts[0]
 
 
 def call_mini_model_for_name(full_name: str, request_provider=None) -> str:
@@ -254,15 +214,12 @@ def get_canonical_name(full_name: str, skip_cache: bool = False) -> str:
         return canonical
 
     except Exception as e:
-        # API failed - use fallback heuristic
-        warning(f"Name normalization API failed for '{full_name}': {e}", category="name_normalization")
-        warning("Using fallback heuristic (less reliable)", category="name_normalization")
-
-        canonical = simple_name_extraction(full_name)
-
-        # A heuristic is a recoverable fallback, not a successful model
-        # result. Do not cache it; a later healthy provider call can heal it.
-        return canonical
+        # The provider failed: the exact name stands, with no word of it
+        # dropped as a title (#855). It is not cached, so a later healthy
+        # provider call can still normalize it.
+        warning(f"Name normalization API failed for '{full_name}': {e}; using the exact name",
+                category="name_normalization")
+        return full_name
 
 
 def get_canonical_names_batch(full_names: list) -> Dict[str, str]:
