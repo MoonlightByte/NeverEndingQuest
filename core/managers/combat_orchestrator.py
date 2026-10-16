@@ -441,6 +441,88 @@ def _check_asked_slot_level(encounter, pending, batch):
                 intent.get("actorId"), {"askedSlotLevel": asked})
 
 
+def _check_answered_roll_faces(encounter_path, encounter, pending, batch, voice_intents=None):
+    """3b (D-KW-8): the faces of the roll the player just answered are a typed
+    field, playerRoll={phase, faces: one list per die term}; code never reads
+    them from the player's sentence. The model copies the player's numbers;
+    when the game rolled them (#877) code writes them from the stored faces.
+    They are checked against the typed request (the previous exchange's
+    requestedRoll): a wrong shape is a correction, a face the die cannot show
+    asks the player again, and a playerRoll with no typed request behind it is
+    dropped. The engine scores a checked save (resolver)."""
+    exchanges = (pending or {}).get("playerExchanges") or []
+    previous = exchanges[-2] if len(exchanges) >= 2 and isinstance(exchanges[-2], dict) else {}
+    last = exchanges[-1] if exchanges and isinstance(exchanges[-1], dict) else {}
+    terms = (_roll_die_terms(previous.get("requestedRoll"))
+             if previous.get("dmRequest") and not last.get("dmRequest") else None)
+    phase = previous.get("requestedPhase")
+    phase = phase.strip().lower() if isinstance(phase, str) else None
+    for intent in (batch.get("intents") if isinstance(batch, dict) else None) or []:
+        if not isinstance(intent, dict):
+            continue
+        actor = combatant_by_id(encounter, intent.get("actorId"))
+        if not terms or not _is_human_controlled(encounter, actor):
+            intent.pop("playerRoll", None)
+            continue
+        if last.get("rolledBy") == "game" and isinstance(last.get("rolledFaces"), list):
+            intent["playerRoll"] = {"phase": phase, "faces": deepcopy(last["rolledFaces"])}
+        roll = intent.get("playerRoll")
+        if roll is None:
+            continue
+        faces = roll.get("faces") if isinstance(roll, dict) else None
+        fits = (
+            isinstance(faces, list)
+            and len(faces) == len(terms)
+            and all(
+                isinstance(group, list) and len(group) == count and all(type(face) is int for face in group)
+                for group, (count, _sides) in zip(faces, terms)
+            )
+            and (phase is None or str(roll.get("phase") or "").strip().lower() == phase)
+        )
+        if not fits:
+            raise CombatIntentError(
+                "playerRoll must hold the player's faces for the requested %s%s: the phase and one "
+                "list of integers per die term, in order"
+                % (previous.get("requestedRoll"), " (%s)" % phase if phase else ""),
+                intent.get("actorId"),
+                {"playerRoll": {"requestedRoll": previous.get("requestedRoll"), "phase": phase}},
+            )
+        for group, (_count, sides) in zip(faces, terms):
+            if all(1 <= face <= sides for face in group):
+                continue
+            message = (
+                "A d%s result must be between 1 and %s. Please roll it again; "
+                "your turn is still waiting." % (sides, sides)
+            )
+            record_pending_player_request(
+                encounter_path,
+                pending.get("turnId"),
+                message,
+                requested_die=previous.get("requestedDie"),
+                requested_phase=previous.get("requestedPhase"),
+                npc_voice_intents=voice_intents,
+                requested_roll=previous.get("requestedRoll"),
+                requested_slot_level=previous.get("requestedSlotLevel"),
+            )
+            record_combat_diagnostic(
+                record_type="window_outcome",
+                callsite="T096",
+                outcome="player_roll_rejected",
+                encounter_id=encounter.get("encounterId"),
+                turn_id=pending.get("turnId"),
+                revision=(encounter.get("combatState") or {}).get("revision"),
+                round_number=(encounter.get("combatState") or {}).get("round"),
+                window_kind="player",
+                actor_count=len(pending.get("actorIds") or []),
+            )
+            raise CombatTurnPaused(
+                "Player supplied a face outside the typed roll request",
+                player_message=message,
+            )
+        roll["phase"] = phase
+        roll["requestedRoll"] = previous.get("requestedRoll")
+
+
 def _reconcile_validated_prefix(batch, correction):
     """#435: the intents the last correction validated are kept as validated.
 
@@ -2213,6 +2295,8 @@ def execute_agentic_turn(
         try:
             # #942: pass 2 spends the slot the answered roll was asked at.
             _check_asked_slot_level(encounter, pending, batch)
+            # 3b: the answered roll's typed faces fit the typed request.
+            _check_answered_roll_faces(encounter_path, encounter, pending, batch, immutable_voice_intents)
             takeover = _player_weapon_takeover(encounter, characters, pending, batch)
             if takeover is not None:
                 # Item 3: the player's plain melee swing. Code asks for the
