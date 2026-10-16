@@ -441,9 +441,8 @@ COMBAT_VALID_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 CHAR_VALIDATOR_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
 
 # Gemini (3-flash with low thinking -- 3/3 correct, 4.0s avg, fastest + cheapest)
-# T051, T052, and T053 have different parsers and therefore need different
-# structured-output contracts. Sharing T053's combined shape with the two
-# single-purpose validators produces valid JSON that their parsers ignore.
+# T051 and T052 have different parsers and therefore need different
+# structured-output contracts.
 _T051_AC_VALIDATION_SCHEMA = {
     "type": "object",
     "properties": {
@@ -501,84 +500,6 @@ _T052_INVENTORY_VALIDATION_SCHEMA = {
     },
 }
 
-_T053_COMBINED_VALIDATION_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "ac_validation": {
-            "type": "object",
-            "properties": {
-                "current_ac": {"type": "integer"},
-                "calculated_ac": {"type": "integer"},
-                "correction_needed": {"type": "boolean"},
-                "breakdown": {
-                    "type": "object",
-                    "properties": {
-                        "base_armor": {"type": "string"},
-                        "base_ac": {"type": "integer"},
-                        "dex_modifier": {"type": "integer"},
-                        "shield_bonus": {"type": "integer"},
-                        "fighting_style_bonus": {"type": "integer"},
-                        "total_ac": {"type": "integer"},
-                    },
-                },
-                "corrections": {"type": "array", "items": {"type": "string"}},
-            },
-        },
-        "inventory_corrections": {
-            "type": "object",
-            "properties": {
-                "corrections_made": {"type": "array", "items": {"type": "string"}},
-                "equipment": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "item_name": {"type": "string"},
-                            "item_type": {"type": "string"},
-                        },
-                    },
-                },
-            },
-        },
-        "currency_consolidation": {
-            "type": "object",
-            "properties": {
-                "corrections_made": {"type": "array", "items": {"type": "string"}},
-                "currency": {
-                    "type": "object",
-                    "properties": {
-                        "platinum": {"type": "integer"},
-                        "gold": {"type": "integer"},
-                        "electrum": {"type": "integer"},
-                        "silver": {"type": "integer"},
-                        "copper": {"type": "integer"},
-                    },
-                },
-                "items_to_remove": {"type": "array", "items": {"type": "string"}},
-                "ammunition": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "quantity": {"type": "integer"},
-                        },
-                    },
-                },
-                "ammo_items_to_remove": {"type": "array", "items": {"type": "string"}},
-            },
-        },
-        "class_feature_validation": {
-            "type": "object",
-            "properties": {
-                "duplicates_found": {"type": "array", "items": {"type": "string"}},
-                "corrections_made": {"type": "array", "items": {"type": "string"}},
-                "features_to_remove": {"type": "array", "items": {"type": "string"}},
-            },
-        },
-    },
-}
-
 _T054_CURRENCY_CONSOLIDATION_SCHEMA = {
     "type": "object",
     "properties": {
@@ -629,11 +550,6 @@ CHAR_VALIDATOR_T052_GEMINI_FLASH_LOW = {
     "model": "gemini-3-flash-preview",
     "thinking_level": "low",
     "response_schema": convert_to_gemini_schema(_T052_INVENTORY_VALIDATION_SCHEMA),
-}
-CHAR_VALIDATOR_T053_GEMINI_FLASH_LOW = {
-    "model": "gemini-3-flash-preview",
-    "thinking_level": "low",
-    "response_schema": convert_to_gemini_schema(_T053_COMBINED_VALIDATION_SCHEMA),
 }
 CHAR_VALIDATOR_T054_GEMINI_FLASH_LOW = {
     "model": "gemini-3-flash-preview",
