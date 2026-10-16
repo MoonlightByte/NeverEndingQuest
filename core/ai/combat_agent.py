@@ -543,6 +543,18 @@ Never pause to ask the player for an NPC or enemy saving throw: put that save
 in the intent's save field and code will roll it. If a player damage roll is needed
 before that save resolves, explicitly ask the player to roll the damage dice;
 do not phrase the request as the enemy making its save.
+When a Player follow-up answers the roll in the DM requested line before it,
+the player's intent carries playerRoll={phase: the phase of that request,
+faces:[[...]]}: one list of integers per die term of the requested dice, in
+order ('2d6' gives [[4,2]], '1d8+1d6' gives [[5],[3]]), holding exactly the
+numbers the player gave, even a number the die cannot show; code checks them
+against the request. Never add, drop or change a number, and never put a flat
+bonus in faces. If the follow-up gives no number for the request, omit
+playerRoll. When the game rolled for the player, code fills playerRoll itself.
+For the player's own saving throw (phase 'save'), put its type and dc in the
+intent's save field and list the player in targets with the hpDelta a failed
+save costs (0 if none): code scores that save from the player's d20, so do not
+decide it yourself.
 
 Never provide resulting HP totals, round numbers, cursor changes, narration other
 than rollLead and hitLead, or prose outside JSON. Do not invent spell slots, ammunition, abilities, targets, or

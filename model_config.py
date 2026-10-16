@@ -277,6 +277,7 @@ _AGENTIC_COMBAT_INTENT_SCHEMA = {
                     "resources": {"type": "array", "items": {"type": "object"}},
                     "effects": {"type": "array", "items": {"type": "object"}},
                     "requiresPlayerInput": {"type": "object"},
+                    "playerRoll": {"type": "object"},
                 },
                 "required": ["actorId", "mode"],
             },
