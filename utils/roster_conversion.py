@@ -72,7 +72,14 @@ def slug(name):
 def key(name):
     """The matching key for one-time name matches: letters and spaces, a
     leading "the" and one trailing s dropped, so "Skeletons" matches
-    "Skeleton" and "The Drowned King" matches "Drowned King"."""
+    "Skeleton" and "The Drowned King" matches "Drowned King".
+
+    A kept name fold, by owner exception D-KWN-11 (#193, #855): it is allowed
+    only in this one-time conversion of a pre-engine game, never in play, and
+    it compares names from data files, never player input. Old games renamed
+    authored groups in play ("Shadow" -> "Shadows"); exact names would leave
+    hostile groups combat can never settle (9 in one real Keep_of_Doom game).
+    Delete it with this conversion path when that path is retired."""
     s = re.sub(r"[^a-z ]", "", (name or "").lower())
     s = re.sub(r"\s+", " ", s).strip()
     if s.startswith("the "):
