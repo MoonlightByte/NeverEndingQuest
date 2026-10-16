@@ -50,6 +50,12 @@ def _equipped_armor_without_base(sheet: Dict[str, Any]) -> List[str]:
     return names
 
 
+def unmodelled_armor(sheet: Dict[str, Any]) -> List[str]:
+    """Item names of the equipped armor rows the projection cannot model (no
+    integer ac_base): the rows project() reports in its gaps."""
+    return _equipped_armor_without_base(sheet)
+
+
 def _ac_entries(explanation: Dict[str, Any], names_by_id: Dict[str, str]) -> List[Dict[str, Any]]:
     entries: List[Dict[str, Any]] = []
     recipe = explanation.get("recipe") or {}

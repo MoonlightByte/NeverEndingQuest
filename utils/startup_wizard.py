@@ -952,8 +952,8 @@ def _prepare_startup_proposal(authored_proposal):
         raise ValueError(detail)
     character, mechanics = startup_mechanics(character, provenance=provenance)
     provenance["mechanics_notes"] = mechanics
-    # The ordinary-armor check reads the sheet as the engine left it: a Fighting
-    # Style recorded as level-up writes it, and the engine's armorClass.
+    # Equipment checks read the sheet as the engine left it; armorClass is the
+    # engine's projection above (#531), not derived again here.
     from utils.startup_mechanics import validate_startup_mechanics
     valid, detail = validate_startup_mechanics(character)
     if not valid:
