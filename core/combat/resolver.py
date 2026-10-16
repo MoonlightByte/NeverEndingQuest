@@ -1488,7 +1488,7 @@ def _replay_added_dice(rolls, added):
 
 def _save_added_dice(encounter, characters, creature, save_type, rolls):
     """#889: the added dice (Bless) on a saving throw code scores."""
-    ability = str(save_type or "").strip().lower()
+    ability = save_ability(save_type) or ""
     return _added_dice(_raw_combatant_sheet(encounter, characters, creature),
                        ("savingThrows", "savingThrow.%s" % ability), rolls, "saveBonus")
 
@@ -2745,7 +2745,7 @@ def _save_bonus(encounter, characters, creature, save_type):
     raw_sheet = _raw_combatant_sheet(encounter, characters, creature)
     sheet = effective_sheet(raw_sheet)
     saves = sheet.get("savingThrows") or []
-    ability = str(save_type or "").strip().lower()
+    ability = save_ability(save_type) or ""
     if isinstance(saves, dict):
         try:
             return (
@@ -2761,8 +2761,8 @@ def _save_bonus(encounter, characters, creature, save_type):
     except (AttributeError, TypeError, ValueError):
         score = 10
     bonus = (score - 10) // 2
-    if isinstance(saves, list) and any(
-        str(item).strip().lower().startswith(ability[:3]) for item in saves
+    if ability and isinstance(saves, list) and any(
+        save_ability(item) == ability for item in saves
     ):
         try:
             bonus += int(sheet.get("proficiencyBonus", 0) or 0)
@@ -2777,6 +2777,16 @@ def _save_bonus(encounter, characters, creature, save_type):
 
 _ABILITY_ALIASES = {"str": "strength", "dex": "dexterity", "con": "constitution",
                     "int": "intelligence", "wis": "wisdom", "cha": "charisma"}
+
+
+def save_ability(save_type):
+    """The ability a save type names: one of the six ability names or its
+    three-letter code, whole and casefolded; None for any other value."""
+    if not isinstance(save_type, str):
+        return None
+    text = save_type.strip().casefold()
+    text = _ABILITY_ALIASES.get(text, text)
+    return text if text in _ABILITY_ALIASES.values() else None
 
 
 def _engine_added_dice(dice, rolls):
@@ -2814,9 +2824,7 @@ def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id, player_faces=
     """
     try:
         from core.nql import checks as nql_checks
-        from core.nql import stats as nql_stats
-        text = str(save_type or "").strip().lower()
-        ability = nql_stats.ability_id(_ABILITY_ALIASES.get(text, text))
+        ability = save_ability(save_type)
         if ability is None:
             return None
         stat = "save:" + ability
@@ -3708,6 +3716,13 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
         spell_save = _spell_save_rule(encounter, characters, proposal, save_spec, targets, event)
         if spell_save is not None:
             save_spec = dict(spell_save["spec"])
+    # Plan r2 item 9: a save the model declares (no stat-block or spell
+    # record) names one of the six abilities; any other type is corrected,
+    # never scored against a default score.
+    if save_spec and stated_save is None and spell_save is None and save_ability(save_spec.get("type")) is None:
+        resolution["violations"].append(
+            "save type %r is not a saving throw; use one of Strength, Dexterity, Constitution, "
+            "Intelligence, Wisdom or Charisma" % (save_spec.get("type"),))
     target_entries = {
         entry.get("combatantId"): entry
         for entry in targets
