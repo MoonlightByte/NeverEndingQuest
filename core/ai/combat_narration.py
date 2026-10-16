@@ -142,6 +142,30 @@ def _drawn_item(event):
     return name.strip() if isinstance(name, str) and name.strip() else None
 
 
+def _bonus_fact(event, creatures, presentation=None):
+    """R2: the typed Bonus Action resolved before this event's Action."""
+    bonus = event.get("bonusAction")
+    if not isinstance(bonus, dict) or not bonus.get("featureName"):
+        return None
+    fact = {"featureName": bonus["featureName"]}
+    if bonus.get("option"):
+        fact["option"] = bonus["option"]
+    targets = []
+    for target in (bonus.get("outcome") or {}).get("targets") or []:
+        before, after = target.get("hpBefore"), target.get("hpAfter")
+        targets.append({
+            "targetName": _display_name(creatures, target.get("combatantId"), "the target", presentation),
+            "hpBefore": before,
+            "hpAfter": after,
+            "hpDelta": after - before if type(before) is int and type(after) is int else None,
+        })
+    if targets:
+        fact["targets"] = [{k: v for k, v in row.items() if v is not None} for row in targets]
+    if bonus.get("resources"):
+        fact["resources"] = _public_copy(bonus["resources"])
+    return fact
+
+
 def _fact_event(event, creatures, presentation=None):
     outcome = event.get("outcome") or {}
     intent = event.get("intent") or {}
@@ -204,6 +228,8 @@ def _fact_event(event, creatures, presentation=None):
         "rechargeRolls": _public_copy(event.get("rechargeRolls")) if event.get("rechargeRolls") else None,
         # NUM-B2: a carried weapon drawn after this swing (item name)
         "drew": _drawn_item(event),
+        # R2: the Bonus Action taken first (feature, option, its HP changes)
+        "bonusAction": _bonus_fact(event, creatures, presentation),
     }
     return {key: value for key, value in fact.items() if value is not None}
 

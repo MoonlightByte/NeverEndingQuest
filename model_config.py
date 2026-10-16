@@ -254,6 +254,16 @@ _AGENTIC_COMBAT_INTENT_SCHEMA = {
                     "action": {"type": "string"},
                     "ability": {"type": "string"},
                     "featureName": {"type": "string"},
+                    "bonusAction": {
+                        "type": "object",
+                        "properties": {
+                            "featureName": {"type": "string"},
+                            "option": {"type": "string", "enum": ["dash", "disengage", "hide"]},
+                            "targets": {"type": "array", "items": {"type": "object"}},
+                            "description": {"type": "string"},
+                        },
+                        "required": ["featureName"],
+                    },
                     "targetId": {"type": "string"},
                     "description": {"type": "string"},
                     "save": {"type": "object"},

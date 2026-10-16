@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- In a fight, a character can now take a Bonus Action beside its Action in the same turn: a Fighter's Second Wind, or a Rogue's Cunning Action (Dash, Disengage or Hide). Which class features are Bonus Actions is now recorded in data/srd/progression.json for every Fighter and Rogue feature, each with the SRD sentence and page that says how it is used, and the combat model is offered only those. The Bonus Action is settled first, then the Action, so "I catch my breath with Second Wind, then dodge" now heals and dodges; before, the dodge was dropped.
 - In a fight, after a character swings a weapon, the fight event now records the engine's view of that character's hands, and a carried weapon that fits a free hand in its default grip is drawn, so it is in hand for the next turn (NUM-B, Refs #193). The swing itself is never refused or changed. A thrown weapon, a stack such as eight javelins, a grip other than the default, or hands that are full is recorded but not drawn. When a weapon is drawn this way, the fight narration now says so ("draws the dagger and attacks"); nothing else about the hands reaches the narration (NUM-B2).
 
 ### Changed

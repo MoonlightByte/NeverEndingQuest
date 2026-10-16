@@ -411,6 +411,19 @@ are their own action names too. defend means only that the actor holds its
 position or cannot act; it has no mechanical effect. A `dodging` record on a
 creatures entry is set and cleared by code; never declare or remove it.
 
+An actor may also take ONE Bonus Action in the same turn, beside its Action:
+put it in the intent's bonusAction, never in action, targets or resources.
+bonusAction.featureName is exactly one name from bonusActionNames for that
+actor; a feature not listed there is not a Bonus Action and never goes in
+bonusAction (leave bonusAction out). Code resolves the bonus action first,
+then the Action, which keeps its own rules (a dodge still has no targets).
+Second Wind: bonusAction {featureName:'Second Wind', targets:[{combatantId:
+the actor, hpDelta, rolled}]}, rolled the d10 face as above; code spends the
+use and sets the heal. For the player, ask the d10 first with the intent's
+requiresPlayerInput (phase 'healing', die '1d10') and give bonusAction once
+it is answered. Cunning Action: bonusAction {featureName:'Cunning Action',
+option:'dash'|'disengage'|'hide'}.
+
 A player's plain swing with one listed melee weapon at one hostile creature
 is asked for and scored by code: declare action='attack', the exact weapon
 name as ability and targetId, with targets and resources empty. Only for a
@@ -549,6 +562,18 @@ def request_intent_batch(
             feature_names[actor_id] = names
     if feature_names:
         payload["featureNames"] = feature_names
+    # R2: the Bonus Actions each window actor may take beside its Action:
+    # its class features whose SRD activation is a Bonus Action (typed data,
+    # data/srd/progression.json feature_activation), from the sheet.
+    from core.combat.bonus_actions import bonus_action_names
+    bonus_names = {}
+    for actor_id in pending_ids:
+        creature = combatant_by_id(encounter, actor_id)
+        names = bonus_action_names((characters or {}).get((creature or {}).get("name")))
+        if names:
+            bonus_names[actor_id] = names
+    if bonus_names:
+        payload["bonusActionNames"] = bonus_names
     if contextual_payload:
         payload["spellActionIndex"] = contextual_payload.get("spellActionIndex", [])
         if contextual_payload.get("encounterContext"):

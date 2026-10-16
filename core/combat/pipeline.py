@@ -11,6 +11,14 @@ decision can never become a batched or stale mutation.
 
 from copy import deepcopy
 
+from core.combat.bonus_actions import (
+    bonus_action_names,
+    bonus_action_problem,
+    bonus_name_refused,
+    bonus_record,
+    bonus_subintent,
+    drop_bonus_spend,
+)
 from core.combat.events import make_event_id, validate_event
 from core.combat.resolver import (
     apply_encounter_effect_ticks,
@@ -253,6 +261,48 @@ def resolve_effect_clock_window(encounter, characters, pending_turn):
     return [event], next_encounter, next_characters
 
 
+def _resolve_bonus_action(encounter, characters, actor, controller, intent, bonus, event_id, roll_source,
+                          clamp_feature_heals=False):
+    """R2: the actor's typed Bonus Action, resolved and applied before its
+    Action (owner: bonus action first). Returns (record, encounter,
+    characters); the record rides on the actor's one event."""
+    actor_id = actor.get("combatantId")
+    sheet = (characters or {}).get(actor.get("name"))
+    problem = bonus_action_problem(sheet, bonus)
+    if problem:
+        raise CombatIntentError(
+            problem,
+            actor_id,
+            {"violations": [problem], "bonusActionNames": bonus_action_names(sheet),
+             "bonusActionProblem": problem, "bonusActionNameRefused": bonus_name_refused(sheet, bonus),
+             "retryable": True},
+        )
+    sub = bonus_subintent(intent, bonus, actor.get("name"))
+    sub["stateVersion"] = intent.get("stateVersion")
+    resolution = resolve_adjudicated(
+        encounter,
+        characters,
+        sub,
+        roll_source,
+        "%s-B" % event_id,
+        clamp_feature_heals=clamp_feature_heals,
+    )
+    if resolution.get("violations"):
+        feedback = {"violations": ["bonusAction: %s" % v for v in resolution["violations"]], "retryable": True}
+        if controller == "human" and resolution.get("resourceRefusals"):
+            # #671 / T5: the player's feature use has none left; the player keeps the choice.
+            feedback["playerResourceRefusal"] = deepcopy(resolution["resourceRefusals"])
+        if resolution.get("featureHealLimits"):
+            feedback["featureHealLimits"] = deepcopy(resolution["featureHealLimits"])
+            feedback["featureHealPlayer"] = controller == "human"
+        raise CombatIntentError("; ".join(feedback["violations"]), actor_id, feedback)
+    problems = validate_event(resolution.get("event"))
+    if problems:
+        raise CombatIntentError("; ".join(problems), actor_id, {"violations": problems})
+    next_encounter, next_characters = apply_resolution(encounter, characters, resolution)
+    return bonus_record(bonus, resolution["event"]), next_encounter, next_characters
+
+
 def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_source, clamp_feature_heals=False,
                            drop_removals_for=()):
     """Resolve a provider batch sequentially and return staged events.
@@ -387,6 +437,18 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             sequence,
         )
         intent.pop("mode", None)
+        before_characters = next_characters
+        bonus = intent.pop("bonusAction", None)
+        bonus_done = None
+        bonus_spend_dropped = []
+        if bonus is not None:
+            bonus_done, next_encounter, next_characters = _resolve_bonus_action(
+                next_encounter, next_characters, actor, controller, intent, bonus, event_id,
+                roll_source, clamp_feature_heals,
+            )
+            # The bonus action's own use, listed again on the Action, is the
+            # same spend: it is not taken twice.
+            bonus_spend_dropped = drop_bonus_spend(intent, bonus_done, actor.get("name"))
         weapon_attack = pending_turn.get("weaponAttack")
         if (
             isinstance(weapon_attack, dict)
@@ -539,6 +601,12 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 actor_id,
                 feedback,
             )
+        if bonus_done is not None:
+            resolution["event"]["bonusAction"] = bonus_done
+            if bonus_spend_dropped:
+                resolution["event"].setdefault("normalizations", []).append(
+                    {"kind": "bonusActionSpendNotRepeated", "actorId": actor_id,
+                     "resources": deepcopy(bonus_spend_dropped)})
         event_problems = validate_event(resolution.get("event"))
         if event_problems:
             raise CombatIntentError(
@@ -546,7 +614,6 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 actor_id,
                 {"violations": event_problems},
             )
-        before_characters = next_characters
         next_encounter, next_characters = apply_resolution(
             next_encounter,
             next_characters,

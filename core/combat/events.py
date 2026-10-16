@@ -59,7 +59,16 @@ def validate_event(event):
                         "target %s missing %s" % (target.get("combatantId", "?"), field))
     elif "outcome" in event:
         problems.append("outcome must be an object")
-    for resource in event.get("resources", []) or []:
+    bonus = event.get("bonusAction")
+    if bonus is not None:
+        # R2: the actor's typed Bonus Action, resolved before its Action.
+        if not isinstance(bonus, dict) or not isinstance(bonus.get("featureName"), str):
+            problems.append("bonusAction must be an object with a featureName")
+            bonus = {}
+        for target in (bonus.get("outcome") or {}).get("targets") or []:
+            if not isinstance(target, dict) or any(field not in target for field in REQUIRED_TARGET_FIELDS):
+                problems.append("bonusAction target missing a required field")
+    for resource in list((bonus or {}).get("resources") or []) + list(event.get("resources", []) or []):
         if not isinstance(resource, dict):
             problems.append("resources entries must be objects")
             continue
