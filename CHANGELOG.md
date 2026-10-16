@@ -77,6 +77,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Combat history compression now finds each round from the round the game records on its own messages, so a player who types "COMBAT ROUND 3" or "combat_round: 2" no longer changes which messages are summarised; turn messages saved before this update are kept in full instead of summarised.
 
 ### Fixed
+- When recent play is turned into a companion's memory, the scene passed on holds only the player's own words and the DM's narration. The inventory note attached to a turn and, in fights, the game's own combat-setup instruction are no longer passed on as things the player said; a narration that mentions the words "location summary" is no longer dropped; and the game's own summaries, including the short per-place summary, are left out (#855).
 - Whether a companion can speak is decided from the exact status and condition on its sheet, not by looking for the words "dead", "defeated" or "unconscious" inside them. Every status and condition the sheets use gives the same answer as before (#855).
 - The chronicle count in the compression log and its summary file counts the chronicles themselves; a DM narration that quoted the chronicle tag used to be counted as one (#855).
 - The compressed character sheet the DM sees shows each item's name as written, brackets included. Names used to lose their brackets unless they held a "+1"-style bonus, so Sister Maren's "Book (prayers)" was shown as "Book" (#855).
