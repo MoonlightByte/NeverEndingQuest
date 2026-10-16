@@ -73,14 +73,20 @@ def _parse_plot_text_field(content: Any, field_path: str) -> str:
         value = "\n".join(lines[1:-1]).strip()
     if value.startswith('"'):
         value = json.loads(value)
+    else:
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            decoded = value
+        # JSON null is the typed absent value: refused below and asked again by
+        # the T036 retry (keyword program GEN-16). Any other unquoted reply is
+        # the text as written.
+        value = None if decoded is None else value
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field_path} must be a useful non-empty string")
     if value.lstrip().startswith(("{", "[")):
         raise ValueError(f"{field_path} must be text, not structured JSON")
-    value = value.strip()
-    if value.casefold() in {"null", "none", "n/a"}:
-        raise ValueError(f"{field_path} must be useful text")
-    return value
+    return value.strip()
 
 
 @dataclass
