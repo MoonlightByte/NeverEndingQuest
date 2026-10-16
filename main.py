@@ -3561,7 +3561,7 @@ def _select_validation_history(conversation_history, raw_user_input):
         if not isinstance(content, str):
             continue
 
-        if role == "user" and content.startswith("Error Note:"):
+        if role == "user" and hm.is_marker(message, hm.VALIDATION_ERROR):
             skip_next_assistant = True
             continue
         if role == "assistant" and skip_next_assistant:
@@ -4721,10 +4721,7 @@ def _find_legacy_location_repair(conversation_history):
             copy.deepcopy(item)
             for item in source_entries
             if item.get("role") != "system"
-            and not (
-                item.get("role") == "user"
-                and item.get("content", "").startswith("Error Note:")
-            )
+            and not hm.is_marker(item, hm.VALIDATION_ERROR)
         ]
         if not summary_messages:
             continue
