@@ -3795,7 +3795,8 @@ def validate_ai_response(
         require_current_invocation,
     )
     from utils.capture.live_provider_call import (
-        LiveProviderSuperseded, _interruptible_wait, get_live_provider_scope,
+        LiveProviderCompletedError, LiveProviderSuperseded, _interruptible_wait,
+        get_live_provider_scope,
     )
     from utils.transient_filesystem import (
         ReadOnlySaveStop, is_transient_filesystem_error, read_bytes_preserving_errors,
@@ -4391,7 +4392,7 @@ def validate_ai_response(
                 require_current_invocation(invocation_claim)
             if detached_scope is not None and detached_scope.is_superseded():
                 raise LiveProviderSuperseded("scene review superseded")
-        except (InvocationSupersededError, LiveProviderSuperseded, ReadOnlySaveStop):
+        except (InvocationSupersededError, LiveProviderSuperseded, LiveProviderCompletedError, ReadOnlySaveStop):
             raise
         except Exception as provider_error:
             warning(
