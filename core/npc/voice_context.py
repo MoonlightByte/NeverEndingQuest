@@ -124,7 +124,7 @@ class CombatVoiceHandle:
 class PreparedOocVoiceHandle:
     """Request-local T112 -> T105 advisory chain with exact turn authority."""
 
-    def __init__(self, packets, service, parent_scope, raw_input, relationship_store):
+    def __init__(self, packets, service, parent_scope, raw_input, relationship_store, recall=True):
         self.batch_id = packets[0]["beat"]["id"] if packets else ""
         self._lock = threading.RLock()
         self._sealed = False
@@ -136,7 +136,7 @@ class PreparedOocVoiceHandle:
         self._parent_scope = parent_scope
         self._relationship_store = relationship_store
         self._packets = tuple(copy.deepcopy(packet) for packet in packets)
-        recall_input = self._recall_candidates(self._packets)
+        recall_input = self._recall_candidates(self._packets) if recall else None
         if recall_input is None:
             self._voice_handle = service.dispatch_batch(
                 self._packets,
@@ -1628,8 +1628,10 @@ def run_ooc_voice_stage(
     path_manager: Any,
     service: Optional[NpcVoiceService] = None,
     relationship_store: Optional[RelationshipStore] = None,
+    recall: bool = True,
 ) -> NpcVoiceBatch:
-    """Run one Phase 3 T105 batch and contain every failure."""
+    """Run one Phase 3 T105 batch and contain every failure. ``recall`` False
+    (a turn whose line is the engine's) runs no T112 episode recall."""
     if not party_tracker_data.get("partyNPCs"):
         return NpcVoiceBatch(batch_id="", results=())
     try:
@@ -1663,6 +1665,7 @@ def run_ooc_voice_stage(
             get_live_turn_scope(),
             raw_input,
             relationship_store or RelationshipStore(),
+            recall=recall,
         )
         return handle
     except Exception as exc:

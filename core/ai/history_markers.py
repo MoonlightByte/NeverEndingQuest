@@ -44,6 +44,9 @@ ROLLING_SUMMARY = "rolling_summary"
 VALIDATION_ERROR = "validation_error"
 # The note the game adds at load when the player returns to a saved game.
 RETURN_NOTE = "return_note"
+# The turn after a dice submission: the engine asks the DM to narrate the
+# settled check; the player typed nothing.
+CHECK_CONTINUATION = "check_continuation"
 
 SUMMARY_KINDS = (LOCATION_SUMMARY, CHRONICLE)
 MODULE_KINDS = (MODULE_TRANSITION, ARCHIVED_MODULE_TRANSITION)
