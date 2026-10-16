@@ -7,7 +7,6 @@
 import re
 
 
-MAX_MULTIATTACK_SWINGS = 8
 DEFAULT_UNKNOWN_MULTIATTACK_SWINGS = 2
 _DAMAGE_DICE = re.compile(
     r"^\s*[1-9]\d*d(?:4|6|8|10|12|20|100)(?:\s*[+-]\s*\d+)?\s*$", re.I
@@ -119,14 +118,12 @@ def _expand_sequence(entries, specification):
             name, count = item.get("name"), item.get("count", 1)
         else:
             return None
-        if type(count) is not int or not 1 <= count <= MAX_MULTIATTACK_SWINGS:
+        if type(count) is not int or count < 1:
             return None
         entry = _find(entries, name)
         if entry is None:
             return None
         result.extend([entry] * count)
-        if len(result) >= MAX_MULTIATTACK_SWINGS:
-            return result[:MAX_MULTIATTACK_SWINGS]
     return result or None
 
 
@@ -139,8 +136,20 @@ def _explicit_count(sheet, marker, override):
     )
     for value in values:
         if type(value) is int:
-            return max(1, min(MAX_MULTIATTACK_SWINGS, value))
+            return max(1, value)
     return None
+
+
+def _warn_unresolved_sequence(sheet, specification):
+    """MA-4: a typed sequence combat cannot play is never dropped silently."""
+    from utils.enhanced_logger import warning as _warning
+
+    _warning(
+        "MA: %s multiattackSequence %r names no playable attack list "
+        "(an unknown attack name or a count below 1); the count rules apply"
+        % ((sheet or {}).get("name"), specification),
+        category="combat",
+    )
 
 
 def attack_sequence(
@@ -149,8 +158,10 @@ def attack_sequence(
     num_attacks=None,
     sequence=None,
 ):
-    """Return an exact or safely bounded sequence of executable attack rows.
+    """Return the exact typed sequence of executable attack rows, or the count.
 
+    The typed count stands (owner D-MA-3): no swing ceiling. A typed sequence
+    that does not resolve is logged, then the count rules below apply.
     Precision fields are additive and optional for old modules. When an old
     stat block contains only a blank Multiattack marker, two swings is the
     measured SRD-default fallback. Code fills distinct attacks in sheet order
@@ -163,12 +174,12 @@ def attack_sequence(
         return []
     marker = next((entry for entry in entries if is_multiattack_marker(entry)), None)
 
-    exact = _expand_sequence(
-        executable,
-        _explicit_sequence(sheet, marker, sequence),
-    )
+    specification = _explicit_sequence(sheet, marker, sequence)
+    exact = _expand_sequence(executable, specification)
     if exact:
         return exact
+    if specification:
+        _warn_unresolved_sequence(sheet, specification)
 
     count = _explicit_count(sheet, marker, num_attacks)
     if count is None:
