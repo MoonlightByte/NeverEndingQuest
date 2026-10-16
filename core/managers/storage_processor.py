@@ -452,49 +452,6 @@ For "What's in our storage here?":
             "description": original_description
         }
             
-    def suggest_storage_actions(self, character_name: str) -> List[str]:
-        """Suggest possible storage actions based on current context"""
-        
-        try:
-            context = self._get_game_context(character_name)
-            suggestions = []
-            
-            # Suggest based on character inventory
-            if context.get("character") and context["character"].get("equipment"):
-                high_quantity_items = [
-                    item for item in context["character"]["equipment"]
-                    if item.get("quantity", 1) > 5
-                ]
-                
-                if high_quantity_items:
-                    item_name = high_quantity_items[0].get("item_name", "items")
-                    suggestions.append(f"Store excess {item_name} in a chest")
-                    
-            # Suggest based on existing storage
-            if context.get("existing_storage"):
-                storage_name = context["existing_storage"][0].get("deviceName", "storage")
-                suggestions.append(f"Retrieve items from {storage_name}")
-                suggestions.append(f"Check what's in {storage_name}")
-            else:
-                suggestions.append("Create a chest to store valuable items")
-                
-            # Location-specific suggestions
-            location_name = context.get("location", {}).get("name", "").lower()
-            if "tavern" in location_name or "inn" in location_name:
-                suggestions.append("Create a lockbox for secure storage")
-            elif "home" in location_name or "base" in location_name:
-                suggestions.append("Create a barrel for bulk storage")
-                
-            return suggestions[:3]  # Return top 3 suggestions
-            
-        except Exception as e:
-            print(f"[WARNING] Could not generate storage suggestions: {e}")
-            return [
-                "Store items in a chest",
-                "Retrieve items from storage", 
-                "Check storage contents"
-            ]
-
 # Convenience functions for external use
 def process_storage_request(
     description: str,
@@ -509,8 +466,3 @@ def process_storage_request(
         character_name,
         structural_reissue=structural_reissue,
     )
-
-def get_storage_suggestions(character_name: str) -> List[str]:
-    """Get storage action suggestions for a character"""
-    processor = StorageProcessor()
-    return processor.suggest_storage_actions(character_name)

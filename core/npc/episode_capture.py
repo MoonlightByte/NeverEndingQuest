@@ -49,15 +49,19 @@ def segment_witness_names(messages: Sequence[Mapping[str, Any]]) -> List[str]:
     names: List[str] = []
     for message in messages:
         content = message.get("content") if isinstance(message, Mapping) else None
-        if not isinstance(content, str) or "Party NPCs: " not in content:
+        if not isinstance(content, str):
             continue
-        start = content.find("Party NPCs: ") + len("Party NPCs: ")
-        end = content.find(" Party stats:", start)
+        # The engine's fields come before the player's words; only they are read.
+        head = content.split(" Player: ", 1)[0]
+        if "Party NPCs: " not in head:
+            continue
+        start = head.find("Party NPCs: ") + len("Party NPCs: ")
+        end = head.find(" Party stats:", start)
         if end > start:
-            roster = content[start:end]
+            roster = head[start:end]
         else:
-            line_end = content.find("\n", start)
-            roster = content[start:] if line_end < 0 else content[start:line_end]
+            line_end = head.find("\n", start)
+            roster = head[start:] if line_end < 0 else head[start:line_end]
         for part in roster.split(","):
             name = part.strip()
             paren = name.find(" (")

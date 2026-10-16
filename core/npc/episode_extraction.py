@@ -24,6 +24,7 @@ import model_config
 from core.ai import api_client
 from core.combat.invocation import InvocationSupersededError
 from utils.capture.live_provider_call import LiveProviderSuperseded
+from core.ai import history_markers
 from core.npc.episode_store import VALID_SALIENT_KINDS
 from core.npc.relationship_store import record_store_health
 from utils.capture.multi_model_capture import register_callsite
@@ -80,15 +81,23 @@ Present companions: {companions}. Player: {player}.
 Return ONLY JSON matching the requested shape."""
 
 
+# Summaries the game writes into history; extraction reads play, not summaries.
+_SUMMARY_MARKERS = (
+    history_markers.LOCATION_SUMMARY,
+    history_markers.CHRONICLE,
+    history_markers.ROLLING_SUMMARY,
+)
+
+
 def flatten_scene(messages: Sequence[Mapping[str, Any]]) -> str:
     """Flatten raw play messages to DM/Player dialogue, skipping already-compressed
-    summary blocks. Mirrors the T018 flattener so extraction reads the same source."""
-    def is_summary(text: str) -> bool:
-        t = text.strip()
-        return t.startswith("===") or "LOCATION SUMMARY" in t or "Chronicle Summary" in t
-
+    summary blocks (the game's summary markers). A player line is the player's own
+    words (#449); an engine note or marker is not a player line."""
     lines: List[str] = []
     for message in messages:
+        message = dict(message)
+        if history_markers.is_marker(message, *_SUMMARY_MARKERS):
+            continue
         role = message.get("role")
         content = message.get("content", "") or ""
         if role == "assistant":
@@ -98,10 +107,12 @@ def flatten_scene(messages: Sequence[Mapping[str, Any]]) -> str:
                     narration = json.loads(content).get("narration", content)
                 except (ValueError, TypeError):
                     narration = content
-            if narration and not is_summary(narration):
+            if narration:
                 lines.append("Dungeon Master: %s" % narration)
-        elif role == "user" and "Player:" in content:
-            lines.append("Player: %s" % content.split("Player:", 1)[1].strip())
+        elif role == "user":
+            words = history_markers.player_input(message)
+            if words:
+                lines.append("Player: %s" % words)
     return "\n\n".join(lines)
 
 
