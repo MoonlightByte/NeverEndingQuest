@@ -901,45 +901,28 @@ def _audit_batch_spell_roll_requests(batch, encounter, characters):
     return audits
 
 
-# #263: weapon words a player may use to describe an enemy ("the crossbow
-# bandit", "the one with the axe"). Plurals are matched by the pattern below.
-_WEAPON_WORDS = (
-    "battleaxe", "blowgun", "bow", "club", "crossbow", "dagger", "dart", "flail",
-    "glaive", "greataxe", "greatclub", "greatsword", "halberd", "hammer", "handaxe",
-    "javelin", "lance", "longbow", "longsword", "mace", "maul", "morningstar", "net",
-    "pike", "quarterstaff", "rapier", "scimitar", "shortbow", "shortsword", "sickle",
-    "sling", "spear", "staff", "sword", "trident", "warhammer", "whip", "axe",
-)
-
-
-def _owned_weapon_text(sheet):
-    """Lower-cased names of everything the sheet lists as an item or action."""
-    names = []
+def _sheet_item_and_action_names(sheet):
+    """The whole names of everything the sheet lists as an item or action,
+    case-folded: equipment item names and the attack/action rows the engine
+    scores."""
+    names = set()
     for item in (sheet or {}).get("equipment", []) or []:
         if isinstance(item, dict):
-            names.append(str(item.get("item_name") or item.get("name") or ""))
+            names.add(str(item.get("item_name") or item.get("name") or "").strip().casefold())
     for entry in _action_entries(sheet or {}):
         if isinstance(entry, dict):
-            names.append(str(entry.get("name") or ""))
-    return " | ".join(names).casefold()
+            names.add(str(entry.get("name") or "").strip().casefold())
+    names.discard("")
+    return names
 
 
-def _validate_player_weapon_question(batch, encounter, characters, pending):
-    """#263: send back a player question about a weapon the player never said
-    they were using.
-
-    "I shoot the crossbow bandit" names a target. When the model asks the
-    player about (or refuses) a crossbow the sheet does not list, and the
-    player's words only used it to describe someone, the request goes back to
-    the model as a correction instead of reaching the player.
-    """
-    exchanges = pending.get("playerExchanges") if isinstance(pending, dict) else None
-    player_text = ""
-    if isinstance(exchanges, list) and exchanges and isinstance(exchanges[-1], dict):
-        player_text = str(exchanges[-1].get("playerInput") or "")
-    player_text = player_text.split("\n[Inventory Context:", 1)[0].casefold()
-    if not player_text:
-        return
+def _validate_player_weapon_question(batch, encounter, characters):
+    """#263 (item 4): a player question about a weapon names it in the typed
+    weaponName, the exact item or action name from the player's sheet. A name
+    the sheet does not list goes back to the model as a correction instead of
+    reaching the player. A request with no weaponName (an improvised or
+    picked-up weapon) is the model's adjudication and is not checked. Neither
+    the request's wording nor the player's words are read."""
     for intent in (batch or {}).get("intents", []) or []:
         if not isinstance(intent, dict):
             continue
@@ -951,38 +934,29 @@ def _validate_player_weapon_question(batch, encounter, characters, pending):
             or not isinstance(request, dict)
         ):
             continue
-        prompt = str(request.get("prompt") or "").casefold()
-        owned = _owned_weapon_text((characters or {}).get(actor.get("name")))
-        for word in _WEAPON_WORDS:
-            pattern = r"\b%s(?:e?s)?\b" % word
-            if not (re.search(pattern, prompt) and re.search(pattern, player_text)):
-                continue
-            if re.search(r"\b%s\b" % word, owned):
-                continue
-            if re.search(r"\b(?:my|own)\s+(?:\w+\s+)?%s\b" % word, player_text):
-                continue
-            if re.search(r"\bwith\s+(?:a|an)\s+(?:\w+\s+)?%s\b" % word, player_text):
-                continue
-            raise CombatIntentError(
-                (
-                    "The player did not say they are using a %s: in their words "
-                    "\"%s\" the %s describes the target. Do not ask about or refuse "
-                    "it. Choose the player's own listed weapon that fits the verb "
-                    "(shoot or fire means their ranged weapon) and resolve the action."
-                )
-                % (word, player_text.strip()[:160], word),
-                intent.get("actorId"),
-                {"retryable": True, "issue": "263"},
+        weapon = request.get("weaponName")
+        if not isinstance(weapon, str) or not weapon.strip():
+            continue
+        names = _sheet_item_and_action_names((characters or {}).get(actor.get("name")))
+        if weapon.strip().casefold() in names:
+            continue
+        raise CombatIntentError(
+            (
+                "The sheet has no %s; ask about the weapon the player is actually "
+                "using, or leave weaponName out if the player is using something "
+                "not on their sheet."
             )
+            % weapon.strip(),
+            intent.get("actorId"),
+            {"retryable": True, "issue": "263", "weaponName": weapon.strip()},
+        )
 
 
 def _validate_player_input_request_ownership(batch, encounter):
-    """Reject high-confidence requests that ask the player for another actor's save."""
-    creatures = [
-        creature
-        for creature in (encounter or {}).get("creatures", []) or []
-        if isinstance(creature, dict) and not _is_human_controlled(encounter, creature)
-    ]
+    """A player roll request with phase 'save' names the creature making the
+    save in the typed saverId. The player is only asked for their own save:
+    another creature's save goes in the intent's save field, where code rolls
+    it. Nothing is read from the request's wording."""
     for intent in (batch or {}).get("intents", []) or []:
         if not isinstance(intent, dict):
             continue
@@ -993,35 +967,34 @@ def _validate_player_input_request_ownership(batch, encounter):
             or not _is_human_controlled(encounter, actor)
             or not isinstance(request, dict)
             or request.get("kind") != "roll"
+            or str(request.get("phase") or "").strip().lower() != "save"
         ):
             continue
-        prompt = str(request.get("prompt") or "")
-        if not re.search(r"\bsav(?:e|ing throw)\b", prompt, re.IGNORECASE):
-            continue
-        for creature in creatures:
-            name = str(creature.get("name") or "").replace("_", " ").strip()
-            if not name:
-                continue
-            subject_pattern = (
-                r"\b(?:the\s+(?:closest|nearest)\s+)?"
-                + re.escape(name)
-                + r"\b.{0,48}\b(?:must|needs?\s+to|should)\s+"
-                r"(?:make|roll)\b"
+        saver = request.get("saverId")
+        if not isinstance(saver, str) or not saver.strip():
+            raise CombatIntentError(
+                "a requiresPlayerInput roll with phase 'save' must set saverId, the "
+                "combatantId of the creature making the save",
+                intent.get("actorId"),
+                {"requestOwnership": "missing_saver"},
             )
-            if re.search(subject_pattern, prompt.replace("_", " "), re.IGNORECASE):
-                raise CombatIntentError(
-                    (
-                        "requiresPlayerInput cannot ask the player to make %s's "
-                        "saving throw; declare the target save in the intent so "
-                        "code rolls it, and ask only for any player-owned damage roll"
-                    )
-                    % name,
-                    intent.get("actorId"),
-                    {
-                        "requestOwnership": "non_player_save",
-                        "nonPlayerCombatantId": creature.get("combatantId"),
-                    },
-                )
+        if saver.strip() == actor.get("combatantId"):
+            continue
+        creature = combatant_by_id(encounter, saver.strip())
+        name = str((creature or {}).get("name") or saver.strip())
+        raise CombatIntentError(
+            (
+                "requiresPlayerInput cannot ask the player to make %s's "
+                "saving throw; declare the target save in the intent so "
+                "code rolls it, and ask only for any player-owned damage roll"
+            )
+            % name,
+            intent.get("actorId"),
+            {
+                "requestOwnership": "non_player_save",
+                "nonPlayerCombatantId": saver.strip(),
+            },
+        )
 
 
 # #853: the labels a non-spell player roll may name; a spell names its own
@@ -2350,7 +2323,7 @@ def execute_agentic_turn(
             if attempt_number < max(2, int(max_intent_attempts or 3)):
                 # The last attempt lets a genuine question through rather than
                 # leave the player's turn without an answer.
-                _validate_player_weapon_question(batch, encounter, characters, pending)
+                _validate_player_weapon_question(batch, encounter, characters)
             _validate_roll_request_phase(batch, encounter)
             try:
                 roll_audits = _audit_batch_spell_roll_requests(

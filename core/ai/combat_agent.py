@@ -531,6 +531,11 @@ as the weapon/action name so the player knows what to roll. For a spell include
 spellName, plus slotLevel when the spell was cast with a slot (the level of
 the spellSlot resource it spends). Code
 will pause the same turn and show that request instead of consuming it.
+When the request is about a weapon, set weaponName to the exact item or
+action name from the player's sheet; leave weaponName out when the player
+uses something not on their sheet (an improvised or picked-up weapon). A
+roll with phase 'save' sets saverId to the combatantId of the creature
+making the save, which is always the player actor itself.
 One requiresPlayerInput represents exactly ONE next player roll or choice.
 Never combine two rolls or two spells in one request. For a multi-action turn,
 ask only for the earliest unresolved player roll; after the player supplies it,
