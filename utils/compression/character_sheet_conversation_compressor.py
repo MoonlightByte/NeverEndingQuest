@@ -82,7 +82,7 @@ class CharacterSheetConversationCompressor:
             
         try:
             # Use the flatlist formatter
-            compressed = format_flatlist(char_data, keep_paren_info=False)
+            compressed = format_flatlist(char_data)
             self._compression_cache[character_name] = compressed
             return compressed
         except Exception as e:
