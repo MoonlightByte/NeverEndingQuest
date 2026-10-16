@@ -64,7 +64,10 @@ _ARCHIVED_PREFIX = "[Archived] "
 _LEGACY_OPENINGS = (
     ("user", "Location transition:", LOCATION_TRANSITION),
     ("user", "Module transition:", MODULE_TRANSITION),
-    ("user", "Error Note: Your previous response failed validation", VALIDATION_ERROR),
+    # Every "Error Note:" the game wrote asked the DM to correct its last
+    # reply (failed validation, a refused transition, an unavailable reply);
+    # a player's turn opens with the engine's envelope, never with this.
+    ("user", "Error Note:", VALIDATION_ERROR),
     ("assistant", "=== LOCATION SUMMARY ===", LOCATION_SUMMARY),
     ("assistant", "[SUMMARY OF EVENTS AT THIS LOCATION]", ROLLING_SUMMARY),
     ("user", "Dungeon Master Note: Resume the game, the player has returned", RETURN_NOTE),
