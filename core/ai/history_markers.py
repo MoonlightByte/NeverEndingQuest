@@ -29,8 +29,10 @@ the field existed is read from the engine's turn envelope as it always was.
 
 MARKER_FIELD = "nql_marker"
 PLAYER_INPUT_FIELD = "nql_player_input"
+# The combat round a combat history message belongs to, written by the game.
+ROUND_FIELD = "nql_round"
 # The game's own fields on a history message; providers never receive them.
-GAME_FIELDS = (MARKER_FIELD, PLAYER_INPUT_FIELD)
+GAME_FIELDS = (MARKER_FIELD, PLAYER_INPUT_FIELD, ROUND_FIELD)
 
 LOCATION_TRANSITION = "location_transition"
 MODULE_TRANSITION = "module_transition"
@@ -47,6 +49,8 @@ RETURN_NOTE = "return_note"
 # A legacy combat turn message for an automatic initiative window (the
 # game resolves non-player turns; no player action was submitted).
 COMBAT_CONTINUATION = "combat_continuation"
+# The summary the game writes in place of an old combat round.
+COMBAT_ROUND_SUMMARY = "combat_round_summary"
 # The turn after a dice submission: the engine asks the DM to narrate the
 # settled check; the player typed nothing.
 CHECK_CONTINUATION = "check_continuation"
@@ -133,6 +137,12 @@ def player_input(message):
     if cutoffs:
         value = value[: min(cutoffs)]
     return value.strip()
+
+
+def message_round(message):
+    """The combat round the game wrote on a history message, or None."""
+    value = message.get(ROUND_FIELD) if isinstance(message, dict) else None
+    return value if type(value) is int else None
 
 
 def is_marker(message, *kinds):
