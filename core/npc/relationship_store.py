@@ -229,21 +229,15 @@ def _canonical_name_tokens(name: Any) -> Tuple[str, ...]:
 
 
 def _legacy_name_matches_identity(legacy_name: str, identity: Mapping[str, Any]) -> bool:
-    """True when the legacy file's npc_name canonically resolves to this identity.
-    Rule (deterministic, value-level): canonical token tuples are equal, OR the
-    legacy tokens are a non-empty SUBSET of one registered name's tokens (real
-    files say "Kira" while the roster identity is "Scout Kira")."""
+    """True when the legacy file's npc_name is this identity's exact name or a
+    registered alias, compared as canonical token tuples. A part of a name
+    ("Kira" for "Scout Kira") does not match (#855): no code writes these files
+    any more, and an unmatched file is skipped with a health record."""
     legacy_tokens = _canonical_name_tokens(legacy_name)
     if not legacy_tokens:
         return False
-    legacy_set = set(legacy_tokens)
-    for registered_name in _identity_names(identity):
-        registered_tokens = _canonical_name_tokens(registered_name)
-        if legacy_tokens == registered_tokens:
-            return True
-        if legacy_set and legacy_set <= set(registered_tokens):
-            return True
-    return False
+    return any(_canonical_name_tokens(registered_name) == legacy_tokens
+               for registered_name in _identity_names(identity))
 
 
 # Per-NPC POV overlay (Phase 2). The canonical episode ledger holds the shared truth;
@@ -968,8 +962,8 @@ class RelationshipStore:
             if not legacy_name:
                 continue
             # Identity boundary: resolve the legacy file's npc name ONCE against
-            # the registered roster identities by canonical VALUE comparison
-            # (real legacy files say "Kira"; the roster identity is "Scout Kira").
+            # the registered roster identities by canonical VALUE comparison of
+            # the whole name or an alias (#855).
             # Exactly-one match imports; zero or ambiguous = skip LOUDLY, never guess.
             matching_ids = [
                 identity_id
