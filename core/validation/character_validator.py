@@ -73,9 +73,9 @@ from typing import Dict, List, Any, Optional, Union
 from core.ai import api_client
 from utils.character_sheet_contract import repair_required_ammunition_field
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T051", "core/validation/character_validator.py", 2082)
-register_callsite("T052", "core/validation/character_validator.py", 2269)
-register_callsite("T054", "core/validation/character_validator.py", 2701)
+register_callsite("T051", "core/validation/character_validator.py", 1507)
+register_callsite("T052", "core/validation/character_validator.py", 1694)
+register_callsite("T054", "core/validation/character_validator.py", 2640)
 
 CHARACTER_VALIDATOR_SCHEMA = {
     "required": [
@@ -750,102 +750,51 @@ class AICharacterValidator:
     
     def extract_inventory_data(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Extract only inventory-relevant data for validation.
-        Focus on items that commonly have categorization issues.
-        
-        Based on Gemini consultation:
-        - Check equipment items that might be miscategorized as miscellaneous
-        - Exclude high-confidence miscellaneous items
-        - Include ambiguous items like scrolls regardless of type
-        
+        Extract the rows T052 types: the typed focus, never a word list.
+
+        A row whose item_type is not a schema type is always offered. With a
+        pre-write sheet (check_validation_needs), so is a row the write
+        introduced (_entries_needing_typing) with the catch-all type
+        "miscellaneous"; a row its writer gave any other schema type keeps it
+        (owner, keyword validation V2). A catalog row is typed by its pack
+        entry and is never offered. Each row keeps its equipment index, which
+        the answer names.
+
         Args:
             character_data: Full character JSON data
-            
+
         Returns:
-            Minimal data needed for inventory validation
+            The offered rows with their equipment index
         """
         inventory_data = {
             'name': character_data.get('name', 'Unknown'),
             'equipment': []
         }
-        
+
         equipment = character_data.get('equipment', [])
-        
-        # Filter to items most likely to need validation
+        if not isinstance(equipment, list):
+            return inventory_data
         focus_names = getattr(self, '_focus_names', None)
-        for item in equipment:
-            if focus_names is not None and str(item.get('item_name')) not in focus_names:
+        for index, item in enumerate(equipment):
+            if not isinstance(item, dict):
                 continue
-            item_name = item.get('item_name', '').lower()
-            item_type = item.get('item_type', '').lower()
-            description = item.get('description', '').lower()
-            
+            if item_catalog.row_entry(item)[0] is not None:
+                continue
+            item_type = str(item.get('item_type', '')).strip().lower()
             include = item_type not in VALID_INVENTORY_ITEM_TYPES
-            
-            # 1. Check miscellaneous items (but exclude high-confidence ones)
-            if item_type == 'miscellaneous':
-                # Exclude items that are almost certainly correct miscellaneous
-                high_confidence_misc = ['gemstone', 'coin', 'gold', 'silver', 'copper', 
-                                       'signet', 'deed', 'letter', 'page', 'parchment',
-                                       'medallion', 'brooch', 'locket', 'chalice', 'goblet',
-                                       'crown', 'ingot', 'relic']
-                
-                # Don't validate if it's a high-confidence miscellaneous item
-                if not any(keyword in item_name for keyword in high_confidence_misc):
-                    # But DO include if it might be something else
-                    if any(keyword in item_name for keyword in ['arrow', 'bolt', 'bullet', 'dart']):
-                        include = True  # Likely ammunition
-                    elif any(keyword in item_name for keyword in ['ration', 'food', 'bread', 'meat', 'potion', 'scroll', 'elixir']):
-                        include = True  # Likely consumable
-                    elif any(keyword in item_name for keyword in ['torch', 'rope', 'tools', 'kit', 'pack', 'bedroll', 'tent']):
-                        include = True  # Likely equipment
-                    else:
-                        # Include other miscellaneous for review (but not high-confidence ones)
-                        include = True
-            
-            # 2. Check equipment items that might be miscellaneous (rings, amulets, etc)
-            elif item_type == 'equipment':
-                # These are often miscategorized as equipment when they should be miscellaneous
-                if any(keyword in item_name for keyword in ['ring', 'amulet', 'talisman', 'symbol', 'pendant', 'necklace']):
-                    include = True  # Often should be miscellaneous
-                # Check for scrolls which are ambiguous
-                elif 'scroll' in item_name:
-                    include = True  # Could be consumable or equipment
-                # Include items with special/magical effects that might be miscellaneous
-                elif any(keyword in description for keyword in ['summon', 'magical', 'enchanted', 'artifact']):
-                    include = True  # Might be miscellaneous
-            
-            # 3. Check weapons that might be ammunition
-            elif item_type == 'weapon' and any(keyword in item_name for keyword in ['arrow', 'bolt', 'bullet', 'dart']):
-                include = True  # Ammunition miscategorized as weapon
-            
-            # 4. Check for consumables miscategorized as other types
-            elif item_type != 'consumable' and any(keyword in item_name for keyword in ['potion', 'elixir', 'ration', 'food', 'water', 'ale', 'wine']):
-                include = True  # Should be consumable
-            
-            # 5. Check for equipment miscategorized as other types  
-            elif item_type != 'equipment' and any(keyword in item_name for keyword in ['rope', 'torch', 'lantern', 'tools', 'kit', 'pack', 'bedroll', 'tent', 'map']):
-                include = True  # Should be equipment
-            
-            # 6. Always check items with "scroll" regardless of current type (ambiguous)
-            elif 'scroll' in item_name:
-                include = True  # Scrolls are ambiguous - could be consumable or equipment/misc
-            
+            if focus_names is not None:
+                include = str(item.get('item_name')) in focus_names and (include or item_type == 'miscellaneous')
             if include:
-                # Only include necessary fields
                 inventory_data['equipment'].append({
+                    'row': index,
                     'item_name': item.get('item_name'),
                     'item_type': item.get('item_type'),
-                    'description': item.get('description', '')[:150],  # Slightly longer for context
+                    'description': str(item.get('description', ''))[:150],
                     'quantity': item.get('quantity', 1)
                 })
-        
-        # Log the reduction
-        original_count = len(equipment)
-        filtered_count = len(inventory_data['equipment'])
-        
-        debug(f"[Inventory Extraction] Filtered items from {original_count} to {filtered_count} for validation", category="character_validation")
-        
+
+        debug(f"[Inventory Extraction] {len(inventory_data['equipment'])} of {len(equipment)} equipment rows offered to T052", category="character_validation")
+
         return inventory_data
     
     def extract_currency_consolidation_data(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -1765,16 +1714,17 @@ class AICharacterValidator:
                 if not strict:
                     ai_response = ai_response.strip()
                 
-                # Parse AI response to get inventory updates only
-                inventory_updates = self.parse_inventory_validation_response(
+                # Each correction names its equipment row; two rows with one
+                # name are two rows.
+                retyped = self.parse_inventory_validation_response(
                     ai_response,
                     inventory_data,
                 )
                 
-                if inventory_updates:
-                    # Apply updates using deep merge (same pattern as main character updater)
-                    from updates.update_character_info import deep_merge_dict
-                    corrected_data = deep_merge_dict(character_data, inventory_updates)
+                if retyped:
+                    corrected_data = copy.deepcopy(character_data)
+                    for row, item_type in retyped:
+                        corrected_data['equipment'][row]['item_type'] = item_type
                 else:
                     # No changes needed
                     corrected_data = character_data
@@ -2337,18 +2287,18 @@ You must validate that each item in the character's inventory has the correct it
     - Bracers of defense or with AC bonus -> "armor"
 
 ### OUTPUT FORMAT:
-Return a JSON object with ONLY the changes needed:
+Every item you are shown has a row number. Return a JSON object with ONLY the changes needed:
 {
   "corrections_made": ["list of corrections"],
   "equipment": [
     {
-      "item_name": "exact item name",
+      "row": 4,
       "item_type": "corrected_type"
     }
   ]
 }
 
-CRITICAL: Only return items that need their item_type corrected. Do NOT return items that are already correctly categorized. Do NOT return the complete character data - only the equipment items that need item_type fixes.
+CRITICAL: Only return items that need their item_type corrected, each by the row number shown. Do NOT return items that are already correctly categorized. Do NOT return the complete character data - only the rows that need item_type fixes.
 """
     
     def build_inventory_validation_prompt(self, character_data: Dict[str, Any]) -> str:
@@ -2370,14 +2320,14 @@ CHARACTER NAME: {character_data.get('name', 'Unknown')}
 CURRENT INVENTORY:
 """
         
-        for i, item in enumerate(equipment):
+        for item in equipment:
             item_name = item.get('item_name', 'Unknown Item')
             item_type = item.get('item_type', 'Unknown')
             description = item.get('description', 'No description')
             quantity = item.get('quantity', 1)
             
             prompt += f"""
-Item #{i+1}:
+Row {item['row']}:
 - Name: {item_name}
 - Current Type: {item_type}
 - Description: {description}
@@ -2392,20 +2342,23 @@ Validate each item's categorization and correct any that are wrong. Focus especi
 - Food/rations that should be "consumable"  
 - Tools/torches that should be "equipment"
 
-IMPORTANT: Return ONLY the items that need their item_type corrected. Do not include items that are already correctly categorized."""
+IMPORTANT: Return ONLY the rows that need their item_type corrected, by row number. Do not include items that are already correctly categorized."""
         
         return prompt
     
-    def parse_inventory_validation_response(self, ai_response: str, original_data: Dict[str, Any]) -> Dict[str, Any]:
+    def parse_inventory_validation_response(self, ai_response: str, original_data: Dict[str, Any]) -> List[tuple]:
         """
-        Parse AI inventory validation response - returns only the updates/changes
-        
+        Check a T052 answer against the rows it was shown.
+
+        Each correction names one offered row by its number and a schema
+        item_type that differs from the row's. Returns (row, item_type) pairs.
+
         Args:
             ai_response: AI response string
-            original_data: Original character data
-            
+            original_data: The offered rows (extract_inventory_data)
+
         Returns:
-            Dictionary with only the changes to apply (or empty dict if no changes)
+            The checked corrections (empty when none are needed)
         """
         parsed_response = _load_response_object(ai_response, "T052")
         if set(parsed_response) != {'corrections_made', 'equipment'}:
@@ -2419,66 +2372,52 @@ IMPORTANT: Return ONLY the items that need their item_type corrected. Do not inc
                 "T052: 'equipment' must be an array"
             )
         _require_string_list(corrections, "T052: 'corrections_made'")
-        source_equipment = _source_items_by_name(
-            original_data.get('equipment', []),
-            "T052: source equipment",
-            reject_duplicates=True,
-        )
-        normalized_equipment = []
-        seen_names = set()
+        offered = {item['row']: item for item in original_data.get('equipment', [])}
+        retyped = []
         for index, item in enumerate(equipment):
             if not isinstance(item, dict):
                 raise CharacterValidationResponseError(
                     f"T052: equipment[{index}] must be an object"
                 )
-            unknown_fields = set(item).difference({'item_name', 'item_type'})
+            unknown_fields = set(item).difference({'row', 'item_type'})
             if unknown_fields:
                 raise CharacterValidationResponseError(
                     "T052: equipment update contains unsupported field(s): "
                     + ", ".join(sorted(unknown_fields))
                 )
-            if not isinstance(item.get('item_name'), str) or not isinstance(
-                item.get('item_type'), str
-            ):
+            row = item.get('row')
+            if type(row) is not int or row not in offered:
                 raise CharacterValidationResponseError(
-                    f"T052: equipment[{index}] requires string item_name/item_type"
+                    f"T052: equipment[{index}].row must be one of the rows shown: {sorted(offered)}"
                 )
-            normalized_name = _normalized_name(item['item_name'])
-            if normalized_name not in source_equipment:
+            if any(done == row for done, _type in retyped):
                 raise CharacterValidationResponseError(
-                    f"T052: equipment[{index}] must reference a source candidate"
+                    f"T052: equipment[{index}] corrects row {row} a second time"
                 )
-            if normalized_name in seen_names:
+            if not isinstance(item.get('item_type'), str):
                 raise CharacterValidationResponseError(
-                    f"T052: duplicate correction for '{item['item_name']}'"
+                    f"T052: equipment[{index}] requires a string item_type"
                 )
-            seen_names.add(normalized_name)
-
             normalized_type = item['item_type'].strip().lower()
             if normalized_type not in VALID_INVENTORY_ITEM_TYPES:
                 raise CharacterValidationResponseError(
                     f"T052: equipment[{index}].item_type is not allowed"
                 )
-            source_item = source_equipment[normalized_name]
-            source_type = str(source_item.get('item_type', '')).strip().lower()
+            source_type = str(offered[row].get('item_type', '')).strip().lower()
             if normalized_type == source_type:
                 raise CharacterValidationResponseError(
                     f"T052: equipment[{index}] does not change item_type"
                 )
-            normalized_equipment.append({
-                'item_name': source_item['item_name'],
-                'item_type': normalized_type,
-            })
+            retyped.append((row, normalized_type))
 
         for correction in corrections:
             debug(f"[Inventory Correction] {correction}", category="character_validation")
             self.logger.info(f"AI Inventory Correction: {correction}")
             self.corrections_made.append(f"Inventory: {correction}")
 
-        if normalized_equipment:
-            return {"equipment": normalized_equipment}
-        self.logger.debug("No inventory corrections needed")
-        return {}
+        if not retyped:
+            self.logger.debug("No inventory corrections needed")
+        return retyped
     
     def validate_status_condition_consistency(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
         """

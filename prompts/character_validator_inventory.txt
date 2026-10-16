@@ -141,15 +141,15 @@ You must validate that each item in the character's inventory has the correct it
     - Bracers of defense or with AC bonus -> "miscellaneous" (bonus in effects)
 
 ### OUTPUT FORMAT:
-Return a JSON object with ONLY the changes needed:
+Every item you are shown has a row number. Return a JSON object with ONLY the changes needed:
 {
   "corrections_made": ["list of corrections"],
   "equipment": [
     {
-      "item_name": "exact item name",
+      "row": 4,
       "item_type": "corrected_type"
     }
   ]
 }
 
-CRITICAL: Only return items that need their item_type corrected. Do NOT return items that are already correctly categorized. Do NOT return the complete character data - only the equipment items that need item_type fixes.
+CRITICAL: Only return items that need their item_type corrected, each by the row number shown. Do NOT return items that are already correctly categorized. Do NOT return the complete character data - only the rows that need item_type fixes.

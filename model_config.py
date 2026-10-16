@@ -492,7 +492,7 @@ _T052_INVENTORY_VALIDATION_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "item_name": {"type": "string"},
+                    "row": {"type": "integer"},
                     "item_type": {"type": "string"},
                 },
             },
