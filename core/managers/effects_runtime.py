@@ -101,16 +101,14 @@ def update_character_with_effects(
     party_tracker_data=None,
     action_context=None,
     affects=None,
-    sheet_notes=None,
 ):
-    """Classifier-first T078 -> T079 character update for a migrated campaign.
-    ``sheet_notes`` is passed through to the update (#876)."""
+    """Classifier-first T078 -> T079 character update for a migrated campaign."""
     if not campaign_effects_migrated():
         # Explicit recovery fallback for campaigns whose automatic conversion
         # was blocked.  Normal converted campaigns never execute this path.
         success = update_character_info(
             character_name, changes, action_context=action_context,
-            affects=affects, sheet_notes=sheet_notes,
+            affects=affects,
         )
         if success:
             from updates.update_character_effects import update_character_effects
@@ -138,7 +136,6 @@ def update_character_with_effects(
                 managed_effect_operation=classifier,
                 action_context=action_context,
                 affects=affects,
-                sheet_notes=sheet_notes,
             )
     if success and classifier.cast:
         from core.managers.concentration_runtime import record_cast
