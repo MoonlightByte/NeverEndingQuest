@@ -177,6 +177,11 @@ message index supplied by the wizard into confirmation.player_message_index.
 Never use the index of a system correction or an earlier approval for a changed
 build. Missing consequential choices require clarification. Resolve only minor
 mechanical details with consistent SRD defaults after whole-build approval.
+Use pause_setup only when the latest real user input asks to stop or leave
+character setup for now; cancelling, undoing or changing a choice is not a pause.
+It has character null, whole_build_approved false, and the latest user message
+index; its narration briefly says their choices are kept for next time. When
+the player returns after a pause, continue the interview.
 
 A proposal is NOT a saved character. Narration must stay true to the supplied
 committed facts: do not claim successful creation, saving, arrival, a scene or
@@ -251,6 +256,9 @@ sheet approval, and never tell the author to set whole_build_approved on a
 continue_interview. A continue_interview that asks once for a still-open player
 choice after approval is valid. Check the background's Origin feat and skills,
 by name, against the startup_rules_reference.
+Accept pause_setup only when the latest player input asks to stop setup for
+now; reject it when the player cancels, undoes or changes a choice, and reject
+a continue_interview that ignores a clear request to stop.
 A proposal that reaches you has already passed the game's schema validation.
 Do not request schema fields, placeholders or null values. The proposal shown
 (the canonical candidate) is authoritative over any memory of earlier drafts;
