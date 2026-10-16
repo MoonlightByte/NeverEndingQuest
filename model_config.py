@@ -543,7 +543,7 @@ CHAR_VALIDATOR_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 # LM Studio (local passthrough)
 CHAR_VALIDATOR_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
-# ----- T050 Effects Gemini Config -----
+# ----- Validator Gemini config without a response schema (T125) -----
 # T054 has a dedicated schema-bearing config above.
 CHAR_VALIDATOR_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 
