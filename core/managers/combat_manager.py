@@ -272,6 +272,7 @@ import core.ai.cumulative_summary as cumulative_summary
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
 # Import combat message compressor for optimizing conversation history
 from core.ai.combat_compressor import CombatUserMessageCompressor
+from core.ai import history_markers as hm
 # Import the SRD context block for a rule named in a player's combat action
 from core.ai.inventory_context_integration import build_srd_context
 
@@ -3196,6 +3197,27 @@ def _round_facts_text(encounter, round_num):
     )
 
 
+_ROUND_SUMMARY_OPENING = re.compile(r"COMBAT ROUND (\d+) SUMMARY:\n")
+
+
+def _round_summary_round(message):
+    """The round a game-written round summary covers, or None.
+
+    A summary carries its round as a marker field. One saved before the
+    field existed is read by the opening words the game gave it (an
+    assistant message that starts with them), as history_markers reads
+    every marker saved before its field.
+    """
+    if not isinstance(message, dict) or message.get("role") != "assistant":
+        return None
+    if hm.MARKER_FIELD in message:
+        if hm.is_marker(message, hm.COMBAT_ROUND_SUMMARY):
+            return hm.message_round(message)
+        return None
+    match = _ROUND_SUMMARY_OPENING.match(message.get("content") or "")
+    return int(match.group(1)) if match else None
+
+
 def compress_old_combat_rounds(
     conversation_history,
     current_round,
@@ -3223,8 +3245,7 @@ def compress_old_combat_rounds(
         for round_num in range(1, current_round - keep_recent_rounds):
             # Check if this round is already compressed
             already_compressed = any(
-                msg.get('role') == 'assistant' and 
-                f"COMBAT ROUND {round_num} SUMMARY:" in msg.get('content', '')
+                _round_summary_round(msg) == round_num
                 for msg in conversation_history
             )
             if not already_compressed:
@@ -3245,17 +3266,12 @@ def compress_old_combat_rounds(
         for i, msg in enumerate(conversation_history):
             content = msg.get('content', '')
             
-            # Check for combat round markers in user messages
-            # Look for both old format (COMBAT ROUND X) and new format (combat_round: X)
+            # A user message belongs to a round only by the round the game
+            # wrote on it (the legacy turn message); its words, which hold
+            # the player's, are never searched for round numbers.
             if msg.get('role') == 'user':
-                # Old format: COMBAT ROUND X
-                match = re.search(r'COMBAT ROUND (\d+)', content)
-                if not match:
-                    # New format from initiative tracker: combat_round: X
-                    match = re.search(r'combat_round:\s*(\d+)', content)
-                
-                if match:
-                    round_num = int(match.group(1))
+                round_num = hm.message_round(msg)
+                if round_num is not None:
                     if round_num in rounds_to_compress:
                         current_tracking_round = round_num
                         if round_num not in round_boundaries:
@@ -3281,13 +3297,9 @@ def compress_old_combat_rounds(
             elif current_tracking_round and current_tracking_round in round_boundaries:
                 round_boundaries[current_tracking_round].append(i)
                 
-                # Stop tracking when we hit the next round
-                # Check both old and new format
-                next_round_match = re.search(r'COMBAT ROUND (\d+)', content)
-                if not next_round_match:
-                    next_round_match = re.search(r'combat_round:\s*(\d+)', content)
-                
-                if next_round_match and int(next_round_match.group(1)) != current_tracking_round:
+                # Stop tracking at a summary of another round
+                next_round = _round_summary_round(msg)
+                if next_round is not None and next_round != current_tracking_round:
                     current_tracking_round = None
         
         # Compress each round
@@ -3323,10 +3335,12 @@ def compress_old_combat_rounds(
                 
                 if summary:
                     # Add compressed round
-                    new_conversation.append({
-                        "role": "assistant",
-                        "content": f"COMBAT ROUND {round_to_compress} SUMMARY:\n{json.dumps(summary, indent=2)}"
-                    })
+                    new_conversation.append(hm.marker(
+                        "assistant",
+                        f"COMBAT ROUND {round_to_compress} SUMMARY:\n{json.dumps(summary, indent=2)}",
+                        hm.COMBAT_ROUND_SUMMARY,
+                        **{hm.ROUND_FIELD: round_to_compress},
+                    ))
                     
                     # Add transition message
                     if round_to_compress < current_round - keep_recent_rounds:
@@ -5567,17 +5581,14 @@ Rules:
        
        # Add user input to conversation history: an automatic initiative
        # window is a game marker, a player's turn carries the player's own
-       # words beside the turn message (#449).
-       from core.ai import history_markers as hm
-
+       # words beside the turn message (#449); both carry the round the
+       # tracker above names (combat_round: current_round).
        if automatic_initiative_step:
-           conversation_history.append(
-               hm.marker("user", user_input_with_note, hm.COMBAT_CONTINUATION)
-           )
+           turn_message = hm.marker("user", user_input_with_note, hm.COMBAT_CONTINUATION)
        else:
-           conversation_history.append(
-               hm.player_turn(user_input_with_note, raw_combat_input_text)
-           )
+           turn_message = hm.player_turn(user_input_with_note, raw_combat_input_text)
+       turn_message[hm.ROUND_FIELD] = current_round
+       conversation_history.append(turn_message)
        save_json_file(conversation_history_file, conversation_history)
 
        # Compose legacy NPC guidance once for this calculated initiative

@@ -196,9 +196,8 @@ class StorageManager:
         equipment.append(new_item)
         
     def _validate_character_before_write(self, character_data: Dict[str, Any], before: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Run the same contract repair and AI validation that
-        validate_character_file_safe performs, on the in-memory sheet, so the
-        character and storage files can be written together (#391).
+        """Run the contract repair and AI validation on the in-memory sheet,
+        so the character and storage files can be written together (#391).
         Provider failure keeps the deterministic repairs (fail-open, as before)."""
         repaired, _repair_changes = repair_required_ammunition_field(character_data)
         result = self.character_validator.validate_and_correct_character_smart_with_result(repaired, before=before)
