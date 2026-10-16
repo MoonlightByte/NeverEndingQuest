@@ -2169,6 +2169,7 @@ Your primary goal is to generate the smallest possible valid JSON object that re
    - Weapon changes: Always include updated `attacksAndSpellcasting` array entries for the affected weapons.
    - Armor class: do NOT include `armorClass` or `equipment_effects`. The rules engine computes both from the equipped items' typed fields (`armor_category`, `ac_base`, `ac_bonus`, `dex_limit`) after your delta is applied. Give new armor those fields instead.
    - Item typing: `item_type` "armor" is only for body armor and shields, and such an entry MUST carry `armor_category` and `ac_base` (plus `dex_limit` for medium armor). An amulet, ring, cloak, robe, bracer or charm that gives no armor base is "miscellaneous" with an `item_subtype`; a magic item that adds to AC states that in its `effects` list, not by being typed armor.
+   - Hit dice: never write `hitDice`. The rest action spends them and a long rest restores them; the rules engine keeps the count.
    - Status: never write `status` for hit point reasons. The rules engine sets "unconscious" when hit points reach 0 and "alive" when they rise above 0; `dead` is the DM's call.
 
    - **Example - Shield is destroyed:**
