@@ -270,6 +270,7 @@ _AGENTIC_COMBAT_INTENT_SCHEMA = {
                     "mode": {"type": "string", "enum": ["known", "adjudicated"]},
                     "action": {"type": "string"},
                     "ability": {"type": "string"},
+                    "featureName": {"type": "string"},
                     "targetId": {"type": "string"},
                     "description": {"type": "string"},
                     "save": {"type": "object"},
