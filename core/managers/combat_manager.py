@@ -5565,8 +5565,19 @@ Rules:
 
 {required_response}"""
        
-       # Add user input to conversation history
-       conversation_history.append({"role": "user", "content": user_input_with_note})
+       # Add user input to conversation history: an automatic initiative
+       # window is a game marker, a player's turn carries the player's own
+       # words beside the turn message (#449).
+       from core.ai import history_markers as hm
+
+       if automatic_initiative_step:
+           conversation_history.append(
+               hm.marker("user", user_input_with_note, hm.COMBAT_CONTINUATION)
+           )
+       else:
+           conversation_history.append(
+               hm.player_turn(user_input_with_note, raw_combat_input_text)
+           )
        save_json_file(conversation_history_file, conversation_history)
 
        # Compose legacy NPC guidance once for this calculated initiative

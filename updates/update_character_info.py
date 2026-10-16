@@ -604,8 +604,14 @@ def deep_merge_dict(base_dict, update_dict):
     
     return result
 
+# #1135: the stored row index a delta entry was bound to (_bind_equipment_rows).
+# It rides on the entry and the merged row until the stock fold, then is dropped.
+_BOUND_ROW = '_bound_row'
+
+
 def merge_equipment_arrays(base_equipment, update_equipment):
-    """Merge equipment arrays by item name, preserving existing items and removing zero-quantity items"""
+    """Merge equipment arrays by item name, preserving existing items and removing zero-quantity items.
+    An entry bound to a stored row (#1135) merges into that row, not the last of its name."""
     result = copy.deepcopy(base_equipment)
     
     # Create a mapping of item names to indices in the base equipment
@@ -621,7 +627,10 @@ def merge_equipment_arrays(base_equipment, update_equipment):
         if not update_item_name:
             continue
             
-        if update_item_name in item_name_to_index:
+        bound = update_item.get(_BOUND_ROW)
+        if type(bound) is int and 0 <= bound < len(result):
+            result[bound] = deep_merge_dict(result[bound], update_item)
+        elif update_item_name in item_name_to_index:
             # Update existing item by merging dictionaries
             index = item_name_to_index[update_item_name]
             result[index] = deep_merge_dict(result[index], update_item)
@@ -1175,23 +1184,115 @@ def _stored_item_name(character_data, name):
     return None, None
 
 
-def _split_equipment_quantity_deltas(character_data, updates, model_authored):
+def _rows_by_nql_id(character_data):
+    """Stored equipment row index by the row's engine id (#1135)."""
+    return {e['nql_id']: i for i, e in enumerate(character_data.get('equipment') or [])
+            if isinstance(e, dict) and isinstance(e.get('nql_id'), str)}
+
+
+def _several_rows_reason(name, rows):
+    return (f"{len(rows)} equipment rows are named {name!r}; add that row's nql_id exactly as on the sheet "
+            "(or equipped true for the worn one, false for the carried one) to say which")
+
+
+def _bind_equipment_rows(character_data, updates):
+    """Bind equipment delta entries to stored rows by typed fields (#1135).
+
+    Returns ({entry position: stored row index}, refusal or None). An entry
+    with an ``nql_id`` binds to the row holding that id under its name, and
+    only that row; an id the sheet does not hold there is refused, never
+    minted. An entry without one whose ``item_name`` several rows share binds
+    by ``equipped``: a flag change to a row whose flag differs (the largest
+    stack first), a ``quantityDelta`` to a row with that flag. On a shared
+    name ``equipped`` beside ``quantityDelta`` only selects the row. A
+    shared-name entry nothing selects is refused so the next attempt names
+    the row; ``quantity`` 0 removes every row of the name.
+    """
+    bound = {}
+    entries = updates.get('equipment')
+    if not isinstance(entries, list):
+        return bound, None
+    stored = [e if isinstance(e, dict) else {} for e in character_data.get('equipment') or []]
+    by_id = _rows_by_nql_id(character_data)
+    removals = []
+    for position, entry in enumerate(entries):
+        if not isinstance(entry, dict) or not entry.get('item_name'):
+            continue
+        name = _stored_item_name(character_data, entry['item_name'])[0] or entry['item_name']
+        rows = [i for i, e in enumerate(stored) if e.get('item_name') == name]
+        if 'nql_id' in entry:
+            index = by_id.get(entry['nql_id'])
+            if index is None or index not in rows:
+                return bound, (f"nql_id {entry['nql_id']!r} is not on the sheet as {name!r}; copy the row's "
+                               "nql_id exactly as on the sheet, or leave nql_id out for a new item")
+            bound[position] = index
+            if len(rows) > 1 and 'quantityDelta' in entry:
+                entry.pop('equipped', None)
+            continue
+        if len(rows) < 2:
+            continue
+        if entry.get('quantity') == 0 and type(entry.get('quantity')) is int:
+            bound[position] = rows[0]
+            removals.extend((name, index) for index in rows[1:])
+            continue
+        flag = entry.get('equipped')
+        if 'quantityDelta' in entry:
+            if type(flag) is not bool:
+                return bound, _several_rows_reason(name, rows)
+            picked = [i for i in rows if (stored[i].get('equipped') is True) == flag]
+            entry.pop('equipped')
+        elif type(flag) is bool:
+            picked = [i for i in rows if (stored[i].get('equipped') is True) != flag] or \
+                [i for i in rows if (stored[i].get('equipped') is True) == flag]
+        else:
+            return bound, _several_rows_reason(name, rows)
+        if not picked:
+            return bound, (f"no {name!r} row is {'worn' if flag else 'carried'}; add that row's nql_id exactly "
+                           "as on the sheet to say which")
+        stock = {i: stored[i].get('quantity', 1) if type(stored[i].get('quantity')) is int else 1 for i in picked}
+        bound[position] = max(picked, key=lambda i: (stock[i], -i)) if flag is True else picked[0]
+    for name, index in removals:
+        bound[len(entries)] = index
+        entries.append({'item_name': name, 'quantity': 0})
+    return bound, None
+
+
+def _bound_stock_rows(sheet, pending, bound):
+    """The merged row each pending stock change applies to, with its delta
+    (#1135): the row a bound entry merged into, else the first of its name."""
+    rows = sheet.get('equipment') or []
+    marked = {e[_BOUND_ROW]: e for e in rows if isinstance(e, dict) and type(e.get(_BOUND_ROW)) is int}
+    out = []
+    for key, delta in pending.items():
+        name, index = key if isinstance(key, tuple) else (key, None)
+        row = marked.get(index) if index in bound.values() else None
+        if row is None:
+            row = next((e for e in rows if isinstance(e, dict) and e.get('item_name') == name), None)
+        if row is not None:
+            out.append((row, delta))
+    return out
+
+
+def _split_equipment_quantity_deltas(character_data, updates, model_authored, bound=None):
     """Pull ``quantityDelta`` out of equipment entries before the merge.
 
     Stock is engine-owned (core/nql/equipment): the model reports how many
     of an item were gained or lost, never the resulting stack. Returns
-    (pending {stored name: signed delta}, error or None). An entry for an item
+    (pending {stored name, or (stored name, row index) for an entry bound to
+    a row (#1135): signed delta}, error or None). An entry for an item
     not yet on the sheet with a positive delta becomes a new item of that many.
     A model-authored ``quantity`` on an existing item other than 0 (remove all)
     is refused so the next attempt states the change.
     """
     pending = {}
+    bound = bound or {}
     entries = updates.get('equipment')
     if not isinstance(entries, list):
         return pending, None
-    stock = {e.get('item_name'): e.get('quantity', 1) for e in character_data.get('equipment') or []
+    rows = character_data.get('equipment') or []
+    stock = {e.get('item_name'): e.get('quantity', 1) for e in rows
              if isinstance(e, dict) and e.get('item_name')}
-    for entry in entries:
+    for position, entry in enumerate(entries):
         if not isinstance(entry, dict) or not entry.get('item_name'):
             continue
         stored, ambiguous = _stored_item_name(character_data, entry['item_name'])
@@ -1211,12 +1312,14 @@ def _split_equipment_quantity_deltas(character_data, updates, model_authored):
                 entry['quantity'] = delta          # a new item: the number acquired
                 continue
             entry['item_name'] = stored
+            key = (stored, bound[position]) if position in bound else stored
             if delta:
-                pending[stored] = pending.get(stored, 0) + delta
+                pending[key] = pending.get(key, 0) + delta
         elif stored is not None and 'quantity' in entry:
+            held = rows[bound[position]].get('quantity', 1) if position in bound else stock.get(stored)
             if entry['quantity'] == 0:
                 entry['item_name'] = stored        # remove all: unambiguous
-            elif entry['quantity'] == stock.get(stored):
+            elif entry['quantity'] == held:
                 entry.pop('quantity')              # unchanged count restated: no stock change
                 entry['item_name'] = stored
             elif model_authored:
@@ -1396,7 +1499,15 @@ def prepare_character_delta(character_data, updates, character_role, schema,
         if dropped_states:
             info(f"STATES: {character_name}: dropped model-written {dropped_states}; the engine sets unconscious and alive from hit points",
                  category="character_updates")
-    stock_deltas, stock_reason = _split_equipment_quantity_deltas(character_data, updates, model_authored)
+    bound, bind_reason = _bind_equipment_rows(character_data, updates)
+    if bind_reason:
+        return updates, character_data, {
+            'critical_warnings': [], 'removed_fields': [], 'schema_valid': False,
+            'error_message': bind_reason,
+        }
+    stock_deltas, stock_reason = _split_equipment_quantity_deltas(character_data, updates, model_authored, bound)
+    for position, index in bound.items():
+        updates['equipment'][position][_BOUND_ROW] = index
     if stock_reason:
         return updates, character_data, {
             'critical_warnings': [], 'removed_fields': [], 'schema_valid': False,
@@ -1523,10 +1634,13 @@ def prepare_character_delta(character_data, updates, character_role, schema,
         # The requested change reaches the engine unclamped: a stack that
         # would go below zero stays in the merged sheet so the engine sees
         # the exact consume and refuses it (never silently emptied).
-        for entry in updated_data.get('equipment') or []:
-            if isinstance(entry, dict) and entry.get('item_name') in stock_deltas:
-                base = entry.get('quantity', 1) if type(entry.get('quantity')) is int else 1
-                entry['quantity'] = base + stock_deltas.pop(entry['item_name'])
+        stock_rows = _bound_stock_rows(updated_data, stock_deltas, bound)
+        for entry, delta in stock_rows:
+            base = entry.get('quantity', 1) if type(entry.get('quantity')) is int else 1
+            entry['quantity'] = base + delta
+    for entry in (updated_data.get('equipment') or []) + (updates.get('equipment') or []):
+        if isinstance(entry, dict):
+            entry.pop(_BOUND_ROW, None)
     # Temporary effects: the classifier's add/remove operation, and any live
     # effect the engine does not hold yet (a sheet written before E12), go
     # through the lifecycle so the engine's armor class and maximum hit
@@ -1552,13 +1666,12 @@ def prepare_character_delta(character_data, updates, character_role, schema,
             checks.update(error_message=(
                 "the equipment change was refused by the rules engine: "
                 f"{outcome.reason}. Operations attempted: {' '.join(outcome.operations)}"))
-            if (outcome.fault or {}).get('code') == 'E_QUANTITY':
-                # Not enough stock: a restated delta cannot fix it, the DM must.
+            if (outcome.fault or {}).get('code') in ('E_QUANTITY', 'E_EQUIPMENT'):
+                # Not enough stock, or no free hand or slot: a restated delta
+                # cannot fix it, the DM must (#1135).
                 checks['engine_refusal'] = outcome.reason
             return updates, updated_data, checks
         updated_data['equipment'] = outcome.equipment
-        if outcome.notes:
-            checks['equipmentNotes'] = list(outcome.notes)
         for gap in outcome.gaps:
             debug(f"[Equipment Engine] {character_name}: {gap}", category="character_updates")
     updated_data = normalize_status_and_condition(updated_data, character_role)
@@ -1902,11 +2015,8 @@ def update_character_info(
     *,
     commit_guard=None,
     affects=None,
-    sheet_notes=None,
 ):
-    """Run one complete character update transaction under a per-file lock.
-    ``sheet_notes`` (a list the caller owns) receives the committed update's
-    typed equipment notes (#876)."""
+    """Run one complete character update transaction under a per-file lock."""
     lock = _get_character_update_lock(character_name, character_role)
     with lock:
         if commit_guard is not None:
@@ -1936,7 +2046,6 @@ def update_character_info(
                     structural_reissue=commit_guard is not None,
                     commit_guard=commit_guard,
                     affects=affects,
-                    sheet_notes=sheet_notes,
                 )
             return _update_character_info_unlocked(
                 character_name,
@@ -1947,7 +2056,6 @@ def update_character_info(
                 structural_reissue=commit_guard is not None,
                 commit_guard=commit_guard,
                 affects=affects,
-                sheet_notes=sheet_notes,
             )
 
 
@@ -1962,7 +2070,6 @@ def _update_character_info_unlocked(
     *,
     commit_guard=None,
     affects=None,
-    sheet_notes=None,
 ):
     """
     Unified function to update character information for both players and NPCs
@@ -2148,6 +2255,8 @@ Your primary goal is to generate the smallest possible valid JSON object that re
    - **NEVER** return the entire list if only one item is changed.
    - To **MODIFY** an existing item: Return an array containing an object with the item's identifier (`item_name` for equipment, `name` for ammunition) and ONLY the fields that changed.
      - *Example:* `{{ "equipment": [{{ "item_name": "Shield", "equipped": false }}] }}`
+   - To **EQUIP ONE** of a stack (draws one of two daggers): `{{ "equipment": [{{ "item_name": "Dagger", "equipped": true }}] }}`; the engine wears one unit and the rest stays carried.
+   - When several sheet rows share the `item_name` (one worn, one carried), add that row's `nql_id` exactly as on the sheet to say which one changes (`equipped` true for the worn row or false for the carried row also says which when no `nql_id` is given).
    - To **ADD** a new item (its name is NOT on the sheet): Return an array containing an object with the full details of ONLY the new item; `quantity` is how many were acquired.
      - *Example:* `{{ "equipment": [{{ "item_name": "Potion of Healing", "item_type": "consumable", "quantity": 1 }}] }}`
    - To **CHANGE HOW MANY** of an item already on the sheet (bought more, found more, used some, gave some away): `quantityDelta` = the signed change, with the `item_name` exactly as on the sheet. NEVER compute or return the new count; the engine applies the change to the real stack and refuses using more than the character has.
@@ -2169,6 +2278,7 @@ Your primary goal is to generate the smallest possible valid JSON object that re
    - Weapon changes: Always include updated `attacksAndSpellcasting` array entries for the affected weapons.
    - Armor class: do NOT include `armorClass` or `equipment_effects`. The rules engine computes both from the equipped items' typed fields (`armor_category`, `ac_base`, `ac_bonus`, `dex_limit`) after your delta is applied. Give new armor those fields instead.
    - Item typing: `item_type` "armor" is only for body armor and shields, and such an entry MUST carry `armor_category` and `ac_base` (plus `dex_limit` for medium armor). An amulet, ring, cloak, robe, bracer or charm that gives no armor base is "miscellaneous" with an `item_subtype`; a magic item that adds to AC states that in its `effects` list, not by being typed armor.
+   - Hit dice: never write `hitDice`. The rest action spends them and a long rest restores them; the rules engine keeps the count.
    - Status: never write `status` for hit point reasons. The rules engine sets "unconscious" when hit points reach 0 and "alive" when they rise above 0; `dead` is the DM's call.
 
    - **Example - Shield is destroyed:**
@@ -2862,9 +2972,6 @@ Character Role: {character_role}
             save_result = commit_character_sheet(character_path, updated_data, commit_guard=commit_guard)
             if save_result:
                 primary_committed = True
-                if sheet_notes is not None:
-                    # #876: the committed delta's typed notes, for the caller.
-                    sheet_notes[:] = preparation_checks.get('equipmentNotes') or []
             try:
                 print(f"DEBUG: [SAVE] safe_write_json returned: {save_result}")
             except Exception as exc:

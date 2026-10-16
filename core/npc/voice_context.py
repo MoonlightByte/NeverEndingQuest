@@ -605,7 +605,15 @@ def _enrich_ooc_packets(
 def _accepted_legacy_combat_evidence_summary(
     conversation_prefix: Iterable[Any],
 ) -> str:
-    """Return the latest accepted legacy T045 pair, never the current turn."""
+    """Return the latest accepted legacy T045 pair, never the current turn.
+
+    A turn message names what it is by its game fields: an automatic
+    initiative window is a COMBAT_CONTINUATION marker, a player's turn
+    carries the player's words. A turn saved before those fields existed
+    is read from its turn message as it always was.
+    """
+    from core.ai import history_markers
+
     messages = list(conversation_prefix)
     player_marker = "--- PLAYER ACTION ---"
     required_marker = "--- REQUIRED RESPONSE ---"
@@ -631,6 +639,13 @@ def _accepted_legacy_combat_evidence_summary(
             content = user.get("content")
             if not isinstance(content, str):
                 break
+            if history_markers.is_marker(dict(user), history_markers.COMBAT_CONTINUATION):
+                break
+            if history_markers.PLAYER_INPUT_FIELD in user:
+                player_text = history_markers.player_input(dict(user))
+                if not player_text:
+                    break
+                return "Player: %s Result: %s" % (player_text, narration)
             if player_marker not in content or required_marker not in content:
                 break
             player_text = content.split(player_marker, 1)[1]
