@@ -19,7 +19,7 @@ def _object_schema(properties):
 
 STARTUP_RESPONSE_SCHEMA = _object_schema({
     "version": {"type": "integer", "enum": [1]},
-    "decision": {"type": "string", "enum": ["continue_interview", "finalize_character"]},
+    "decision": {"type": "string", "enum": ["continue_interview", "finalize_character", "pause_setup"]},
     "narration": {"type": "string"},
     "confirmation": _object_schema({
         "player_message_index": {"type": ["integer", "null"], "minimum": 0},
@@ -86,6 +86,10 @@ def parse_startup_response(text, *, latest_user_index):
             raise ValueError("Finalization requires whole-build approval of the latest actual player input and a character")
     elif value["character"] is not None or confirmation["whole_build_approved"]:
         raise ValueError("An interview response cannot approve or contain a character")
+    elif value["decision"] == "pause_setup" and (
+            type(index) is not int or type(latest_user_index) is not int
+            or index != latest_user_index):
+        raise ValueError("A pause must cite the latest actual player input, which asked to stop")
     elif index is not None and (type(index) is not int or index != latest_user_index):
         raise ValueError("Confirmation reference must be null or the latest actual player input")
     return value

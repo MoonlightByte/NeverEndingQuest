@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-register_callsite("T020", "core/ai/incremental_compression.py", 198)
+register_callsite("T020", "core/ai/incremental_compression.py", 247)
 import shutil
 
 # Add project root to path for standalone execution
@@ -203,10 +203,8 @@ class IncrementalLocationCompressor:
                         context_parts.append(f"DM: {content}")
                 else:
                     context_parts.append(f"DM: {content}")
-            elif role == "system":
-                # Include important system messages
-                if "arrived at" in content.lower() or "summary" in content.lower():
-                    context_parts.append(f"System: {content}")
+            # System messages are context the game rebuilds every turn, not
+            # events at this location; summaries in history are assistant markers.
         
         if not context_parts:
             warning("No content to compress after filtering")
@@ -299,9 +297,7 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
         # Find last location transition
         last_transition_idx = 0
         for i, msg in enumerate(messages):
-            if msg.get("role") == "system" and "arrived at" in msg.get("content", "").lower():
-                last_transition_idx = i
-            elif hm.is_marker(msg, hm.LOCATION_TRANSITION):
+            if hm.is_marker(msg, hm.LOCATION_TRANSITION):
                 last_transition_idx = i
         
         # Get messages since last transition
@@ -395,10 +391,7 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
         last_transition_idx = 0
         current_location_msg = None
         for i, msg in enumerate(messages):
-            if msg.get("role") == "system" and "arrived at" in msg.get("content", "").lower():
-                last_transition_idx = i
-                current_location_msg = msg
-            elif hm.is_marker(msg, hm.LOCATION_TRANSITION):
+            if hm.is_marker(msg, hm.LOCATION_TRANSITION):
                 last_transition_idx = i
                 current_location_msg = msg
         

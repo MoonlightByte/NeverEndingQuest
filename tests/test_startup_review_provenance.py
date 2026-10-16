@@ -796,7 +796,10 @@ def test_continue_interview_never_projects_or_commits(wizard, monkeypatch):
     monkeypatch.setattr(wizard, "startup_mechanics", lambda *a, **k: pytest.fail("No projection of an interview"))
     monkeypatch.setattr(wizard, "save_startup_conversation", lambda *a, **k: None)
     monkeypatch.setattr(wizard, "_commit_startup_build", lambda *a, **k: pytest.fail("No character commit"))
-    monkeypatch.setattr("builtins.input", lambda *a: "cancel")
+    def leave(*a):  # end the interview the way Ctrl+D does; "cancel" is an answer now
+        raise EOFError
+
+    monkeypatch.setattr("builtins.input", leave)
 
     def model(messages, *args, **kwargs):
         if kwargs.get("startup_phase") == "startup_review":
