@@ -159,112 +159,8 @@ class SRDReferenceIndex:
                 )
         return result
 
-    def lookup_terms(self):
-        """Yield canonical lookup key, display term, and alias status."""
-        for canonical_key, entry in self.entries.items():
-            yield canonical_key, entry["name"], False
-            for alias in self._aliases_by_key[canonical_key]:
-                yield canonical_key, alias, True
 
-    def reference_terms(self):
-        """Yield kind-aware canonical and alias terms for contextual matching."""
-        for canonical_key, term, is_alias in self.lookup_terms():
-            yield (
-                self._kinds_by_key[canonical_key],
-                canonical_key,
-                term,
-                is_alias,
-            )
-
-
-_COMMON_OR_SHORT_RULE_NAMES = frozenset(
-    ("aid", "confusion", "help", "light", "shield", "slow")
-)
-_EXPLICIT_RULE_VERBS = frozenset(
-    (
-        "cast",
-        "casts",
-        "casting",
-        "cst",
-        "invoke",
-        "invokes",
-        "invoking",
-        "channel",
-        "channels",
-    )
-)
-_COMMON_RULE_SINGLE_TEXT_BLOCKLIST = frozenset(
-    ("cover", "prone", "darkness", "light", "falling", "object", "objects")
-)
 _DEFAULT_RULE_INDEX = object()
-
-
-def tokenize_rule_text(value):
-    """Return the canonical token stream used by every SRD matcher."""
-    normalized = unicodedata.normalize("NFKD", str(value or "")).replace("’", "'")
-    normalized = "".join(
-        character for character in normalized if not unicodedata.combining(character)
-    )
-    return tuple(re.findall(r"[a-z0-9]+", normalized.lower()))
-
-
-_tokens = tokenize_rule_text
-
-
-def _phrase_spans(haystack, needle):
-    if not needle or len(needle) > len(haystack):
-        return ()
-    return tuple(
-        (index, index + len(needle))
-        for index in range(len(haystack) - len(needle) + 1)
-        if haystack[index : index + len(needle)] == needle
-    )
-
-
-def _explicit_short_rule_use(tokens, start, end):
-    before = tokens[max(0, start - 3) : start]
-    after = tokens[end : min(len(tokens), end + 2)]
-    return bool(set(before) & _EXPLICIT_RULE_VERBS) or "spell" in after
-
-
-def fuzzy_rule_candidate_allowed(text, term, kind, span):
-    """Apply the exact matcher's conservative guards to one fuzzy candidate.
-
-    ``span`` is the token range in ``text`` that approximately matched
-    ``term``.  Fuzzy lookup is optional provider guidance, so ambiguity must
-    fail closed and it must never be looser than exact contextual lookup.
-    """
-    text_tokens = _tokens(text)
-    term_tokens = _tokens(term)
-    if not term_tokens or not isinstance(span, (tuple, list)) or len(span) != 2:
-        return False
-    start, end = span
-    if type(start) is not int or type(end) is not int:
-        return False
-    if start < 0 or end <= start or end > len(text_tokens):
-        return False
-    key = normalize_rule_name(term)
-    if kind == "spell":
-        guarded = key in _COMMON_OR_SHORT_RULE_NAMES or (
-            len(term_tokens) == 1 and len(term_tokens[0]) <= 8
-        )
-        if (
-            len(term_tokens) == 1
-            and len(term_tokens[0]) <= 5
-            and (
-                key in _COMMON_OR_SHORT_RULE_NAMES
-                or term_tokens[0] in _COMMON_RULE_SINGLE_TEXT_BLOCKLIST
-            )
-        ):
-            return False
-        if guarded and not _explicit_short_rule_use(text_tokens, start, end):
-            return False
-    elif (
-        len(term_tokens) == 1
-        and term_tokens[0] in _COMMON_RULE_SINGLE_TEXT_BLOCKLIST
-    ):
-        return False
-    return True
 
 
 def _sheet_spell_names(sheet):
@@ -313,7 +209,7 @@ def _spell_slot_hints(sheet, spell_level):
 
 
 class SRDContextMatcher:
-    """Select a tiny set of exact SRD references for one actor/action context."""
+    """SRD references for one actor: typed rule names and the listed spells."""
 
     def __init__(
         self,
@@ -333,15 +229,13 @@ class SRDContextMatcher:
         if self.rule_index is not None:
             indexes.append(self.rule_index)
         self._reference_indexes = tuple(indexes)
-        self._terms = tuple(
-            (reference_index, kind, key, term, is_alias, _tokens(term))
-            for reference_index in self._reference_indexes
-            for kind, key, term, is_alias in reference_index.reference_terms()
-        )
 
-    def select(self, text, actor_sheet=None, structured_names=None):
-        """Return ranked exact/alias matches without calling a provider."""
-        text_tokens = _tokens(text)
+    def select(self, actor_sheet=None, structured_names=None):
+        """Return the references named by typed rule and resource fields.
+
+        Only typed names are matched; the player's words and scene prose are
+        never searched for rule names (D-KW-5).
+        """
         known_names = _sheet_spell_names(actor_sheet)
         known_by_key = {}
         for sheet_name in known_names:
@@ -350,48 +244,6 @@ class SRDContextMatcher:
                 known_by_key.setdefault(key, sheet_name)
 
         selected = {}
-        spans_by_key = {}
-        for reference_index, kind, key, term, is_alias, term_tokens in self._terms:
-            for start, end in _phrase_spans(text_tokens, term_tokens):
-                if kind == "spell":
-                    canonical_short = key in _COMMON_OR_SHORT_RULE_NAMES or (
-                        len(term_tokens) == 1 and len(term_tokens[0]) <= 8
-                    )
-                    if canonical_short and not _explicit_short_rule_use(
-                        text_tokens, start, end
-                    ):
-                        continue
-                    score = 300 if key in known_by_key else 200
-                    if _explicit_short_rule_use(text_tokens, start, end):
-                        score += 100
-                else:
-                    if (
-                        len(term_tokens) == 1
-                        and term_tokens[0] in _COMMON_RULE_SINGLE_TEXT_BLOCKLIST
-                    ):
-                        continue
-                    score = 220
-                if is_alias:
-                    score -= 5
-                rule_id = "%s:%s" % (kind, key)
-                candidate = {
-                    "key": key,
-                    "ruleId": rule_id,
-                    "kind": kind,
-                    "entry": reference_index.entries[key],
-                    "matchedTerm": term,
-                    "matchSource": "text",
-                    "score": score,
-                    "span": (start, end),
-                }
-                existing = selected.get(rule_id)
-                if existing is None or (score, end - start) > (
-                    existing["score"],
-                    existing["span"][1] - existing["span"][0],
-                ):
-                    selected[rule_id] = candidate
-                    spans_by_key[rule_id] = (start, end)
-
         if isinstance(structured_names, str):
             structured_values = (structured_names,)
         else:
@@ -430,41 +282,7 @@ class SRDContextMatcher:
                 "matchedTerm": str(value),
                 "matchSource": "structured",
                 "score": 500,
-                "span": None,
             }
-
-        # Prefer the longest exact phrase when names overlap, such as Shield
-        # and Shield of Faith. Explicit structured fields remain authoritative.
-        suppressed = set()
-        for rule_id, candidate in tuple(selected.items()):
-            span = candidate.get("span")
-            if span is None:
-                continue
-            for other_rule_id, other in tuple(selected.items()):
-                if other_rule_id == rule_id or other.get("span") is None:
-                    continue
-                other_span = other["span"]
-                if other_span == span and other["kind"] != candidate["kind"]:
-                    # Some terms name both a spell and a general rule, such as
-                    # Darkvision. An explicit cast/spell phrase selects the
-                    # spell. A bare mention selects the rule instead of
-                    # teaching spell mechanics for an ordinary sense.
-                    explicit_spell = _explicit_short_rule_use(
-                        text_tokens, span[0], span[1]
-                    )
-                    if candidate["kind"] == ("rule" if explicit_spell else "spell"):
-                        suppressed.add(rule_id)
-                        break
-                if (
-                    other_span[0] <= span[0]
-                    and other_span[1] >= span[1]
-                    and other_span[1] - other_span[0] > span[1] - span[0]
-                ):
-                    suppressed.add(rule_id)
-                    break
-
-        for rule_id in suppressed:
-            selected.pop(rule_id, None)
 
         ranked = sorted(
             selected.values(),
@@ -489,62 +307,6 @@ class SRDContextMatcher:
                 actor_sheet, int(entry.get("level", 0) or 0)
             )
         return ranked
-
-    def render(self, matches):
-        """Render every selected whole reference."""
-        if not matches:
-            return ""
-        header = "[SRD CONTEXT — SRD 5.2.1 guidance for this turn]"
-        footer = (
-            "Use a reference only for the named rule being resolved. "
-            "Do not invent actor availability or resource names."
-        )
-        blocks = []
-        for match in matches:
-            entry = match["entry"]
-            lines = [
-                "[%s] %s" % (match["ruleId"], entry["name"]),
-            ]
-            if match["kind"] == "spell":
-                if match.get("sheetSpellName"):
-                    availability = (
-                        'listed on the actor sheet as "%s"'
-                        % match["sheetSpellName"]
-                    )
-                elif match.get("actorAvailability") == "not_listed":
-                    availability = "not listed on the actor spell list"
-                else:
-                    availability = (
-                        "actor sheet unavailable; verify availability from current state"
-                    )
-                lines.append("Actor availability: %s." % availability)
-                hints = match.get("resourceHints") or ()
-                if hints:
-                    rendered_hints = []
-                    for hint in hints:
-                        values = ""
-                        if hint.get("current") is not None:
-                            values = " current=%s" % hint["current"]
-                        if hint.get("max") is not None:
-                            values += " max=%s" % hint["max"]
-                        rendered_hints.append(
-                            "kind=%s name=%s%s"
-                            % (hint["kind"], hint["name"], values)
-                        )
-                    lines.append(
-                        "Exact available sheet resource keys: %s."
-                        % "; ".join(rendered_hints)
-                    )
-            lines.append("Guidance: %s" % entry["compactGuidance"])
-            block = "\n".join(lines)
-            blocks.append(block)
-        if not blocks:
-            return ""
-        return "%s\n%s\n%s" % (header, "\n\n".join(blocks), footer)
-
-    def context_for(self, text, actor_sheet=None, structured_names=None):
-        matches = self.select(text, actor_sheet, structured_names)
-        return {"matches": matches, "context": self.render(matches)}
 
     def legal_spell_index(self, actors):
         """Return the complete metadata-only index for automatic actor choices."""
@@ -667,7 +429,6 @@ def corrective_rule_references(
     actor_sheet = (characters or {}).get(actor_name) if actor_name else None
     matcher = SRDContextMatcher(index=index)
     matches = matcher.select(
-        "",
         actor_sheet=actor_sheet,
         structured_names=structured_names,
     )

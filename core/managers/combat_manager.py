@@ -141,10 +141,6 @@ except Exception as e:
     print(f"[COMBAT_MANAGER] OpenAI usage tracking not available: {e}")
     def track_response(r): pass
     def get_usage_stats(): return {}
-# Import model configurations from config.py
-from config import (
-    OPENAI_API_KEY,
-)
 from updates.update_character_info import update_character_info, normalize_character_name
 import updates.update_encounter as update_encounter
 # Import the preroll generator
@@ -270,11 +266,7 @@ from utils.transient_filesystem import ReadOnlySaveStop, raise_if_save_stopped
 from utils.module_refresh_lock import wait_for_module_refresh
 import core.ai.cumulative_summary as cumulative_summary
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
-# Import combat message compressor for optimizing conversation history
-from core.ai.combat_compressor import CombatUserMessageCompressor
 from core.ai import history_markers as hm
-# Import the SRD context block for a rule named in a player's combat action
-from core.ai.inventory_context_integration import build_srd_context
 
 # Set script name for logging
 set_script_name(__name__)
@@ -468,9 +460,6 @@ third_model_history_file = "modules/conversation_history/third_model_history.jso
 
 # Create a combat_logs directory if it doesn't exist
 os.makedirs("combat_logs", exist_ok=True)
-
-# Initialize combat message compressor with API key
-combat_message_compressor = CombatUserMessageCompressor(api_key=OPENAI_API_KEY)
 
 # Constants for chat history generation
 HISTORY_TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
@@ -988,36 +977,11 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
             if msg["role"] in ["user", "assistant"]
         ][-(context_pairs * 2):]  # Ensure we only get exactly 12 messages
         
-        # Apply compression to user messages except the last 2
-        compressed_context = []
-        user_message_count = 0
-        total_user_messages = sum(1 for msg in context_messages if msg["role"] == "user")
-        
-        for msg in context_messages:
-            if msg["role"] == "user":
-                user_message_count += 1
-                # Compress all user messages except the last 2
-                if user_message_count <= total_user_messages - 2:
-                    # Check if this is a combat message that should be compressed
-                    if combat_message_compressor.should_compress_user_message(msg, 0, 999):  # Use dummy index since we're just checking content
-                        compressed_content = combat_message_compressor.compress_message((0, msg["content"]))[1]
-                        compressed_context.append({
-                            "role": "user",
-                            "content": compressed_content
-                        })
-                        debug(f"VALIDATION: Compressed user message {user_message_count}/{total_user_messages}", category="combat_validation")
-                    else:
-                        # Not a combat message, keep as-is
-                        compressed_context.append(msg)
-                else:
-                    # Keep last 2 user messages uncompressed
-                    compressed_context.append(msg)
-                    debug(f"VALIDATION: Keeping user message {user_message_count}/{total_user_messages} uncompressed", category="combat_validation")
-            else:
-                # Keep assistant messages as-is
-                compressed_context.append(msg)
-        
-        # Add context header and compressed messages
+        # The context messages are sent as saved (combat message
+        # compression was removed, owner Q6 (ii)).
+        compressed_context = list(context_messages)
+
+        # Add context header and the context messages
         validation_conversation.append({
             "role": "system", 
             "content": f"=== PREVIOUS COMBAT CONTEXT (last {context_pairs} exchanges with compression) ==="
@@ -4160,8 +4124,7 @@ This is narration only. Do not advance the round or apply any combat action."""
 
            temperature_used = get_combat_temperature(encounter_data, validation_attempt=0)
 
-           # Compress conversation history before sending to AI
-           messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
+           messages_to_send = copy.deepcopy(conversation_history)
 
            _require_current_combat_invocation(invocation_claim)
            resume_response = capture_and_fanout("T043", api_client.create_completion,
@@ -4225,9 +4188,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                )
            except Exception:
                pass
-           retry_messages = combat_message_compressor.process_combat_conversation(
-               conversation_history
-           )
+           retry_messages = copy.deepcopy(conversation_history)
            retry_response = capture_and_fanout(
                "T043",
                api_client.create_completion,
@@ -4328,8 +4289,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                # Calculate temperature with attempt number for dynamic adjustment
                temperature_used = get_combat_temperature(encounter_data, validation_attempt=attempt)
 
-               # Compress conversation history before sending to AI
-               messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
+               messages_to_send = copy.deepcopy(conversation_history)
 
                response = capture_and_fanout("T044", api_client.create_completion,
                    _request_provider=MODEL_PROVIDER,
@@ -4834,34 +4794,9 @@ This is narration only. Do not advance the round or apply any combat action."""
                active_round_scope = open_live_turn_scope()
                owned_round_scope["scope"] = active_round_scope
 
-       # Preserve the actual submission for deterministic rule matching. The
-       # text below may carry the code-authored SRD block, which must never be
-       # treated as a fresh player mention.
+       # The player's submission as typed (D-KW-5: never annotated).
        raw_combat_input_text = user_input_text
        
-       # Add the SRD block for a rule the player names (legacy combat only).
-       # The player's words are never annotated with guessed items (D-KW-5).
-       try:
-           # Load fresh player data for the SRD block
-           player_file = path_manager.get_character_path(normalize_character_name(player_name_display))
-           fresh_player_data = safe_json_load(player_file)
-           
-           # The automatic initiative continuation is a system instruction,
-           # not a player action, so it gets no SRD block.
-           if not automatic_initiative_step and not agentic_mode:
-               srd_context = build_srd_context(
-                   raw_combat_input_text,
-                   fresh_player_data,
-               )
-               if srd_context:
-                   user_input_text = "%s\n\n%s" % (user_input_text, srd_context)
-                   debug(
-                       "COMBAT_LOOP: Added SRD context to player input",
-                       category="combat_events",
-                   )
-       except Exception as e:
-           debug(f"COMBAT_LOOP: Failed to add SRD context: {e}", category="combat_events")
-           # Continue with the player's input as typed
        presentation_history_input = _delivery_history_input(
            presentation_history_input, user_input_text
        )
@@ -5094,7 +5029,6 @@ This is narration only. Do not advance the round or apply any combat action."""
 
                spell_references = build_contextual_spell_payload(
                    context_sheets,
-                   raw_combat_input_text,
                    actor_names=automatic_turn_window,
                    encounter_context="\n".join(
                        str(value)
@@ -5655,11 +5589,10 @@ Rules:
 
                print(f"DEBUG: [COMBAT] Using model: {combat_config['model']} (temp: {temperature_used}, provider: {MODEL_PROVIDER}, attempt: {attempt + 1})")
 
-               # Compress conversation history before sending to AI
-               messages_to_send = combat_message_compressor.process_combat_conversation(conversation_history)
+               messages_to_send = copy.deepcopy(conversation_history)
 
-               # T105 guidance is private and request-local. Compression runs
-               # first, then the same immutable batch is inserted before the
+               # T105 guidance is private and request-local. The history is
+               # copied first, then the same immutable batch is inserted before the
                # final user combat-state message on every correction attempt.
                if legacy_voice_batch is not None:
                    try:
