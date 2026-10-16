@@ -912,8 +912,8 @@ class LocationPromptGuide:
 #                           (generate_field), seeded with the location's own good
 #                           content; code splices the value back in.
 #   * Creative that still -> a minimal schema-valid floor so the build never
-#     fails (rare)          aborts; the field name is returned so the pipeline can
-#                           flag the location for the module doctor to enrich.
+#     fails (rare)          aborts: a creative string is left empty, and the DM
+#                           narrates the gap in play from the location's context.
 _T026_STRUCTURAL_STUB_FIELDS = (
     "locationId", "name", "type", "coordinates", "connectivity",
     "areaConnectivity", "areaConnectivityId",
@@ -951,15 +951,14 @@ def _t026_creative_floor(field_schema: Dict[str, Any]) -> Any:
         return {}
     if kind in ("integer", "number"):
         return field_schema.get("minimum", 0) if isinstance(field_schema, dict) else 0
-    return "To be detailed by the module doctor."
+    return ""
 
 
 def _t026_surgical_repair_location(gen, location, stub, issues, item_schema, context):
     """Repair ONLY the broken fields of one location, preserving accepted content.
 
     Returns (fixed_location, floored_fields). The caller re-validates; any field in
-    floored_fields was code-filled as a last resort and should be flagged for the
-    module doctor.
+    floored_fields was code-filled as a last resort (an empty creative value).
     """
     fixed = copy.deepcopy(location)
     props = item_schema.get("properties", {}) if isinstance(item_schema, dict) else {}
@@ -1380,7 +1379,7 @@ Do not return commentary or Markdown.
         # fields are code-filled from the trusted stub, creative fields are
         # re-asked one at a time (generate_field) and spliced back in, and a
         # creative field the model still cannot produce gets a minimal valid floor
-        # flagged for the module doctor. Locations made valid drop out of the
+        # (an empty string the DM narrates in play). Locations made valid drop out of the
         # whole-location repair set below, so a weak model's stochastic field
         # omission never aborts the build.
         if invalid_by_index:
@@ -1410,7 +1409,7 @@ Do not return commentary or Markdown.
                         print(
                             "WARNING: T026 surgical repair floor-filled "
                             f"{location_stubs[index].get('locationId')} fields "
-                            f"{floored}; flag for module doctor enrichment"
+                            f"{floored}; left empty for the DM to narrate"
                         )
             invalid_by_index = remaining_invalid
 

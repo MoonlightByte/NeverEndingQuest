@@ -625,6 +625,17 @@
       "minimum": 0,
       "description": "Level-ups the experience points have earned beyond the current level, written by the rules engine (0 when none)."
     },
+    "hitDice": {
+      "type": "object",
+      "description": "Hit dice left per die size, written by the rules engine on a rest (never by the agent). The maximum is the character's level; a short rest spends them and a long rest restores all of them.",
+      "additionalProperties": false,
+      "properties": {
+        "d6": {"type": "integer", "minimum": 0},
+        "d8": {"type": "integer", "minimum": 0},
+        "d10": {"type": "integer", "minimum": 0},
+        "d12": {"type": "integer", "minimum": 0}
+      }
+    },
     "concentration": {
       "type": "object",
       "description": "The spell this character concentrates on, written by code when a concentration effect is classified (never by the agent). The rules engine holds one per caster, makes the Constitution save when damage lands and ends the spell everywhere when it breaks.",
