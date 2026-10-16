@@ -67,6 +67,38 @@ def _find(entries, name):
     )
 
 
+def typed_multiattack_issue(sheet):
+    """The reason a stat block's Multiattack is not typed, or None.
+
+    Builders refuse a block this names, so no new block plays the blank-marker
+    fallback: a Multiattack entry needs the top-level multiattackSequence, and
+    every item names an executable entry, resolved exactly as attack_sequence
+    resolves it (_find). Item shape and counts are the schema's
+    (mon_schema multiattackSequence).
+    """
+    entries = action_entries(sheet)
+    sequence = (sheet or {}).get("multiattackSequence")
+    if sequence is None:
+        if any(is_multiattack_marker(entry) for entry in entries):
+            return (
+                "the Multiattack entry needs a top-level multiattackSequence: "
+                "one {name, count} per component attack, naming this monster's "
+                "own attack entries"
+            )
+        return None
+    if not isinstance(sequence, list):
+        return "multiattackSequence must be a list of {name, count}"
+    attacks = [entry.get("name") for entry in entries if is_executable_attack(entry)]
+    for index, item in enumerate(sequence):
+        name = item.get("name") if isinstance(item, dict) else None
+        if _find(entries, name) is None:
+            return (
+                "multiattackSequence item %d names %r, which is not one of this "
+                "monster's attack entries %s" % (index, name, attacks)
+            )
+    return None
+
+
 def _explicit_sequence(sheet, marker, override):
     value = override
     if value is None:
