@@ -169,7 +169,6 @@ def chunked_compression(conversation_file="modules/conversation_history/conversa
         debug(f"COMPRESSION_STATS: Original tokens: {result['original_tokens']:,}", category="compression")
         debug(f"COMPRESSION_STATS: Summary tokens: {result['summary_tokens']:,}", category="compression")
         debug(f"COMPRESSION_STATS: Compression ratio: {result['compression_ratio']:.1%}", category="compression")
-        debug(f"COMPRESSION_STATS: Events preserved: {result['events_preserved']}", category="compression")
         
         # Create the compressed conversation
         compressed_conversation = conversation_data.copy()
@@ -239,7 +238,6 @@ def chunked_compression(conversation_file="modules/conversation_history/conversa
 - **Original tokens**: {result['original_tokens']:,}
 - **Summary tokens**: {result['summary_tokens']:,}
 - **Compression ratio**: {result['compression_ratio']:.1%}
-- **Events preserved**: {result['events_preserved']}
 
 ## Chronicle Status
 - **Total AI chronicles**: {len([m for m in compressed_conversation if '[AI-Generated Chronicle Summary]' in m.get('content', '')])}
