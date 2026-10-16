@@ -3824,7 +3824,7 @@ def _engine_request_id(invocation_claim, action_context, suffix):
 
 
 def _show_rest_receipt(content):
-    """Show the player the hit dice code rolled on a short rest (#840)."""
+    """Show the player the hit dice the engine rolled on a short rest (#840)."""
     from web.shared_state import emit_player_output
 
     if emit_player_output({"type": "narration", "channel": "system", "content": content}) is not True:
@@ -5822,15 +5822,22 @@ Please use a valid location that exists in the current area ({current_area_id}) 
         debug("STATE_CHANGE: Processing rest action", category="character_updates")
         status_updating_character()
         try:
-            from core.managers.rest_manager import execute_rest
+            from core.managers.rest_manager import ask_hit_die_faces, execute_rest, player_hit_dice
 
+            # 7b-host: the player rolls their own hit dice (or presses Enter
+            # and the engine rolls); every other character's are the engine's.
+            faces = None
+            if str(parameters.get("restType") or "").strip().lower() == "short":
+                ask = player_hit_dice(party_tracker_data or {}, parameters.get("hitDice"))
+                if ask:
+                    faces = {ask[0]: ask_hit_die_faces(*ask, read=input)}
             result = execute_rest(parameters.get("restType"), party_tracker_data, conversation_history,
-                                  hit_dice=parameters.get("hitDice"))
+                                  hit_dice=parameters.get("hitDice"), faces=faces)
             if result.get("success"):
                 info(f"SUCCESS: {result.get('message')}", category="character_updates")
                 conversation_history.append({"role": "user", "content": f"Rest: {result.get('message')}"})
                 if result.get("hit_dice_receipts"):
-                    # #840: code rolled the hit dice; the player sees the roll.
+                    # #840: the engine rolled the hit dice; the player sees the roll.
                     _show_rest_receipt(" ".join(result["hit_dice_receipts"]))
                 if result.get("effects_note"):
                     # process_effect_lifecycle returns a complete message
