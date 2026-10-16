@@ -10,8 +10,9 @@ No model, lifecycle, schema or saved-state contract changes.
 
 ## #336 cancellation delta (2026-09-09; owner accepted A7 test gap)
 
-Intentional wizard input cancellation (EOF, Ctrl-C, or the existing interview
-quit/exit/cancel command) propagates as process-local StartupCancelled. The shared
+Intentional wizard input cancellation (EOF, Ctrl-C, or the interview's typed
+pause_setup decision, reviewed like any proposal; keyword item 4 of #855 retired
+the quit/exit/cancel words) propagates as process-local StartupCancelled. The shared
 runner owns one neutral pause acknowledgment. Both main entry points and the
 standalone wizard catch it without printing failure or starting incomplete play.
 Real False results, readiness checks and LiveProviderSuperseded remain distinct.
