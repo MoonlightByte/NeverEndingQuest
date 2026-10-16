@@ -4629,11 +4629,19 @@ def handle_generate_image(data):
             # Get the image URL
             image_url = response.data[0].url
         except Exception as dalle_error:
-            # Check if it's a content policy violation
-            if "content_policy_violation" in str(dalle_error) or "400" in str(dalle_error):
-                # Silently sanitize and retry
+            # A content-policy refusal, by the provider's typed error code (#855)
+            if getattr(dalle_error, "code", None) == "content_policy_violation":
+                # Rewrite (T089) and retry once
                 from utils.prompt_sanitizer import sanitize_prompt
                 sanitized_prompt = sanitize_prompt(prompt)
+                if sanitized_prompt is None:
+                    emit('image_generation_error', {
+                        'message': ("The image could not be made: the image service refused this "
+                                    "scene and no safer description could be written."),
+                        'request_id': data.get('request_id'),
+                        'source_message_id': data.get('source_message_id'),
+                    })
+                    return
                 
                 # Retry with sanitized prompt
                 response = client.images.generate(
