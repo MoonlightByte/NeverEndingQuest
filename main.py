@@ -7270,13 +7270,13 @@ def _get_ai_response_impl(
     
     # Get the last user message for action prediction
     user_input = ""
+    has_module_creation_prompt = False
     for msg in reversed(conversation_history):
         if msg.get("role") == "user":
             user_input = msg.get("content", "")
+            # The game marks the turn whose note carries the module creation prompt.
+            has_module_creation_prompt = bool(msg.get(hm.MODULE_CREATION_FIELD))
             break
-    
-    # Check if module creation prompt is present in user input
-    has_module_creation_prompt = "You are a master storyteller, cartographer of myth" in user_input
     
     # Predict if actions will be required (unless we're in a validation retry or module creation prompt)
     if detached_context:
@@ -9456,6 +9456,7 @@ def _main_game_loop(startup_authority, turn_authority):
 
         # #602: this turn's campaign-end prompt, if any; also the validator's fact.
         module_creation_prompt = ""
+        module_creation_prompt_in_note = False
         if party_members_stats:
             world_conditions = party_tracker_data["worldConditions"]
             # Use enhanced time formatting with context
@@ -9638,6 +9639,7 @@ def _main_game_loop(startup_authority, turn_authority):
             if not should_inject_creation_prompt:
                 dm_note += f" Open plot points located in this area: {plot_here_str} (see ADVENTURE PLOT STATUS)."
             dm_note += f"{module_creation_prompt}"
+            module_creation_prompt_in_note = bool(module_creation_prompt)
         else:
             dm_note = "Dungeon Master Note: Remember to take actions if necessary such as updating the plot, time, character sheets, and location if changes occur."
 
@@ -9748,11 +9750,12 @@ def _main_game_loop(startup_authority, turn_authority):
         # #449: the player's own words ride beside the envelope, typed. After a
         # dice submission the words are the engine's, so the turn is a marker.
         if check_continuation:
-            conversation_history.append(
-                hm.marker("user", user_input_with_note, hm.CHECK_CONTINUATION)
-            )
+            turn_message = hm.marker("user", user_input_with_note, hm.CHECK_CONTINUATION)
         else:
-            conversation_history.append(hm.player_turn(user_input_with_note, user_input_text))
+            turn_message = hm.player_turn(user_input_with_note, user_input_text)
+        if module_creation_prompt_in_note:
+            turn_message[hm.MODULE_CREATION_FIELD] = True
+        conversation_history.append(turn_message)
         initial_history_persisted = persist_t067_history_if_current(
             conversation_history
         )

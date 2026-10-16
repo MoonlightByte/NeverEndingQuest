@@ -31,8 +31,10 @@ MARKER_FIELD = "nql_marker"
 PLAYER_INPUT_FIELD = "nql_player_input"
 # The combat round a combat history message belongs to, written by the game.
 ROUND_FIELD = "nql_round"
+# True on the turn whose DM note carries the module creation prompt, written by the game.
+MODULE_CREATION_FIELD = "nql_module_creation_prompt"
 # The game's own fields on a history message; providers never receive them.
-GAME_FIELDS = (MARKER_FIELD, PLAYER_INPUT_FIELD, ROUND_FIELD)
+GAME_FIELDS = (MARKER_FIELD, PLAYER_INPUT_FIELD, ROUND_FIELD, MODULE_CREATION_FIELD)
 
 LOCATION_TRANSITION = "location_transition"
 MODULE_TRANSITION = "module_transition"
