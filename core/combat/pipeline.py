@@ -12,12 +12,15 @@ decision can never become a batched or stale mutation.
 from copy import deepcopy
 
 from core.combat.bonus_actions import (
+    OFF_HAND_ATTACK,
     bonus_action_names,
+    bonus_action_options,
     bonus_action_problem,
     bonus_name_refused,
     bonus_record,
     bonus_subintent,
     drop_bonus_spend,
+    off_hand_damage_rule,
 )
 from core.combat.events import make_event_id, validate_event
 from core.combat.resolver import (
@@ -54,6 +57,18 @@ class CombatIntentError(ValueError):
 
 class CombatPlayerInputRequired(CombatIntentError):
     """The player's claimed turn needs a roll or decision before resolution."""
+
+
+class CombatBonusAttackRollRequired(Exception):
+    """R3: the player's Off-hand Attack is valid and its Action resolved, but
+    its dice are not in yet; code asks them with a roll line (owner ruling)
+    and resolves the stored batch when they are. ``request`` holds the typed
+    ability and targetId."""
+
+    def __init__(self, actor_id, request):
+        super().__init__("The player's Off-hand Attack needs its dice")
+        self.actor_id = actor_id
+        self.request = request
 
 
 def _ordered_intents(batch, revision):
@@ -261,6 +276,72 @@ def resolve_effect_clock_window(encounter, characters, pending_turn):
     return [event], next_encounter, next_characters
 
 
+def _raise_bonus_problem(sheet, bonus, actor_id, problem):
+    """The typed correction for a bonusAction that cannot be ruled as given."""
+    if problem:
+        raise CombatIntentError(
+            problem,
+            actor_id,
+            {"violations": [problem], "bonusActionNames": bonus_action_names(sheet),
+             "bonusActionProblem": problem, "bonusActionNameRefused": bonus_name_refused(sheet, bonus),
+             "bonusActionOptions": bonus_action_options(sheet, bonus), "retryable": True},
+        )
+
+
+def _resolve_off_hand(encounter, characters, actor, controller, bonus, event_id, roll_source, phase):
+    """R3: the Off-hand Attack, after the Action (SRD Light: "later on the
+    same turn"). A target already down is not attacked (nothing is spent). The
+    player's swing is scored by code from the faces of its completed roll phase;
+    with none yet, CombatBonusAttackRollRequired asks for them. Another actor's
+    swing is rolled by code. The row's damage leaves out the ability modifier
+    unless the Two-Weapon Fighting style keeps it. Returns (record, encounter,
+    characters)."""
+    from core.nql import hands
+
+    actor_id = actor.get("combatantId")
+    record = {"featureName": OFF_HAND_ATTACK, "ability": bonus.get("ability"), "targetId": bonus.get("targetId"),
+              "description": str(bonus.get("description") or OFF_HAND_ATTACK), "order": "afterAction",
+              "outcome": {"targets": []}, "resources": []}
+    target = combatant_by_id(encounter, bonus.get("targetId"))
+    if target is None or not is_combatant_targetable(target) or int(target.get("currentHitPoints", 0) or 0) <= 0:
+        record["notTaken"] = "targetDown"
+        return record, encounter, characters
+    if controller == "human" and not (isinstance(phase, dict) and phase.get("ready") is True):
+        raise CombatBonusAttackRollRequired(
+            actor_id, {"ability": bonus.get("ability"), "targetId": bonus.get("targetId")})
+    sheet = (characters or {}).get(actor.get("name"))
+    rows = hands.light_melee_rows(sheet)
+    row = (rows or {}).get(bonus.get("ability"))
+    if row is None:
+        problem = "the Off-hand Attack's weapon is no longer a Light melee weapon in hand"
+        raise CombatIntentError(problem, actor_id, {"violations": [problem]})
+    rule = off_hand_damage_rule(sheet, row)
+    scoring = dict(characters)
+    if rule["removed"]:
+        scoring[actor.get("name")] = adjusted = deepcopy(sheet)
+        for entry in adjusted.get("attacksAndSpellcasting") or []:
+            if isinstance(entry, dict) and entry.get("name") == bonus.get("ability"):
+                entry["damageBonus"] = int(entry.get("damageBonus", 0) or 0) - rule["removed"]
+    sub = {"actorId": actor_id, "action": "attack", "ability": bonus.get("ability"),
+           "targetId": bonus.get("targetId"), "description": record["description"]}
+    if controller == "human":
+        resolution = resolve_player_weapon_attack(encounter, scoring, sub, phase, "%s-B" % event_id, roll_source)
+    else:
+        resolution = resolve_intent(encounter, scoring, sub, roll_source, "%s-B" % event_id)
+    if resolution.get("violations"):
+        feedback = {"violations": ["bonusAction: %s" % v for v in resolution["violations"]], "retryable": True}
+        raise CombatIntentError("; ".join(feedback["violations"]), actor_id, feedback)
+    event = resolution["event"]
+    problems = validate_event(event)
+    if problems:
+        raise CombatIntentError("; ".join(problems), actor_id, {"violations": problems})
+    next_encounter, next_characters = apply_resolution(encounter, characters, resolution)
+    record["outcome"] = deepcopy(event.get("outcome") or {"targets": []})
+    record["rolls"] = deepcopy(event.get("rolls") or [])
+    record["damageRule"] = rule
+    return record, next_encounter, next_characters
+
+
 def _resolve_bonus_action(encounter, characters, actor, controller, intent, bonus, event_id, roll_source,
                           clamp_feature_heals=False):
     """R2: the actor's typed Bonus Action, resolved and applied before its
@@ -268,15 +349,7 @@ def _resolve_bonus_action(encounter, characters, actor, controller, intent, bonu
     characters); the record rides on the actor's one event."""
     actor_id = actor.get("combatantId")
     sheet = (characters or {}).get(actor.get("name"))
-    problem = bonus_action_problem(sheet, bonus)
-    if problem:
-        raise CombatIntentError(
-            problem,
-            actor_id,
-            {"violations": [problem], "bonusActionNames": bonus_action_names(sheet),
-             "bonusActionProblem": problem, "bonusActionNameRefused": bonus_name_refused(sheet, bonus),
-             "retryable": True},
-        )
+    _raise_bonus_problem(sheet, bonus, actor_id, bonus_action_problem(sheet, bonus))
     sub = bonus_subintent(intent, bonus, actor.get("name"))
     sub["stateVersion"] = intent.get("stateVersion")
     resolution = resolve_adjudicated(
@@ -441,7 +514,13 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
         bonus = intent.pop("bonusAction", None)
         bonus_done = None
         bonus_spend_dropped = []
-        if bonus is not None:
+        off_hand = isinstance(bonus, dict) and bonus.get("featureName") == OFF_HAND_ATTACK
+        if off_hand:
+            # R3: checked now against the Action; resolved after it.
+            off_sheet = (next_characters or {}).get(actor.get("name"))
+            _raise_bonus_problem(off_sheet, bonus, actor_id,
+                                 bonus_action_problem(off_sheet, bonus, intent=intent, encounter=next_encounter))
+        elif bonus is not None:
             bonus_done, next_encounter, next_characters = _resolve_bonus_action(
                 next_encounter, next_characters, actor, controller, intent, bonus, event_id,
                 roll_source, clamp_feature_heals,
@@ -450,6 +529,16 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             # same spend: it is not taken twice.
             bonus_spend_dropped = drop_bonus_spend(intent, bonus_done, actor.get("name"))
         weapon_attack = pending_turn.get("weaponAttack")
+        off_hand_phase = None
+        if (
+            isinstance(weapon_attack, dict)
+            and weapon_attack.get("bonusAttack") is True
+            and weapon_attack.get("actorId") == actor_id
+        ):
+            # R3: the open phase is the Off-hand Attack's; the Action's own
+            # code-scored swing (if any) rides on it, already complete.
+            off_hand_phase = weapon_attack
+            weapon_attack = weapon_attack.get("mainSwing")
         if (
             isinstance(weapon_attack, dict)
             and weapon_attack.get("ready") is True
@@ -625,6 +714,10 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             next_characters,
         )
         _record_draw_applied(resolution["event"], next_characters)
+        if off_hand:
+            resolution["event"]["bonusAction"], next_encounter, next_characters = _resolve_off_hand(
+                next_encounter, next_characters, actor, controller, bonus, event_id, roll_source, off_hand_phase,
+            )
         snapshot_problems = validate_event(resolution.get("event"))
         if snapshot_problems:
             raise CombatIntentError(

@@ -11,6 +11,17 @@ and page for each); the player's words are never read. r0 resolves two of
 them: Second Wind (a heal from its own use) and Cunning Action (Dash,
 Disengage or Hide). The bonus action resolves before the Action, as its own
 adjudicated ruling, and its outcome rides on the actor's one event.
+
+R3 (owner, 2026-10-16): the Off-hand Attack, SRD 5.2.1 p89 Light: "When you
+take the Attack action on your turn and attack with a Light weapon, you can
+make one extra attack as a Bonus Action later on the same turn. That extra
+attack must be made with a different Light weapon, and you don't add your
+ability modifier to the extra attack's damage unless that modifier is
+negative." p88, Two-Weapon Fighting (Fighting Style feat): "you can add your
+ability modifier to the damage of that attack". It is listed when the sheet
+holds two Light melee weapons (typed equipment rows and the catalog's Light
+property) and resolves after the Action (owner: the SRD's order). Second Wind
+at full hit points restores nothing and is refused, naming the other options.
 """
 from __future__ import annotations
 
@@ -23,6 +34,9 @@ from core.leveling.tables import _feature_key, class_key, tables
 # is a Bonus Action in the SRD too, but its advantage is not resolved yet.
 R0_FEATURES = ("Second Wind", "Cunning Action")
 CUNNING_ACTION_OPTIONS = ("dash", "disengage", "hide")
+# R3: the Light property's extra attack, and the style that keeps its modifier.
+OFF_HAND_ATTACK = "Off-hand Attack"
+TWO_WEAPON_STYLE_FEATURE = "Fighting Style: Two-Weapon Fighting"
 
 
 def _level(sheet: Dict[str, Any]) -> int:
@@ -53,7 +67,25 @@ def bonus_action_names(sheet: Optional[Dict[str, Any]]) -> List[str]:
         rows = [name] + list(entry.get("table_names") or [])
         if any(_feature_key(row) in gained for row in rows):
             names.append(name)
-    return names
+    return names + ([OFF_HAND_ATTACK] if holds_two_light_melee(sheet) else [])
+
+
+def holds_two_light_melee(sheet: Optional[Dict[str, Any]]) -> bool:
+    """R3: two equipped weapon rows whose catalog entries are Light melee
+    weapons (typed equipment, the catalog's Light property; a stack row is one
+    weapon in hand, as the engine wears one)."""
+    from core.nql import item_catalog
+
+    held = 0
+    for row in (sheet or {}).get("equipment") or []:
+        if not isinstance(row, dict) or row.get("equipped") is not True:
+            continue
+        entry = item_catalog.entry(row.get("catalog_id"))
+        weapon = entry.get("weapon") if isinstance(entry, dict) else None
+        if isinstance(weapon, dict) and weapon.get("kind") == "Melee" and any(
+                isinstance(p, dict) and p.get("name") == "Light" for p in weapon.get("properties") or []):
+            held += 1
+    return held >= 2
 
 
 def bonus_name_refused(sheet: Optional[Dict[str, Any]], bonus: Any) -> bool:
@@ -62,8 +94,12 @@ def bonus_name_refused(sheet: Optional[Dict[str, Any]], bonus: Any) -> bool:
     return not isinstance(bonus, dict) or bonus.get("featureName") not in bonus_action_names(sheet)
 
 
-def bonus_action_problem(sheet: Optional[Dict[str, Any]], bonus: Any) -> Optional[str]:
-    """Why a declared bonusAction cannot be ruled as given, or None."""
+def bonus_action_problem(sheet: Optional[Dict[str, Any]], bonus: Any, intent: Optional[Dict[str, Any]] = None,
+                         encounter: Optional[Dict[str, Any]] = None, asking: bool = False) -> Optional[str]:
+    """Why a declared bonusAction cannot be ruled as given, or None. With
+    ``intent`` and ``encounter`` the Off-hand Attack is checked against the
+    Action and its target too; ``asking`` (the intent still asks the player
+    for a roll) leaves out the checks that need the answer."""
     names = bonus_action_names(sheet)
     if not isinstance(bonus, dict):
         return "bonusAction must be one object"
@@ -71,6 +107,17 @@ def bonus_action_problem(sheet: Optional[Dict[str, Any]], bonus: Any) -> Optiona
     if name not in names:
         return ("bonusAction.featureName must be one of this actor's bonusActionNames (%s)"
                 % (", ".join(repr(n) for n in names) or "none: this actor has no bonus action to take"))
+    if name == "Second Wind" and at_full_hit_points(sheet):
+        others = bonus_action_options(sheet, bonus)
+        return ("Second Wind restores hit points and %s is at full hit points (%s of %s): it is not taken. "
+                "Leave bonusAction out%s"
+                % ((sheet or {}).get("name") or "the actor", sheet.get("hitPoints"), sheet.get("maxHitPoints"),
+                   ", or use one of this actor's other bonus actions: %s" % ", ".join(repr(n) for n in others)
+                   if others else " (this actor has no other bonus action)"))
+    if name == OFF_HAND_ATTACK:
+        return off_hand_problem(sheet, bonus, intent, encounter)
+    if asking:
+        return None
     if name == "Cunning Action" and bonus.get("option") not in CUNNING_ACTION_OPTIONS:
         return "Cunning Action's bonusAction.option must be one of %s" % ", ".join(
             repr(o) for o in CUNNING_ACTION_OPTIONS)
@@ -78,6 +125,63 @@ def bonus_action_problem(sheet: Optional[Dict[str, Any]], bonus: Any) -> Optiona
         return ("Second Wind's bonusAction heals its user: targets [{combatantId: the actor, hpDelta, rolled}], "
                 "rolled the d10 face (1-10); ask the player's d10 first with the intent's requiresPlayerInput")
     return None
+
+
+def at_full_hit_points(sheet: Optional[Dict[str, Any]]) -> bool:
+    """The sheet's typed hit points are at their maximum."""
+    current, top = (sheet or {}).get("hitPoints"), (sheet or {}).get("maxHitPoints")
+    return type(current) is int and type(top) is int and current >= top
+
+
+def bonus_action_options(sheet: Optional[Dict[str, Any]], bonus: Any) -> List[str]:
+    """The actor's bonusActionNames other than the refused one."""
+    refused = bonus.get("featureName") if isinstance(bonus, dict) else None
+    return [n for n in bonus_action_names(sheet) if n != refused]
+
+
+def _items_differ(first: List[Any], second: List[Any]) -> bool:
+    """One item of ``first`` and a different item of ``second`` exist."""
+    return any(a != b for a in first for b in second)
+
+
+def off_hand_problem(sheet: Optional[Dict[str, Any]], bonus: Dict[str, Any], intent: Optional[Dict[str, Any]],
+                     encounter: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Why the declared Off-hand Attack cannot be taken as given, or None: the
+    Action is an Attack with a Light melee weapon in hand, the bonus swing is
+    a different Light melee weapon in hand, and the target is hostile."""
+    from core.managers.combat_state import combatant_by_id, is_combatant_targetable, is_hostile
+    from core.nql import hands
+
+    rows = hands.light_melee_rows(sheet)
+    if rows is None:
+        return "the Off-hand Attack needs the rules engine, which is unavailable now: leave bonusAction out"
+    main = (intent or {}).get("ability")
+    if intent is not None and (intent.get("action") != "attack" or main not in rows):
+        return ("the Off-hand Attack follows this turn's Attack action made with a Light melee weapon in hand "
+                "(SRD Light): the Action must be action 'attack' with ability one of %s, or leave bonusAction out"
+                % ", ".join(repr(n) for n in sorted(rows)))
+    main_items = rows[main]["items"] if main in rows else []
+    others = sorted(n for n in rows if intent is None or _items_differ(main_items, rows[n]["items"]))
+    if bonus.get("ability") not in others:
+        return ("Off-hand Attack's bonusAction.ability is the exact attack row of the other Light weapon in hand: "
+                "one of %s" % ", ".join(repr(n) for n in others))
+    if encounter is not None:
+        target = combatant_by_id(encounter, bonus.get("targetId"))
+        if target is None or not is_hostile(target) or not is_combatant_targetable(target):
+            return "Off-hand Attack's bonusAction.targetId is the combatantId of one hostile creature"
+    return None
+
+
+def off_hand_damage_rule(sheet: Optional[Dict[str, Any]], row: Dict[str, Any]) -> Dict[str, Any]:
+    """The Off-hand Attack's damage modifier rule (SRD Light; the Two-Weapon
+    Fighting style keeps it): the ability modifier taken off the row's damage
+    bonus, 0 when it is kept or negative."""
+    modifier = int(row.get("abilityModifier") or 0)
+    style = any(isinstance(f, dict) and f.get("name") == TWO_WEAPON_STYLE_FEATURE
+                for f in (sheet or {}).get("classFeatures") or [])
+    removed = 0 if style or modifier < 0 else modifier
+    return {"ability": row.get("ability"), "abilityModifier": modifier, "modifierAdded": removed == 0,
+            "removed": removed, "source": TWO_WEAPON_STYLE_FEATURE if style else "SRD Light"}
 
 
 def _heal_target(bonus: Dict[str, Any]) -> Optional[Dict[str, Any]]:
