@@ -150,6 +150,16 @@ def _bonus_fact(event, creatures, presentation=None):
     fact = {"featureName": bonus["featureName"]}
     if bonus.get("option"):
         fact["option"] = bonus["option"]
+    if bonus.get("order") == "afterAction":
+        # R3: the Off-hand Attack, taken after the Action (or not, its target down).
+        fact["after"] = "the Action"
+        fact["weapon"] = bonus.get("ability")
+        if bonus.get("notTaken"):
+            fact["notTaken"] = bonus["notTaken"]
+        outcome = bonus.get("outcome") or {}
+        for key in ("hit", "critical"):
+            if type(outcome.get(key)) is bool:
+                fact[key] = outcome[key]
     targets = []
     for target in (bonus.get("outcome") or {}).get("targets") or []:
         before, after = target.get("hpBefore"), target.get("hpAfter")

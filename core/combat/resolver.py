@@ -4332,9 +4332,13 @@ def resolution_from_event(encounter, characters, event):
                             violations=[])
     bonus = event.get("bonusAction") if isinstance(event.get("bonusAction"), dict) else {}
     # R2: the bonus action's targets first; the Action's own records (taken
-    # after it) replace them for the same combatant.
-    bonus_records = list((bonus.get("outcome") or {}).get("targets") or [])
-    for index, record in enumerate(bonus_records + list((event.get("outcome") or {}).get("targets", []) or [])):
+    # after it) replace them for the same combatant. R3: an Off-hand Attack
+    # (order "afterAction") came after the Action, so its records come last.
+    bonus_records = [(record, False) for record in (bonus.get("outcome") or {}).get("targets") or []]
+    action_records = [(record, True) for record in (event.get("outcome") or {}).get("targets", []) or []]
+    ordered = (action_records + bonus_records if bonus.get("order") == "afterAction"
+               else bonus_records + action_records)
+    for record, from_action in ordered:
         combatant_id = record.get("combatantId")
         resolution["creatureDeltas"][combatant_id] = {
             "currentHitPoints": int(record["hpAfter"]),
@@ -4343,7 +4347,7 @@ def resolution_from_event(encounter, characters, event):
         creature = combatant_by_id(encounter, combatant_id)
         if (creature is not None and creature.get("type") in ("player", "npc")
                 and creature.get("name") in (characters or {})):
-            if index >= len(bonus_records) and (event.get("outcome") or {}).get("kind") in ("flee", "yield"):
+            if from_action and (event.get("outcome") or {}).get("kind") in ("flee", "yield"):
                 # Same as the live path (#466): no sheet delta for leaving.
                 continue
             delta = {"hitPoints": int(record["hpAfter"])}

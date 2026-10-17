@@ -259,6 +259,8 @@ _AGENTIC_COMBAT_INTENT_SCHEMA = {
                         "properties": {
                             "featureName": {"type": "string"},
                             "option": {"type": "string", "enum": ["dash", "disengage", "hide"]},
+                            "ability": {"type": "string"},
+                            "targetId": {"type": "string"},
                             "targets": {"type": "array", "items": {"type": "object"}},
                             "description": {"type": "string"},
                         },

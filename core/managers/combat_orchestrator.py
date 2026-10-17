@@ -21,8 +21,15 @@ from core.combat import (
     resolve_effect_clock_window,
     resolve_claimed_window,
 )
-from core.combat.bonus_actions import bonus_action_names, bonus_action_problem, bonus_name_refused
-from core.combat.pipeline import _intent_for_actor, _ordered_intents
+from core.combat.attacks import attack_sequence
+from core.combat.bonus_actions import (
+    OFF_HAND_ATTACK,
+    bonus_action_names,
+    bonus_action_options,
+    bonus_action_problem,
+    bonus_name_refused,
+)
+from core.combat.pipeline import CombatBonusAttackRollRequired, _intent_for_actor, _ordered_intents
 from core.combat.resolver import (
     _action_entries,
     declared_heal,
@@ -1146,7 +1153,8 @@ def _validate_bonus_actions(batch, encounter, characters):
     """R2: an intent's typed bonusAction names one of the actor's
     bonusActionNames (its sheet's class features whose SRD activation is a
     Bonus Action), checked before any roll is asked. While the intent still
-    asks the player for a roll, only the name is checked."""
+    asks the player for a roll, the checks that need the answer wait (R3:
+    Second Wind at full hit points and the Off-hand Attack are checked now)."""
     for intent in (batch or {}).get("intents", []) or []:
         if not isinstance(intent, dict) or intent.get("bonusAction") is None:
             continue
@@ -1154,17 +1162,48 @@ def _validate_bonus_actions(batch, encounter, characters):
         sheet = (characters or {}).get((actor or {}).get("name"))
         bonus = intent["bonusAction"]
         names = bonus_action_names(sheet)
-        if isinstance(intent.get("requiresPlayerInput"), dict) and isinstance(bonus, dict) \
-                and bonus.get("featureName") in names:
-            continue
-        problem = bonus_action_problem(sheet, bonus)
+        problem = bonus_action_problem(sheet, bonus, intent=intent, encounter=encounter,
+                                       asking=isinstance(intent.get("requiresPlayerInput"), dict))
         if problem:
             raise CombatIntentError(
                 problem,
                 intent.get("actorId"),
                 {"violations": [problem], "bonusActionNames": names, "bonusActionProblem": problem,
-                 "bonusActionNameRefused": bonus_name_refused(sheet, bonus), "retryable": True},
+                 "bonusActionNameRefused": bonus_name_refused(sheet, bonus),
+                 "bonusActionOptions": bonus_action_options(sheet, bonus), "retryable": True},
             )
+
+
+def _validate_attack_count(batch, encounter, characters):
+    """R3 (F3): the player's attack states no more attacks than the sheet's
+    Attack action makes with that weapon (attack_sequence: Extra Attack, a
+    typed count). A second weapon's swing is the Off-hand Attack bonusAction,
+    not a second attack of the Action."""
+    for intent in (batch or {}).get("intents", []) or []:
+        if not isinstance(intent, dict) or intent.get("action") != "attack":
+            continue
+        attacks = intent.get("attacks")
+        actor = combatant_by_id(encounter, intent.get("actorId"))
+        if type(attacks) is not int or attacks <= 1 or actor is None or not _is_human_controlled(encounter, actor):
+            continue
+        sheet = (characters or {}).get(actor.get("name"))
+        allowed = len(attack_sequence(sheet or {}, selected_name=intent.get("ability"),
+                                      num_attacks=actor.get("numAttacks"), sequence=actor.get("multiattackSequence")))
+        if attacks <= allowed:
+            continue
+        problem = "%s's Attack action makes %d attack%s this turn; attacks %d is more." % (
+            actor.get("name") or actor.get("combatantId"), allowed, "" if allowed == 1 else "s", attacks)
+        if OFF_HAND_ATTACK in bonus_action_names(sheet):
+            problem += (" The swing with the other Light weapon in hand is the bonus action: set attacks to %d and "
+                        "put it in bonusAction {featureName:'%s', ability: that weapon's exact attack row, "
+                        "targetId}." % (allowed, OFF_HAND_ATTACK))
+        else:
+            problem += " Set attacks to %d." % allowed
+        raise CombatIntentError(
+            problem,
+            intent.get("actorId"),
+            {"violations": [problem], "attackCount": {"stated": attacks, "allowed": allowed}, "retryable": True},
+        )
 
 
 def _validate_player_input_request_ownership(batch, encounter):
@@ -1419,7 +1458,7 @@ def _roll_line(record, entry):
         )
         what = "both results (e.g. 15 3)" if count == 2 else "the result (e.g. 15)"
         return "%s attack against %s: roll %dd20%s and type %s, or type roll and the game rolls." % (
-            _spoken_weapon(record, entry), _spoken_name(record.get("targetName")), count, why, what,
+            _phase_weapon(record, entry), _spoken_name(record.get("targetName")), count, why, what,
         )
     spell = record.get("spell") if isinstance(record.get("spell"), dict) else {}
     if spell.get("type") == "save":
@@ -1442,8 +1481,14 @@ def _roll_line(record, entry):
     what = ("each die (e.g. %s)" % _each_die_example(count, sides)
             if _wants_each_die(record, count) else "the total")
     return "%s %s on %s: roll %dd%d for damage and type %s, or type roll and the game rolls." % (
-        _spoken_weapon(record, entry), hit, _spoken_name(record.get("targetName")), count, sides, what,
+        _phase_weapon(record, entry), hit, _spoken_name(record.get("targetName")), count, sides, what,
     )
+
+
+def _phase_weapon(record, entry):
+    """The weapon the open phase names; R3: the Off-hand Attack says so."""
+    weapon = _spoken_weapon(record, entry)
+    return "Off-hand %s" % weapon if record.get("bonusAttack") is True else weapon
 
 
 def _roll_lead(record, key):
@@ -1461,6 +1506,16 @@ def _weapon_attack_prompt(record, entry):
     """The request the player sees: the DM's lead, if T096 wrote one, then the
     code roll line (#860; owner ruling: the DM narrates, code keeps the dice)."""
     line = _roll_line(record, entry)
+    if record.get("bonusAttack") is True:
+        # R3: the DM's leads belong to the Action's swing; the off-hand d20 is
+        # led by that swing's code-scored result, when code scored it.
+        main = record.get("mainSwing") if isinstance(record.get("mainSwing"), dict) else {}
+        if record.get("phase") != "attack" or type(main.get("attackTotal")) is not int:
+            return line
+        return "Your %s %s (%s vs AC %s). %s" % (
+            main.get("spokenWeapon") or main.get("ability"),
+            "critical hit" if main.get("critical") else "hit" if main.get("hit") else "missed",
+            main.get("attackTotal"), main.get("targetAC"), line)
     spell = record.get("spell") if isinstance(record.get("spell"), dict) else {}
     key = "hitLead" if record.get("phase") == "damage" and spell.get("type") != "save" else "rollLead"
     lead = _roll_lead(record, key)
@@ -1600,7 +1655,52 @@ def _phase_kind(record):
     spell = record.get("spell") if isinstance(record, dict) else None
     if isinstance(spell, dict):
         return "spell_save" if spell.get("type") == "save" else "spell_attack"
+    if isinstance(record, dict) and record.get("bonusAttack") is True:
+        return "off_hand_attack"
     return "weapon_attack"
+
+
+def _open_off_hand_phase(encounter_path, encounter, characters, pending, batch, signal, main_swing=None,
+                         voice_intents=None):
+    """R3: the code-issued roll phase for the player's Off-hand Attack (owner:
+    code asks its d20, then its damage, after the Action). It stores the batch
+    the Action resolved from and the Action's completed code swing (if any),
+    so the window resolves from the dice with no second model pass. Returns
+    the [ROLL] request."""
+    request = signal.request
+    phase_intent = {"actorId": signal.actor_id, "ability": request.get("ability"),
+                    "targetId": request.get("targetId")}
+    entry = weapon_attack_sheet_entry(encounter, characters, phase_intent)
+    record = open_player_weapon_attack(encounter, characters, phase_intent, entry, _fresh_rolls(encounter))
+    record["bonusAttack"] = True
+    record["batch"] = deepcopy(batch)
+    if isinstance(main_swing, dict):
+        record["mainSwing"] = {key: deepcopy(value) for key, value in main_swing.items()
+                               if key not in ("batch", "prompt", "dice")}
+        record["mainSwing"]["spokenWeapon"] = _spoken_weapon(
+            main_swing, weapon_attack_sheet_entry(encounter, characters, main_swing))
+    record["prompt"] = _weapon_attack_prompt(record, entry)
+    write_weapon_attack(
+        encounter_path,
+        pending.get("turnId"),
+        record,
+        player_message=record["prompt"],
+        requested_die=record.get("dice"),
+        npc_voice_intents=voice_intents,
+        requested_phase=record.get("phase"),
+    )
+    record_combat_diagnostic(
+        record_type="window_outcome",
+        callsite="T096",
+        outcome="off_hand_attack_opened",
+        encounter_id=encounter.get("encounterId"),
+        turn_id=pending.get("turnId"),
+        revision=(encounter.get("combatState") or {}).get("revision"),
+        round_number=(encounter.get("combatState") or {}).get("round"),
+        window_kind="player",
+        actor_count=len(pending.get("actorIds") or []),
+    )
+    return record["prompt"]
 
 
 def _resolve_ready_phase(encounter_path, encounter, characters, pending):
@@ -1631,6 +1731,13 @@ def _resolve_ready_phase(encounter_path, encounter, characters, pending):
             actor_count=len(pending.get("actorIds") or []),
         )
         return pending, events, roll_consumption, preview_characters
+    except CombatBonusAttackRollRequired as signal:
+        # R3: the Action's swing is scored; code asks the Off-hand Attack's dice.
+        prompt = _open_off_hand_phase(
+            encounter_path, encounter, characters, pending, ready_attack.get("batch"), signal,
+            main_swing=ready_attack,
+        )
+        raise CombatTurnPaused("Code-issued off-hand roll is waiting for the player", player_message=prompt)
     except (CombatIntentError, IndexError, TypeError, ValueError):
         # Fail forward: the stored batch no longer resolves, so the model
         # rules the window from the exchanges, which keep the typed faces.
@@ -1656,6 +1763,11 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
     record = deepcopy(pending["weaponAttack"])
     entry = weapon_attack_sheet_entry(encounter, characters, record)
     values = _parse_weapon_roll(text, record, entry) if entry is not None else None
+    if values is None and entry is not None and record.get("bonusAttack") is True:
+        # R3: the Off-hand Attack was already chosen and only its dice are
+        # open; a sentence asks for the number again instead of handing the
+        # window back to the model (F4: that hand-back looped).
+        values = "invalid"
     if values is None:
         write_weapon_attack(encounter_path, pending.get("turnId"), None)
         return None, None
@@ -2493,6 +2605,8 @@ def execute_agentic_turn(
             # R2: a bonusAction outside the actor's bonusActionNames is
             # corrected before any roll is asked.
             _validate_bonus_actions(batch, encounter, characters)
+            # R3 (F3): a second weapon's swing is the Off-hand Attack, not attacks 2.
+            _validate_attack_count(batch, encounter, characters)
             takeover = _player_weapon_takeover(encounter, characters, pending, batch)
             if takeover is not None:
                 # Item 3: the player's plain melee swing. Code asks for the
@@ -2649,6 +2763,14 @@ def execute_agentic_turn(
                 _pause_for_refused_feature_heal(encounter_path, pending, feature_heal_limits,
                                                 immutable_voice_intents)
             break
+        except CombatBonusAttackRollRequired as signal:
+            # R3: the batch resolves up to the player's Off-hand Attack; code
+            # asks its dice now and resolves this batch when they are in.
+            prompt = _open_off_hand_phase(
+                encounter_path, encounter, characters, pending, batch, signal,
+                voice_intents=immutable_voice_intents,
+            )
+            raise CombatTurnPaused("Code-issued off-hand roll is waiting for the player", player_message=prompt)
         except CombatPlayerInputRequired as exc:
             request = exc.feedback.get("request", {})
             record_combat_diagnostic(

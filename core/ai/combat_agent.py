@@ -416,13 +416,19 @@ put it in the intent's bonusAction, never in action, targets or resources.
 bonusAction.featureName is exactly one name from bonusActionNames for that
 actor; a feature not listed there is not a Bonus Action and never goes in
 bonusAction (leave bonusAction out). Code resolves the bonus action first,
-then the Action, which keeps its own rules (a dodge still has no targets).
+then the Action, which keeps its own rules (a dodge still has no targets);
+only an Off-hand Attack comes after the Action.
 Second Wind: bonusAction {featureName:'Second Wind', targets:[{combatantId:
 the actor, hpDelta, rolled}]}, rolled the d10 face as above; code spends the
 use and sets the heal. For the player, ask the d10 first with the intent's
 requiresPlayerInput (phase 'healing', die '1d10') and give bonusAction once
 it is answered. Cunning Action: bonusAction {featureName:'Cunning Action',
-option:'dash'|'disengage'|'hide'}.
+option:'dash'|'disengage'|'hide'}. Off-hand Attack (two Light melee weapons in
+hand): after an Attack action made with one of them, one extra attack with
+the other: bonusAction {featureName:'Off-hand Attack', ability: the other
+weapon's exact attack row, targetId}, with no targets, rolls or request for
+it; code rolls it (the player's dice are asked by code) and scores it. The
+Action's own attack count never includes it.
 
 A player's plain swing with one listed melee weapon at one hostile creature
 is asked for and scored by code: declare action='attack', the exact weapon

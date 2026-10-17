@@ -30,11 +30,15 @@ several options list that name (two Daggers), the worn option is preferred,
 then the first in the engine's item-id order.
 
 The engine being unavailable is not a fault in the fight: None.
+
+R3 (the Off-hand Attack, SRD 5.2.1 p89 Light): ``light_melee_rows`` lists the
+attack rows of the Light melee weapons in hand (worn engine options), each with
+its items and the ability modifier its damage adds (the grant's typed recipe).
 """
 import copy
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.nql import apply, equipment, genesis
+from core.nql import apply, equipment, genesis, item_catalog
 
 LOCATION = "Combat"
 
@@ -147,3 +151,58 @@ def after_swing(sheet: Dict[str, Any], row_name: str, *, binary: Optional[str] =
         return _not_drawn(record, "refused", "the engine refused the draw: %s" % outcome.reason)
     record["draw"] = {"index": index, "item_name": row.get("item_name"), "equippedAfter": True}
     return record
+
+
+def light_melee_definition(definition: Any) -> bool:
+    """Whether the engine definition (gear:srd/<slug>) is a catalog Melee weapon
+    with the Light property (typed catalog data)."""
+    for entry in item_catalog.weapon_entries():
+        if entry.get("equipment") == definition:
+            weapon = entry["weapon"]
+            return weapon.get("kind") == "Melee" and any(
+                isinstance(p, dict) and p.get("name") == "Light" for p in weapon.get("properties") or [])
+    return False
+
+
+def _ability_modifier(grant: Dict[str, Any], stat: Any) -> int:
+    """The active term of the grant's damage recipe that reads ``stat``."""
+    total = 0
+    for term in (grant.get("bonus_recipe") or {}).get("terms") or []:
+        if isinstance(term, dict) and term.get("active") is True and (term.get("term") or {}).get("stat") == stat:
+            try:
+                total += int(str(term.get("exact")))
+            except ValueError:
+                pass
+    return total
+
+
+def light_melee_rows(sheet: Dict[str, Any], *, binary: Optional[str] = None) -> Optional[Dict[str, Dict[str, Any]]]:
+    """R3: {row name: {"items": [item ids], "ability", "abilityModifier"}} for the
+    melee grants of the Light melee weapons in hand (worn options), matched by
+    the grant's exact name as ``after_swing`` matches rows; None when the engine
+    is unavailable or refuses."""
+    if not isinstance(sheet, dict):
+        return None
+    world = genesis.build_world([copy.deepcopy(sheet)], LOCATION)
+    cid = genesis.character_id(sheet)
+    try:
+        response = apply.call({"world": world.source, "world_name": "hands.nql", "attack_options": [cid]},
+                              binary=binary)
+    except apply.EngineUnavailable:
+        return None
+    if not response.get("ok"):
+        return None
+    rows: Dict[str, Dict[str, Any]] = {}
+    for view in response.get("attack_options") or []:
+        for option in view.get("options") or []:
+            if option.get("worn") is not True or not light_melee_definition(option.get("definition")):
+                continue
+            for grant in option.get("grants") or []:
+                if not isinstance(grant, dict) or not isinstance(grant.get("melee"), dict) or not grant.get("name"):
+                    continue
+                stat = grant["melee"].get("stat")
+                row = rows.setdefault(grant["name"], {"items": [], "ability": stat,
+                                                      "abilityModifier": _ability_modifier(grant, stat)})
+                if option.get("item") not in row["items"]:
+                    row["items"].append(option.get("item"))
+    return rows
