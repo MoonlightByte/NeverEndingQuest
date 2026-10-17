@@ -3831,6 +3831,16 @@ def _show_rest_receipt(content):
         print(content)
 
 
+def _ask_hit_die(prompt):
+    """Show the hit-die prompt in the player's log, then read their line (#1226)."""
+    from web.shared_state import emit_player_output
+
+    if emit_player_output({"type": "system", "content": prompt,
+                           "message_id": f"msg-{uuid4().hex}"}) is True:
+        return input()
+    return input(prompt)
+
+
 # Shown to the player when a travel turn drops a change it could not work out
 # (#855, the #841 voice).
 _DROPPED_SHEET_NOTICE = (
@@ -5830,7 +5840,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             if str(parameters.get("restType") or "").strip().lower() == "short":
                 ask = player_hit_dice(party_tracker_data or {}, parameters.get("hitDice"))
                 if ask:
-                    faces = {ask[0]: ask_hit_die_faces(*ask, read=input)}
+                    faces = {ask[0]: ask_hit_die_faces(*ask, read=_ask_hit_die)}
             result = execute_rest(parameters.get("restType"), party_tracker_data, conversation_history,
                                   hit_dice=parameters.get("hitDice"), faces=faces)
             if result.get("success"):
