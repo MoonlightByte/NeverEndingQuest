@@ -433,6 +433,29 @@ def _print_startup_choices(labels):
     print("\n".join(f"{i}. {label}" for i, label in enumerate(labels, 1)))
 
 
+# D-STARTUP-MENU-1 (#1260): the adventure menu lists the module builder as its
+# last option. It is not stitched in yet: choosing it says so and shows the menu
+# again; nothing here imports or starts the builder.
+MODULE_BUILDER_OPTION = "Create a new adventure (module builder)"
+
+
+def _module_builder_coming_soon(labels):
+    """The builder option: a coming-soon line and the menu again (no builder path)."""
+    print("Dungeon Master: Creating a new adventure with the module builder is coming soon. "
+          "For now, please choose one of the installed adventures.")
+    _print_startup_choices(labels)
+
+
+def _read_menu_sentence(menu, labels, details, line):
+    """A menu answer code did not resolve, read by T127 (D-STARTUP-MENU-1): the
+    numbered options as printed and the player's whole line; returns {"choice": n},
+    {"question": text} or {"unavailable": outcome}."""
+    from core.ai.menu_answer import read_menu_answer, request_payload
+    options = [{"number": number, "name": label, "detail": detail}
+               for number, (label, detail) in enumerate(zip(labels, details), 1)]
+    return read_menu_answer(request_payload(menu, options, line))
+
+
 def present_module_options(conversation, modules):
     """Show available modules to player using AI"""
     if not modules:
@@ -451,6 +474,10 @@ def present_module_options(conversation, modules):
             f"   Estimated play time: {module['play_time']}"
         )
     
+    module_list.append(
+        f"{len(modules) + 1}. **{MODULE_BUILDER_OPTION}**\n"
+        "   Build your own adventure. Coming soon."
+    )
     modules_text = "\n\n".join(module_list)
     
     # AI prompt for module selection
@@ -469,14 +496,14 @@ Then mention these key features:
 Available Modules:
 {modules_text}
 
-Present EVERY listed module with its exact menu number. Recommend an adventure
+Present EVERY listed option with its exact menu number; the last one, creating a new adventure with the module builder, is coming soon. Recommend an adventure
 only from its actual known level metadata; unknown is not level 1. Never choose
 for the player. Even a sole installed module needs the player's confirmation.
 
-Ask the player which module they'd like to play, and explain that they can type its number (1, 2, etc.) or its full name exactly as listed."""
+Ask the player which module they'd like to play, and explain that they can type its number (1, 2, etc.) or its name, or simply say which adventure they want."""
     
     _present_startup_menu(conversation, ai_prompt, phase="startup_module_selection")
-    _print_startup_choices([module['display_name'] for module in modules])
+    _print_startup_choices([module['display_name'] for module in modules] + [MODULE_BUILDER_OPTION])
     
     return modules
 
@@ -519,21 +546,29 @@ def select_module(conversation):
             conversation.append({"role": "user", "content": user_input})
             
             # Try to parse as number
+            builder_number = len(modules) + 1
+            labels = [module['display_name'] for module in modules] + [MODULE_BUILDER_OPTION]
             try:
                 choice_num = int(user_input)
+                if choice_num == builder_number:
+                    _module_builder_coming_soon(labels)
+                    continue
                 if 1 <= choice_num <= len(modules):
                     selected = modules[choice_num - 1]
                     _set_startup_progress(conversation, module=selected['name'],
                                           phase=selection_phase, location=None)
                     return selected
                 else:
-                    print(f"Dungeon Master: Please choose a number between 1 and {len(modules)}")
+                    print(f"Dungeon Master: Please choose a number between 1 and {builder_number}")
                     continue
             except ValueError:
                 pass
             
             # The number, or the adventure's whole name (D-KW-6).
             answer = _menu_key(user_input)
+            if answer == _menu_key(MODULE_BUILDER_OPTION):
+                _module_builder_coming_soon(labels)
+                continue
             matches = [module for module in modules
                        if answer in {_menu_key(module['display_name']),
                                      _menu_key(module['name'])}]
@@ -544,6 +579,21 @@ def select_module(conversation):
                 return selected
             if len(matches) > 1:
                 print("Dungeon Master: That name matches more than one adventure. Please choose its displayed number.")
+                continue
+            
+            # Any other line is read by T127 (D-STARTUP-MENU-1).
+            details = [module['description'] for module in modules] + ['Build your own adventure. Coming soon.']
+            read = _read_menu_sentence("adventure", labels, details, user_input)
+            if read.get("choice") == builder_number:
+                _module_builder_coming_soon(labels)
+                continue
+            if read.get("choice"):
+                selected = modules[read["choice"] - 1]
+                _set_startup_progress(conversation, module=selected['name'],
+                                      phase=selection_phase, location=None)
+                return selected
+            if read.get("question"):
+                print(f"Dungeon Master: {read['question']}")
                 continue
             
             print("Dungeon Master: I didn't understand that. Please enter the number (1, 2, etc.) or the adventure's full name as listed.")
@@ -612,7 +662,7 @@ Existing Characters:
 
 {len(characters) + 1}. Create a new character
 
-Be helpful and explain that they can type the character's number or full name as listed, or "new" (or {len(characters) + 1}) to create a fresh character."""
+Be helpful and explain that they can type the character's number or name, or "new" (or {len(characters) + 1}) to create a fresh character, or simply say which they want."""
     
     _present_startup_menu(conversation, ai_prompt)
     _print_startup_choices([char['name'] for char in characters] + ['Create a new character'])
@@ -676,6 +726,24 @@ def select_or_create_character(conversation, module):
                 chosen = _use_existing_startup_character(conversation, module, matched)
                 if chosen:
                     return chosen
+                continue
+            
+            # Any other line is read by T127 (D-STARTUP-MENU-1).
+            labels = [char['name'] for char in characters] + ['Create a new character']
+            details = [f"Level {char['level']} {char['race']} {char['class']}" for char in characters]
+            details.append('Make a brand new character for this adventure')
+            read = _read_menu_sentence("character", labels, details, user_input)
+            if read.get("choice") == len(characters) + 1:
+                return create_new_character(conversation, module)
+            if read.get("choice"):
+                selected_char = characters[read["choice"] - 1]
+                print(f"Dungeon Master: Excellent! You've selected {selected_char['name']}!")
+                chosen = _use_existing_startup_character(conversation, module, selected_char)
+                if chosen:
+                    return chosen
+                continue
+            if read.get("question"):
+                print(f"Dungeon Master: {read['question']}")
                 continue
             
             print("Dungeon Master: I didn't understand that. Please enter the character's number or full name as listed, or 'new' to create a new character.")
