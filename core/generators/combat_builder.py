@@ -276,9 +276,12 @@ def _roll_initiative(data, sheet_backed):
     return random.randint(1, 20) + bonus
 
 
-def load_or_create_monster(monster_type):
-    formatted_monster_type = format_type_name(monster_type)
-    print(f"[COMBAT_BUILDER] Monster load/create: '{monster_type}' -> '{formatted_monster_type}'")
+def load_or_create_monster(monster_key, monster_type):
+    """The stat block named by monster_key (#293/typed-monster-key); when it
+    does not exist yet, one is generated from monster_type (the typed
+    record's name, or the DM's name for a new creature) and saved under
+    that key."""
+    print(f"[COMBAT_BUILDER] Monster load/create: '{monster_type}' -> key '{monster_key}'")
     # Get current module from party tracker for consistent path resolution
     try:
         from utils.encoding_utils import safe_json_load
@@ -287,7 +290,7 @@ def load_or_create_monster(monster_type):
         path_manager = ModulePathManager(current_module)
     except:
         path_manager = ModulePathManager()  # Fallback to reading from file
-    monster_file = path_manager.get_monster_path(monster_type)
+    monster_file = path_manager.get_monster_path(monster_key)
     monster_data = load_json(monster_file) if os.path.exists(monster_file) else None
     if not monster_data:
         print(f"[COMBAT_BUILDER] Monster file not found, creating: {monster_file}")
@@ -302,7 +305,7 @@ def load_or_create_monster(monster_type):
         from utils.encoding_utils import utf8_child_env
         result = subprocess.run(
             [sys.executable, monster_builder_path, monster_type,
-             "--party-level", str(party_level)],
+             "--party-level", str(party_level), "--key", monster_key],
             stdin=subprocess.DEVNULL, capture_output=True,
             encoding="utf-8", errors="replace", env=utf8_child_env())
         if result.returncode == 0:
@@ -464,6 +467,30 @@ def player_sheet_path(path_manager, party_tracker, player):
         return found[0]
     return path_manager.get_character_path(player)
 
+def _place_occupants(location_id):
+    """The engine occupants at the fight's place, by ID: the typed records a
+    declared occupantIds slot names. A pure reader (the DM turn makes the
+    document). Empty when the engine or the document is unavailable, and the
+    slot then takes a listed or a new key (never a stop)."""
+    try:
+        from core.nql import occupants
+
+        tracker = load_json("party_tracker.json") or {}
+        place = occupants.place_id(tracker.get("module") or "", location_id)
+        response = occupants.request(view=(place,), create=False)
+        if not response or not response.get("ok"):
+            return {}
+        return {
+            occupant["id"]: occupant
+            for occupant in (response.get("live_state") or {}).get("occupants") or []
+            if isinstance(occupant, dict) and occupant.get("location") == place
+            and isinstance(occupant.get("id"), str)
+        }
+    except Exception as exc:  # fail forward: the fight still starts
+        warning(f"MONSTER_KEY: occupants at {location_id} unavailable ({exc})", category="combat_builder")
+        return {}
+
+
 def generate_encounter(encounter_data):
     print(f"[COMBAT_BUILDER] Starting encounter generation with data: player={encounter_data.get('player')}, npcs={encounter_data.get('npcs', [])}, monsters={encounter_data.get('monsters', [])}")
     location = get_current_location()
@@ -535,26 +562,41 @@ def generate_encounter(encounter_data):
         }
     )
 
-    # Add monsters
-    monster_counts = {}
+    # Add monsters. Each one's stat block is chosen by a typed key, never by
+    # the name the DM wrote (#293/typed-monster-key, D-KW-12, D-TMK-1).
+    from core.combat.monster_keys import bestiary, monster_key
+    place_occupants = _place_occupants(location)
+    listed = bestiary()
+    used_names = set()
+    new_keys = {}
     for monster_index, monster_type in enumerate(encounter_data["monsters"]):
-        formatted_monster_type = format_type_name(monster_type)
-        print(f"[COMBAT_BUILDER] Loading/creating monster: {monster_type} -> {formatted_monster_type}")
-        monster_data = load_or_create_monster(monster_type)
+        slot = f"monster:{monster_index}"
+        key, key_source, stock_name = monster_key(slot, encounter_data, place_occupants, listed)
+        if key_source == "new" and isinstance(monster_type, str):
+            # Slots the DM wrote with the same string in this one declaration
+            # are one new kind of creature: one key, one generated stat block
+            # (D-TMK-3: exact equality within one createEncounter, never a
+            # lookup of stored data).
+            key = new_keys.setdefault(monster_type, key)
+        print(f"[COMBAT_BUILDER] Loading/creating monster: {monster_type} -> key {key} ({key_source})")
+        info(f"MONSTER_KEY: {encounter_id} {slot} -> {key} ({key_source})", category="combat_builder")
+        monster_data = load_or_create_monster(key, stock_name or monster_type)
         if not monster_data:
             return None
 
-        monster_counts[formatted_monster_type] = monster_counts.get(formatted_monster_type, 0) + 1
-        
-        if monster_counts[formatted_monster_type] > 1:
-            monster_name = f"{monster_data['name']}_{monster_counts[formatted_monster_type]}"
-        else:
-            monster_name = monster_data['name']
+        # Copies are counted by the stat block's own name, so two keys whose
+        # blocks share a name still give two names (the resolver keys by name).
+        base_name = monster_data['name']
+        monster_name, copy = base_name, 1
+        while monster_name in used_names:
+            copy += 1
+            monster_name = f"{base_name}_{copy}"
+        used_names.add(monster_name)
 
         monster = {
             "name": monster_name,
             "type": "enemy",
-            "monsterType": formatted_monster_type,
+            "monsterType": key,
             "initiative": _roll_initiative(monster_data, sheet_backed=False),
             "status": "alive",
             "conditions": [],
@@ -579,7 +621,7 @@ def generate_encounter(encounter_data):
                 "participantKey": f"monster:{monster_index}",
                 "creature": monster,
                 "sourceKind": "monster",
-                "sourceRef": str(path_manager.get_monster_path(formatted_monster_type)),
+                "sourceRef": str(path_manager.get_monster_path(key)),
                 "displayName": monster_data["name"],
             }
         )

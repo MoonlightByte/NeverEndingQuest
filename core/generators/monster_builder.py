@@ -404,10 +404,12 @@ def _active_module_path_manager():
         return ModulePathManager()
 
 
-def build_monster_file(monster_name, schema, party_level=1, path_manager=None):
-    """Generate and save one monster as a deduplicated target transaction."""
+def build_monster_file(monster_name, schema, party_level=1, path_manager=None, key=None):
+    """Generate and save one monster as a deduplicated target transaction.
+    key (#293/typed-monster-key) names the stat block's file; the name is
+    only what the generator is asked to create."""
     path_manager = path_manager or _active_module_path_manager()
-    target_path = path_manager.get_monster_path(monster_name)
+    target_path = path_manager.get_monster_path(key or monster_name)
 
     with single_target_generation(target_path) as transaction:
         candidates = [transaction.resolved_target, target_path]
@@ -444,6 +446,9 @@ def main():
                         help="Average party level for CR scaling. If "
                              "omitted, falls back to reading "
                              "party_tracker.json.")
+    parser.add_argument("--key", default=None,
+                        help="The monster key the stat block is saved under "
+                             "(#293/typed-monster-key); default: the name.")
     args = parser.parse_args()
 
     monster_name_arg = args.monster_name
@@ -487,7 +492,7 @@ def main():
         return
 
     generated_monster_data = build_monster_file(
-        monster_name_arg, schema_data, party_level
+        monster_name_arg, schema_data, party_level, key=args.key
     )
     if generated_monster_data:
         info(f"SUCCESS: Monster creation ({monster_name_arg}) - PASS", category="monster_creation")

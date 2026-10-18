@@ -1022,6 +1022,7 @@ Membership proposals receive a party-guardian review before full validation. Gua
 
 Occupant Record Management (the engine's roster of who is where):
 - The location data lists the engine's present `occupants` (each with an `id` such as `occ:Keep_of_Doom/B01/twig_blight`, a name, a count and an attitude). When the story settles what becomes of one of them, add the matching typed action in the SAME response as the narration, by its `id`. Never invent an id; a creature or person with no listed occupant needs no action.
+- The module references end with `bestiaryKeys`, the keys of the standard stat blocks. When a monster with no occupant id is one of those standard creatures, add `monsterKeys`, mapping its positional key to that exact key (`"monsterKeys": {"monster:0": "giant_rat"}`), so the fight uses that stat block whatever name you give it. A creature of a new kind needs no entry: the game creates its stats from the name and description you give, and you may always bring one in. Never invent a key.
 - "resolveOccupant": members leave the record. Parameters: "occupantId" (an id from the occupants list), "outcome" (one of "departed", "fled", "surrendered", "defeated", "died", "joined"), "count" (optional whole number; omit for all present), "reason" (short phrase; REQUIRED for "departed", welcome otherwise). Use it when a group agrees or is persuaded to leave, slips away, yields outside combat, is killed outside combat, or a person goes elsewhere for good.
 - "setOccupantAttitude": the attitude changes. Parameters: "occupantId", "attitude" ("friendly", "indifferent" or "hostile"). Use it when a parley turns a hostile group friendly or an insult turns a friendly one hostile.
 - "moveOccupant": the occupant goes to another location of this module. Parameters: "occupantId", "locationId" (an exact location ID such as "B02"). An escort: when a listed occupant (not a companion) comes along with the party on a travel turn, put transitionLocation first and a moveOccupant with that occupant's id and the travel destination as locationId after it; the occupant is then present at the arrival. This is the only occupant action allowed after transitionLocation.
@@ -1202,6 +1203,7 @@ Combat Summary:
           "npcs": ["<npc1>", "<npc2>", ...],
           "monsters": ["<monster1>", "<monster2>", ...],
           "occupantIds": {"monster:0": "<occupant id from the location's occupants list, when it has one>"},
+          "monsterKeys": {"monster:1": "<a key from bestiaryKeys, when that monster is a standard creature with no occupant id>"},
           "encounterSummary": "<brief_description_of_combat_situation>",
           "openingAction": "<the player's own declared first action, in their words, if any>",
           "scene": {
