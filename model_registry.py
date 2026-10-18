@@ -33,7 +33,8 @@ class ModelCatalogEntry:
     owned_by: Optional[str]
 
 
-# Pricing snapshot from the model pages fetched directly on 2026-08-16.
+# Pricing snapshot from the model pages fetched directly on 2026-08-16; the gpt-6 entries are
+# from the owner's price table of 2026-10-18 (D-CREATE-COST-2; cache-write prices are not modelled).
 # Sol and the unsuffixed gpt-5.6 alias are intentionally
 # absent; discovery never makes a model eligible automatically.
 MODEL_CATALOG: Mapping[str, ModelCatalogEntry] = MappingProxyType(
@@ -67,6 +68,51 @@ MODEL_CATALOG: Mapping[str, ModelCatalogEntry] = MappingProxyType(
             created_at="2026-06-23T15:27:39+00:00",
             shutdown_at=None,
             owned_by="system",
+        ),
+        "gpt-6-luna": ModelCatalogEntry(
+            model_id="gpt-6-luna",
+            family="gpt-6-luna",
+            supported_efforts=SUPPORTED_GPT56_EFFORTS,
+            input_usd_per_million=0.10,
+            cached_input_usd_per_million=0.01,
+            output_usd_per_million=0.50,
+            pricing_source_date="2026-10-18",
+            pricing_source_url="owner price table 2026-10-18 (short context; kit reference/openai-pricing-2026-10-18.md)",
+            available=True,
+            availability_checked_at="2026-10-18",
+            created_at=None,
+            shutdown_at=None,
+            owned_by=None,
+        ),
+        "gpt-6-sol": ModelCatalogEntry(
+            model_id="gpt-6-sol",
+            family="gpt-6-sol",
+            supported_efforts=SUPPORTED_GPT56_EFFORTS,
+            input_usd_per_million=2.00,
+            cached_input_usd_per_million=0.20,
+            output_usd_per_million=10.00,
+            pricing_source_date="2026-10-18",
+            pricing_source_url="owner price table 2026-10-18 (short context; kit reference/openai-pricing-2026-10-18.md)",
+            available=True,
+            availability_checked_at="2026-10-18",
+            created_at=None,
+            shutdown_at=None,
+            owned_by=None,
+        ),
+        "gpt-6.1-sol": ModelCatalogEntry(
+            model_id="gpt-6.1-sol",
+            family="gpt-6.1-sol",
+            supported_efforts=SUPPORTED_GPT56_EFFORTS,
+            input_usd_per_million=2.00,
+            cached_input_usd_per_million=0.10,
+            output_usd_per_million=10.00,
+            pricing_source_date="2026-10-18",
+            pricing_source_url="owner price table 2026-10-18 (short context; kit reference/openai-pricing-2026-10-18.md)",
+            available=True,
+            availability_checked_at="2026-10-18",
+            created_at=None,
+            shutdown_at=None,
+            owned_by=None,
         ),
     }
 )
@@ -136,13 +182,14 @@ _declare(
 _declare(
     "T124",
     _profiles(
-        "OPENAI_GPT56_TERRA_LOW",
+        "OPENAI_GPT56_LUNA_LOW",
         "DM_MAIN_GEMINI_PRO_LOW",
         "DM_MAIN_LEGACY",
         "DM_MAIN_LMSTUDIO",
     ),
-    note="Startup semantic reviewer (#682), split from T092 so the reviewer binds alone. OpenAI=terra|low "
-         "(T040 precedent). History: at luna|none (shared with T092, acceptance runs 1-3) it invented "
+    note="Startup semantic reviewer (#682), split from T092 so the reviewer binds alone. OpenAI=gpt-6-luna|low "
+         "(D-CREATE-COST-2, 2026-10-18: terra|low was 98% of a creation's cost). Before that terra|low "
+         "(T040 precedent). History, on gpt-5.6-luna before the luna profiles moved to gpt-6-luna: at luna|none (shared with T092, acceptance runs 1-3) it invented "
          "requirements (a sheet-approval step, a required null, shifting wording demands); at luna|low (run 4) "
          "it twice blamed the author for engine-written savingThrowBonuses. Gemini/legacy/lmstudio keep T092's "
          "profiles.",
