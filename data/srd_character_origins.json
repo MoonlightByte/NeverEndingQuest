@@ -504,5 +504,49 @@
    "text": "If you hit a creature with this weapon and deal damage to the creature, you have Advantage on your next attack roll against that creature before the end of your next turn.",
    "page": 90
   }
+ ],
+ "languages_rule": {
+  "text": "Your character knows at least three languages: Common plus two languages you roll or choose from the Standard Languages table. Knowledge of a language means your character can communicate in it, read it, and write it. Your class and other features might also give you languages. Every player character knows Common. Some features let a character learn a rare language.",
+  "section": "Character Creation > Create Your Character > Step 2: Character Origin > Choose Languages",
+  "page": 20
+ },
+ "cantrip_rule": {
+  "text": "A cantrip is a level 0 spell, which is cast without a spell slot.",
+  "section": "Rules Glossary > Rules Definitions > Cantrip",
+  "page": 178
+ },
+ "class_order_options": [
+  {
+   "class": "Cleric",
+   "feature": "Divine Order",
+   "options": [
+    {
+     "name": "Protector",
+     "text": "Trained for battle, you gain proficiency with Martial weapons and training with Heavy armor."
+    },
+    {
+     "name": "Thaumaturge",
+     "text": "You know one extra cantrip from the Cleric spell list. In addition, your mystical connection to the divine gives you a bonus to your Intelligence (Arcana or Religion) checks. The bonus equals your Wisdom modifier (minimum of +1)."
+    }
+   ],
+   "section": "Classes > Cleric > Cleric Class Features > Level 1: Divine Order",
+   "page": 37
+  },
+  {
+   "class": "Druid",
+   "feature": "Primal Order",
+   "options": [
+    {
+     "name": "Magician",
+     "text": "You know one extra cantrip from the Druid spell list. In addition, your mystical connection to nature gives you a bonus to your Intelligence (Arcana or Nature) checks. The bonus equals your Wisdom modifier (minimum bonus of +1)."
+    },
+    {
+     "name": "Warden",
+     "text": "Trained for battle, you gain proficiency with Martial weapons and training with Medium armor."
+    }
+   ],
+   "section": "Classes > Druid > Druid Class Features > Level 1: Primal Order",
+   "page": 42
+  }
  ]
 }
