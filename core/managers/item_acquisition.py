@@ -10,10 +10,11 @@ request id as already applied: a world rebuilt from the sheets has no history
 (kit acquire_gate.py), so the host guards its own retries.
 """
 import copy
+import json
 import os
 import shutil
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from core.nql import acquisition, apply, armor_class, genesis, item_catalog, stats
 from utils.encoding_utils import safe_json_load
@@ -21,6 +22,155 @@ from utils.enhanced_logger import debug, info, warning
 from utils.file_operations import safe_read_json, safe_write_json
 
 RECEIPTS_KEPT = 50
+# P3a: the refusal texts' fixed route for an item that is not listed.
+LOOT_ROUTE = "with updateCharacterInfo, or for standard gear with acquireItem by itemName (price 0 for found gear)"
+
+
+def _present(value: Any) -> bool:
+    """A catalogId or itemName is given only as a non-empty string (P3a)."""
+    return isinstance(value, str) and value != ""
+
+
+def _stops():
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.transient_filesystem import ReadOnlySaveStop
+    return (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop)
+
+
+def _waiting(message: str):
+    """The dispatch wait: a no-argument callable on the turn's live-provider scope."""
+    def wait() -> None:
+        from utils.capture.live_provider_call import _interruptible_wait, get_live_provider_scope
+        _interruptible_wait(0.25, get_live_provider_scope(), message)
+    return wait
+
+
+def _path_key(path: str) -> str:
+    return os.path.normcase(os.path.abspath(path))
+
+
+def _held_member_paths(party_tracker: Dict[str, Any], *, wait=None) -> List[str]:
+    """The sheet path of each party member and partyNPC, through #1254's one
+    member-to-sheet resolver, normalized for comparison and without repeats."""
+    from core.ai.action_handler import _party_sheet_path
+
+    party = party_tracker if isinstance(party_tracker, dict) else {}
+    names = [m for m in party.get("partyMembers") or []]
+    names += [n.get("name") for n in party.get("partyNPCs") or [] if isinstance(n, dict)]
+    paths: List[str] = []
+    for name in names:
+        if not isinstance(name, str) or not name.strip():
+            continue
+        key = _path_key(_party_sheet_path(party.get("module"), name, wait=wait))
+        if key not in paths:
+            paths.append(key)
+    return paths
+
+
+def _holder_sheet(path: str, wait) -> Any:
+    """A holder's sheet read-only, for the loot count. With ``wait`` (the
+    commit) a busy read waits and a corrupt or missing sheet counts as 0; without
+    it (the views) any unreadable sheet counts as 0 with one WARN per stamp."""
+    from utils.transient_filesystem import (
+        ReadOnlySaveStop, is_transient_filesystem_error, read_bytes_preserving_errors,
+        retry_transient_filesystem,
+    )
+
+    while True:
+        try:
+            raw = retry_transient_filesystem(lambda: read_bytes_preserving_errors(path))
+            return json.loads(raw.decode("utf-8"))
+        except ReadOnlySaveStop:
+            raise
+        except FileNotFoundError:
+            return None
+        except OSError as error:
+            if wait is None or not is_transient_filesystem_error(error):
+                stamp = item_catalog._stamp(path)
+                item_catalog._loot_warn((path, stamp, "holder"),
+                                        f"{path} could not be read for the loot count ({error}); counted as 0")
+                return None
+        except ValueError as error:
+            stamp = item_catalog._stamp(path)
+            item_catalog._loot_warn((path, stamp, "holder"),
+                                    f"{path} could not be read for the loot count ({error}); counted as 0")
+            return None
+        wait()
+
+
+def _loot_remaining(listing: List[Dict[str, Any]], location_id: str, party_tracker: Dict[str, Any], *,
+                    target=None, wait=None) -> List[Dict[str, Any]]:
+    """Each listed entry with ``remaining``: authored minus the quantity of every
+    held member's receipt from this location for that catalogId (P3a). The
+    commit passes ``target=(path, sheet)``, the sheet it read under its lock."""
+    if not listing:
+        return []
+    taken: Dict[str, int] = {}
+    target_key = _path_key(target[0]) if target else None
+    for key in _held_member_paths(party_tracker, wait=wait):
+        sheet = target[1] if key == target_key else _holder_sheet(key, wait)
+        receipts = sheet.get("acquisitions") if isinstance(sheet, dict) else None
+        for receipt in receipts if isinstance(receipts, list) else []:
+            if not isinstance(receipt, dict) or not isinstance(receipt.get("source"), dict):
+                continue
+            if receipt["source"].get("locationId") != location_id or type(receipt.get("quantity")) is not int:
+                continue
+            taken[receipt.get("catalogId")] = taken.get(receipt.get("catalogId"), 0) + receipt["quantity"]
+    return [dict(e, remaining=max(0, e["authored"] - taken.get(e["catalogId"], 0))) for e in listing]
+
+
+def _turn_location_id(party: Dict[str, Any]) -> str:
+    return str((party.get("worldConditions") or {}).get("currentLocationId") or "party")
+
+
+def loot_view(location: Any, module: Any, party_tracker: Dict[str, Any], *, wait=None) -> List[Dict[str, Any]]:
+    """[{catalogId, name, remaining}] for a location's lootItems, as the DM and
+    the validator see them; [] when nothing resolves. Stops propagate."""
+    try:
+        listing = item_catalog.resolve_loot(location, module, wait=wait)
+        if not listing:
+            return []
+        party = party_tracker if isinstance(party_tracker, dict) else {}
+        return [{"catalogId": e["catalogId"], "name": e["name"], "remaining": e["remaining"]}
+                for e in _loot_remaining(listing, _turn_location_id(party), party)]
+    except _stops():
+        raise
+    except Exception as error:  # noqa: BLE001 - loot never stops a turn
+        location_id = location.get("locationId") if isinstance(location, dict) else None
+        item_catalog._loot_warn((location_id, "view"), f"location {location_id}: loot view failed ({error})")
+        return []
+
+
+def listing_text(listing: List[Dict[str, Any]]) -> str:
+    """``<catalogId> (<name>)`` entries, or ``(<name>, remaining <n>)`` from the commit's count."""
+    return "; ".join(f"{e['catalogId']} ({e['name']}, remaining {e['remaining']})" if "remaining" in e
+                     else f"{e['catalogId']} ({e['name']})" for e in listing)
+
+
+def dispatch_refusal(error: str, listing: List[Dict[str, Any]]) -> str:
+    """The dispatch text for a refused catalogId take (section 3.3)."""
+    head = (f"Acquire Error: {error}. Nothing changed: no item was added. Later actions from this response have "
+            "not executed. Do not repeat earlier completed actions. ")
+    if not listing:
+        return head + f"No loot is listed here: record the item {LOOT_ROUTE}."
+    return head + (f"Loot listed here: {listing_text(listing)}. If the item is listed, use one listed catalogId "
+                   "exactly as listed, with quantity no more than remaining (Current Location shows its remaining), "
+                   "price 0 or none, for a current party member; being listed is not being seen; when remaining is 0 "
+                   f"the party already took it: narrate that it is gone. An item that is not listed is recorded {LOOT_ROUTE}.")
+
+
+def precheck_refusal(text: str, listing: List[Dict[str, Any]]) -> str:
+    """The pre-check text for a refused catalogId take (section 3.3)."""
+    head = (f"The previous structured response was rejected before anything was shown: {text}. Keep the outcome "
+            "your narration describes and ")
+    if not listing:
+        return head + f"record the item {LOOT_ROUTE}: no loot is listed here. Return the complete corrected JSON."
+    return head + ("correct only that action. If the item is listed, use one listed catalogId exactly as listed, no "
+                   "itemName, price 0 or none, a current party member as characterName; a listed item may already be "
+                   "gone (Current Location shows its remaining), and being listed is not being seen. Loot listed here: "
+                   f"{listing_text(listing)}. An item that is not listed is recorded {LOOT_ROUTE}. Return the complete "
+                   "corrected JSON.")
 
 
 def _resolve(character_name: str) -> Optional[str]:
@@ -91,13 +241,53 @@ def _ammunition_row(sheet: Dict[str, Any], entry: Dict[str, Any]) -> Optional[Di
     return held[0] if len(held) == 1 else None
 
 
-def catalog_check(item_name: Any, quantity: Any, price: Any = None, kind: Any = None) -> Dict[str, Any]:
+def _loot_check(item_name: Any, catalog_id: str, quantity: Any, price: Any, party: Any, wait) -> Dict[str, Any]:
+    """The sheet-free checks of a catalogId take: the structural check, then the
+    listing check. Every result carries ``listing``, from one location read."""
+    from core.managers.current_location import current_location_data
+
+    party = party if isinstance(party, dict) else {}
+    pack = item_catalog._module_pack(wait=wait)
+    try:
+        record = current_location_data(party, consumer="acquire_loot", wait=wait)
+    except _stops():
+        raise
+    except Exception as error:  # noqa: BLE001 - an unreadable area lists no loot
+        item_catalog._loot_warn((_turn_location_id(party), "area"),
+                                f"location {_turn_location_id(party)}: the area could not be read ({error})")
+        record = None
+    listing = item_catalog.resolve_loot(record, party.get("module"), wait=wait) if record is not None else []
+    cid = json.dumps(catalog_id)
+    if _present(item_name):
+        return {"error": "give either itemName or catalogId, not both", "listing": listing}
+    # The entry comes from the pack loaded above with the caller's wait, never a second load on the global wait.
+    found = pack["entries"].get(catalog_id)
+    if found is None:
+        return {"error": f"{cid} is not a module item here", "listing": listing}
+    if acquisition.stated_cost(price) not in ((None, ""), (0, "")):
+        return {"error": "a listed item is taken at price 0 or with no price", "listing": listing}
+    if quantity in (None, ""):
+        quantity = 1
+    if type(quantity) is not int or quantity < 1:
+        return {"error": "quantity must be a whole number of at least 1", "listing": listing}
+    if not any(e["catalogId"] == catalog_id for e in listing):
+        return {"error": f"{cid} is not listed at the current location", "listing": listing}
+    return {"entry": found, "quantity": quantity, "cost": 0, "rule": None, "listing": listing}
+
+
+def catalog_check(item_name: Any, quantity: Any, price: Any = None, kind: Any = None, *,
+                  catalog_id: Any = None, party: Any = None, wait=None) -> Dict[str, Any]:
     """The checks of one acquisition that need no sheet and no purse (#878).
 
     Returns {"entry", "quantity", "cost", "rule"} or {"error": reason}, with
     the reasons execute_acquisition has always returned. The DM's draft is
     checked with it before review and display; the purchase runs it again.
+    With a ``catalog_id`` (P3a) the take is checked against the current
+    location's lootItems, read from ``party`` with ``wait``, and every result
+    carries ``listing``; ``kind`` is ignored.
     """
+    if _present(catalog_id):
+        return _loot_check(item_name, catalog_id, quantity, price, party, wait)
     entry, reason = acquisition.find_entry(item_name, kind)
     if entry is None:
         return {"error": reason}
@@ -127,18 +317,44 @@ def catalog_check(item_name: Any, quantity: Any, price: Any = None, kind: Any = 
 
 def execute_acquisition(character_name: str, item_name: str, quantity: Any, price: Any = None,
                         request_id: Optional[str] = None,
-                        party_tracker: Optional[Dict[str, Any]] = None, kind: Any = None) -> Dict[str, Any]:
-    """Run one acquisition. Returns {"success": bool, "message": str} or {"success": False, "error": str}."""
+                        party_tracker: Optional[Dict[str, Any]] = None, kind: Any = None, *,
+                        catalog_id: Any = None) -> Dict[str, Any]:
+    """Run one acquisition. Returns {"success": bool, "message": str} or {"success": False, "error": str}.
+
+    With a ``catalog_id`` (P3a) the item is a listed module loot item, taken at
+    no cost; every error result then carries ``listing`` for the refusal text."""
+    if not _present(catalog_id):
+        return _acquire(character_name, item_name, quantity, price, request_id, party_tracker, kind, None, {})
+    loot: Dict[str, Any] = {}
+    result = _acquire(character_name, item_name, quantity, price, request_id, party_tracker, kind, catalog_id, loot)
+    if not result.get("success"):
+        result.setdefault("listing", loot.get("listing") or [])
+    return result
+
+
+def _acquire(character_name, item_name, quantity, price, request_id, party_tracker, kind, catalog_id,
+             loot) -> Dict[str, Any]:
     from updates.update_character_info import _get_character_update_lock
     from utils.path_transaction_lock import path_transaction_lock
 
+    if catalog_id is not None:
+        # P3a: the party read and the sheet-free check come first, so every
+        # error, main's "no character sheet" included, has its listing.
+        party = party_tracker or safe_json_load("party_tracker.json") or {}
+        checked = catalog_check(item_name, quantity, price, kind, catalog_id=catalog_id, party=party,
+                                wait=_waiting("Checking the area..."))
+        loot["listing"] = checked["listing"]
     path = _resolve(character_name)
     if path is None:
         return {"success": False, "error": f"no character sheet for {character_name!r}"}
-    checked = catalog_check(item_name, quantity, price, kind)
+    if catalog_id is None:
+        checked = catalog_check(item_name, quantity, price, kind)
     if "error" in checked:
         return {"success": False, "error": checked["error"]}
     entry, quantity, cost, rule = checked["entry"], checked["quantity"], checked["cost"], checked["rule"]
+    count_wait = _waiting("Checking the party's sheets...")
+    if catalog_id is not None and _path_key(path) not in _held_member_paths(party, wait=count_wait):
+        return {"success": False, "error": f"{json.dumps(character_name)} is not a current party member"}
 
     # H2b-4: a charged item's purchase world carries the party clock (the
     # engine anchors the new item's recharge at purchase) and, for a type that
@@ -146,7 +362,8 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
     # from them). The item's charge state is stored from the engine's view.
     from core.managers.item_charges import _entropy, party_clock, store_view
 
-    party = party_tracker or safe_json_load("party_tracker.json") or {}
+    if catalog_id is None:
+        party = party_tracker or safe_json_load("party_tracker.json") or {}
     location = str((party.get("worldConditions") or {}).get("currentLocationId") or "party")
     clock, clock_error = party_clock(party) if rule is not None else (None, None)
     if rule is not None and clock is None:
@@ -168,6 +385,14 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
                     if isinstance(receipt, dict) and receipt.get("request") == request_id:
                         return {"success": True, "message": receipt.get("message") or "already applied", "replay": True}
 
+            if catalog_id is not None:
+                # The commit's count, inside the target's lock (G9).
+                counted = _loot_remaining(loot["listing"], location, party, target=(path, sheet), wait=count_wait)
+                left = next(e["remaining"] for e in counted if e["catalogId"] == entry["id"])
+                if quantity > left:
+                    loot["listing"] = counted
+                    return {"success": False, "error": f"only {left} of {json.dumps(entry['id'])} remain here"}
+
             purse = acquisition.balance(sheet)
             delta = acquisition.pay(purse, cost)
             if delta is None:
@@ -178,7 +403,8 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
             held = genesis.held_ids_on_disk()  # nothing is written before the buy below
             genesis.assign_ids(working, reserved=held)
             cid = genesis.character_id(working)
-            world = genesis.build_world([working], location, clock_tick=clock, dice_seed=dice)
+            world = genesis.build_world([working], location, clock_tick=clock, dice_seed=dice,
+                                        module_ids=[entry["id"]] if catalog_id is not None else None)
             for gap in world.gaps:
                 debug(f"ACQUIRE: genesis gap: {gap}", category="storage_operations")
 
@@ -269,8 +495,13 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
                        "change": {k: v for k, v in delta.items() if v > 0}, "message": message}
             if dice is not None:
                 receipt["dice"] = list(dice)
+            if catalog_id is not None:
+                receipt["source"] = {"locationId": location}
             receipts.append(receipt)
-            working["acquisitions"] = receipts[-RECEIPTS_KEPT:]
+            # P3a: a receipt with a source counts listed loot, so it is never trimmed.
+            plain = [i for i, r in enumerate(receipts) if "source" not in r]
+            kept = set(plain[-RECEIPTS_KEPT:])
+            working["acquisitions"] = [r for i, r in enumerate(receipts) if "source" in r or i in kept]
             out = _projected(working)
 
             backup = _backup(path)

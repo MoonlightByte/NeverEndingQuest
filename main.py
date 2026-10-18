@@ -3550,13 +3550,17 @@ def _select_validation_history(conversation_history, raw_user_input):
     return recent_messages
 
 
-def _validation_location_view(location_data):
+def _validation_location_view(location_data, loot=None):
     """A canonical location record's authored fields for the validator (C2).
     Adjacency is not the validator's fact to judge (travel is settled by the
     accepted travel facts), so the connectivity fields are left out; the
-    module's identities block lists every place once."""
-    return {k: v for k, v in dict(location_data or {}).items()
-            if k not in ("connectivity", "areaConnectivity", "areaConnectivityId")}
+    module's identities block lists every place once. ``lootItems`` is the
+    resolved ``loot`` when given, and otherwise left out (P3a)."""
+    view = {k: v for k, v in dict(location_data or {}).items()
+            if k not in ("connectivity", "areaConnectivity", "areaConnectivityId", "lootItems")}
+    if loot is not None:
+        view["lootItems"] = loot
+    return view
 
 
 def _validation_storage_view(location_id):
@@ -4160,7 +4164,25 @@ def validate_ai_response(
             and scene_node["location_data"].get("locationId") == scene_location
         ):
             scene_record["status"] = "available"
-            _scene_location = _validation_location_view(scene_node["location_data"])
+            # P3a: the origin's lootItems, resolved with this review's wait.
+            _scene_loot = None
+            if role == "origin" and scene_node["location_data"].get("lootItems"):
+                from core.managers.item_acquisition import loot_view
+
+                def _loot_wait():
+                    if invocation_claim is not None:
+                        require_current_invocation(invocation_claim)
+                    if detached_scope is not None and detached_scope.is_superseded():
+                        raise LiveProviderSuperseded("scene review superseded")
+                    _interruptible_wait(
+                        0.25,
+                        detached_scope if detached_scope is not None else get_live_provider_scope(),
+                        "Reading the module's items...",
+                        emit=detached_status,
+                    )
+
+                _scene_loot = loot_view(scene_node["location_data"], scene_module, party_tracker_data, wait=_loot_wait)
+            _scene_location = _validation_location_view(scene_node["location_data"], _scene_loot)
             # P4-f: presence is the engine's view; the authored lists are
             # not sent when the view answers.
             try:
@@ -10353,11 +10375,15 @@ _TRAVEL_ORDER_FACT = (
 )
 
 
-def _acquire_catalog_refusal(actions):
+def _acquire_catalog_refusal(actions, party, wait):
     """#878: the engine's reason a draft's acquireItem would be refused before
     any sheet or purse is read (an unknown catalog name, a quantity that is not
     a whole lot, a charged item bought more than one at a time), or None. Only
-    the action's typed itemName, quantity, price and kind are read."""
+    the action's typed itemName, quantity, price and kind are read.
+
+    Returns (text, listing): listing is None for an itemName refusal and the
+    current location's resolved lootItems for a catalogId one (P3a), whose
+    check reads the area through ``party`` with ``wait``."""
     from core.managers.item_acquisition import catalog_check
 
     for action in actions:
@@ -10370,11 +10396,18 @@ def _acquire_catalog_refusal(actions):
             parameters.get("quantity", 1),
             parameters.get("price"),
             parameters.get("kind"),
+            catalog_id=parameters.get("catalogId"),
+            party=party,
+            wait=wait,
         )
         if "error" in checked:
+            if "listing" in checked:
+                return "acquireItem %s: %s" % (
+                    json.dumps(parameters.get("catalogId")), checked["error"],
+                ), checked["listing"]
             return "acquireItem %s: %s" % (
                 json.dumps(parameters.get("itemName", "")), checked["error"],
-            )
+            ), None
     return None
 
 
@@ -10591,21 +10624,32 @@ def _review_dm_candidate(
 
                 # #878: a purchase the catalog refuses is corrected here, so
                 # its draft never reaches review or the player.
+                def area_wait():
+                    from utils.capture.live_provider_call import _interruptible_wait
+                    require_current()
+                    _interruptible_wait(0.25, scope, "Checking the area...", emit=detached_status)
+
                 acquire_refusal = (
-                    _acquire_catalog_refusal(actions)
+                    _acquire_catalog_refusal(actions, party, area_wait)
                     if transition_check_passed else None
                 )
                 if acquire_refusal:
                     retry_count += 1
                     transition_check_passed = False
                     rejected_candidate = ai_response_content
-                    retry_correction = (
-                        "The previous structured response was rejected before "
-                        "anything was shown: " + acquire_refusal + ". Keep the "
-                        "outcome your narration describes and correct only that "
-                        "action's itemName, kind or quantity. Return the complete "
-                        "corrected JSON."
-                    )
+                    acquire_text, acquire_listing = acquire_refusal
+                    if acquire_listing is not None:
+                        # P3a: a catalogId take is corrected against its listing.
+                        from core.managers.item_acquisition import precheck_refusal
+                        retry_correction = precheck_refusal(acquire_text, acquire_listing)
+                    else:
+                        retry_correction = (
+                            "The previous structured response was rejected before "
+                            "anything was shown: " + acquire_text + ". Keep the "
+                            "outcome your narration describes and correct only that "
+                            "action's itemName, kind or quantity. Return the complete "
+                            "corrected JSON."
+                        )
                     info(
                         "VALIDATION: acquireItem refused by the catalog before "
                         f"review; retry {retry_count}",
@@ -10869,7 +10913,7 @@ def _review_dm_candidate(
             except json.JSONDecodeError as e:
                 # Structural validation below owns malformed provider JSON.
                 debug(f"Could not parse response for transition planning: {e}", category="location_transitions")
-            except (InvocationSupersededError, LiveProviderSuperseded):
+            except (InvocationSupersededError, LiveProviderSuperseded, ReadOnlySaveStop):
                 raise
             except Exception as e:
                 error(

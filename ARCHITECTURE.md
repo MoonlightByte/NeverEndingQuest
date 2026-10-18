@@ -382,6 +382,7 @@ modules/[module_name]/
 ├── monsters/           # Module-specific creatures
 ├── encounters/         # Combat encounters
 ├── module_plot.json    # Plot progression and quests
+├── module_items.json   # Typed loot items for lootItems (optional)
 ├── party_tracker.json  # Party state for this module
 └── [module_name]_module.json  # Module metadata
 ```

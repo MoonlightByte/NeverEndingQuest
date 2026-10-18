@@ -80,6 +80,19 @@
             "items": { "type": "string" },
             "description": "A list of potential items that can be found in this location."
           },
+          "lootItems": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "itemKey": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+                "quantity": { "type": "integer", "minimum": 1 }
+              },
+              "required": ["itemKey", "quantity"],
+              "additionalProperties": false
+            },
+            "description": "Typed loot that can be taken here: items of this module's module_items.json, by itemKey. Found under the same conditions as the lootTable or dcChecks entry that names it."
+          },
           "dangerLevel": { 
             "type": "string",
             "enum": ["Low", "Medium", "High", "Very High"],

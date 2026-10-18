@@ -229,7 +229,49 @@ def _legacy_sheet_id(sheet):
         return None
     return stem
 
-def find_character_file_fuzzy(character_name):
+def _lookup_stops():
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.transient_filesystem import ReadOnlySaveStop
+    return (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop)
+
+
+def _read_sheet_waiting(path, wait):
+    """A sheet's bytes; while the read is busy, wait() and read again."""
+    from utils.transient_filesystem import (
+        ReadOnlySaveStop, is_transient_filesystem_error, read_bytes_preserving_errors,
+    )
+
+    while True:
+        try:
+            return read_bytes_preserving_errors(path)
+        except ReadOnlySaveStop:
+            raise
+        except OSError as error:
+            if not is_transient_filesystem_error(error):
+                raise
+        wait()
+
+
+def _sheet_candidates(wait):
+    """The sheet files a name lookup reads. Without ``wait``, glob plus the
+    legacy characters/.json, as since #1082; with ``wait``, the same names
+    through scandir_names, so a busy listing waits instead of listing nothing."""
+    import glob
+
+    if wait is None:
+        char_files = glob.glob(os.path.join("characters", "*.json"))
+    else:
+        from utils.transient_filesystem import scandir_names
+        names, _ = scandir_names("characters", wait, pattern="*.json")
+        char_files = [os.path.join("characters", name) for name in names]
+    # glob never matches a dotfile; a sheet saved before #894 is characters/.json (#1082)
+    if os.path.isfile(os.path.join("characters", ".json")):
+        char_files.append(os.path.join("characters", ".json"))
+    return char_files
+
+
+def find_character_file_fuzzy(character_name, *, wait=None):
     """Find the character file for a name, exactly (#855, family 2 Part B).
 
     The name is kept for its callers; it no longer matches loosely. In order:
@@ -243,6 +285,8 @@ def find_character_file_fuzzy(character_name):
     A near name ("Kira", "Captain Bryn") returns None: it is never resolved to
     another character's file. An unreadable sheet is skipped with a warning,
     so one bad file cannot make a lookup fail.
+    With ``wait``, a busy sheet or listing waits and a stop propagates; other
+    unreadable sheets are still skipped.
 
     Args:
         character_name (str): The character name to search for
@@ -250,8 +294,6 @@ def find_character_file_fuzzy(character_name):
     Returns:
         str: The matched filename (without .json extension) or None if no match found
     """
-    import glob
-
     if not isinstance(character_name, str) or not character_name.strip():
         return None
 
@@ -264,17 +306,17 @@ def find_character_file_fuzzy(character_name):
             return normalized_name
         wanted = key(name)
         matches = []
-        char_files = glob.glob(os.path.join("characters", "*.json"))
-        # glob never matches a dotfile; a sheet saved before #894 is characters/.json (#1082)
-        if os.path.isfile(os.path.join("characters", ".json")):
-            char_files.append(os.path.join("characters", ".json"))
+        char_files = _sheet_candidates(wait)
         for char_file in sorted(char_files):
             filename = os.path.basename(char_file)
             if _is_backup_sheet_file(filename):
                 continue
             try:
-                with open(char_file, "rb") as f:
-                    raw = f.read()
+                if wait is None:
+                    with open(char_file, "rb") as f:
+                        raw = f.read()
+                else:
+                    raw = _read_sheet_waiting(char_file, wait)
                 try:
                     text = raw.decode("utf-8")
                 except UnicodeDecodeError:
@@ -283,6 +325,8 @@ def find_character_file_fuzzy(character_name):
                     text = raw.decode("utf-8", errors="replace")
                 sheet = json.loads(text)
             except Exception as e:
+                if wait is not None and isinstance(e, _lookup_stops()):
+                    raise
                 warning(f"CHARACTER_LOOKUP: skipped unreadable sheet {char_file} ({type(e).__name__})", category="character_updates")
                 continue
             if isinstance(sheet, dict) and isinstance(sheet.get("name"), str) and key(sheet["name"]) == wanted:
@@ -601,12 +645,30 @@ def deep_merge_dict(base_dict, update_dict):
         else:
             # Replace or add the value
             result[key] = copy.deepcopy(value)
+            if key == 'equipment' and isinstance(value, list):
+                for entry in result[key]:
+                    _drop_module_id(entry)
     
     return result
 
 # #1135: the stored row index a delta entry was bound to (_bind_equipment_rows).
 # It rides on the entry and the merged row until the stock fold, then is dropped.
 _BOUND_ROW = '_bound_row'
+
+
+def _drop_module_id(entry, target=None):
+    """P3a: a delta entry never carries a module item id into a sheet, and never
+    changes the id of a ``target`` row that holds one; the drop is logged."""
+    from core.nql.item_catalog import MODULE_ID_PREFIX
+
+    if not isinstance(entry, dict) or 'catalog_id' not in entry:
+        return entry
+    held = isinstance(target, dict) and str(target.get('catalog_id') or '').startswith(MODULE_ID_PREFIX)
+    if held or str(entry.get('catalog_id') or '').startswith(MODULE_ID_PREFIX):
+        entry.pop('catalog_id')
+        info(f"MODULE ITEMS: dropped a delta-written catalog_id on {entry.get('item_name')!r}; "
+             "module item ids are the host's", category="character_updates")
+    return entry
 
 
 def merge_equipment_arrays(base_equipment, update_equipment):
@@ -629,14 +691,14 @@ def merge_equipment_arrays(base_equipment, update_equipment):
             
         bound = update_item.get(_BOUND_ROW)
         if type(bound) is int and 0 <= bound < len(result):
-            result[bound] = deep_merge_dict(result[bound], update_item)
+            result[bound] = deep_merge_dict(result[bound], _drop_module_id(copy.deepcopy(update_item), result[bound]))
         elif update_item_name in item_name_to_index:
             # Update existing item by merging dictionaries
             index = item_name_to_index[update_item_name]
-            result[index] = deep_merge_dict(result[index], update_item)
+            result[index] = deep_merge_dict(result[index], _drop_module_id(copy.deepcopy(update_item), result[index]))
         else:
             # Add new item if it doesn't exist
-            result.append(copy.deepcopy(update_item))
+            result.append(_drop_module_id(copy.deepcopy(update_item)))
     
     # Remove items with zero or negative quantity or marked with _remove flag
     result = [item for item in result if item.get('quantity', 1) > 0 and not item.get('_remove', False)]
@@ -1594,6 +1656,11 @@ def prepare_character_delta(character_data, updates, character_role, schema,
         concentration_ended = outcome.concentration_ended
     else:
         concentration_ended = None
+    # P3a (D-P3A-2): acquisition receipts are the host's; a delta never writes them.
+    if isinstance(updates, dict) and 'acquisitions' in updates:
+        updates.pop('acquisitions')
+        info(f"ACQUISITIONS: {character_name}: dropped a delta-written acquisitions list; receipts are the host's",
+             category="character_updates")
     updated_data = deep_merge_dict(character_data, updates)
     # Item charges (H1): the engine owns an existing row's charges object; a
     # delta that rewrote it is reverted to the stored object (value comparison

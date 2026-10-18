@@ -465,6 +465,7 @@ Do NOT spawn additional threats once area is cleared."
 **Location:** In area JSON files under `lootTable` array
 **Distribution:** Player searches location, AI reads loot table, awards items
 **Always Available:** Yes - items physically exist in the world
+**Typed loot (optional):** a location's `lootItems` lists items of the module's `module_items.json` by `itemKey` and `quantity`; the party takes them with acquireItem by catalogId, each at most its quantity. Check that every lootItems item has a lootTable line or a dcChecks entry that says where and when it is found, and that every itemKey is in module_items.json (schemas/module_items_schema.json).
 
 **Example from area file:**
 ```json

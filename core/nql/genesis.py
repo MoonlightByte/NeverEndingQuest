@@ -153,6 +153,36 @@ ITEM_ID_MAX = TYPE_KIND_MAX - len("itemdef:row/") + len("item:")  # 249
 CHARACTER_SCOPE_MAX = ENGINE_ID_MAX - len("condition:256:state:exhaustion:6::5:speed")  # 215
 
 
+def _item_type_text(type_id: str, name: str, description: str, kind: Any, magical: bool, consumable: bool,
+                    equipment: Optional[str], extra: str = "") -> str:
+    """One ``item type`` declaration; every string goes through ``_q()``. No
+    equipment line when ``equipment`` is None."""
+    return (f"item type {_q(type_id)} named {_q(name)} {{\n"
+            f" description {_q(description)};\n"
+            f" kind {_q(str(kind))}; magical {'true' if magical is True else 'false'}; "
+            f"consumable {'true' if consumable is True else 'false'};\n"
+            + (f" equipment {_q(equipment)};\n" if equipment is not None else "")
+            + f"{extra}}}")
+
+
+def _module_type_source(ids: List[str]) -> str:
+    """The item types of these module catalog ids (P3a); an id the catalog does
+    not resolve (module removed, namespace collision, entry refused) is skipped,
+    and its row takes the unknown-id path."""
+    texts = []
+    for type_id in ids:
+        found = item_catalog.entry(type_id)
+        if found is not None:
+            texts.append(_item_type_text(type_id, found["name"], found["description"], found["kind"],
+                                         found["magical"], found["consumable"], found["equipment"]))
+    return "\n".join(texts)
+
+
+def _module_row_id(entry: Dict[str, Any]) -> Optional[str]:
+    catalog_id = entry.get("catalog_id")
+    return catalog_id if isinstance(catalog_id, str) and catalog_id.startswith(item_catalog.MODULE_ID_PREFIX) else None
+
+
 def _type_description(entry: Dict[str, Any]) -> str:
     """Display text for a per-row item type, within the catalog's byte bound
     (a longer one refuses the whole world at compile time)."""
@@ -1176,12 +1206,9 @@ def _item_line(iid: str, entry: Dict[str, Any], owner: str, custody: str, worn: 
             if rule_gap:
                 gaps.append(f"{label} {rule_gap}")
             charged[1].add(type_id)
-            charged[0].append(
-                f"item type {_q(type_id)} named {_q(entry['item_name'])} {{\n"
-                f" description {_q(_type_description(entry))};\n"
-                f" kind {_q(str(kind))}; magical {'true' if entry.get('magical') is True else 'false'}; consumable false;\n"
-                f" equipment {_q('gear:' + mode)};\n"
-                f" charges {maximum};\n{rule or ''}}}")
+            charged[0].append(_item_type_text(type_id, entry['item_name'], _type_description(entry), kind,
+                                              entry.get('magical') is True, False, 'gear:' + mode,
+                                              f" charges {maximum};\n{rule or ''}"))
             if worn and quantity not in (None, 1):
                 gaps.append(f"{cid}: {entry.get('item_name')!r} is equipped with quantity {quantity}; the engine wears exactly one, item left unworn")
                 worn = False
@@ -1242,7 +1269,8 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
                 containers: Optional[List[Dict[str, Any]]] = None, contents_owner: Optional[str] = None,
                 definition_entries: Optional[List[Tuple[str, Dict[str, Any]]]] = None,
                 clock_tick: Optional[int] = None, dice_seed: Optional[Tuple[int, int]] = None,
-                damage_traits: bool = False, reserved: Optional[set] = None) -> Genesis:
+                damage_traits: bool = False, reserved: Optional[set] = None,
+                *, module_ids: Optional[List[str]] = None) -> Genesis:
     """Return the NQL world source for these sheets and storage containers at one location.
 
     ``containers`` are player_storage.json container records at this location. Their
@@ -1257,6 +1285,9 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     meets them; without it the world text is unchanged.
     ``reserved`` holds the ids stored on other sheets and in other chests (read
     as values); a chest entry with no stored id is minted past them (#1073).
+    ``module_ids`` (P3a) names module catalog ids a later ``create item ... from``
+    in this world needs; with them, and with every module id a row carries, the
+    world declares those module item types. A world with none reads no module file.
     """
     gaps: List[str] = []
     loc = location_id(location)
@@ -1325,6 +1356,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     with_pack = bool(item_catalog.weapon_entries()) and bool(item_catalog.features_source().strip())
     notes: List[str] = []
     items: List[str] = []
+    module_types = set(module_ids or ())
     effects: List[str] = []
     effect_types: List[str] = []
     effect_names: Dict[str, str] = {}
@@ -1416,6 +1448,8 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
                 continue
             all_ids.add(iid)
             ids[index] = iid
+            if _module_row_id(entry):
+                module_types.add(_module_row_id(entry))
             catalog = item_catalog.row_entry(entry)[0]
             if entry.get("equipped") is True and catalog is not None and catalog.get("kind") == "weapon":
                 weapons_last.append((index, iid, entry))
@@ -1488,6 +1522,8 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
                 break
             all_ids.add(iid)
             ids[index] = iid
+            if _module_row_id(entry):
+                module_types.add(_module_row_id(entry))
             line, _, _ = _item_line(iid, entry, owner, f"custody item {_q(conid)};", False, definitions, gaps, owner, charged)
             items.append(line)
         content_ids[sid] = ids
@@ -1538,6 +1574,12 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
         features = item_catalog.features_source().rstrip("\n")
         if features:
             lines.append(features)
+    # P3a: module item types, outside the SRD pack block, so a module row
+    # still resolves when the SRD pack is absent.
+    if module_types:
+        module_source = _module_type_source(sorted(module_types))
+        if module_source:
+            lines.append(module_source)
     lines.extend(charged[0])
     return Genesis(source="\n".join(lines) + "\n", location=loc, character_ids=character_ids, item_ids=item_ids,
                    container_ids=container_ids, content_ids=content_ids, effect_names=effect_names, gaps=gaps,

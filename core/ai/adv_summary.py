@@ -268,7 +268,7 @@ def compare_and_update(original, updates):
 # summary records what happened in adventureSummary and the encounter log;
 # it never rewrites these, so a past status is never served later as an
 # instruction.
-AUTHOR_OWNED_LOCATION_FIELDS = ("locationId", "name", "dmInstructions", "dcChecks")
+AUTHOR_OWNED_LOCATION_FIELDS = ("locationId", "name", "dmInstructions", "dcChecks", "lootItems")
 
 
 def preserve_author_location_fields(updated_location, location_before):
