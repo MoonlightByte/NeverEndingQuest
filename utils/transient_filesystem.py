@@ -91,6 +91,50 @@ def read_bytes_preserving_errors(path) -> bytes:
         _winapi.CloseHandle(handle)
 
 
+def scandir_names(dirname, wait, *, pattern, dironly=False):
+    """The names glob would list in ``dirname``, and whether the listing completed.
+
+    Glob's name rule: no leading ".", and ``pattern`` matched under
+    ``os.path.normcase``; with ``dironly`` only directories. A busy listing
+    (anywhere in the iteration, ``is_dir()`` included) drops what it has,
+    calls ``wait()`` and lists again from scratch; ``wait`` is a no-argument
+    callable and a stop it raises propagates. A non-transient error keeps the
+    names listed so far, as glob does, and returns ``complete`` False, as does
+    an entry skipped because its ``is_dir()`` failed.
+    """
+    import fnmatch
+
+    match = os.path.normcase(pattern)
+    while True:
+        names = []
+        complete = True
+        try:
+            with os.scandir(dirname) as listing:
+                for item in listing:
+                    if item.name.startswith("."):
+                        continue
+                    if dironly:
+                        try:
+                            if not item.is_dir():
+                                continue
+                        except ReadOnlySaveStop:
+                            raise
+                        except OSError as exc:
+                            if is_transient_filesystem_error(exc):
+                                raise
+                            complete = False
+                            continue
+                    if fnmatch.fnmatchcase(os.path.normcase(item.name), match):
+                        names.append(item.name)
+            return names, complete
+        except ReadOnlySaveStop:
+            raise
+        except OSError as exc:
+            if not is_transient_filesystem_error(exc):
+                return names, False
+        wait()
+
+
 def replace_target_is_read_only(path) -> bool:
     """Return whether a native Windows target carries the READONLY attribute.
 

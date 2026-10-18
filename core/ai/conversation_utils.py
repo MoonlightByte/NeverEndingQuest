@@ -564,6 +564,22 @@ def build_companion_memory_message(
         )
         return None
 
+def _loot_for_view(location, party_tracker_data):
+    """P3a: the location's lootItems as the DM sees them, with the remaining
+    count; read with the turn's (or the welcome's) control-scope wait."""
+    from core.managers.item_acquisition import loot_view
+    from utils.capture.live_provider_call import (
+        _interruptible_wait, get_active_welcome_scope, get_live_provider_scope,
+    )
+
+    def wait():
+        _interruptible_wait(0.25, get_live_provider_scope() or get_active_welcome_scope(),
+                            "Reading the module's items...")
+
+    party = party_tracker_data if isinstance(party_tracker_data, dict) else {}
+    return loot_view(location, party.get("module"), party, wait=wait)
+
+
 def update_conversation_history(
     conversation_history,
     party_tracker_data,
@@ -865,11 +881,14 @@ def update_conversation_history(
     #         map_message += f"{map_data}\n"
     #         new_history.append({"role": "system", "content": map_message})
 
-    # The current location, from #448's one reader; sanitized, as this history always read it
+    # The current location, from #448's one reader; sanitized, as this history always read it; lootItems resolved from the raw record
     current_location = None
+    loot = None
     if current_area_id and current_location_id:
         current_location = current_location_data(party_tracker_data, consumer="update_conversation_history")
         if current_location is not None:
+            if current_location.get("lootItems"):
+                loot = _loot_for_view(current_location, party_tracker_data)
             current_location = sanitize_dict(current_location)
 
     # Insert the most recent location information
@@ -877,7 +896,9 @@ def update_conversation_history(
         # Create a filtered copy for conversation history, omitting adventureSummary to reduce tokens.
         # C3: adjacency is told once, by the atlas; the connectivity fields are omitted here.
         location_for_conversation = {k: v for k, v in current_location.items()
-                                     if k not in ('adventureSummary', 'connectivity', 'areaConnectivity', 'areaConnectivityId')}
+                                     if k not in ('adventureSummary', 'connectivity', 'areaConnectivity', 'areaConnectivityId', 'lootItems')}
+        if loot is not None:
+            location_for_conversation["lootItems"] = loot
         # The engine's record of what became of each group here replaces the
         # per-fight encounter entries (the adventure summary keeps the story).
         # Absent only while the engine or its document is unavailable.

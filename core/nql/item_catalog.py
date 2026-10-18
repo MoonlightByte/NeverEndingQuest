@@ -113,10 +113,247 @@ def entries() -> Dict[str, Dict[str, Any]]:
 
 
 def entry(catalog_id: Any) -> Optional[Dict[str, Any]]:
-    """The entry a sheet row's ``catalog_id`` names, or None (unknown or not a string)."""
+    """The entry a sheet row's ``catalog_id`` names, or None (unknown or not a string).
+
+    An id with ``MODULE_ID_PREFIX`` is a module item (P3a); only such an id
+    reads the module pack, so an SRD lookup never loads or waits on it."""
     if not isinstance(catalog_id, str):
         return None
+    if catalog_id.startswith(MODULE_ID_PREFIX):
+        return _module_pack()["entries"].get(catalog_id)
     return entries().get(catalog_id)
+
+
+# P3a: items a module authors in modules/<module>/module_items.json, typed by an
+# authored itemKey under the module's namespace. Only the loader builds their
+# ids, as MODULE_ID_PREFIX + "<namespace>/<itemKey>".
+MODULE_ID_PREFIX = "itemdef:module/"
+_MODULES_DIR = "modules"
+_MODULE_ITEMS_FILE = "module_items.json"
+_KEY = re.compile(r"^[a-z0-9_]+$")
+_MODULE_KINDS = ("equipment", "consumable", "miscellaneous")
+_RESERVED_NAMESPACES = ("srd", "row")
+# Per module folder: (stamp, result) from the last read of its module_items.json;
+# result is ("ok", namespace, entries) or ("refused", reason).
+_MODULE_FILES: Dict[str, Tuple[Any, Tuple]] = {}
+# Every loot warning is written once per key: a file's stamp, a location and reason.
+_LOOT_WARNED: set = set()
+_LISTING_OUTAGE = ("modules listing incomplete",)
+
+
+def _loot_warn(key: Any, message: str) -> None:
+    if key in _LOOT_WARNED:
+        return
+    _LOOT_WARNED.add(key)
+    try:
+        from utils.enhanced_logger import warning
+        warning(f"MODULE ITEMS: {message}", category="storage_operations")
+    except Exception:  # noqa: BLE001 - logging never blocks a world build
+        pass
+
+
+def _stops() -> Tuple[type, ...]:
+    """The three stops a wait raises; they always propagate (#654)."""
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.transient_filesystem import ReadOnlySaveStop
+    return (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop)
+
+
+def _default_wait() -> None:
+    from utils.capture.live_provider_call import _interruptible_wait, get_live_provider_scope
+    _interruptible_wait(0.25, get_live_provider_scope(), "Reading the module's items...")
+
+
+def _module_entries(doc: Any, path: str, stamp: Any) -> Tuple:
+    """("ok", namespace, entries) for a file that passes the top-level schema,
+    with each bad entry refused alone; else ("refused", reason)."""
+    # Genesis imports this module at module level, so its bounds are read here.
+    from core.nql.acquisition import next_item_id
+    from core.nql.genesis import ITEM_ID_MAX, TYPE_DESCRIPTION_MAX
+
+    if (not isinstance(doc, dict) or doc.get("format") != "neq-module-items" or doc.get("version") != 1
+            or not isinstance(doc.get("items"), list)):
+        return ("refused", "it is not a neq-module-items version 1 file with an items list")
+    namespace = doc.get("namespace")
+    if not isinstance(namespace, str) or not _KEY.fullmatch(namespace) or namespace in _RESERVED_NAMESPACES:
+        return ("refused", f"namespace {namespace!r} is not a lower-case word other than srd and row")
+    keys = [i.get("itemKey") for i in doc["items"] if isinstance(i, dict)]
+    found = []
+    for item in doc["items"]:
+        key = item.get("itemKey") if isinstance(item, dict) else None
+        why = None
+        if not isinstance(item, dict) or not isinstance(key, str) or not _KEY.fullmatch(key):
+            why = f"itemKey {key!r} is not a lower-case word"
+        elif keys.count(key) > 1:
+            why = f"itemKey {key!r} repeats in the file"
+        elif not isinstance(item.get("name"), str) or not item["name"].strip():
+            why = "it has no name"
+        elif not isinstance(item.get("description", ""), str):
+            why = "its description is not text"
+        elif item.get("kind") not in _MODULE_KINDS:
+            why = f"kind {item.get('kind')!r} is not one of {', '.join(_MODULE_KINDS)}"
+        elif type(item.get("magical")) is not bool or type(item.get("consumable")) is not bool:
+            why = "magical and consumable must be true or false"
+        elif "equipment" not in item or item["equipment"] not in ("gear:worn", None):
+            why = "equipment must be gear:worn or null"
+        cid = f"{MODULE_ID_PREFIX}{namespace}/{key}"
+        if why is None:
+            minted = next_item_id({}, {"id": cid})
+            # The counter's widest value: ten digits, more rows than a sheet holds.
+            if len((minted[:-1] + "9" * 10).encode("utf-8")) > ITEM_ID_MAX:
+                why = f"the item id a grant mints would be over {ITEM_ID_MAX} bytes"
+            elif len(str(item.get("description") or "").encode("utf-8")) > TYPE_DESCRIPTION_MAX:
+                why = f"its description is over {TYPE_DESCRIPTION_MAX} bytes"
+        if why is not None:
+            _loot_warn((path, stamp, "entry", repr(key)), f"{path}: entry {key!r} refused: {why}")
+            continue
+        found.append({"id": cid, "itemKey": key, "namespace": namespace, "name": item["name"],
+                      "description": str(item.get("description") or ""), "kind": item["kind"],
+                      "magical": item["magical"], "consumable": item["consumable"],
+                      "equipment": item.get("equipment")})
+    return ("ok", namespace, found)
+
+
+def _read_module_file(path: str, stamp: Any, wait) -> Optional[Tuple]:
+    """The file's result, or None when it is absent. A busy read waits (B1)."""
+    from utils.transient_filesystem import (
+        ReadOnlySaveStop, is_transient_filesystem_error, read_bytes_preserving_errors,
+        retry_transient_filesystem,
+    )
+
+    while True:
+        try:
+            raw = retry_transient_filesystem(lambda: read_bytes_preserving_errors(path))
+            break
+        except FileNotFoundError:
+            return None
+        except ReadOnlySaveStop:
+            raise
+        except OSError as error:
+            if not is_transient_filesystem_error(error):
+                result = ("refused", f"it could not be read ({error})")
+                _loot_warn((path, stamp, "refused"), f"{path} refused: {result[1]}")
+                return result
+            _loot_warn((path, stamp, "busy"), f"{path} is busy; waiting to read it")
+        wait()
+    try:
+        result = _module_entries(json.loads(raw.decode("utf-8")), path, stamp)
+    except UnicodeDecodeError as error:
+        result = ("refused", f"it is not UTF-8 ({error})")
+    except ValueError as error:
+        result = ("refused", f"it is not JSON ({error})")
+    if result[0] == "refused":
+        _loot_warn((path, stamp, "refused"), f"{path} refused: {result[1]}")
+    return result
+
+
+def _module_pack(wait=None) -> Dict[str, Any]:
+    """{"entries": {id: entry}, "by_module": {folder: {itemKey: id}}} from every
+    modules/*/module_items.json. Each file is re-read only when it is new or its
+    stamp changed or cannot be taken; a busy read waits, with ``wait`` (a
+    no-argument callable) or the global live-provider wait."""
+    from utils.transient_filesystem import scandir_names
+
+    wait = wait if wait is not None else _default_wait
+    names, complete = scandir_names(_MODULES_DIR, wait, pattern="*", dironly=True)
+    if complete:
+        _LOOT_WARNED.discard(_LISTING_OUTAGE)
+    else:
+        _loot_warn(_LISTING_OUTAGE, f"{_MODULES_DIR}/ could not be listed completely; "
+                                    "module items keep their last reads")
+    for folder in sorted(names):
+        path = os.path.join(_MODULES_DIR, folder, _MODULE_ITEMS_FILE)
+        try:
+            st = os.stat(path)
+            stamp = (st.st_mtime_ns, st.st_size)
+        except FileNotFoundError:
+            _MODULE_FILES.pop(folder, None)
+            continue
+        except OSError:
+            stamp = None  # unstampable: never equal to a held stamp, so re-read
+        held = _MODULE_FILES.get(folder)
+        if held is not None and stamp is not None and held[0] == stamp:
+            continue
+        result = _read_module_file(path, stamp, wait)
+        if result is None:
+            _MODULE_FILES.pop(folder, None)
+        else:
+            _MODULE_FILES[folder] = (stamp, result)
+    if complete:
+        for folder in [f for f in _MODULE_FILES if f not in names]:
+            del _MODULE_FILES[folder]
+    claims: Dict[str, List[str]] = {}
+    for folder, (_, result) in _MODULE_FILES.items():
+        if result[0] == "ok":
+            claims.setdefault(result[1], []).append(folder)
+    pack: Dict[str, Any] = {"entries": {}, "by_module": {}}
+    for folder, (stamp, result) in sorted(_MODULE_FILES.items()):
+        if result[0] != "ok":
+            continue
+        if len(claims[result[1]]) > 1:
+            _loot_warn((folder, stamp, "collision", tuple(sorted(claims[result[1]]))),
+                       f"namespace {result[1]!r} is claimed by {', '.join(sorted(claims[result[1]]))}; "
+                       f"every claimant is refused")
+            continue
+        keys = pack["by_module"].setdefault(folder, {})
+        for item in result[2]:
+            pack["entries"][item["id"]] = item
+            keys[item["itemKey"]] = item["id"]
+    return pack
+
+
+def module_catalog_id(module: Any, item_key: Any) -> Optional[str]:
+    """The catalog id of ``item_key`` in ``module``'s module_items.json, or None
+    (unknown, refused, or its namespace claimed by two modules). ``module`` is
+    the module folder name as party_tracker ``module`` holds it."""
+    folder = str(module or "").replace(" ", "_")
+    return _module_pack()["by_module"].get(folder, {}).get(item_key)
+
+
+def resolve_loot(location: Any, module: Any, *, wait=None) -> List[Dict[str, Any]]:
+    """[{catalogId, name, authored}] for a location's ``lootItems``, in authored
+    order. An unknown itemKey, a quantity that is not a whole number of at
+    least 1, or a repeated itemKey (the whole list) is dropped with one
+    warning; any other failure gives [] with one warning. Stops propagate."""
+    stops = _stops()
+    location_id = location.get("locationId") if isinstance(location, dict) else None
+    try:
+        raw = location.get("lootItems") if isinstance(location, dict) else None
+        if not raw:
+            return []
+        if not isinstance(raw, list):
+            _loot_warn((location_id, "not a list"), f"location {location_id}: lootItems is not a list")
+            return []
+        keys = [i.get("itemKey") if isinstance(i, dict) else None for i in raw]
+        named = [k for k in keys if isinstance(k, str)]  # a keyless entry is dropped alone below
+        if len(set(named)) != len(named):
+            _loot_warn((location_id, "duplicate"), f"location {location_id}: lootItems repeats an itemKey; "
+                                                   "the list is not used")
+            return []
+        folder = str(module or "").replace(" ", "_")
+        pack = _module_pack(wait=wait)
+        known = pack["by_module"].get(folder, {})
+        listing = []
+        for item, key in zip(raw, keys):
+            quantity = item.get("quantity") if isinstance(item, dict) else None
+            if not isinstance(key, str) or key not in known:
+                _loot_warn((location_id, "unknown", repr(key)),
+                           f"location {location_id}: lootItems itemKey {key!r} is not an item of {folder}")
+                continue
+            if type(quantity) is not int or quantity < 1:
+                _loot_warn((location_id, "quantity", repr(key)),
+                           f"location {location_id}: lootItems {key!r} quantity {quantity!r} is not a whole "
+                           "number of at least 1")
+                continue
+            listing.append({"catalogId": known[key], "name": pack["entries"][known[key]]["name"],
+                            "authored": quantity})
+        return listing
+    except stops:
+        raise
+    except Exception as error:  # noqa: BLE001 - loot never stops a turn
+        _loot_warn((location_id, "error"), f"location {location_id}: lootItems could not be resolved ({error})")
+        return []
 
 
 # #552: ammunition row names this game wrote before rows used the SRD catalog
@@ -176,7 +413,7 @@ def row_entry(row: Dict[str, Any]) -> Tuple[Optional[Dict[str, Any]], Optional[s
     catalog_id = row.get("catalog_id")
     if not isinstance(catalog_id, str) or not catalog_id:
         return None, None
-    found = entries().get(catalog_id)
+    found = entry(catalog_id)
     if found is None:
         return None, f"names unknown catalog_id {catalog_id!r}"
     if found.get("kind") == "armor":
