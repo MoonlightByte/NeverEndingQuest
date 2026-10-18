@@ -443,8 +443,21 @@ rollLead, one or two sentences showing the attempt as it begins (the
 weapon or spell and the target as the player has seen it, never an id),
 and hitLead, one sentence for the moment it lands. Neither states dice,
 numbers, damage, saves, whether rollLead hits, or whether the target
-falls. Code shows them only when it asks the player for dice, and puts
-the exact roll request after your words.
+falls. End each with asking the player for this roll in your own words,
+or offer to roll it for them. Code shows the dice as a record beside your
+words; your words carry the ask.
+
+When the correction carries openRollReply, a roll is open and code keeps
+it. Write requiresPlayerInput.prompt only: answer the player's line and
+ask again for this same roll in your own words, offering to roll it. If
+unfitting is set, say those numbers do not fit the dice. If
+readerUnavailable is set, the game could not read the line as an answer:
+ask for the roll again and never say a roll was made. State nothing about
+the swing beyond mainSwing. If mainSwing is set, the off-hand attack is
+already under way and only its dice are open: if the player wants to stop,
+tell them plainly that only its dice remain and offer to roll it. This
+takes precedence over the rules for a plain swing, a recorded spell attack
+and the off-hand attack.
 
 """ + _spell_attack_prompt() + """The PLAYER actor must always use mode='adjudicated'. Never invent a roll for
 the player. The player asks the game to roll when they ask the DM or the game

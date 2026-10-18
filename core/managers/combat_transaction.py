@@ -958,6 +958,7 @@ def write_weapon_attack(
     timeout_seconds=5.0,
     npc_voice_intents=None,
     requested_phase=None,
+    rolled_faces=None,
 ):
     """Item 3: persist the code-issued roll phase, pendingTurn.weaponAttack.
 
@@ -965,7 +966,9 @@ def write_weapon_attack(
     None removes it (the player's words go back to the model). ``answer`` is
     the player's typed reply, added to the exchange chain first, and
     ``player_message`` the next [ROLL] request beside it, so history reads as
-    a DM request does today.
+    a DM request does today. ``rolled_faces`` (#1118) marks the answer as the
+    game's roll, typed beside the player's own words (``rolledBy`` "game" and
+    the faces per term); the answer text may then be empty.
     """
     with path_transaction_lock(
         encounter_path,
@@ -985,7 +988,10 @@ def write_weapon_attack(
         if not isinstance(exchanges, list) or not exchanges:
             exchanges = [{"playerInput": ""}]
         exchanges = [item for item in exchanges if isinstance(item, dict)]
-        if answer is not None:
+        if answer is not None and rolled_faces is not None:
+            exchanges.append({"playerInput": _player_text(answer), "rolledBy": "game",
+                              "rolledFaces": deepcopy(rolled_faces)})
+        elif answer is not None:
             exchanges.append({"playerInput": _player_text(answer) or "(the game rolled)"})
         if player_message is not None:
             exchanges[-1]["dmRequest"] = _player_text(player_message)

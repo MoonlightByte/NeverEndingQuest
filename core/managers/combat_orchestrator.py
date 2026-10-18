@@ -81,11 +81,21 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class CombatTurnPaused(RuntimeError):
-    """No mutation occurred; the same durable turn may be retried or resumed."""
+    """No mutation occurred; the same durable turn may be retried or resumed.
+    ``player_message`` is the DM's words; ``card`` is a code-issued roll's dice
+    record, shown as a system record under ``card_id`` (#1118, D-1118-8 D)."""
 
-    def __init__(self, technical_message, player_message=None):
+    def __init__(self, technical_message, player_message=None, card=None, card_id=None):
         super().__init__(technical_message)
         self.player_message = player_message
+        self.card = card
+        self.card_id = card_id
+
+
+def _phase_paused(technical_message, record):
+    """The pause for an open code-issued roll phase: the DM's lead and its card."""
+    return CombatTurnPaused(technical_message, player_message=record.get("lead") or None,
+                            card=record.get("card"), card_id=record.get("cardId"))
 
 
 def _load_characters(character_paths, context_sheets=None):
@@ -513,7 +523,7 @@ def _check_asked_slot_level(encounter, pending, batch):
                 intent.get("actorId"), {"askedSlotLevel": asked})
 
 
-def _check_answered_roll_faces(encounter_path, encounter, pending, batch, voice_intents=None):
+def _check_answered_roll_faces(encounter_path, encounter, pending, batch, voice_intents=None, reply=None):
     """3b (D-KW-8): the faces of the roll the player just answered are a typed
     field, playerRoll={phase, faces: one list per die term}; code never reads
     them from the player's sentence. The model copies the player's numbers;
@@ -602,21 +612,27 @@ def _check_answered_roll_faces(encounter_path, encounter, pending, batch, voice_
         for group, (_count, sides) in zip(faces, terms):
             if all(1 <= face <= sides for face in group):
                 continue
-            message = (
-                "A d%s result must be between 1 and %s. Please roll it again; "
-                "your turn is still waiting." % (sides, sides)
-            )
-            record_pending_player_request(
-                encounter_path,
-                pending.get("turnId"),
-                message,
+            # C2b (#1118, D-1118-4 A): the typed request is kept (re-stored
+            # first, as the player saw it); the DM says the numbers do not fit
+            # and asks again in its own words, which then replace the shown ask.
+            restore = dict(
                 requested_die=previous.get("requestedDie"),
                 requested_phase=previous.get("requestedPhase"),
                 npc_voice_intents=voice_intents,
                 requested_roll=previous.get("requestedRoll"),
                 requested_slot_level=previous.get("requestedSlotLevel"),
                 requested_dc=previous.get("requestedDc"),
+                timeout_seconds=None,
             )
+            message = str(previous.get("dmRequest") or "").strip()
+            record_pending_player_request(encounter_path, pending.get("turnId"), message, **restore)
+            asked = {"label": phase or "roll", "phase": phase,
+                     "dice": [{"count": count, "sides": die} for count, die in terms], "eachDie": False}
+            reworded = _open_roll_reply(encounter, pending, str(last.get("playerInput") or ""), asked, reply,
+                                        follow_up=False, unfitting=True)
+            if reworded is not None:
+                message = reworded
+                record_pending_player_request(encounter_path, pending.get("turnId"), message, **restore)
             record_combat_diagnostic(
                 record_type="window_outcome",
                 callsite="T096",
@@ -1358,10 +1374,11 @@ def _validate_roll_request_phase(batch, encounter):
             )
 
 
-# Item 3: the player's plain melee weapon swing. Code asks for the dice (the
-# request is the pause narration; the input line is the C2a [ROLL] tag plus
-# the dice), takes only bare typed numbers, and scores the swing; any other
-# answer goes back to the model's adjudicated path.
+# Item 3: the player's plain melee weapon swing. Code holds the dice (the DM's
+# lead asks, a dice card records them; the terminal line is the [ROLL] tag),
+# takes bare typed numbers on the fast path (D-KW-1/D-KW-2; the tray sentence
+# is D-KW-14/D-KW-17's shortcut until #1116), and scores the swing; any other
+# answer is read by T126 (#1118).
 _ROLL_NUMBERS = re.compile(r"^\s*(\d{1,3})(?:[\s,]+(\d{1,3}))?\s*$")
 # #879: a Great Weapon Fighting swing takes each damage die (a critical 2d6 is 4).
 _FACE_LIST = re.compile(r"^\s*\d{1,3}(?:[\s,]+\d{1,3})*\s*$")
@@ -1390,11 +1407,11 @@ def _roll_terms(terms):
 
 def _game_roll_line(request, faces):
     """The record of the game's roll for a DM request, from typed fields only
-    (the request exchange's requestedRoll and requestedPhase; its prose is
-    never read): "Game roll for the DM's request (damage): 4 and 2 on the
+    (the request exchange's requestedRoll, or a code phase's requestedDie, and
+    requestedPhase; its prose is never read): "Game roll for the DM's request (damage): 4 and 2 on the
     2d6." T096 reads it beside the player's words and the player sees it as
     a system card (#1118)."""
-    terms = _roll_die_terms((request or {}).get("requestedRoll")) or []
+    terms = _roll_die_terms((request or {}).get("requestedRoll") or (request or {}).get("requestedDie")) or []
     if len(terms) != len(faces):
         terms = [None] * len(faces)
     parts = []
@@ -1490,8 +1507,10 @@ def _each_die_example(count, sides):
     return " ".join(str((face - 1) % sides + 1) for face in ([1, 4, 2, 6, 3, 5] * count)[:count])
 
 
-def _roll_line(record, entry):
-    """The code roll request for the open phase; also stores record["dice"]."""
+def _roll_card(record, entry):
+    """The dice card of the open phase (#1118, D-1118-8 D): a record of what is
+    rolled, for what, and what code already scored; never an ask (the DM's
+    lead asks). Also stores record["dice"]."""
     count, sides = player_weapon_attack_dice(record, entry)
     record["dice"] = "%dd%d" % (count, sides)
     if record.get("phase") == "attack":
@@ -1499,13 +1518,20 @@ def _roll_line(record, entry):
             " (%s from %s)" % (record.get("mode"), ", ".join(record.get("modeSources") or []))
             if count == 2 else ""
         )
-        what = "both results (e.g. 15 3)" if count == 2 else "the result (e.g. 15)"
-        return "%s attack against %s: roll %dd20%s and type %s, or type roll and the game rolls." % (
-            _phase_weapon(record, entry), _spoken_name(record.get("targetName")), count, why, what,
+        card = "%s attack on %s: %dd20%s" % (
+            _phase_weapon(record, entry), _spoken_name(record.get("targetName")), count, why,
         )
+        main = record.get("mainSwing") if isinstance(record.get("mainSwing"), dict) else {}
+        if record.get("bonusAttack") is True and type(main.get("attackTotal")) is int:
+            # R3: the Action's code-scored swing comes first.
+            card = "%s %s, %s vs AC %s. %s" % (
+                main.get("spokenWeapon") or main.get("ability"),
+                "critical hit" if main.get("critical") else "hit" if main.get("hit") else "miss",
+                main.get("attackTotal"), main.get("targetAC"), card)
+        return card
     spell = record.get("spell") if isinstance(record.get("spell"), dict) else {}
     if spell.get("type") == "save":
-        # #723: the saves are scored first; the request states each one.
+        # #723: the saves are scored first; the card states each one.
         save = spell.get("save") or {}
         verdicts = []
         for result in save.get("results") or []:
@@ -1514,16 +1540,13 @@ def _roll_line(record, entry):
                 str(save.get("type") or "").capitalize(), result.get("total"), save.get("dc"),
                 {"half": ", half damage", "none": ", no damage"}.get(result.get("effect"), ""),
             ))
-        return "%s: %s. Roll %dd%d for damage and type the total, or type roll and the game rolls." % (
-            record.get("ability"), "; ".join(verdicts), count, sides,
-        )
+        return "%s: %s. Damage: %dd%d, the total" % (record.get("ability"), "; ".join(verdicts), count, sides)
     hit = (
         "critical hit" if record.get("critical")
-        else "hit (%s vs AC %s)" % (record.get("attackTotal"), record.get("targetAC"))
+        else "hit, %s vs AC %s," % (record.get("attackTotal"), record.get("targetAC"))
     )
-    what = ("each die (e.g. %s)" % _each_die_example(count, sides)
-            if _wants_each_die(record, count) else "the total")
-    return "%s %s on %s: roll %dd%d for damage and type %s, or type roll and the game rolls." % (
+    what = "each die" if _wants_each_die(record, count) else "the total"
+    return "%s %s on %s. Damage: %dd%d, %s" % (
         _phase_weapon(record, entry), hit, _spoken_name(record.get("targetName")), count, sides, what,
     )
 
@@ -1545,24 +1568,56 @@ def _roll_lead(record, key):
     return ""
 
 
-def _weapon_attack_prompt(record, entry):
-    """The request the player sees: the DM's lead, if T096 wrote one, then the
-    code roll line (#860; owner ruling: the DM narrates, code keeps the dice)."""
-    line = _roll_line(record, entry)
+def _phase_lead(record):
+    """The DM's own words for the open phase (#860): T096's rollLead or hitLead.
+    R3: the Off-hand Attack has none; its card is the ask."""
     if record.get("bonusAttack") is True:
-        # R3: the DM's leads belong to the Action's swing; the off-hand d20 is
-        # led by that swing's code-scored result, when code scored it.
-        main = record.get("mainSwing") if isinstance(record.get("mainSwing"), dict) else {}
-        if record.get("phase") != "attack" or type(main.get("attackTotal")) is not int:
-            return line
-        return "Your %s %s (%s vs AC %s). %s" % (
-            main.get("spokenWeapon") or main.get("ability"),
-            "critical hit" if main.get("critical") else "hit" if main.get("hit") else "missed",
-            main.get("attackTotal"), main.get("targetAC"), line)
+        return ""
     spell = record.get("spell") if isinstance(record.get("spell"), dict) else {}
     key = "hitLead" if record.get("phase") == "damage" and spell.get("type") != "save" else "rollLead"
-    lead = _roll_lead(record, key)
-    return "%s %s" % (lead, line) if lead else line
+    return _roll_lead(record, key)
+
+
+def _join_ask(lead, card):
+    """The ask as one text, for T096's dmRequest and T126's ``asked``."""
+    return "%s %s" % (lead, card) if lead else card
+
+
+def _weapon_attack_prompt(record, entry):
+    """Write the open phase's ask on the record: the DM's ``lead``, the dice
+    ``card`` under a fresh ``cardId``, and ``prompt``, their join (#1118,
+    D-1118-8 D: the DM asks, code keeps the dice). Returns the prompt."""
+    from core.managers.checks_runtime import new_message_id
+
+    record["lead"] = _phase_lead(record)
+    record["card"] = _roll_card(record, entry)
+    record["cardId"] = new_message_id()
+    record["prompt"] = _join_ask(record["lead"], record["card"])
+    return record["prompt"]
+
+
+def _rebuild_ask(record, entry):
+    """A phase saved before #1118 has only ``prompt``: its lead and card are
+    rebuilt from typed fields (never by splitting the prompt); it has no
+    cardId until the next write that sets one."""
+    if isinstance(record.get("card"), str):
+        return
+    record["lead"] = _phase_lead(record)
+    record["card"] = _roll_card(record, entry)
+
+
+def _fitting_values(values, record, entry):
+    """The values when they fit the open phase's dice, else "invalid": each die,
+    each d20, or one total (#879). The one fit compare for typed numbers and
+    T126's faces."""
+    count, sides = player_weapon_attack_dice(record, entry)
+    if _wants_each_die(record, count):
+        fits = len(values) == count and all(1 <= value <= sides for value in values)
+    elif record.get("phase") == "attack":
+        fits = len(values) == count and all(1 <= value <= 20 for value in values)
+    else:
+        fits = len(values) == 1 and count <= values[0] <= count * sides
+    return list(values) if fits else "invalid"
 
 
 def _parse_weapon_roll(text, record, entry):
@@ -1573,21 +1628,15 @@ def _parse_weapon_roll(text, record, entry):
         return None
     if not text.strip() or _lets_the_game_roll(text):
         return []
-    count, sides = player_weapon_attack_dice(record, entry)
+    count, _sides = player_weapon_attack_dice(record, entry)
     if _wants_each_die(record, count):
         if not _FACE_LIST.match(text):
             return _tray_faces(text, record, entry)
-        values = [int(value) for value in re.findall(r"\d+", text)]
-        return values if len(values) == count and all(1 <= value <= sides for value in values) else "invalid"
+        return _fitting_values([int(value) for value in re.findall(r"\d+", text)], record, entry)
     match = _ROLL_NUMBERS.match(text)
     if not match:
         return _tray_faces(text, record, entry)
-    values = [int(group) for group in match.groups() if group is not None]
-    if record.get("phase") == "attack":
-        fits = len(values) == count and all(1 <= value <= 20 for value in values)
-    else:
-        fits = len(values) == 1 and count <= values[0] <= count * sides
-    return values if fits else "invalid"
+    return _fitting_values([int(group) for group in match.groups() if group is not None], record, entry)
 
 
 def _roll_already_answered(pending):
@@ -1709,7 +1758,7 @@ def _open_off_hand_phase(encounter_path, encounter, characters, pending, batch, 
     code asks its d20, then its damage, after the Action). It stores the batch
     the Action resolved from and the Action's completed code swing (if any),
     so the window resolves from the dice with no second model pass. Returns
-    the [ROLL] request."""
+    the open phase record (its lead, card and cardId)."""
     request = signal.request
     phase_intent = {"actorId": signal.actor_id, "ability": request.get("ability"),
                     "targetId": request.get("targetId")}
@@ -1719,7 +1768,7 @@ def _open_off_hand_phase(encounter_path, encounter, characters, pending, batch, 
     record["batch"] = deepcopy(batch)
     if isinstance(main_swing, dict):
         record["mainSwing"] = {key: deepcopy(value) for key, value in main_swing.items()
-                               if key not in ("batch", "prompt", "dice")}
+                               if key not in ("batch", "prompt", "dice", "lead", "card", "cardId")}
         record["mainSwing"]["spokenWeapon"] = _spoken_weapon(
             main_swing, weapon_attack_sheet_entry(encounter, characters, main_swing))
     record["prompt"] = _weapon_attack_prompt(record, entry)
@@ -1731,6 +1780,7 @@ def _open_off_hand_phase(encounter_path, encounter, characters, pending, batch, 
         requested_die=record.get("dice"),
         npc_voice_intents=voice_intents,
         requested_phase=record.get("phase"),
+        timeout_seconds=None,
     )
     record_combat_diagnostic(
         record_type="window_outcome",
@@ -1743,7 +1793,7 @@ def _open_off_hand_phase(encounter_path, encounter, characters, pending, batch, 
         window_kind="player",
         actor_count=len(pending.get("actorIds") or []),
     )
-    return record["prompt"]
+    return record
 
 
 def _resolve_ready_phase(encounter_path, encounter, characters, pending):
@@ -1776,11 +1826,11 @@ def _resolve_ready_phase(encounter_path, encounter, characters, pending):
         return pending, events, roll_consumption, preview_characters
     except CombatBonusAttackRollRequired as signal:
         # R3: the Action's swing is scored; code asks the Off-hand Attack's dice.
-        prompt = _open_off_hand_phase(
+        record = _open_off_hand_phase(
             encounter_path, encounter, characters, pending, ready_attack.get("batch"), signal,
             main_swing=ready_attack,
         )
-        raise CombatTurnPaused("Code-issued off-hand roll is waiting for the player", player_message=prompt)
+        raise _phase_paused("Code-issued off-hand roll is waiting for the player", record)
     except (CombatIntentError, IndexError, TypeError, ValueError):
         # Fail forward: the stored batch no longer resolves, so the model
         # rules the window from the exchanges, which keep the typed faces.
@@ -1799,45 +1849,182 @@ def _resolve_ready_phase(encounter_path, encounter, characters, pending):
         return pending, None, None, None
 
 
-def _advance_weapon_attack(encounter_path, encounter, characters, pending, text, voice_intents):
-    """Take the typed answer for the open phase. Returns (pending, prompt):
-    prompt is the next [ROLL] request, None when the swing is ready to score;
-    pending is None when the answer is not a roll (the model's path)."""
+def _phase_request(record, entry):
+    """The typed open roll of a code phase, as T126 and the re-ask read it."""
+    count, sides = player_weapon_attack_dice(record, entry)
+    phase = record.get("phase")
+    return {"label": _phase_weapon(record, entry), "phase": phase,
+            "dice": [{"count": count, "sides": 20 if phase == "attack" else sides}],
+            "eachDie": _wants_each_die(record, count)}
+
+
+def _main_swing_facts(record):
+    """R3: the Action's scored, uncommitted swing at the off-hand phase, as typed facts."""
+    main = record.get("mainSwing") if record.get("bonusAttack") is True else None
+    if not isinstance(main, dict):
+        return None
+    return {"weapon": main.get("spokenWeapon") or main.get("ability"),
+            "target": _spoken_name(main.get("targetName")), "hit": main.get("hit") is True,
+            "critical": main.get("critical") is True, "attackTotal": main.get("attackTotal"),
+            "targetAC": main.get("targetAC")}
+
+
+def _phase_diagnostic(encounter, pending, callsite, outcome, **extra):
+    record_combat_diagnostic(
+        record_type="window_outcome",
+        callsite=callsite,
+        outcome=outcome,
+        encounter_id=encounter.get("encounterId"),
+        turn_id=pending.get("turnId"),
+        revision=(encounter.get("combatState") or {}).get("revision"),
+        round_number=(encounter.get("combatState") or {}).get("round"),
+        window_kind="player",
+        actor_count=len(pending.get("actorIds") or []),
+        **extra,
+    )
+
+
+def _open_roll_reply(encounter, pending, line, request, reply, *, follow_up, unfitting=False,
+                     reader_unavailable=False, main_swing=None):
+    """Item 2 (#1118, D-1118-4 A): the re-ask in the DM's own words. One
+    words-only T096 call (correction openRollReply) answers the player's line
+    and asks again for the same open roll; code keeps the request, and only
+    the player intent's requiresPlayerInput prompt is used. Returns that text,
+    stripped, or None: the caller then shows the stored request again."""
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+
+    if not isinstance(reply, dict) or reply.get("intent_provider") is None:
+        return None
+    open_reply = dict(request)
+    if unfitting:
+        open_reply["unfitting"] = True
+    if reader_unavailable:
+        open_reply["readerUnavailable"] = True
+    if main_swing:
+        open_reply["mainSwing"] = main_swing
+    provider_input = _composed_player_input(pending, line)
+    if follow_up:
+        # A code phase never stores the line it is answering.
+        provider_input = "\n".join(part for part in (provider_input, "Player follow-up: %s" % line) if part)
+    kwargs = {"spell_references": reply.get("spell_references"),
+              "correction": {"openRollReply": open_reply}}
+    voice_actors = (reply.get("voice_intents") or {}).get("actors", {})
+    if voice_actors:
+        kwargs["npc_voice_intents"] = voice_actors
+    try:
+        _require_current_invocation(reply.get("invocation_claim"))
+        batch = reply["intent_provider"](encounter, reply.get("characters"), pending, provider_input, **kwargs)
+        _require_current_invocation(reply.get("invocation_claim"))
+    except (InvocationSupersededError, ReadOnlySaveStop, LiveProviderSuperseded, LiveProviderCompletedError):
+        raise
+    except Exception as exc:
+        _LOGGER.warning("Open-roll reply failed; the stored request is shown again: %s", type(exc).__name__)
+        _phase_diagnostic(encounter, pending, "T096", "open_roll_reply_failed", error_code=exc.__class__.__name__)
+        return None
+    text = None
+    ignored = 0
+    for intent in (batch.get("intents") if isinstance(batch, dict) else None) or []:
+        ask = intent.get("requiresPlayerInput") if isinstance(intent, dict) else None
+        if (text is None and isinstance(ask, dict) and ask.get("kind") == "roll"
+                and isinstance(ask.get("prompt"), str) and ask["prompt"].strip()
+                and _is_human_controlled(encounter, combatant_by_id(encounter, intent.get("actorId")))):
+            text = ask["prompt"].strip()
+        else:
+            ignored += 1
+    if ignored:
+        _phase_diagnostic(encounter, pending, "T096", "open_roll_reply_intent_ignored", intents=ignored)
+    if text is None:
+        _LOGGER.warning("Open-roll reply carried no prompt; the stored request is shown again")
+        _phase_diagnostic(encounter, pending, "T096", "open_roll_reply_failed", error_code="missing_prompt")
+    return text
+
+
+def _advance_weapon_attack(encounter_path, encounter, characters, pending, text, voice_intents, reply=None):
+    """Take the player's answer for the open code phase. Returns (pending, ask):
+    ask is the record of the phase now open (its lead, card and cardId), None
+    when the swing is ready to score; pending is None when the line goes back
+    to the model as a new plan (C1: a declined roll, or no reader).
+
+    The fast path (a blank line, the D-KW-1 line, the dice tray sentence, bare
+    numbers) calls no model; any other line is read by T126 (#1118). Numbers
+    that do not fit, and any line that is not an answer, keep the phase open
+    and get the DM's words-only reply (item 2), so the window is never re-ruled
+    (F4)."""
+    from core.ai.roll_answer import read_roll_answer, request_payload
+    from core.managers.checks_runtime import _show_check_receipt, new_message_id
+
     record = deepcopy(pending["weaponAttack"])
     entry = weapon_attack_sheet_entry(encounter, characters, record)
-    values = _parse_weapon_roll(text, record, entry) if entry is not None else None
-    if values is None and entry is not None and record.get("bonusAttack") is True:
-        # R3: the Off-hand Attack was already chosen and only its dice are
-        # open; a sentence asks for the number again instead of handing the
-        # window back to the model (F4: that hand-back looped).
-        values = "invalid"
-    if values is None:
-        write_weapon_attack(encounter_path, pending.get("turnId"), None)
+    off_hand = record.get("bonusAttack") is True
+    if entry is None:
+        write_weapon_attack(encounter_path, pending.get("turnId"), None, timeout_seconds=None)
         return None, None
-    if values == "invalid":
-        count, sides = player_weapon_attack_dice(record, entry)
-        hint = (
-            "Type %d whole number%s between 1 and 20, or type roll to let the game roll. "
-            % (count, "s" if count == 2 else "")
-            if record.get("phase") == "attack"
-            else "Type each of the %dd%d dice (e.g. %s), or type roll to let the game roll. " % (
-                count, sides, _each_die_example(count, sides))
-            if _wants_each_die(record, count)
-            else "Type the total of %dd%d (%d to %d), or type roll to let the game roll. "
-            % (count, sides, count, count * sides)
+    _rebuild_ask(record, entry)
+    request = _phase_request(record, entry)
+    values = _parse_weapon_roll(text, record, entry)
+    reader_unavailable = False
+    if values is None and isinstance(text, str):
+        answer = read_roll_answer(request_payload(request["label"], request["phase"], request["dice"],
+                                                  request["eachDie"], record.get("prompt"), text))
+        kind = answer.get("kind")
+        if answer.get("readerUnavailable"):
+            reader_unavailable = True
+            _phase_diagnostic(encounter, pending, "T126", answer["readerUnavailable"])
+        if kind == "let_game_roll":
+            values = []
+        elif kind == "faces":
+            faces = answer.get("values") or []
+            values = _fitting_values(faces[0], record, entry) if len(faces) == 1 else "invalid"
+        elif off_hand:
+            # R3, D-1118-9 D: the off-hand dice stay open on any other line.
+            values = "other"
+        elif kind == "decline" or reader_unavailable:
+            # C1: the line is a new plan (or could not be read): T096 rules it.
+            values = None
+        else:
+            values = "other"
+    if values is None and off_hand:
+        raise _phase_paused("Code-issued off-hand roll is waiting for the player", record)
+    if values is None:
+        write_weapon_attack(encounter_path, pending.get("turnId"), None, timeout_seconds=None)
+        return None, None
+    if values in ("invalid", "other"):
+        lead = _open_roll_reply(
+            encounter, pending, text or "", request, reply, follow_up=True,
+            unfitting=values == "invalid", reader_unavailable=reader_unavailable,
+            main_swing=_main_swing_facts(record),
         )
-        return pending, hint + _roll_line(record, entry)
+        if lead is None:
+            # The stored request again; a card with no lead beside it is its
+            # own new record each time, so every line gets a visible answer.
+            raise CombatTurnPaused(
+                "Code-issued roll is waiting for the player",
+                player_message=record.get("lead") or None, card=record.get("card"),
+                card_id=record.get("cardId") if record.get("lead") else None,
+            )
+        record["lead"] = lead
+        record["prompt"] = _join_ask(lead, record["card"])
+        record.setdefault("cardId", new_message_id())
+        write_weapon_attack(
+            encounter_path, pending.get("turnId"), record,
+            player_message=record["prompt"], requested_die=record.get("dice"),
+            npc_voice_intents=voice_intents, requested_phase=record.get("phase"),
+            timeout_seconds=None,
+        )
+        raise _phase_paused("Code-issued roll is waiting for the player", record)
     phase = record["phase"]
     count, sides = player_weapon_attack_dice(record, entry)
+    rolled = None
+    game_card = None
     if values:
-        source, answer = "player", text.strip()
+        source = "player"
     else:
-        roller = random.SystemRandom()
-        if phase == "attack":
-            values = [roller.randint(1, 20) for _ in range(count)]
-        else:
-            values = [roller.randint(1, sides) for _ in range(count)]
-        source, answer = "game", "(the game rolled %s)" % " ".join(str(v) for v in values)
+        die = 20 if phase == "attack" else sides
+        values = _roll_terms([(count, die)])[0]
+        source, rolled = "game", [list(values)]
+        game_card = "Game roll for your %s %s: %s on %dd%d." % (
+            _phase_weapon(record, entry), phase, " and ".join(str(value) for value in values), count, die)
     if phase == "attack":
         record["faces"][phase] = values
     else:
@@ -1847,8 +2034,7 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
         if len(values) == count:
             record["faces"]["damageFaces"] = list(values)
     record["sources"][phase] = source
-    prompt = None
-    requested = None
+    is_open = False
     if phase == "attack":
         hit, critical, kept, total, ac = player_weapon_attack_score(encounter, characters, record, entry)
         record.update({"hit": hit, "critical": critical, "attackKept": kept,
@@ -1857,20 +2043,25 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
             record["phase"] = "damage"
             if not isinstance(record.get("spell"), dict):
                 record["greatWeapon"] = player_great_weapon(encounter, characters, record, entry)
-            prompt = _weapon_attack_prompt(record, entry)
-            record["prompt"] = prompt
-            requested = record["dice"]
-    if prompt is None:
+            _weapon_attack_prompt(record, entry)
+            is_open = True
+    if not is_open:
         record["ready"] = True
-        record.pop("prompt", None)
-        record.pop("dice", None)
+        for key in ("prompt", "dice", "lead", "card", "cardId"):
+            record.pop(key, None)
+    # The player's own words are the answer; a game roll is typed beside them.
     pending = write_weapon_attack(
         encounter_path, pending.get("turnId"), record,
-        player_message=prompt, requested_die=requested, answer=answer,
+        player_message=record["prompt"] if is_open else None,
+        requested_die=record["dice"] if is_open else None,
+        answer=(text or "").strip(), rolled_faces=rolled,
         npc_voice_intents=voice_intents,
-        requested_phase=record.get("phase") if prompt else None,
+        requested_phase=record.get("phase") if is_open else None,
+        timeout_seconds=None,
     )
-    return pending, prompt
+    if game_card is not None:
+        _show_check_receipt(game_card)
+    return pending, (record if is_open else None)
 
 
 def _defend_batch(encounter, pending):
@@ -2406,19 +2597,20 @@ def execute_agentic_turn(
             # Item 3: the answer to a code-issued [ROLL] line. Only bare typed
             # numbers (or a blank line) are taken; anything else closes the
             # roll phase and goes to the model as a normal follow-up.
-            advanced, roll_prompt = _advance_weapon_attack(
+            phase_characters = _load_characters(character_paths, context_sheets)
+            advanced, ask = _advance_weapon_attack(
                 encounter_path,
                 encounter,
-                _load_characters(character_paths, context_sheets),
+                phase_characters,
                 pending,
                 weapon_roll_text if weapon_roll_text is not None else player_input,
                 None,
+                reply={"intent_provider": intent_provider, "characters": phase_characters,
+                       "spell_references": spell_references, "invocation_claim": invocation_claim,
+                       "voice_intents": immutable_voice_intents},
             )
-            if roll_prompt is not None:
-                raise CombatTurnPaused(
-                    "Code-issued weapon roll is waiting for the player",
-                    player_message=roll_prompt,
-                )
+            if ask is not None:
+                raise _phase_paused("Code-issued weapon roll is waiting for the player", ask)
             weapon_answered = advanced is not None
             encounter = safe_json_load(encounter_path)
             pending = deepcopy((encounter.get("combatState") or {}).get("pendingTurn"))
@@ -2647,7 +2839,10 @@ def execute_agentic_turn(
             _keep_stated_hit(batch, correction)
             # 3b: the answered roll's typed faces fit the typed request.
             if _check_answered_roll_faces(
-                encounter_path, encounter, pending, batch, immutable_voice_intents
+                encounter_path, encounter, pending, batch, immutable_voice_intents,
+                reply={"intent_provider": intent_provider, "characters": provider_characters,
+                       "spell_references": spell_references, "invocation_claim": invocation_claim,
+                       "voice_intents": immutable_voice_intents},
             ) == _GAME_ROLL_RERULE:
                 record_combat_diagnostic(
                     record_type="window_outcome",
@@ -2715,10 +2910,7 @@ def execute_agentic_turn(
                     intents=len(batch.get("intents") or []) if isinstance(batch, dict) else None,
                 )
                 if record.get("ready") is not True:
-                    raise CombatTurnPaused(
-                        "Code-issued weapon roll is waiting for the player",
-                        player_message=record["prompt"],
-                    )
+                    raise _phase_paused("Code-issued weapon roll is waiting for the player", record)
                 # #723: every target saved against a spell that does nothing
                 # on a save, so no roll is asked: the window resolves now. A
                 # fallback sends this batch down today's path below.
@@ -2837,11 +3029,11 @@ def execute_agentic_turn(
         except CombatBonusAttackRollRequired as signal:
             # R3: the batch resolves up to the player's Off-hand Attack; code
             # asks its dice now and resolves this batch when they are in.
-            prompt = _open_off_hand_phase(
+            record = _open_off_hand_phase(
                 encounter_path, encounter, characters, pending, batch, signal,
                 voice_intents=immutable_voice_intents,
             )
-            raise CombatTurnPaused("Code-issued off-hand roll is waiting for the player", player_message=prompt)
+            raise _phase_paused("Code-issued off-hand roll is waiting for the player", record)
         except CombatPlayerInputRequired as exc:
             request = exc.feedback.get("request", {})
             record_combat_diagnostic(

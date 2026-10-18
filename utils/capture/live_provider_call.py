@@ -58,6 +58,7 @@ _REQUIRED_TASK_IDS = frozenset(
         "T120",
         "T121",
         "T124",
+        "T126",
     }
 )
 _ADVISORY_TASK_IDS = frozenset(

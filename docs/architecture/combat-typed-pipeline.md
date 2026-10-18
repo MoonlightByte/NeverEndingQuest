@@ -33,6 +33,7 @@ Development checks alone are not gameplay evidence.
 | HP, resources, conditions | Character JSON for player/NPC; encounter state for monsters | Staged absolute events apply under ordered leases; encounter receipt writes last |
 | Dice reserve | Encounter `preroll_cache` | Reserve before intent; consumption joins the staged receipt |
 | Player roll or clarification | `combatState.pendingTurn.playerExchanges` | Accepted input persists beside the same `turnId` |
+| Answer at a code-issued roll phase | the phase record `pendingTurn.weaponAttack` (`lead`, `card`, `cardId`, `prompt`) | `_advance_weapon_attack` only (#1118): blank, the D-KW-1 line, the tray sentence and bare numbers on the fast path; any other line read by T126 (`core/ai/roll_answer.py`); unfitting numbers and non-answers keep the phase open with T096's words-only `openRollReply` re-ask |
 | Game roll for a DM request | the answering exchange's `rolledBy: "game"` and `rolledFaces` | `mark_pending_game_roll` only (#1118): the D-KW-1 line, or T096's typed `playerRoll: {"gameRolls": true}` answer, after which T096 rules again with a "Game roll for the DM's request" record line |
 | Undelivered committed beat | `combatState.pendingDelivery` | Narration records after mechanics; durable display precedes acknowledgment |
 | Combat transcript | `modules/conversation_history/combat_conversation_history.json` | `_combatDeliveryId` marker persists before receipt clear |

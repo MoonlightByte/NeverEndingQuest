@@ -21,7 +21,7 @@ DEFAULT_SUMMARY_PATH = Path("debug/combat/agentic_attempts_summary.json")
 _PROCESS_RUN_ID = os.environ.get("NEQ_COMBAT_VALIDATION_RUN_ID") or uuid.uuid4().hex
 _WRITE_LOCK = threading.Lock()
 _ALLOWED_RECORD_TYPES = frozenset(("call_attempt", "window_outcome"))
-_ALLOWED_CALLSITES = frozenset(("T096", "T097", "POST_COMBAT"))
+_ALLOWED_CALLSITES = frozenset(("T096", "T097", "T126", "POST_COMBAT"))
 
 
 def _path_from_env(name, default):
