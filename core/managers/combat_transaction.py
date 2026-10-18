@@ -10,9 +10,10 @@ and every character/resource/effect write is absolute and replay-safe.  The
 encounter receipt and cursor are committed last.
 
 A player's answer to a DM roll request is an exchange of
-``pendingTurn.playerExchanges``; when the game rolls it (#877, #1118) the one
-writer ``mark_pending_game_roll`` types ``rolledBy`` and ``rolledFaces`` beside
-the player's own words.
+``pendingTurn.playerExchanges``; when the game rolls it (#877, #1118) its
+writers type ``rolledBy`` and ``rolledFaces`` beside the player's own words:
+``mark_pending_game_roll`` for a DM-asked roll, ``write_weapon_attack`` for a
+code-issued roll phase.
 """
 
 from contextlib import contextmanager
@@ -717,8 +718,8 @@ def take_opening_action(encounter_path, timeout_seconds=5.0):
         ):
             return None
         pending = (encounter.get("combatState") or {}).get("pendingTurn")
-        exchanges = pending.get("playerExchanges") if isinstance(pending, dict) else None
-        if isinstance(exchanges, list) and exchanges and isinstance(exchanges[-1], dict) and exchanges[-1].get("dmRequest"):
+        exchanges = live_exchanges(pending)
+        if exchanges and exchanges[-1].get("dmRequest"):
             return None
         encounter["openingActionOffered"] = True
         try:
@@ -835,7 +836,8 @@ def append_pending_player_input(
         exchanges = [item for item in exchanges if isinstance(item, dict)]
         # A retried line is not appended twice; an answer to a new DM
         # request is always its own exchange, even when its text repeats (#1118).
-        if not exchanges or exchanges[-1].get("dmRequest") or exchanges[-1].get("playerInput") != rendered:
+        if (not exchanges or exchanges[-1].get("dmRequest") or exchanges[-1].get("withdrawn") is True
+                or exchanges[-1].get("playerInput") != rendered):
             exchanges.append({"playerInput": rendered})
         pending["playerExchanges"] = exchanges
         _write_object(encounter_path, encounter, "pending player clarification")
@@ -848,7 +850,7 @@ def mark_pending_game_roll(
     faces,
     timeout_seconds=None,
 ):
-    """#1118: the one writer of the game's roll for an open typed roll
+    """#1118: the writer of the game's roll for an open typed roll
     request: ``rolledBy`` "game" and the faces per die term, beside the
     player's own line (never a sentence written for them). Under one hold of
     the combat lock it does exactly one thing and returns which:
@@ -873,7 +875,7 @@ def mark_pending_game_roll(
             raise CombatTransactionError("The pending player turn is already staged")
         exchanges = pending.get("playerExchanges")
         exchanges = [item for item in exchanges if isinstance(item, dict)] if isinstance(exchanges, list) else []
-        last = exchanges[-1] if exchanges else None
+        last = exchanges[-1] if exchanges and exchanges[-1].get("withdrawn") is not True else None
         if last is not None and last.get("dmRequest"):
             exchanges.append({"playerInput": rendered, "rolledBy": "game", "rolledFaces": deepcopy(faces)})
             branch = "appended"
@@ -920,6 +922,9 @@ def record_pending_player_request(
         exchanges = pending.get("playerExchanges")
         if not isinstance(exchanges, list) or not exchanges:
             exchanges = [{"playerInput": ""}]
+        if not isinstance(exchanges[-1], dict) or exchanges[-1].get("withdrawn") is True:
+            # A new ask never lands on a withdrawn exchange (#1118 r4).
+            exchanges.append({"playerInput": ""})
         exchanges[-1]["dmRequest"] = rendered
         die = str(requested_die or "").strip().lower()
         if re.fullmatch(r"(?:\d+)?d(?:4|6|8|10|12|20|100)", die):
@@ -948,6 +953,14 @@ def record_pending_player_request(
         _write_object(encounter_path, encounter, "pending player request")
 
 
+def live_exchanges(pending):
+    """The pending turn's exchanges that still count (#1118 r4): an exchange
+    the player withdrew (typed ``withdrawn``) is kept for T096's record but
+    is never a live ask, answer or roll to any typed reader."""
+    exchanges = pending.get("playerExchanges") if isinstance(pending, dict) else None
+    return [item for item in exchanges or [] if isinstance(item, dict) and item.get("withdrawn") is not True]
+
+
 def write_weapon_attack(
     encounter_path,
     turn_id,
@@ -958,14 +971,21 @@ def write_weapon_attack(
     timeout_seconds=5.0,
     npc_voice_intents=None,
     requested_phase=None,
+    rolled_faces=None,
+    withdraw=False,
 ):
     """Item 3: persist the code-issued roll phase, pendingTurn.weaponAttack.
 
     One optional key, absent when no code-issued roll is open: ``record``
     None removes it (the player's words go back to the model). ``answer`` is
     the player's typed reply, added to the exchange chain first, and
-    ``player_message`` the next [ROLL] request beside it, so history reads as
-    a DM request does today.
+    ``player_message`` the next roll ask beside it, so history reads as
+    a DM request does today. ``rolled_faces`` (#1118) marks the answer as the
+    game's roll, typed beside the player's own words (``rolledBy`` "game" and
+    the faces per term); the answer text may then be empty. ``withdraw``
+    (with ``record`` None, #1118 r4) marks every exchange so far as the
+    player's withdrawn action: the swing did not happen, and T096 rules only
+    the lines after it.
     """
     with path_transaction_lock(
         encounter_path,
@@ -985,8 +1005,14 @@ def write_weapon_attack(
         if not isinstance(exchanges, list) or not exchanges:
             exchanges = [{"playerInput": ""}]
         exchanges = [item for item in exchanges if isinstance(item, dict)]
-        if answer is not None:
+        if answer is not None and rolled_faces is not None:
+            exchanges.append({"playerInput": _player_text(answer), "rolledBy": "game",
+                              "rolledFaces": deepcopy(rolled_faces)})
+        elif answer is not None:
             exchanges.append({"playerInput": _player_text(answer) or "(the game rolled)"})
+        if player_message is not None and exchanges[-1].get("withdrawn") is True:
+            # A new ask never lands on a withdrawn exchange (#1118 r4).
+            exchanges.append({"playerInput": ""})
         if player_message is not None:
             exchanges[-1]["dmRequest"] = _player_text(player_message)
             die = str(requested_die or "").strip().lower()
@@ -999,6 +1025,9 @@ def write_weapon_attack(
         pending["playerExchanges"] = exchanges
         if record is None:
             pending.pop("weaponAttack", None)
+            if withdraw:
+                for exchange in exchanges:
+                    exchange["withdrawn"] = True
         else:
             pending["weaponAttack"] = deepcopy(record)
         if normalize_npc_voice_intents(pending.get("npcVoiceIntents")) is None:

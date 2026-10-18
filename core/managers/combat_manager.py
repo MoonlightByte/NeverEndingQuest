@@ -5133,30 +5133,42 @@ This is narration only. Do not advance the round or apply any combat action."""
                # paths, or provider details. Only explicitly approved player
                # messages cross the UI boundary; every other safe pause uses
                # one neutral recovery instruction.
+               # #1118 (D-1118-8 D): a code-issued roll's dice card is a system
+               # record, shown first under its own id (so a re-ask of the same
+               # phase does not show it twice on the web); the DM's words then
+               # carry the ask.
+               pause_card = getattr(exc, "card", None)
                pause_narration = getattr(exc, "player_message", None) or (
+                   None if pause_card else
                    "Combat paused safely. Your turn is preserved. Please try "
                    "the action again, or save and resume the game."
                )
+               if pause_card:
+                   from core.managers.checks_runtime import _show_check_receipt
+
+                   _show_check_receipt(pause_card, message_id=getattr(exc, "card_id", None))
                conversation_history.append(
                    {"role": "user", "content": presentation_history_input}
                )
-               conversation_history.append(
-                   {
-                       "role": "assistant",
-                       "content": json.dumps(
-                           {
-                               "combat_round": current_round,
-                               "narration": pause_narration,
-                               "actions": [],
-                           },
-                           ensure_ascii=False,
-                       ),
-                   }
-               )
+               if pause_narration:
+                   conversation_history.append(
+                       {
+                           "role": "assistant",
+                           "content": json.dumps(
+                               {
+                                   "combat_round": current_round,
+                                   "narration": pause_narration,
+                                   "actions": [],
+                               },
+                               ensure_ascii=False,
+                           ),
+                       }
+                   )
                _save_combat_history_under_invocation(
                    invocation_claim, conversation_history
                )
-               _display_combat_narration(pause_narration)
+               if pause_narration:
+                   _display_combat_narration(pause_narration)
                if (
                    agentic_recovery["action"] == "apply_staged_events"
                    and isinstance(exc, CombatTransactionError)

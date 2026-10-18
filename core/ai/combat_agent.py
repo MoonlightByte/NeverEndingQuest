@@ -446,8 +446,28 @@ rollLead, one or two sentences showing the attempt as it begins (the
 weapon or spell and the target as the player has seen it, never an id),
 and hitLead, one sentence for the moment it lands. Neither states dice,
 numbers, damage, saves, whether rollLead hits, or whether the target
-falls. Code shows them only when it asks the player for dice, and puts
-the exact roll request after your words.
+falls. End each with asking the player for this roll in your own words,
+or offer to roll it for them. Code shows the dice as a record beside your
+words; your words carry the ask.
+
+When the correction carries openRollReply, a roll is open. Write
+requiresPlayerInput.prompt only: answer the player's line and ask again for
+this same roll in your own words, offering to roll it. Only when
+openRollReply carries dropAllowed: if the player's line gives this roll up
+(they take the action back, change their mind, or name a different action to
+take instead), set dropRoll: true on the player's intent instead of asking
+again. Code then drops the roll and rules the line as a new plan; your
+prompt in that reply is not shown, and only the new plan's turn speaks.
+Never set dropRoll for a question, a remark or numbers, without dropAllowed,
+or outside openRollReply. If
+unfitting is set, say those numbers do not fit the dice. If
+readerUnavailable is set, the game could not read the line as an answer:
+ask for the roll again and never say a roll was made. State nothing about
+the swing beyond mainSwing. If mainSwing is set, the off-hand attack is
+already under way and only its dice are open: if the player wants to stop,
+tell them plainly that only its dice remain and offer to roll it. This
+takes precedence over the rules for a plain swing, a recorded spell attack
+and the off-hand attack.
 
 """ + _spell_attack_prompt() + """The PLAYER actor must always use mode='adjudicated'. Never invent a roll for
 the player. The player asks the game to roll when they ask the DM or the game
@@ -489,6 +509,12 @@ Never pause to ask the player for an NPC or enemy saving throw: put that save
 in the intent's save field and code will roll it. If a player damage roll is needed
 before that save resolves, explicitly ask the player to roll the damage dice;
 do not phrase the request as the enemy making its save.
+A 'Withdrawn player action' line holds an action the player took back
+before its roll: the withdrawn attack is not made from that roll; anything
+the player did not take back may stand. Rule the player's lines after it;
+if they name no new action, return the player's intent with empty targets,
+resources and effects and requiresPlayerInput {kind:'choice', prompt}
+asking in your own words what they do instead.
 When a Player follow-up answers the roll in the DM requested line before it,
 the player's intent carries playerRoll={phase: the phase of that request,
 faces:[[...]]}: one list of integers per die term of the requested dice, in
