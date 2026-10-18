@@ -79,7 +79,10 @@ immediately. In-combat `pendingTurn` remains initiative-owned and unchanged.
 2. On the voices branch, an actor-window T105 batch is collected before T096; main at this
    pin has no typed combat voice stage.
 3. T096 selects one ordered structured intent per claimed actor. Corrections reuse the same
-   turn claim.
+   turn claim. When the player asks the game to roll a DM-requested roll, T096 answers
+   `playerRoll: {"gameRolls": true}`; code rolls the typed dice once
+   (`mark_pending_game_roll`) and T096 rules again with the "Game roll for the DM's request"
+   record line (#1118).
 4. `resolve_claimed_window` validates and resolves mechanics without provider authority.
 5. Transaction code stages events and preimages, then applies character files and writes the
    encounter commit/cursor last.

@@ -8,6 +8,11 @@ The encounter file is the transaction journal.  A turn claim is persisted
 before model work, resolved events are persisted before mechanical writes,
 and every character/resource/effect write is absolute and replay-safe.  The
 encounter receipt and cursor are committed last.
+
+A player's answer to a DM roll request is an exchange of
+``pendingTurn.playerExchanges``; when the game rolls it (#877, #1118) the one
+writer ``mark_pending_game_roll`` types ``rolledBy`` and ``rolledFaces`` beside
+the player's own words.
 """
 
 from contextlib import contextmanager
@@ -872,7 +877,7 @@ def mark_pending_game_roll(
         if last is not None and last.get("dmRequest"):
             exchanges.append({"playerInput": rendered, "rolledBy": "game", "rolledFaces": deepcopy(faces)})
             branch = "appended"
-        elif last is not None and last.get("playerInput") == rendered and "rolledBy" not in last:
+        elif last is not None and _player_text(last.get("playerInput")) == rendered and "rolledBy" not in last:
             last["rolledBy"] = "game"
             last["rolledFaces"] = deepcopy(faces)
             branch = "marked"

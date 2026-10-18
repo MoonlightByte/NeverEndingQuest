@@ -547,13 +547,13 @@ def _check_answered_roll_faces(encounter_path, encounter, pending, batch, voice_
         if isinstance(roll, dict) and roll.get("gameRolls") is True:
             # #1118 (D-1118-1): the typed answer that the game rolls this
             # request. It is rolled once: an answered request (rolledBy above)
-            # already holds its faces, and a resumed line writes nothing.
+            # already holds its faces. When the mark writes nothing, the turn
+            # changed on disk since it was loaded: T096 rules again from it too,
+            # never from this ruling made without the dice.
             faces = _roll_terms(terms)
             if mark_pending_game_roll(encounter_path, pending.get("turnId"), last.get("playerInput"), faces):
                 _show_game_roll(previous, faces)
-                return _GAME_ROLL_RERULE
-            intent.pop("playerRoll", None)
-            continue
+            return _GAME_ROLL_RERULE
         faces = roll.get("faces") if isinstance(roll, dict) else None
         shaped = (
             isinstance(faces, list)
@@ -2423,7 +2423,8 @@ def execute_agentic_turn(
                 # #877: the open typed request decides that this line
                 # answers it; the game rolls its full dice.
                 if mark_pending_game_roll(encounter_path, pending.get("turnId"), player_input, game_roll):
-                    _show_game_roll(pending["playerExchanges"][-1], game_roll)
+                    asked = [item for item in pending["playerExchanges"] if isinstance(item, dict)][-1]
+                    _show_game_roll(asked, game_roll)
             elif game_roll is None:
                 append_pending_player_input(
                     encounter_path,
