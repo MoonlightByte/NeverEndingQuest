@@ -469,14 +469,15 @@ def player_sheet_path(path_manager, party_tracker, player):
 
 def _place_occupants(location_id):
     """The engine occupants at the fight's place, by ID: the typed records a
-    declared occupantIds slot names. Empty when the engine is unavailable,
-    and the slot then takes a listed or a new key (never a stop)."""
+    declared occupantIds slot names. A pure reader (the DM turn makes the
+    document). Empty when the engine or the document is unavailable, and the
+    slot then takes a listed or a new key (never a stop)."""
     try:
         from core.nql import occupants
 
         tracker = load_json("party_tracker.json") or {}
         place = occupants.place_id(tracker.get("module") or "", location_id)
-        response = occupants.request(view=(place,))
+        response = occupants.request(view=(place,), create=False)
         if not response or not response.get("ok"):
             return {}
         return {
