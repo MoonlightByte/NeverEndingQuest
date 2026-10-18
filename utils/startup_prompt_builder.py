@@ -46,6 +46,11 @@ def _level_1_choices(choice_points, catalog):
             entry["options"] = point["option_source"]
         if isinstance(point.get("option_items"), dict):
             entry["option_items"] = _typed_options(point["option_items"], catalog)
+        # A class order's typed grants (Protector, Warden) and the choices an option opens
+        # (Thaumaturge's and Magician's extra cantrip), as choices.json carries them.
+        for key in ("option_grants", "then"):
+            if isinstance(point.get(key), dict):
+                entry[key] = point[key]
         entry["text"] = point.get("evidence")
         entry["page"] = point.get("source", {}).get("page")
         choices.append(entry)
@@ -84,7 +89,9 @@ def build_startup_rules_reference():
         "attribution": choices["sources"]["attribution"],
         "use": ("This is the game's complete SRD 5.2.1 character-origin reference for this interview: "
                 "backgrounds, species, Origin and Fighting Style feats, weapon mastery, the weapons table "
-                "and each class's level-1 choices, fixed level-1 features and level-1 class-table values. "
+                "and each class's level-1 choices, fixed level-1 features and level-1 class-table values; "
+                "the languages rule and the standard and rare languages, the armor table, the cantrip rule "
+                "and the effects of each class order option. "
                 "Each class's Starting Equipment choice (option_items) and each background "
                 "(equipment_options) carry their typed options: the option key, the items with catalog ids, "
                 "the coins and the slots a player picks. "
@@ -113,6 +120,13 @@ def build_startup_rules_reference():
         "weapon_mastery_properties": origins["weapon_mastery_properties"],
         "weapons": [{"name": e["name"], "description": e["description"]} for e in items["entries"]
                     if e.get("kind") == "weapon" and not e.get("magical")],
+        # Each armor's description opens with its category ("Medium armor. ...").
+        "armor": [{"name": e["name"], "description": e["description"]} for e in items["entries"]
+                  if e.get("kind") == "armor" and not e.get("magical")],
+        "languages": {"rule": origins["languages_rule"], "standard": choices["languages"]["standard"],
+                      "rare": choices["languages"]["rare"]},
+        "cantrip_rule": origins["cantrip_rule"],
+        "class_order_options": origins["class_order_options"],
         "class_level_1": {name: dict({"primary_ability": choices["class_traits"][name]["primary_ability"],
                                       "choices": _level_1_choices(points, catalog)}, **_level_1_features(progression.get(name)))
                           for name, points in choices["choice_points"].items()},
