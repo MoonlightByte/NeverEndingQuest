@@ -11,10 +11,11 @@ and, for a pact caster, spell slots. Hit dice are an engine pool per character
 all of them). A short rest may spend them: the rest action's ``hitDice`` names how
 many each character spends and the engine rolls them (7b-host): a hit-die Ability
 spends one die from the pool and heals the class die plus the Constitution
-modifier, at least 1, refusing a spend the pool cannot pay (#840, D-KWA-7). Dice
-that cannot heal are never spent: each die heals at least 1, so a character
-spends at most the hit points they are missing in dice, and the dice named
-beyond that are refused with a typed record the DM is told about (#1239). The
+modifier, at least 1, refusing a spend the pool cannot pay (#840, D-KWA-7). A die
+certain to heal nothing is never rolled: each die heals at least 1, so a
+character spends at most the hit points they are missing in dice, and the dice
+named beyond that are refused before rolling with a typed record the DM is told
+about (#1239). The
 player's own dice take the faces the player typed, or the engine's draw; every
 other character's dice are the engine's. Any other extra healing the table
 narrates on a short rest is an ordinary updateCharacterInfo change. Rest-bound
@@ -64,10 +65,12 @@ def _party_root(sheets: List[Dict[str, Any]], party: Dict[str, Any]) -> Optional
 
 def _refusal(name: str, reason: str, hit_points: int, maximum: int, dice: int, can_heal: int) -> str:
     """The typed record of hit dice refused before rolling (#1239, D-1239-3 B):
-    the model words it; no code reads it back."""
+    the model words it; no code reads it back. It says nothing of what was then
+    spent: the engine may still refuse the dice that can heal, and the Rest line
+    and receipt say what was."""
     return "hit dice refused before rolling: " + json.dumps({
         "character": name, "reason": reason, "hitPoints": hit_points, "maxHitPoints": maximum,
-        "dice": dice, "diceThatCanHeal": can_heal, "spent": min(dice, can_heal)})
+        "dice": dice, "diceThatCanHeal": can_heal})
 
 
 def hit_dice_spends(sheets: List[Dict[str, Any]],
@@ -81,7 +84,7 @@ def hit_dice_spends(sheets: List[Dict[str, Any]],
     A character spends no more dice than the hit points they are missing, since
     each die heals at least 1 (#1239, D-1239-1 B). The dice named beyond that
     are refused and the rest goes ahead without them (D-1239-2 B): the
-    character spends the dice that can heal (D-1239-5), none at full hit
+    character offers only the dice that can heal (D-1239-5), none at full hit
     points, and ``refused`` maps their name to the typed record.
     """
     if not hit_dice:
