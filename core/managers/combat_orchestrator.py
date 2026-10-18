@@ -1880,13 +1880,20 @@ def _phase_diagnostic(encounter, pending, callsite, outcome, **extra):
     )
 
 
+_DROP_ROLL = object()
+
+
 def _open_roll_reply(encounter, pending, line, request, reply, *, follow_up, unfitting=False,
-                     reader_unavailable=False, main_swing=None):
+                     reader_unavailable=False, main_swing=None, allow_drop=False):
     """Item 2 (#1118, D-1118-4 A): the re-ask in the DM's own words. One
     words-only T096 call (correction openRollReply) answers the player's line
     and asks again for the same open roll; code keeps the request, and only
     the player intent's requiresPlayerInput prompt is used. Returns that text,
-    stripped, or None: the caller then shows the stored request again."""
+    stripped, or None: the caller then shows the stored request again. Where
+    the caller allows it (the main-hand code phase), the DM may instead give
+    the roll up with the typed dropRoll on the player's intent: _DROP_ROLL is
+    returned and the caller acts on it as on a T126 decline (#1118 r4). A
+    dropRoll the caller did not allow returns None."""
     from core.combat.invocation import InvocationSupersededError
     from utils.capture.live_provider_call import LiveProviderSuperseded
 
@@ -1899,6 +1906,8 @@ def _open_roll_reply(encounter, pending, line, request, reply, *, follow_up, unf
         open_reply["readerUnavailable"] = True
     if main_swing:
         open_reply["mainSwing"] = main_swing
+    if allow_drop:
+        open_reply["dropAllowed"] = True
     provider_input = _composed_player_input(pending, line)
     if follow_up:
         # A code phase never stores the line it is answering.
@@ -1921,6 +1930,17 @@ def _open_roll_reply(encounter, pending, line, request, reply, *, follow_up, unf
     text = None
     ignored = 0
     for intent in (batch.get("intents") if isinstance(batch, dict) else None) or []:
+        if (isinstance(intent, dict) and intent.get("dropRoll") is True
+                and _is_human_controlled(encounter, combatant_by_id(encounter, intent.get("actorId")))):
+            if allow_drop:
+                _phase_diagnostic(encounter, pending, "T096", "open_roll_dropped")
+                return _DROP_ROLL
+            # A contract defect: dropRoll without dropAllowed (the off-hand
+            # dice, D-1118-9 D; the damage phase; a DM-requested roll). The
+            # roll stays open and the stored request is shown again: a reply
+            # written as a drop never reaches the player.
+            _phase_diagnostic(encounter, pending, "T096", "open_roll_drop_ignored")
+            return None
         ask = intent.get("requiresPlayerInput") if isinstance(intent, dict) else None
         if (text is None and isinstance(ask, dict) and ask.get("kind") == "roll"
                 and isinstance(ask.get("prompt"), str) and ask["prompt"].strip()
@@ -1992,7 +2012,14 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
             encounter, pending, text or "", request, reply, follow_up=True,
             unfitting=values == "invalid", reader_unavailable=reader_unavailable,
             main_swing=_main_swing_facts(record),
+            allow_drop=not off_hand and record.get("phase") == "attack",
         )
+        if lead is _DROP_ROLL:
+            # The DM's typed dropRoll: as a T126 decline, the line goes back
+            # to T096 as a new plan and nothing is scored; the drop reply's
+            # own words are never shown, only the new plan's turn speaks.
+            write_weapon_attack(encounter_path, pending.get("turnId"), None, timeout_seconds=None)
+            return None, None
         if lead is None:
             # The stored request again; a card with no lead beside it is its
             # own new record each time, so every line gets a visible answer.

@@ -13,9 +13,10 @@ and code acts on it.
 - ``let_game_roll``: the player asks the game to roll the requested dice.
 - ``faces``: the numbers the player says they rolled, one list per dice term,
   exactly as given. Whether they fit the dice is the site's compare.
-- ``decline``: the player gives this roll up.
-- ``other``: anything else (a question, a remark, doing something first); the
-  roll stays open.
+- ``decline``: the player gives this roll up (takes the action back, or wants
+  to do something else instead).
+- ``other``: anything else (a question, a remark, doing something first while
+  still meaning to roll); the roll stays open.
 
 Code never reads the player's line or the open ask: both go to the model whole.
 A completed provider refusal and a supersession re-raise; a reply that breaks
@@ -50,8 +51,8 @@ _SYSTEM = """You read one line a player typed while the game is waiting for a di
 Return exactly one JSON object {"kind": ..., "values": [...]} where kind is one of:
 - "let_game_roll": the player asks the game to roll it. The player asks the game to roll when they ask the DM or the game to make this roll for them.
 - "faces": the player says what they rolled for this roll. Put the numbers in values, one list per dice term in the order the request lists its dice, exactly as the player gave them, even a number the die cannot show or fewer numbers than dice. When eachDie is false and the phase is not "attack", the roll takes one total: when the player states that total, values is [[total]], not the dice that made it.
-- "decline": the player gives this roll up and does not want it made.
-- "other": anything else: a question, a remark, an unclear line, or doing something else first while still meaning to roll.
+- "decline": the player gives this roll up: they take the action back, change their mind, say they would rather do something else, or name a different action to take instead of this one, even before they say what it is.
+- "other": anything else: a question, a remark, an unclear line, or something the player does before rolling while still meaning to make this roll.
 
 Numbers meant for a later die or for something else are not this roll's faces. A line that mentions dice but does not ask the game to roll is not "let_game_roll". values is [] unless kind is "faces"."""
 

@@ -450,9 +450,16 @@ falls. End each with asking the player for this roll in your own words,
 or offer to roll it for them. Code shows the dice as a record beside your
 words; your words carry the ask.
 
-When the correction carries openRollReply, a roll is open and code keeps
-it. Write requiresPlayerInput.prompt only: answer the player's line and
-ask again for this same roll in your own words, offering to roll it. If
+When the correction carries openRollReply, a roll is open. Write
+requiresPlayerInput.prompt only: answer the player's line and ask again for
+this same roll in your own words, offering to roll it. Only when
+openRollReply carries dropAllowed: if the player's line gives this roll up
+(they take the action back, change their mind, or name a different action to
+take instead), set dropRoll: true on the player's intent instead of asking
+again. Code then drops the roll and rules the line as a new plan; your
+prompt in that reply is not shown, and only the new plan's turn speaks.
+Never set dropRoll for a question, a remark or numbers, or without
+dropAllowed. If
 unfitting is set, say those numbers do not fit the dice. If
 readerUnavailable is set, the game could not read the line as an answer:
 ask for the roll again and never say a roll was made. State nothing about
