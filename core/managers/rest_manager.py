@@ -11,13 +11,18 @@ and, for a pact caster, spell slots. Hit dice are an engine pool per character
 all of them). A short rest may spend them: the rest action's ``hitDice`` names how
 many each character spends and the engine rolls them (7b-host): a hit-die Ability
 spends one die from the pool and heals the class die plus the Constitution
-modifier, at least 1, refusing a spend the pool cannot pay (#840, D-KWA-7). The
+modifier, at least 1, refusing a spend the pool cannot pay (#840, D-KWA-7). A die
+certain to heal nothing is never rolled: each die heals at least 1, so a
+character spends at most the hit points they are missing in dice, and the dice
+named beyond that are refused before rolling with a typed record the DM is told
+about (#1239). The
 player's own dice take the faces the player typed, or the engine's draw; every
 other character's dice are the engine's. Any other extra healing the table
 narrates on a short rest is an ordinary updateCharacterInfo change. Rest-bound
 temporary effects are cleared by the effects lifecycle after the sheets are
 written. All sheets are written together or none is.
 """
+import json
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from core.leveling import tables as leveling_tables
@@ -58,40 +63,65 @@ def _party_root(sheets: List[Dict[str, Any]], party: Dict[str, Any]) -> Optional
     return found[0] if len(found) == 1 else None
 
 
-def hit_dice_spends(sheets: List[Dict[str, Any]], hit_dice: Any) -> Tuple[Optional[Dict[str, int]], str]:
-    """The hit dice a short rest spends, keyed by sheet name: ({name: count}, "") or (None, why).
+def _refusal(name: str, reason: str, hit_points: int, maximum: int, dice: int, can_heal: int) -> str:
+    """The typed record of hit dice refused before rolling (#1239, D-1239-3 B):
+    the model words it; no code reads it back. It says nothing of what was then
+    spent: the engine may still refuse the dice that can heal, and the Rest line
+    and receipt say what was."""
+    return "hit dice refused before rolling: " + json.dumps({
+        "character": name, "reason": reason, "hitPoints": hit_points, "maxHitPoints": maximum,
+        "dice": dice, "diceThatCanHeal": can_heal})
+
+
+def hit_dice_spends(sheets: List[Dict[str, Any]],
+                    hit_dice: Any) -> Tuple[Optional[Dict[str, int]], Dict[str, str], str]:
+    """The hit dice a short rest spends, keyed by sheet name: ({name: count}, refused, "") or (None, {}, why).
 
     ``hit_dice`` maps a resting character's engine id (``char:...``, shown to the
     DM in Party stats) to how many dice they spend (D-KW-12).
     A character needs a known class and at least 1 hit point to spend them.
     How many dice are left is the engine's pool; nothing is rolled here.
+    A character spends no more dice than the hit points they are missing, since
+    each die heals at least 1 (#1239, D-1239-1 B). The dice named beyond that
+    are refused and the rest goes ahead without them (D-1239-2 B): the
+    character offers only the dice that can heal (D-1239-5), none at full hit
+    points, and ``refused`` maps their name to the typed record.
     """
     if not hit_dice:
-        return {}, ""
+        return {}, {}, ""
     if not isinstance(hit_dice, dict):
-        return None, ('hitDice must key each character by their id from Party stats and give how many dice '
-                      'they spend, e.g. {"char:bryn-ashwood": 1}')
+        return None, {}, ('hitDice must key each character by their id from Party stats and give how many dice '
+                          'they spend, e.g. {"char:bryn-ashwood": 1}')
     from core.nql import genesis
 
     resting = ", ".join(f"{genesis.character_id(s)} ({s.get('name')})" for s in sheets)
     spends: Dict[str, int] = {}
+    refused: Dict[str, str] = {}
     for key, count in hit_dice.items():
         found = _sheets_with_id(sheets, key)
         if len(found) != 1:
-            return None, (f"no single resting party character has the id {key!r}; key each character by their id "
-                          f"from Party stats: {resting}")
+            return None, {}, (f"no single resting party character has the id {key!r}; key each character by "
+                              f"their id from Party stats: {resting}")
         sheet = found[0]
         name = str(sheet.get("name"))
         if type(count) is not int or count < 1:
-            return None, f"{name}'s hit dice must be a whole number of at least 1, not {count!r}"
+            return None, {}, f"{name}'s hit dice must be a whole number of at least 1, not {count!r}"
         if leveling_tables.class_key(sheet) is None:
-            return None, f"{name}'s class {sheet.get('class')!r} has no known hit die"
+            return None, {}, f"{name}'s class {sheet.get('class')!r} has no known hit die"
         if type(sheet.get("hitPoints")) is not int:
-            return None, f"{name}'s sheet has no hit points to heal"
+            return None, {}, f"{name}'s sheet has no hit points to heal"
         if sheet["hitPoints"] < 1:
-            return None, f"{name} is at 0 hit points and cannot spend hit dice until they have at least 1"
-        spends[name] = count
-    return spends, ""
+            return None, {}, f"{name} is at 0 hit points and cannot spend hit dice until they have at least 1"
+        maximum = sheet.get("maxHitPoints")
+        if type(maximum) is int and maximum >= 1:
+            can_heal = max(0, maximum - sheet["hitPoints"])
+            if count > can_heal:
+                refused[name] = _refusal(name, "full_hit_points" if can_heal == 0 else "more_dice_than_missing",
+                                         sheet["hitPoints"], maximum, count, can_heal)
+                count = can_heal
+        if count:
+            spends[name] = count
+    return spends, refused, ""
 
 
 def hit_dice_receipt(name: str, rolls: List[Dict[str, Any]], before: Any, after: Any, maximum: Any,
@@ -116,14 +146,15 @@ def hit_dice_receipt(name: str, rolls: List[Dict[str, Any]], before: Any, after:
 
 def player_hit_dice(party: Dict[str, Any], hit_dice: Any) -> Optional[Tuple[str, int, int]]:
     """(player's full name, die, count) when the rest spends the player's hit dice and their pool can pay,
-    so the player rolls them; None otherwise (no prompt: the engine rolls or refuses the rest)."""
+    so the player rolls them; None otherwise (no prompt: the engine rolls or refuses the rest). The count
+    is the dice that can heal (#1239): none at full hit points, so no prompt."""
     from core.managers.effects_runtime import _party_sheets
     from core.nql import genesis
 
     if not party.get("partyMembers") or not hit_dice:
         return None
     sheets, _paths = _party_sheets(party)
-    spends, _why = hit_dice_spends(list(sheets.values()), hit_dice)
+    spends, _refused, _why = hit_dice_spends(list(sheets.values()), hit_dice)
     player = _party_root(list(sheets.values()), party)
     if not spends or player is None or str(player.get("name")) not in spends:
         return None
@@ -175,9 +206,10 @@ def execute_rest(rest_type: Any, party_tracker: Optional[Dict[str, Any]] = None,
     spent: Dict[str, Any] = {}
 
     def build(sheets, location):
-        spends, why = hit_dice_spends(sheets, hit_dice)
+        spends, refused, why = hit_dice_spends(sheets, hit_dice)
         if spends is None:
             return nql_resources.RestOutcome(False, reason=why)
+        spent["refused"] = refused
         root = _party_root(sheets, party)
         root_name = str(root.get("name")) if root else None
         spent["before"] = {str(s.get("name")): s.get("hitPoints") for s in sheets}
@@ -205,9 +237,14 @@ def execute_rest(rest_type: Any, party_tracker: Optional[Dict[str, Any]] = None,
         message += " Hit dice rolled by the rules engine (the player sees this receipt): " + " ".join(receipts)
     for name, why in outcome.refused.items():
         message += f" {name}'s hit dice were not spent ({why}); {name}'s hit points and hit dice are unchanged."
+    refused = dict(outcome.refused)
+    for name, record in spent["refused"].items():
+        # #1239: the dice beyond those that can heal; the rest went ahead without them.
+        message += f" {name}'s hit dice beyond those that can heal were not spent ({record})."
+        refused[name] = f"{refused[name]}; {record}" if name in refused else record
     from core.managers.effects_runtime import process_effect_lifecycle
 
     note = process_effect_lifecycle(conversation_history, rest_kind=f"{kind}_rest")
     info(f"REST: {message}", category="character_updates")
     return {"success": True, "message": message, "effects_note": note, "restored": outcome.restored,
-            "hit_dice_receipts": receipts, "hit_dice_refused": dict(outcome.refused)}
+            "hit_dice_receipts": receipts, "hit_dice_refused": refused}
