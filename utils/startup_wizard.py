@@ -983,13 +983,12 @@ def _zero_authored_gear(character):
 STARTUP_ENGINE_TIMEOUT_LIMIT = 2
 STARTUP_ENGINE_WAIT_TEXT = ("Still adding your starting gear; your choices are kept. Stop the game "
                             "(close its window or launcher); setup resumes where it left off.")
-# Consecutive timeouts per creation-time engine call ("grant", "attack_rows"), for one proposal.
-_startup_engine_timeouts = {}
 
 
-def _startup_engine_fault(fault, scope, call):
+def _startup_engine_fault(fault, scope, call, timeouts):
     """The creation-time rule for one engine fault of ``call``: None after the busy-engine wait, when the
     caller reissues that call; otherwise the end-state (d) record for provenance["starting_packages"].
+    ``timeouts`` holds the consecutive timeouts per call ("grant", "attack_rows") of one proposal.
 
     Classified by the fault's type: an EngineUnavailable whose cause is an OSError the shared transient
     classifier accepts waits; a timeout waits once (D-PKG-5); every other EngineUnavailable, a refusal
@@ -1003,11 +1002,11 @@ def _startup_engine_fault(fault, scope, call):
         warning(f"Startup rules engine fault at {call}: {fault}", category="startup")
         cause = fault.__cause__
         if isinstance(cause, subprocess.TimeoutExpired):
-            _startup_engine_timeouts[call] = _startup_engine_timeouts.get(call, 0) + 1
-            if _startup_engine_timeouts[call] >= STARTUP_ENGINE_TIMEOUT_LIMIT:
+            timeouts[call] = timeouts.get(call, 0) + 1
+            if timeouts[call] >= STARTUP_ENGINE_TIMEOUT_LIMIT:
                 return dict(record, cause="timeout")
         elif isinstance(cause, OSError) and is_transient_filesystem_error(cause):
-            _startup_engine_timeouts[call] = 0
+            timeouts[call] = 0
         else:
             return dict(record, cause="unavailable")
     elif fault == ("data_unavailable", "grant"):
@@ -1058,7 +1057,7 @@ def _prepare_startup_proposal(authored_proposal, *, live_scope=None):
     if not valid:
         raise ValueError(detail)
     zeroed = copy.deepcopy(character)
-    _startup_engine_timeouts.clear()
+    timeouts = {}
     unavailable = None
     while True:
         faults = []
@@ -1067,7 +1066,7 @@ def _prepare_startup_proposal(authored_proposal, *, live_scope=None):
         if not faults:
             character = granted
             break
-        unavailable = _startup_engine_fault(faults[0], live_scope, "grant")
+        unavailable = _startup_engine_fault(faults[0], live_scope, "grant", timeouts)
         if unavailable is not None:
             break
     # The step-7 rule applies only after an applied grant; a (d) at the grant keeps main's fallbacks.
@@ -1075,7 +1074,7 @@ def _prepare_startup_proposal(authored_proposal, *, live_scope=None):
     character, mechanics = startup_mechanics(character, provenance=provenance, faults=faults)
     while faults:
         # The step-7 rule: a busy engine reissues only the rows step, on the projected sheet.
-        outcome = _startup_engine_fault(faults.pop(), live_scope, "attack_rows")
+        outcome = _startup_engine_fault(faults.pop(), live_scope, "attack_rows", timeouts)
         if outcome is None:
             rows = provenance["engine_rows"]
             _startup_attack_rows(character, character.get("name", "Unknown"), rows["typed_equipment"],
@@ -1086,8 +1085,7 @@ def _prepare_startup_proposal(authored_proposal, *, live_scope=None):
             and any((item_catalog.entry(row.get("catalog_id")) or {}).get("kind") == "weapon"
                     for row in character.get("equipment") or [])):
         # The older-engine resend (startup_rows.attack_rows): granted weapons with no engine rows.
-        unavailable = {"status": "engine_unavailable", "policy": "D-PKG-1", "phase": "attack_rows",
-                       "exit": None, "cause": "refused"}
+        unavailable = _startup_engine_fault(("refused", "attack_rows"), live_scope, "attack_rows", timeouts)
     if unavailable is not None and granted is not None:
         # (d) after a successful grant: the character is rebuilt from the zeroed sheet, once, with no
         # engine fault rule, so no sheet commits granted gear without engine rows.
@@ -1681,7 +1679,7 @@ def startup_mechanics(character, *, provenance=None, faults=None):
         provenance["engine_projection"] = {
             "source": "core.nql.armor_class.project",
             "applied": projection.applied and not projection.gaps,
-            "reason": projection.reason,
+            "reason": _reason_first_line(projection.reason),
             "gaps": copy.deepcopy(projection.gaps),
         }
     if projection.applied and projection.gaps:
@@ -1724,6 +1722,12 @@ def startup_mechanics(character, *, provenance=None, faults=None):
     return character, notes
 
 
+def _reason_first_line(reason):
+    """D-PKG-9: an engine error's first line, a structural split, never a character cut, for the
+    provenance fields the author and reviewer read; the warning log keeps the whole text."""
+    return (reason.splitlines() or [""])[0] if isinstance(reason, str) else reason
+
+
 def _startup_attack_rows(character, name, typed, untyped, provenance, faults):
     """The startup rows step, one copy for startup_mechanics and the creation-time reissue: the engine's
     attack rows merged onto the sheet in place, and their report written to provenance["engine_rows"]
@@ -1737,7 +1741,7 @@ def _startup_attack_rows(character, name, typed, untyped, provenance, faults):
     report = {"source": "core.nql.startup_rows", "typed_equipment": typed, "untyped_equipment": untyped,
               "item_rows": with_items}
     if rows is None:
-        report["reason"] = reason
+        report["reason"] = _reason_first_line(reason)
         warning(f"[Startup Mechanics] {name}: attack rows left as written: {reason}", category="character_validation")
     else:
         report.update(startup_rows.merge_attack_rows(character, rows, with_items))

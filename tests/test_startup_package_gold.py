@@ -109,6 +109,16 @@ def _expected(options, picks):
     return out
 
 
+def _assert_stock_ids(sheet, provenance):
+    """Each new ammunition stock's engine id, as the grant minted it, is genesis.ammunition_id's (LN-B1),
+    so a purchase in play tops up the same stock."""
+    from core.nql import genesis
+    stocks = provenance["starting_packages"]["ammunition"]
+    assert [s["name"] for s in stocks] == [row["name"] for row in sheet["ammunition"]]
+    for stock in stocks:
+        assert stock["nql_id"] == genesis.ammunition_id(sheet, stock["name"])
+
+
 def _records():
     from core.nql.startup_rows import package_records
     return package_records()
@@ -269,7 +279,7 @@ def _held_elsewhere(tmp_path):
 
 @pytest.mark.parametrize("class_key", CLASS_KEYS)
 def test_g2_every_package_and_pick_is_granted(wizard, authored, tmp_path, class_key):
-    from core.nql import genesis, item_catalog
+    from core.nql import item_catalog
     from jsonschema import validate
     _held_elsewhere(tmp_path)
     schema = json.loads((ROOT / "schemas" / "char_schema.json").read_text(encoding="utf-8"))
@@ -306,8 +316,7 @@ def test_g2_every_package_and_pick_is_granted(wizard, authored, tmp_path, class_
                     nql_ids = [row["nql_id"] for row in sheet["equipment"]]
                     assert len(set(nql_ids)) == len(nql_ids) and HELD_ID not in nql_ids, label
                     assert {r["nql_id"] for r in provenance["starting_packages"]["equipment"]} == set(nql_ids)
-                    for row in sheet["ammunition"]:
-                        assert genesis.ammunition_id(sheet, row["name"]).startswith("ammo:")
+                    _assert_stock_ids(sheet, provenance)
                     assert [r["catalog_id"] for r in sheet["equipment"] if r["equipped"]] == [
                         r["catalog_id"] for r in sheet["equipment"] if r.get("catalog_id") in armor]
                     validate(sheet, schema)
@@ -315,8 +324,7 @@ def test_g2_every_package_and_pick_is_granted(wizard, authored, tmp_path, class_
     assert cases >= 8
 
 
-def test_g2_ids_step_past_held_ids_and_overlaps_merge(wizard, authored, tmp_path):
-    from core.nql import genesis
+def _held_ids_check(wizard, authored, tmp_path):
     _held_elsewhere(tmp_path)
     proposal = _picked(authored, "fighter", "soldier", {
         "background_package": "A", "class_package": "B", "equipped": [],
@@ -331,10 +339,23 @@ def test_g2_ids_step_past_held_ids_and_overlaps_merge(wizard, authored, tmp_path
         ("Arrows", 40, "itemdef:srd/arrows")]
     assert sheet["currency"]["gold"] == 25
     assert {"Spear", "Shortbow", "Healer's Kit", "Clothes, Traveler's", "Dice Set"} <= set(rows)
-    # The ammunition id is genesis.ammunition_id's: buying more in play tops up the same stock.
-    from core.nql import acquisition
-    assert genesis.ammunition_id(sheet, "Arrows") == "ammo:arrows:" + genesis.character_id(sheet).split(":", 1)[1]
-    assert acquisition.balance(sheet)["gold"] == 25
+    _assert_stock_ids(sheet, provenance)
+
+
+def test_g2_ids_step_past_held_ids_and_overlaps_merge(wizard, authored, tmp_path):
+    _held_ids_check(wizard, authored, tmp_path)
+
+
+def test_mutant_ammunition_id_not_genesis(wizard, authored, tmp_path, monkeypatch):
+    # The grant mints the stock id under another name; the engine accepts it.
+    import types
+    from core.nql import genesis, startup_rows
+    minted = types.ModuleType("genesis_mutant")
+    minted.__dict__.update(genesis.__dict__)
+    minted.ammunition_id = lambda sheet, name: genesis.ammunition_id(sheet, name + " stock")
+    monkeypatch.setattr(startup_rows, "genesis", minted)
+    with pytest.raises(AssertionError):
+        _held_ids_check(wizard, authored, tmp_path)
 
 
 def test_g2_drift_pin_bought_arrows_match_the_granted_stock(wizard, authored, tmp_path):
@@ -529,7 +550,20 @@ REVIEWER_LINE = ("When starting_packages.status is engine_unavailable or data_un
                  "disclosed outcome under the owner's ruling, not a lost choice; still check the\npicks.")
 
 
-def test_g4b_reviewer_gets_the_disclosed_outcome(wizard, monkeypatch, tmp_path):
+class _Ordered(io.StringIO):
+    """stdout that also records each print in a shared event list."""
+
+    def __init__(self, events):
+        super().__init__()
+        self.events = events
+
+    def write(self, text):
+        if text.strip():
+            self.events.append(("print", text))
+        return super().write(text)
+
+
+def _g4b_disclosed(wizard, monkeypatch, tmp_path):
     from core.nql import apply
     from utils import startup_prompt_builder
     blocked = tmp_path / "not-an-engine"
@@ -541,7 +575,15 @@ def test_g4b_reviewer_gets_the_disclosed_outcome(wizard, monkeypatch, tmp_path):
         reviews.append(payload)
         return {"version": 1, "accepted": True, "feedback": "Disclosed outcome.", "needs_player_clarification": False}
 
-    out = io.StringIO()
+    events = []
+    inner = wizard._set_startup_progress
+
+    def progress(conversation, **changes):
+        events.append(("progress", changes.get("phase")))
+        return inner(conversation, **changes)
+
+    monkeypatch.setattr(wizard, "_set_startup_progress", progress)
+    out = _Ordered(events)
     with redirect_stdout(out):
         _, conversation, commits, _, _ = run_interview(wizard, _bram(), monkeypatch, review=review)
     facts = reviews[0]["committed_facts"]
@@ -555,8 +597,34 @@ def test_g4b_reviewer_gets_the_disclosed_outcome(wizard, monkeypatch, tmp_path):
               f"gear and no weapons. To play with them, make sure {apply.binary_path()} runs on this computer, "
               "reset the campaign, and create the character again; otherwise you can play on without them.")
     assert out.getvalue().count(notice) == 1
-    # Shown before the approved checkpoint is written.
-    assert wizard._startup_progress(conversation)["phase"] == "approved"
+    # Shown before the approved checkpoint is written (FF R3 N4).
+    shown_at = next(i for i, (kind, text) in enumerate(events) if kind == "print" and notice in "\n" + text)
+    approved_at = events.index(("progress", "approved"))
+    assert shown_at < approved_at
+
+
+def test_g4b_reviewer_gets_the_disclosed_outcome(wizard, monkeypatch, tmp_path):
+    _g4b_disclosed(wizard, monkeypatch, tmp_path)
+
+
+def test_mutant_notice_after_the_approved_checkpoint(wizard, monkeypatch, tmp_path):
+    real_notice, real_progress = wizard._starting_gear_notice, wizard._set_startup_progress
+    held = {}
+
+    def defer(character, provenance):
+        held["args"] = (character, provenance)
+        return None
+
+    def approved_then_notice(conversation, **changes):
+        record = real_progress(conversation, **changes)
+        if changes.get("phase") == "approved" and "args" in held:
+            print(f"\nDungeon Master: {real_notice(*held['args'])}")
+        return record
+
+    monkeypatch.setattr(wizard, "_starting_gear_notice", defer)
+    monkeypatch.setattr(wizard, "_set_startup_progress", approved_then_notice)
+    with pytest.raises(AssertionError):
+        _g4b_disclosed(wizard, monkeypatch, tmp_path)
 
 
 def test_g4b_reviewer_gets_the_engine_result(wizard, monkeypatch, tmp_path):

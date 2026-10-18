@@ -566,6 +566,7 @@ def grant_starting_packages(sheet: Dict[str, Any], origin: Dict[str, Any], picks
     granted["equipment"] = list(granted.get("equipment") or [])
     granted["ammunition"] = list(granted.get("ammunition") or [])
     made = {"equipment": len(granted["equipment"]), "ammunition": len(granted["ammunition"])}
+    stock_ids = []  # the minted engine id of each new ammunition stock, in row order
     for m in merged:
         view = found[m["id"]]
         if m["identity"][0] == "named":
@@ -574,6 +575,7 @@ def grant_starting_packages(sheet: Dict[str, Any], origin: Dict[str, Any], picks
         entry = item_catalog.entry(m["identity"][1])
         if entry.get("kind") == "ammunition":
             granted["ammunition"].append(_ammunition_stock_row(view, entry))
+            stock_ids.append(m["id"])
             continue
         row = acquisition.row_from_views(view, definitions.get(entry["id"]), entry)
         row["equipped"] = row["catalog_id"] in (picks.get("equipped") or [])
@@ -586,6 +588,7 @@ def grant_starting_packages(sheet: Dict[str, Any], origin: Dict[str, Any], picks
         "currency": dict(granted["currency"]),
         "equipment": [{"item_name": r["item_name"], "nql_id": r["nql_id"], "quantity": r["quantity"],
                        "equipped": r["equipped"]} for r in granted["equipment"][made["equipment"]:]],
-        "ammunition": [{"name": r["name"], "quantity": r["quantity"]} for r in granted["ammunition"][made["ammunition"]:]],
+        "ammunition": [{"name": r["name"], "nql_id": iid, "quantity": r["quantity"]}
+                       for r, iid in zip(granted["ammunition"][made["ammunition"]:], stock_ids)],
     }
     return granted, report
