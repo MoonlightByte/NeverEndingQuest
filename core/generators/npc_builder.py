@@ -157,7 +157,9 @@ def _srd_origin_reference(npc_race, npc_background):
     """The game's SRD 5.2.1 origins for one NPC request (#1055): the background
     ability score rule, the species the request names (every species when it
     names none, or one the data does not have, such as a subrace) and likewise
-    the background, each entry as the origins file holds it."""
+    the background, each entry as the origins file holds it, less the new
+    character's typed starting packages (key, equipment_options and its slots),
+    which no NPC draft uses."""
     from core.leveling.fighting_style import ORIGINS_BASENAME
     from utils.encoding_utils import safe_json_load
     origins = safe_json_load(os.path.join(os.path.dirname(os.path.dirname(class_tables._DATA)), ORIGINS_BASENAME))
@@ -167,10 +169,12 @@ def _srd_origin_reference(npc_race, npc_background):
         match = [entry for entry in entries if str(entry.get("name", "")).casefold() == wanted]
         return match or list(entries)
 
+    startup_only = ("equipment_options", "key")  # the slots are inside equipment_options
     return {
         "background_ability_scores_rule": origins["background_ability_scores_rule"],
         "species": named(origins["species"], npc_race),
-        "backgrounds": named(origins["backgrounds"], npc_background),
+        "backgrounds": [{k: v for k, v in entry.items() if k not in startup_only}
+                        for entry in named(origins["backgrounds"], npc_background)],
     }
 
 def _set_class_tables(npc_data):

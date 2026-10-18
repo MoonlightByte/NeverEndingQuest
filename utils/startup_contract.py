@@ -5,6 +5,7 @@ The wizard owns the conversation and validates candidates against the existing
 character schema before publication.
 """
 
+import copy
 import json
 
 from jsonschema import Draft7Validator
@@ -26,6 +27,22 @@ STARTUP_RESPONSE_SCHEMA = _object_schema({
         "whole_build_approved": {"type": "boolean"},
     }),
     "character": {"type": ["object", "null"]},
+    # A new character's typed origin and starting-package picks (D-KW-16): null
+    # on every response but finalize_character, like character. The class and
+    # background enums come from the data at call time (startup_response_schema).
+    "origin": dict(_object_schema({
+        "class_key": {"type": "string"},
+        "background_key": {"type": "string"},
+    }), type=["object", "null"]),
+    "starting_equipment": dict(_object_schema({
+        "background_package": {"type": "string"},
+        "class_package": {"type": "string"},
+        "slot_picks": {"type": "array", "items": {"oneOf": [
+            _object_schema({"slot": {"type": "string"}, "catalog_id": {"type": "string"}}),
+            _object_schema({"slot": {"type": "string"}, "display_name": {"type": "string"}}),
+        ]}},
+        "equipped": {"type": "array", "items": {"type": "string"}},
+    }), type=["object", "null"]),
 })
 
 STARTUP_REVIEW_SCHEMA = _object_schema({
@@ -47,6 +64,22 @@ STARTUP_CHECKPOINT_SCHEMA = _object_schema({
     "location": {"type": ["object", "null"]},
     "character_path": {"type": ["string", "null"]},
 })
+
+
+def startup_response_schema():
+    """STARTUP_RESPONSE_SCHEMA with the origin enums from the data: the 12 class
+    keys of choices.json and the background keys of the origins file. Built at
+    each call, never at import; when the data cannot be read the schema is
+    returned without the enums, and a finalize then reaches the grant, which
+    reports the data unavailable."""
+    from core.nql.startup_rows import package_records
+    schema = copy.deepcopy(STARTUP_RESPONSE_SCHEMA)
+    records = package_records()
+    if records is not None:
+        origin = schema["properties"]["origin"]["properties"]
+        origin["class_key"]["enum"] = sorted(records.classes)
+        origin["background_key"]["enum"] = sorted(records.backgrounds)
+    return schema
 
 
 def _validate(value, schema):
@@ -74,7 +107,7 @@ def _parse_object(text, schema):
 
 def parse_startup_response(text, *, latest_user_index):
     """Check wire shape/reference; the caller supplies its actual user index."""
-    value = _parse_object(text, STARTUP_RESPONSE_SCHEMA)
+    value = _parse_object(text, startup_response_schema())
     confirmation = value["confirmation"]
     index = confirmation["player_message_index"]
     if value["decision"] == "finalize_character":
@@ -84,8 +117,13 @@ def parse_startup_response(text, *, latest_user_index):
                 or type(latest_user_index) is not int
                 or index != latest_user_index):
             raise ValueError("Finalization requires whole-build approval of the latest actual player input and a character")
+        if value["origin"] is None or value["starting_equipment"] is None:
+            raise ValueError("Finalization requires origin (class_key, background_key) and starting_equipment "
+                             "(the chosen package keys, slot_picks and equipped)")
     elif value["character"] is not None or confirmation["whole_build_approved"]:
         raise ValueError("An interview response cannot approve or contain a character")
+    elif value["origin"] is not None or value["starting_equipment"] is not None:
+        raise ValueError("An interview response has origin and starting_equipment null; they are set at finalization")
     elif value["decision"] == "pause_setup" and (
             type(index) is not int or type(latest_user_index) is not int
             or index != latest_user_index):
