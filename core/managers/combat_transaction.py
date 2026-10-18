@@ -828,22 +828,30 @@ def append_pending_player_input(
         if not isinstance(exchanges, list):
             exchanges = []
         exchanges = [item for item in exchanges if isinstance(item, dict)]
-        if not exchanges or exchanges[-1].get("playerInput") != rendered:
+        # A retried line is not appended twice; an answer to a new DM
+        # request is always its own exchange, even when its text repeats (#1118).
+        if not exchanges or exchanges[-1].get("dmRequest") or exchanges[-1].get("playerInput") != rendered:
             exchanges.append({"playerInput": rendered})
         pending["playerExchanges"] = exchanges
         _write_object(encounter_path, encounter, "pending player clarification")
 
 
-def append_pending_game_roll(
+def mark_pending_game_roll(
     encounter_path,
     turn_id,
-    text,
+    player_input,
     faces,
-    timeout_seconds=5.0,
+    timeout_seconds=None,
 ):
-    """#877: durably add the game's roll for an open typed roll request: the
-    sentence the DM reads, ``rolledBy`` "game" and the faces per die term."""
-    rendered = _player_text(text)
+    """#1118: the one writer of the game's roll for an open typed roll
+    request: ``rolledBy`` "game" and the faces per die term, beside the
+    player's own line (never a sentence written for them). Under one hold of
+    the combat lock it does exactly one thing and returns which:
+    "appended" when the last exchange is the DM's request (the line answers
+    it), "marked" when the last exchange is this line with no roll yet (the
+    line was appended by append_pending_player_input), or None (a resumed
+    turn re-reading its own line: nothing is written)."""
+    rendered = _player_text(player_input)
     with path_transaction_lock(
         encounter_path,
         suffix=".combat.lock",
@@ -860,9 +868,19 @@ def append_pending_game_roll(
             raise CombatTransactionError("The pending player turn is already staged")
         exchanges = pending.get("playerExchanges")
         exchanges = [item for item in exchanges if isinstance(item, dict)] if isinstance(exchanges, list) else []
-        exchanges.append({"playerInput": rendered, "rolledBy": "game", "rolledFaces": deepcopy(faces)})
+        last = exchanges[-1] if exchanges else None
+        if last is not None and last.get("dmRequest"):
+            exchanges.append({"playerInput": rendered, "rolledBy": "game", "rolledFaces": deepcopy(faces)})
+            branch = "appended"
+        elif last is not None and last.get("playerInput") == rendered and "rolledBy" not in last:
+            last["rolledBy"] = "game"
+            last["rolledFaces"] = deepcopy(faces)
+            branch = "marked"
+        else:
+            return None
         pending["playerExchanges"] = exchanges
         _write_object(encounter_path, encounter, "pending game roll")
+        return branch
 
 
 def record_pending_player_request(

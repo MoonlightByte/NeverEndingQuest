@@ -60,8 +60,8 @@ from core.managers.combat_state import (
 )
 from core.managers.combat_transaction import (
     CombatPreconditionChanged,
-    append_pending_game_roll,
     append_pending_player_input,
+    mark_pending_game_roll,
     apply_staged_turn,
     claim_turn,
     enter_effect_clock,
@@ -518,10 +518,13 @@ def _check_answered_roll_faces(encounter_path, encounter, pending, batch, voice_
     field, playerRoll={phase, faces: one list per die term}; code never reads
     them from the player's sentence. The model copies the player's numbers;
     when the game rolled them (#877) code writes them from the stored faces.
-    They are checked against the typed request (the previous exchange's
-    requestedRoll): a wrong shape is a correction, a face the die cannot show
-    asks the player again, and a playerRoll with no typed request behind it is
-    dropped. The engine scores a checked save (resolver)."""
+    When the player asked the game to roll in their own words, the model
+    returns playerRoll={gameRolls: true}: code rolls the request's typed dice
+    once, records them, and returns _GAME_ROLL_RERULE so T096 rules again with
+    them (#1118, D-1118-1). They are checked against the typed request (the
+    previous exchange's requestedRoll): a wrong shape is a correction, a face
+    the die cannot show asks the player again, and a playerRoll with no typed
+    request behind it is dropped. The engine scores a checked save (resolver)."""
     exchanges = (pending or {}).get("playerExchanges") or []
     previous = exchanges[-2] if len(exchanges) >= 2 and isinstance(exchanges[-2], dict) else {}
     last = exchanges[-1] if exchanges and isinstance(exchanges[-1], dict) else {}
@@ -540,6 +543,16 @@ def _check_answered_roll_faces(encounter_path, encounter, pending, batch, voice_
             intent["playerRoll"] = {"phase": phase, "faces": deepcopy(last["rolledFaces"])}
         roll = intent.get("playerRoll")
         if roll is None:
+            continue
+        if isinstance(roll, dict) and roll.get("gameRolls") is True:
+            # #1118 (D-1118-1): the typed answer that the game rolls this
+            # request. It is rolled once: an answered request (rolledBy above)
+            # already holds its faces, and a resumed line writes nothing.
+            faces = _roll_terms(terms)
+            if mark_pending_game_roll(encounter_path, pending.get("turnId"), last.get("playerInput"), faces):
+                _show_game_roll(previous, faces)
+                return _GAME_ROLL_RERULE
+            intent.pop("playerRoll", None)
             continue
         faces = roll.get("faces") if isinstance(roll, dict) else None
         shaped = (
@@ -952,20 +965,6 @@ def _pause_for_refused_resource(encounter_path, pending, refusals, voice_intents
     )
 
 
-# #877: said after a typed roll request, as the code-issued roll lines say it.
-_TYPED_ROLL_SENTENCE = " Type the result, or type roll and the game rolls."
-
-
-def _player_request_message(request, typed_roll=False):
-    """The text shown for the model's request; ``typed_roll`` (a roll
-    request with a typed die, #877) adds that the game can roll it,
-    unless the request already says so (#1103)."""
-    message = _request_text(request)
-    if not typed_roll or re.search(r"\btype roll\b", message, re.IGNORECASE):
-        return message
-    return message + _TYPED_ROLL_SENTENCE
-
-
 def _typed_roll(request):
     """The full typed dice of a roll request ("1d8+1d6"), or None."""
     if not isinstance(request, dict) or request.get("kind") != "roll":
@@ -1012,6 +1011,10 @@ def _composed_player_input(pending, fallback):
         if player_text:
             label = "Original player action" if not lines else "Player follow-up"
             lines.append("%s: %s" % (label, player_text))
+        if exchange.get("rolledBy") == "game" and isinstance(exchange.get("rolledFaces"), list):
+            # #1118: the game's roll is a record beside the player's own words.
+            asked = exchanges[index - 1] if index and isinstance(exchanges[index - 1], dict) else {}
+            lines.append(_game_roll_line(asked, exchange["rolledFaces"]))
         if request_text:
             asked_dc = exchange.get("requestedDc")
             if type(asked_dc) is int and asked_dc > 0:
@@ -1368,13 +1371,53 @@ def _lets_the_game_roll(text):
     return isinstance(text, str) and text.strip().rstrip(".!").casefold() in _LET_THE_GAME_ROLL
 
 
+# #1118: the typed re-rule value of _check_answered_roll_faces: the game
+# rolled the open request's dice, so T096 rules the turn again with them.
+_GAME_ROLL_RERULE = "game_roll_rerule"
+
+
+def _roll_terms(terms):
+    """The game's faces for typed die terms [(count, sides), ...]: one list
+    per term, in order (#877). The one roller for a request the game rolls."""
+    rng = random.SystemRandom()
+    return [[rng.randint(1, sides) for _ in range(count)] for count, sides in terms]
+
+
+def _game_roll_line(request, faces):
+    """The record of the game's roll for a DM request, from typed fields only
+    (the request exchange's requestedRoll and requestedPhase; its prose is
+    never read): "Game roll for the DM's request (damage): 4 and 2 on the
+    2d6." T096 reads it beside the player's words and the player sees it as
+    a system card (#1118)."""
+    terms = _roll_die_terms((request or {}).get("requestedRoll")) or []
+    if len(terms) != len(faces):
+        terms = [None] * len(faces)
+    parts = []
+    for group, term in zip(faces, terms):
+        rolled = " and ".join(str(face) for face in group)
+        if term is not None:
+            count, sides = term
+            rolled = "%s on the %s" % (rolled, "d%d" % sides if count == 1 else "%dd%d" % (count, sides))
+        parts.append(rolled)
+    phase = (request or {}).get("requestedPhase")
+    asked = " (%s)" % phase.strip() if isinstance(phase, str) and phase.strip() else ""
+    return "Game roll for the DM's request%s: %s." % (asked, " and ".join(parts))
+
+
+def _show_game_roll(request, faces):
+    """Show the player the game's roll at once, as a system card (#1118)."""
+    from core.managers.checks_runtime import _show_check_receipt
+
+    _show_check_receipt(_game_roll_line(request, faces))
+
+
 def _game_roll_answer(pending, text):
-    """#877: the answer to the open typed roll request when the player asks
-    the game to roll it: (the sentence the DM reads, faces per die term).
+    """#877: the answer to the open typed roll request when the player types
+    the exact D-KW-1 line: the faces per die term, rolled by _roll_terms.
     "answered" when the last exchange already holds the game's roll and
     the DM has not asked again (a resumed turn re-sending "roll"). None
     for any other line, or when no typed request is open: the line then
-    goes to the DM as today."""
+    goes to the DM as today. It writes no sentence for the player."""
     if not _lets_the_game_roll(text):
         return None
     exchanges = [item for item in (pending or {}).get("playerExchanges") or [] if isinstance(item, dict)]
@@ -1386,12 +1429,7 @@ def _game_roll_answer(pending, text):
     terms = _roll_die_terms(last.get("requestedRoll")) if last.get("dmRequest") else None
     if not terms:
         return None
-    rng = random.SystemRandom()
-    faces = [[rng.randint(1, sides) for _ in range(count)] for count, sides in terms]
-    parts = ["%s on the %s" % (" and ".join(str(face) for face in term_faces),
-                               "d%d" % sides if count == 1 else "%dd%d" % (count, sides))
-             for term_faces, (count, sides) in zip(faces, terms)]
-    return "The game rolled for me: %s." % " and ".join(parts), faces
+    return _roll_terms(terms)
 _TRAY_DIE = r"a (\d{1,3}) on a d(\d{1,3})"
 _TRAY_SENTENCE = re.compile(
     r"^\s*I rolled %s(?:(?:, | and )%s)*\.(?: My damage dice add up to \d{1,4}\.)?\s*$" % (_TRAY_DIE, _TRAY_DIE),
@@ -2381,20 +2419,17 @@ def execute_agentic_turn(
             pending = deepcopy((encounter.get("combatState") or {}).get("pendingTurn"))
         if not weapon_answered and not _all_non_player(encounter, pending.get("actorIds", [])):
             game_roll = _game_roll_answer(pending, player_input)
-            if isinstance(game_roll, tuple):
+            if isinstance(game_roll, list):
                 # #877: the open typed request decides that this line
                 # answers it; the game rolls its full dice.
-                append_pending_game_roll(
-                    encounter_path,
-                    pending.get("turnId"),
-                    game_roll[0],
-                    game_roll[1],
-                )
+                if mark_pending_game_roll(encounter_path, pending.get("turnId"), player_input, game_roll):
+                    _show_game_roll(pending["playerExchanges"][-1], game_roll)
             elif game_roll is None:
                 append_pending_player_input(
                     encounter_path,
                     pending.get("turnId"),
                     player_input,
+                    timeout_seconds=None,
                 )
             encounter = safe_json_load(encounter_path)
             pending = deepcopy((encounter.get("combatState") or {}).get("pendingTurn"))
@@ -2513,10 +2548,16 @@ def execute_agentic_turn(
     window_kind = _window_kind(encounter, pending.get("actorIds", []))
     capability_count, rule_count = _diagnostic_context_counts(spell_references)
     attempt_number = 0
+    game_roll_rerule = False
     while events is None:
-        attempt_number += 1
-        if attempt_number > 1:
-            _set_combat_retry_status()
+        if game_roll_rerule:
+            # #1118: T096 rules again with the game's roll; that pass is not
+            # a failed attempt and shows no "checking the ruling" status.
+            game_roll_rerule = False
+        else:
+            attempt_number += 1
+            if attempt_number > 1:
+                _set_combat_retry_status()
         started = time.monotonic()
         batch = None
         try:
@@ -2599,7 +2640,31 @@ def execute_agentic_turn(
             # the stated hit (before the faces check, which re-carries it).
             _keep_stated_hit(batch, correction)
             # 3b: the answered roll's typed faces fit the typed request.
-            _check_answered_roll_faces(encounter_path, encounter, pending, batch, immutable_voice_intents)
+            if _check_answered_roll_faces(
+                encounter_path, encounter, pending, batch, immutable_voice_intents
+            ) == _GAME_ROLL_RERULE:
+                record_combat_diagnostic(
+                    record_type="window_outcome",
+                    callsite="T096",
+                    outcome="game_roll_rerule",
+                    provider=intent_provider_name,
+                    model=intent_model_name,
+                    encounter_id=encounter.get("encounterId"),
+                    turn_id=pending.get("turnId"),
+                    revision=(encounter.get("combatState") or {}).get("revision"),
+                    round_number=(encounter.get("combatState") or {}).get("round"),
+                    window_kind=window_kind,
+                    actor_count=len(pending.get("actorIds") or []),
+                    attempt=attempt_number,
+                )
+                encounter = safe_json_load(encounter_path)
+                if not isinstance(encounter, dict):
+                    raise CombatTurnPaused("Could not reload the pending encounter")
+                pending = deepcopy((encounter.get("combatState") or {}).get("pendingTurn"))
+                provider_player_input = _composed_player_input(pending, player_input)
+                correction = None
+                game_roll_rerule = True
+                continue
             # Item 10 (r2): the answered save keeps the DC it was asked at.
             _check_asked_save_dc(batch, asked_dc_corrected)
             # R2: a bonusAction outside the actor's bonusActionNames is
@@ -2793,7 +2858,8 @@ def execute_agentic_turn(
                 intents=len(batch.get("intents") or []) if isinstance(batch, dict) else None,
             )
             typed_roll = _typed_roll(request)
-            player_message = _player_request_message(request, typed_roll=typed_roll is not None)
+            # #1118: the model's own request carries the offer to roll for the player.
+            player_message = _request_text(request)
             record_pending_player_request(
                 encounter_path,
                 pending.get("turnId"),
