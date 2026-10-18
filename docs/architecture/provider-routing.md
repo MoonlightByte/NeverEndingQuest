@@ -117,6 +117,7 @@ provider router, persisted approval or background comparison is introduced.
 | Evidence | API/capture/usage logs | Gameplay or persisted-state authority |
 | Membership permission | T114 boolean/reason over actual input, accepted history and canonical party | Candidate narration and previous rejection feedback |
 | Roll answer (#1118) | T126 typed kind (`let_game_roll`, `faces`, `decline`, `other`) over the open roll, the ask shown and the player's whole line; required in a live turn; OpenAI luna/none, T112's Gemini, Legacy and LM Studio profiles; strict JSON schema with no bounds | The player's words as parsed by code; the site checks faces against the dice |
+| Startup menu answer (#1260) | T127 typed option number or clarifying question over the menu's numbered options as printed and the player's whole line; only after code finds no in-range number, whole listed name or "new"; one bounded attempt outside the live turn path, any failure falls back to the menu's own line; OpenAI luna/none, T093's MINI_UTIL Gemini, Legacy and LM Studio profiles; strict JSON schema | The player's words as parsed by code; code checks the number is one of the listed options |
 
 ## Flow
 

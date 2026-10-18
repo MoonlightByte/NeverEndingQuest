@@ -335,6 +335,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 This release brings significant improvements to the user interface, combat experience, and visual feedback systems.
 
 #### Added
+- At the start of a game, the adventure and character menus now understand a plain sentence such as "I'd like to play The Thornwood Watch, please"; a number or the exact listed name still works without a model call, and when the sentence is unclear the Dungeon Master asks which option you mean. The adventure menu also lists "Create a new adventure (module builder)" as its last option, which says the builder is coming soon and shows the menu again (Refs #1260).
 - **Combat Initiative Tracker**: Visual real-time combat tracker with animated portraits
   - Hover-activated video previews for monsters and NPCs
   - Dynamic HP display with color-coded health status
