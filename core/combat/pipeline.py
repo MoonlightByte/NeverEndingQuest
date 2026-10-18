@@ -24,6 +24,8 @@ from core.combat.bonus_actions import (
 )
 from core.combat.events import make_event_id, validate_event
 from core.combat.resolver import (
+    attack_row,
+    json_ref,
     apply_encounter_effect_ticks,
     apply_effect_ticks,
     apply_resolution,
@@ -306,23 +308,33 @@ def _resolve_off_hand(encounter, characters, actor, controller, bonus, event_id,
     if target is None or not is_combatant_targetable(target) or int(target.get("currentHitPoints", 0) or 0) <= 0:
         record["notTaken"] = "targetDown"
         return record, encounter, characters
+    sheet = (characters or {}).get(actor.get("name"))
+    # K1 (F2, F6): the weapon is the row bonusAction.abilityRow names in the
+    # actor's own list, resolved on the unadjusted sheet; a miss is retryable.
+    ref = bonus.get("abilityRow")
+    weapon = attack_row(sheet, ref, actor_id)
+    if weapon is None:
+        problem = ("the Off-hand Attack's bonusAction.abilityRow %s names no attack row of this actor; give the "
+                   "other Light weapon's listed rowRef" % json_ref(ref))
+        raise CombatIntentError(problem, actor_id, {"violations": [problem], "retryable": True})
+    record["ability"] = weapon.get("name")
     if controller == "human" and not (isinstance(phase, dict) and phase.get("ready") is True):
         raise CombatBonusAttackRollRequired(
-            actor_id, {"ability": bonus.get("ability"), "targetId": bonus.get("targetId")})
-    sheet = (characters or {}).get(actor.get("name"))
+            actor_id, {"ability": weapon.get("name"), "abilityRow": deepcopy(ref), "targetId": bonus.get("targetId")})
     rows = hands.light_melee_rows(sheet)
-    row = (rows or {}).get(bonus.get("ability"))
+    row = (rows or {}).get(weapon.get("name"))
     if row is None:
         problem = "the Off-hand Attack's weapon is no longer a Light melee weapon in hand"
         raise CombatIntentError(problem, actor_id, {"violations": [problem]})
     rule = off_hand_damage_rule(sheet, row)
     scoring = dict(characters)
     if rule["removed"]:
+        # F3: the scoring copy's row at the same position is lowered in place,
+        # so the position still names it.
         scoring[actor.get("name")] = adjusted = deepcopy(sheet)
-        for entry in adjusted.get("attacksAndSpellcasting") or []:
-            if isinstance(entry, dict) and entry.get("name") == bonus.get("ability"):
-                entry["damageBonus"] = int(entry.get("damageBonus", 0) or 0) - rule["removed"]
-    sub = {"actorId": actor_id, "action": "attack", "ability": bonus.get("ability"),
+        entry = attack_row(adjusted, ref, actor_id)
+        entry["damageBonus"] = int(entry.get("damageBonus", 0) or 0) - rule["removed"]
+    sub = {"actorId": actor_id, "action": "attack", "ability": weapon.get("name"), "abilityRow": deepcopy(ref),
            "targetId": bonus.get("targetId"), "description": record["description"]}
     if controller == "human":
         resolution = resolve_player_weapon_attack(encounter, scoring, sub, phase, "%s-B" % event_id, roll_source)
@@ -349,7 +361,7 @@ def _resolve_bonus_action(encounter, characters, actor, controller, intent, bonu
     characters); the record rides on the actor's one event."""
     actor_id = actor.get("combatantId")
     sheet = (characters or {}).get(actor.get("name"))
-    _raise_bonus_problem(sheet, bonus, actor_id, bonus_action_problem(sheet, bonus))
+    _raise_bonus_problem(sheet, bonus, actor_id, bonus_action_problem(sheet, bonus, actor_id=actor_id))
     sub = bonus_subintent(intent, bonus, actor.get("name"))
     sub["stateVersion"] = intent.get("stateVersion")
     resolution = resolve_adjudicated(
@@ -618,8 +630,9 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                     )
                 else:
                     remedy = (
-                        "Declare it with mode 'known' and the exact listed weapon/action as "
-                        "ability so code rolls it, or roll it in the ruling and give targets "
+                        "Declare it with mode 'known', the listed weapon/action row's rowRef as "
+                        "abilityRow and its name as ability so code rolls it, or roll it in the "
+                        "ruling and give targets "
                         "[{combatantId, hpDelta}] (hpDelta 0 on a miss)."
                     )
                 no_outcome = CombatIntentError(
