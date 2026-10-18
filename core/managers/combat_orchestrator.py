@@ -48,6 +48,9 @@ from core.combat.resolver import (
     player_weapon_attack_entry,
     player_weapon_attack_score,
     spell_attack_violations,
+    attack_row,
+    sent_row_lists,
+    stale_row_refs,
     validate_intent,
     weapon_attack_sheet_entry,
 )
@@ -207,6 +210,16 @@ def _resolution_failure_class(exc):
     return "mechanical_resolution_error"
 
 
+def _rendered_rows(rows):
+    """K1: legalRows [{rowRef, name}] as correction text, or ''."""
+    if not isinstance(rows, list):
+        return ""
+    return ", ".join(
+        "%s %s" % (json.dumps(row.get("rowRef"), sort_keys=True), json.dumps(row.get("name")))
+        for row in rows if isinstance(row, dict) and isinstance(row.get("rowRef"), dict)
+    )
+
+
 def _intent_correction(exc, batch=None):
     """Build narrow retry guidance from a deterministic intent rejection."""
     feedback = (
@@ -228,11 +241,12 @@ def _intent_correction(exc, batch=None):
         instruction = (
             "Return a corrected full ordered intent batch. For the rejected "
             "actor, %r is a save ability, not a known attack: resubmit it "
-            "with mode 'adjudicated', ability %r, save {type:%r, dc:%s, "
+            "with mode 'adjudicated', abilityRow %s, ability %r, save {type:%r, dc:%s, "
             "halfOnSave:%s}, targets [{combatantId, hpDelta}] (hpDelta 0 when "
             "it only imposes conditions; code rolls its listed damage dice)"
             % (
                 save_ability["name"],
+                json.dumps(save_ability.get("rowRef"), sort_keys=True),
                 save_ability["name"],
                 save_ability.get("type"),
                 save_ability.get("dc"),
@@ -245,22 +259,26 @@ def _intent_correction(exc, batch=None):
                 "applyOn:'failedSave', effect:{name:%r, conditions:%s}}]"
                 % (save_ability["name"], json.dumps(conditions))
             )
-        instruction += "; or choose a listed known attack instead."
+        instruction += "; or choose a listed known attack (its rowRef as abilityRow) instead."
     elif feedback.get("recharging"):
         # MS-b: the ability waits for its recharge die; name the rest.
-        rendered = [
-            str(action).strip()
-            for action in (legal_actions or [])
-            if isinstance(action, str) and action.strip()
-        ]
+        rendered = _rendered_rows(feedback.get("legalRows"))
         instruction = (
             "Return a corrected full ordered intent batch. For the rejected "
             "actor, %r is recharging (it returns on a d6 at the start of that "
             "actor's turn; the creature's recharge record shows it as spent): "
             "do not declare it this turn. Use another listed action%s or a "
             "defensive action."
-            % (feedback.get("recharging"), (" (%s)" % ", ".join(rendered)) if rendered else "")
+            % (feedback.get("recharging"), (" (%s)" % rendered) if rendered else "")
         )
+    elif _rendered_rows(feedback.get("legalRows")):
+        # K1: the row is named by its listed rowRef, never by its name.
+        instruction = (
+            "Return a corrected full ordered intent batch. For the rejected "
+            "known attack, set abilityRow to exactly one listed rowRef from "
+            "legalRows (%s) and ability to that row's name; ability is display "
+            "text, never an ability score or skill."
+        ) % _rendered_rows(feedback.get("legalRows"))
     elif isinstance(legal_actions, list) and legal_actions:
         rendered = [
             str(action).strip()
@@ -1213,6 +1231,15 @@ def _validate_bonus_actions(batch, encounter, characters):
             )
 
 
+def _check_sent_rows(batch, sent_rows, encounter, characters):
+    """K1 (2.1): each abilityRow names the row sent at that position in this
+    request; a row that changed since (a value compare, no digest) is
+    corrected with the actor's current rows."""
+    for actor_id, problem, rows in stale_row_refs(batch, sent_rows, encounter, characters):
+        raise CombatIntentError(
+            problem, actor_id, {"violations": [problem], "legalRows": rows, "retryable": True})
+
+
 def _validate_attack_count(batch, encounter, characters):
     """R3 (F3): the player's attack states no more attacks than the sheet's
     Attack action makes with that weapon (attack_sequence: Extra Attack, a
@@ -1226,7 +1253,8 @@ def _validate_attack_count(batch, encounter, characters):
         if type(attacks) is not int or attacks <= 1 or actor is None or not _is_human_controlled(encounter, actor):
             continue
         sheet = (characters or {}).get(actor.get("name"))
-        allowed = len(attack_sequence(sheet or {}, selected_name=intent.get("ability"),
+        allowed = len(attack_sequence(sheet or {},
+                                      selected=attack_row(sheet, intent.get("abilityRow"), actor.get("combatantId")),
                                       num_attacks=actor.get("numAttacks"), sequence=actor.get("multiattackSequence")))
         if attacks <= allowed:
             continue
@@ -1234,8 +1262,8 @@ def _validate_attack_count(batch, encounter, characters):
             actor.get("name") or actor.get("combatantId"), allowed, "" if allowed == 1 else "s", attacks)
         if OFF_HAND_ATTACK in bonus_action_names(sheet):
             problem += (" The swing with the other Light weapon in hand is the bonus action: set attacks to %d and "
-                        "put it in bonusAction {featureName:'%s', ability: that weapon's exact attack row, "
-                        "targetId}." % (allowed, OFF_HAND_ATTACK))
+                        "put it in bonusAction {featureName:'%s', abilityRow: that weapon's listed rowRef, "
+                        "ability: its name, targetId}." % (allowed, OFF_HAND_ATTACK))
         else:
             problem += " Set attacks to %d." % allowed
         raise CombatIntentError(
@@ -1505,7 +1533,8 @@ _ENGINE_LABEL_RE = re.compile(r" \([^()]*\)$")
 def _spoken_weapon(record, entry):
     """The weapon as the player reads it (#860): genesis labels an engine row
     "Longsword (Strength)" to keep a weapon's attacks apart; the request says
-    "Longsword". record["ability"] keeps the full name the row is found by."""
+    "Longsword". record["ability"] keeps the row's full name (K1: the row
+    itself is found by record["abilityRow"])."""
     name = str(record.get("ability") or "")
     if isinstance(entry, dict) and entry.get("engine") is True:
         return _ENGINE_LABEL_RE.sub("", name)
@@ -1784,7 +1813,7 @@ def _open_off_hand_phase(encounter_path, encounter, characters, pending, batch, 
     the open phase record (its lead, card and cardId)."""
     request = signal.request
     phase_intent = {"actorId": signal.actor_id, "ability": request.get("ability"),
-                    "targetId": request.get("targetId")}
+                    "abilityRow": deepcopy(request.get("abilityRow")), "targetId": request.get("targetId")}
     entry = weapon_attack_sheet_entry(encounter, characters, phase_intent)
     record = open_player_weapon_attack(encounter, characters, phase_intent, entry, _fresh_rolls(encounter))
     record["bonusAttack"] = True
@@ -1998,7 +2027,8 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
     from core.managers.checks_runtime import _show_check_receipt, new_message_id
 
     record = deepcopy(pending["weaponAttack"])
-    entry = weapon_attack_sheet_entry(encounter, characters, record)
+    # K1 (P-3): a row changed since the phase opened closes it like a row that is gone.
+    entry = weapon_attack_sheet_entry(encounter, characters, record, check_open=True)
     off_hand = record.get("bonusAttack") is True
     if entry is None:
         write_weapon_attack(encounter_path, pending.get("turnId"), None, timeout_seconds=None)
@@ -2824,6 +2854,10 @@ def execute_agentic_turn(
             voice_actors = immutable_voice_intents.get("actors", {})
             if voice_actors:
                 intent_kwargs["npc_voice_intents"] = voice_actors
+            # K1 (P-2): the saved rows behind the lists this request sends (the
+            # sent sheets may be their effective views, same positions), kept
+            # for the reply's value check.
+            sent_rows = sent_row_lists(encounter, characters)
             batch = intent_provider(
                 encounter,
                 provider_characters,
@@ -2887,6 +2921,8 @@ def execute_agentic_turn(
                                         immutable_voice_intents)
 
         try:
+            # K1 (2.1): a replied row position must still hold the row that was sent.
+            _check_sent_rows(batch, sent_rows, encounter, characters)
             # #942: pass 2 spends the slot the answered roll was asked at.
             _check_asked_slot_level(encounter, pending, batch)
             # R1: a retry answering a damage roll's playerRoll correction keeps

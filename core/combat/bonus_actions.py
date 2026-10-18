@@ -95,7 +95,8 @@ def bonus_name_refused(sheet: Optional[Dict[str, Any]], bonus: Any) -> bool:
 
 
 def bonus_action_problem(sheet: Optional[Dict[str, Any]], bonus: Any, intent: Optional[Dict[str, Any]] = None,
-                         encounter: Optional[Dict[str, Any]] = None, asking: bool = False) -> Optional[str]:
+                         encounter: Optional[Dict[str, Any]] = None, asking: bool = False,
+                         actor_id: Optional[str] = None) -> Optional[str]:
     """Why a declared bonusAction cannot be ruled as given, or None. With
     ``intent`` and ``encounter`` the Off-hand Attack is checked against the
     Action and its target too; ``asking`` (the intent still asks the player
@@ -115,7 +116,7 @@ def bonus_action_problem(sheet: Optional[Dict[str, Any]], bonus: Any, intent: Op
                    ", or use one of this actor's other bonus actions: %s" % ", ".join(repr(n) for n in others)
                    if others else " (this actor has no other bonus action)"))
     if name == OFF_HAND_ATTACK:
-        return off_hand_problem(sheet, bonus, intent, encounter)
+        return off_hand_problem(sheet, bonus, intent, encounter, actor_id)
     if asking:
         return None
     if name == "Cunning Action" and bonus.get("option") not in CUNNING_ACTION_OPTIONS:
@@ -145,26 +146,38 @@ def _items_differ(first: List[Any], second: List[Any]) -> bool:
 
 
 def off_hand_problem(sheet: Optional[Dict[str, Any]], bonus: Dict[str, Any], intent: Optional[Dict[str, Any]],
-                     encounter: Optional[Dict[str, Any]]) -> Optional[str]:
+                     encounter: Optional[Dict[str, Any]], actor_id: Optional[str] = None) -> Optional[str]:
     """Why the declared Off-hand Attack cannot be taken as given, or None: the
     Action is an Attack with a Light melee weapon in hand, the bonus swing is
     a different Light melee weapon in hand, and the target is hostile."""
     from core.managers.combat_state import combatant_by_id, is_combatant_targetable, is_hostile
     from core.nql import hands
 
+    from core.combat.resolver import attack_row, row_refs, attack_family, json_ref_list
+
     rows = hands.light_melee_rows(sheet)
     if rows is None:
         return "the Off-hand Attack needs the rules engine, which is unavailable now: leave bonusAction out"
-    main = (intent or {}).get("ability")
+    # K1: both weapons are the rows their abilityRow names (the actor's own
+    # list); the Light rows are then indexed by those rows' own names (code
+    # data against code data), never by the ability text.
+    actor_id = (intent or {}).get("actorId") or actor_id
+    main_row = attack_row(sheet, (intent or {}).get("abilityRow"), actor_id) if intent is not None else None
+    main = (main_row or {}).get("name")
+
+    def listed(names):
+        return json_ref_list(row_refs(sheet, actor_id, (attack_family(sheet),), lambda e: e.get("name") in names))
+
     if intent is not None and (intent.get("action") != "attack" or main not in rows):
         return ("the Off-hand Attack follows this turn's Attack action made with a Light melee weapon in hand "
-                "(SRD Light): the Action must be action 'attack' with ability one of %s, or leave bonusAction out"
-                % ", ".join(repr(n) for n in sorted(rows)))
+                "(SRD Light): the Action must be action 'attack' with abilityRow the rowRef of one of %s, or leave "
+                "bonusAction out" % listed(set(rows)))
     main_items = rows[main]["items"] if main in rows else []
     others = sorted(n for n in rows if intent is None or _items_differ(main_items, rows[n]["items"]))
-    if bonus.get("ability") not in others:
-        return ("Off-hand Attack's bonusAction.ability is the exact attack row of the other Light weapon in hand: "
-                "one of %s" % ", ".join(repr(n) for n in others))
+    bonus_row = attack_row(sheet, bonus.get("abilityRow"), actor_id) if actor_id is not None else None
+    if (bonus_row or {}).get("name") not in others:
+        return ("Off-hand Attack's bonusAction.abilityRow is the attack rowRef of the other Light weapon in hand: "
+                "one of %s" % listed(set(others)))
     if encounter is not None:
         target = combatant_by_id(encounter, bonus.get("targetId"))
         if target is None or not is_hostile(target) or not is_combatant_targetable(target):

@@ -154,7 +154,7 @@ def _warn_unresolved_sequence(sheet, specification):
 
 def attack_sequence(
     sheet,
-    selected_name=None,
+    selected=None,
     num_attacks=None,
     sequence=None,
 ):
@@ -185,7 +185,8 @@ def attack_sequence(
     if count is None:
         count = DEFAULT_UNKNOWN_MULTIATTACK_SWINGS if marker else 1
 
-    selected = _find(executable, selected_name) or executable[0]
+    # K1: the chosen row itself (found by its typed position), never a name.
+    selected = next((entry for entry in executable if entry is selected), None) or executable[0]
     result = [selected]
     for entry in executable:
         if len(result) >= count:

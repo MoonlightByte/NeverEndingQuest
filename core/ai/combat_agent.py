@@ -242,15 +242,19 @@ surrender or stand down gets action='flee' or action='yield'. Code marks that
 actor out of the fight and keeps its hit points; the fight ends when every
 hostile that can act is down or has left, or when the whole party has left.
 
+Every listed row on a sheet (attacksAndSpellcasting, actions,
+specialAbilities) carries a rowRef {combatantId, family, index}. To use a row,
+copy that actor's own rowRef exactly as abilityRow and its name as ability;
+code finds the row by abilityRow only, and ability is display text.
 For NPC/enemy actors, use mode='known' for a listed weapon/action and provide action='attack',
-ability, and targetId, or for defend/dodge/disengage/dash/hide/help/flee/yield. For a
-known attack, ability MUST be the exact listed weapon/action name from the
-actor's sheet (for example 'Longbow' or 'Claws'), never an ability score such
-as dexterity/strength and never a skill name. Use
+abilityRow, ability, and targetId, or for defend/dodge/disengage/dash/hide/help/flee/yield. For a
+known attack, abilityRow MUST be the rowRef of a listed weapon/action row of
+that actor (for example its 'Longbow' or 'Claws' row), never an ability score
+such as dexterity/strength and never a skill name. Use
 mode='adjudicated' for spells, healing, items, class features, and creative
 actions. A listed entry with kind 'save' (a web, a breath weapon, a gaze: its
 save object states ability, dc, halfOnSave and onFail) is also adjudicated:
-mode='adjudicated', ability set to that exact listed entry name, save copied
+mode='adjudicated', abilityRow set to that entry's rowRef and ability to its name, save copied
 from the entry, one target record per creature it reaches (hpDelta 0 when it
 only imposes conditions) and, for its onFail conditions, an effect op gated
 applyOn 'failedSave'. Code takes the save's type and dc, the onFail damage
@@ -390,8 +394,9 @@ the number of Multiattack swings and consumes each persisted roll; do not emit
 duplicate intents for the same actor. Never set a known attack's ability to
 'Multiattack' itself or to any listed entry whose damageDice is 0d0: those
 are containers or traits, not attacks (a kind 'save' entry is declared in
-mode 'adjudicated' as described above). Name the single weapon/action the
-Multiattack is made of (for example 'Slam') and code applies the extra swings.
+mode 'adjudicated' as described above). Give the rowRef of the single
+weapon/action the Multiattack is made of (for example the 'Slam' row) and code
+applies the extra swings.
 
 Intents resolve in the required order. Account for the HP changes you propose
 for earlier actors: never have a later actor attack a target your earlier
@@ -425,14 +430,15 @@ requiresPlayerInput (phase 'healing', die '1d10') and give bonusAction once
 it is answered. Cunning Action: bonusAction {featureName:'Cunning Action',
 option:'dash'|'disengage'|'hide'}. Off-hand Attack (two Light melee weapons in
 hand): after an Attack action made with one of them, one extra attack with
-the other: bonusAction {featureName:'Off-hand Attack', ability: the other
-weapon's exact attack row, targetId}, with no targets, rolls or request for
+the other: bonusAction {featureName:'Off-hand Attack', abilityRow: the other
+weapon's attack rowRef, ability: its name, targetId}, with no targets, rolls or request for
 it; code rolls it (the player's dice are asked by code) and scores it. The
 Action's own attack count never includes it.
 
 A player's plain swing with one listed melee weapon at one hostile creature
-is asked for and scored by code: declare action='attack', the exact weapon
-name as ability and targetId, with targets and resources empty. A plain shot
+is asked for and scored by code: declare action='attack', the weapon row's
+rowRef as abilityRow, its name as ability, and targetId, with targets and
+resources empty. A plain shot
 with one listed ranged weapon that fires ammunition (bow, crossbow, sling) is
 declared the same way; code spends the ammunition. Any other player attack at
 a creature states its outcome from the player's rolls in targets (hpDelta 0 on
@@ -555,15 +561,18 @@ def request_intent_batch(
         and spell_references.get("_contextVersion") == 1
         else None
     )
+    from core.combat.resolver import with_row_refs
     payload = {
         "stateVersion": (encounter.get("combatState") or {}).get("revision"),
         "round": (encounter.get("combatState") or {}).get("round"),
         "requiredActorIds": pending_turn.get("actorIds", []),
         "playerInput": player_input,
         "creatures": encounter.get("creatures", []),
-        "sheets": {
+        # K1: each listed row carries its rowRef (on copies; P-2), which the
+        # reply returns as abilityRow.
+        "sheets": with_row_refs({
             name: _relevant_sheet(sheet) for name, sheet in (characters or {}).items()
-        },
+        }, encounter),
     }
     # D-242 consumer 1: the one rules string while any party member is down.
     down_rules = down_scene_rules_from_encounter(encounter)

@@ -27,7 +27,6 @@ from copy import deepcopy
 
 from core.combat.attacks import (
     attack_sequence,
-    executable_attack_names,
     FLAT_DAMAGE_DICE,
     is_executable_attack,
     is_flat_attack,
@@ -176,30 +175,156 @@ def _find_action(actor_sheet, name):
     return None
 
 
-def _stat_block_save_entry(actor_sheet, name):
-    """MS-a: the actor's listed save ability (kind 'save' with a save object).
+# K1 (D-KW-12, D-HC-5): the row the model chose is named by its typed position
+# in the list sent to it in that request, {combatantId, family, index}
+# (abilityRow, the payload's rowRef); the name the model writes is display
+# text and never finds a row. Q-P6-2: positions and value compares, no digest.
+ROW_FAMILIES = ("attacksAndSpellcasting", "actions", "specialAbilities")
 
-    A stat block states a Web, a breath weapon or a gaze as a saving throw
-    (schemas/mon_schema.json: kind, save {ability, dc, halfOnSave, onFail}).
-    The typed entry, found by its exact listed name, is the authority for the
-    save's type, DC and on-fail mechanics; it is never read from prose.
-    """
-    wanted = str(name or "").strip().lower()
-    if not wanted:
+
+def json_ref(ref):
+    """A row reference as the model writes it, for correction text."""
+    import json
+    return json.dumps(ref, sort_keys=True) if isinstance(ref, dict) else "(none)"
+
+
+def json_ref_list(rows):
+    """[{rowRef, name}] as correction text."""
+    import json
+    return json.dumps(rows, sort_keys=True)
+
+
+def attack_family(actor_sheet):
+    """The one list the actor's attacks are read from (_action_entries)."""
+    return ("attacksAndSpellcasting"
+            if isinstance((actor_sheet or {}).get("attacksAndSpellcasting"), list) else "actions")
+
+
+def row_at(actor_sheet, ref, families, actor_id):
+    """The dict row at ``ref`` when it names ``actor_id``'s own list (F6), a
+    family in ``families`` and an index in range; None otherwise."""
+    if actor_id is None or not isinstance(ref, dict) or ref.get("combatantId") != actor_id:
         return None
-    for family in ("attacksAndSpellcasting", "actions", "specialAbilities"):
+    family, index = ref.get("family"), ref.get("index")
+    if family not in families or type(index) is not int or index < 0:
+        return None
+    entries = (actor_sheet or {}).get(family)
+    if not isinstance(entries, list) or index >= len(entries):
+        return None
+    row = entries[index]
+    return row if isinstance(row, dict) else None
+
+
+def attack_row(actor_sheet, ref, actor_id):
+    """The row ``ref`` names in the actor's attack list, or None."""
+    return row_at(actor_sheet, ref, (attack_family(actor_sheet),), actor_id)
+
+
+def is_save_row(entry):
+    return isinstance(entry, dict) and isinstance(entry.get("save"), dict) and entry.get("kind", "save") == "save"
+
+
+def save_row(actor_sheet, ref, actor_id):
+    """MS-a: the listed save ability ``ref`` names, or None."""
+    row = row_at(actor_sheet, ref, ROW_FAMILIES, actor_id)
+    return row if is_save_row(row) else None
+
+
+def row_refs(actor_sheet, actor_id, families, keep=None):
+    """[{rowRef, name}] for the actor's dict rows in ``families`` (list order)
+    that ``keep`` accepts: the rows a correction lists for the model."""
+    listed = []
+    for family in families:
         entries = (actor_sheet or {}).get(family)
         if not isinstance(entries, list):
             continue
-        for entry in entries:
-            if (
-                isinstance(entry, dict)
-                and str(entry.get("name", "")).strip().lower() == wanted
-                and isinstance(entry.get("save"), dict)
-                and entry.get("kind", "save") == "save"
-            ):
-                return entry
-    return None
+        for index, entry in enumerate(entries):
+            if isinstance(entry, dict) and (keep is None or keep(entry)):
+                listed.append({"rowRef": {"combatantId": actor_id, "family": family, "index": index},
+                               "name": entry.get("name")})
+    return listed
+
+
+def attack_row_refs(actor_sheet, actor_id, keep=None):
+    """row_refs over the actor's attack list, executable rows only."""
+    return row_refs(actor_sheet, actor_id, (attack_family(actor_sheet),),
+                    lambda e: is_executable_attack(e) and (keep is None or keep(e)))
+
+
+def _sheet_combatants(encounter):
+    """{sheet name: combatantId} for names exactly one combatant carries
+    (P-4: a name two combatants share gets no row references)."""
+    seen = {}
+    for creature in (encounter or {}).get("creatures") or []:
+        if isinstance(creature, dict) and isinstance(creature.get("name"), str) and creature.get("combatantId"):
+            seen.setdefault(creature["name"], []).append(creature["combatantId"])
+    return {name: ids[0] for name, ids in seen.items() if len(ids) == 1}
+
+
+def sent_row_lists(encounter, characters):
+    """{combatantId: {family: [rows]}}: a deep copy of the row lists T096 is
+    sent, kept beside the request for the reply's value check (P-2)."""
+    owners = _sheet_combatants(encounter)
+    kept = {}
+    for name, sheet in (characters or {}).items():
+        cid = owners.get(name)
+        if cid is not None and isinstance(sheet, dict):
+            kept[cid] = {family: deepcopy(sheet[family]) for family in ROW_FAMILIES
+                         if isinstance(sheet.get(family), list)}
+    return kept
+
+
+def with_row_refs(sheets, encounter):
+    """The payload sheets, each dict row of ROW_FAMILIES carrying its own
+    ``rowRef``. The lists are deep-copied first: _relevant_sheet hands over
+    the saved sheet's own lists, which are never written (P-2)."""
+    owners = _sheet_combatants(encounter)
+    out = {}
+    for name, sheet in (sheets or {}).items():
+        cid = owners.get(name)
+        if cid is None or not isinstance(sheet, dict):
+            out[name] = sheet
+            continue
+        sheet = dict(sheet)
+        for family in ROW_FAMILIES:
+            if not isinstance(sheet.get(family), list):
+                continue
+            copied = deepcopy(sheet[family])
+            for index, entry in enumerate(copied):
+                if isinstance(entry, dict):
+                    entry["rowRef"] = {"combatantId": cid, "family": family, "index": index}
+            sheet[family] = copied
+        out[name] = sheet
+    return out
+
+
+def stale_row_refs(batch, sent, encounter, characters):
+    """The reply's value check (2.1): [(actorId, problem, rows)] for each
+    abilityRow or bonusAction.abilityRow whose row on the sheet no longer
+    equals the row sent at that position. Values are compared; nothing is
+    hashed. A reference to nothing that was sent is left to its reader."""
+    problems = []
+    for intent in ((batch or {}).get("intents") or []):
+        if not isinstance(intent, dict):
+            continue
+        actor_id = intent.get("actorId")
+        actor = combatant_by_id(encounter, actor_id)
+        if actor is None:
+            continue
+        bonus = intent.get("bonusAction")
+        refs = [intent.get("abilityRow"), bonus.get("abilityRow") if isinstance(bonus, dict) else None]
+        sheet = _raw_combatant_sheet(encounter, characters, actor)
+        for ref in refs:
+            if not isinstance(ref, dict) or ref.get("combatantId") != actor_id:
+                continue
+            family, index = ref.get("family"), ref.get("index")
+            kept = ((sent or {}).get(actor_id) or {}).get(family)
+            if not isinstance(kept, list) or type(index) is not int or not 0 <= index < len(kept):
+                continue
+            if row_at(sheet, ref, ROW_FAMILIES, actor_id) != kept[index]:
+                problems.append((actor_id, "%s's row %s[%d] changed since it was sent" % (
+                    actor.get("name"), family, index), row_refs(sheet, actor_id, ROW_FAMILIES)))
+    return problems
 
 
 def _stated_save_spec(entry, key="save"):
@@ -391,8 +516,8 @@ def last_weapon_rows_delta(encounter, characters, event):
     record lives on the encounter combatant for this fight only.
 
     The player's own attacks are adjudicated and carry no swings: an
-    adjudicated ``attack`` whose ability is exactly a listed row on the
-    actor's sheet records that row.
+    adjudicated ``attack`` whose abilityRow names a listed row on the actor's
+    sheet records that row (K1: never by the ability text).
     """
     swings = ((event or {}).get("outcome") or {}).get("swings") or []
     actor = combatant_by_id(encounter, (event or {}).get("actorId"))
@@ -403,8 +528,9 @@ def last_weapon_rows_delta(encounter, characters, event):
     intent = (event or {}).get("intent") or {}
     adjudicated = ((event or {}).get("outcome") or {}).get("kind") == "adjudicated"
     # A known attack with no swing (no ammunition left) fired nothing: no row.
-    if not swings and adjudicated and intent.get("action") == "attack" and intent.get("ability"):
-        entry = _find_action(_raw_combatant_sheet(encounter, characters, actor), intent["ability"])
+    if not swings and adjudicated and intent.get("action") == "attack" and intent.get("abilityRow"):
+        entry = attack_row(_raw_combatant_sheet(encounter, characters, actor), intent["abilityRow"],
+                           actor["combatantId"])
         if isinstance(entry, dict):
             swings = [{"ability": entry.get("name"), "rowType": entry.get("type"),
                        "thrown": entry.get("thrown") is True}]
@@ -595,37 +721,40 @@ def validate_intent(encounter, characters, intent, strict=None):
                 legalTargets=_living_opponent_ids(encounter, actor),
                 retryable=True)
         if strict:
-            entry = _find_action(sheet, intent.get("ability"))
-            stated = _stat_block_save_entry(sheet, intent.get("ability"))
+            # K1: the row is the one abilityRow names; the ability text is display only.
+            ref = intent.get("abilityRow")
+            entry = attack_row(sheet, ref, actor_id)
+            stated = save_row(sheet, ref, actor_id)
             if stated is not None:
                 # MS-a: a save ability is not an attack roll; the correction
                 # names the adjudicated shape instead of steering to a bite.
                 feedback = _save_ability_feedback(stated)
+                feedback["rowRef"] = deepcopy(ref)
                 return False, Rejection(
                     reason="%s is a save ability of %s: declare it with mode "
-                           "'adjudicated', ability %r and save {type: %r, dc: %s}"
-                           % (stated.get("name"), actor.get("name"), stated.get("name"),
+                           "'adjudicated', abilityRow %s, ability %r and save {type: %r, dc: %s}"
+                           % (stated.get("name"), actor.get("name"), json_ref(ref), stated.get("name"),
                               feedback.get("type"), feedback.get("dc")),
-                    legalActions=executable_attack_names(sheet), retryable=True,
+                    legalRows=attack_row_refs(sheet, actor_id), retryable=True,
                     saveAbility=feedback)
             if entry is None or not is_executable_attack(entry):
                 return False, Rejection(
-                    reason="%s does not have %r" % (actor.get("name"), intent.get("ability")),
-                    legalActions=executable_attack_names(sheet), retryable=True)
+                    reason="%s has no listed attack at abilityRow %s (ability %r)"
+                           % (actor.get("name"), json_ref(ref), intent.get("ability")),
+                    legalRows=attack_row_refs(sheet, actor_id), retryable=True)
             if _recharge_spent(actor, entry.get("name")):
                 # MS-b: a spent recharge ability waits for its d6 at the
                 # start of the actor's turn; the correction names the rest.
                 return False, Rejection(
                     reason="%s is recharging for %s (it returns on a d6 at the start of its turn)"
                            % (entry.get("name"), actor.get("name")),
-                    legalActions=[n for n in executable_attack_names(sheet)
-                                  if not _recharge_spent(actor, n)],
+                    legalRows=attack_row_refs(sheet, actor_id,
+                                              lambda e: not _recharge_spent(actor, e.get("name"))),
                     retryable=True, recharging=entry.get("name"))
             if _spends_ammunition(entry) and _ammunition_left(sheet, entry) == 0:
                 return False, Rejection(
                     reason="%s has no ammunition left" % actor.get("name"),
-                    legalActions=[n for n in _known_actions(sheet)
-                                  if not _spends_ammunition(_find_action(sheet, n))],
+                    legalRows=attack_row_refs(sheet, actor_id, lambda e: not _spends_ammunition(e)),
                     retryable=True)
         return True, None
 
@@ -1705,10 +1834,11 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
     if intent.get("action") != "attack":
         return resolution
 
-    selected_entry = _find_action(sheet, intent.get("ability")) or {}
+    # K1: validate_intent found this row by abilityRow before any resolve.
+    selected_entry = attack_row(sheet, intent.get("abilityRow"), intent.get("actorId")) or {}
     attack_entries = attack_sequence(
         sheet,
-        selected_name=selected_entry.get("name"),
+        selected=selected_entry,
         num_attacks=actor.get("numAttacks"),
         sequence=actor.get("multiattackSequence"),
     )
@@ -2140,7 +2270,9 @@ def _plain_weapon_attack(encounter, characters, intent):
             or target.get("faction") == actor.get("faction")):
         return None
     sheet = _raw_combatant_sheet(encounter, characters, actor)
-    entry = _find_action(sheet, intent.get("ability"))
+    # K1: no abilityRow, or one naming no listed row, means no code takeover;
+    # the model rules the attack (and P1's outcome check holds).
+    entry = attack_row(sheet, intent.get("abilityRow"), actor.get("combatantId"))
     if not isinstance(entry, dict) or not is_executable_attack(entry):
         return None
     if entry.get("type") == "melee":
@@ -2154,7 +2286,7 @@ def _plain_weapon_attack(encounter, characters, intent):
         return None
     sequence = attack_sequence(
         sheet,
-        selected_name=entry.get("name"),
+        selected=entry,
         num_attacks=actor.get("numAttacks"),
         sequence=actor.get("multiattackSequence"),
     )
@@ -2213,7 +2345,7 @@ def open_player_weapon_attack(encounter, characters, intent, entry, rolls=None):
         _target_dodging(target, target_conditions),
         declared if declared in PLAYER_DECLARED_MODES else None,
     )
-    return {
+    record = {
         "actorId": actor.get("combatantId"),
         "ability": entry.get("name"),
         "targetId": target.get("combatantId"),
@@ -2224,19 +2356,48 @@ def open_player_weapon_attack(encounter, characters, intent, entry, rolls=None):
         "faces": _opened_faces(encounter, characters, actor, rolls),
         "sources": {},
     }
+    if isinstance(intent.get("abilityRow"), dict):
+        # K1: the phase keeps the row's position and its value at open.
+        record["abilityRow"] = deepcopy(intent["abilityRow"])
+        record["rowAtOpen"] = deepcopy(entry)
+    return record
 
 
-def weapon_attack_sheet_entry(encounter, characters, record):
+def weapon_attack_sheet_entry(encounter, characters, record, check_open=False):
     """The sheet entry the open roll phase was opened for, or None. A spell
-    attack's phase (#672) carries its own entry, fixed when it opened."""
+    attack's phase (#672) carries its own entry, fixed when it opened. With
+    ``check_open`` the row must still equal the row the phase opened on."""
     actor = combatant_by_id(encounter, record.get("actorId"))
     if actor is None:
         return None
     spell = record.get("spell")
     if isinstance(spell, dict):
         return {key: spell.get(key) for key in ("name", "type", "damageDice", "damageType", "attackBonus")}
-    entry = _find_action(_raw_combatant_sheet(encounter, characters, actor), record.get("ability"))
+    sheet = _raw_combatant_sheet(encounter, characters, actor)
+    if "abilityRow" in record:
+        entry = attack_row(sheet, record.get("abilityRow"), actor.get("combatantId"))
+        if check_open and isinstance(entry, dict) and "rowAtOpen" in record and entry != record["rowAtOpen"]:
+            # K1 (P-3): the row at the phase's position changed since the phase
+            # opened, so it is closed and the turn goes back to T096.
+            return None
+    else:
+        # A phase opened before K1 named its row by the row's own name
+        # (code-written at open, not the model's text).
+        entry = _find_action(sheet, record.get("ability"))
     return entry if isinstance(entry, dict) else None
+
+
+def _row_ref_of(encounter, characters, record, entry):
+    """The position of ``entry`` (the very row) in the actor's attack list, or None."""
+    actor = combatant_by_id(encounter, record.get("actorId"))
+    if actor is None:
+        return None
+    sheet = _raw_combatant_sheet(encounter, characters, actor)
+    family = attack_family(sheet)
+    for index, row in enumerate(sheet.get(family) or []):
+        if row is entry:
+            return {"combatantId": actor.get("combatantId"), "family": family, "index": index}
+    return None
 
 
 def player_weapon_attack_dice(record, entry):
@@ -2349,6 +2510,9 @@ def resolve_player_weapon_attack(encounter, characters, intent, record, event_id
         "actorId": record.get("actorId"),
         "action": "attack",
         "ability": record.get("ability"),
+        # P-1: the swing reaches resolve_intent with its row's position (a
+        # phase opened before K1 gets the position of the row found for it).
+        "abilityRow": deepcopy(record.get("abilityRow")) or _row_ref_of(encounter, characters, record, entry),
         "targetId": record.get("targetId"),
         "description": (intent or {}).get("description", ""),
     }
@@ -2683,7 +2847,8 @@ def player_spell_save_entry(encounter, characters, intent):
     status, record, phase = srd_spell_saves.lookup(intent.get("ability"))
     if status != "recorded" or phase is None or not _sheet_lists_spell(casting, record["name"]):
         return None
-    if _stat_block_save_entry(sheet, intent.get("ability")) is not None:
+    if save_row(sheet, intent.get("abilityRow"), actor.get("combatantId")) is not None:
+        # K1: the cast names a listed save ability by its abilityRow; it stays adjudicated.
         return None
     if (srd_roll_contracts.slot_level_mismatch(intent, actor.get("name"))
             or srd_roll_contracts.slot_below_spell_level(intent, actor.get("name"))):
@@ -3409,23 +3574,30 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
         targets = []
 
     # MS-a: a listed save ability (Web, a breath weapon) is declared by the
-    # model with ability = its exact listed name; the stat block's typed save
-    # object is then the authority for the save, the on-fail damage dice and
-    # the on-fail conditions. Code reconciles: the save spec is taken from
-    # the entry, the damage is rolled from the persisted prerolls, and a
-    # missing failed-save condition effect is staged from the entry. Each
-    # correction is journaled as a normalization; replay reads the journal.
+    # model with abilityRow = its listed rowRef (K1; ability is display text);
+    # the stat block's typed save object is then the authority for the save,
+    # the on-fail damage dice and the on-fail conditions. Code reconciles: the
+    # save spec is taken from the entry, the damage is rolled from the
+    # persisted prerolls, and a missing failed-save condition effect is staged
+    # from the entry. Each correction is journaled as a normalization; replay
+    # reads the journal. F5: with no abilityRow there is no stat-block lookup
+    # and the model's ruling stands; one that names no listed row is corrected.
     stated_entry = None
     stated_save = None
     stated_dice = None
     stated_conditions = []
     stated_rounds = None
     actor_creature = combatant_by_id(encounter, proposal.get("actorId"))
-    if actor_creature is not None and proposal.get("ability"):
-        stated_entry = _stat_block_save_entry(
-            _raw_combatant_sheet(encounter, characters, actor_creature),
-            proposal.get("ability"),
-        )
+    if actor_creature is not None and proposal.get("abilityRow") is not None:
+        actor_sheet = _raw_combatant_sheet(encounter, characters, actor_creature)
+        listed = row_at(actor_sheet, proposal.get("abilityRow"), ROW_FAMILIES, actor_creature.get("combatantId"))
+        if listed is None:
+            resolution["violations"].append(
+                "abilityRow %s names no listed row of %s; give one listed rowRef as abilityRow: %s"
+                % (json_ref(proposal.get("abilityRow")), actor_creature.get("name"),
+                   json_ref_list(row_refs(actor_sheet, actor_creature.get("combatantId"), ROW_FAMILIES))))
+            return resolution
+        stated_entry = listed if is_save_row(listed) else None
     if stated_entry is not None and _recharge_spent(actor_creature, stated_entry.get("name")):
         resolution["violations"].append(
             "%s is recharging for %s (it returns on a d6 at the start of its turn); choose another action"
