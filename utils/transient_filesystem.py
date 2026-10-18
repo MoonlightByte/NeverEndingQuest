@@ -23,6 +23,9 @@ _TRANSIENT_ERRNOS = frozenset(
         errno.EINTR,
         getattr(errno, "ESTALE", None),
         getattr(errno, "ETIMEDOUT", None),
+        # B1 busy = wait: running a program while it is rewritten (a game update
+        # replacing the engine binary) or opening a running one for writing.
+        getattr(errno, "ETXTBSY", None),
     )
     if value is not None
 )

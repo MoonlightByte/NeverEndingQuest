@@ -449,8 +449,12 @@ numbers, damage, saves, whether rollLead hits, or whether the target
 falls. Code shows them only when it asks the player for dice, and puts
 the exact roll request after your words.
 
-""" + _spell_attack_prompt() + """The PLAYER actor must always use mode='adjudicated'; never roll automatically
-for the player. Apply only rolls/results explicitly supplied in playerInput,
+""" + _spell_attack_prompt() + """The PLAYER actor must always use mode='adjudicated'. Never invent a roll for
+the player. The player asks the game to roll when they ask the DM or the game
+to make this roll for them; then return playerRoll={gameRolls: true}, code
+rolls the requested dice, and you rule again with the faces. A 'Game roll for
+the DM's request' line is a roll supplied for the player: apply it as the
+player's roll. Apply only rolls/results explicitly supplied in playerInput,
 or set requiresPlayerInput={kind:'roll'|'choice', prompt:'...', die:'d20',
 phase:'attack', reason:'...', spellName:'exact spell name',
 slotLevel:3} and leave mechanical arrays empty. For EVERY roll, die must name
@@ -462,7 +466,8 @@ phase, otherwise 'attack' (main die 1d20, or 2d20 with advantage or
 disadvantage), 'damage', 'healing', 'save' or 'check'. Keep flat bonuses out
 of die and apply them once when
 adjudicating the returned raw dice. Put the dice expression in prompt as well
-as the weapon/action name so the player knows what to roll. For a spell include
+as the weapon/action name so the player knows what to roll; write the request
+in your own words and offer to roll it for them. For a spell include
 spellName, plus slotLevel when the spell was cast with a slot (the level of
 the spellSlot resource it spends). Code
 will pause the same turn and show that request instead of consuming it.
@@ -490,8 +495,9 @@ faces:[[...]]}: one list of integers per die term of the requested dice, in
 order ('2d6' gives [[4,2]], '1d8+1d6' gives [[5],[3]]), holding exactly the
 numbers the player gave, even a number the die cannot show; code checks them
 against the request. Never add, drop or change a number, and never put a flat
-bonus in faces. If the follow-up gives no number for the request, omit
-playerRoll. When the game rolled for the player, code fills playerRoll itself.
+bonus in faces. If the follow-up gives no number for the request and does
+not ask the game to roll, omit playerRoll. When the game rolled for the
+player, code fills playerRoll itself.
 For the player's own saving throw (phase 'save'), put its type and dc in the
 intent's save field and list the player in targets with the hpDelta a failed
 save costs (0 if none): code scores that save from the player's d20, so do not

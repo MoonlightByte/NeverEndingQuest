@@ -90,6 +90,7 @@ Other historical anchors are not recertified by this note.
 | Available adventures | Public module directories and files on disk | Read-only module scan |
 | Wizard dialogue and resume phase | `modules/conversation_history/startup_conversation.json` | Accepted author response and code-authored v1 checkpoint; rejected proposals remain correction context |
 | Character sheet | Unified canonical character path, with legacy module identity discovery | New conversational builds receive schema/semantic review; existing sheets retain values; supplied headless seeds use their existing repair/validation path. Guarded write/read-back publishes the sheet |
+| Starting gold and gear | T092's typed `origin` and `starting_equipment` picks (checked by T124); packages, coins and uncatalogued items from `data/srd/choices.json` and `data/srd_character_origins.json`; the balance, item ids and rows from the engine | `_prepare_startup_proposal` sets the authored purse and gear aside and makes one engine grant (`startup_rows.grant_starting_packages`); a busy engine is waited for, and an engine that cannot run saves the character without gear and tells the player (D-PKG-1, D-PKG-5). Headless seeds keep their own gear |
 | Initial location | T093 proposal resolved against selected module's actual areas/locations | Validated IDs and canonical names precede whole tracker projection; no invented fallback |
 | Current game context | Tracker, module, location, plot, roster, and history files | Reloaded after recovery and used to rebuild conversation context |
 | Welcome identity | `startup_state.json` attempt ID, status, and lease owner | Lock-protected claim/processing/done transition |
@@ -110,7 +111,7 @@ Other historical anchors are not recertified by this note.
 9. On raw terminal, welcome generation and applicable shared review run synchronously before existing lease/processing checks, game-thread apply, and completion receipt. Startup supplies no current player input; synthetic notes are not consent.
 10. The loop emits `startup_loop_ready`, refreshes state/effects, loads player statistics, and requests input. Queue-backed input can therefore be reachable while welcome generation is still active.
 11. If the player submits first, the game thread supersedes and reaps the welcome, then discards or hands it back before processing player text.
-12. T092 authors a typed interview/finalize response. A separate T124 review (split from T092 by #682, its own model binding) judges player intent, complete-build approval, and truthful narration; code checks shape and the latest actual player-message reference. Only accepted responses enter durable history.
+12. T092 authors a typed interview/finalize response. A separate T124 review (split from T092 by #682, its own model binding) judges player intent, complete-build approval, and truthful narration; code checks shape and the latest actual player-message reference. Only accepted responses enter durable history. A finalize also carries the typed `origin` (class and background keys) and `starting_equipment` (package keys, slot picks, what is worn or held). Code writes the display class and background from the keys and the starting gold and gear from one engine grant of the chosen packages (D-KW-16); the engine's attack rows and armor class follow.
 13. Finalization checkpoints `approved`, writes and reads back the sheet, checkpoints `character_saved`, resolves T093 against installed module data, writes/reads the tracker, then checkpoints `ready`. The caller verifies readiness before archiving the interview or announcing success.
 14. Headless installs its shims before starting the engine thread and converts startup markers, output, and prompts into NDJSON events.
 15. Module choices come from the public installed catalog, never fixed adventure names. If a selected module disappears, choosing its replacement retains approved character identity, clears the former location, and re-enters the shared commit/read-back path.
@@ -158,6 +159,7 @@ Other historical anchors are not recertified by this note.
 13. `main.py::_welcome_worker_main` and `main.py::_review_fresh_membership_candidate` - detached generation and applicable shared membership review.
 14. `main.py::_apply_welcome`, `main.py::recovery_authority_current` and `main.py::resolve_retryable_ai_result` - welcome acceptance, owner currentness checks and shared stale resolver.
 15. `main.py::_main_game_loop` from `# #214 D-214-1=B: on the queue-backed input surfaces (web + headless` - surface split, readiness marker, and first input.
+16. `utils/startup_wizard.py::_prepare_startup_proposal -> core/nql/startup_rows.py::grant_starting_packages` - typed starting packages, the engine grant, and the creation-time engine fault rule (`_startup_engine_fault`).
 
 ## Invariants
 

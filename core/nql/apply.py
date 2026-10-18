@@ -52,7 +52,7 @@ def call(document: Dict[str, Any], *, binary: Optional[str] = None, timeout: flo
         response = json.loads(proc.stdout.decode("utf-8"))
     except (ValueError, UnicodeDecodeError) as error:
         raise EngineUnavailable(
-            f"engine returned no JSON (exit {proc.returncode}): {proc.stderr.decode('utf-8', 'replace')[:400]}"
+            f"engine returned no JSON (exit {proc.returncode}): {proc.stderr.decode('utf-8', 'replace')}"
         ) from error
     if not isinstance(response, dict):
         raise EngineUnavailable("engine response is not an object")

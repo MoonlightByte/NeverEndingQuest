@@ -82,15 +82,16 @@ def test_captured_author_replays_through_real_normalization(wizard, authored):
     candidate, provenance = wizard._prepare_startup_proposal(authored)
     assert authored == original
     # #569: the captured "Fighting Style (Defense)" is committed as level-up
-    # writes it, so the engine grants Defense's +1 (Chain Mail 16 + Shield 2 + 1).
-    assert candidate["character"]["armorClass"] == 19
+    # writes it, so the engine grants Defense's +1 (Chain Mail 16 + 1; the gear is
+    # Fighter package A, the authored Shield is not granted).
+    assert candidate["character"]["armorClass"] == 17
     assert _style_entries(candidate["character"]) == ["Fighting Style: Defense"]
     assert candidate["character"]["maxHitPoints"] == 12
     assert candidate["character"]["equipment_effects"]
     assert candidate["character"]["savingThrowBonuses"]["constitution"] == 4
     engine = provenance["engine_projection"]
     assert engine["applied"] is True
-    assert engine["armorClass"] == 19
+    assert engine["armorClass"] == 17
     assert engine["equipment_effects"]["entries"] == candidate["character"]["equipment_effects"]
     from core.nql import stats
     totals = stats.totals(engine["status"])
@@ -100,7 +101,7 @@ def test_captured_author_replays_through_real_normalization(wizard, authored):
                                                               "shortRestRegain": 1}
     notes = provenance["mechanics_notes"]
     assert notes[:2] == [CAPTURED_STYLE_NOTE, SECOND_WIND_NOTE] and len(notes) == 3
-    assert notes[2].startswith("armorClass 18 -> 19 (engine defense:")
+    assert notes[2].startswith("armorClass 18 -> 17 (engine defense:")
     # Repeated projection, including a sheet already carrying identical totals.
     repeated, repeated_provenance = wizard._prepare_startup_proposal(authored)
     stable, stable_provenance = wizard._prepare_startup_proposal(candidate)
@@ -134,7 +135,8 @@ def test_narrow_engine_certificate_does_not_claim_other_effects(wizard, authored
               "value": 99, "description": "Unverified", "source": "author"}
     authored["character"]["equipment_effects"] = [effect]
     candidate, provenance = wizard._prepare_startup_proposal(authored)
-    assert effect in candidate["character"]["equipment_effects"]
+    # Authored gear is set aside at creation, its effects with it (W8).
+    assert effect not in candidate["character"]["equipment_effects"]
     assert effect not in provenance["engine_projection"]["equipment_effects"]["entries"]
     assert provenance["engine_projection"]["equipment_effects"]["selector"] == {"target": "AC"}
 
@@ -227,7 +229,7 @@ def test_chosen_fighting_style_is_committed_as_level_up_writes_it(wizard, author
     assert _style_entries(committed) == ["Fighting Style: Defense"]
     assert "Second Wind" in [f["name"] for f in committed["classFeatures"]]
     assert committed.get("feats", []) == []
-    assert committed["armorClass"] == provenance["engine_projection"]["armorClass"] == 19
+    assert committed["armorClass"] == provenance["engine_projection"]["armorClass"] == 17
     assert provenance["fighting_style"]["style"] == "Defense"
     style_notes = [note for note in provenance["mechanics_notes"] if note.startswith("Fighting Style")]
     assert style_notes == ([] if was is None else [f"Fighting Style: Defense set in classFeatures (was {was})"])
@@ -239,13 +241,15 @@ def test_archery_is_committed_without_an_armor_class_bonus(wizard, authored):
     committed = candidate["character"]
     assert _style_entries(committed) == ["Fighting Style: Archery"]
     assert committed["classFeatures"][0]["description"].startswith("You gain a +2 bonus to attack rolls")
-    assert committed["armorClass"] == 18
+    assert committed["armorClass"] == 16
 
 
 def test_ineligible_style_is_left_and_noted(wizard, authored):
     # Paladins gain Fighting Style at level 2.
     sheet = authored["character"]
     sheet["class"] = "Paladin"
+    _as_origin(authored, "Paladin", "A", [{"slot": "paladin.A.holy_symbol", "catalog_id": "itemdef:srd/holy-symbol-amulet"}],
+               ["itemdef:srd/chain-mail", "itemdef:srd/shield"])
     authored_features = [f["name"] for f in sheet["classFeatures"]]
     candidate, provenance = wizard._prepare_startup_proposal(authored)
     committed = candidate["character"]
@@ -335,6 +339,13 @@ def _pool(current, maximum, refresh, regain=None):
     return usage
 
 
+def _as_origin(proposal, cls, package="B", slot_picks=(), equipped=()):
+    """The typed class key and package the game writes the class and gear from."""
+    proposal["origin"]["class_key"] = cls.casefold()
+    proposal["starting_equipment"].update(class_package=package, slot_picks=list(slot_picks), equipped=list(equipped))
+    return proposal
+
+
 def _as_class(sheet, cls, features, **abilities):
     sheet["class"] = cls
     sheet["abilities"].update(abilities)
@@ -361,6 +372,7 @@ def test_level_one_pools_and_slots_come_from_the_tables(wizard, authored, cls, a
         sheet["abilities"].update(abilities)
     else:
         _as_class(sheet, cls, [(name, None) for name in pools], **abilities)
+        _as_origin(authored, cls)
     candidate, provenance = wizard._prepare_startup_proposal(authored)
     committed = candidate["character"]
     assert {name: _usage(committed, name) for name in pools} == pools
@@ -380,6 +392,7 @@ def test_level_one_pools_and_slots_come_from_the_tables(wizard, authored, cls, a
 
 def test_missing_pool_feature_is_noted_not_invented(wizard, authored):
     _as_class(authored["character"], "Barbarian", [("Unarmored Defense", None)])
+    _as_origin(authored, "Barbarian")
     candidate, provenance = wizard._prepare_startup_proposal(authored)
     assert [f["name"] for f in candidate["character"]["classFeatures"]] == ["Unarmored Defense"]
     assert provenance["use_pools"]["missing_features"] == ["Rage"]
@@ -694,7 +707,7 @@ def test_actual_interview_reviews_both_sources_and_publishes_canonical(wizard, a
         # the AC result as committed facts.
         changes = payload["committed_facts"]["startup_mechanics"]["changes"]
         assert changes[:2] == [CAPTURED_STYLE_NOTE, SECOND_WIND_NOTE]
-        assert changes[2].startswith("armorClass 18 -> 19")
+        assert changes[2].startswith("armorClass 18 -> 17")
         return {"version": 1, "accepted": True, "feedback": "Both sources reviewed.",
                 "needs_player_clarification": False}
 
@@ -815,7 +828,7 @@ def test_continue_interview_never_projects_or_commits(wizard, monkeypatch):
                                "needs_player_clarification": False})
         return json.dumps({"version": 1, "decision": "continue_interview", "narration": "What is your name?",
                            "confirmation": {"whole_build_approved": False, "player_message_index": None},
-                           "character": None})
+                           "character": None, "origin": None, "starting_equipment": None})
 
     monkeypatch.setattr(wizard, "get_ai_response", model)
     with pytest.raises(wizard.StartupCancelled):
