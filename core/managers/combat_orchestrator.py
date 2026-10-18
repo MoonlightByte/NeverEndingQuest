@@ -1377,7 +1377,8 @@ def _validate_roll_request_phase(batch, encounter):
 # Item 3: the player's plain melee weapon swing. Code holds the dice (the DM's
 # lead asks, a dice card records them; the terminal line is the [ROLL] tag),
 # takes bare typed numbers on the fast path (D-KW-1/D-KW-2; the tray sentence
-# is D-KW-14/D-KW-17's shortcut until #1116), and scores the swing; any other
+# is D-KW-2's exact generated form until the typed tray payload ships, D-KW-14's
+# sunset, #1116), and scores the swing; any other
 # answer is read by T126 (#1118).
 _ROLL_NUMBERS = re.compile(r"^\s*(\d{1,3})(?:[\s,]+(\d{1,3}))?\s*$")
 # #879: a Great Weapon Fighting swing takes each damage die (a critical 2d6 is 4).
@@ -1500,11 +1501,6 @@ def _wants_each_die(record, count):
     dice asks for each die; the flag was read when the damage was asked for."""
     return (record.get("phase") == "damage" and record.get("greatWeapon") is True
             and not isinstance(record.get("spell"), dict) and count >= 2)
-
-
-def _each_die_example(count, sides):
-    """An example of one number per die, e.g. "1 4" for 2d6, "1 4 2 6" for 4d6."""
-    return " ".join(str((face - 1) % sides + 1) for face in ([1, 4, 2, 6, 3, 5] * count)[:count])
 
 
 def _roll_card(record, entry):
@@ -1734,7 +1730,7 @@ def _player_weapon_takeover(encounter, characters, pending, batch):
     record["batch"] = deepcopy(batch)
     for stored in record["batch"].get("intents") or []:
         # Code asks for this swing's dice; the model's own request (if any)
-        # is superseded by the code-issued [ROLL] line.
+        # is superseded by the code-issued roll phase.
         if isinstance(stored, dict) and stored.get("actorId") == record["actorId"]:
             stored.pop("requiresPlayerInput", None)
     if record.get("ready") is not True:
@@ -1980,7 +1976,9 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
             # R3, D-1118-9 D: the off-hand dice stay open on any other line.
             values = "other"
         elif kind == "decline" or reader_unavailable:
-            # C1: the line is a new plan (or could not be read): T096 rules it.
+            # C1: the line is a new plan, or could not be read: it goes back to
+            # T096 to rule, so a failing reader never walls the player at the
+            # roll (D-1118-7 A as clarified under D-KW-16, D-1118-9 D).
             values = None
         else:
             values = "other"
@@ -2594,9 +2592,9 @@ def execute_agentic_turn(
         weapon_answered = False
         open_attack = pending.get("weaponAttack")
         if isinstance(open_attack, dict) and open_attack.get("ready") is not True:
-            # Item 3: the answer to a code-issued [ROLL] line. Only bare typed
-            # numbers (or a blank line) are taken; anything else closes the
-            # roll phase and goes to the model as a normal follow-up.
+            # Item 3, #1118: the answer to a code-issued roll phase. The fast
+            # path takes a blank line, the D-KW-1 line and bare numbers; any
+            # other line is read by T126 (_advance_weapon_attack).
             phase_characters = _load_characters(character_paths, context_sheets)
             advanced, ask = _advance_weapon_attack(
                 encounter_path,
@@ -2886,6 +2884,7 @@ def execute_agentic_turn(
                     requested_die=record.get("dice"),
                     npc_voice_intents=immutable_voice_intents,
                     requested_phase=record.get("phase"),
+                    timeout_seconds=None,
                 )
                 record_combat_diagnostic(
                     record_type="call_attempt",

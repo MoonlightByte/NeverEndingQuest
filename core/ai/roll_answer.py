@@ -49,7 +49,7 @@ _SYSTEM = """You read one line a player typed while the game is waiting for a di
 
 Return exactly one JSON object {"kind": ..., "values": [...]} where kind is one of:
 - "let_game_roll": the player asks the game to roll it. The player asks the game to roll when they ask the DM or the game to make this roll for them.
-- "faces": the player says what they rolled for this roll. Put the numbers in values, one list per dice term in the order the request lists its dice, exactly as the player gave them, even a number the die cannot show or fewer numbers than dice. When the player states one total for a roll that takes a total, that total is one number.
+- "faces": the player says what they rolled for this roll. Put the numbers in values, one list per dice term in the order the request lists its dice, exactly as the player gave them, even a number the die cannot show or fewer numbers than dice. When eachDie is false and the phase is not "attack", the roll takes one total: when the player states that total, values is [[total]], not the dice that made it.
 - "decline": the player gives this roll up and does not want it made.
 - "other": anything else: a question, a remark, an unclear line, or doing something else first while still meaning to roll.
 
@@ -98,7 +98,7 @@ def _response_format(provider, config):
     elif provider == "gemini":
         from model_config import convert_to_gemini_schema
 
-        config["response_schema"] = convert_to_gemini_schema(SCHEMA, preserve_required=True)
+        config["response_schema"] = convert_to_gemini_schema(SCHEMA, preserve_required=True, preserve_constraints=True)
         config["response_format"] = {"type": "json_object"}
     else:
         config["response_format"] = {"type": "json_object"}

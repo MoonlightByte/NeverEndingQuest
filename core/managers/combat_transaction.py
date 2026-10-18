@@ -10,9 +10,10 @@ and every character/resource/effect write is absolute and replay-safe.  The
 encounter receipt and cursor are committed last.
 
 A player's answer to a DM roll request is an exchange of
-``pendingTurn.playerExchanges``; when the game rolls it (#877, #1118) the one
-writer ``mark_pending_game_roll`` types ``rolledBy`` and ``rolledFaces`` beside
-the player's own words.
+``pendingTurn.playerExchanges``; when the game rolls it (#877, #1118) its
+writers type ``rolledBy`` and ``rolledFaces`` beside the player's own words:
+``mark_pending_game_roll`` for a DM-asked roll, ``write_weapon_attack`` for a
+code-issued roll phase.
 """
 
 from contextlib import contextmanager
@@ -848,7 +849,7 @@ def mark_pending_game_roll(
     faces,
     timeout_seconds=None,
 ):
-    """#1118: the one writer of the game's roll for an open typed roll
+    """#1118: the writer of the game's roll for an open typed roll
     request: ``rolledBy`` "game" and the faces per die term, beside the
     player's own line (never a sentence written for them). Under one hold of
     the combat lock it does exactly one thing and returns which:
@@ -965,7 +966,7 @@ def write_weapon_attack(
     One optional key, absent when no code-issued roll is open: ``record``
     None removes it (the player's words go back to the model). ``answer`` is
     the player's typed reply, added to the exchange chain first, and
-    ``player_message`` the next [ROLL] request beside it, so history reads as
+    ``player_message`` the next roll ask beside it, so history reads as
     a DM request does today. ``rolled_faces`` (#1118) marks the answer as the
     game's roll, typed beside the player's own words (``rolledBy`` "game" and
     the faces per term); the answer text may then be empty.
