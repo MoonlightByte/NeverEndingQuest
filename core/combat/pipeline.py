@@ -596,8 +596,7 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
         elif mode == "adjudicated":
             target = combatant_by_id(next_encounter, intent.get("targetId"))
             if (
-                controller != "human"
-                and intent.get("action") == "attack"
+                intent.get("action") == "attack"
                 and target is not None
                 and target.get("combatantId") != actor_id
                 and not intent.get("targets")
@@ -605,12 +604,24 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             ):
                 # #839: a companion's or enemy's attack with no outcome spent
                 # an arrow, rolled nothing and left the narrator guessing.
+                # D-HC-2: the same check for the player's attack, whose ruling
+                # states hit or miss from the player's rolls, or asks for the
+                # next one.
+                if controller == "human":
+                    remedy = (
+                        "From the player's rolls, give targets [{combatantId, hpDelta}] "
+                        "(hpDelta 0 on a miss), or set requiresPlayerInput for the roll it "
+                        "still needs (the damage dice after a hit)."
+                    )
+                else:
+                    remedy = (
+                        "Declare it with mode 'known' and the exact listed weapon/action as "
+                        "ability so code rolls it, or roll it in the ruling and give targets "
+                        "[{combatantId, hpDelta}] (hpDelta 0 on a miss)."
+                    )
                 raise CombatIntentError(
-                    "%s's attack on %s states no outcome. Declare it with mode "
-                    "'known' and the exact listed weapon/action as ability so "
-                    "code rolls it, or roll it in the ruling and give targets "
-                    "[{combatantId, hpDelta}] (hpDelta 0 on a miss)."
-                    % (actor.get("name") or actor_id, target.get("name") or target.get("combatantId")),
+                    "%s's attack on %s states no outcome. %s"
+                    % (actor.get("name") or actor_id, target.get("name") or target.get("combatantId"), remedy),
                     actor_id,
                     {"retryable": True},
                 )
