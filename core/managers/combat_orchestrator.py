@@ -544,6 +544,11 @@ def _check_answered_roll_faces(encounter_path, encounter, pending, batch, voice_
         roll = intent.get("playerRoll")
         if roll is None:
             continue
+        if isinstance(roll, dict) and roll.get("gameRolls") is True and "rolledBy" in last:
+            # An answer already marked as rolled is never rolled again: with
+            # its faces they were filled above; without them it is dropped.
+            intent.pop("playerRoll", None)
+            continue
         if isinstance(roll, dict) and roll.get("gameRolls") is True:
             # #1118 (D-1118-1): the typed answer that the game rolls this
             # request. It is rolled once: an answered request (rolledBy above)
