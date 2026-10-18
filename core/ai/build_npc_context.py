@@ -147,7 +147,8 @@ def current_location_npc_lines(current_module: str, current_location: str) -> st
             f"@RULES: Any listed NPC is VALID here; the party's NPCs travel with the party.")
 
 
-def build_npc_validation_context(current_module: str, current_location: str, party_npcs: List[str] = None) -> str:
+def build_npc_validation_context(current_module: str, current_location: str, party_npcs: List[str] = None,
+                                 party_span: str = "", orphan_sentence: str = "") -> str:
     """
     Build compressed NPC context for validation.
     
@@ -155,6 +156,8 @@ def build_npc_validation_context(current_module: str, current_location: str, par
         current_module: Name of the current module
         current_location: Current location ID
         party_npcs: List of NPCs in the party
+        party_span: The DM note's party line ("Party NPCs: ...", with ids and [slot] numbers)
+        orphan_sentence: The DM note's list of joined people with no party id ("" when none)
     
     Returns:
         Compressed machine-readable context string
@@ -197,6 +200,10 @@ def build_npc_validation_context(current_module: str, current_location: str, par
             total_npcs.update(loc_npcs)
     lines.append(f"@TOTAL_NPC_COUNT: {len(total_npcs)}")
     
+    # The party line exactly as the DM note shows it
+    if party_span or orphan_sentence:
+        lines.append(f"@PARTY: {party_span}{orphan_sentence}")
+
     # Compressed validation rules
     lines.append("@RULES: Any listed NPC is VALID. NPCs can appear as ghosts/spirits/memories. Do NOT flag missing physical presence as error.")
     

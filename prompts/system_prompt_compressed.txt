@@ -184,7 +184,9 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   rule: CRITICAL - If NPC accepts invitation to join, MUST include updatePartyNPCs in SAME response.
   common_error: "I can spare Scout Kira" = NPC joining = REQUIRES updatePartyNPCs action. updateCharacterInfo is NOT sufficient.
   correct_flow: NPC agrees -> updatePartyNPCs with operation="add" -> system creates character file automatically
-  depart: NPC leaves party = updatePartyNPCs operation="remove" with npc.name only (level/class NOT required on remove)
+  depart: NPC leaves party = updatePartyNPCs operation="remove" with the occupantId the party line shows ("Name (role) [occ:...]"); a "[slot n]" companion (saved before ids) = "rosterSlot": n, plus that person's id as occupantId when the companion is one of the "Joined people with no party id" listed after Party stats; npc optional (level/class NOT required on remove)
+  party_ids: add = "occupantId": a PERSON's `id` copied from the location data's `occupants`, or "new" for someone not listed (creatures always "new"). Never re-add a [slot] companion under a listed id; link them by slot and id when they leave. Ids and slots are for actions only, never in narration
+  companion_ids: Occupant actions (resolveOccupant, setOccupantAttitude, moveOccupant, returnOccupant) never take a companion's id. A companion joins or leaves the party only through updatePartyNPCs. A listed "Joined people with no party id" person who already left the party in the story (not a [slot] companion) = returnOccupant {occupantId: that id, outcome: "joined"}
   depart_context: On remove ALWAYS include lifecycleContext with reason and departureKind, plus destination when the narrative states where the companion is going. This records the departure to the companion memory ledger. FAIL-OPEN: omit destination if unknown, NEVER invent one; omitting lifecycleContext entirely never blocks the departure
   depart_in_place: A companion leaving does NOT move the party. Never emit transitionLocation for a departure unless the player asked the whole party to travel
 }
@@ -279,7 +281,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   rollCheck:           {"characterName": string, "stat": "skill:<skill>"|"check:<ability>"|"save:<ability>"|"initiative", "dc": int?, "mode": "advantage"|"disadvantage"?, "roller": "engine"?, "reason": string} // ONE character; stat is exact: skills skill:acrobatics, skill:animal-handling, skill:arcana, skill:athletics, skill:deception, skill:history, skill:insight, skill:intimidation, skill:investigation, skill:medicine, skill:nature, skill:perception, skill:performance, skill:persuasion, skill:religion, skill:sleight-of-hand, skill:stealth, skill:survival; abilities strength, dexterity, constitution, intelligence, wisdom, charisma; dc omitted = report total (contest/initiative); roller omitted = the game asks the player for dice; reason is shown to the player on the roll prompt: name only the attempt in the character's terms ("searching the brush ahead", "reading Elen's face"), never the hidden thing, outcome or answer the roll could reveal (no trap, ambush, lie or destination it is meant to find)
   updateTime:          {"timeEstimate": integer}        // minutes (integer only, not string)
   updatePlot:          {"plotPointId": string, "newStatus": string, "plotImpact": string, "aheadReason": string (optional)}  // newStatus: in progress / completed / failed / reopened (never not started); completing with open requirements is refused unless they are completed first in this response (only if the story actually did them) or aheadReason says how the party finished it without them (out of order, or by another route that bypassed them; never complete a quest the party did not do); a "Quest Error" means nothing changed
-  updatePartyNPCs:     {"operation": string, "npc": object, "lifecycleContext": object}  // operation: "add"/"remove"; npc {name, class} on add (level optional: omit it and the engine uses the party level), {name} on remove; lifecycleContext {reason, departureKind, destination} on remove (optional, never blocks)
+  updatePartyNPCs:     {"operation": string, "occupantId": string, "rosterSlot": integer, "npc": object, "lifecycleContext": object}  // operation: "add"/"remove"; occupantId on add = a person's id from occupants or "new", on remove = the id the party line shows; rosterSlot only to remove a [slot n] companion; npc {name, class} on add (level optional: omit it and the engine uses the party level), optional on remove; lifecycleContext {reason, departureKind, destination} on remove (optional, never blocks)
   resolveOccupant:     {"occupantId": string, "outcome": string, "count": integer (optional), "reason": string}  // outcome: departed/fled/surrendered/defeated/died/joined; reason REQUIRED for departed
   setOccupantAttitude: {"occupantId": string, "attitude": string}  // friendly/indifferent/hostile
   moveOccupant:        {"occupantId": string, "locationId": string}  // a location ID of this module; after transitionLocation with locationId = the destination it is an escort who comes along
@@ -312,7 +314,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
 
 @NOTES={
   updatePartyNPCs.operation: allowed values are exactly "add" or "remove" only.
-  updatePartyNPCs remove: npc.name is the only required npc field; do not withhold the action for a missing level or class.
+  updatePartyNPCs remove: the occupantId (or rosterSlot for a [slot n] companion) is what is required; npc is optional; do not withhold the action for a missing name, level or class.
   occupant actions: occupantId is an `id` from the location data's `occupants` list, never invented; an "Occupant Error" reply means nothing changed: issue it again from the list it gives or narrate without it.
   createEncounter.monsters: MUST be an array of strings. For multiple monsters of the same type, list them as separate strings (e.g., ["Bandit", "Bandit", "Bandit"]).
   createEncounter.occupantIds: optional map of "monster:N" -> an `id` from the location data's `occupants` list (the engine's present groups) when that monster is one of them; omit monsters that have no listed occupant (the system creates theirs). Never invent an id.
@@ -343,8 +345,10 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
     {"action":"updateTime","parameters":{"timeEstimate":15}}
   ],
   updatePartyNPCs:[
-    {"action":"updatePartyNPCs","parameters":{"operation":"add","npc":{"name":"Kira","level":"4","class":"Scout"}}},
-    {"action":"updatePartyNPCs","parameters":{"operation":"remove","npc":{"name":"Kira"},"lifecycleContext":{"reason":"watch the river crossing","departureKind":"sent_ahead","destination":"Scout's Watch"}}}
+    {"action":"updatePartyNPCs","parameters":{"operation":"add","occupantId":"occ:Keep_of_Doom/A03/scout_kira","npc":{"name":"Kira","level":"4","class":"Scout"}}},
+    {"action":"updatePartyNPCs","parameters":{"operation":"add","occupantId":"new","npc":{"name":"Brann","class":"Fighter"}}},
+    {"action":"updatePartyNPCs","parameters":{"operation":"remove","occupantId":"occ:Keep_of_Doom/A03/scout_kira","lifecycleContext":{"reason":"watch the river crossing","departureKind":"sent_ahead","destination":"Scout's Watch"}}},
+    {"action":"updatePartyNPCs","parameters":{"operation":"remove","rosterSlot":1,"lifecycleContext":{"reason":"stays to guard the gate","departureKind":"stayed_behind"}}}
   ],
   occupants:[
     {"action":"resolveOccupant","parameters":{"occupantId":"occ:Keep_of_Doom/B01/twig_blight","outcome":"departed","count":2,"reason":"bribed to leave the trailhead"}},

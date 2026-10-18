@@ -522,6 +522,11 @@ def perform_reset_logic():
         with _reset_reconciled_boundary():
             return _perform_reset_logic_locked()
     finally:
+        # The reset roster numbers its own [slot] rows; the old turn's pair
+        # is never answered again.
+        from core.ai.action_handler import TurnRoster
+
+        TurnRoster.clear()
         end_invocation_supersession(invocation_barrier)
 
 

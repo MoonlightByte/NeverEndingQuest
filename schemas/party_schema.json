@@ -25,6 +25,11 @@
           "role": {
             "type": "string",
             "description": "The role or function of the NPC in the party"
+          },
+          "occupantId": {
+            "type": "string",
+            "pattern": "^occ:[^/]+/[^/]+/[^/]+$",
+            "description": "The occupant id of the companion's person in the rules engine's live_state (absent on a companion saved before ids)"
           }
         },
         "required": ["name", "role"]

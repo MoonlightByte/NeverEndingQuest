@@ -1479,6 +1479,11 @@ class SaveGameManager:
                 f"Failed to restore save game: {exc}",
             )
         finally:
+            # A restored roster numbers its own [slot] rows; the old turn's
+            # pair is never answered again.
+            from core.ai.action_handler import TurnRoster
+
+            TurnRoster.clear()
             end_invocation_supersession(invocation_barrier)
 
     def validate_restore_target(

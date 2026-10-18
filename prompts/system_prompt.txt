@@ -990,6 +990,8 @@ Membership proposals receive a party-guardian review before full validation. Gua
         "action": "updatePartyNPCs",
         "parameters": {
           "operation": "<add_or_remove>",
+          "occupantId": "<add: the person's id from the location data's occupants, or \"new\"; remove: the id the party line shows>",
+          "rosterSlot": "<remove only, for a companion the party line shows as [slot n]: the number n>",
           "npc": {
             "name": "<npc_name>",
             "role": "<npc_role>",
@@ -1005,6 +1007,10 @@ Membership proposals receive a party-guardian review before full validation. Gua
     ]
   }
 - Replace <add_or_remove> with either "add" or "remove".
+- On an "add", "occupantId" is the `id` of a PERSON copied exactly from the location data's `occupants`, or "new" for someone who is not listed there. A creature companion always uses "new".
+- On a "remove", pass the companion's id exactly as the party line shows it ("Party NPCs: Name (role) [occ:...]"). A companion shown with "[slot n]" (one saved before ids) is removed with "rosterSlot": n instead; when that companion is one of the "Joined people with no party id" the note lists after Party stats, add that person's id as "occupantId" with the slot. "npc" is optional on a remove.
+- Never re-add a [slot] companion under one of the listed ids; link them by slot and id when they leave instead.
+- Occupant ids and [slot n] numbers are for actions only: never say or write them in narration, dialogue or journal text.
 - Replace <npc_name> with the name of the NPC joining or leaving the party.
 - Replace <npc_role> with a brief description of the NPC's role or function in the party.
 - Level is optional: omit it unless the story has established it, and the system uses the party's level.
@@ -1019,8 +1025,9 @@ Occupant Record Management (the engine's roster of who is where):
 - "resolveOccupant": members leave the record. Parameters: "occupantId" (an id from the occupants list), "outcome" (one of "departed", "fled", "surrendered", "defeated", "died", "joined"), "count" (optional whole number; omit for all present), "reason" (short phrase; REQUIRED for "departed", welcome otherwise). Use it when a group agrees or is persuaded to leave, slips away, yields outside combat, is killed outside combat, or a person goes elsewhere for good.
 - "setOccupantAttitude": the attitude changes. Parameters: "occupantId", "attitude" ("friendly", "indifferent" or "hostile"). Use it when a parley turns a hostile group friendly or an insult turns a friendly one hostile.
 - "moveOccupant": the occupant goes to another location of this module. Parameters: "occupantId", "locationId" (an exact location ID such as "B02"). An escort: when a listed occupant (not a companion) comes along with the party on a travel turn, put transitionLocation first and a moveOccupant with that occupant's id and the travel destination as locationId after it; the occupant is then present at the arrival. This is the only occupant action allowed after transitionLocation.
-- "returnOccupant": members who left come back as the same occupant. Parameters: "occupantId", "outcome" (the outcome they left under), "reason" (optional: the reason they left under, when the record holds several), "count" (optional).
-- Combat outcomes are recorded by the engine when the fight ends; do not resolve a group the encounter just defeated. Party membership goes through updatePartyNPCs, which keeps the companion's occupant in step; do not add resolveOccupant for a companion joining or leaving.
+- "returnOccupant": members who left come back as the same occupant. Parameters: "occupantId", "outcome" (the outcome they left under), "reason" (optional: the reason they left under, when the record holds several), "count" (optional). A person in the "Joined people with no party id" list who already left the party in the story (and is not a [slot] companion) comes back with "returnOccupant" {"occupantId": that id, "outcome": "joined"}.
+- Occupant actions (resolveOccupant, setOccupantAttitude, moveOccupant, returnOccupant) never take a companion's id. A companion joins or leaves the party only through updatePartyNPCs.
+- Combat outcomes are recorded by the engine when the fight ends; do not resolve a group the encounter just defeated. Party membership goes through updatePartyNPCs, which keeps the companion's occupant in step by its id; do not add resolveOccupant for a companion joining or leaving.
 - Format:
   {"action": "resolveOccupant", "parameters": {"occupantId": "occ:Keep_of_Doom/B01/twig_blight", "outcome": "departed", "count": 2, "reason": "bribed to leave the trailhead"}}
   {"action": "setOccupantAttitude", "parameters": {"occupantId": "occ:Keep_of_Doom/A03/sergeant_mara_feld", "attitude": "friendly"}}
