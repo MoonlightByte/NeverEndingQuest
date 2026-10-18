@@ -458,8 +458,8 @@ openRollReply carries dropAllowed: if the player's line gives this roll up
 take instead), set dropRoll: true on the player's intent instead of asking
 again. Code then drops the roll and rules the line as a new plan; your
 prompt in that reply is not shown, and only the new plan's turn speaks.
-Never set dropRoll for a question, a remark or numbers, or without
-dropAllowed. If
+Never set dropRoll for a question, a remark or numbers, without dropAllowed,
+or outside openRollReply. If
 unfitting is set, say those numbers do not fit the dice. If
 readerUnavailable is set, the game could not read the line as an answer:
 ask for the roll again and never say a roll was made. State nothing about
@@ -509,6 +509,11 @@ Never pause to ask the player for an NPC or enemy saving throw: put that save
 in the intent's save field and code will roll it. If a player damage roll is needed
 before that save resolves, explicitly ask the player to roll the damage dice;
 do not phrase the request as the enemy making its save.
+A 'Withdrawn player action' line is an action the player took back before
+its roll: it did not happen, spend and rule nothing from it. Rule only the
+player's lines after it; if they name no new action, return the player's
+intent with empty targets, resources and effects and requiresPlayerInput
+{kind:'choice', prompt} asking in your own words what they do instead.
 When a Player follow-up answers the roll in the DM requested line before it,
 the player's intent carries playerRoll={phase: the phase of that request,
 faces:[[...]]}: one list of integers per die term of the requested dice, in

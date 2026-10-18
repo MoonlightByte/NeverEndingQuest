@@ -61,6 +61,7 @@ from core.managers.combat_state import (
 from core.managers.combat_transaction import (
     CombatPreconditionChanged,
     append_pending_player_input,
+    live_exchanges,
     mark_pending_game_roll,
     apply_staged_turn,
     claim_turn,
@@ -504,7 +505,7 @@ def _check_asked_slot_level(encounter, pending, batch):
     spends an own slot of that level; another level is a correction and the
     player's dice stay. An exchange saved without the field checks nothing."""
     from core.ai import srd_roll_contracts
-    exchanges = (pending or {}).get("playerExchanges") or []
+    exchanges = live_exchanges(pending)
     previous = exchanges[-2] if len(exchanges) >= 2 and isinstance(exchanges[-2], dict) else {}
     asked = previous.get("requestedSlotLevel")
     if type(asked) is not int:
@@ -535,7 +536,7 @@ def _check_answered_roll_faces(encounter_path, encounter, pending, batch, voice_
     previous exchange's requestedRoll): a wrong shape is a correction, a face
     the die cannot show asks the player again, and a playerRoll with no typed
     request behind it is dropped. The engine scores a checked save (resolver)."""
-    exchanges = (pending or {}).get("playerExchanges") or []
+    exchanges = live_exchanges(pending)
     previous = exchanges[-2] if len(exchanges) >= 2 and isinstance(exchanges[-2], dict) else {}
     last = exchanges[-1] if exchanges and isinstance(exchanges[-1], dict) else {}
     terms = (_roll_die_terms(previous.get("requestedRoll"))
@@ -1027,10 +1028,21 @@ def _composed_player_input(pending, fallback):
     for index, exchange in enumerate(exchanges):
         if not isinstance(exchange, dict):
             continue
+        if exchange.get("withdrawn") is True:
+            # #1118 r4: the typed withdrawal; its asks and rolls are moot.
+            withdrawn_text = str(exchange.get("playerInput") or "").strip()
+            if withdrawn_text:
+                lines.append("Withdrawn player action: %s" % withdrawn_text)
+            continue
         player_text = str(exchange.get("playerInput") or "").strip()
         request_text = str(exchange.get("dmRequest") or "").strip()
         if player_text:
-            label = "Original player action" if not lines else "Player follow-up"
+            if not lines:
+                label = "Original player action"
+            elif all(line.startswith("Withdrawn player action: ") for line in lines):
+                label = "Player action"
+            else:
+                label = "Player follow-up"
             lines.append("%s: %s" % (label, player_text))
         if exchange.get("rolledBy") == "game" and isinstance(exchange.get("rolledFaces"), list):
             # #1118: the game's roll is a record beside the player's own words.
@@ -1443,7 +1455,7 @@ def _game_roll_answer(pending, text):
     goes to the DM as today. It writes no sentence for the player."""
     if not _lets_the_game_roll(text):
         return None
-    exchanges = [item for item in (pending or {}).get("playerExchanges") or [] if isinstance(item, dict)]
+    exchanges = live_exchanges(pending)
     if not exchanges:
         return None
     last = exchanges[-1]
@@ -1639,9 +1651,7 @@ def _roll_already_answered(pending):
     """True when an earlier exchange this turn carries the typed request for a
     d20 (``requestedDie`` "d20", "1d20" or "2d20") and the player has answered
     it. The request text is never read (#852)."""
-    exchanges = pending.get("playerExchanges") if isinstance(pending, dict) else None
-    if not isinstance(exchanges, list):
-        return False
+    exchanges = live_exchanges(pending)
     for exchange in exchanges[:-1]:
         if not isinstance(exchange, dict):
             continue
@@ -1936,7 +1946,7 @@ def _open_roll_reply(encounter, pending, line, request, reply, *, follow_up, unf
                 _phase_diagnostic(encounter, pending, "T096", "open_roll_dropped")
                 return _DROP_ROLL
             # A contract defect: dropRoll without dropAllowed (the off-hand
-            # dice, D-1118-9 D; the damage phase; a DM-requested roll). The
+            # dice, D-1118-9 D; a DM-requested roll). The
             # roll stays open and the stored request is shown again: a reply
             # written as a drop never reaches the player.
             _phase_diagnostic(encounter, pending, "T096", "open_roll_drop_ignored")
@@ -1980,6 +1990,7 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
     request = _phase_request(record, entry)
     values = _parse_weapon_roll(text, record, entry)
     reader_unavailable = False
+    kind = None
     if values is None and isinstance(text, str):
         answer = read_roll_answer(request_payload(request["label"], request["phase"], request["dice"],
                                                   request["eachDie"], record.get("prompt"), text))
@@ -2005,20 +2016,22 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
     if values is None and off_hand:
         raise _phase_paused("Code-issued off-hand roll is waiting for the player", record)
     if values is None:
-        write_weapon_attack(encounter_path, pending.get("turnId"), None, timeout_seconds=None)
+        write_weapon_attack(encounter_path, pending.get("turnId"), None, timeout_seconds=None,
+                            withdraw=kind == "decline")
         return None, None
     if values in ("invalid", "other"):
         lead = _open_roll_reply(
             encounter, pending, text or "", request, reply, follow_up=True,
             unfitting=values == "invalid", reader_unavailable=reader_unavailable,
             main_swing=_main_swing_facts(record),
-            allow_drop=not off_hand and record.get("phase") == "attack",
+            allow_drop=not off_hand,
         )
         if lead is _DROP_ROLL:
             # The DM's typed dropRoll: as a T126 decline, the line goes back
             # to T096 as a new plan and nothing is scored; the drop reply's
             # own words are never shown, only the new plan's turn speaks.
-            write_weapon_attack(encounter_path, pending.get("turnId"), None, timeout_seconds=None)
+            write_weapon_attack(encounter_path, pending.get("turnId"), None, timeout_seconds=None,
+                                withdraw=True)
             return None, None
         if lead is None:
             # The stored request again; a card with no lead beside it is its
@@ -2645,7 +2658,7 @@ def execute_agentic_turn(
                 # #877: the open typed request decides that this line
                 # answers it; the game rolls its full dice.
                 if mark_pending_game_roll(encounter_path, pending.get("turnId"), player_input, game_roll):
-                    asked = [item for item in pending["playerExchanges"] if isinstance(item, dict)][-1]
+                    asked = live_exchanges(pending)[-1]
                     _show_game_roll(asked, game_roll)
             elif game_roll is None:
                 append_pending_player_input(
