@@ -2151,10 +2151,12 @@ def _startup_provider_failure(exc, failures, scope, pending):
     """One completed startup provider error (#1267); returns the count to carry.
 
     Transient requests reissue inside the shared transport, so this sees a
-    completed error. It keeps the play turn's bound and growing delay
-    (utils/provider_errors); the caller resends the same request (no prompt
-    growth). At the bound the player is told once and their next input retries
-    (0 is returned)."""
+    completed error. It keeps the play turn's bound (utils/provider_errors);
+    the caller resends its request with one correction note, replaced on each
+    failure, never added to. A refused request (HTTP 400) keeps that automatic
+    correction inside the bound; an account refusal (quota, key, model access)
+    asks the player at once. At the bound the player is told once and their
+    next input retries (0 is returned)."""
     from utils.capture.live_provider_call import _interruptible_wait
     from utils.provider_errors import (
         PROVIDER_MAX_FAILURES, classify_provider_error, provider_failure_policy,
@@ -2162,12 +2164,16 @@ def _startup_provider_failure(exc, failures, scope, pending):
     )
 
     failures += 1
-    decision = provider_failure_policy(classify_provider_error(exc), failures, True)
+    classification = classify_provider_error(exc)
+    decision = provider_failure_policy(classification, failures, True)
     warning(f"Startup provider attempt {failures}/{PROVIDER_MAX_FAILURES} failed: {exc}",
             category="startup")
-    if decision["stop"]:
+    if failures >= PROVIDER_MAX_FAILURES or (
+            decision["stop"] and classification["category"] != "bad_request"):
         _startup_provider_pause(decision["player_message"], scope)
         return 0
+    # Every retry waits provider_retry_delay, not decision["delay"]: the play turn
+    # waits 0 for an unclassified error, and #1267 is a repeating one.
     _interruptible_wait(provider_retry_delay(failures - 1), scope, pending, display_status)
     return failures
 
@@ -2196,6 +2202,7 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
 
     request_messages = copy.deepcopy(conversation)
     failures = 0
+    error_note = []  # the one correction note after a failed attempt (#1267)
     _emit_startup_phase(startup_phase)
     status_processing_ai()
     try:
@@ -2210,7 +2217,7 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                     task_id, api_client.create_completion,
                     _request_provider=provider, _live_selected="required",
                     _detached_scope=scope,
-                    messages=copy.deepcopy(request_messages),
+                    messages=copy.deepcopy(request_messages + error_note),
                     model=main_cfg["model"], temperature=0.7,
                     response_format=response_format,
                     **{k: v for k, v in main_cfg.items() if k != "model"},
@@ -2234,6 +2241,10 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                     _emit_startup_phase(startup_phase)
                     status_processing_ai()
                     continue
+                error_note = [{"role": "system", "content": (
+                    f"The previous startup request did not complete correctly: {exc}. "
+                    "Retain the player choices and return the requested response."
+                )}]
                 failures = _startup_provider_failure(
                     exc, failures, scope, "Character setup is still pending; your choices are retained.")
                 if not failures:
@@ -2343,6 +2354,7 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
             + json.dumps(module_data, ensure_ascii=True)
         )}]
         failures = 0
+        error_note = []  # the one correction note after a failed attempt (#1267)
         while True:
             try:
                 revision = configuration_revision(provider)
@@ -2350,7 +2362,7 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
                     "T093", api_client.create_completion,
                     _request_provider=provider, _live_selected="required",
                     _detached_scope=scope,
-                    messages=copy.deepcopy(messages),
+                    messages=copy.deepcopy(messages + error_note),
                     model=mini_cfg["model"], temperature=0.7, response_format=None,
                     **{key: value for key, value in mini_cfg.items() if key != "model"},
                 )
@@ -2364,6 +2376,7 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
                 location = _resolve_startup_location(module_name, candidate)
                 if location is not None:
                     return location
+                error_note = []
                 messages.append({"role": "system", "content": (
                     "The rejected response is incomplete or its IDs do not resolve in "
                     "the selected module. Correct all six fields using these actual "
@@ -2382,6 +2395,10 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
                     _emit_startup_phase("startup_location")
                     status_processing_ai()
                     continue
+                error_note = [{"role": "system", "content": (
+                    f"The last location request failed: {exc}. Retain the task and "
+                    "return a complete grounded proposal."
+                )}]
                 failures = _startup_provider_failure(
                     exc, failures, scope, "Still determining the adventure's starting location.")
                 if not failures:
