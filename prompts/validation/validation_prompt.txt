@@ -305,7 +305,7 @@ PLAYER COIN INSTRUCTIONS STAND: when the player plainly gives or splits their ow
 
 ## REST MANAGEMENT VALIDATION RULES
 
-Rests are one "rest" action for the whole party: {"restType": "short"} or {"restType": "long"}. The engine refills what that rest recovers on every sheet (long: all hit points, all spell slots, every feature pool; short: the pools tagged for a short rest and, for a Warlock, spell slots) and records it. Hit dice are not tracked as a pool; a short rest that spends them carries "hitDice": {"<name>": count}, and code rolls and heals them.
+Rests are one "rest" action for the whole party: {"restType": "short"} or {"restType": "long"}. The engine refills what that rest recovers on every sheet (long: all hit points, all spell slots, every feature pool; short: the pools tagged for a short rest and, for a Warlock, spell slots) and records it. Hit dice are not tracked as a pool; a short rest that spends them carries "hitDice": {"<character id from Party stats>": count}, and code rolls and heals them.
 - REQUIRED: updateTime for the rest duration (short at least 60, long at least 480) and the rest action with the matching restType. The DM sets the length: a sleep "until morning" or "until dawn" runs to a reasonable morning by the clock, not a fixed 8 hours; a player who asks for a "long rest" or for 8 hours gets at least 480.
 - REQUIRED: when the player (or a party NPC) spends hit dice on a short rest, that rest action carries hitDice keying each such character by their id from Party stats (1 die when the player names no number). REJECT a response that asks the player to roll or report hit dice, leaves them for a later turn, heals them with updateCharacterInfo, or states a rolled number or hit point total for them.
 - REJECT: recovery written as updateCharacterInfo notes ("restored all hit points", "recovered spell slots", "regained Second Wind"); the rest action is the sole authority for recovery.
@@ -611,7 +611,7 @@ Here are examples of acceptable model assistant responses:
   "narration": "You settle behind the rocks for an hour; you bind your cuts and let the ache ease out of your limbs.",
   "actions": [
     { "action": "updateTime", "parameters": { "timeEstimate": 60 } },
-    { "action": "rest", "parameters": { "restType": "short", "hitDice": { "Bryn Ashwood": 1 } } }
+    { "action": "rest", "parameters": { "restType": "short", "hitDice": { "char:bryn-ashwood": 1 } } }
   ]
 }
 

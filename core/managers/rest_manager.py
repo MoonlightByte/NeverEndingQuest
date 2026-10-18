@@ -46,8 +46,9 @@ def _sheets_with_id(sheets: List[Dict[str, Any]], character_id: Any) -> List[Dic
 
 def _party_root(sheets: List[Dict[str, Any]], party: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """The player's resting sheet: the sheet whose engine id is the id of the
-    party tracker's first member. Both sides are data files (D-KW-12 data-file
-    exemption), never model or player text."""
+    party tracker's first member: two engine ids from the engine's own key
+    derivation (genesis.character_id) over code-written game files, an id
+    compare, never a read of model or player text."""
     from core.nql import genesis
 
     names = list(party.get("partyMembers") or [])
@@ -81,8 +82,6 @@ def hit_dice_spends(sheets: List[Dict[str, Any]], hit_dice: Any) -> Tuple[Option
                           f"from Party stats: {resting}")
         sheet = found[0]
         name = str(sheet.get("name"))
-        if name in spends:
-            return None, f"{name} is named twice in hitDice"
         if type(count) is not int or count < 1:
             return None, f"{name}'s hit dice must be a whole number of at least 1, not {count!r}"
         if leveling_tables.class_key(sheet) is None:
