@@ -5844,6 +5844,16 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     # ({"role": "system", "content": ...}); append it as is.
                     conversation_history.append(result["effects_note"])
                 needs_conversation_history_update = True
+                if result.get("hit_dice_refused"):
+                    # #1239 (D-1239-2 B, D-1239-4): the rest went ahead without the hit dice that
+                    # cannot heal; the DM tells the player now, in its own words.
+                    conversation_history.append({"role": "user", "content": (
+                        "Rest: some hit dice were refused before rolling and not spent; the rest itself went "
+                        "ahead and is applied (see the Rest line above). Later actions from this response have "
+                        "not executed. Tell the player in the story which die is kept and why, from the refusal "
+                        "record, without its field names. Do not state the rest again and do not move the clock.")})
+                    needs_conversation_history_update = True
+                    return create_return(status="needs_response", needs_update=True)
             else:
                 print(f"ERROR: rest failed: {result.get('error')}")
                 conversation_history.append({"role": "user", "content": (
