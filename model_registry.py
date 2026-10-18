@@ -403,6 +403,18 @@ _declare(
          "code checks the answer and writes srd_name. T054's validator profiles.",
 )
 _declare(
+    "T126",
+    _profiles(
+        "OPENAI_GPT56_LUNA_NONE",
+        "NPC_RECALL_T112_GEMINI_FLASHLITE_LOW",
+        "NPC_RECALL_T112_LEGACY",
+        "NPC_RECALL_T112_LMSTUDIO",
+    ),
+    note="Roll answer (#1118, D-1118-2): reads a player's line while code holds an open roll and "
+         "returns one typed kind (let_game_roll, faces, decline, other); the site checks the faces "
+         "against the dice. Required in a live turn. Service: core/ai/roll_answer.py.",
+)
+_declare(
     "T065",
     _profiles(
         "OPENAI_GPT56_LUNA_LOW",
@@ -756,7 +768,7 @@ def openai_output_ceiling(task_id):
     """The output ceiling for one callsite on the openai provider, or None."""
     value = OPENAI_OUTPUT_CEILING_CHARS.get(task_id)
     return value if isinstance(value, int) and value > 0 else None
-# Reviewed source inventory: 84 registered callsite IDs (T014 and T091 retired in P4-e/P4-f, T024 in keyword GEN-11, T066 in keyword H5, T053 in keyword validation DS-3, T050 in keyword validation V5, T017 in keyword KW-6; T125 added in keyword validation V4) plus enabled T104, plus the
+# Reviewed source inventory: 85 registered callsite IDs (T014 and T091 retired in P4-e/P4-f, T024 in keyword GEN-11, T066 in keyword H5, T053 in keyword validation DS-3, T050 in keyword validation V5, T017 in keyword KW-6; T125 added in keyword validation V4, T126 in #1118) plus enabled T104, plus the
 # NPC-voice family T105 (voice+affinity) and T107 (profile seed). Keep this
 # independent from _DECLARATIONS so deleting/adding a binding cannot make the
 # expected set silently redefine itself.
@@ -767,7 +779,7 @@ REGISTERED_TASK_IDS = tuple(
     "T054 T059 T063 T064 T065 T067 T078 T079 T081 T082 T083 T084 "
     "T085 T086 T087 T088 T089 T090 T092 T093 T094 T095 T096 T097 T098 "
     "T099 T100 T101 T102 T103 T105 T107 T108 T112 T113 T114 "
-    "T115 T116 T117 T118 T119 T120 T121 T122 T123 T124 T125".split()
+    "T115 T116 T117 T118 T119 T120 T121 T122 T123 T124 T125 T126".split()
 )
 EXPECTED_TASK_IDS = tuple(sorted(REGISTERED_TASK_IDS + ("T104",)))
 

@@ -99,12 +99,18 @@ def parse_faces(text: str, count: int) -> Optional[List[int]]:
     return faces
 
 
-def _show_check_receipt(content: str) -> None:
-    """Show the player the scored check at once (#530). The DM narrates it next turn without the numbers."""
+def new_message_id() -> str:
+    """A fresh player-output message id (the web cache keys a record by it)."""
+    return f"msg-{uuid4().hex}"
+
+
+def _show_check_receipt(content: str, message_id: Optional[str] = None) -> None:
+    """Show the player the scored check at once (#530). The DM narrates it next turn without the numbers.
+    A record shown again under its own ``message_id`` (a dice card, #1118) is not shown twice on the web."""
     from web.shared_state import emit_player_output, has_player_output_sink
     has_sink = has_player_output_sink()
     if emit_player_output({"type": "system", "content": content,
-                           "message_id": f"msg-{uuid4().hex}"}) is True:
+                           "message_id": message_id or new_message_id()}) is True:
         return
     if not has_sink:
         print(content)
