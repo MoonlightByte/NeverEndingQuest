@@ -605,6 +605,7 @@ def select_module(conversation):
 
 def scan_existing_characters(module_name):
     """List player identities, with canonical root files taking precedence."""
+    from updates.update_character_info import is_character_backup_file
     characters = []
     path_manager = ModulePathManager(module_name)
     identities = set()
@@ -612,7 +613,10 @@ def scan_existing_characters(module_name):
         if not os.path.isdir(char_dir):
             continue
         for filename in sorted(os.listdir(char_dir)):
-            if not filename.endswith('.json') or filename.endswith('_BU.json'):
+            # A code-written backup copy is not a character (#1263): listed, the
+            # oldest copy sorts before the sheet and the commit refuses it.
+            if not filename.endswith('.json') or filename.endswith('_BU.json') \
+                    or is_character_backup_file(filename):
                 continue
             char_path = os.path.join(char_dir, filename)
             try:

@@ -967,6 +967,19 @@ def create_character_backup(character_path, backup_reason="update"):
         error(f"FAILURE: Failed to create backup", exception=e, category="file_operations")
         return None
 
+
+# The file name create_character_backup builds beside a sheet:
+# <stem>.backup_<reason>_<YYYYmmdd_HHMMSS>.json, for any reason a caller passes.
+# A sheet's own stem never holds a "." (normalize_character_name), so no
+# character's sheet matches.
+_CHARACTER_BACKUP_FILE = re.compile(r".+\.backup_.+_\d{8}_\d{6}\.json")
+
+
+def is_character_backup_file(filename):
+    """A timestamped copy create_character_backup wrote, never a sheet (#1263)."""
+    return _CHARACTER_BACKUP_FILE.fullmatch(str(filename or "")) is not None
+
+
 def cleanup_old_backups(character_path, max_backups=5):
     """
     Clean up old backup files, keeping only the most recent ones
