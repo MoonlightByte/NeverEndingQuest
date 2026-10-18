@@ -574,7 +574,9 @@ def generate_encounter(encounter_data):
         key, key_source, stock_name = monster_key(slot, encounter_data, place_occupants, listed)
         if key_source == "new" and isinstance(monster_type, str):
             # Slots the DM wrote with the same string in this one declaration
-            # are one new kind of creature: one key, one generated stat block.
+            # are one new kind of creature: one key, one generated stat block
+            # (D-TMK-3: exact equality within one createEncounter, never a
+            # lookup of stored data).
             key = new_keys.setdefault(monster_type, key)
         print(f"[COMBAT_BUILDER] Loading/creating monster: {monster_type} -> key {key} ({key_source})")
         info(f"MONSTER_KEY: {encounter_id} {slot} -> {key} ({key_source})", category="combat_builder")
