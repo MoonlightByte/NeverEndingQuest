@@ -3807,6 +3807,7 @@ def validate_ai_response(
     *,
     normalization,
     campaign_end,
+    turn_roster=None,
 ):
     from core.combat.invocation import (
         InvocationSupersededError,
@@ -3929,7 +3930,8 @@ def validate_ai_response(
                 str(party_tracker_data.get('worldConditions', {}).get('currentLocationId') or ''),
                 create=False,
             ),
-            action_handler.TurnRoster.get(action_handler.turn_key(invocation_claim)),
+            turn_roster if turn_roster is not None
+            else action_handler.TurnRoster.get(action_handler.turn_key(invocation_claim)),
         )
         
         # Build compressed NPC context
@@ -6408,6 +6410,7 @@ def process_ai_response(
                             invocation_claim=invocation_claim,
                             player_input=player_input,
                             detached_context=detached_context,
+                            turn_roster=turn_roster,
                         )
                     # Check if we need to generate a DM response (e.g., after module creation)
                     if result.get("needs_dm_response"):
@@ -6439,6 +6442,7 @@ def process_ai_response(
                             invocation_claim=invocation_claim,
                             player_input=player_input,
                             detached_context=detached_context,
+                            turn_roster=turn_roster,
                         )
                 elif isinstance(result, bool) and result:
                     needs_conversation_history_update = True
@@ -6737,6 +6741,7 @@ def process_ai_response(
                     invocation_claim=invocation_claim,
                     player_input=player_input,
                     detached_context=detached_context,
+                    turn_roster=turn_roster,
                 )
             # --- END SIGNAL-BASED SUB-SYSTEM CONTROL ---
             
@@ -6825,6 +6830,7 @@ def process_ai_response(
                     invocation_claim=invocation_claim,
                     player_input=player_input,
                     detached_context=detached_context,
+                    turn_roster=turn_roster,
                 )
 
         # STANDARD TURN COMPLETION: For a normal turn (no special signals or sub-systems),
@@ -10398,6 +10404,9 @@ def _review_dm_candidate(
     conversation_history = accepted_history
     user_input_text = player_input
     t067_claim = invocation_claim
+    if turn_roster is None:
+        # One snapshot for the guardian, the review facts and the validator.
+        turn_roster = action_handler.TurnRoster.get(action_handler.turn_key(invocation_claim))
     scope = (detached_context or {}).get("scope") or live_turn_scope
     detached_status = (detached_context or {}).get("status")
 
@@ -10819,8 +10828,7 @@ def _review_dm_candidate(
                             "companion": action_handler.party_change_companion(
                                 roster_params,
                                 party_tracker_data.get("partyNPCs"),
-                                turn_roster if turn_roster is not None else action_handler.TurnRoster.get(
-                                    action_handler.turn_key(invocation_claim)),
+                                turn_roster,
                             ),
                         }
                         actions[:] = stripped_actions
@@ -11069,6 +11077,7 @@ def _review_dm_candidate(
                 module_snapshot=module_snapshot,
                 installed_module_references=installed_module_references,
                 campaign_end=campaign_end,
+                turn_roster=turn_roster,
             )
             require_current()
             if isinstance(validation_result, tuple):

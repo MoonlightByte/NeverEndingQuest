@@ -854,7 +854,9 @@ def _drop_stored_party_npcs(checkpoint):
     removed = False
     handoff = checkpoint.get("module_handoff")
     if isinstance(handoff, dict) and isinstance(handoff.get("parameters"), dict):
-        removed = handoff["parameters"].pop("partyNPCs", None) is not None or removed
+        if "partyNPCs" in handoff["parameters"]:
+            handoff["parameters"].pop("partyNPCs")
+            removed = True
     deferred = checkpoint.get("deferred_actions")
     records = deferred.get("actions") if isinstance(deferred, dict) else None
     for record in records if isinstance(records, list) else []:
@@ -1091,6 +1093,8 @@ def prepare_current_transition_actions(operation_id):
                     "owner": owner,
                     "message_id": str(uuid4()),
                 }
+                if isinstance(exc, PartyChangeUnplanned):
+                    receipt["npc_drop"] = "unplanned"
         else:
             source_module = str(checkpoint.get("module_name") or "")
             target_module = str(parameters.get("module") or "")
@@ -1946,7 +1950,9 @@ def apply_current_transition_action(operation_id, action_index):
             ):
                 raise RuntimeError("party roster is unavailable")
             try:
-                adapted = _adapt_party_receipt(receipt, party, action_index)
+                adapted = _adapt_party_receipt(
+                    receipt, party, action_index, checkpoint.get("operation_id")
+                )
             except _TRAVEL_PREPARE_PASSTHROUGH:
                 raise
             except (ValueError, RuntimeError) as exc:
@@ -1955,7 +1961,7 @@ def apply_current_transition_action(operation_id, action_index):
                     % (receipt.get("npc_name") or "an unnamed NPC", type(exc).__name__, exc),
                     category="location_transitions",
                 )
-                adapted = False
+                adapted = None
             if not adapted:
                 receipt.update(
                     {
@@ -1964,6 +1970,8 @@ def apply_current_transition_action(operation_id, action_index):
                         "message_id": str(uuid4()),
                     }
                 )
+                if adapted is False:
+                    receipt["npc_drop"] = "unplanned"
             _write_location_transition_checkpoint(checkpoint)
         if receipt.get("npc_status") == "dropped":
             # #855: dropped before movement; the roster is not touched.
@@ -1981,11 +1989,13 @@ def apply_current_transition_action(operation_id, action_index):
                 deferred["status"] = "committed"
             _write_location_transition_checkpoint(checkpoint)
             if receipt.get("owner") and receipt.get("operation") in ("add", "remove"):
-                _show_transition_notice(
-                    receipt["message_id"],
-                    (_DROPPED_NPC_NOTICE if receipt.get("operation") == "add"
-                     else _DROPPED_NPC_LEAVE_NOTICE) % receipt["owner"],
-                )
+                if receipt.get("operation") == "remove":
+                    notice = _DROPPED_NPC_LEAVE_NOTICE
+                elif receipt.get("npc_drop") == "unplanned":
+                    notice = _UNPLANNED_NPC_NOTICE
+                else:
+                    notice = _DROPPED_NPC_NOTICE
+                _show_transition_notice(receipt["message_id"], notice % receipt["owner"])
             return "committed"
         if not isinstance(party, dict) or not isinstance(
             party.get("partyNPCs"), list
@@ -2002,6 +2012,17 @@ def apply_current_transition_action(operation_id, action_index):
                     outcome = "committed"
         elif party["partyNPCs"] == receipt["roster_after"]:
             outcome = "committed"
+        elif "legacy_roster_after" in receipt and party["partyNPCs"] == receipt["legacy_roster_after"]:
+            # The code before occupant ids already wrote its roster: the
+            # adapted roster (the row with its id) replaces it.
+            with _party_module_transition_lock():
+                latest = safe_json_load("party_tracker.json")
+                if latest.get("partyNPCs") != receipt["legacy_roster_after"]:
+                    outcome = "blocked_conflict"
+                else:
+                    latest["partyNPCs"] = copy.deepcopy(receipt["roster_after"])
+                    safe_json_dump(latest, "party_tracker.json")
+                    outcome = "committed"
         else:
             outcome = "blocked_conflict"
         if outcome == "blocked_conflict":
@@ -3123,6 +3144,23 @@ def _roster_ids(roster):
     return {_row_id(entry) for entry in roster or [] if _row_id(entry)}
 
 
+def _turn_rows(turn_roster, roster):
+    """The roster that numbers the [slot] rows: the turn's roster, or, when
+    there is none, the roster being rendered or resolved. Every renderer and
+    the slot resolver take it from here, so they number alike."""
+    return roster if turn_roster is None else turn_roster
+
+
+def _roster_slot(value):
+    """A rosterSlot as a number: an integer, or a string of digits; None for
+    anything else."""
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value.strip())
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
+
+
 def _slot_numbers(turn_roster):
     """[(entry, n)]: the turn roster's rows without an id, numbered from 1."""
     slots = []
@@ -3167,7 +3205,7 @@ def party_note_lines(party_tracker, world, turn_roster, *, record=False):
     roster = roster if isinstance(roster, list) else []
     if record:
         TurnRoster.record(roster)
-    rows = party_rows(roster, turn_roster)
+    rows = party_rows(roster, _turn_rows(turn_roster, roster))
     span = "Party NPCs: %s." % (", ".join(rows) if rows else "None")
     orphans = _occupants.party_orphans(world, str(party.get("module") or ""), _roster_ids(roster))
     if not orphans:
@@ -3308,12 +3346,13 @@ def plan_party_change(roster_before, parameters, world, *, turn_roster, module, 
     context = p.get("lifecycleContext")
     reason = context.get("reason") if isinstance(context, dict) else None
     roster = [entry for entry in roster_before] if isinstance(roster_before, list) else []
+    turn_roster = _turn_rows(turn_roster, roster)
     oid = p.get("occupantId")
     oid = oid.strip() if isinstance(oid, str) else ""
     base = {
         "roster_before": copy.deepcopy(roster),
         "roster_after": copy.deepcopy(roster),
-        "turn_roster": copy.deepcopy(turn_roster or []),
+        "turn_roster": copy.deepcopy(turn_roster),
         "request_id": request_id,
         "module": module,
         "location": location,
@@ -3385,12 +3424,8 @@ def plan_party_change(roster_before, parameters, world, *, turn_roster, module, 
         return refused(_not_recruitable(oid, world, module, location))
 
     if operation == "remove":
-        slot = p.get("rosterSlot")
-        if isinstance(slot, str) and slot.strip().isdigit():
-            slot = int(slot.strip())
-        if not isinstance(slot, int) or isinstance(slot, bool):
-            slot = None
-        listing = " " + party_note_lines({"partyNPCs": roster, "module": module}, None, turn_roster)[0]
+        slot = _roster_slot(p.get("rosterSlot"))
+        listing = " " + "".join(party_note_lines({"partyNPCs": roster, "module": module}, world, turn_roster))
         carrier = next((entry for entry in roster if oid and _row_id(entry) == oid), None)
         if carrier is not None:
             if slot is not None:
@@ -3439,9 +3474,9 @@ def party_change_companion(parameters, roster, turn_roster):
     if p.get("operation") == "remove":
         oid = p.get("occupantId")
         row = next((entry for entry in roster or [] if oid and _row_id(entry) == oid), None)
-        slot = p.get("rosterSlot")
-        if row is None and isinstance(slot, int) and not isinstance(slot, bool):
-            row = next((entry for entry, n in _slot_numbers(turn_roster) if n == slot), None)
+        slot = _roster_slot(p.get("rosterSlot"))
+        if row is None and slot is not None:
+            row = next((entry for entry, n in _slot_numbers(_turn_rows(turn_roster, roster)) if n == slot), None)
         if isinstance(row, dict) and row.get("name"):
             return row["name"]
     return npc.get("name")
@@ -3627,6 +3662,12 @@ def _party_receipt(outcome, parameters, operation_id):
     }
 
 
+class PartyChangeUnplanned(ValueError):
+    """A staged updatePartyNPCs that cannot be worked out (a malformed
+    request or a planner correction), as opposed to a sheet that could not
+    be made."""
+
+
 def prepare_party_npc_update(parameters, operation_id):
     """Freeze one roster change, planned like the in-place one, and its
     canonical sheet before movement. The engine lines are built at apply,
@@ -3635,16 +3676,16 @@ def prepare_party_npc_update(parameters, operation_id):
 
     operation = parameters.get("operation")
     if operation not in {"add", "remove"}:
-        raise ValueError("updatePartyNPCs requires add or remove")
+        raise PartyChangeUnplanned("updatePartyNPCs requires add or remove")
     if operation == "add":
         npc = parameters.get("npc")
         npc_name = npc.get("name") if isinstance(npc, dict) else None
         if not isinstance(npc_name, str) or not npc_name.strip():
-            raise ValueError("updatePartyNPCs add requires an exact NPC name")
+            raise PartyChangeUnplanned("updatePartyNPCs add requires an exact NPC name")
         from updates.update_character_info import name_refusal
         refusal = name_refusal(npc_name)
         if refusal:
-            raise ValueError(f"updatePartyNPCs add refused: {refusal}")
+            raise PartyChangeUnplanned(f"updatePartyNPCs add refused: {refusal}")
     party = safe_json_load("party_tracker.json")
     if not isinstance(party, dict) or not isinstance(party.get("partyNPCs"), list):
         raise RuntimeError("party roster is unavailable")
@@ -3659,18 +3700,21 @@ def prepare_party_npc_update(parameters, operation_id):
     if outcome["kind"] in ("join", "heal"):
         outcome = finish_party_entry(outcome, parameters, party=party)
     if outcome["kind"] == "correction":
-        raise ValueError(outcome["text"])
+        raise PartyChangeUnplanned(outcome["text"])
     return _party_receipt(outcome, parameters, operation_id)
 
 
-def _adapt_party_receipt(receipt, party, record_index):
+def _adapt_party_receipt(receipt, party, record_index, checkpoint_operation_id=None):
     """A receipt staged before occupant ids (no outcome_kind), adapted
     through the planner at the commit location: the added row (the
     roster_after entry absent from roster_before, by equality) as an add of
     "new"; the removed row (the roster_before entry absent from
     roster_after) as a leave with no link, so a new person is created here;
-    no difference: a noop. The receipt takes the finished fields in place.
-    Returns False for a correction (the receipt is then dropped)."""
+    no difference: a noop. The receipt takes the finished fields in place;
+    when the adapted roster_after differs, the old one is kept as
+    legacy_roster_after, the roster the old code may already have written.
+    A fallback id takes <t> from the checkpoint's operation id. Returns
+    False for a correction (the receipt is then dropped)."""
     from core.nql import occupants as _occupants
 
     before = receipt.get("roster_before") if isinstance(receipt.get("roster_before"), list) else []
@@ -3693,7 +3737,7 @@ def _adapt_party_receipt(receipt, party, record_index):
         receipt.update(occupant_id=None, outcome_kind="noop", engine_lines=[])
         return True
     world = _occupants.party_world(module, location, create=False)
-    op_hex = str(receipt.get("operation_id") or "").replace("-", "")[:8]
+    op_hex = str(checkpoint_operation_id or "").replace("-", "")[:8]
     outcome = plan_party_change(
         before, parameters, world, turn_roster=before, module=module, location=location,
         request_id="dm:%s:party" % receipt.get("operation_id"),
@@ -3705,6 +3749,8 @@ def _adapt_party_receipt(receipt, party, record_index):
         warning("TRAVEL: a staged party change from before occupant ids could not be "
                 "adapted; dropped: %s" % outcome.get("text"), category="location_transitions")
         return False
+    if outcome["roster_after"] != after:
+        receipt["legacy_roster_after"] = copy.deepcopy(after)
     receipt.update(
         occupant_id=outcome.get("occupant_id"),
         outcome_kind=outcome.get("outcome_kind"),
@@ -4378,6 +4424,10 @@ _DROPPED_SHEET_RULES_NOTICE = (
 _DROPPED_NPC_NOTICE = (
     "%s did not join the party: their character sheet could not be made. If "
     "it still matters, say so in your next message."
+)
+_UNPLANNED_NPC_NOTICE = (
+    "%s did not join the party: the change could not be worked out. If it "
+    "still matters, say so in your next message."
 )
 _DROPPED_NPC_LEAVE_NOTICE = (
     "%s did not leave the party: the change could not be worked out. If it "
