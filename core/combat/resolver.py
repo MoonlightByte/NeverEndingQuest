@@ -621,7 +621,7 @@ def validate_intent(encounter, characters, intent, strict=None):
                     legalActions=[n for n in executable_attack_names(sheet)
                                   if not _recharge_spent(actor, n)],
                     retryable=True, recharging=entry.get("name"))
-            if _spends_ammunition(entry) and _ammo_quantity(sheet) == 0:
+            if _spends_ammunition(entry) and _ammunition_left(sheet, entry) == 0:
                 return False, Rejection(
                     reason="%s has no ammunition left" % actor.get("name"),
                     legalActions=[n for n in _known_actions(sheet)
@@ -647,30 +647,38 @@ def _spends_ammunition(entry):
     return isinstance(entry, dict) and entry.get("type") == "ranged" and entry.get("thrown") is not True
 
 
-def _ammunition_row_for(sheet, entry):
-    """#822: the ammunition row a ranged swing spends from. A row whose typed ``catalog_id`` equals the swung
-    row's ``ammunitionType`` (both engine definition ids) is chosen first; otherwise the first row with
-    ammunition left, as before. The first spending row of a sequence decides. Without a type the loop is the
-    earlier one; with a type, rows after the first stock are read only when their id matches."""
+def _ammunition_row(sheet, entry):
+    """#822, D-HC-1: the one ammunition row a ranged swing of ``entry`` spends from, or None.
+
+    A row is identified only by its typed ``catalog_id``; a row without one is of unknown type. When the
+    swung row has an ``ammunitionType`` (both engine definition ids), the first stocked row of that id is
+    chosen, else the first stocked row of unknown type; a row typed to another id never is. Without a type,
+    the first stocked row, as before. The validation, the cap and the spend all use this row.
+
+    Only rows the rules engine holds are chosen (``genesis.ammunition_rows``, its own stock list): the engine
+    keeps one row per stock id, so a second row sharing that id (two rows named "Arrows") is one it would never
+    debit, and choosing it would leave the spend and the engine apart (PR-5)."""
+    from core.nql import genesis
+
     wanted = (entry or {}).get("ammunitionType")
-    typed = isinstance(wanted, str) and bool(wanted)
-    first = None
-    for item in sheet.get("ammunition", []):
-        if not isinstance(item, dict) or (first is not None and item.get("catalog_id") != wanted):
-            continue
-        if int(item.get("quantity", 0) or 0) > 0:
-            if not typed or item.get("catalog_id") == wanted:
-                return item
-            first = item
-    return first
+    held = {id(row) for _stock, row in genesis.ammunition_rows(sheet or {}, [])}
+    stocked = [item for item in (sheet or {}).get("ammunition", []) or []
+               if isinstance(item, dict) and id(item) in held and int(item.get("quantity", 0) or 0) > 0]
+    if not (isinstance(wanted, str) and wanted):
+        return stocked[0] if stocked else None
+    for item in stocked:
+        if item.get("catalog_id") == wanted:
+            return item
+    for item in stocked:
+        if not (isinstance(item.get("catalog_id"), str) and item.get("catalog_id")):
+            return item
+    return None
 
 
-def _ammo_quantity(sheet, name=None):
-    total = 0
-    for item in (sheet or {}).get("ammunition", []):
-        if isinstance(item, dict) and (name is None or item.get("name") == name):
-            total += max(0, int(item.get("quantity", 0) or 0))
-    return total
+def _ammunition_left(sheet, entry):
+    """The quantity of the row ``_ammunition_row`` gives, 0 when none."""
+    item = _ammunition_row(sheet, entry)
+    return int(item.get("quantity", 0) or 0) if item is not None else 0
 
 
 def _engine_ammunition(sheet, name, delta, record):
@@ -1734,7 +1742,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
     for swing_number, entry in enumerate(attack_entries, start=1):
         if target is None or hp_after <= 0:
             break
-        if _spends_ammunition(entry) and ranged_swings >= _ammo_quantity(sheet):
+        if _spends_ammunition(entry) and ranged_swings >= _ammunition_left(sheet, ranged_entry or entry):
             continue
         attack_bonus = int(entry.get("attackBonus", 0) or 0) + modifier_total(
             sheet, "attackRolls"
@@ -2058,7 +2066,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
         _spend_recharge(resolution, event, actor, selected_entry)
     if resolution.get("effectOps"):
         event["effects"] = deepcopy(resolution["effectOps"])
-    item = _ammunition_row_for(sheet, ranged_entry) if ranged_swings else None
+    item = _ammunition_row(sheet, ranged_entry) if ranged_swings else None
     if item is not None:
         before = int(item.get("quantity", 0) or 0)
         spent = min(ranged_swings, before)
@@ -2094,18 +2102,32 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
     return resolution
 
 
-# Item 3: the player's plain melee weapon swing is scored by code from the
+# Item 3: the player's plain melee weapon swing, or (D-HC-1) shot with
+# ammunition, is scored by code from the
 # player's typed faces, asked for by code ([ROLL]); every other player action
 # stays with the model's adjudicated ruling. Typed fields only.
 PLAYER_DECLARED_MODES = ("advantage", "disadvantage")
 
 
-def player_weapon_attack_entry(encounter, characters, intent):
-    """The sheet entry when the intent is a plain single melee weapon swing at
-    a hostile, targetable creature; None otherwise."""
+def _declares_one_shot(resources):
+    """D-HC-1: an ammunition shot's resources as the model writes them today:
+    none, or exactly one record of kind 'ammunition' and delta -1. Only those
+    typed fields are read; the record's name and owner never are (the row
+    spent is the typed one, ``_ammunition_row``)."""
+    if not resources:
+        return True
+    return (isinstance(resources, list) and len(resources) == 1 and isinstance(resources[0], dict)
+            and resources[0].get("kind") == "ammunition" and resources[0].get("delta") == -1)
+
+
+def _plain_weapon_attack(encounter, characters, intent):
+    """(entry, sheet, actor) when the intent is a plain single weapon attack at
+    a hostile, targetable creature: a melee swing with no resources, or
+    (D-HC-1) a shot from a ranged row that spends ammunition (a thrown row
+    does not, #801, and stays adjudicated); None otherwise."""
     if not isinstance(intent, dict) or intent.get("action") != "attack":
         return None
-    if intent.get("targets") or intent.get("effects") or intent.get("resources"):
+    if intent.get("targets") or intent.get("effects"):
         return None
     attacks = intent.get("attacks")
     if attacks is not None and not (type(attacks) is int and attacks == 1):
@@ -2119,7 +2141,12 @@ def player_weapon_attack_entry(encounter, characters, intent):
         return None
     sheet = _raw_combatant_sheet(encounter, characters, actor)
     entry = _find_action(sheet, intent.get("ability"))
-    if not isinstance(entry, dict) or entry.get("type") != "melee" or not is_executable_attack(entry):
+    if not isinstance(entry, dict) or not is_executable_attack(entry):
+        return None
+    if entry.get("type") == "melee":
+        if intent.get("resources"):
+            return None
+    elif not _spends_ammunition(entry) or not _declares_one_shot(intent.get("resources")):
         return None
     if is_flat_attack(entry):
         # NUM-H3c: a flat row has no damage dice for the player to roll; the
@@ -2133,7 +2160,43 @@ def player_weapon_attack_entry(encounter, characters, intent):
     )
     if len(sequence) != 1 or sequence[0] is not entry:
         return None
+    return entry, sheet, actor
+
+
+def player_weapon_attack_entry(encounter, characters, intent):
+    """The sheet entry when the intent is a plain single melee weapon swing, or
+    (D-HC-1) a shot with ammunition left for it, at a hostile, targetable
+    creature; None otherwise."""
+    plain = _plain_weapon_attack(encounter, characters, intent)
+    if plain is None:
+        return None
+    entry, sheet, _actor = plain
+    if _spends_ammunition(entry) and _ammunition_row(sheet, entry) is None:
+        return None
     return entry
+
+
+def player_ammunition_refusal(encounter, characters, intent):
+    """D-HC-1: the typed #968 refusal for a plain shot with no ammunition row
+    left for it (every stocked row is typed to another id), or None. The name
+    is the display name of the row's typed ammunitionType (data; never
+    compared), left out when the catalog has no entry for it."""
+    plain = _plain_weapon_attack(encounter, characters, intent)
+    if plain is None:
+        return None
+    entry, sheet, actor = plain
+    if not _spends_ammunition(entry) or _ammunition_row(sheet, entry) is not None:
+        return None
+    refusal = {"owner": actor.get("name"), "kind": "ammunition", "before": 0, "max": None,
+               "need": 1, "actor": actor.get("name"), "ability": entry.get("name")}
+    wanted = entry.get("ammunitionType")
+    if isinstance(wanted, str) and wanted:
+        refusal["ammunitionType"] = wanted
+        from core.nql import item_catalog
+        catalog_entry = item_catalog.entry(wanted)
+        if isinstance(catalog_entry, dict) and catalog_entry.get("name"):
+            refusal["name"] = catalog_entry["name"]
+    return refusal
 
 
 def open_player_weapon_attack(encounter, characters, intent, entry, rolls=None):

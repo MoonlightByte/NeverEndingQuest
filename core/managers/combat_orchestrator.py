@@ -44,6 +44,7 @@ from core.combat.resolver import (
     player_spell_save_entry,
     player_great_weapon,
     player_weapon_attack_dice,
+    player_ammunition_refusal,
     player_weapon_attack_entry,
     player_weapon_attack_score,
     spell_attack_violations,
@@ -1388,7 +1389,8 @@ def _validate_roll_request_phase(batch, encounter):
             )
 
 
-# Item 3: the player's plain melee weapon swing. Code holds the dice (the DM's
+# Item 3: the player's plain melee weapon swing, or (D-HC-1) ammunition shot.
+# Code holds the dice (the DM's
 # lead asks, a dice card records them; the terminal line is the [ROLL] tag),
 # takes bare typed numbers on the fast path (D-KW-1/D-KW-2; the tray sentence
 # is D-KW-2's exact generated form until the typed tray payload ships, D-KW-14's
@@ -1681,7 +1683,7 @@ def _request_is_the_swings(request):
 
 def _player_weapon_takeover(encounter, characters, pending, batch):
     """(record, entry) when the window opens with the human player's plain
-    melee weapon swing, a cast of a recorded spell attack (#672) or of a
+    melee weapon swing or ammunition shot (D-HC-1), a cast of a recorded spell attack (#672) or of a
     recorded save spell, save first (#723); None keeps today's path. The other
     intents are checked the way resolution checks them, so a bad one still
     goes to the normal correction before any roll is asked for."""
@@ -1706,6 +1708,19 @@ def _player_weapon_takeover(encounter, characters, pending, batch):
     entry = player_weapon_attack_entry(encounter, characters, intent)
     spell = None
     record = None
+    refusal = player_ammunition_refusal(encounter, characters, intent) if entry is None else None
+    if refusal is not None:
+        # D-HC-1: a shot with no ammunition of its typed kind left is refused
+        # with the typed #968 record, so the model asks what the player does
+        # instead; it never falls to a spend by the ammunition's name.
+        raise CombatIntentError(
+            "overspend rejected: %s ammunition for %s (none left)"
+            % (refusal.get("owner"), refusal.get("ability")),
+            intent.get("actorId"),
+            {"violations": ["overspend rejected: %s ammunition for %s (none left)"
+                            % (refusal.get("owner"), refusal.get("ability"))],
+             "playerResourceRefusal": [refusal], "retryable": True},
+        )
     if entry is None:
         spell = player_spell_attack_entry(encounter, characters, intent)
         if spell is None:
