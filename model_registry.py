@@ -34,7 +34,7 @@ class ModelCatalogEntry:
 
 
 # Pricing snapshot from the model pages fetched directly on 2026-08-16; the gpt-6 entries are
-# from the owner's price table of 2026-10-18 (D-CREATE-COST-2; cache-write prices are not modelled).
+# and gpt-5.2 (T046) from the owner's price table of 2026-10-18 (D-CREATE-COST-2; cache-write prices are not modelled).
 # Sol and the unsuffixed gpt-5.6 alias are intentionally
 # absent; discovery never makes a model eligible automatically.
 MODEL_CATALOG: Mapping[str, ModelCatalogEntry] = MappingProxyType(
@@ -106,6 +106,21 @@ MODEL_CATALOG: Mapping[str, ModelCatalogEntry] = MappingProxyType(
             input_usd_per_million=2.00,
             cached_input_usd_per_million=0.10,
             output_usd_per_million=10.00,
+            pricing_source_date="2026-10-18",
+            pricing_source_url="owner price table 2026-10-18 (short context; kit reference/openai-pricing-2026-10-18.md)",
+            available=True,
+            availability_checked_at="2026-10-18",
+            created_at=None,
+            shutdown_at=None,
+            owned_by=None,
+        ),
+        "gpt-5.2": ModelCatalogEntry(
+            model_id="gpt-5.2",
+            family="gpt-5.2",
+            supported_efforts=SUPPORTED_GPT56_EFFORTS,
+            input_usd_per_million=1.75,
+            cached_input_usd_per_million=0.175,
+            output_usd_per_million=14.00,
             pricing_source_date="2026-10-18",
             pricing_source_url="owner price table 2026-10-18 (short context; kit reference/openai-pricing-2026-10-18.md)",
             available=True,
