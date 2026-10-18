@@ -506,7 +506,10 @@
   }
  ],
  "languages_rule": {
-  "text": "Your character knows at least three languages: Common plus two languages you roll or choose from the Standard Languages table. Knowledge of a language means your character can communicate in it, read it, and write it. Your class and other features might also give you languages. Every player character knows Common. Some features let a character learn a rare language.",
+  "passages": [
+   "Your character knows at least three languages: Common plus two languages you roll or choose from the Standard Languages table. Knowledge of a language means your character can communicate in it, read it, and write it. Your class and other features might also give you languages. The Standard Languages table lists languages that are widespread in the setting. Every player character knows Common. The other standard languages originated with the first members of the most prominent species in the setting and have since spread widely.",
+   "The Rare Languages table lists languages that are either secret or derived from other planes of existence and thus less widespread in the worlds of the Material Plane. Some features let a character learn a rare language."
+  ],
   "section": "Character Creation > Create Your Character > Step 2: Character Origin > Choose Languages",
   "page": 20
  },
