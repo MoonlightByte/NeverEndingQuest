@@ -205,8 +205,12 @@ def run_startup_sequence():
             character = safe_json_load(ModulePathManager(module["name"]).get_character_unified_path(name))
         if not _startup_build_ready(module["name"], character):
             raise LiveProviderSuperseded("Startup state changed before handoff")
+        # D-PKG-8: the engine purse; a character the interview created starts with it.
+        from core.nql.acquisition import balance
+        purse = "You start with" if _startup_interview_started(conversation) else "You have"
         cleanup_startup_conversation()
-        print(f"\nDungeon Master: Your character setup is saved and verified. Welcome, {character['name']}!")
+        print(f"\nDungeon Master: Your character setup is saved and verified. Welcome, {character['name']}! "
+              f"{purse} {balance(character)['gold']} gold.")
         return True
     except LiveProviderSuperseded:
         raise
@@ -843,16 +847,16 @@ def _origin_key(name):
     return str(name or "").strip().casefold()
 
 
-def _check_background_origin_feat(character):
-    """A sheet whose background is an SRD 5.2.1 background must list that background's Origin feat.
+def _check_background_origin_feat(character, background_key):
+    """A new character must list its background's Origin feat (SRD 5.2.1).
 
-    Typed name equality only. A background outside the reference, or a missing reference file, is not checked.
+    The background record is the one the typed origin.background_key selects. The feat is matched by
+    typed name equality. A missing reference file is not checked.
     """
     origins = safe_json_load(ORIGINS_FILE)
     if not isinstance(origins, dict):
         return
-    background = _origin_key(character.get("background"))
-    entry = next((b for b in origins.get("backgrounds", []) if _origin_key(b.get("name")) == background), None)
+    entry = next((b for b in origins.get("backgrounds", []) if b.get("key") == background_key), None)
     if entry is None:
         return
     feat = entry["feat"]
@@ -927,8 +931,108 @@ def _control_character_correction(value, path="character"):
     return None
 
 
-def _prepare_startup_proposal(authored_proposal):
-    """Normalize a private copy; keep authorship distinct from engine output."""
+def _write_origin_identity(character, origin):
+    """Write the display class and background from the typed origin keys (D-KW-12): the class name from
+    progression.json, the background name from its origins record. An authored value that differs is
+    overwritten and noted (#532). Without readable origins data the background is left as written; the
+    grant then reports the data unavailable."""
+    from core.leveling import tables
+    from core.nql.startup_rows import package_records
+    classes = tables.tables()["classes"]
+    if origin["class_key"] not in classes:
+        raise ValueError(f"origin.class_key {origin['class_key']!r} is not a class key; one of "
+                         f"{', '.join(sorted(classes))}")
+    names = {"class": classes[origin["class_key"]]["name"]}
+    records = package_records()
+    if records is not None:
+        if origin["background_key"] not in records.backgrounds:
+            raise ValueError(f"origin.background_key {origin['background_key']!r} is not a background key; "
+                             f"one of {', '.join(sorted(records.backgrounds))}")
+        names["background"] = records.backgrounds[origin["background_key"]]["name"]
+    notes = []
+    for field, name in names.items():
+        if character.get(field) != name:
+            notes.append(f"{field} {character.get(field)!r} -> {name!r} (written from origin.{field}_key)")
+            character[field] = name
+    return notes
+
+
+def _zero_authored_gear(character):
+    """Set the authored purse and gear aside: the grant writes them from the packages. Returns the
+    authored values for provenance. Authored melee and ranged attack rows go too (the engine writes the
+    weapon rows); spell rows stay."""
+    attacks = character.get("attacksAndSpellcasting")
+    weapon = lambda row: isinstance(row, dict) and row.get("type") in ("melee", "ranged")
+    authored = copy.deepcopy({
+        "currency": character.get("currency"), "equipment": character.get("equipment"),
+        "ammunition": character.get("ammunition"), "equipment_effects": character.get("equipment_effects"),
+        "attacksAndSpellcasting": [row for row in attacks if weapon(row)] if isinstance(attacks, list) else attacks,
+    })
+    character["currency"] = {"gold": 0, "silver": 0, "copper": 0}
+    character["equipment"] = []
+    character["ammunition"] = []
+    character["equipment_effects"] = []
+    if isinstance(attacks, list):
+        character["attacksAndSpellcasting"] = [row for row in attacks if not weapon(row)]
+    return authored
+
+
+# D-PKG-5 (#193 Part 5): at character creation a second consecutive engine
+# timeout (the fixed apply.DEFAULT_TIMEOUT_SECONDS deadline) of one engine call
+# saves the character without gear; "file in use" keeps waiting.
+STARTUP_ENGINE_TIMEOUT_LIMIT = 2
+STARTUP_ENGINE_WAIT_TEXT = ("Still adding your starting gear; your choices are kept. Stop the game "
+                            "(close its window or launcher); setup resumes where it left off.")
+
+
+def _startup_engine_fault(fault, scope, call, timeouts):
+    """The creation-time rule for one engine fault of ``call``: None after the busy-engine wait, when the
+    caller reissues that call; otherwise the end-state (d) record for provenance["starting_packages"].
+    ``timeouts`` holds the consecutive timeouts per call ("grant", "attack_rows") of one proposal.
+
+    Classified by the fault's type: an EngineUnavailable whose cause is an OSError the shared transient
+    classifier accepts waits; a timeout waits once (D-PKG-5); every other EngineUnavailable, a refusal
+    and unreadable package data are (d). The wait is not a rejection.
+    """
+    import subprocess
+    from core.nql import apply
+    from utils.transient_filesystem import is_transient_filesystem_error
+    record = {"status": "engine_unavailable", "policy": "D-PKG-1", "phase": call, "exit": None}
+    if isinstance(fault, apply.EngineUnavailable):
+        warning(f"Startup rules engine fault at {call}: {fault}", category="startup")
+        cause = fault.__cause__
+        if isinstance(cause, subprocess.TimeoutExpired):
+            timeouts[call] = timeouts.get(call, 0) + 1
+            if timeouts[call] >= STARTUP_ENGINE_TIMEOUT_LIMIT:
+                return dict(record, cause="timeout")
+        elif isinstance(cause, OSError) and is_transient_filesystem_error(cause):
+            timeouts[call] = 0
+        else:
+            return dict(record, cause="unavailable")
+    elif fault == ("data_unavailable", "grant"):
+        warning("Startup package data unavailable; the character is saved without starting gear", category="startup")
+        return dict(record, status="data_unavailable", cause="data_unavailable")
+    else:
+        warning(f"Startup rules engine refused {call} at phase {fault[1]}", category="startup")
+        return dict(record, cause="refused")
+    from utils.capture.live_provider_call import _interruptible_wait, drain_live_saves
+    if scope is not None:
+        # A completed boundary can service Save without ending the build.
+        drain_live_saves(scope)
+    _interruptible_wait(1.0, scope, STARTUP_ENGINE_WAIT_TEXT + ("" if web_mode else " Or press Ctrl+C to pause."),
+                        display_status)
+    return None
+
+
+def _prepare_startup_proposal(authored_proposal, *, live_scope=None):
+    """Normalize a private copy; keep authorship distinct from engine output.
+
+    A new character's class and background are written from its typed origin, its authored purse and
+    gear are set aside, and its starting gold and gear come from one engine grant of the typed package
+    picks (D-KW-16). A busy engine is waited for under ``live_scope`` and the call reissued; an engine
+    that cannot run saves the character without gear (end state (d), D-PKG-1).
+    """
+    from core.nql import item_catalog, startup_rows
     proposal = copy.deepcopy(authored_proposal)
     provenance = {}
     if proposal["decision"] != "finalize_character":
@@ -941,6 +1045,8 @@ def _prepare_startup_proposal(authored_proposal):
     detail = _control_character_correction(character)
     if detail:
         raise ValueError(detail)
+    identity_notes = _write_origin_identity(character, proposal["origin"])
+    authored_gear = _zero_authored_gear(character)
     character, dropped = _drop_schema_disallowed_nulls(character)
     if dropped:
         provenance["schema_null_drops"] = dropped
@@ -950,8 +1056,43 @@ def _prepare_startup_proposal(authored_proposal):
     valid, detail = validate_character_with_recovery(character, mechanics=False)
     if not valid:
         raise ValueError(detail)
-    character, mechanics = startup_mechanics(character, provenance=provenance)
-    provenance["mechanics_notes"] = mechanics
+    zeroed = copy.deepcopy(character)
+    timeouts = {}
+    unavailable = None
+    while True:
+        faults = []
+        granted, grant = startup_rows.grant_starting_packages(character, proposal["origin"],
+                                                              proposal["starting_equipment"], faults)
+        if not faults:
+            character = granted
+            break
+        unavailable = _startup_engine_fault(faults[0], live_scope, "grant", timeouts)
+        if unavailable is not None:
+            break
+    # The step-7 rule applies only after an applied grant; a (d) at the grant keeps main's fallbacks.
+    faults = [] if unavailable is None else None
+    character, mechanics = startup_mechanics(character, provenance=provenance, faults=faults)
+    while faults:
+        # The step-7 rule: a busy engine reissues only the rows step, on the projected sheet.
+        outcome = _startup_engine_fault(faults.pop(), live_scope, "attack_rows", timeouts)
+        if outcome is None:
+            rows = provenance["engine_rows"]
+            _startup_attack_rows(character, character.get("name", "Unknown"), rows["typed_equipment"],
+                                 rows["untyped_equipment"], provenance, faults)
+        elif unavailable is None:
+            unavailable = outcome
+    if (unavailable is None and provenance["engine_rows"]["item_rows"] is not True
+            and any((item_catalog.entry(row.get("catalog_id")) or {}).get("kind") == "weapon"
+                    for row in character.get("equipment") or [])):
+        # The older-engine resend (startup_rows.attack_rows): granted weapons with no engine rows.
+        unavailable = _startup_engine_fault(("refused", "attack_rows"), live_scope, "attack_rows", timeouts)
+    if unavailable is not None and granted is not None:
+        # (d) after a successful grant: the character is rebuilt from the zeroed sheet, once, with no
+        # engine fault rule, so no sheet commits granted gear without engine rows.
+        display_status("Finishing your character without starting gear.")
+        character, mechanics = startup_mechanics(copy.deepcopy(zeroed), provenance=provenance)
+    provenance["starting_packages"] = dict(unavailable or dict(grant, status="applied"), authored=authored_gear)
+    provenance["mechanics_notes"] = identity_notes + mechanics
     # Equipment checks read the sheet as the engine left it; armorClass is the
     # engine's projection above (#531), not derived again here.
     from utils.startup_mechanics import validate_startup_mechanics
@@ -968,9 +1109,56 @@ def _prepare_startup_proposal(authored_proposal):
         validate(character, safe_json_load("schemas/char_schema.json"))
     except ValidationError as exc:
         raise ValueError(exc.message) from exc
-    _check_background_origin_feat(character)
+    _check_background_origin_feat(character, proposal["origin"]["background_key"])
     proposal["character"] = character
     return proposal, provenance
+
+
+def _starting_gear_facts(proposal, provenance):
+    """The reviewer's committed facts for a finalize: the typed picks and what the engine made of them."""
+    from core.leveling import tables
+    packages = provenance["starting_packages"]
+    character = proposal["character"]
+    projection = provenance.get("engine_projection") or {}
+    result = {"status": packages["status"],
+              # Unchecked when the projection did not apply: the authored armorClass stands (D-PKG-7).
+              "armor_class": character.get("armorClass") if projection.get("applied") else "unchecked"}
+    if packages["status"] == "applied":
+        background, cls = packages["background"], packages["class"]
+        class_name = tables.tables()["classes"][cls["key"]]["name"]
+        result["engine_result"] = (f"gold {packages['currency']['gold']} = {background['name']} "
+                                   f"{background['package']} {background['gp']} + {class_name} {cls['package']} {cls['gp']}")
+        result["rows"] = ([f"{r.get('item_name')} x{r.get('quantity')}" for r in character.get("equipment") or []]
+                          + [f"{r.get('name')} x{r.get('quantity')} (ammunition)" for r in character.get("ammunition") or []])
+        result["equipped"] = [r.get("item_name") for r in character.get("equipment") or [] if r.get("equipped") is True]
+    else:
+        result["policy"] = packages["policy"]
+    return {"origin": proposal["origin"], "starting_equipment": proposal["starting_equipment"],
+            "starting_packages": result}
+
+
+def _starting_gear_notice(character, provenance):
+    """The plain notice for a character saved without starting gear (end state (d)), or None."""
+    from core.nql import apply
+    packages = provenance.get("starting_packages") or {}
+    name, binary = character.get("name"), apply.binary_path()
+    moves = (f"To play with them, make sure {binary} runs on this computer, reset the campaign, and "
+             f"create the character again; otherwise you can play on without them.")
+    if packages.get("status") == "data_unavailable":
+        return (f"The game's rules data could not be read, so {name} starts with no gold, no starting gear "
+                f"and no weapons. Reinstalling the game restores it; reset the campaign and create the "
+                f"character again, or play on without them.")
+    if packages.get("status") != "engine_unavailable":
+        return None
+    if packages.get("cause") == "refused":
+        return (f"The rules engine refused the starting gear, so {name} starts with no gold, no starting gear "
+                f"and no weapons. You can play on without them, or reset the campaign and create the "
+                f"character again.")
+    if packages.get("cause") == "timeout":
+        return (f"The rules engine did not answer in time, so {name} starts with no gold, no starting gear "
+                f"and no weapons. {moves}")
+    return (f"The rules engine could not run, so {name} starts with no gold, no starting gear and no "
+            f"weapons. {moves}")
 
 
 # Rejected proposals (invalid structure or review rejection) one player turn may
@@ -1041,8 +1229,9 @@ def ai_character_interview(conversation, module):
                             and current_index in _paused_player_indexes(conversation)):
                         raise ValueError("That request to stop was already honored; the player is "
                                          "back, so continue the interview")
-                    proposal, provenance = _prepare_startup_proposal(authored_proposal)
+                    proposal, provenance = _prepare_startup_proposal(authored_proposal, live_scope=scope)
                     if proposal["decision"] == "finalize_character":
+                        facts.update(_starting_gear_facts(proposal, provenance))
                         mechanics = provenance["mechanics_notes"]
                         if mechanics:
                             facts["startup_mechanics"] = {
@@ -1084,6 +1273,10 @@ def ai_character_interview(conversation, module):
                     raise LiveProviderSuperseded("startup review superseded")
                 conversation.append({"role": "assistant", "content": json.dumps(proposal, ensure_ascii=False)})
                 if proposal["decision"] == "finalize_character":
+                    notice = _starting_gear_notice(proposal["character"], provenance)
+                    if notice:
+                        # Shown once, before the approved checkpoint: a restart after it loses nothing.
+                        print(f"\nDungeon Master: {notice}")
                     _set_startup_progress(conversation, live_scope=scope, phase="approved",
                                           candidate=proposal["character"], character_path=None)
                     try:
@@ -1431,7 +1624,7 @@ def expected_starting_hit_points(character):
     return max(1, expected), terms
 
 
-def startup_mechanics(character, *, provenance=None):
+def startup_mechanics(character, *, provenance=None, faults=None):
     """Derive a new character's engine-owned and SRD-derived numbers.
 
     The level-1 hit point maximum is set exactly to the SRD derivation from
@@ -1486,7 +1679,7 @@ def startup_mechanics(character, *, provenance=None):
         provenance["engine_projection"] = {
             "source": "core.nql.armor_class.project",
             "applied": projection.applied and not projection.gaps,
-            "reason": projection.reason,
+            "reason": _reason_first_line(projection.reason),
             "gaps": copy.deepcopy(projection.gaps),
         }
     if projection.applied and projection.gaps:
@@ -1523,24 +1716,38 @@ def startup_mechanics(character, *, provenance=None):
     else:
         warning(f"[Startup Mechanics] {name}: armorClass left as written: {projection.reason}",
                 category="character_validation")
+    _startup_attack_rows(character, name, typed, untyped, provenance, faults)
+    for note in notes:
+        info(f"[Startup Mechanics] {name}: {note}", category="character_validation")
+    return character, notes
+
+
+def _reason_first_line(reason):
+    """D-PKG-9: an engine error's first line, a structural split, never a character cut, for the
+    provenance fields the author and reviewer read; the warning log keeps the whole text."""
+    return (reason.splitlines() or [""])[0] if isinstance(reason, str) else reason
+
+
+def _startup_attack_rows(character, name, typed, untyped, provenance, faults):
+    """The startup rows step, one copy for startup_mechanics and the creation-time reissue: the engine's
+    attack rows merged onto the sheet in place, and their report written to provenance["engine_rows"]
+    (a reissue rewrites it). An engine fault is appended to ``faults`` when a list is given."""
+    from core.nql import armor_class, startup_rows
     # NUM-H3c: attack rows from the engine's grants; the author's rows stay
     # when the engine is unavailable.
     not_usable_now = []
     rows, with_items, reason = startup_rows.attack_rows(character, armor_class.PROJECTION_LOCATION,
-                                                        not_usable_now=not_usable_now)
+                                                        not_usable_now=not_usable_now, faults=faults)
     report = {"source": "core.nql.startup_rows", "typed_equipment": typed, "untyped_equipment": untyped,
               "item_rows": with_items}
     if rows is None:
-        report["reason"] = reason
+        report["reason"] = _reason_first_line(reason)
         warning(f"[Startup Mechanics] {name}: attack rows left as written: {reason}", category="character_validation")
     else:
         report.update(startup_rows.merge_attack_rows(character, rows, with_items))
         report["not_usable_now"] = not_usable_now
     if provenance is not None:
         provenance["engine_rows"] = report
-    for note in notes:
-        info(f"[Startup Mechanics] {name}: {note}", category="character_validation")
-    return character, notes
 
 
 def validate_character_with_recovery(character_data, mechanics=True):

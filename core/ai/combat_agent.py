@@ -432,7 +432,10 @@ Action's own attack count never includes it.
 
 A player's plain swing with one listed melee weapon at one hostile creature
 is asked for and scored by code: declare action='attack', the exact weapon
-name as ability and targetId, with targets and resources empty. Only for a
+name as ability and targetId, with targets and resources empty. Any other
+player attack at a creature states its outcome from the player's rolls in
+targets (hpDelta 0 on a miss) or asks for the next roll it needs; it never ends
+with neither. Only for a
 situational edge (cover, an unseen attacker, a clever setup) add
 attackMode='advantage'|'disadvantage' with a short attackModeReason. When
 the actor makes more than one attack this turn, set attacks to that number.

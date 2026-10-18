@@ -26,7 +26,7 @@
   "Text is ASCII: curly quotes became straight ones and dashes became hyphens.",
   "srd-choices/2 (NUM): class_traits.<class> gain saving_throws (ability names), armor_training (light, medium, heavy, shield: neq_armor's armor_category values) and weapon_proficiencies (rules: a weapon is proficient when one rule's category equals its weapon.category and, if the rule has property_any, it has one of those properties), with the printed text under printed.",
   "NUM-P1: class_traits.monk gains monk_weapons (rules {category, kind[, property_any]}) and martial_arts: at each Monk level the host declares the Condition types listed for that level's Martial Arts die (attack_features.nql), and every character gets srd:unarmed-strike.",
-  "Starting Equipment option_items: per option, items as {catalog_id, quantity} (quantity in the item's own units: 20 Arrows is quantity 20), {choose_one: [ids]} for a printed item with several catalog forms (Holy Symbol), or {uncatalogued: text} for an item the catalog lacks (tools, instruments, the Spellbook); and coins. A Quarterstaff focus is the catalog's Staff or Wooden staff focus, which the SRD prints as also a Quarterstaff (evidence)."
+  "Starting Equipment option_items: per option, items as {catalog_id, quantity} (quantity in the item's own units: 20 Arrows is quantity 20), {choose_one: [ids]} for a printed item with several catalog forms (Holy Symbol), or {uncatalogued: text} for an item the catalog lacks (tools, instruments, the Spellbook); and coins. A Quarterstaff focus is the catalog's Staff or Wooden staff focus, which the SRD prints as also a Quarterstaff (evidence). Startup packages (data/srd_character_origins.json backgrounds carry the same equipment_options shape): an uncatalogued entry also carries key (a stable id), item_type and description; an entry that is a genuine player choice carries slot, an id unique across every class and background package (<class or background key>.<option>.<choice>). A slot with choose_one is a catalog pick, a slot with no catalog id is a named pick the player names; an entry without slot is a fixed item."
  ],
  "reference_forms": [
   {
@@ -2481,7 +2481,11 @@
          "printed": "2 Daggers"
         },
         {
-         "uncatalogued": "Musical Instrument of your choice"
+         "uncatalogued": "Musical Instrument of your choice",
+         "key": "musical-instrument",
+         "item_type": "equipment",
+         "description": "Musical Instrument (SRD 5.2.1), the one the player chose. Ability: Charisma. Utilize: play a known tune (DC 10), or improvise a song (DC 15).",
+         "slot": "bard.A.instrument"
         },
         {
          "catalog_id": "itemdef:srd/entertainers-pack",
@@ -3177,7 +3181,8 @@
           "itemdef:srd/holy-symbol-emblem",
           "itemdef:srd/holy-symbol-reliquary"
          ],
-         "printed": "Holy Symbol"
+         "printed": "Holy Symbol",
+         "slot": "cleric.A.holy_symbol"
         },
         {
          "catalog_id": "itemdef:srd/priests-pack",
@@ -3781,7 +3786,10 @@
          "quantity": 1
         },
         {
-         "uncatalogued": "Herbalism Kit"
+         "uncatalogued": "Herbalism Kit",
+         "key": "herbalism-kit",
+         "item_type": "equipment",
+         "description": "Tool (SRD 5.2.1). Ability: Intelligence. Utilize: identify a plant (DC 10). Craft: Antitoxin, Candle, Healer's Kit, Potion of Healing."
         }
        ],
        "coins": {
@@ -4809,7 +4817,11 @@
          "printed": "5 Daggers"
         },
         {
-         "uncatalogued": "Artisan's Tools or Musical Instrument chosen for the tool proficiency above"
+         "uncatalogued": "Artisan's Tools or Musical Instrument chosen for the tool proficiency above",
+         "key": "artisans-tools-or-musical-instrument",
+         "item_type": "equipment",
+         "description": "Artisan's Tools or a Musical Instrument (SRD 5.2.1), the one chosen for the Monk's tool proficiency.",
+         "slot": "monk.A.tool_or_instrument"
         },
         {
          "catalog_id": "itemdef:srd/explorers-pack",
@@ -5005,7 +5017,8 @@
           "itemdef:srd/holy-symbol-emblem",
           "itemdef:srd/holy-symbol-reliquary"
          ],
-         "printed": "Holy Symbol"
+         "printed": "Holy Symbol",
+         "slot": "paladin.A.holy_symbol"
         },
         {
          "catalog_id": "itemdef:srd/priests-pack",
@@ -6018,7 +6031,10 @@
          "quantity": 1
         },
         {
-         "uncatalogued": "Thieves' Tools"
+         "uncatalogued": "Thieves' Tools",
+         "key": "thieves-tools",
+         "item_type": "equipment",
+         "description": "Tool (SRD 5.2.1). Ability: Dexterity. Utilize: pick a lock (DC 15), or disarm a trap (DC 15)."
         },
         {
          "catalog_id": "itemdef:srd/burglars-pack",
@@ -7595,7 +7611,10 @@
          "quantity": 1
         },
         {
-         "uncatalogued": "Spellbook"
+         "uncatalogued": "Spellbook",
+         "key": "spellbook",
+         "item_type": "equipment",
+         "description": "Essential for wizards, a Spellbook is a leather-bound tome with 100 blank vellum pages suitable for recording spells (SRD 5.2.1)."
         },
         {
          "catalog_id": "itemdef:srd/scholars-pack",

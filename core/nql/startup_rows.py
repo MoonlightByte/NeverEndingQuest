@@ -34,12 +34,20 @@
   applies the startup name rule (for rows written before the mark), and
   writes the new rows first. It needs the ``attack_options`` view: without
   it (an older engine, unavailable, refused) the rows are left as they are.
+- ``grant_starting_packages``: a new character's starting gold and gear from
+  its typed picks (D-KW-16): the class's and background's chosen package
+  options, read by typed key from the data, merged by catalog id or data key
+  and created by one engine request. The engine's views are written back; the
+  host adds two typed gp integers and checks membership. It never waits: an
+  engine fault is reported in ``faults`` for the caller (D-PKG-1).
 """
 import copy
-from typing import Any, Dict, List, Optional, Tuple
+import json
+import os
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from core.combat.attacks import FLAT_DAMAGE_DICE
-from core.nql import apply, genesis, item_catalog
+from core.nql import acquisition, apply, genesis, item_catalog
 
 UNARMED_STRIKE_ROW = "Unarmed Strike"
 _ABILITIES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
@@ -211,9 +219,11 @@ def _best(groups: Dict[Tuple[str, ...], List[Dict[str, Any]]]) -> List[Dict[str,
 
 
 def attack_rows(character: Dict[str, Any], location: str, *, binary: Optional[str] = None,
-                not_usable_now: Optional[List[str]] = None) -> Tuple[Optional[List[Dict[str, Any]]], bool, str]:
+                not_usable_now: Optional[List[str]] = None,
+                faults: Optional[list] = None) -> Tuple[Optional[List[Dict[str, Any]]], bool, str]:
     """(rows, item rows included, reason). rows is None when the engine was unavailable or refused.
-    Names of carried-mode rows whose slots are taken now are appended to ``not_usable_now``."""
+    Names of carried-mode rows whose slots are taken now are appended to ``not_usable_now``; the
+    caught ``apply.EngineUnavailable``, or ("refused", phase) for a refusal, to ``faults``."""
     world = genesis.build_world([copy.deepcopy(character)], location)
     cid = genesis.character_id(character)
     request: Dict[str, Any] = {"world": world.source, "world_name": "genesis.nql", "equipment": [cid]}
@@ -222,8 +232,12 @@ def attack_rows(character: Dict[str, Any], location: str, *, binary: Optional[st
         if not response.get("ok") and response.get("phase") == "input":
             response = apply.call(request, binary=binary)
     except apply.EngineUnavailable as error:
+        if faults is not None:
+            faults.append(error)
         return None, False, str(error)
     if not response.get("ok"):
+        if faults is not None:
+            faults.append(("refused", response.get("phase")))
         return None, False, "engine refused the world at %s" % response.get("phase")
     rows, with_items = rows_from_response(response, not_usable_now)
     return rows, with_items, ""
@@ -333,3 +347,248 @@ def refresh_rows(character: Dict[str, Any], location: str, *, binary: Optional[s
         return dict(report, refreshed=True)
     except Exception as error:  # fail forward: the caller's commit proceeds with the rows unchanged
         return {"refreshed": False, "reason": "%s: %s" % (type(error).__name__, error)}
+
+
+# ---- Starting packages (startup only) ----------------------------------------
+
+ORIGINS_PATH = os.path.join(os.path.dirname(os.path.dirname(item_catalog.CHOICES_PATH)), "srd_character_origins.json")
+GRANT_REQUEST = "startup:starting-packages"
+
+
+class PackageRecords(NamedTuple):
+    classes: Dict[str, Dict[str, Any]]  # class key: its Starting Equipment option_items
+    backgrounds: Dict[str, Dict[str, Any]]  # background key: its origins record
+
+
+def package_records() -> Optional[PackageRecords]:
+    """The typed starting packages, read from the data at each call, or None when a file cannot be read."""
+    try:
+        with open(item_catalog.CHOICES_PATH, "r", encoding="utf-8") as handle:
+            choices = json.load(handle)
+        with open(ORIGINS_PATH, "r", encoding="utf-8") as handle:
+            origins = json.load(handle)
+        classes = {}
+        for key, levels in choices["choice_points"].items():
+            # The level-1 entry that carries option_items (its typed shape, not its name).
+            options = [p["option_items"] for p in levels.get("1", []) if isinstance(p.get("option_items"), dict)]
+            if len(options) == 1:
+                classes[key] = options[0]
+        backgrounds = {b["key"]: b for b in origins["backgrounds"] if isinstance(b.get("equipment_options"), dict)}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    return PackageRecords(classes, backgrounds) if classes and backgrounds else None
+
+
+def _legal(values: Any) -> str:
+    return ", ".join(sorted(str(v) for v in values)) or "none"
+
+
+def _package_items(option: Dict[str, Any], label: str) -> List[Tuple[str, Dict[str, Any]]]:
+    return [(label, item) for item in option.get("items") or [] if isinstance(item, dict)]
+
+
+def _slot_problems(items: List[Tuple[str, Dict[str, Any]]], picks: List[Any]) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
+    """The typed pick for each slot of the chosen packages, and every problem with the picks. The pick kind
+    comes from the entry's shape: a slot with choose_one is a catalog pick, one with no catalog id a named pick."""
+    slots = {item["slot"]: item for _, item in items if isinstance(item.get("slot"), str)}
+    chosen: Dict[str, Dict[str, Any]] = {}
+    problems = []
+    for pick in picks:
+        slot = pick.get("slot")
+        item = slots.get(slot)
+        if item is None:
+            problems.append("slot_picks names slot %r, which the chosen packages do not have; their slots: %s"
+                            % (slot, _legal(slots)))
+        elif slot in chosen:
+            problems.append("slot_picks names slot %r twice; give one pick per slot" % slot)
+        elif isinstance(item.get("choose_one"), list):
+            if pick.get("catalog_id") not in item["choose_one"]:
+                problems.append("slot %r is a catalog pick: give catalog_id, one of %s"
+                                % (slot, _legal(item["choose_one"])))
+            else:
+                chosen[slot] = pick
+        elif not isinstance(pick.get("display_name"), str) or "catalog_id" in pick:
+            problems.append("slot %r is a named pick: give display_name, the player's own choice of %s, "
+                            "not a catalog_id" % (slot, json.dumps(item.get("uncatalogued"))))
+        else:
+            chosen[slot] = pick
+    for slot, item in slots.items():
+        if slot not in chosen and not any(p.get("slot") == slot for p in picks):
+            kind = ("catalog_id, one of %s" % _legal(item["choose_one"]) if isinstance(item.get("choose_one"), list)
+                    else "display_name, the player's own choice of %s" % json.dumps(item.get("uncatalogued")))
+            problems.append("slot %r has no pick in slot_picks: give %s" % (slot, kind))
+    return chosen, problems
+
+
+def _merged(items: List[Tuple[str, Dict[str, Any]]], chosen: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """The packages' items as one list, merged by catalog id or, for an item the catalog lacks, by its data
+    key; quantities are summed. A named pick's display_name is display text only, never compared."""
+    merged: Dict[Tuple[str, str], Dict[str, Any]] = {}
+    for _, item in items:
+        if isinstance(item.get("choose_one"), list):
+            identity, quantity = ("catalog", chosen[item["slot"]]["catalog_id"]), 1
+        elif isinstance(item.get("catalog_id"), str):
+            identity, quantity = ("catalog", item["catalog_id"]), int(item.get("quantity") or 1)
+        else:
+            identity, quantity = ("named", str(item["key"])), 1
+        if identity in merged:
+            merged[identity]["quantity"] += quantity
+            continue
+        merged[identity] = {"identity": identity, "quantity": quantity, "data": item,
+                            "name": (chosen[item["slot"]]["display_name"] if identity[0] == "named"
+                                     and isinstance(item.get("slot"), str) else item.get("uncatalogued"))}
+    return list(merged.values())
+
+
+def _named_row(item: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:
+    """A starting item the catalog lacks: the engine's item view, with the data's typed item_type."""
+    return {
+        "item_name": item.get("name") or "",
+        "nql_id": item["id"],
+        "item_type": data["item_type"],
+        "description": item.get("description") or data.get("description", ""),
+        "quantity": item.get("quantity") if type(item.get("quantity")) is int else 1,
+        "equipped": False,
+        "magical": False,
+        "consumable": False,
+    }
+
+
+def _ammunition_stock_row(item: Dict[str, Any], entry: Dict[str, Any]) -> Dict[str, Any]:
+    """The #822 ammunition row a new stock gets: the catalog's name and typed id, the engine's quantity."""
+    return {"name": entry["name"], "quantity": int(item.get("quantity", 0)),
+            "description": entry.get("description", ""), "catalog_id": entry["id"]}
+
+
+def grant_starting_packages(sheet: Dict[str, Any], origin: Dict[str, Any], picks: Dict[str, Any],
+                            faults: list) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """A new character's starting gold and gear from one engine request over ``sheet`` (zeroed by the caller).
+
+    Returns (granted sheet, report), or (None, None) with the fault appended to ``faults``: the caught
+    ``apply.EngineUnavailable`` (a malformed response is reported as one), ("refused", phase) for an
+    ``ok`` false response, or ("data_unavailable", "grant") when the package data cannot be read. Raises
+    ValueError naming every legal value from the data when a pick is not one of them.
+    """
+    records = package_records()
+    if records is None:
+        faults.append(("data_unavailable", "grant"))
+        return None, None
+    class_options = records.classes.get(origin.get("class_key"))
+    background = records.backgrounds.get(origin.get("background_key"))
+    problems = []
+    if class_options is None:
+        problems.append("origin.class_key %r is not a class key; one of %s" % (origin.get("class_key"), _legal(records.classes)))
+    if background is None:
+        problems.append("origin.background_key %r is not a background key; one of %s"
+                        % (origin.get("background_key"), _legal(records.backgrounds)))
+    if problems:
+        raise ValueError("; ".join(problems))
+    class_option = class_options.get(picks.get("class_package"))
+    background_option = background["equipment_options"].get(picks.get("background_package"))
+    if class_option is None:
+        problems.append("starting_equipment.class_package %r is not a %s option; one of %s"
+                        % (picks.get("class_package"), origin["class_key"], _legal(class_options)))
+    if background_option is None:
+        problems.append("starting_equipment.background_package %r is not a %s option; one of %s"
+                        % (picks.get("background_package"), origin["background_key"], _legal(background["equipment_options"])))
+    if problems:
+        raise ValueError("; ".join(problems))
+    items = _package_items(class_option, "class") + _package_items(background_option, "background")
+    chosen, problems = _slot_problems(items, [p for p in picks.get("slot_picks") or [] if isinstance(p, dict)])
+    if problems:
+        raise ValueError("; ".join(problems))
+    merged = _merged(items, chosen)
+    catalog_ids = [m["identity"][1] for m in merged if m["identity"][0] == "catalog"]
+    unknown = [cid for cid in catalog_ids if item_catalog.entry(cid) is None]
+    if unknown:
+        raise ValueError("the package data names catalog ids the item catalog lacks: %s" % _legal(unknown))
+    outside = [i for i in picks.get("equipped") or [] if i not in catalog_ids]
+    if outside:
+        raise ValueError("starting_equipment.equipped lists %s, not catalog items of the chosen packages; "
+                         "equipped ids are among %s" % (_legal(outside), _legal(catalog_ids)))
+
+    cid = genesis.character_id(sheet)
+    reserved = set(genesis.held_ids_on_disk())
+    lines = acquisition.coin_lines(cid, {"gold": int(class_option["coins"]["gp"]) + int(background_option["coins"]["gp"])})
+    for m in merged:
+        if m["identity"][0] == "catalog":
+            entry = item_catalog.entry(m["identity"][1])
+            if entry.get("kind") == "ammunition":
+                m["id"] = genesis.ammunition_id(sheet, entry["name"])
+                lines.append(acquisition.ammunition_lines(cid, m["id"], entry["name"], m["quantity"], False))
+                continue
+            m["id"] = acquisition.next_item_id(sheet, entry, reserved=reserved)
+            lines.append(acquisition.item_line(cid, m["id"], entry, m["quantity"]))
+        else:
+            # The id's slug is the data key (F-4), never the display text.
+            m["id"] = acquisition.next_item_id(sheet, {"id": m["identity"][1], "name": m["identity"][1]}, reserved=reserved)
+            quantity = " quantity %d;" % m["quantity"] if m["quantity"] != 1 else ""
+            lines.append("create item %s named %s { owner %s; custody character %s;%s description %s; };"
+                         % (genesis._q(m["id"]), genesis._q(m["name"]), genesis._q(cid), genesis._q(cid),
+                            quantity, genesis._q(m["data"].get("description", ""))))
+        reserved.add(m["id"])
+    from core.nql.armor_class import PROJECTION_LOCATION
+    world = genesis.build_world([copy.deepcopy(sheet)], PROJECTION_LOCATION)
+    document = {"world": world.source, "world_name": "genesis.nql",
+                "actions": "\n".join(lines), "actions_name": "starting-packages.nql",
+                "actor": {"kind": "character", "id": cid}, "request": GRANT_REQUEST,
+                "status": [cid], "items_at": [{"kind": "character", "id": cid}],
+                "item_definitions": sorted(set(catalog_ids))}
+    try:
+        response = apply.call(document)
+    except apply.EngineUnavailable as error:
+        faults.append(error)
+        return None, None
+    if not response.get("ok"):
+        faults.append(("refused", response.get("phase")))
+        return None, None
+
+    # Write the engine's facts back: the purse, then each item, or nothing.
+    status = next((s for s in response.get("status") or [] if isinstance(s, dict)
+                   and isinstance(s.get("character"), dict) and s["character"].get("id") == cid), None)
+    resources = (status or {}).get("resources") or {}
+    views = response.get("items_at")
+    if status is None or not isinstance(views, list):
+        faults.append(apply.EngineUnavailable("engine returned no status or items_at view for the character"))
+        return None, None
+    if any(c not in resources for c in acquisition.COIN_ORDER):
+        faults.append(apply.EngineUnavailable("engine returned no coin balance"))
+        return None, None
+    found = {i.get("id"): i for v in views if isinstance(v, dict) for i in v.get("items") or [] if isinstance(i, dict)}
+    definitions = {d.get("id"): d for d in response.get("item_definitions") or [] if isinstance(d, dict)}
+    missing = [m["id"] for m in merged if m["id"] not in found]
+    if missing:
+        faults.append(apply.EngineUnavailable("engine returned no view of the new items %s" % ", ".join(missing)))
+        return None, None
+    granted = copy.deepcopy(sheet)
+    granted["currency"] = {c: int(resources[c]["current"]) for c in acquisition.COIN_ORDER}
+    # The new rows follow the sheet's own (none on the caller's zeroed sheet).
+    granted["equipment"] = list(granted.get("equipment") or [])
+    granted["ammunition"] = list(granted.get("ammunition") or [])
+    made = {"equipment": len(granted["equipment"]), "ammunition": len(granted["ammunition"])}
+    stock_ids = []  # the minted engine id of each new ammunition stock, in row order
+    for m in merged:
+        view = found[m["id"]]
+        if m["identity"][0] == "named":
+            granted["equipment"].append(_named_row(view, m["data"]))
+            continue
+        entry = item_catalog.entry(m["identity"][1])
+        if entry.get("kind") == "ammunition":
+            granted["ammunition"].append(_ammunition_stock_row(view, entry))
+            stock_ids.append(m["id"])
+            continue
+        row = acquisition.row_from_views(view, definitions.get(entry["id"]), entry)
+        row["equipped"] = row["catalog_id"] in (picks.get("equipped") or [])
+        granted["equipment"].append(row)
+    report = {
+        "source": "core.nql.startup_rows.grant_starting_packages",
+        "class": {"key": origin["class_key"], "package": picks["class_package"], "gp": int(class_option["coins"]["gp"])},
+        "background": {"key": origin["background_key"], "name": background["name"],
+                       "package": picks["background_package"], "gp": int(background_option["coins"]["gp"])},
+        "currency": dict(granted["currency"]),
+        "equipment": [{"item_name": r["item_name"], "nql_id": r["nql_id"], "quantity": r["quantity"],
+                       "equipped": r["equipped"]} for r in granted["equipment"][made["equipment"]:]],
+        "ammunition": [{"name": r["name"], "nql_id": iid, "quantity": r["quantity"]}
+                       for r, iid in zip(granted["ammunition"][made["ammunition"]:], stock_ids)],
+    }
+    return granted, report

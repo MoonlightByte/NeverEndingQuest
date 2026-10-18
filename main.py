@@ -5073,27 +5073,10 @@ def display_dm_narration(content, channel="main", color="blue", message_id=None,
 
 
 def _module_display_title(module_id):
-    """A module's human title: its declared name, else the id with spaces.
+    """A module's human title: its declared name, else the id with spaces."""
+    from utils.module_title import module_display_title
 
-    The declared name is module_context.json's ``module_name`` (older modules:
-    ``campaign_name``), so punctuation such as an apostrophe survives. Never
-    raises.
-    """
-    module_id = str(module_id or "").strip()
-    fallback = module_id.replace("_", " ").strip()
-    declared = ""
-    if module_id and "/" not in module_id and "\\" not in module_id and module_id not in (".", ".."):
-        try:
-            context = safe_json_load(os.path.join("modules", module_id, "module_context.json"))
-            if isinstance(context, dict):
-                for key in ("module_name", "campaign_name"):
-                    value = context.get(key)
-                    if isinstance(value, str) and value.strip():
-                        declared = value.strip()
-                        break
-        except Exception:
-            declared = ""
-    return declared or fallback
+    return module_display_title(module_id)
 
 
 def _module_joined_line(imported):
@@ -9411,7 +9394,10 @@ def _main_game_loop(startup_authority, turn_authority):
                     focus = member_data_for_note.get("concentration")
                     if isinstance(focus, dict) and focus.get("name"):
                         effects_str = f"{effects_str}, concentrating on {focus['name']} (engine-held)"
-                    party_stats_formatted.append(f"{display_name}: Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}, {ability_str}{spell_slots_str}{currency_str}, Effects: {effects_str}")
+                    # D-KW-12: the engine id the DM keys a typed reference by (rest hitDice).
+                    from core.nql.genesis import character_id as _engine_character_id
+                    member_id = _engine_character_id(member_data_for_note)
+                    party_stats_formatted.append(f"{display_name} (id {member_id}): Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}, {ability_str}{spell_slots_str}{currency_str}, Effects: {effects_str}")
 
             party_stats_str = "; ".join(party_stats_formatted)
             party_stats_str += ". (These values reflect the state before the player's current action.)"
