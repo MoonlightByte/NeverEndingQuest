@@ -11,38 +11,215 @@
  "backgrounds": [
   {
    "name": "Acolyte",
+   "key": "acolyte",
    "ability_scores": "Intelligence, Wisdom, Charisma",
    "feat": "Magic Initiate (Cleric)",
    "skill_proficiencies": "Insight and Religion",
    "tool_proficiency": "Calligrapher's Supplies",
    "equipment": "Choose A or B: (A) Calligrapher's Supplies, Book (prayers), Holy Symbol, Parchment (10 sheets), Robe, 8 GP; or (B) 50 GP",
+   "equipment_options": {
+    "A": {
+     "items": [
+      {
+       "uncatalogued": "Calligrapher's Supplies",
+       "key": "calligraphers-supplies",
+       "item_type": "equipment",
+       "description": "Artisan's Tools (SRD 5.2.1). Ability: Dexterity. Utilize: write text with impressive flourishes that guard against forgery (DC 15). Craft: Ink, Spell Scroll."
+      },
+      {
+       "catalog_id": "itemdef:srd/book",
+       "quantity": 1,
+       "note": "prayers",
+       "printed": "Book (prayers)"
+      },
+      {
+       "choose_one": [
+        "itemdef:srd/holy-symbol-amulet",
+        "itemdef:srd/holy-symbol-emblem",
+        "itemdef:srd/holy-symbol-reliquary"
+       ],
+       "printed": "Holy Symbol",
+       "slot": "acolyte.A.holy_symbol"
+      },
+      {
+       "catalog_id": "itemdef:srd/parchment",
+       "quantity": 10,
+       "printed": "Parchment (10 sheets)"
+      },
+      {
+       "catalog_id": "itemdef:srd/robe",
+       "quantity": 1
+      }
+     ],
+     "coins": {
+      "gp": 8
+     }
+    },
+    "B": {
+     "items": [],
+     "coins": {
+      "gp": 50
+     }
+    }
+   },
    "page": 83
   },
   {
    "name": "Criminal",
+   "key": "criminal",
    "ability_scores": "Dexterity, Constitution, Intelligence",
    "feat": "Alert",
    "skill_proficiencies": "Sleight of Hand and Stealth",
    "tool_proficiency": "Thieves' Tools",
    "equipment": "Choose A or B: (A) 2 Daggers, Thieves' Tools, Crowbar, 2 Pouches, Traveler's Clothes, 16 GP; or (B) 50 GP",
+   "equipment_options": {
+    "A": {
+     "items": [
+      {
+       "catalog_id": "itemdef:srd/dagger",
+       "quantity": 2,
+       "printed": "2 Daggers"
+      },
+      {
+       "uncatalogued": "Thieves' Tools",
+       "key": "thieves-tools",
+       "item_type": "equipment",
+       "description": "Tool (SRD 5.2.1). Ability: Dexterity. Utilize: pick a lock (DC 15), or disarm a trap (DC 15)."
+      },
+      {
+       "catalog_id": "itemdef:srd/crowbar",
+       "quantity": 1
+      },
+      {
+       "catalog_id": "itemdef:srd/pouch",
+       "quantity": 2,
+       "printed": "2 Pouches"
+      },
+      {
+       "catalog_id": "itemdef:srd/clothes-travelers",
+       "quantity": 1,
+       "printed": "Traveler's Clothes"
+      }
+     ],
+     "coins": {
+      "gp": 16
+     }
+    },
+    "B": {
+     "items": [],
+     "coins": {
+      "gp": 50
+     }
+    }
+   },
    "page": 83
   },
   {
    "name": "Sage",
+   "key": "sage",
    "ability_scores": "Constitution, Intelligence, Wisdom",
    "feat": "Magic Initiate (Wizard)",
    "skill_proficiencies": "Arcana and History",
    "tool_proficiency": "Calligrapher's Supplies",
    "equipment": "Choose A or B: (A) Quarterstaff, Calligrapher's Supplies, Book (history), Parchment (8 sheets), Robe, 8 GP; or (B) 50 GP",
+   "equipment_options": {
+    "A": {
+     "items": [
+      {
+       "catalog_id": "itemdef:srd/quarterstaff",
+       "quantity": 1
+      },
+      {
+       "uncatalogued": "Calligrapher's Supplies",
+       "key": "calligraphers-supplies",
+       "item_type": "equipment",
+       "description": "Artisan's Tools (SRD 5.2.1). Ability: Dexterity. Utilize: write text with impressive flourishes that guard against forgery (DC 15). Craft: Ink, Spell Scroll."
+      },
+      {
+       "catalog_id": "itemdef:srd/book",
+       "quantity": 1,
+       "note": "history",
+       "printed": "Book (history)"
+      },
+      {
+       "catalog_id": "itemdef:srd/parchment",
+       "quantity": 8,
+       "printed": "Parchment (8 sheets)"
+      },
+      {
+       "catalog_id": "itemdef:srd/robe",
+       "quantity": 1
+      }
+     ],
+     "coins": {
+      "gp": 8
+     }
+    },
+    "B": {
+     "items": [],
+     "coins": {
+      "gp": 50
+     }
+    }
+   },
    "page": 83
   },
   {
    "name": "Soldier",
+   "key": "soldier",
    "ability_scores": "Strength, Dexterity, Constitution",
    "feat": "Savage Attacker",
    "skill_proficiencies": "Athletics and Intimidation",
    "tool_proficiency": "Choose one kind of Gaming Set (see \"Equipment\")",
    "equipment": "Choose A or B: (A) Spear, Shortbow, 20 Arrows, Gaming Set (same as above), Healer's Kit, Quiver, Traveler's Clothes, 14 GP; or (B) 50 GP",
+   "equipment_options": {
+    "A": {
+     "items": [
+      {
+       "catalog_id": "itemdef:srd/spear",
+       "quantity": 1
+      },
+      {
+       "catalog_id": "itemdef:srd/shortbow",
+       "quantity": 1
+      },
+      {
+       "catalog_id": "itemdef:srd/arrows",
+       "quantity": 20,
+       "printed": "20 Arrows"
+      },
+      {
+       "uncatalogued": "Gaming Set (same as above)",
+       "key": "gaming-set",
+       "item_type": "equipment",
+       "description": "Gaming Set (SRD 5.2.1), the kind chosen for the tool proficiency. Ability: Wisdom. Utilize: discern whether someone is cheating (DC 10), or win the game (DC 20).",
+       "slot": "soldier.A.gaming_set"
+      },
+      {
+       "catalog_id": "itemdef:srd/healers-kit",
+       "quantity": 1
+      },
+      {
+       "catalog_id": "itemdef:srd/quiver",
+       "quantity": 1
+      },
+      {
+       "catalog_id": "itemdef:srd/clothes-travelers",
+       "quantity": 1,
+       "printed": "Traveler's Clothes"
+      }
+     ],
+     "coins": {
+      "gp": 14
+     }
+    },
+    "B": {
+     "items": [],
+     "coins": {
+      "gp": 50
+     }
+    }
+   },
    "page": 83
   }
  ],

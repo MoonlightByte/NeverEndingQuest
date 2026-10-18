@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from utils.encoding_utils import safe_json_load
-from utils.startup_contract import STARTUP_RESPONSE_SCHEMA, STARTUP_REVIEW_SCHEMA
+from utils.startup_contract import STARTUP_REVIEW_SCHEMA, startup_response_schema
 
 
 def _read_text_file(relative_path):
@@ -20,7 +20,22 @@ STARTUP_RULES_REFERENCE_PURPOSE = "startup_rules_reference"
 ORIGINS_FILE = "data/srd_character_origins.json"
 
 
-def _level_1_choices(choice_points):
+def _typed_options(option_items, catalog):
+    """A starting-package choice's typed options, whole: each option's key, its items (catalog ids with
+    the catalog's printed names, choose_one ids, uncatalogued keys, slots) and its coins. The game's own
+    fields for an uncatalogued item (item_type, description) stay in the data."""
+    def item(entry):
+        typed = {k: v for k, v in entry.items() if k not in ("item_type", "description")}
+        if entry.get("catalog_id") in catalog:
+            typed["name"] = catalog[entry["catalog_id"]]
+        if isinstance(entry.get("choose_one"), list):
+            typed["choose_one"] = [{"catalog_id": i, "name": catalog.get(i)} for i in entry["choose_one"]]
+        return typed
+    return {key: {"items": [item(e) for e in option.get("items") or []], "coins": option.get("coins")}
+            for key, option in option_items.items()}
+
+
+def _level_1_choices(choice_points, catalog):
     """A new character's level-1 choices for one class (multiclass-only entries omitted)."""
     choices = []
     for point in choice_points.get("1", []):
@@ -29,6 +44,8 @@ def _level_1_choices(choice_points):
         entry = {"name": point["name"], "count": point["count"]}
         if isinstance(point.get("option_source"), list):
             entry["options"] = point["option_source"]
+        if isinstance(point.get("option_items"), dict):
+            entry["option_items"] = _typed_options(point["option_items"], catalog)
         entry["text"] = point.get("evidence")
         entry["page"] = point.get("source", {}).get("page")
         choices.append(entry)
@@ -60,6 +77,7 @@ def build_startup_rules_reference():
     # Fixed level-1 class features and class-table values (#682 E13). Optional: without the
     # progression file the reference keeps its earlier shape.
     progression = (safe_json_load("data/srd/progression.json") or {}).get("classes") or {}
+    catalog = {e["id"]: e["name"] for e in items["entries"]}
     return {
         "task_purpose": STARTUP_RULES_REFERENCE_PURPOSE,
         "ruleset": "SRD 5.2.1",
@@ -67,6 +85,9 @@ def build_startup_rules_reference():
         "use": ("This is the game's complete SRD 5.2.1 character-origin reference for this interview: "
                 "backgrounds, species, Origin and Fighting Style feats, weapon mastery, the weapons table "
                 "and each class's level-1 choices, fixed level-1 features and level-1 class-table values. "
+                "Each class's Starting Equipment choice (option_items) and each background "
+                "(equipment_options) carry their typed options: the option key, the items with catalog ids, "
+                "the coins and the slots a player picks. "
                 "Use it for these facts instead of remembered rules. "
                 "A fact absent here is not supplied."),
         "sheet_representation": (
@@ -83,7 +104,8 @@ def build_startup_rules_reference():
             "Record the class's level-1 order choice as one classFeatures entry named exactly "
             "\"Divine Order: <option>\" or \"Primal Order: <option>\"."),
         "background_ability_scores_rule": origins["background_ability_scores_rule"],
-        "backgrounds": origins["backgrounds"],
+        "backgrounds": [dict(b, equipment_options=_typed_options(b["equipment_options"], catalog))
+                        if isinstance(b.get("equipment_options"), dict) else b for b in origins["backgrounds"]],
         "species": origins["species"],
         "origin_feats": origins["origin_feats"],
         "fighting_style_feats": origins["fighting_style_feats"],
@@ -92,7 +114,7 @@ def build_startup_rules_reference():
         "weapons": [{"name": e["name"], "description": e["description"]} for e in items["entries"]
                     if e.get("kind") == "weapon" and not e.get("magical")],
         "class_level_1": {name: dict({"primary_ability": choices["class_traits"][name]["primary_ability"],
-                                      "choices": _level_1_choices(points)}, **_level_1_features(progression.get(name)))
+                                      "choices": _level_1_choices(points, catalog)}, **_level_1_features(progression.get(name)))
                           for name, points in choices["choice_points"].items()},
     }
 
@@ -117,20 +139,30 @@ The interview carries the game's SRD 5.2.1 creation reference (task_purpose
 startup_rules_reference). Use it for species, background, Origin feat, weapon
 mastery and level-1 class choice facts, and follow its sheet_representation.
 SRD 5.2.1 backgrounds have no background features from older editions.
+Classes and backgrounds come from the reference. For a request outside it, such
+as a noble, keep the concept in the backstory and recommend the closest
+reference background for the player to choose.
+Extra gear is bought or found in play; a keepsake from the backstory stays in
+the backstory text.
 After the player approves the whole current build, the next step is
 finalize_character with the full sheet: fill derived values (hit points, armor
-class, modifiers, proficiency bonus) from the approved choices. Code and the
-rules engine then set level-1 hit points, armor class and engine attack rows,
-so name weapons and armor exactly as the catalog does (Longsword, Chain Mail,
-Shield) and mark equipped only what is in hand or worn. If a real player
+class, modifiers, proficiency bonus) from the approved choices. Set origin to
+the class and background keys, and starting_equipment to the chosen package
+keys, one slot_picks entry per slot of those packages (catalog_id for a
+choose_one slot, the player's own display_name for a slot without one) and
+equipped. Code and the
+rules engine then set level-1 hit points, armor class and engine attack rows
+and starting gold and gear: the gear comes from the packages; name what is worn
+or held, by catalog id, in starting_equipment.equipped. If a real player
 choice is still open, such as a gaming set or a skill pick, ask only that once
 and keep everything approved; never invent a player choice.
 When the player delegates open choices to you, decide each one and present a
 single recommended pick per choice for approval, never a menu of options. A
 build presented as complete names every required level-1 choice in the
 reference: background ability increases, every skill, tool or gaming set pick,
-each Origin feat and its own choices, class choices, and both the class and the
-background starting equipment.
+each Origin feat and its own choices, class choices, both the class and the
+background starting equipment, each package choice (holy symbol, instrument,
+gaming set) and what is worn or held.
 
 ONE WIRE CONTRACT, ON EVERY RESPONSE:
 Return only one JSON object matching STARTUP RESPONSE SCHEMA below.
@@ -167,7 +199,8 @@ Other turns, such as a single question or a correction, may be one short
 paragraph; still put any list of options on separate "- " lines.
 
 Use continue_interview while collecting choices, summarizing, or asking for
-whole-build approval. Its character must be null and whole_build_approved false.
+whole-build approval. Its character, origin and starting_equipment must be null
+and whole_build_approved false.
 Understand approval from the complete conversation and latest real user input,
 not a required phrase or keyword. Approval of one detail, negation, uncertainty,
 or an outstanding requested change is not whole-build approval.
@@ -175,11 +208,14 @@ Use finalize_character only when the player has approved the complete current
 build and you can provide its full character sheet. Copy the actual latest user
 message index supplied by the wizard into confirmation.player_message_index.
 Never use the index of a system correction or an earlier approval for a changed
-build. Missing consequential choices require clarification. Resolve only minor
-mechanical details with consistent SRD defaults after whole-build approval.
+build. Missing consequential choices require clarification. Starting-equipment
+choices (each package and each package pick) are asked before the summary, or
+offered as one recommended pick when the player delegates. Resolve only other
+minor mechanical details with consistent SRD defaults after whole-build approval.
 Use pause_setup only when the latest real user input asks to stop or leave
 character setup for now; cancelling, undoing or changing a choice is not a pause.
-It has character null, whole_build_approved false, and the latest user message
+It has character, origin and starting_equipment null, whole_build_approved
+false, and the latest user message
 index; its narration briefly says their choices are kept for next time. When
 the player returns after a pause, continue the interview.
 
@@ -195,11 +231,14 @@ Include ammunition (an empty array when none), all required fields, and valid
 enum values. New characters start at level 1 with experience_points 0 and player
 role/type. Preserve existing dictionary-form skills when supplied; do not turn
 existing data into empty defaults. For new builds include chosen proficiencies,
-consistent languages, equipment, attacks, modifiers and SRD features. No schema
+consistent languages, attacks, modifiers and SRD features, and write
+"currency": {{"gold": 0, "silver": 0, "copper": 0}}, "equipment": [] and
+"ammunition": []: the game replaces all three from the chosen packages. Spell
+attacks use type "spell"; the engine writes the weapon attack rows. No schema
 metadata in a character object. Unused temporaryEffects, injuries and
 equipment_effects are empty arrays, not invented timed effects.
-Represent equipment once: a named package may describe its contents, or those
-contents may be itemized without also granting a second copy through the package.
+Starting gear is represented once: the game merges the two packages, and an item
+both list is one row with the quantities summed.
 The attack list describes available options, not weapons wielded simultaneously.
 Keep carried/stowed weapons and their attack statistics without falsely marking
 them wielded or changing armor class; describe prerequisites when relevant.
@@ -214,7 +253,7 @@ normalization_provenance describes actual game derivations, not player choices
 or extra author requirements. Do not attempt to remove fields the engine writes.
 
 STARTUP RESPONSE SCHEMA:
-{json.dumps(STARTUP_RESPONSE_SCHEMA, indent=2)}
+{json.dumps(startup_response_schema(), indent=2)}
 
 CHARACTER SCHEMA:
 {json.dumps(schema, indent=2)}
@@ -233,7 +272,15 @@ Determine whether the latest player input approves the complete proposed build
 in context. Approval of one attribute, a negation, or an outstanding requested
 change is not whole-build approval. Do not require an exact approval phrase.
 Check identity, agreed ability method/results/allocation, class/background,
-proficiencies, languages, equipment, features, and rules consistency. Preserve
+proficiencies, languages, the starting packages and package picks, features, and
+rules consistency. Reject an origin or package pick that is in neither the
+player's words nor the approved summary. A class or background that the
+conversation or summary states plainly but the proposal mistypes is
+author-correctable; set needs_player_clarification false.
+When starting_packages.status is engine_unavailable or data_unavailable, missing
+gold, starting gear, weapon attack rows and armor from that gear are the game's
+disclosed outcome under the owner's ruling, not a lost choice; still check the
+picks. Preserve
 existing player data and distinguish defaults from choices requiring consent.
 Check proposed narration against committed facts. An unsaved proposal cannot
 truthfully claim saved, created, placed, or adventure events. Review meaning,
@@ -307,8 +354,8 @@ approval or proof that all mechanics are correct. Level-1 hit points are code
 output, set exactly as normalization_provenance.hit_points states.
 An owned but stowed weapon can have an available attack entry. That does not
 claim it is currently wielded, nor allow simultaneous incompatible equipment.
-An equipment package whose description includes an item already represents that
-item; do not require a second equipment entry that duplicates the resource.
+A pack row (Explorer's Pack, Dungeoneer's Pack, ...) represents the contents its
+description lists; do not require them as separate rows.
 Distinguish a mechanical background from narrative history: retain the approved
 history in existing description/context, without requiring new schema fields or
 renaming the mechanical background. Accept a valid proposal once substantive
