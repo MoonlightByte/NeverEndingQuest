@@ -443,6 +443,24 @@ def load_or_create_npc(npc_name):
         print(f"[COMBAT_BUILDER] NPC loaded from file: {npc_name}")
     return npc_data, npc_file
 
+def player_sheet_path(path_manager, party_tracker, player):
+    """The sheet path of createEncounter's player (#1258): the party member
+    whose engine id (genesis.character_id, the id Party stats shows the DM)
+    is the given string, an exact compare of a code-built id (D-KW-12); a
+    name, or an id no single member carries, keeps the path its text names."""
+    from core.nql import genesis
+    from utils.encoding_utils import safe_json_load
+
+    found = []
+    for name in (party_tracker or {}).get("partyMembers") or []:
+        path = path_manager.get_character_path(str(name))
+        sheet = safe_json_load(path) if os.path.exists(path) else None
+        if isinstance(sheet, dict) and genesis.character_id(sheet) == player:
+            found.append(path)
+    if len(found) == 1:
+        return found[0]
+    return path_manager.get_character_path(player)
+
 def generate_encounter(encounter_data):
     print(f"[COMBAT_BUILDER] Starting encounter generation with data: player={encounter_data.get('player')}, npcs={encounter_data.get('npcs', [])}, monsters={encounter_data.get('monsters', [])}")
     location = get_current_location()
@@ -464,6 +482,7 @@ def generate_encounter(encounter_data):
 
     # Add player
     # Get current module from party tracker for consistent path resolution
+    party_tracker = None
     try:
         from utils.encoding_utils import safe_json_load
         party_tracker = safe_json_load("party_tracker.json")
@@ -471,7 +490,7 @@ def generate_encounter(encounter_data):
         path_manager = ModulePathManager(current_module)
     except:
         path_manager = ModulePathManager()  # Fallback to reading from file
-    player_file = path_manager.get_character_path(encounter_data['player'])
+    player_file = player_sheet_path(path_manager, party_tracker, encounter_data['player'])
     logging.debug(f"Attempting to load player data from {player_file}")
     
     backup_player_file(player_file)
