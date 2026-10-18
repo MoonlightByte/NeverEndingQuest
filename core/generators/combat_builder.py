@@ -454,7 +454,10 @@ def player_sheet_path(path_manager, party_tracker, player):
     found = []
     for name in (party_tracker or {}).get("partyMembers") or []:
         path = path_manager.get_character_path(str(name))
-        sheet = safe_json_load(path) if os.path.exists(path) else None
+        try:
+            sheet = safe_json_load(path) if os.path.exists(path) else None
+        except (OSError, ValueError):
+            sheet = None  # an unreadable sheet is no member's match
         if isinstance(sheet, dict) and genesis.character_id(sheet) == player:
             found.append(path)
     if len(found) == 1:
