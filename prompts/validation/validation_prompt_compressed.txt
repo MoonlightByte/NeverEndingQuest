@@ -269,7 +269,7 @@ NARRATIVE ELABORATION: Location descriptions and NPC sketches are starting seeds
   11:transitionLocation uses location ID ONLY (A01,B05,C03)
   12:Historical combat "[COMBAT CONCLUDED]" exempt from rules
   13:updatePartyNPCs.operation values: exactly "add" or "remove"
-  14:createEncounter.monsters MUST be array of strings (["Bandit","Bandit"] not ["2 Bandits"]); a count inside a location's quantity range (min-max) is grounded, never 'invented'; reject only a count outside it or a monster the location does not list
+  14:createEncounter.monsters MUST be array of strings (["Bandit","Bandit"] not ["2 Bandits"]); a count inside a location's quantity range (min-max) is grounded, never 'invented'; reject only a count outside it for a monster the location lists; a monster the location does not list is a new creature, never invented
   15:MULTIPLE updateCharacterInfo OK in actions array. Each updates ONE character. NEVER comma-separated names
   16:Actions go in "actions" array, NOT numbered keys like updateCharacterInfo_2, updateCharacterInfo_3
   17:Character-to-character item handoff = ONE transferItem per item (fromCharacter, toCharacter, itemName exactly as on the giver's supplied sheet, integer quantity); a trade = two transferItem actions. REJECT a handoff done with updateCharacterInfo on either character, with storageInteraction, or one-sided; never demand a container. Container operation then handoff of the retrieved items = storageInteraction then transferItem. Coins between party characters change hands with transferCurrency or splitCurrency.
