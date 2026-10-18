@@ -3152,9 +3152,9 @@ def _turn_rows(turn_roster, roster):
 
 
 def _roster_slot(value):
-    """A rosterSlot as a number: an integer, or a string of digits; None for
-    anything else."""
-    if isinstance(value, str) and value.strip().isdigit():
+    """A rosterSlot as a number: an integer, or a string of ASCII digits;
+    None for anything else."""
+    if isinstance(value, str) and value.strip().isascii() and value.strip().isdigit():
         return int(value.strip())
     if isinstance(value, int) and not isinstance(value, bool):
         return value
