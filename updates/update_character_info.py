@@ -969,9 +969,10 @@ def create_character_backup(character_path, backup_reason="update"):
 
 
 # The file name create_character_backup builds beside a sheet:
-# <stem>.backup_<reason>_<YYYYmmdd_HHMMSS>.json. A sheet's own stem never holds
-# a "." (normalize_character_name), so no character's sheet matches.
-_CHARACTER_BACKUP_FILE = re.compile(r".+\.backup_[a-z_]+_\d{8}_\d{6}\.json")
+# <stem>.backup_<reason>_<YYYYmmdd_HHMMSS>.json, for any reason a caller passes.
+# A sheet's own stem never holds a "." (normalize_character_name), so no
+# character's sheet matches.
+_CHARACTER_BACKUP_FILE = re.compile(r".+\.backup_.+_\d{8}_\d{6}\.json")
 
 
 def is_character_backup_file(filename):
