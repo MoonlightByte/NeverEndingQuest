@@ -33,10 +33,11 @@ class ModelCatalogEntry:
     owned_by: Optional[str]
 
 
-# Pricing snapshot from the model pages fetched directly on 2026-08-16; the gpt-6 entries are
-# and gpt-5.2 (T046) from the owner's price table of 2026-10-18 (D-CREATE-COST-2; cache-write prices are not modelled).
-# Sol and the unsuffixed gpt-5.6 alias are intentionally
-# absent; discovery never makes a model eligible automatically.
+# Pricing snapshot: the gpt-5.6 entries from the model pages fetched directly on 2026-08-16;
+# gpt-6-luna, gpt-6-sol, gpt-6.1-sol and gpt-5.2 (T046) from the owner's price table of
+# 2026-10-18 (D-CREATE-COST-2; short context; cache-write prices are not modelled). The two
+# Sol entries are for pricing only: no binding sends them. gpt-5.6-sol and the unsuffixed
+# gpt-5.6 alias are intentionally absent; discovery never makes a model eligible automatically.
 MODEL_CATALOG: Mapping[str, ModelCatalogEntry] = MappingProxyType(
     {
         "gpt-5.6-luna": ModelCatalogEntry(
