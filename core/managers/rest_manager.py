@@ -35,33 +35,53 @@ def _party_paths(party: Dict[str, Any]) -> List[str]:
     return sorted(set(paths.values()))
 
 
-def _match_sheet(sheets: List[Dict[str, Any]], name: str) -> Optional[Dict[str, Any]]:
-    """The resting sheet whose full name is ``name`` (whole value, case ignored).
-    Never a first name or other part of a name (#855)."""
-    wanted = name.strip().casefold()
-    return next((s for s in sheets if str(s.get("name") or "").strip().casefold() == wanted), None)
+def _sheets_with_id(sheets: List[Dict[str, Any]], character_id: Any) -> List[Dict[str, Any]]:
+    """The resting sheets whose engine id (``genesis.character_id``, the id Party
+    stats shows the DM) is ``character_id``: a typed id compare, never a name
+    read (D-KW-12)."""
+    from core.nql import genesis
+
+    return [s for s in sheets if genesis.character_id(s) == character_id]
+
+
+def _party_root(sheets: List[Dict[str, Any]], party: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The player's resting sheet: the sheet whose engine id is the id of the
+    party tracker's first member: two engine ids from the engine's own key
+    derivation (genesis.character_id) over code-written game files, an id
+    compare, never a read of model or player text."""
+    from core.nql import genesis
+
+    names = list(party.get("partyMembers") or [])
+    if not names:
+        return None
+    found = _sheets_with_id(sheets, genesis.character_id({"name": names[0]}))
+    return found[0] if len(found) == 1 else None
 
 
 def hit_dice_spends(sheets: List[Dict[str, Any]], hit_dice: Any) -> Tuple[Optional[Dict[str, int]], str]:
-    """The hit dice a short rest spends by full sheet name: ({name: count}, "") or (None, why).
+    """The hit dice a short rest spends, keyed by sheet name: ({name: count}, "") or (None, why).
 
-    ``hit_dice`` maps a resting character's name to how many dice they spend.
+    ``hit_dice`` maps a resting character's engine id (``char:...``, shown to the
+    DM in Party stats) to how many dice they spend (D-KW-12).
     A character needs a known class and at least 1 hit point to spend them.
     How many dice are left is the engine's pool; nothing is rolled here.
     """
     if not hit_dice:
         return {}, ""
     if not isinstance(hit_dice, dict):
-        return None, 'hitDice must name each character and how many dice they spend, e.g. {"Bryn Ashwood": 1}'
+        return None, ('hitDice must key each character by their id from Party stats and give how many dice '
+                      'they spend, e.g. {"char:bryn-ashwood": 1}')
+    from core.nql import genesis
+
+    resting = ", ".join(f"{genesis.character_id(s)} ({s.get('name')})" for s in sheets)
     spends: Dict[str, int] = {}
-    for raw_name, count in hit_dice.items():
-        sheet = _match_sheet(sheets, str(raw_name))
-        if sheet is None:
-            resting = ", ".join(repr(str(s.get("name"))) for s in sheets)
-            return None, f"no resting party character is named {raw_name!r}; name each by full name: {resting}"
+    for key, count in hit_dice.items():
+        found = _sheets_with_id(sheets, key)
+        if len(found) != 1:
+            return None, (f"no single resting party character has the id {key!r}; key each character by their id "
+                          f"from Party stats: {resting}")
+        sheet = found[0]
         name = str(sheet.get("name"))
-        if name in spends:
-            return None, f"{name} is named twice in hitDice"
         if type(count) is not int or count < 1:
             return None, f"{name}'s hit dice must be a whole number of at least 1, not {count!r}"
         if leveling_tables.class_key(sheet) is None:
@@ -100,12 +120,11 @@ def player_hit_dice(party: Dict[str, Any], hit_dice: Any) -> Optional[Tuple[str,
     from core.managers.effects_runtime import _party_sheets
     from core.nql import genesis
 
-    names = list(party.get("partyMembers") or [])
-    if not names or not hit_dice:
+    if not party.get("partyMembers") or not hit_dice:
         return None
     sheets, _paths = _party_sheets(party)
     spends, _why = hit_dice_spends(list(sheets.values()), hit_dice)
-    player = _match_sheet(list(sheets.values()), str(names[0]))
+    player = _party_root(list(sheets.values()), party)
     if not spends or player is None or str(player.get("name")) not in spends:
         return None
     die = genesis.hit_die(player)
@@ -153,14 +172,13 @@ def execute_rest(rest_type: Any, party_tracker: Optional[Dict[str, Any]] = None,
     paths = _party_paths(party)
     if not paths:
         return {"success": False, "error": "no party character sheet could be found"}
-    player = str((party.get("partyMembers") or [""])[0])
     spent: Dict[str, Any] = {}
 
     def build(sheets, location):
         spends, why = hit_dice_spends(sheets, hit_dice)
         if spends is None:
             return nql_resources.RestOutcome(False, reason=why)
-        root = _match_sheet(sheets, player)
+        root = _party_root(sheets, party)
         root_name = str(root.get("name")) if root else None
         spent["before"] = {str(s.get("name")): s.get("hitPoints") for s in sheets}
         return nql_resources.rest(sheets, kind, location=location, hit_dice=spends, root=root_name,
