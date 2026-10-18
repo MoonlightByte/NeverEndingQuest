@@ -2127,6 +2127,51 @@ def _startup_configuration_handback(exc, provider, revision, scope):
     return True
 
 
+def _startup_provider_pause(player_message, scope):
+    """The bounded startup attempts all failed (#1267): one plain line, then wait
+    for the player's next input, which retries. The words typed are not read or
+    kept; the setup choices already saved stay as they are. Load, Reset or Exit
+    (web) and Ctrl+C or end of input (console) stop setup as before."""
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+
+    status_ready()
+    print("\nDungeon Master: " + (player_message or (
+        "The AI provider did not answer, so character setup is waiting.")) +
+        " Your setup choices are kept. Send any message to try again.")
+    try:
+        while not input("\nYour response: ").strip():
+            pass
+    except (EOFError, KeyboardInterrupt):
+        raise StartupCancelled() from None
+    if scope.is_superseded():
+        raise LiveProviderSuperseded("startup provider wait superseded")
+
+
+def _startup_provider_failure(exc, failures, scope, pending):
+    """One completed startup provider error (#1267); returns the count to carry.
+
+    Transient requests reissue inside the shared transport, so this sees a
+    completed error. It keeps the play turn's bound and growing delay
+    (utils/provider_errors); the caller resends the same request (no prompt
+    growth). At the bound the player is told once and their next input retries
+    (0 is returned)."""
+    from utils.capture.live_provider_call import _interruptible_wait
+    from utils.provider_errors import (
+        PROVIDER_MAX_FAILURES, classify_provider_error, provider_failure_policy,
+        provider_retry_delay,
+    )
+
+    failures += 1
+    decision = provider_failure_policy(classify_provider_error(exc), failures, True)
+    warning(f"Startup provider attempt {failures}/{PROVIDER_MAX_FAILURES} failed: {exc}",
+            category="startup")
+    if decision["stop"]:
+        _startup_provider_pause(decision["player_message"], scope)
+        return 0
+    _interruptible_wait(provider_retry_delay(failures - 1), scope, pending, display_status)
+    return failures
+
+
 def get_ai_response(conversation, response_format=None, *, persist_response=True, live_scope=None,
                     startup_phase="startup_interview", task_id="T092"):
     """Run T092 (author) or T124 (semantic review) through shared cancellable transport.
@@ -2135,7 +2180,6 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
     """
     from utils.capture.live_provider_call import (
         LiveProviderSuperseded, finish_live_turn_scope, open_live_turn_scope,
-        _interruptible_wait, _delay_for_error,
     )
     from utils.transient_filesystem import ReadOnlySaveStop
     from model_config import get_provider
@@ -2151,6 +2195,7 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
     }
 
     request_messages = copy.deepcopy(conversation)
+    failures = 0
     _emit_startup_phase(startup_phase)
     status_processing_ai()
     try:
@@ -2189,17 +2234,11 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                     _emit_startup_phase(startup_phase)
                     status_processing_ai()
                     continue
-                warning(f"Startup provider correction remains pending: {exc}", category="startup")
-                # Transient requests reissue inside the shared transport. This
-                # handback retains completed-error context, without a count cap.
-                envelope = getattr(exc, "envelope", {"error_class": type(exc).__name__})
-                request_messages.append({"role": "system", "content": (
-                    f"The previous startup request did not complete correctly: {exc}. "
-                    "Retain the player choices and return the requested response."
-                )})
-                _interruptible_wait(_delay_for_error(envelope, 0), scope,
-                                    "Character setup is still pending; your choices are retained.",
-                                    display_status)
+                failures = _startup_provider_failure(
+                    exc, failures, scope, "Character setup is still pending; your choices are retained.")
+                if not failures:
+                    _emit_startup_phase(startup_phase)
+                    status_processing_ai()
     finally:
         if owned:
             finish_live_turn_scope(scope)
@@ -2278,9 +2317,7 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
         return declared
     from model_config import get_provider
     from utils.startup_provider_recovery import configuration_revision
-    from utils.capture.live_provider_call import (
-        LiveProviderSuperseded, _interruptible_wait, _delay_for_error,
-    )
+    from utils.capture.live_provider_call import LiveProviderSuperseded
     from utils.transient_filesystem import ReadOnlySaveStop
 
     provider = request_provider or get_provider()
@@ -2305,6 +2342,7 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
             "not evidence that the party has arrived.\nMODULE DATA:\n"
             + json.dumps(module_data, ensure_ascii=True)
         )}]
+        failures = 0
         while True:
             try:
                 revision = configuration_revision(provider)
@@ -2344,15 +2382,11 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
                     _emit_startup_phase("startup_location")
                     status_processing_ai()
                     continue
-                warning(f"Startup location remains pending: {exc}", category="startup")
-                messages.append({"role": "system", "content": (
-                    f"The last location request failed: {exc}. Retain the task and "
-                    "return a complete grounded proposal."
-                )})
-                _interruptible_wait(
-                    _delay_for_error(getattr(exc, "envelope", {}) or {}, 0), scope,
-                    "Still determining the adventure's starting location.", display_status,
-                )
+                failures = _startup_provider_failure(
+                    exc, failures, scope, "Still determining the adventure's starting location.")
+                if not failures:
+                    _emit_startup_phase("startup_location")
+                    status_processing_ai()
 
 def load_module_for_ai_analysis(module_name):
     """Load module data for AI analysis"""
