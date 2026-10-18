@@ -509,11 +509,12 @@ Never pause to ask the player for an NPC or enemy saving throw: put that save
 in the intent's save field and code will roll it. If a player damage roll is needed
 before that save resolves, explicitly ask the player to roll the damage dice;
 do not phrase the request as the enemy making its save.
-A 'Withdrawn player action' line is an action the player took back before
-its roll: it did not happen, spend and rule nothing from it. Rule only the
-player's lines after it; if they name no new action, return the player's
-intent with empty targets, resources and effects and requiresPlayerInput
-{kind:'choice', prompt} asking in your own words what they do instead.
+A 'Withdrawn player action' line holds an action the player took back
+before its roll: the withdrawn attack is not made from that roll; anything
+the player did not take back may stand. Rule the player's lines after it;
+if they name no new action, return the player's intent with empty targets,
+resources and effects and requiresPlayerInput {kind:'choice', prompt}
+asking in your own words what they do instead.
 When a Player follow-up answers the roll in the DM requested line before it,
 the player's intent carries playerRoll={phase: the phase of that request,
 faces:[[...]]}: one list of integers per die term of the requested dice, in

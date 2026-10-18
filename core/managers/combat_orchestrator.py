@@ -1025,6 +1025,7 @@ def _composed_player_input(pending, fallback):
     if not isinstance(exchanges, list) or not exchanges:
         return str(fallback or "")
     lines = []
+    live_seen = False
     for index, exchange in enumerate(exchanges):
         if not isinstance(exchange, dict):
             continue
@@ -1039,7 +1040,7 @@ def _composed_player_input(pending, fallback):
         if player_text:
             if not lines:
                 label = "Original player action"
-            elif all(line.startswith("Withdrawn player action: ") for line in lines):
+            elif not live_seen:
                 label = "Player action"
             else:
                 label = "Player follow-up"
@@ -1053,6 +1054,7 @@ def _composed_player_input(pending, fallback):
             if type(asked_dc) is int and asked_dc > 0:
                 request_text = "%s (save DC %d)" % (request_text, asked_dc)
             lines.append("DM requested: %s" % request_text)
+        live_seen = live_seen or bool(player_text or request_text)
     return "\n".join(lines) or str(fallback or "")
 
 
