@@ -29,7 +29,7 @@ Verified against NeverEndingQuest `20f2b0eaf142c33b7f509ce072b55c6a799dfe66` on 
 
 Local-party/shared-review delta checked on 2026-09-06 in the uncommitted guardian integration based on `185f8997a5055521f04fe7a55ca908a41f0d412f`; older flow anchors retain their stated pins. Doctrine: live #193, D-NPC-PARTY-1 and D-NPC-PARTY-6. Combined-code live acceptance remains pending.
 
-The DM and validator distinguish local companion scouting from party travel and genuine membership changes. Requests for player-directed companion missions in another location are corrected agentically, not converted into travel or dismissal. Existing updatePartyNPCs leaving/rejoining remains a membership operation; departure context is not remote-mission authority. T067 receives the common DM Note; T065 separately receives raw player intent and its own validation prompt. PR299's existing in-place roster/travel cancellation and the destination-first party-travel transaction remain unchanged. References: main common DM Note/validation assembly, action_handler.update_party_npcs, and the full/compact local-party prompt blocks. Lifecycle regression coverage: #304; known rejoin defect: #298.
+The DM and validator distinguish local companion scouting from party travel and genuine membership changes. Requests for player-directed companion missions in another location are corrected agentically, not converted into travel or dismissal. Existing updatePartyNPCs leaving/rejoining remains a membership operation, and it names the companion by occupantId (or rosterSlot for a companion saved before ids); departure context is not remote-mission authority. An updatePartyTracker that carries partyNPCs is refused and the DM answers again. Occupant actions refuse a current companion's id; a companion's person joins and leaves the world only through the party change. The DM Note shows each companion's id or [slot n] and, after Party stats, the joined people no row carries. T067 receives the common DM Note; T065 separately receives raw player intent and its own validation prompt. PR299's existing in-place roster/travel cancellation and the destination-first party-travel transaction remain unchanged. References: main common DM Note/validation assembly, action_handler.update_party_npcs, and the full/compact local-party prompt blocks. Lifecycle regression coverage: #304; known rejoin defect: #298.
 
 Cancellation establishes only that party travel was removed, not membership consent or commitment. `_review_dm_candidate` (`main.py`) owns canonical normalization/target projection, T114, provisional route preflight, then T065. Each rejection revises the latest draft with applicable earlier feedback; changed candidates repeat applicable checks. Rejected drafts never become accepted history. T067 may discard unauthorized removal while keeping travel cancelled. Existing receipts/Save/Load are not fresh membership proposals.
 
@@ -61,6 +61,9 @@ Fresh internal follow-ups use `_process_fresh_dm_response` (`main.py`) outside r
 2. Only movement and approved travel-owned `updateTime`/`updatePlot` siblings belong to the beat.
 3. Shopping, resting, saving, exiting, and other future clauses remain deferred player intent.
 4. Cross-module travel is the exact pair `updatePartyTracker` then one intrinsic `updateTime`.
+   That `updatePartyTracker` never carries `partyNPCs`; a checkpoint saved with it is loaded
+   without it. A staged `updatePartyNPCs` receipt carries the planned kind and ids; one saved
+   before ids is worked out from its rosters once, written back, then applied as usual.
 5. T013/T063/T064 remain one complete narration chain inside that single player turn.
 
 ### Crash/restart

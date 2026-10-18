@@ -76,12 +76,20 @@ recall acceptance. Older sections below retain their historical pins.
 
 ### Companion arrival lifecycle
 
-1. The committed party-roster transition chooses `mark_joined` for a first arrival or
+1. A companion is named by the `occupantId` on its `partyNPCs` row: the id of its person in
+   the rules engine's live_state, copied from the location data's occupants or made for
+   `"new"`. `updatePartyNPCs` compares only ids, roster slots and the literal `"new"`, never
+   names. A companion saved before ids shows as `[slot n]` and leaves by that slot.
+2. The planned change has one kind, and the lifecycle follows it. A `join` (a person newly
+   added) runs the arrival hook and seeds the T107 profile; a `heal` (a row added for a
+   person the engine already shows as joined) runs the arrival hook only; a `noop` (the
+   same id re-added) runs neither; a `leave` runs the departure hook.
+3. The committed party-roster transition chooses `mark_joined` for a first arrival or
    `mark_rejoined` for an inactive return from the latest sidecar view.
-2. Both public entries converge on one locked mutation. Its reread state determines `join`
+4. Both public entries converge on one locked mutation. Its reread state determines `join`
    versus `rejoin`, retains relationship/profile/POV data, and clears request-local working
    state on return.
-3. A final active arrival event with the same non-empty `sourceTurnId` is verified success
+5. A final active arrival event with the same non-empty `sourceTurnId` is verified success
    without another event or revision increment; the caller verifies that receipt after commit.
 
 ### Historical T113 backfill

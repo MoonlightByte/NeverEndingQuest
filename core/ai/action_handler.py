@@ -841,6 +841,47 @@ def stage_cross_module_root_checkpoint(
     return checkpoint
 
 
+_PARTY_NPCS_DROP_WARNED = set()
+
+
+def _drop_stored_party_npcs(checkpoint):
+    """An updatePartyTracker stored before occupant ids may carry partyNPCs,
+    which no writer may replace the roster with now. The key is dropped from
+    the module handoff's parameters, a deferred record's action parameters
+    and a prepared receipt's parameters, in memory only (the loader never
+    writes); the rest of the stored change applies. One WARN per operation
+    id per process, only when a key was removed."""
+    removed = False
+    handoff = checkpoint.get("module_handoff")
+    if isinstance(handoff, dict) and isinstance(handoff.get("parameters"), dict):
+        removed = handoff["parameters"].pop("partyNPCs", None) is not None or removed
+    deferred = checkpoint.get("deferred_actions")
+    records = deferred.get("actions") if isinstance(deferred, dict) else None
+    for record in records if isinstance(records, list) else []:
+        if not isinstance(record, dict):
+            continue
+        action = record.get("action")
+        if record.get("family") == ACTION_UPDATE_PARTY_TRACKER and isinstance(action, dict) \
+                and isinstance(action.get("parameters"), dict) and "partyNPCs" in action["parameters"]:
+            action["parameters"].pop("partyNPCs")
+            removed = True
+        receipt = record.get("receipt")
+        if isinstance(receipt, dict) and receipt.get("kind") == ACTION_UPDATE_PARTY_TRACKER \
+                and isinstance(receipt.get("parameters"), dict) and "partyNPCs" in receipt["parameters"]:
+            receipt["parameters"].pop("partyNPCs")
+            removed = True
+    operation = checkpoint.get("operation_id")
+    if removed and operation not in _PARTY_NPCS_DROP_WARNED:
+        _PARTY_NPCS_DROP_WARNED.add(operation)
+        warning(
+            "TRAVEL: stored updatePartyTracker of %s carries partyNPCs; the key is "
+            "dropped (the roster changes only through updatePartyNPCs) and the rest "
+            "applies" % operation,
+            category="location_transitions",
+        )
+    return checkpoint
+
+
 def load_current_transition_checkpoint(operation_id=None):
     checkpoint = safe_json_load(PENDING_LOCATION_TRANSITION_FILE)
     if not isinstance(checkpoint, dict):
@@ -849,7 +890,7 @@ def load_current_transition_checkpoint(operation_id=None):
         return None
     if operation_id and checkpoint.get("operation_id") != operation_id:
         return None
-    return checkpoint
+    return _drop_stored_party_npcs(checkpoint)
 
 
 def prepare_current_transition_actions(operation_id):
@@ -1895,6 +1936,35 @@ def apply_current_transition_action(operation_id, action_index):
         return "committed"
 
     if family == "updatePartyNPCs":
+        party = safe_json_load("party_tracker.json")
+        if receipt.get("npc_status") != "dropped" and "outcome_kind" not in receipt:
+            # A receipt staged before occupant ids: adapted through the
+            # planner at the commit location and written back before the
+            # compare-and-swap, so a resume finds the same adapted receipt.
+            if not isinstance(party, dict) or not isinstance(
+                party.get("partyNPCs"), list
+            ):
+                raise RuntimeError("party roster is unavailable")
+            try:
+                adapted = _adapt_party_receipt(receipt, party, action_index)
+            except _TRAVEL_PREPARE_PASSTHROUGH:
+                raise
+            except (ValueError, RuntimeError) as exc:
+                warning(
+                    "TRAVEL: no usable party change for %s; dropped (%s: %s)"
+                    % (receipt.get("npc_name") or "an unnamed NPC", type(exc).__name__, exc),
+                    category="location_transitions",
+                )
+                adapted = False
+            if not adapted:
+                receipt.update(
+                    {
+                        "npc_status": "dropped",
+                        "owner": receipt.get("npc_name"),
+                        "message_id": str(uuid4()),
+                    }
+                )
+            _write_location_transition_checkpoint(checkpoint)
         if receipt.get("npc_status") == "dropped":
             # #855: dropped before movement; the roster is not touched.
             record["status"] = "committed"
@@ -1910,12 +1980,13 @@ def apply_current_transition_action(operation_id, action_index):
             if deferred["cursor"] >= len(records):
                 deferred["status"] = "committed"
             _write_location_transition_checkpoint(checkpoint)
-            if receipt.get("operation") == "add" and receipt.get("owner"):
+            if receipt.get("owner") and receipt.get("operation") in ("add", "remove"):
                 _show_transition_notice(
-                    receipt["message_id"], _DROPPED_NPC_NOTICE % receipt["owner"]
+                    receipt["message_id"],
+                    (_DROPPED_NPC_NOTICE if receipt.get("operation") == "add"
+                     else _DROPPED_NPC_LEAVE_NOTICE) % receipt["owner"],
                 )
             return "committed"
-        party = safe_json_load("party_tracker.json")
         if not isinstance(party, dict) or not isinstance(
             party.get("partyNPCs"), list
         ):
@@ -1940,29 +2011,50 @@ def apply_current_transition_action(operation_id, action_index):
             return outcome
         receipt["phase"] = "roster_committed"
         _write_location_transition_checkpoint(checkpoint)
-        lifecycle_ok = _apply_party_npc_lifecycle(
-            safe_json_load("party_tracker.json") or party,
-            receipt["operation"],
-            receipt["npc_name"],
-            receipt["npc_path"],
-            receipt.get("lifecycle_context"),
-            receipt["operation_id"],
-        )
-        receipt["lifecycle_status"] = (
-            "committed" if lifecycle_ok else "attempted_unavailable"
-        )
+        kind = receipt.get("outcome_kind")
+        if kind == "noop":
+            receipt["lifecycle_status"] = "not_applicable"
+        else:
+            lifecycle_ok = _apply_party_npc_lifecycle(
+                safe_json_load("party_tracker.json") or party,
+                "remove" if kind == "leave" else "add",
+                receipt["npc_name"],
+                receipt["npc_path"],
+                receipt.get("lifecycle_context"),
+                receipt["operation_id"],
+                seed_profile=kind in ("join", "join_new"),
+            )
+            receipt["lifecycle_status"] = (
+                "committed" if lifecycle_ok else "attempted_unavailable"
+            )
         # The companion's occupant follows the roster (P4-e); best effort.
+        # The lines are built again at the commit location from the
+        # receipt's frozen fields (never the live roster, already written).
         from core.nql import occupants as _occupants
 
         _lc_party = safe_json_load("party_tracker.json") or party
+        _lc_module = str(_lc_party.get("module") or "")
+        _lc_location = str((_lc_party.get("worldConditions") or {}).get("currentLocationId") or "")
+        _lc_context = receipt.get("lifecycle_context")
+        _commit = plan_party_change(
+            receipt["roster_before"],
+            {
+                "operation": receipt.get("operation"),
+                "occupantId": receipt.get("occupant_id"),
+                "npc": {"name": receipt.get("npc_name")},
+                "lifecycleContext": _lc_context,
+            },
+            _occupants.party_world(_lc_module, _lc_location, create=False),
+            turn_roster=receipt["roster_before"],
+            module=_lc_module,
+            location=_lc_location,
+            request_id="dm:%s:party" % receipt["operation_id"],
+            frozen_kind=kind,
+        )
         _occupants.party_change(
-            receipt["operation"],
-            receipt["npc_name"],
-            str(_lc_party.get("module") or ""),
-            str((_lc_party.get("worldConditions") or {}).get("currentLocationId") or ""),
-            "dm:%s:party" % receipt["operation_id"],
-            reason=(receipt.get("lifecycle_context") or {}).get("reason")
-            if isinstance(receipt.get("lifecycle_context"), dict) else None,
+            _commit["engine_lines"],
+            _commit["request_id"],
+            reason=_commit.get("reason"),
         )
         receipt["phase"] = "lifecycle_resolved"
         record["status"] = "committed"
@@ -2942,153 +3034,613 @@ def validate_location_transition(location_graph, current_location_id, destinatio
     except Exception as e:
         return False, f"Location validation failed with exception: {str(e)}", None
 
-def _recruit_identity(party, npc_name):
-    """The authored record of the present person a recruit names, read before
-    the occupant is resolved as joined (#534); None when there is none."""
+def _recruit_identity(party, occupant_id):
+    """The authored record of the person a recruit's occupant id names, read
+    before the occupant is resolved as joined (#534); None when there is none."""
     from core.nql import occupants as _occupants
 
-    return _occupants.person_identity(
-        str(party.get("module") or ""),
-        str((party.get("worldConditions") or {}).get("currentLocationId") or ""),
-        str(npc_name or ""),
+    return _occupants.person_identity(str(party.get("module") or ""), str(occupant_id or ""))
+
+
+# Party companions by occupant id -------------------------------------------
+#
+# Every partyNPCs entry carries the occupant id of its person ("occupantId").
+# One planner decides what an updatePartyNPCs does, by ids, slot numbers and
+# entry equality only; one line builder assembles its engine lines; one
+# finishing step builds the sheet at commit; occupants.party_change sends the
+# lines. A row saved before ids has none: the party line numbers those rows
+# as [slot n], counted from the roster the turn's DM note showed.
+
+_PARTY_ERROR_TAIL = (
+    "Later actions from this response have not executed. Do not repeat "
+    "earlier completed actions."
+)
+
+
+def turn_key(invocation_claim):
+    """The turn identity a TurnRoster pair is keyed by ("" without one)."""
+    return str(getattr(invocation_claim, "logical_invocation_id", "") or "").strip()
+
+
+def _current_roster():
+    party = safe_json_load("party_tracker.json")
+    roster = party.get("partyNPCs") if isinstance(party, dict) else None
+    return copy.deepcopy(roster) if isinstance(roster, list) else []
+
+
+class TurnRoster:
+    """The roster a turn's slot numbers count from: one (key, roster) pair.
+
+    The DM note build records the roster it rendered; bind() pairs it with
+    the turn's logical invocation id when the turn claim begins (the current
+    roster when no note rendered one). get() answers every response of that
+    turn, its needs_response follow-ups included, from the pair; a key with
+    no pair binds the current roster in its place. Nothing is kept under an
+    empty key. Load, restore and reset clear it."""
+
+    _lock = threading.Lock()
+    _pair = None
+    _rendered = None
+
+    @classmethod
+    def record(cls, roster):
+        with cls._lock:
+            cls._rendered = copy.deepcopy(roster) if isinstance(roster, list) else None
+
+    @classmethod
+    def bind(cls, key):
+        with cls._lock:
+            roster, cls._rendered = cls._rendered, None
+            if roster is None:
+                roster = _current_roster()
+            if key:
+                cls._pair = (key, roster)
+            return copy.deepcopy(roster)
+
+    @classmethod
+    def get(cls, key):
+        with cls._lock:
+            if key and cls._pair is not None and cls._pair[0] == key:
+                return copy.deepcopy(cls._pair[1])
+            roster = _current_roster()
+            if key:
+                cls._pair = (key, roster)
+            return copy.deepcopy(roster)
+
+    @classmethod
+    def clear(cls):
+        with cls._lock:
+            cls._pair = None
+            cls._rendered = None
+
+
+def _row_id(entry):
+    oid = entry.get("occupantId") if isinstance(entry, dict) else None
+    return oid if isinstance(oid, str) and oid else ""
+
+
+def _roster_ids(roster):
+    return {_row_id(entry) for entry in roster or [] if _row_id(entry)}
+
+
+def _slot_numbers(turn_roster):
+    """[(entry, n)]: the turn roster's rows without an id, numbered from 1."""
+    slots = []
+    for entry in turn_roster or []:
+        if isinstance(entry, dict) and not _row_id(entry):
+            slots.append((entry, len(slots) + 1))
+    return slots
+
+
+def party_rows(roster, turn_roster):
+    """Each row as the party line shows it: "Name (role) [occ:...]", or
+    "Name (role) [slot n]" numbered from the turn roster ("Name (role)" for
+    a row without an id that the turn roster does not hold)."""
+    slots = _slot_numbers(turn_roster)
+    used = set()
+    rows = []
+    for entry in roster or []:
+        if not isinstance(entry, dict):
+            continue
+        text = "%s (%s)" % (entry.get("name"), entry.get("role"))
+        if _row_id(entry):
+            rows.append("%s [%s]" % (text, _row_id(entry)))
+            continue
+        number = next((n for e, n in slots if n not in used and e == entry), None)
+        if number is not None:
+            used.add(number)
+            text += " [slot %d]" % number
+        rows.append(text)
+    return rows
+
+
+def party_note_lines(party_tracker, world, turn_roster, *, record=False):
+    """(party_span, orphan_sentence) for the DM note, the validator and the
+    corrections: "Party NPCs: <rows>." and, whenever joined people of this
+    module are carried by no roster row, the sentence that goes
+    after Party stats ("" when there are none). Only the DM note build
+    passes record=True, which keeps the rendered roster for TurnRoster."""
+    from core.nql import occupants as _occupants
+
+    party = party_tracker if isinstance(party_tracker, dict) else {}
+    roster = party.get("partyNPCs")
+    roster = roster if isinstance(roster, list) else []
+    if record:
+        TurnRoster.record(roster)
+    rows = party_rows(roster, turn_roster)
+    span = "Party NPCs: %s." % (", ".join(rows) if rows else "None")
+    orphans = _occupants.party_orphans(world, str(party.get("module") or ""), _roster_ids(roster))
+    if not orphans:
+        return span, ""
+    listed = "; ".join("%s (%s)" % (o.get("id"), o.get("name")) for o in orphans)
+    if any(isinstance(entry, dict) and not _row_id(entry) for entry in roster):
+        sentence = (
+            " Joined people with no party id (each may be the world person of a [slot] "
+            "companion above): %s. When a [slot] companion who is one of them leaves, pass "
+            "that id with the slot. Use returnOccupant only for someone who already left "
+            "the party in the story and is not a [slot] companion." % listed
+        )
+    else:
+        sentence = (
+            " Joined people with no party id: %s. Use returnOccupant for someone who already "
+            "left the party in the story, or add them again by id if they are with the party."
+            % listed
+        )
+    return span, sentence
+
+
+def _party_error(operation, text):
+    """A refused updatePartyNPCs as the DM is told it (with the standard tail)."""
+    return "Party Error: updatePartyNPCs %s did not complete: %s Nothing changed in the party roster. %s" % (
+        operation if operation in ("add", "remove") else "change", text, _PARTY_ERROR_TAIL,
     )
 
 
-def update_party_npcs(party_tracker_data, operation, npc):
-    """Update NPC party members (add or remove). Returns False only when an
-    add's character sheet could not be built (nothing changed), else True."""
+def _party_sheet_path(module, name):
+    """The sheet path a companion name resolves to (the name lookup the
+    sheets already use; the sheet gate keeps it one-to-one)."""
+    from updates.update_character_info import find_character_file_fuzzy, normalize_character_name
+
+    name = str(name or "")
+    path_manager = ModulePathManager(str(module or "").replace(" ", "_"))
+    return path_manager.get_character_path(
+        find_character_file_fuzzy(name) or normalize_character_name(name)
+    )
+
+
+def _party_id_suffix(invocation_claim, action_context):
+    """c<t>i<k> for an id built while no world can be read: t the first 8
+    characters of the hex after the last ":" of the turn's logical
+    invocation id (a fresh uuid hex without one), k the action index."""
+    turn_id = turn_key(invocation_claim)
+    hex_part = turn_id.rpartition(":")[2][:8] if turn_id else uuid4().hex[:8]
+    index = (action_context or {}).get("current_index") if isinstance(action_context, dict) else None
+    return "c%si%d" % (hex_part, index if isinstance(index, int) else 0)
+
+
+def _new_party_id(name, module, location, world, taken, id_suffix):
+    """A new person's id here: the name's slug at this place (-2, -3 ... when
+    taken); with no world, the slug with the typed suffix."""
+    from core.nql import occupants as _occupants
+    from utils.roster_conversion import slug
+
+    place = _occupants.place_id(module, location or "unplaced")
+    taken = set(taken) | {
+        o.get("id") for o in (world or {}).get("occupants") or [] if isinstance(o, dict)
+    }
+    stem = slug(name)
+    if world is None:
+        stem = "%s-%s" % (stem, id_suffix or "c%si0" % uuid4().hex[:8])
+    return _occupants._unique_id(place, stem, taken)
+
+
+def build_lines(kind, occupant_id, display_name, module, location, world, *, reason=None):
+    """The engine lines of one planned party change, the only place they
+    are assembled: at plan time, and at a staged commit with the stored
+    kind. A join resolves the person as joined (a "new" one is created here
+    first); a re-add of a companion whose person was left behind (present,
+    not joined) joins it again. A leave brings the person back here: an id
+    of another module creates a new person here (that module's person stays
+    joined); a joined person returns with its join reason, moved here when
+    elsewhere; a person present but not joined is moved here; a person with
+    another recorded fate gets no line (the fate stands); an id the world
+    does not hold is created here."""
+    from core.nql import occupants as _occupants
+    from utils.roster_conversion import q
+
+    oid = str(occupant_id or "")
+    if not oid:
+        return []
+    place = _occupants.place_id(module, location or "unplaced")
+    why = _occupants._reason(reason)
+    join = "resolve occupant %s as joined%s;" % (q(oid), " because %s" % q(why) if why else "")
+
+    def create(ident):
+        return "create occupant %s named %s at %s { person; attitude friendly; };" % (
+            q(ident), q(str(display_name or "")), q(place))
+
+    def move():
+        return "move occupant %s to %s;" % (q(oid), q(place))
+
+    occupant = _occupants.world_occupant(world, oid)
+    if kind == "noop":
+        if occupant is not None and occupant.get("count") != 0 and _occupants.joined_entry(occupant) is None:
+            return [join]
+        return []
+    if kind == "join":
+        return [join]
+    if kind == "join_new":
+        return [create(oid), join]
+    if kind != "leave":
+        return []
+    if not oid.startswith("occ:%s/" % str(module or "").replace(" ", "_")):
+        return [create(_new_party_id(display_name, module, location, world, (), None))]
+    if occupant is None:
+        return [create(oid)]
+    entry = _occupants.joined_entry(occupant)
+    if entry is not None:
+        lines = ["return occupant %s from joined%s;" % (
+            q(oid), " %s" % q(entry["reason"]) if entry.get("reason") else "")]
+        if occupant.get("location") != place:
+            lines.append(move())
+        return lines
+    if occupant.get("count") != 0 and occupant.get("location") != place:
+        return [move()]
+    return []
+
+
+def plan_party_change(roster_before, parameters, world, *, turn_roster, module, location,
+                      request_id, id_suffix=None, frozen_kind=None):
+    """What one updatePartyNPCs does, decided by ids, slot numbers and entry
+    equality only, with no write: exactly one outcome {"kind": "noop" |
+    "join" | "heal" | "leave" | "correction", ...}. "outcome_kind" is the
+    stored kind ("join_new" for an add of "new"). `world` is the engine
+    document (party_world), or None when neither the engine nor
+    live_state.json can be read. `turn_roster` numbers the [slot] rows.
+    `id_suffix` is the typed suffix of an id built with no world. With
+    `frozen_kind` (a staged commit) nothing is validated: the stored kind and
+    occupant id give the engine lines at this location."""
+    from core.nql import occupants as _occupants
+
+    p = parameters if isinstance(parameters, dict) else {}
+    operation = p.get("operation")
+    npc = p.get("npc") if isinstance(p.get("npc"), dict) else {}
+    context = p.get("lifecycleContext")
+    reason = context.get("reason") if isinstance(context, dict) else None
+    roster = [entry for entry in roster_before] if isinstance(roster_before, list) else []
+    oid = p.get("occupantId")
+    oid = oid.strip() if isinstance(oid, str) else ""
+    base = {
+        "roster_before": copy.deepcopy(roster),
+        "roster_after": copy.deepcopy(roster),
+        "turn_roster": copy.deepcopy(turn_roster or []),
+        "request_id": request_id,
+        "module": module,
+        "location": location,
+        "reason": reason,
+        "engine_lines": [],
+    }
+
+    def outcome(kind, outcome_kind, **fields):
+        result = dict(copy.deepcopy(base), kind=kind, outcome_kind=outcome_kind)
+        result.update(fields)
+        return result
+
+    def refused(text):
+        return outcome("correction", None, text=text)
+
+    def lines(kind, ident, name):
+        return build_lines(kind, ident, name, module, location, world, reason=reason)
+
+    if frozen_kind is not None:
+        name = npc.get("name")
+        return outcome("join" if frozen_kind == "join_new" else frozen_kind, frozen_kind,
+                       occupant_id=oid or None, display_name=name,
+                       engine_lines=lines(frozen_kind, oid, name))
+
+    carried = _roster_ids(roster)
     if operation == "add":
-        # Get the correct module from party tracker
-        module_name = party_tracker_data.get("module", "").replace(" ", "_")
-        path_manager = ModulePathManager(module_name)
-        
-        # Use fuzzy matching to find the NPC file
-        from updates.update_character_info import find_character_file_fuzzy
-        matched_name = find_character_file_fuzzy(npc['name'])
-        
-        if matched_name:
-            npc_file = path_manager.get_character_path(matched_name)
+        name = str(npc.get("name") or "")
+        if oid and oid in carried:
+            # Already on the roster by this id: a silent no-op (#534).
+            row = next(entry for entry in roster if _row_id(entry) == oid)
+            return outcome("noop", "noop", occupant_id=oid, display_name=row.get("name"),
+                           engine_lines=lines("noop", oid, row.get("name")))
+        module_key = str(module or "").replace(" ", "_")
+        prefix = "occ:%s/" % module_key
+        parts = oid[len(prefix):].split("/") if oid.startswith(prefix) else []
+        if oid != "new" and not (len(parts) == 2 and all(parts)):
+            return refused(_not_recruitable(oid, world, module, location))
+        npc_path = _party_sheet_path(module, name)
+        for entry in roster:
+            if isinstance(entry, dict) and entry.get("name") and \
+                    _party_sheet_path(module, entry["name"]) == npc_path:
+                return refused(_already_with_party(name, entry, turn_roster))
+        sheet = safe_json_load(npc_path) if os.path.exists(npc_path) else None
+        display_name = (sheet.get("name") if isinstance(sheet, dict) else None) or name
+        role = npc.get("role", npc.get("class", "Companion"))
+
+        def joined(kind, outcome_kind, ident, engine_lines):
+            entry = {"name": display_name, "role": role, "occupantId": ident}
+            return outcome(kind, outcome_kind, roster_after=copy.deepcopy(roster) + [entry],
+                           entry=copy.deepcopy(entry), occupant_id=ident,
+                           display_name=display_name, npc_path=npc_path,
+                           engine_lines=engine_lines)
+
+        if oid == "new":
+            ident = _new_party_id(name, module, location, world, carried, id_suffix)
+            return joined("join", "join_new", ident, lines("join_new", ident, display_name))
+        if world is None:
+            # An engine outage never stops the roster: a well-formed id is
+            # taken as given.
+            return joined("join", "join", oid, lines("join", oid, display_name))
+        occupant = _occupants.world_occupant(world, oid)
+        if occupant is not None and occupant.get("kind") == "person" and occupant.get("count") != 0 \
+                and str(occupant.get("location") or "").startswith("loc:%s/" % module_key):
+            return joined("join", "join", oid, lines("join", oid, display_name))
+        if occupant is not None and any(o.get("id") == oid for o in _occupants.party_orphans(world, module, carried)):
+            # A joined person no row carries: the row is written, the world
+            # already has them joined.
+            return joined("heal", "heal", oid, [])
+        return refused(_not_recruitable(oid, world, module, location))
+
+    if operation == "remove":
+        slot = p.get("rosterSlot")
+        if isinstance(slot, str) and slot.strip().isdigit():
+            slot = int(slot.strip())
+        if not isinstance(slot, int) or isinstance(slot, bool):
+            slot = None
+        listing = " " + party_note_lines({"partyNPCs": roster, "module": module}, None, turn_roster)[0]
+        carrier = next((entry for entry in roster if oid and _row_id(entry) == oid), None)
+        if carrier is not None:
+            if slot is not None:
+                warning("PARTY: rosterSlot %s ignored; %s is carried by a roster row" % (slot, oid),
+                        category="character_updates")
+            removed, ident = carrier, oid
+        elif slot is not None:
+            removed = next((entry for entry, n in _slot_numbers(turn_roster) if n == slot), None)
+            if removed is None or removed not in roster:
+                slot_rows = party_rows([entry for entry in roster if not _row_id(entry)], turn_roster)
+                return refused("No companion in the party is [slot %d] now. Companions with a [slot]: %s."
+                               % (slot, ", ".join(slot_rows) or "none"))
+            if oid:
+                orphan_ids = {o.get("id") for o in _occupants.party_orphans(world, module, carried)}
+                if world is not None and oid not in orphan_ids:
+                    return refused("%s is not one of the joined people with no party id. Pass rosterSlot "
+                                   "alone for that companion, or with an id from that list.%s" % (oid, listing))
+                ident = oid
+            else:
+                ident = _new_party_id(removed.get("name"), module, location, world, carried, id_suffix)
+        elif oid:
+            return refused(
+                "No companion in the party carries %s. For a companion shown with a [slot], pass "
+                "rosterSlot (and this id if it is that companion's person). To return someone who "
+                "already left the party in the story, use returnOccupant.%s" % (oid, listing))
         else:
-            # If no match found, use the original name for potential creation
-            npc_file = path_manager.get_character_path(npc['name'])
-        
-        if not os.path.exists(npc_file):
-            # NPC file doesn't exist, so we need to create it
+            return refused("A remove names the companion by the occupantId or the rosterSlot the "
+                           "party line shows.%s" % listing)
+        roster_after = copy.deepcopy(roster)
+        roster_after.remove(removed)
+        name = removed.get("name")
+        return outcome("leave", "leave", roster_after=roster_after, removed_entry=copy.deepcopy(removed),
+                       occupant_id=ident, display_name=name, npc_path=_party_sheet_path(module, name),
+                       engine_lines=lines("leave", ident, name))
+
+    # Neither add nor remove changes nothing, as before.
+    return outcome("noop", "noop", occupant_id=None)
+
+
+def party_change_companion(parameters, roster, turn_roster):
+    """The companion an updatePartyNPCs names, for the review facts: the
+    added npc's name, or the name of the roster row a remove's occupantId
+    or rosterSlot points at (the npc's name when neither is found)."""
+    p = parameters if isinstance(parameters, dict) else {}
+    npc = p.get("npc") if isinstance(p.get("npc"), dict) else {}
+    if p.get("operation") == "remove":
+        oid = p.get("occupantId")
+        row = next((entry for entry in roster or [] if oid and _row_id(entry) == oid), None)
+        slot = p.get("rosterSlot")
+        if row is None and isinstance(slot, int) and not isinstance(slot, bool):
+            row = next((entry for entry, n in _slot_numbers(turn_roster) if n == slot), None)
+        if isinstance(row, dict) and row.get("name"):
+            return row["name"]
+    return npc.get("name")
+
+
+def _not_recruitable(oid, world, module, location):
+    from core.nql import occupants as _occupants
+
+    place = _occupants.place_id(module, location)
+    people = [
+        o for o in (world or {}).get("occupants") or []
+        if isinstance(o, dict) and o.get("kind") == "person" and o.get("location") == place
+        and o.get("count") != 0
+    ]
+    listed = "; ".join("%s (%s)" % (o.get("id"), o.get("name")) for o in people) or "none"
+    return (
+        "%s is not a person you can recruit here. People present: %s. Pass one of those ids, "
+        "or \"new\" for a companion who is not listed." % (oid or "(no occupantId)", listed)
+    )
+
+
+def _already_with_party(name, entry, turn_roster):
+    row = (party_rows([entry], turn_roster) or [""])[0]
+    return (
+        "%s is already with the party (%s). No add is needed. To recruit a different person, "
+        "give them a distinct name." % (name, row)
+    )
+
+
+def _build_party_sheet(npc, name, party, identity):
+    """Build a companion's sheet in process (T035), as the travel path and
+    combat_builder build (#534), by the npc_builder.py command's argument
+    rules: a placeholder is blank, and a level other than a whole number
+    builds no sheet. The level defaults to the party's. Raises when no sheet
+    was accepted."""
+    from core.generators.npc_builder import UNSPECIFIED_ARGUMENTS, build_npc_file, load_schema
+    from updates.update_character_info import normalize_character_name
+
+    path_manager = ModulePathManager(str(party.get("module") or "").replace(" ", "_"))
+    default_level = ""
+    if not npc.get("level") and party.get("partyMembers"):
+        player_file = path_manager.get_character_path(
+            normalize_character_name(str(party["partyMembers"][0]))
+        )
+        if os.path.exists(player_file):
             try:
-                # Get party level as default if no level specified
-                default_level = ''
-                if not npc.get('level'):
-                    # Get the first party member's level as default
-                    if party_tracker_data.get("partyMembers"):
-                        player_name = party_tracker_data["partyMembers"][0]
-                        # Normalize name for file access
-                        from updates.update_character_info import normalize_character_name
-                        player_name_normalized = normalize_character_name(player_name)
-                        player_file = path_manager.get_character_path(player_name_normalized)
-                        if os.path.exists(player_file):
-                            try:
-                                from utils.encoding_utils import safe_json_load
-                                player_data = safe_json_load(player_file)
-                                if player_data and 'level' in player_data:
-                                    default_level = str(player_data['level'])
-                                    debug(f"STATE_CHANGE: Using party level {default_level} as default for NPC {npc['name']}", category="character_updates")
-                            except Exception as e:
-                                warning(f"FAILURE: Could not get party level, using default: {e}", category="character_updates")
-                
-                npc_level = str(npc.get('level') or default_level)
-
-                # Built in process, as the travel path and combat_builder build
-                # (#534), by the npc_builder.py command's argument rules: a
-                # placeholder is blank, and a level other than a whole number
-                # builds no sheet.
-                from core.generators.npc_builder import UNSPECIFIED_ARGUMENTS, build_npc_file, load_schema
-
-                def _given(value):
-                    text = str(value)
-                    return "" if text.strip().lower() in UNSPECIFIED_ARGUMENTS else text
-
-                level_text = _given(npc_level)
-                level = None
-                if level_text:
-                    if not level_text.isdigit():
-                        raise ValueError(f"level {npc_level!r} is not a whole number")
-                    level = int(level_text)
-                debug(f"STATE_CHANGE: Building NPC {npc['name']}: {npc.get('race', '')} {npc.get('class', '')} {npc_level} {npc.get('background', '')}", category="character_updates")
-                schema = load_schema("schemas/char_schema.json")
-                if not schema:
-                    raise RuntimeError("NPC character schema is unavailable")
-                sheet = build_npc_file(
-                    npc['name'],
-                    schema,
-                    _given(npc.get('race', '')),
-                    _given(npc.get('class', '')),
-                    level,
-                    str(npc.get('background', '')),
-                    npc_identity=_recruit_identity(party_tracker_data, npc['name']),
-                )
-                if not sheet:
-                    raise RuntimeError("no sheet was accepted")
-                info(f"SUCCESS: NPC profile created for {npc['name']}", category="character_updates")
-            except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
-                # A superseded live turn ends the turn by its own handler (#893).
-                raise
+                player_data = safe_json_load(player_file)
+                if player_data and "level" in player_data:
+                    default_level = str(player_data["level"])
+                    debug(f"STATE_CHANGE: Using party level {default_level} as default for NPC {name}", category="character_updates")
             except Exception as e:
-                error(f"FAILURE: Failed to create NPC profile for {npc['name']}: {e}", category="character_updates")
-                return False
+                warning(f"FAILURE: Could not get party level, using default: {e}", category="character_updates")
+    npc_level = str(npc.get("level") or default_level)
 
-        # Now we can add the NPC to the party
-        # Create entry matching the party_schema.json requirements (name and role)
-        npc_entry = {
-            "name": npc.get('name'),
-            "role": npc.get('role', npc.get('class', 'Companion'))  # Use role if provided, else class, else default
-        }
-        
-        # Load the actual NPC data to get the correct display name
-        from utils.encoding_utils import safe_json_load
-        from updates.update_character_info import normalize_character_name, find_character_file_fuzzy
-        
-        # Use fuzzy matching to find the correct NPC file
-        matched_name = find_character_file_fuzzy(npc['name'])
-        if matched_name:
-            npc_file = path_manager.get_character_path(matched_name)
-        else:
-            # Fallback to normalized name if no match found
-            normalized_name = normalize_character_name(npc['name'])
-            npc_file = path_manager.get_character_path(normalized_name)
-        
-        if os.path.exists(npc_file):
-            npc_data = safe_json_load(npc_file)
-            if npc_data and 'name' in npc_data:
-                # Use the name from the character file for consistency
-                npc_entry['name'] = npc_data['name']
-                debug(f"STATE_CHANGE: Using character file name '{npc_data['name']}' for party tracker", category="character_updates")
-        
-        # Idempotent add: skip if this NPC (by resolved display name) is already
-        # on the roster, so a duplicate add is a true no-op (T105 lifecycle relies
-        # on before/after roster equality to decide whether to fire).
-        _existing_names = {
-            str(x.get("name")) for x in party_tracker_data["partyNPCs"]
-        }
-        if npc_entry["name"] not in _existing_names:
-            party_tracker_data["partyNPCs"].append(npc_entry)
-    elif operation == "remove":
-        party_tracker_data["partyNPCs"] = [x for x in party_tracker_data["partyNPCs"] if x["name"] != npc["name"]]
+    def _given(value):
+        text = str(value)
+        return "" if text.strip().lower() in UNSPECIFIED_ARGUMENTS else text
 
-    safe_json_dump(party_tracker_data, "party_tracker.json")
-    info(f"STATE_CHANGE: Party NPCs updated - {operation} {npc['name']}", category="character_updates")
-    return True
+    level_text = _given(npc_level)
+    level = None
+    if level_text:
+        if not level_text.isdigit():
+            raise ValueError(f"level {npc_level!r} is not a whole number")
+        level = int(level_text)
+    debug(f"STATE_CHANGE: Building NPC {name}: {npc.get('race', '')} {npc.get('class', '')} {npc_level} {npc.get('background', '')}", category="character_updates")
+    schema = load_schema("schemas/char_schema.json")
+    if not schema:
+        raise RuntimeError("NPC character schema is unavailable")
+    sheet = build_npc_file(
+        name,
+        schema,
+        _given(npc.get("race", "")),
+        _given(npc.get("class", "")),
+        level,
+        str(npc.get("background", "")),
+        path_manager=path_manager,
+        npc_identity=identity,
+    )
+    if not isinstance(sheet, dict):
+        raise RuntimeError("no sheet was accepted")
+    info(f"SUCCESS: NPC profile created for {name}", category="character_updates")
+    return sheet
+
+
+def finish_party_entry(outcome, parameters, *, party):
+    """The one finishing step of a join or heal, run at commit on every path
+    (in place, a staged prepare, an adapted receipt), never in a projection:
+    build the sheet when none exists (T035; an existing sheet is never
+    rebuilt), take the entry name from the sheet's own name, and run the
+    sheet gate again on a built sheet's path. Returns the finished outcome,
+    or a correction when the built sheet is already a companion's (it stays
+    as an unbound sheet). Raises when no sheet could be built."""
+    if not isinstance(outcome, dict) or outcome.get("kind") not in ("join", "heal"):
+        return outcome
+    finished = copy.deepcopy(outcome)
+    module = finished.get("module")
+    path = finished.get("npc_path") or _party_sheet_path(module, finished.get("display_name"))
+    if not os.path.exists(path):
+        p = parameters if isinstance(parameters, dict) else {}
+        npc = p.get("npc") if isinstance(p.get("npc"), dict) else {}
+        name = str(npc.get("name") or finished.get("display_name") or "")
+        identity = None
+        if finished.get("outcome_kind") != "join_new":
+            identity = _recruit_identity(party, finished.get("occupant_id"))
+        sheet = _build_party_sheet(npc, name, party, identity)
+        built_name = sheet.get("name") or name
+        path = _party_sheet_path(module, built_name)
+        for entry in finished.get("roster_before") or []:
+            if isinstance(entry, dict) and entry.get("name") and _party_sheet_path(module, entry["name"]) == path:
+                finished.update(kind="correction", outcome_kind=None, engine_lines=[],
+                                roster_after=copy.deepcopy(finished.get("roster_before") or []),
+                                text=_already_with_party(built_name, entry, finished.get("turn_roster")))
+                return finished
+    sheet = safe_json_load(path) if os.path.exists(path) else None
+    name = (sheet.get("name") if isinstance(sheet, dict) else None) or finished.get("display_name")
+    if name != finished.get("display_name"):
+        debug(f"STATE_CHANGE: Using character file name '{name}' for party tracker", category="character_updates")
+    finished["display_name"] = name
+    finished["npc_path"] = path
+    finished["sheet"] = copy.deepcopy(sheet) if isinstance(sheet, dict) else None
+    finished["entry"]["name"] = name
+    finished["roster_after"] = copy.deepcopy(finished.get("roster_before") or []) + [copy.deepcopy(finished["entry"])]
+    if finished.get("outcome_kind") == "join_new":
+        # The created person takes the companion's final name.
+        finished["engine_lines"] = build_lines(
+            "join_new", finished.get("occupant_id"), name, module, finished.get("location"), None,
+            reason=finished.get("reason"),
+        )
+    return finished
+
+
+def update_party_npcs(party_tracker_data, parameters, *, turn_roster, request_id, id_suffix=None):
+    """The in-place updatePartyNPCs: plan it on the world, finish a join or
+    heal (its sheet) and write the roster. Returns the outcome (the caller
+    fires its hooks by kind and sends its engine lines), or None only when
+    an add's character sheet could not be built (nothing changed)."""
+    from core.nql import occupants as _occupants
+
+    module = str(party_tracker_data.get("module") or "")
+    location = str((party_tracker_data.get("worldConditions") or {}).get("currentLocationId") or "")
+    roster = party_tracker_data.get("partyNPCs")
+    world = _occupants.party_world(module, location)
+    outcome = plan_party_change(
+        roster if isinstance(roster, list) else [], parameters, world,
+        turn_roster=turn_roster, module=module, location=location,
+        request_id=request_id, id_suffix=id_suffix,
+    )
+    if outcome["kind"] in ("join", "heal"):
+        try:
+            outcome = finish_party_entry(outcome, parameters, party=party_tracker_data)
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            # A superseded live turn ends the turn by its own handler (#893).
+            raise
+        except Exception as e:
+            error(f"FAILURE: Failed to create NPC profile for {outcome.get('display_name')}: {e}", category="character_updates")
+            return None
+    if outcome["kind"] in ("join", "heal", "leave"):
+        party_tracker_data["partyNPCs"] = copy.deepcopy(outcome["roster_after"])
+        safe_json_dump(party_tracker_data, "party_tracker.json")
+        info(f"STATE_CHANGE: Party NPCs updated - {outcome['kind']} {outcome.get('display_name')} ({outcome.get('occupant_id')})", category="character_updates")
+    return outcome
+
+
+def _party_receipt(outcome, parameters, operation_id):
+    path = outcome.get("npc_path") or ""
+    sheet = outcome.get("sheet")
+    if sheet is None and path and os.path.exists(path):
+        sheet = safe_json_load(path)
+    return {
+        "kind": "updatePartyNPCs",
+        "operation_id": operation_id,
+        "phase": "sheet_ready",
+        "operation": parameters.get("operation"),
+        "npc_name": outcome.get("display_name"),
+        "npc_path": path,
+        "sheet": copy.deepcopy(sheet) if isinstance(sheet, dict) else None,
+        "roster_before": copy.deepcopy(outcome["roster_before"]),
+        "roster_after": copy.deepcopy(outcome["roster_after"]),
+        "lifecycle_context": copy.deepcopy(parameters.get("lifecycleContext")),
+        "lifecycle_status": "pending",
+        "occupant_id": outcome.get("occupant_id"),
+        "outcome_kind": outcome.get("outcome_kind"),
+    }
 
 
 def prepare_party_npc_update(parameters, operation_id):
-    """Freeze one roster mutation and its canonical sheet before movement."""
+    """Freeze one roster change, planned like the in-place one, and its
+    canonical sheet before movement. The engine lines are built at apply,
+    at the commit location, from the receipt's frozen fields."""
+    from core.nql import occupants as _occupants
+
     operation = parameters.get("operation")
-    npc = parameters.get("npc")
-    if operation not in {"add", "remove"} or not isinstance(npc, dict):
-        raise ValueError("updatePartyNPCs requires add/remove and an npc object")
-    npc_name = npc.get("name")
-    if not isinstance(npc_name, str) or not npc_name.strip():
-        raise ValueError("updatePartyNPCs requires an exact NPC name")
+    if operation not in {"add", "remove"}:
+        raise ValueError("updatePartyNPCs requires add or remove")
     if operation == "add":
+        npc = parameters.get("npc")
+        npc_name = npc.get("name") if isinstance(npc, dict) else None
+        if not isinstance(npc_name, str) or not npc_name.strip():
+            raise ValueError("updatePartyNPCs add requires an exact NPC name")
         from updates.update_character_info import name_refusal
         refusal = name_refusal(npc_name)
         if refusal:
@@ -3097,99 +3649,71 @@ def prepare_party_npc_update(parameters, operation_id):
     if not isinstance(party, dict) or not isinstance(party.get("partyNPCs"), list):
         raise RuntimeError("party roster is unavailable")
     roster_before = copy.deepcopy(party["partyNPCs"])
-    module_name = str(party.get("module", "")).replace(" ", "_")
-    path_manager = ModulePathManager(module_name)
-    from updates.update_character_info import (
-        find_character_file_fuzzy,
-        normalize_character_name,
+    module = str(party.get("module") or "")
+    location = str((party.get("worldConditions") or {}).get("currentLocationId") or "")
+    world = _occupants.party_world(module, location, create=False)
+    outcome = plan_party_change(
+        roster_before, parameters, world, turn_roster=roster_before,
+        module=module, location=location, request_id="dm:%s:party" % operation_id,
     )
+    if outcome["kind"] in ("join", "heal"):
+        outcome = finish_party_entry(outcome, parameters, party=party)
+    if outcome["kind"] == "correction":
+        raise ValueError(outcome["text"])
+    return _party_receipt(outcome, parameters, operation_id)
 
-    matched_name = find_character_file_fuzzy(npc_name)
-    npc_path = path_manager.get_character_path(
-        matched_name or normalize_character_name(npc_name)
-    )
-    sheet = safe_json_load(npc_path) if os.path.exists(npc_path) else None
-    if operation == "add" and not isinstance(sheet, dict):
-        from core.generators.npc_builder import build_npc_file, load_schema
 
-        schema = load_schema("schemas/char_schema.json")
-        if not isinstance(schema, dict):
-            raise RuntimeError("NPC character schema is unavailable")
-        party_level = None
-        members = party.get("partyMembers") or []
-        if members:
-            player_path = path_manager.get_character_path(
-                normalize_character_name(str(members[0]))
-            )
-            player_sheet = safe_json_load(player_path)
-            if isinstance(player_sheet, dict):
-                party_level = player_sheet.get("level")
-        sheet = build_npc_file(
-            npc_name,
-            schema,
-            npc.get("race"),
-            npc.get("class"),
-            npc.get("level") or party_level,
-            npc.get("background"),
-            path_manager=path_manager,
-            npc_identity=_recruit_identity(party, npc_name),
-        )
-        if not isinstance(sheet, dict):
-            raise RuntimeError("required NPC sheet was not accepted")
-        resolved_name = sheet.get("name") or npc_name
-        npc_path = path_manager.get_character_path(
-            normalize_character_name(resolved_name)
-        )
-        sheet = safe_json_load(npc_path) or sheet
-    elif operation == "remove" and not isinstance(sheet, dict):
-        # Removal still uses the canonical roster display identity. A missing
-        # sheet is retained as an explicit lifecycle-unavailable fact rather
-        # than causing code to invent another NPC identity.
-        roster_match = next(
-            (
-                item
-                for item in roster_before
-                if isinstance(item, dict) and item.get("name") == npc_name
-            ),
-            None,
-        )
-        if roster_match is None:
-            raise ValueError("NPC is not present in the party roster")
+def _adapt_party_receipt(receipt, party, record_index):
+    """A receipt staged before occupant ids (no outcome_kind), adapted
+    through the planner at the commit location: the added row (the
+    roster_after entry absent from roster_before, by equality) as an add of
+    "new"; the removed row (the roster_before entry absent from
+    roster_after) as a leave with no link, so a new person is created here;
+    no difference: a noop. The receipt takes the finished fields in place.
+    Returns False for a correction (the receipt is then dropped)."""
+    from core.nql import occupants as _occupants
 
-    display_name = (
-        sheet.get("name") if isinstance(sheet, dict) else npc_name
-    ) or npc_name
-    roster_after = copy.deepcopy(roster_before)
-    if operation == "add":
-        if not any(
-            isinstance(item, dict) and item.get("name") == display_name
-            for item in roster_after
-        ):
-            roster_after.append(
-                {
-                    "name": display_name,
-                    "role": npc.get("role", npc.get("class", "Companion")),
-                }
-            )
+    before = receipt.get("roster_before") if isinstance(receipt.get("roster_before"), list) else []
+    after = receipt.get("roster_after") if isinstance(receipt.get("roster_after"), list) else []
+    added = [entry for entry in after if entry not in before]
+    removed = [entry for entry in before if entry not in after]
+    module = str(party.get("module") or "")
+    location = str((party.get("worldConditions") or {}).get("currentLocationId") or "")
+    context = receipt.get("lifecycle_context")
+    if receipt.get("operation") == "add" and added and isinstance(added[0], dict):
+        parameters = {"operation": "add", "occupantId": "new",
+                      "npc": {"name": added[0].get("name"), "role": added[0].get("role")},
+                      "lifecycleContext": context}
+    elif receipt.get("operation") == "remove" and removed:
+        slot = next((n for entry, n in _slot_numbers(before) if entry == removed[0]), None)
+        if slot is None:
+            return False
+        parameters = {"operation": "remove", "rosterSlot": slot, "lifecycleContext": context}
     else:
-        roster_after = [
-            item
-            for item in roster_after
-            if not isinstance(item, dict) or item.get("name") != npc_name
-        ]
-    return {
-        "kind": "updatePartyNPCs",
-        "operation_id": operation_id,
-        "phase": "sheet_ready",
-        "operation": operation,
-        "npc_name": display_name,
-        "npc_path": npc_path,
-        "sheet": copy.deepcopy(sheet),
-        "roster_before": roster_before,
-        "roster_after": roster_after,
-        "lifecycle_context": copy.deepcopy(parameters.get("lifecycleContext")),
-        "lifecycle_status": "pending",
-    }
+        receipt.update(occupant_id=None, outcome_kind="noop", engine_lines=[])
+        return True
+    world = _occupants.party_world(module, location, create=False)
+    op_hex = str(receipt.get("operation_id") or "").replace("-", "")[:8]
+    outcome = plan_party_change(
+        before, parameters, world, turn_roster=before, module=module, location=location,
+        request_id="dm:%s:party" % receipt.get("operation_id"),
+        id_suffix="c%si%d" % (op_hex, record_index) if op_hex else None,
+    )
+    if outcome["kind"] in ("join", "heal"):
+        outcome = finish_party_entry(outcome, parameters, party=party)
+    if outcome["kind"] == "correction":
+        warning("TRAVEL: a staged party change from before occupant ids could not be "
+                "adapted; dropped: %s" % outcome.get("text"), category="location_transitions")
+        return False
+    receipt.update(
+        occupant_id=outcome.get("occupant_id"),
+        outcome_kind=outcome.get("outcome_kind"),
+        roster_after=copy.deepcopy(outcome["roster_after"]),
+        npc_name=outcome.get("display_name"),
+        npc_path=outcome.get("npc_path") or receipt.get("npc_path"),
+        engine_lines=list(outcome.get("engine_lines") or []),
+    )
+    return True
 
 
 def _apply_party_npc_lifecycle(
@@ -3199,8 +3723,12 @@ def _apply_party_npc_lifecycle(
     npc_file,
     lifecycle_context,
     source_turn_id,
+    *,
+    seed_profile=True,
 ):
-    """Best-effort post-commit lifecycle hook; never rolls back the roster."""
+    """Best-effort post-commit lifecycle hook; never rolls back the roster.
+    seed_profile=False (a heal: the row of a person who already joined) marks
+    the arrival without seeding the T107 profile."""
     try:
         from core.npc.profile_service import seed_profile_best_effort
         from core.npc.relationship_store import RelationshipStore, game_day_ordinal
@@ -3299,13 +3827,14 @@ def _apply_party_npc_lifecycle(
                     "expectedDuration", "unknown"
                 ),
             }
-            seed_profile_best_effort(
-                store=store,
-                npc_id=npc_id,
-                npc_name=npc_name,
-                sheet=sheet,
-                lifecycle=lifecycle_source,
-            )
+            if seed_profile:
+                seed_profile_best_effort(
+                    store=store,
+                    npc_id=npc_id,
+                    npc_name=npc_name,
+                    sheet=sheet,
+                    lifecycle=lifecycle_source,
+                )
         elif operation == "remove":
             store.mark_departed(
                 npc_id,
@@ -3331,7 +3860,7 @@ def _apply_party_npc_lifecycle(
             complete = (
                 identity.get("active") is True
                 and edge_key in final["relationships"]
-                and npc_id in final["profiles"]
+                and (npc_id in final["profiles"] or not seed_profile)
                 and final_event.get("kind") in {"join", "rejoin"}
                 and final_event.get("sourceTurnId") == source_turn_id
                 and (
@@ -3850,6 +4379,10 @@ _DROPPED_NPC_NOTICE = (
     "%s did not join the party: their character sheet could not be made. If "
     "it still matters, say so in your next message."
 )
+_DROPPED_NPC_LEAVE_NOTICE = (
+    "%s did not leave the party: the change could not be worked out. If it "
+    "still matters, say so in your next message."
+)
 # Raised from a travel prepare step, these are never a dropped change: the
 # turn was superseded, the save is read-only, or the provider refused (#855).
 _TRAVEL_PREPARE_PASSTHROUGH = (
@@ -4038,6 +4571,7 @@ def process_action(
     invocation_claim=None,
     action_context=None,
     level_up_context=None,
+    turn_roster=None,
 ):
     """Process an action based on its type
     
@@ -5050,14 +5584,8 @@ Please use a valid location that exists in the current area ({current_area_id}) 
 
 
     elif action_type == ACTION_UPDATE_PARTY_NPCS:
-        operation = parameters["operation"]
-        npc = parameters["npc"]
-        # Capture the roster before the commit so we can tell whether this action
-        # actually changed state (idempotent duplicate add / no-op remove must not
-        # trigger a lifecycle hook or a conversation-history refresh).
-        _roster_before = [
-            dict(x) for x in party_tracker_data.get("partyNPCs", [])
-        ]
+        operation = parameters.get("operation")
+        npc = parameters.get("npc") if isinstance(parameters.get("npc"), dict) else {}
         from updates.update_character_info import name_refusal
         from utils.status_words import NPC_STATUS_WORDS
         _refusal = name_refusal(npc.get("name")) if operation == "add" else None
@@ -5072,7 +5600,17 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 f"reserved engine name and has no status word ({', '.join(NPC_STATUS_WORDS)}).")})
             needs_conversation_history_update = True
             return create_return(status="needs_response", needs_update=True)
-        if update_party_npcs(party_tracker_data, operation, npc) is False:
+        if turn_roster is None:
+            turn_roster = TurnRoster.get(turn_key(invocation_claim))
+        _request_id = _engine_request_id(invocation_claim, action_context, "party")
+        _party_outcome = update_party_npcs(
+            party_tracker_data,
+            parameters,
+            turn_roster=turn_roster,
+            request_id=_request_id,
+            id_suffix=_party_id_suffix(invocation_claim, action_context),
+        )
+        if _party_outcome is None:
             # The add's sheet could not be built: nothing joined. The DM is told
             # so, as for a refused quest or storage step, and later actions of
             # this response do not run (#534).
@@ -5084,19 +5622,20 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 f"{_name} is not with the party yet; the player can ask again.")})
             needs_conversation_history_update = True
             return create_return(status="needs_response", needs_update=True)
-        _roster_after = party_tracker_data.get("partyNPCs", [])
-        _state_changed = _roster_after != _roster_before
-        # T105: best-effort NPC-voice lifecycle hook after the roster commit.
-        # Only fires when the roster actually changed (idempotent duplicate add /
-        # no-op remove is a true no-op). Always live and fail-open; it must never break
-        # the committed roster action.
-        if _state_changed:
+        if _party_outcome["kind"] == "correction":
+            conversation_history.append({"role": "user", "content": _party_error(operation, _party_outcome["text"])})
+            needs_conversation_history_update = True
+            return create_return(status="needs_response", needs_update=True)
+        # T105: best-effort NPC-voice lifecycle hook after the roster commit,
+        # fired by the outcome's kind: a join or heal is an arrival (a heal
+        # seeds no T107 profile), a leave a departure; a noop fires nothing.
+        # Always live and fail-open; it must never break the committed roster
+        # action.
+        if _party_outcome["kind"] in ("join", "heal", "leave"):
             needs_conversation_history_update = True
             try:
                 lifecycle_context = parameters.get("lifecycleContext")
-                source_turn_id = str(
-                    getattr(invocation_claim, "logical_invocation_id", "") or ""
-                ).strip()
+                source_turn_id = turn_key(invocation_claim)
                 if not source_turn_id:
                     warning(
                         "T105 NPC lifecycle hook skipped after roster commit: "
@@ -5104,31 +5643,14 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         category="character_updates",
                     )
                 else:
-                    npc_name = str(npc.get("name") or "")
-                    npc_file = ""
-                    try:
-                        _lc_module = party_tracker_data.get("module", "").replace(" ", "_")
-                        _lc_pm = ModulePathManager(_lc_module)
-                        from updates.update_character_info import (
-                            find_character_file_fuzzy,
-                            normalize_character_name,
-                        )
-                        _matched = find_character_file_fuzzy(npc_name)
-                        if _matched:
-                            npc_file = _lc_pm.get_character_path(_matched)
-                        else:
-                            npc_file = _lc_pm.get_character_path(
-                                normalize_character_name(npc_name)
-                            )
-                    except Exception:
-                        npc_file = ""
                     _apply_party_npc_lifecycle(
                         party_tracker_data,
-                        operation,
-                        npc_name,
-                        npc_file,
+                        "remove" if _party_outcome["kind"] == "leave" else "add",
+                        str(_party_outcome.get("display_name") or ""),
+                        str(_party_outcome.get("npc_path") or ""),
                         lifecycle_context,
                         source_turn_id,
+                        seed_profile=_party_outcome["kind"] == "join",
                     )
             except Exception as exc:
                 warning(
@@ -5136,20 +5658,15 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     % (type(exc).__name__, str(exc)),
                     category="character_updates",
                 )
-            # The companion's occupant follows the roster (P4-e): a join
-            # resolves the present person as joined, a leave brings the
-            # person back at this place. Best effort; never undoes the roster.
-            from core.nql import occupants as _occupants
+        # The companion's occupant follows the roster (P4-e) by the planned
+        # lines, for every outcome. Best effort; never undoes the roster.
+        from core.nql import occupants as _occupants
 
-            _occupants.party_change(
-                operation,
-                str(npc.get("name") or ""),
-                str(party_tracker_data.get("module") or ""),
-                str((party_tracker_data.get("worldConditions") or {}).get("currentLocationId") or ""),
-                _engine_request_id(invocation_claim, action_context, "party"),
-                reason=(parameters.get("lifecycleContext") or {}).get("reason")
-                if isinstance(parameters.get("lifecycleContext"), dict) else None,
-            )
+        _occupants.party_change(
+            _party_outcome["engine_lines"],
+            _request_id,
+            reason=_party_outcome.get("reason"),
+        )
 
     elif action_type == ACTION_UPDATE_ENCOUNTER:
         debug("STATE_CHANGE: Processing updateEncounter action", category="combat_processing")
@@ -6058,12 +6575,16 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             else:
                 _correction = _legacy.get("correction")
         if _occupant_action != ACTION_MOVE_BACKGROUND_NPC and _correction is None:
+            # A companion's person is not moved or returned here: they part
+            # ways through updatePartyNPCs. An unreadable roster refuses nothing.
+            _roster = party_tracker_data.get("partyNPCs")
             _outcome = _occupants.apply_dm_action(
                 _occupant_action,
                 _occupant_parameters,
                 _engine_request_id(invocation_claim, action_context, _occupant_action),
                 _module,
                 _location_id,
+                companion_ids=frozenset(_roster_ids(_roster)) if isinstance(_roster, list) else frozenset(),
             )
             if _outcome.get("ok"):
                 needs_conversation_history_update = True

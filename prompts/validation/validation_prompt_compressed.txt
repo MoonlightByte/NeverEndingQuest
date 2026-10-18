@@ -174,7 +174,8 @@ NARRATIVE ELABORATION: Location descriptions and NPC sketches are starting seeds
 }
 
 @PARTY_REVIEW_VALIDATION={
-  autonomy: Independent departure requires ALREADY ACCEPTED story grounding, never candidate-invented justification. Review ALL membership proposals incl generic partyNPCs replacement; prefer existing updatePartyNPCs lifecycle
+  autonomy: Independent departure requires ALREADY ACCEPTED story grounding, never candidate-invented justification. Review ALL membership proposals; genuine joining/leaving = existing updatePartyNPCs lifecycle (code refuses updatePartyTracker carrying partyNPCs)
+  party_ids: Do not judge occupantId values in updatePartyNPCs as invented: code checks them, and the literal "new" is valid for anyone not listed. In occupant actions, an id from the 'Joined people with no party id' list is valid. A returnOccupant of a person in the 'Joined people with no party id' list is invalid when that person is one of the party's current [slot] companions in the story.
   authority: Guardian approval != full validation or execution. Judge LATEST candidate against actual input/accepted context; preserve applicable prior constraints, current canonical evidence may supersede stale factual feedback
   rejection: Complete correction of latest draft, NEVER resurrect earlier rejected draft. Rejected drafts/feedback != accepted events or consent
 }
@@ -225,7 +226,7 @@ NARRATIVE ELABORATION: Location descriptions and NPC sketches are starting seeds
   rollCheck: {"characterName":str,"stat":"skill:<skill>"|"check:<ability>"|"save:<ability>"|"initiative","dc":int?,"mode":"advantage"|"disadvantage"?,"roller":"engine"?,"reason":str}
   updateTime: {"timeEstimate":int} #integer only, not string
   updatePlot: {"plotPointId":str,"newStatus":"in progress"|"completed"|"failed"|"reopened","plotImpact":str,"aheadReason":str optional}
-  updatePartyNPCs: {"operation":str,"npc":obj,"lifecycleContext":obj optional} #add: npc {"name"} required; "level" and "class"/"role" optional (engine uses the party level when level is omitted) - NEVER reject an add for a missing, chosen or differently labelled level/class/role. remove: npc {"name"} ONLY - NEVER demand level or class on a remove. lifecycleContext {"reason","departureKind","destination"} is optional on remove and its absence is NEVER a rejection
+  updatePartyNPCs: {"operation":str,"occupantId":str,"rosterSlot":int optional,"npc":obj,"lifecycleContext":obj optional} #add: npc {"name"} required, occupantId = a listed person's id or "new" (code checks it); "level" and "class"/"role" optional (engine uses the party level when level is omitted) - NEVER reject an add for a missing, chosen or differently labelled level/class/role. remove: the occupantId the party line shows, or rosterSlot for a [slot n] companion (with a listed joined person's id when that is the companion); npc optional - NEVER demand a name, level or class on a remove. lifecycleContext {"reason","departureKind","destination"} is optional on remove and its absence is NEVER a rejection
   resolveOccupant: {"occupantId":str,"outcome":str,"count":int optional,"reason":str} #outcome departed/fled/surrendered/defeated/died/joined; reason REQUIRED only for departed
   setOccupantAttitude: {"occupantId":str,"attitude":str} #friendly/indifferent/hostile
   moveOccupant: {"occupantId":str,"locationId":str}
@@ -272,7 +273,7 @@ NARRATIVE ELABORATION: Location descriptions and NPC sketches are starting seeds
   15:MULTIPLE updateCharacterInfo OK in actions array. Each updates ONE character. NEVER comma-separated names
   16:Actions go in "actions" array, NOT numbered keys like updateCharacterInfo_2, updateCharacterInfo_3
   17:Character-to-character item handoff = ONE transferItem per item (fromCharacter, toCharacter, itemName exactly as on the giver's supplied sheet, integer quantity); a trade = two transferItem actions. REJECT a handoff done with updateCharacterInfo on either character, with storageInteraction, or one-sided; never demand a container. Container operation then handoff of the retrieved items = storageInteraction then transferItem. Coins between party characters change hands with transferCurrency or splitCurrency.
-  18:Occupant actions: occupantId MUST be an id from the location data's occupants list (never invented); resolveOccupant departed needs a reason; attitude friendly/indifferent/hostile; count and other optional fields missing is NEVER a rejection; not for companions (updatePartyNPCs) nor for what a createEncounter defeated
+  18:Occupant actions: occupantId MUST be an id from the location data's occupants list or the 'Joined people with no party id' list (never invented); never a companion's id; resolveOccupant departed needs a reason; attitude friendly/indifferent/hostile; count and other optional fields missing is NEVER a rejection; not for companions (updatePartyNPCs) nor for what a createEncounter defeated
 }
 
 Evaluate last assistant response. Return JSON validation result.

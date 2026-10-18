@@ -855,15 +855,26 @@ def _here(root: str, place: str) -> Optional[Dict[str, Any]]:
 
 
 def apply_dm_action(action_type: str, parameters: Any, request_id: str, module: str,
-                    location_id: str, *, root: str = ".") -> Dict[str, Any]:
+                    location_id: str, *, root: str = ".",
+                    companion_ids: frozenset = frozenset()) -> Dict[str, Any]:
     """Send one typed DM action to the engine. Returns {"ok": bool,
     "correction": text or None}: a refusal comes back as a correction for
-    the DM; an unavailable engine is logged and the turn goes on."""
+    the DM; an unavailable engine is logged and the turn goes on.
+    `companion_ids` are the occupant ids the party roster carries (read by
+    the caller): a move or return of one of them is refused, since a
+    companion leaves the party only through updatePartyNPCs."""
     place = place_id(module, location_id)
     try:
         line, problem = dm_action_line(action_type, parameters, module)
         if problem:
             return {"ok": False, "correction": correction(action_type, problem, _here(root, place))}
+        oid = str((parameters or {}).get("occupantId") or "").strip()
+        if action_type in ("moveOccupant", "returnOccupant") and oid in companion_ids:
+            return {"ok": False, "correction": correction(
+                action_type,
+                "%s is a party companion. To part ways, use updatePartyNPCs remove. If they "
+                "travel with the party but are not shown as joined, add them again by this id" % oid,
+                _here(root, place))}
         if action_type == "moveOccupant":
             current = request(view=(place,), root=root)
             if not current or not current.get("ok"):
@@ -922,92 +933,116 @@ def settle_person(live: Dict[str, Any], module: str, place: str, npc_name: str) 
     return None
 
 
-def person_identity(module: str, location_id: str, npc_name: str, *,
-                    root: str = ".") -> Optional[Dict[str, Any]]:
-    """The authored record of the present person a recruit names, for the
-    NPC builder (#534): {"name", "description", "attitude"} from the npcs
-    entry at that person's own location, as written. The person is the one
-    party_change later resolves as joined (settle_person). None when no
-    present person or authored entry matches, or there is no document or
-    engine; a reader, so the document is never created."""
+def is_fallback_id(occupant_id: str) -> bool:
+    """An id a party add built while no world could be read: its last part
+    ends with the typed suffix -c<8 hex>i<index> (a turn's or a checkpoint's
+    hex and the action index). No authored record carries such an id."""
+    tail = str(occupant_id or "").rsplit("/", 1)[-1].rpartition("-")[2]
+    return (len(tail) > 10 and tail[0] == "c" and tail[9] == "i"
+            and all(c in "0123456789abcdef" for c in tail[1:9]) and tail[10:].isdigit())
+
+
+def person_identity(module: str, occupant_id: str, *, root: str = ".") -> Optional[Dict[str, Any]]:
+    """The authored record of the person an occupant id names, for the NPC
+    builder (#534): {"name", "description", "attitude"} from the npcs entry
+    at the location the id was authored at (its own location segment), as
+    written. None for a fallback id, when the document holds no such person
+    or no authored entry matches, or there is no document or engine; a
+    reader, so the document is never created."""
     try:
         module = (module or "").replace(" ", "_")
-        place = place_id(module, location_id)
-        current = request(view=(place,), root=root, create=False)
-        if not current or not current.get("ok"):
+        oid = str(occupant_id or "")
+        prefix = "occ:%s/" % module
+        if not oid.startswith(prefix) or is_fallback_id(oid):
             return None
-        live = current.get("live_state") or _load(root) or {}
-        person = settle_person(live, module, place, npc_name)
-        if person is None:
+        home = oid[len(prefix):].split("/", 1)[0]
+        live = party_world(module, home, create=False, root=root) or {}
+        person = next((o for o in live.get("occupants") or [] if o.get("id") == oid), None)
+        if person is None or person.get("kind") != "person":
             return None
-        home = str(person.get("location") or "").split("/", 1)[-1]
-        authored = _authored_entry(_authored(root).get(module, {}).get(home), str(person.get("id") or ""))
+        authored = _authored_entry(_authored(root).get(module, {}).get(home), oid)
         if not authored:
             return None
         identity = {key: authored[key] for key in ("name", "description", "attitude")
                     if isinstance(authored.get(key), str) and authored[key].strip()}
         return identity or None
     except Exception as exc:  # fail forward: the NPC is built without it
-        warning("OCCUPANTS: authored record for %s unavailable (%s)" % (npc_name, exc),
+        warning("OCCUPANTS: authored record for %s unavailable (%s)" % (occupant_id, exc),
                 category="location_transitions")
         return None
 
 
-def party_change(operation: str, npc_name: str, module: str, location_id: str, request_id: str,
-                 *, reason: Any = None, root: str = ".") -> Optional[Dict[str, Any]]:
-    """Keep a companion's occupant in step with updatePartyNPCs: an add
-    resolves the person present here as joined; a remove brings the person
-    back at this place (return from joined, moved here when the record is
-    elsewhere) or creates one. Never stops the roster change."""
+# Party companions ---------------------------------------------------------
+#
+# A companion's roster entry carries the occupant id of its person
+# (partyNPCs[].occupantId). The party change is planned by id in
+# core/ai/action_handler.py on the world read below; this module only
+# answers the typed reads and sends the planned lines.
+
+def party_world(module: str, location_id: str, *, create: bool = True,
+                root: str = ".") -> Optional[Dict[str, Any]]:
+    """The document a party change is planned on (occupants with id, kind,
+    location, count and tally): the engine's answer, else live_state.json
+    as it stands when the engine is unavailable, else None. With
+    create=False a missing document is never made."""
     try:
-        from utils.roster_conversion import q, slug
-        place = place_id(module, location_id)
-        current = request(view=(place,), root=root)
-        if not current or not current.get("ok"):
-            return None
-        live = current.get("live_state") or _load(root) or {}
-        why = _reason(reason)
-        if operation == "add":
-            person = settle_person(live, module, place, npc_name)
-            if person is None:
-                debug("OCCUPANTS: no present person occupant for companion %s; nothing to resolve"
-                      % npc_name, category="location_transitions")
-                return None
-            line = "resolve occupant %s as joined%s;" % (q(person["id"]), " because %s" % q(why) if why else "")
-        elif operation == "remove":
-            want = slug(npc_name)
-            prefix = "loc:%s/" % (module or "").replace(" ", "_")
-            back = None
-            for o in live.get("occupants") or []:
-                if not str(o.get("location") or "").startswith(prefix) or not _person_matches(o, want):
-                    continue
-                entry = next((e for e in o.get("tally") or [] if e.get("outcome") == "joined"), None)
-                if entry is not None:
-                    back = (o, entry)
-                    break
-            if back is not None:
-                o, entry = back
-                line = "return occupant %s from joined%s;" % (q(o["id"]), " %s" % q(entry["reason"]) if entry.get("reason") else "")
-                if o.get("location") != place:
-                    line += "\nmove occupant %s to %s;" % (q(o["id"]), q(place))
-            else:
-                taken = {o["id"] for o in live.get("occupants") or []}
-                ident = _unique_id(place, want, taken)
-                line = "create occupant %s named %s at %s { person; attitude friendly; };" % (q(ident), q(npc_name), q(place))
-        else:
-            return None
-        response = request(line, request_id, view=(place,), root=root)
+        response = request(view=(place_id(module, location_id),), root=root, create=create)
+        if response and response.get("ok") and isinstance(response.get("live_state"), dict):
+            return response["live_state"]
+    except Exception as exc:  # fail forward: the file on disk, or nothing
+        warning("OCCUPANTS: the party world read failed (%s)" % exc, category="location_transitions")
+    return _load(root)
+
+
+def world_occupant(world: Optional[Dict[str, Any]], occupant_id: str) -> Optional[Dict[str, Any]]:
+    """The occupant record this id names in the document, or None."""
+    for occupant in (world or {}).get("occupants") or []:
+        if isinstance(occupant, dict) and occupant.get("id") == occupant_id:
+            return occupant
+    return None
+
+
+def joined_entry(occupant: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The occupant's "joined" tally entry, or None."""
+    return next((e for e in occupant.get("tally") or []
+                 if isinstance(e, dict) and e.get("outcome") == "joined"), None)
+
+
+def party_orphans(world: Optional[Dict[str, Any]], module: str,
+                  carried: Any) -> List[Dict[str, Any]]:
+    """Joined people of this module that no roster row carries, by id: the
+    world's joined tally minus the roster's ids."""
+    prefix = "loc:%s/" % (module or "").replace(" ", "_")
+    carried = set(carried or ())
+    return [o for o in (world or {}).get("occupants") or []
+            if isinstance(o, dict) and o.get("kind") == "person"
+            and str(o.get("location") or "").startswith(prefix)
+            and joined_entry(o) is not None and o.get("id") not in carried]
+
+
+def party_change(engine_lines: List[str], request_id: str, *, reason: Any = None,
+                 root: str = ".") -> Optional[Dict[str, Any]]:
+    """Send the engine lines a party change was planned with (join, leave,
+    a re-join of a companion whose person was left behind). Nothing is
+    resolved here. A refusal or an unavailable engine is logged and never
+    undoes the roster change."""
+    if not engine_lines:
+        return None
+    text = "\n".join(engine_lines)
+    why = _reason(reason)
+    label = "%s (party change%s)" % (request_id, ": %s" % why if why else "")
+    try:
+        response = request(text, request_id, root=root)
         if response is None:
             return None
         if response.get("ok"):
-            info("OCCUPANTS: %s (%s %s): %s" % (request_id, operation, npc_name, line.replace("\n", " ")),
-                 category="location_transitions")
+            info("OCCUPANTS: %s: %s" % (label, text.replace("\n", " ")), category="location_transitions")
         else:
-            warning("OCCUPANTS: %s (%s %s) refused: %s" % (request_id, operation, npc_name, response.get("error")),
+            warning("OCCUPANTS: %s refused: %s (%s)" % (label, response.get("error"), text.replace("\n", " ")),
                     category="location_transitions")
         return response
     except Exception as exc:  # fail forward
-        warning("OCCUPANTS: party change for %s skipped (%s)" % (npc_name, exc), category="location_transitions")
+        warning("OCCUPANTS: %s skipped (%s)" % (label, exc), category="location_transitions")
         return None
 
 

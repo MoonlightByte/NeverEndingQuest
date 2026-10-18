@@ -28,45 +28,54 @@ def _roster_members(roster):
     return sorted(names)
 
 
-def membership_proposals(candidate: str, party: dict) -> list[dict]:
+def _projection_world(party):
+    """The party's world read for a projection: read-only, so a missing
+    live_state.json is neither created nor converted here."""
+    from core.nql import occupants
+
+    world = party.get("worldConditions") if isinstance(party.get("worldConditions"), dict) else {}
+    return occupants.party_world(
+        str(party.get("module") or ""), str(world.get("currentLocationId") or ""), create=False,
+    )
+
+
+def membership_proposals(candidate: str, party: dict, *, turn_roster=None) -> list[dict]:
     """Inspect already-normalized actions, never narration or player prose.
 
-    Proposed rosters are a transient structural projection, not identity
-    resolution or an executable replacement for the existing state writer.
-    Preserve each change even when a later action would reverse it.
+    Proposed rosters are a transient structural projection: each
+    updatePartyNPCs is planned by the same planner as the change itself
+    (its unfinished roster_after; a refused change leaves the roster as it
+    is), with no sheet built and no file written. Preserve each change even
+    when a later action would reverse it. `turn_roster` numbers the [slot]
+    rows (default: the party's roster).
     """
+    from core.ai.action_handler import plan_party_change
+
     actions = json.loads(candidate).get("actions", [])
     roster = copy.deepcopy(party.get("partyNPCs", []))
+    turn = copy.deepcopy(turn_roster) if isinstance(turn_roster, list) else copy.deepcopy(roster)
+    world = None
+    world_read = False
+    world_conditions = party.get("worldConditions") if isinstance(party.get("worldConditions"), dict) else {}
     proposals = []
     for index, action in enumerate(actions):
-        kind = action.get("action")
-        parameters = action.get("parameters")
-        if kind == "updatePartyNPCs":
-            after = None
-            if isinstance(parameters, dict) and _roster_members(roster) is not None:
-                npc = parameters.get("npc")
-                operation = parameters.get("operation")
-                if isinstance(npc, dict) and isinstance(npc.get("name"), str):
-                    if operation == "remove":
-                        after = [m for m in roster if m["name"] != npc["name"]]
-                    elif operation == "add":
-                        after = copy.deepcopy(roster)
-                        if npc["name"] not in _roster_members(roster):
-                            after.append({
-                                "name": npc["name"],
-                                "role": npc.get("role", npc.get("class", "Companion")),
-                            })
-        elif kind == "updatePartyTracker" and isinstance(parameters, dict) and "partyNPCs" in parameters:
-            after = parameters["partyNPCs"]
-            before_names, after_names = _roster_members(roster), _roster_members(after)
-            if before_names is not None and after_names is not None and before_names == after_names:
-                roster = copy.deepcopy(after)
-                continue
-        else:
+        if action.get("action") != "updatePartyNPCs":
             continue
+        parameters = action.get("parameters")
+        after = None
+        if isinstance(parameters, dict) and _roster_members(roster) is not None:
+            if not world_read:
+                world, world_read = _projection_world(party), True
+            outcome = plan_party_change(
+                roster, parameters, world, turn_roster=turn,
+                module=str(party.get("module") or ""),
+                location=str(world_conditions.get("currentLocationId") or ""),
+                request_id=None,
+            )
+            after = outcome["roster_after"]
         proposals.append({
             "action_index": index,
-            "action": kind,
+            "action": "updatePartyNPCs",
             "parameters": copy.deepcopy(parameters),
             "roster_before": copy.deepcopy(roster),
             "proposed_roster_after": copy.deepcopy(after),
@@ -121,11 +130,12 @@ def _parse_verdict(raw):
 
 def review_party_membership(
     candidate, *, accepted_history, player_input, party, review_feedback,
-    invocation_claim, detached_context=None,
+    invocation_claim, detached_context=None, turn_roster=None,
 ):
     """One required review call, with no nested semantic retry or state writes."""
     import model_config
     from core.ai import api_client
+    from core.ai.action_handler import TurnRoster, party_note_lines, turn_key
     from core.combat.invocation import require_current_invocation
     from utils.capture.live_provider_call import LiveProviderSuperseded
     from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
@@ -136,9 +146,12 @@ def review_party_membership(
     scope = context.get("scope")
     if scope is not None and scope.is_superseded():
         raise LiveProviderSuperseded("party membership review superseded")
-    proposals = membership_proposals(candidate, party)
+    if turn_roster is None:
+        turn_roster = TurnRoster.get(turn_key(invocation_claim))
+    proposals = membership_proposals(candidate, party, turn_roster=turn_roster)
     if not proposals:
         return True, ""
+    party_line, orphan_sentence = party_note_lines(party, _projection_world(party), turn_roster)
 
     provider = model_config.get_provider()
     config = model_config.resolve_callsite_config(TASK_ID, provider)
@@ -159,6 +172,7 @@ def review_party_membership(
         "player_input": player_input,
         "accepted_history": accepted_history,
         "canonical_party": party,
+        "party_line": party_line + orphan_sentence,
         "candidate": review_candidate,
         "membership_proposals": review_proposals,
         "review_feedback": review_feedback,

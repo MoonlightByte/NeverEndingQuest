@@ -691,6 +691,7 @@ def convert(game, lower=(), overrides=None):
                 if i in claimed[(m, loc_id, field)]:
                     continue
                 name = e["name"].strip()
+                # Rule 4. #193 D-PB-5: one-time conversion pairing, allowed until 2027-04-30, then deleted with the conversion path.
                 who = party_match(name, persons)
                 if who:
                     d = Decision(None, name, place, "4", "party member listed at a place: dropped")
@@ -829,6 +830,7 @@ def monster_decision(game, s, fights, played, persons):
             d.flags.append("the played file has %d, more than the authored %s; kept %d" % (c, "%d" % hi if fixed else "%d to %d" % (lo, hi), size))
         d.size, d.expect = size, (present, tally)
         return d
+    # Rule 3j. #193 D-PB-5: one-time conversion pairing, allowed until 2027-04-30, then deleted with the conversion path.
     who = party_match([s.name] + s.aliases, persons)
     if who:
         d = Decision(s.id, s.name, s.place, "3j", "gone from the played file; shares a party member's name: joined")

@@ -2276,6 +2276,8 @@ def _transition_outcome_lines(checkpoint, party):
         elif family == "updatePartyNPCs":
             if receipt.get("npc_status") == "dropped":
                 continue  # #855: not made; the player is told on arrival
+            if receipt.get("outcome_kind") == "noop":
+                continue  # a re-add of a companion already in the party
             if receipt.get("operation") == "add":
                 lines.append(
                     "%s joins your traveling party at %s."
@@ -3290,6 +3292,14 @@ def _reject_duplicate_json_keys(pairs):
     return value
 
 
+# The roster changes only through updatePartyNPCs (by occupantId); a tracker
+# update never replaces it. _normalize_dm_candidate returns this message as is.
+PARTY_NPCS_REFUSAL = (
+    "updatePartyTracker cannot change partyNPCs. Use updatePartyNPCs (add or remove "
+    "with the occupantId). Answer again without that key."
+)
+
+
 def validate_json_structure(response_text, *, party_tracker_data=None):
     """
     Pre-validate JSON structure before sending to AI validator.
@@ -3365,6 +3375,12 @@ def validate_json_structure(response_text, *, party_tracker_data=None):
             )
         elif structure_issues:
             return False, None, f"Structure errors: {'; '.join(structure_issues)}"
+
+        for action in parsed["actions"]:
+            parameters = action.get("parameters")
+            if action.get("action") == "updatePartyTracker" and isinstance(parameters, dict) \
+                    and "partyNPCs" in parameters:
+                return False, None, PARTY_NPCS_REFUSAL
 
         # A character update's typed field list is corrected here, before any
         # action runs or is deferred past a move (#855).
@@ -3731,6 +3747,8 @@ def _normalize_dm_candidate(primary_response, party_tracker_data):
     )
     
     if not is_valid_structure:
+        if structure_message == PARTY_NPCS_REFUSAL:
+            return (False, PARTY_NPCS_REFUSAL)
         # Structure is too broken to fix automatically
         print(f"ERROR: JSON structure invalid - {structure_message}")
         return (False, f"JSON structure error: {structure_message}. Response must be valid JSON with 'narration' and 'actions' fields.")
@@ -3898,14 +3916,29 @@ def validate_ai_response(
     try:
         from core.ai.build_npc_context import build_npc_validation_context
         
+        from core.nql import occupants as _validation_occupants
+
         # Get party NPCs from party tracker data
         party_npc_names = [npc.get('name') for npc in party_tracker_data.get('partyNPCs', [])]
+        # The party line as the DM sees it: ids, this turn's [slot] numbers and
+        # the joined people no row carries.
+        party_span, orphan_sentence = action_handler.party_note_lines(
+            party_tracker_data,
+            _validation_occupants.party_world(
+                str(party_tracker_data.get('module') or ''),
+                str(party_tracker_data.get('worldConditions', {}).get('currentLocationId') or ''),
+                create=False,
+            ),
+            action_handler.TurnRoster.get(action_handler.turn_key(invocation_claim)),
+        )
         
         # Build compressed NPC context
         npc_validation_context = build_npc_validation_context(
             current_module=party_tracker_data.get('module', 'Unknown'),
             current_location=party_tracker_data.get('worldConditions', {}).get('currentLocationId', 'Unknown'),
-            party_npcs=party_npc_names
+            party_npcs=party_npc_names,
+            party_span=party_span,
+            orphan_sentence=orphan_sentence,
         )
     except Exception as e:
         print(f"ERROR: Failed to build NPC context: {e}")
@@ -5867,10 +5900,17 @@ def process_ai_response(
     player_input=None,
     review_context=None,
     detached_context=None,
+    turn_roster=None,
 ):
     global needs_conversation_history_update
     from contextlib import ExitStack
     from utils.transient_filesystem import ReadOnlySaveStop
+
+    # One roster read per call: every party change of this response numbers
+    # [slot] rows from this snapshot, and a needs_response follow-up of the
+    # same turn is handed the same one.
+    if turn_roster is None:
+        turn_roster = action_handler.TurnRoster.get(action_handler.turn_key(invocation_claim))
 
     level_up_context = {
         'accepted_history': copy.deepcopy(conversation_history),
@@ -6144,6 +6184,7 @@ def process_ai_response(
                             conversation_history,
                             invocation_claim=invocation_claim,
                             level_up_context=level_up_context,
+                            turn_roster=turn_roster,
                         )
                     except InvocationSupersededError:
                         return {
@@ -6247,6 +6288,7 @@ def process_ai_response(
                     ),
                     invocation_claim=invocation_claim,
                     level_up_context=level_up_context,
+                    turn_roster=turn_roster,
                 )
                 if _is_restore_request(result):
                     return result
@@ -6550,6 +6592,7 @@ def process_ai_response(
                         "current_index": action_index,
                     },
                     level_up_context=level_up_context,
+                    turn_roster=turn_roster,
                 )
             except (LiveProviderSuperseded, InvocationSupersededError):
                 return {
@@ -6752,6 +6795,7 @@ def process_ai_response(
                             result.get("response_data", {}).get("error_code")
                             == "equipment_prerequisite"
                         ),
+                        turn_roster=turn_roster,
                     )
                 if result.get("needs_update"): needs_conversation_history_update = True
             elif result == "exit": return "exit"
@@ -9501,11 +9545,21 @@ def _main_game_loop(startup_authority, turn_authority):
             party_members_list = party_tracker_data.get('partyMembers', [])
             party_members_str = ", ".join(party_members_list) if party_members_list else "None"
         
-            party_npcs_list = party_tracker_data.get('partyNPCs', [])
-            party_npcs_formatted = []
-            for npc in party_npcs_list:
-                party_npcs_formatted.append(f"{npc['name']} ({npc['role']})") 
-            party_npcs_str = ", ".join(party_npcs_formatted) if party_npcs_formatted else "None"
+            # Each companion with its occupant id, or the [slot n] of a row
+            # saved before ids; joined people no row carries are listed after
+            # Party stats. The roster rendered here numbers this turn's slots.
+            from core.nql import occupants as _note_occupants
+
+            party_npcs_span, party_orphan_sentence = action_handler.party_note_lines(
+                party_tracker_data,
+                _note_occupants.party_world(
+                    str(party_tracker_data.get("module") or ""),
+                    str(world_conditions.get("currentLocationId") or ""),
+                    create=False,
+                ),
+                party_tracker_data.get('partyNPCs', []),
+                record=True,
+            )
         
             # C3: hubs are told once, by WORLD STATE CONTEXT.
 
@@ -9519,8 +9573,8 @@ def _main_game_loop(startup_authority, turn_authority):
             dm_note = (f"Dungeon Master Note: Current date and time: {date_time_str}, {current_season} season. "
                 f"Current location: {current_location_name_note} ({current_location_id_note}) in the {current_area_name} area. "
                 f"Party members: {party_members_str}. "
-                f"Party NPCs: {party_npcs_str}. "
-                f"Party stats: {party_stats_str}.")
+                f"{party_npcs_span} "
+                f"Party stats: {party_stats_str}.{party_orphan_sentence}")
             if not should_inject_creation_prompt:
                 dm_note += f" Open plot points located in this area: {plot_here_str} (see ADVENTURE PLOT STATUS)."
             dm_note += f"{module_creation_prompt}"
@@ -9587,6 +9641,7 @@ def _main_game_loop(startup_authority, turn_authority):
             from utils.capture.live_provider_call import finish_live_turn_scope
 
             finish_live_turn_scope(live_turn_scope)
+            action_handler.TurnRoster.record(None)
             print(
                 "[SYSTEM] An older travel record is safely paused for exact "
                 "recovery; no new action was applied."
@@ -9608,6 +9663,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 "[SYSTEM] The current game operation is still finishing; waiting safely."
             ),
         )
+        # This turn's [slot] numbers count from the roster its note showed.
+        action_handler.TurnRoster.bind(action_handler.turn_key(t067_claim))
         # One bounded local cleanup stack, not another authority registry.
         # It also releases this claim if an earlier provider/input seam unwinds.
         turn_authority.callback(complete_invocation, t067_claim)
@@ -10051,13 +10108,18 @@ def _dm_review_context(reviewed, accepted_history, player_input, npc_voice_batch
 def _review_fresh_membership_candidate(
     response, party, accepted_history, *, player_input=None,
     invocation_claim=None, detached_context=None, require_full_review=False,
+    turn_roster=None,
 ):
     """Apply the shared owner to fresh internal proposals, never receipt replay."""
     from core.npc.party_guardian import membership_proposals
     from utils.capture.live_provider_call import get_live_provider_scope
 
+    if turn_roster is None:
+        turn_roster = action_handler.TurnRoster.get(action_handler.turn_key(invocation_claim))
     normalized, record = _normalize_dm_candidate(response, party)
-    if not require_full_review and normalized and not membership_proposals(record["candidate"], party):
+    if not require_full_review and normalized and not membership_proposals(
+        record["candidate"], party, turn_roster=turn_roster,
+    ):
         # Preserve the existing nonmembership path, including its original bytes.
         return {"status": "accepted", "candidate": response,
                 "approved_transition_plan": None}
@@ -10074,13 +10136,14 @@ def _review_fresh_membership_candidate(
         location_graph=location_graph, detached_context=detached_context,
         normalization=record if normalized else None,
         campaign_end=False,
+        turn_roster=turn_roster,
     )
 
 
 def _process_fresh_dm_response(
     response, party_tracker_data, location_data, conversation_history, *,
     invocation_claim=None, player_input=None, detached_context=None,
-    authority_check=None, require_full_review=False,
+    authority_check=None, require_full_review=False, turn_roster=None,
 ):
     """Internal handoff after its producer releases the response fence.
 
@@ -10097,6 +10160,7 @@ def _process_fresh_dm_response(
         invocation_claim=invocation_claim, player_input=player_input,
         detached_context=detached_context,
         require_full_review=require_full_review,
+        turn_roster=turn_roster,
     )
     if authority_check is not None and not authority_check(authority_context):
         return {"status": "stale_discarded", "retryable": False}
@@ -10109,6 +10173,7 @@ def _process_fresh_dm_response(
         approved_transition_plan=reviewed["approved_transition_plan"],
         review_context=_dm_review_context(reviewed, conversation_history, player_input, party_snapshot=party_tracker_data, campaign_end=False),
         detached_context=detached_context,
+        turn_roster=turn_roster,
     )
 
 
@@ -10314,6 +10379,7 @@ def _review_dm_candidate(
     normalization=None, module_snapshot=None, installed_module_references="",
     atlas_stamps=None,
     review_feedback=None, correction_reason=None, campaign_end,
+    turn_roster=None,
 ):
     """One detached correction owner (#193 D-NPC-PARTY-2..4).
 
@@ -10750,7 +10816,12 @@ def _review_dm_candidate(
                                 .get("newLocation")
                             ),
                             "roster_operation": roster_params.get("operation"),
-                            "companion": (roster_params.get("npc") or {}).get("name"),
+                            "companion": action_handler.party_change_companion(
+                                roster_params,
+                                party_tracker_data.get("partyNPCs"),
+                                turn_roster if turn_roster is not None else action_handler.TurnRoster.get(
+                                    action_handler.turn_key(invocation_claim)),
+                            ),
                         }
                         actions[:] = stripped_actions
                         response_data["actions"] = actions
@@ -10862,6 +10933,7 @@ def _review_dm_candidate(
                 player_input=player_input, party=party,
                 review_feedback=guardian_feedback,
                 invocation_claim=invocation_claim, detached_context=detached_context,
+                turn_roster=turn_roster,
             )
             require_current()
             if guardian_result is None:
