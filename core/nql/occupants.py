@@ -681,6 +681,9 @@ def present_roster(place_view: Dict[str, Any]) -> List[Dict[str, Any]]:
     for o in place_view.get("present") or []:
         entry: Dict[str, Any] = {"id": o.get("id"), "name": o.get("name"), "kind": o.get("kind"),
                                  "attitude": o.get("attitude")}
+        if o.get("kind") == "creatures" and isinstance(o.get("type"), str) and o["type"]:
+            # The stat block's key behind this group (#293/typed-monster-key).
+            entry["monsterKey"] = o["type"]
         if "count" in o:
             entry["count"] = o["count"]
         elif o.get("range"):

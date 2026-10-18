@@ -278,15 +278,24 @@ class Seed:
         self.aliases = []
         self.attitude, self.attitude_problem = disposition(entry) if kind == "person" else (None, None)
 
+    def monster_key(self):
+        """The group's stat-block key: the authored entry's own monsterType
+        when it is already a file key (#293/typed-monster-key), else the slug
+        of its name as before."""
+        authored = self.entry.get("monsterType") if isinstance(self.entry, dict) else None
+        if isinstance(authored, str) and authored and slug(authored) == authored:
+            return authored
+        return slug(self.name)
+
     def declaration(self):
         if self.kind == "person":
             body = "person; attitude %s;" % self.attitude + "".join(" alias %s;" % q(a) for a in self.aliases)
         elif self.range is None:
-            body = "creatures; attitude hostile; type %s;" % q(slug(self.name))
+            body = "creatures; attitude hostile; type %s;" % q(self.monster_key())
         elif self.range[0] == self.range[1]:
-            body = "creatures %d; attitude hostile; type %s;" % (self.range[0], q(slug(self.name)))
+            body = "creatures %d; attitude hostile; type %s;" % (self.range[0], q(self.monster_key()))
         else:
-            body = "creatures %d to %d; attitude hostile; type %s;" % (self.range[0], self.range[1], q(slug(self.name)))
+            body = "creatures %d to %d; attitude hostile; type %s;" % (self.range[0], self.range[1], q(self.monster_key()))
         return "occupant %s named %s at %s { %s }" % (q(self.id), q(self.name), q(self.place), body)
 
 

@@ -235,7 +235,7 @@ NARRATIVE ELABORATION: Location descriptions and NPC sketches are starting seeds
   establishHub: {"hubName":str,"hubType":str,"description":str,"services":arr,"ownership":str}
   exitGame: {"farewell":str}
   transitionLocation: {"newLocation":str} #EXACTLY this one key
-  createEncounter: {"encounterSummary":str,"player":str,"npcs":arr,"monsters":arr,"occupantIds":obj(optional),"openingAction":str(optional),"scene":{"participants":arr,"relations":arr,"objectives":arr,"disclosureGrants":arr}} #participant keys exactly match player:0/npc:N/monster:N; complete typed scene required; occupantIds optional (monster:N -> engine occupant id), never a reason to reject
+  createEncounter: {"encounterSummary":str,"player":str,"npcs":arr,"monsters":arr,"occupantIds":obj(optional),"monsterKeys":obj(optional),"openingAction":str(optional),"scene":{"participants":arr,"relations":arr,"objectives":arr,"disclosureGrants":arr}} #participant keys exactly match player:0/npc:N/monster:N; complete typed scene required; occupantIds optional (monster:N -> engine occupant id), never a reason to reject; monsterKeys optional (monster:N -> stat-block key), never a reason to reject, whatever key it holds; A creature in createEncounter's `monsters` list need not appear in the location or bestiary data: it may be a new creature with no monsterKeys entry, even a named foe, and its stat block is generated from that name; never reject it as invented. This covers `monsters` only: `npcs` entries and locations follow the rules above.
   storageInteraction: {"description":str,"characterName":str}
   createNewModule: {"narrative":str} #EXACTLY this one non-empty key; MUST be sole action; only after explicit commitment to one specific hook. Full shape: {"action":"createNewModule","parameters":{"narrative":"[complete concept and labeled technical fields]"}}
   updateEncounter: {"encounterId":str,"changes":obj}
@@ -269,7 +269,7 @@ NARRATIVE ELABORATION: Location descriptions and NPC sketches are starting seeds
   11:transitionLocation uses location ID ONLY (A01,B05,C03)
   12:Historical combat "[COMBAT CONCLUDED]" exempt from rules
   13:updatePartyNPCs.operation values: exactly "add" or "remove"
-  14:createEncounter.monsters MUST be array of strings (["Bandit","Bandit"] not ["2 Bandits"]); a count inside a location's quantity range (min-max) is grounded, never 'invented'; reject only a count outside it or a monster the location does not list
+  14:createEncounter.monsters MUST be array of strings (["Bandit","Bandit"] not ["2 Bandits"]); a count inside a location's quantity range (min-max) is grounded, never 'invented'; reject only a count outside it for a monster the location lists; a monster the location does not list is a new creature, never invented
   15:MULTIPLE updateCharacterInfo OK in actions array. Each updates ONE character. NEVER comma-separated names
   16:Actions go in "actions" array, NOT numbered keys like updateCharacterInfo_2, updateCharacterInfo_3
   17:Character-to-character item handoff = ONE transferItem per item (fromCharacter, toCharacter, itemName exactly as on the giver's supplied sheet, integer quantity); a trade = two transferItem actions. REJECT a handoff done with updateCharacterInfo on either character, with storageInteraction, or one-sided; never demand a container. Container operation then handoff of the retrieved items = storageInteraction then transferItem. Coins between party characters change hands with transferCurrency or splitCurrency.
