@@ -198,13 +198,15 @@ _declare(
 _declare(
     "T124",
     _profiles(
-        "OPENAI_GPT56_LUNA_LOW",
+        "OPENAI_GPT56_LUNA_MEDIUM",
         "DM_MAIN_GEMINI_PRO_LOW",
         "DM_MAIN_LEGACY",
         "DM_MAIN_LMSTUDIO",
     ),
-    note="Startup semantic reviewer (#682), split from T092 so the reviewer binds alone. OpenAI=gpt-6-luna|low "
-         "(D-CREATE-COST-2, 2026-10-18: terra|low was 98% of a creation's cost). Before that terra|low "
+    note="Startup semantic reviewer (#682), split from T092 so the reviewer binds alone. OpenAI=gpt-6-luna|medium "
+         "(D-CREATE-COST-2, 2026-10-18: terra|low was 98% of a creation's cost; in the acceptance Cleric creations "
+         "gpt-6-luna|low reversed its own demand three times at finalize and saved nothing, medium was consistent "
+         "and saved a correct sheet). Before that terra|low "
          "(T040 precedent). History, on gpt-5.6-luna before the luna profiles moved to gpt-6-luna: at luna|none (shared with T092, acceptance runs 1-3) it invented "
          "requirements (a sheet-approval step, a required null, shifting wording demands); at luna|low (run 4) "
          "it twice blamed the author for engine-written savingThrowBonuses. Gemini/legacy/lmstudio keep T092's "
