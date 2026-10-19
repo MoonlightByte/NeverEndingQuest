@@ -419,6 +419,28 @@ def open_choice_ids(intent: Dict[str, Any]) -> List[str]:
     return [cid for cid, point in issued_points(intent).items() if len(picks.get(cid) or []) < point["count"]]
 
 
+def open_choices(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Each open choice with its name, count and option names, from the issued points (desktop L5 turns 5
+    and 9: the author asked for a choice without its options, which sat in a scope item turns back). A
+    package choice lists each package's items and gold; a free pick names its option source."""
+    picks = intent.get("choices") or {}
+    d = _Data()
+    out = []
+    for cid, point in issued_points(intent).items():
+        if len(picks.get(cid) or []) >= point["count"]:
+            continue
+        entry = {"id": cid, "name": point.get("name"), "count": point["count"],
+                 "chosen": list(picks.get(cid) or [])}
+        if isinstance(point.get("options"), dict):
+            entry["packages"] = _packages(point["options"], d)
+        elif isinstance(point.get("option_keys"), list):
+            entry["options"] = list(point["option_keys"])
+        elif point.get("free_pick"):
+            entry["free_pick"] = point.get("option_source") or True
+        out.append(entry)
+    return out
+
+
 # --- the scope item ---
 
 def _background_tools(background: Dict[str, Any]) -> Dict[str, Any]:
@@ -433,13 +455,24 @@ def _background_tools(background: Dict[str, Any]) -> Dict[str, Any]:
 def _package_summary(background: Dict[str, Any], d: _Data) -> Dict[str, Any]:
     """A background's starting-equipment options, typed: each option's items (catalog name or uncatalogued
     name, with quantity) and its gold (dplay-AC-difficult turn 6)."""
+    return _packages(background.get("equipment_options") or {}, d)
+
+
+def _item_name(item: Any, d: _Data) -> str:
+    """A choose_one entry's name: a catalog id, or an item row (catalog id or uncatalogued name)."""
+    if isinstance(item, dict):
+        return str(d.catalog.get(item.get("catalog_id")) or item.get("uncatalogued") or item.get("catalog_id"))
+    return str(d.catalog.get(item, item))
+
+
+def _packages(options: Dict[str, Any], d: _Data) -> Dict[str, Any]:
     out = {}
-    for key, option in (background.get("equipment_options") or {}).items():
+    for key, option in options.items():
         items = []
         for item in option.get("items") or []:
             name = d.catalog.get(item.get("catalog_id")) or item.get("uncatalogued") or item.get("slot")
             if isinstance(item.get("choose_one"), list):
-                name = "one of: %s" % ", ".join(d.catalog.get(i, i) for i in item["choose_one"])
+                name = "one of: %s" % ", ".join(_item_name(i, d) for i in item["choose_one"])
             items.append({"name": name, "quantity": item.get("quantity", 1)})
         out[key] = {"items": items, "gp": (option.get("coins") or {}).get("gp", 0)}
     return out
