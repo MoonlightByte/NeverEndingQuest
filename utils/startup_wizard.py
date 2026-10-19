@@ -188,7 +188,16 @@ def _foreign_save(module_name):
     module = tracker.get("module") if isinstance(tracker, dict) else None
     if not isinstance(module, str) or module == module_name:
         return False
-    return module in {installed["name"] for installed in scan_available_modules()}
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+    try:
+        installed = {entry["name"] for entry in scan_available_modules()}
+    except LiveProviderSuperseded:
+        raise
+    except Exception as exc:
+        # An unreadable catalog is not a foreign save; setup goes on (B1).
+        warning(f"Foreign-save check skipped: {exc}", category="startup")
+        return False
+    return module in installed
 
 
 def reset_foreign_save(module_name):
