@@ -204,23 +204,21 @@ def review_domain(proposal, packet, scope, status_emit=None):
     return _request(proposal.domain, packet, scope, proposal, status_emit=status_emit)
 
 
-def collect_domain_work(work, parent, *, on_result=None, label='level-up'):
+def collect_domain_work(work, parent, *, on_result=None):
     """Completion-own all requested work, preserving each result or failure.
 
     The coordinator supplies domain author/review calls bound to immutable
     packets. Each receives its exact registered child scope. No semantic retries,
     detached work, time budget or provider-dependent domain omission lives here.
-    label names the beat and the threads (the startup section review passes
-    'startup-review'; the default keeps level-up's names).
     """
     from utils.capture.live_provider_call import open_advisory_scopes, LiveProviderSuperseded
     if not work:
         return {}
-    scopes = open_advisory_scopes(parent, f'{label}-{uuid4()}', len(work), completion_required=True)
+    scopes = open_advisory_scopes(parent, f'level-up-{uuid4()}', len(work), completion_required=True)
     if len(scopes) != len(work):
         if parent is not None and parent.is_superseded():
-            raise LiveProviderSuperseded(f'{label} work superseded before admission')
-        raise ValueError(f'{label} work has no current captured parent authority')
+            raise LiveProviderSuperseded('level-up work superseded before admission')
+        raise ValueError('level-up work has no current captured parent authority')
     submitted = set()
     results = {}
     futures = {}
@@ -229,7 +227,7 @@ def collect_domain_work(work, parent, *, on_result=None, label='level-up'):
     def run(call, scope, future):
         try:
             if scope.is_superseded():
-                raise LiveProviderSuperseded(f'{label} work superseded before start')
+                raise LiveProviderSuperseded('level-up work superseded before start')
             future.set_result(call(scope))
         except BaseException as exc:
             future.set_exception(exc)
@@ -244,7 +242,7 @@ def collect_domain_work(work, parent, *, on_result=None, label='level-up'):
             futures[domain] = future
             try:
                 thread = threading.Thread(target=run, args=(call, scope, future),
-                                          name=f'{label}-{domain}', daemon=False)
+                                          name=f'level-up-{domain}', daemon=False)
                 thread.start()
                 threads.append(thread)
                 submitted.add(index)

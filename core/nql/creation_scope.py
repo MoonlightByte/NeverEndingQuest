@@ -597,7 +597,7 @@ def scope_id(scope: Dict[str, Any]) -> str:
 
 # --- the engine review's facts (D-CREATE-COST-5 §5, audit A) ---
 
-_BACKGROUND_INTERNAL = ("equipment_options", "feat_ref", "skill_keys", "tool_keys", "tool_choice")
+_BACKGROUND_INTERNAL = ("feat_ref", "skill_keys", "tool_keys", "tool_choice")
 
 
 def review_facts(scope: Dict[str, Any]) -> Dict[str, Any]:

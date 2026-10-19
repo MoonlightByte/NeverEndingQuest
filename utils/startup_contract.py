@@ -106,13 +106,16 @@ STARTUP_INTENT_SCHEMA = _object_schema({
 # The creative fields of an engine-built character (D-CREATE-COST-5, amendment 1a): copied verbatim, never
 # read for mechanics. backstory and appearance never reach the sheet (char_schema is frozen); they ride in
 # the startup_engine_build item. feature_descriptions: display text per engine-named feature (D1).
+# The six required creative fields hold text (leg 1: every captured finalize left flaws empty); an empty one
+# is a schema retry for the author, never an engine refusal.
+_CREATIVE_TEXT = {"type": "string", "minLength": 1, "pattern": "\\S"}
 STARTUP_CREATIVE_SCHEMA = _object_schema({
-    "name": {"type": "string"},
+    "name": dict(_CREATIVE_TEXT),
     "alignment": {"type": "string"},
-    "personality_traits": {"type": "string"},
-    "ideals": {"type": "string"},
-    "bonds": {"type": "string"},
-    "flaws": {"type": "string"},
+    "personality_traits": dict(_CREATIVE_TEXT),
+    "ideals": dict(_CREATIVE_TEXT),
+    "bonds": dict(_CREATIVE_TEXT),
+    "flaws": dict(_CREATIVE_TEXT),
     "backstory": {"type": ["string", "null"]},
     "appearance": {"type": ["string", "null"]},
     "feature_descriptions": {"type": ["object", "null"], "additionalProperties": {"type": "string"}},

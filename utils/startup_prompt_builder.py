@@ -206,7 +206,9 @@ them wielded or changing armor class; describe prerequisites when relevant.
 Keep approved backstory in the existing descriptive fields or interview context;
 do not distort a mechanical background name to satisfy an invented schema slot.
 """, """CREATIVE, AT FINALIZE: name, alignment, personality_traits, ideals, bonds and
-flaws, in the player's words or as you proposed and the player approved; and
+flaws, in the player's words or as you proposed and the player approved (none
+may be empty: when the player gave no ideal or flaw, propose one and ask the
+player to approve it before finalizing); and
 optionally backstory, appearance and feature_descriptions (one short description
 per class feature the engine names, written from that feature's scope text). The
 engine copies them as written and never reads them for mechanics. Alignment is
@@ -221,18 +223,30 @@ def engine_prompt_drift(prompt, schema):
     return [old[:60] for old in anchors if prompt.count(old) != 1]
 
 
+# The fallback's one override line (Sentinel N9): the drifted prompt may still ask for a sheet.
+ENGINE_CONTRACT_OVERRIDE = (
+    "ENGINE CONTRACT (overrides any line above that asks you to write a character sheet, character or origin): "
+    "the engine builds the sheet. finalize_character carries only intent, creative and starting_equipment, "
+    "exactly as the STARTUP RESPONSE SCHEMA gives them; never send character or origin.\n\n")
+
+
 def _engine_prompt(prompt, schema):
-    """The engine-path author prompt. On drift (Sentinel N8) the interview goes on with the whole prompt as it
-    is, the engine lines already in its facts block, and a warning; a tracked test pins the anchors."""
+    """The engine-path author prompt. On drift (Sentinel N8, N9) the interview goes on with the whole prompt
+    unedited except that its CHARACTER SCHEMA block is dropped and one override line states the engine
+    contract before the response schema, so a finalize still builds; a warning is logged and a tracked test
+    pins the anchors."""
+    block = "CHARACTER SCHEMA:\n%s\n\n" % json.dumps(schema, indent=2)
     drift = engine_prompt_drift(prompt, schema)
     if drift:
         from utils.enhanced_logger import warning
         warning("STARTUP: engine prompt rewrite skipped, the whole prompt changed near %r" % drift,
                 category="startup")
-        return prompt
+        prompt = prompt.replace(block, "")
+        head, marker, tail = prompt.rpartition("STARTUP RESPONSE SCHEMA:")
+        return head + ENGINE_CONTRACT_OVERRIDE + marker + tail if marker else prompt + "\n" + ENGINE_CONTRACT_OVERRIDE
     for old, new in _ENGINE_EDITS:
         prompt = prompt.replace(old, new)
-    return prompt.replace("CHARACTER SCHEMA:\n%s\n\n" % json.dumps(schema, indent=2), "")
+    return prompt.replace(block, "")
 
 
 def build_character_creation_system_prompt(*, scoped=False):
@@ -493,9 +507,17 @@ You receive the CREATION FACTS below (the chosen class, species and background
 with their trait text, and every current choice with its own text, page, options
 and option grants), and in the user message: the player's own messages with
 their interview indexes, the author's previous narration, this turn's reply
-(decision, narration, confirmation, intent), open_choice_ids (the choices the
+(decision, narration, confirmation, intent, starting_equipment), open_choice_ids (the choices the
 engine still needs), the previous round's demands, and at finalize the summary
 the game rendered from the engine-built sheet.
+Only the choice ids in the creation facts belong in intent. A choice the facts
+give no choice id for, such as the background's equipment package or a package
+slot (a holy symbol's form, an instrument), is recorded in starting_equipment
+at finalize, and the reply's starting_equipment is null before then: never
+demand it in intent, and a narration that notes it is not an intent mismatch.
+The class's level-1 features in the creation facts are the complete list: a
+statement that the class has no other feature at level 1 (no Weapon Mastery for
+a Cleric) is true.
 Check the reply:
 1. Intent records only what the player chose or approved, or a pick the player
    delegated ("choose for me") and the author then made from the options. A
@@ -503,7 +525,8 @@ Check the reply:
    or contradicts, is intent_mismatch.
 2. A continue_interview asks the player the next open question or asks for
    whole-build approval. A reply that asks the player nothing while
-   open_choice_ids is not empty is a flow rejection. A reply that asks for
+   open_choice_ids is not empty is a flow rejection, and so is a narration that
+   ends on a colon or a heading with no question and no options after it. A reply that asks for
    whole-build approval, or a finalize, while open_choice_ids is not empty is
    an unasked_choice rejection. Asking three or four open decisions per turn
    and leaving the rest for later is valid.
@@ -511,6 +534,9 @@ Check the reply:
    option, grant or rule the facts contradict, or one that does not exist, is a
    false_rules_claim: name the passage and its page. A fact the creation facts
    do not give is fine when hedged; asserted as a rule, it is a reference_gap.
+   Wording that matches the facts in substance is not a false claim: armor
+   "training" and weapon "proficiency" name the same grant whichever word is
+   used.
 4. finalize_character only when the latest player message approves the whole
    current build, in context. Approval of one detail, a negation, uncertainty
    or an outstanding requested change is not whole-build approval. Do not
@@ -543,11 +569,13 @@ def build_engine_review_request(*, facts, player_messages, latest_user_index, pr
                                 reply, open_choice_ids, previous_round_demands, summary=None):
     """The T128 request (plan §5): system = the review prompt and the creation facts (creation_scope.review_facts
     of the current scope); user = the player's messages with indexes, the previous author narration, this turn's
-    reply (decision, narration, confirmation, intent), the open choice ids, the previous round's demands and, at
+    reply (decision, narration, confirmation, intent, starting_equipment), the open choice ids, the previous
+    round's demands and, at
     finalize, the summary rendered from the engine-built sheet. No sheet and no provenance."""
     body = {"task_purpose": ENGINE_REVIEW_PURPOSE, "player_messages": player_messages,
             "latest_user_index": latest_user_index, "previous_author_narration": previous_author_narration,
-            "reply": {k: reply.get(k) for k in ("decision", "narration", "confirmation", "intent")},
+            "reply": {k: reply.get(k) for k in ("decision", "narration", "confirmation", "intent",
+                                                "starting_equipment")},
             "open_choice_ids": list(open_choice_ids), "previous_round_demands": list(previous_round_demands)}
     if summary is not None:
         body["engine_built_summary"] = summary

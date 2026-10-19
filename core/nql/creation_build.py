@@ -406,8 +406,9 @@ def build_level_one_sheet(intent: Dict[str, Any], creative: Optional[Dict[str, A
         "hitPoints": 0, "maxHitPoints": 0, "armorClass": 10, "initiative": 0, "proficiencyBonus": 2,
         "exp_required_for_next_level": 300,
     }
-    # Unarmored (10 + Dexterity modifier) until the finalize projects the packages' armor; with the engine
-    # unavailable it stays, disclosed as unchecked (D-PKG-1), and is true of a character with no gear.
+    # 10 + Dexterity modifier until the finalize projects armor class (armor_class.project: the packages'
+    # armor, a shield, and Unarmored Defense for a Barbarian or Monk). With the engine unavailable this
+    # base stays, disclosed as unchecked (D-PKG-1); it leaves out Unarmored Defense's second ability.
     sheet["armorClass"] = 10 + (sheet["abilities"]["dexterity"] - 10) // 2
     if background_feature is not None:
         sheet["backgroundFeature"] = background_feature
