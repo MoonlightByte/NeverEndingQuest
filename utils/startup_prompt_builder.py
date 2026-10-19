@@ -524,6 +524,8 @@ B) belongs in intent.choices; only the package's slots and the background's
 package go in starting_equipment.
 The background's granted_skills are granted by the background itself, in
 addition to the class's skill picks; they never belong to the class's list.
+A skill in background.granted_skills is never a class skill option; its absence
+from the class list is correct.
 The class's level-1 features in the creation facts are the complete list: a
 statement that the class has no other feature at level 1 (no Weapon Mastery for
 a Cleric) is true.
