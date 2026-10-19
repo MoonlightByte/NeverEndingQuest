@@ -219,6 +219,8 @@ export interface ServerEvents {
   save_list_response: Array<Record<string, unknown>>;
   restore_complete: RestoreResult;
   reset_complete: { message: string };
+  /** #1285: setup reset another adventure's save; its lines leave the log. */
+  message_log_cleared: Record<string, never>;
   player_data_response: PlayerDataResponse;
   location_data_response: { data: { currentLocation: string; currentArea: string; currentLocationId: string; currentAreaId: string; time: string; day: number | string; month: string; year: number | string } | null; error?: string; request_id?: string; revision?: number; server_instance_id?: string };
   npc_details_response: { npcName: string; data: Record<string, unknown> | null; modalType: 'saves' | 'skills' | 'spells'; error?: string };

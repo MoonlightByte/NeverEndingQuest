@@ -232,6 +232,7 @@ from web.shared_state import (
     SAFE_ACTION_FAILURE_MESSAGE,
     message_cache_lock,
     module_progress_queue,
+    set_message_log_reset_listener,
     set_player_output_sink,
 )
 
@@ -791,6 +792,16 @@ def emit_status_detail(detail):
 # Set the status callback: the web hears whole publications only.
 set_status_callback(None)
 set_detail_callback(emit_status_detail)
+
+def clear_message_log():
+    """#1285: setup reset another adventure's save (Reset removed the cache
+    file); its lines must not stay above the new game, here or in a browser."""
+    with message_cache_lock:
+        message_cache.clear()
+        save_message_cache()
+    socketio.emit('message_log_cleared', {})
+
+set_message_log_reset_listener(clear_message_log)
 
 # Set the compression callback
 def emit_compression_event(event_type, data):

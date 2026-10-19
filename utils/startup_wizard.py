@@ -183,6 +183,47 @@ class StartupCancelled(Exception):
     """Intentional input cancellation; retained setup is not a failure."""
 
 
+def _foreign_save(module_name):
+    """True when party_tracker.json is another installed module's save
+    (D-1285-1): its module value is an installed folder id, never a name, and
+    not the selected one. Any other value (empty, a display name, a module no
+    longer installed) is not one: #1284 still empties the tracker at commit."""
+    tracker = safe_json_load("party_tracker.json")
+    module = tracker.get("module") if isinstance(tracker, dict) else None
+    if not isinstance(module, str) or module == module_name:
+        return False
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+    try:
+        installed = {entry["name"] for entry in scan_available_modules()}
+    except LiveProviderSuperseded:
+        raise
+    except Exception as exc:
+        # An unreadable catalog is not a foreign save; setup goes on (B1).
+        warning(f"Foreign-save check skipped: {exc}", category="startup")
+        return False
+    return module in installed
+
+
+def reset_foreign_save(module_name):
+    """Run the whole Reset, backup first, before a new game starts over another
+    module's save (#1285, D-1285-1). True when it ran. A reset that does not
+    finish is reported and setup goes on (B1); the tracker is still emptied at
+    commit (#1284)."""
+    if not _foreign_save(module_name):
+        return False
+    from utils.reset_campaign import perform_reset_logic
+    try:
+        backup_dir = perform_reset_logic()
+    except Exception as exc:
+        print("[SYSTEM] Reset did not finish: " + str(exc))
+        return False
+    from web.shared_state import message_log_reset
+    message_log_reset()
+    print("Dungeon Master: This save belonged to another adventure, so the campaign was reset "
+          f"first, as Reset does. The old game is backed up in {backup_dir}.")
+    return True
+
+
 def run_startup_sequence():
     """Resume the shared setup, publishing success only from verified files."""
     from utils.capture.live_provider_call import LiveProviderSuperseded
@@ -194,6 +235,9 @@ def run_startup_sequence():
         module = select_module(conversation)
         if not module:
             return False
+        if reset_foreign_save(module["name"]):
+            # Reset removed the setup file; the choices made so far are in memory.
+            save_startup_conversation(conversation)
         progress = _startup_progress(conversation) or {}
         if progress.get("candidate") and progress.get("phase") in {"approved", "character_saved", "ready"}:
             with _startup_operation() as scope:

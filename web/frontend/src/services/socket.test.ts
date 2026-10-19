@@ -19,7 +19,7 @@ vi.mock('socket.io-client', () => ({
 }))
 
 import { emitC } from './socket'
-import { useDialogs, useSession } from '../stores'
+import { useDialogs, useLog, useSession } from '../stores'
 import { useRulesRoll } from '../stores/rulesRoll'
 
 const initialSession = useSession.getState()
@@ -215,5 +215,16 @@ describe('socket reconnect synchronization', () => {
       kind: 'exit',
       message: 'You can now safely close this browser tab.',
     })
+  })
+
+  it('drops the old game\'s lines when setup resets another adventure\'s save (#1285)', () => {
+    useLog.getState().append({ type: 'narration', content: 'The old game goes on.' })
+    expect(useLog.getState().messages).toHaveLength(1)
+
+    socketMock.handlers.get('message_log_cleared')?.({})
+
+    expect(useLog.getState().messages).toEqual([])
+    useLog.getState().append({ type: 'narration', content: 'A new game begins.' })
+    expect(useLog.getState().messages.map((m) => m.content)).toEqual(['A new game begins.'])
   })
 })

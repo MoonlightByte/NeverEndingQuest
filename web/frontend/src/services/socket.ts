@@ -258,6 +258,7 @@ on('reset_complete', (p) => {
   useDialogs.getState().setActionResult({ kind: 'reset', message: p.message })
   useLog.getState().append({ type: 'system', content: 'Campaign has been reset. The page will now reload.' })
 })
+on('message_log_cleared', () => useLog.getState().clear())
 on('exit_acknowledged', () => {
   // The legacy overlay owns fixed player-facing copy. Do not let the server's
   // transport acknowledgment ("Exit acknowledged") replace that sentence.
