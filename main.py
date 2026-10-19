@@ -138,7 +138,6 @@ from updates.update_character_info import (
     character_update_affects_error,
     update_character_info,
 )
-from core.managers.level_up_manager import LevelUpSession # Add this line
 from core.ai.incremental_compression import IncrementalLocationCompressor
 
 # Import new manager modules

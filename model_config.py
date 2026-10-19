@@ -618,27 +618,14 @@ TRANSITION_VAL_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_
 TRANSITION_VAL_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 TRANSITION_VAL_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
-# ----- T048 Level Up Validation -----
-# Validates AI-generated level-up actions against 5e rules.
-# Full-tier callsite, temperature=0.2, JSON output.
-# 8/8 perfect on expanded synthetic tests (v4 prompt + leveling_info.txt).
-# Uses gemini-3-PRO (not flash -- flash missed Barbarian wrong-die edge case)
-LEVELUP_VAL_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
-LEVELUP_VAL_GEMINI_PRO_LOW = {"model": "gemini-3.1-pro-preview", "thinking_level": "low"}
-LEVELUP_VAL_LEGACY = {"model": "gpt-4.1-2025-04-14"}
-LEVELUP_VAL_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
-
-# --- T047: Level-Up Conversation (interactive interview, temp=0.7) ---
-# v3 prompt tested: 100% pass rate across 24 synthetic tests (8 scenarios x 3 models).
-# gpt-5.2|none: 3.6s avg, best narrative. gemini-flash|low: 1.9s avg, best HP math.
-# gpt-5-mini DISQUALIFIED (no temperature support, interview needs temp=0.7).
+# --- Level-up conversation configs (T121 table-driven session, T086 NPC auto-level) ---
 LEVELUP_CONV_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
 LEVELUP_CONV_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 LEVELUP_CONV_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 LEVELUP_CONV_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- T086: NPC Auto-Level-Up (single-shot JSON, temp=0.3) ---
-# Same model selections as T047 -- simpler task, all models pass easily.
+# The level-up conversation configs; a single-shot task, all models pass easily.
 # Uses same LEVELUP_CONV configs (no separate dicts needed -- same models work).
 
 # (T014, the background NPC movement decision, and T091, the location monster
