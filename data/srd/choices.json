@@ -26,7 +26,8 @@
   "Text is ASCII: curly quotes became straight ones and dashes became hyphens.",
   "srd-choices/2 (NUM): class_traits.<class> gain saving_throws (ability names), armor_training (light, medium, heavy, shield: neq_armor's armor_category values) and weapon_proficiencies (rules: a weapon is proficient when one rule's category equals its weapon.category and, if the rule has property_any, it has one of those properties), with the printed text under printed.",
   "NUM-P1: class_traits.monk gains monk_weapons (rules {category, kind[, property_any]}) and martial_arts: at each Monk level the host declares the Condition types listed for that level's Martial Arts die (attack_features.nql), and every character gets srd:unarmed-strike.",
-  "Starting Equipment option_items: per option, items as {catalog_id, quantity} (quantity in the item's own units: 20 Arrows is quantity 20), {choose_one: [ids]} for a printed item with several catalog forms (Holy Symbol), or {uncatalogued: text} for an item the catalog lacks (tools, instruments, the Spellbook); and coins. A Quarterstaff focus is the catalog's Staff or Wooden staff focus, which the SRD prints as also a Quarterstaff (evidence). Startup packages (data/srd_character_origins.json backgrounds carry the same equipment_options shape): an uncatalogued entry also carries key (a stable id), item_type and description; an entry that is a genuine player choice carries slot, an id unique across every class and background package (<class or background key>.<option>.<choice>). A slot with choose_one is a catalog pick, a slot with no catalog id is a named pick the player names; an entry without slot is a fixed item."
+  "Starting Equipment option_items: per option, items as {catalog_id, quantity} (quantity in the item's own units: 20 Arrows is quantity 20), {choose_one: [ids]} for a printed item with several catalog forms (Holy Symbol), or {uncatalogued: text} for an item the catalog lacks (tools, instruments, the Spellbook); and coins. A Quarterstaff focus is the catalog's Staff or Wooden staff focus, which the SRD prints as also a Quarterstaff (evidence). Startup packages (data/srd_character_origins.json backgrounds carry the same equipment_options shape): an uncatalogued entry also carries key (a stable id), item_type and description; an entry that is a genuine player choice carries slot, an id unique across every class and background package (<class or background key>.<option>.<choice>). A slot with choose_one is a catalog pick, a slot with no catalog id is a named pick the player names; an entry without slot is a fixed item.",
+  "always_prepared lists the level-1 spells a class feature or species lineage keeps always prepared; spell is a data/spell_repository.json key. They do not count against a class's prepared picks."
  ],
  "reference_forms": [
   {
@@ -1514,6 +1515,13 @@
     "Saving Throw Proficiencies": "Dexterity and Charisma",
     "Armor Training": "Light armor",
     "Weapon Proficiencies": "Simple weapons"
+   },
+   "spellcasting_ability": {
+    "ability": "Charisma",
+    "source": {
+     "section": "Classes > Bard > Level 1: Spellcasting",
+     "page": 32
+    }
    }
   },
   "cleric": {
@@ -1544,6 +1552,13 @@
     "Saving Throw Proficiencies": "Wisdom and Charisma",
     "Armor Training": "Light and Medium armor and Shields",
     "Weapon Proficiencies": "Simple weapons"
+   },
+   "spellcasting_ability": {
+    "ability": "Wisdom",
+    "source": {
+     "section": "Classes > Cleric > Level 1: Spellcasting",
+     "page": 37
+    }
    }
   },
   "druid": {
@@ -1572,8 +1587,19 @@
    "printed": {
     "Saving Throw Proficiencies": "Intelligence and Wisdom",
     "Armor Training": "Light armor and Shields",
-    "Weapon Proficiencies": "Simple weapons"
-   }
+    "Weapon Proficiencies": "Simple weapons",
+    "Tool Proficiencies": "Herbalism Kit"
+   },
+   "spellcasting_ability": {
+    "ability": "Wisdom",
+    "source": {
+     "section": "Classes > Druid > Level 1: Spellcasting",
+     "page": 42
+    }
+   },
+   "tool_proficiencies": [
+    "Herbalism Kit"
+   ]
   },
   "fighter": {
    "primary_ability": {
@@ -1725,6 +1751,13 @@
     "Saving Throw Proficiencies": "Wisdom and Charisma",
     "Armor Training": "Light, Medium, and Heavy armor and Shields",
     "Weapon Proficiencies": "Simple and Martial weapons"
+   },
+   "spellcasting_ability": {
+    "ability": "Charisma",
+    "source": {
+     "section": "Classes > Paladin > Level 1: Spellcasting",
+     "page": 54
+    }
    }
   },
   "ranger": {
@@ -1759,6 +1792,13 @@
     "Saving Throw Proficiencies": "Strength and Dexterity",
     "Armor Training": "Light and Medium armor and Shields",
     "Weapon Proficiencies": "Simple and Martial weapons"
+   },
+   "spellcasting_ability": {
+    "ability": "Wisdom",
+    "source": {
+     "section": "Classes > Ranger > Level 1: Spellcasting",
+     "page": 58
+    }
    }
   },
   "rogue": {
@@ -1793,8 +1833,12 @@
    "printed": {
     "Saving Throw Proficiencies": "Dexterity and Intelligence",
     "Armor Training": "Light armor",
-    "Weapon Proficiencies": "Simple weapons and Martial weapons that have the Finesse or Light property"
-   }
+    "Weapon Proficiencies": "Simple weapons and Martial weapons that have the Finesse or Light property",
+    "Tool Proficiencies": "Thieves' Tools"
+   },
+   "tool_proficiencies": [
+    "Thieves' Tools"
+   ]
   },
   "sorcerer": {
    "primary_ability": {
@@ -1820,6 +1864,13 @@
     "Saving Throw Proficiencies": "Constitution and Charisma",
     "Armor Training": "None",
     "Weapon Proficiencies": "Simple weapons"
+   },
+   "spellcasting_ability": {
+    "ability": "Charisma",
+    "source": {
+     "section": "Classes > Sorcerer > Level 1: Spellcasting",
+     "page": 65
+    }
    }
   },
   "warlock": {
@@ -1848,6 +1899,13 @@
     "Saving Throw Proficiencies": "Wisdom and Charisma",
     "Armor Training": "Light armor",
     "Weapon Proficiencies": "Simple weapons"
+   },
+   "spellcasting_ability": {
+    "ability": "Charisma",
+    "source": {
+     "section": "Classes > Warlock > Level 1: Pact Magic",
+     "page": 72
+    }
    }
   },
   "wizard": {
@@ -1874,6 +1932,13 @@
     "Saving Throw Proficiencies": "Intelligence and Wisdom",
     "Armor Training": "None",
     "Weapon Proficiencies": "Simple weapons"
+   },
+   "spellcasting_ability": {
+    "ability": "Intelligence",
+    "source": {
+     "section": "Classes > Wizard > Level 1: Spellcasting",
+     "page": 78
+    }
    }
   }
  },
@@ -9155,5 +9220,46 @@
     "evidence": "Whenever you finish a Long Rest, you can study your spellbook and replace one of those spells with an eligible spell of the same level from the book"
    }
   ]
- }
+ },
+ "always_prepared": [
+  {
+   "spell": "hunter_s_mark",
+   "granted_by": {
+    "kind": "class_feature",
+    "class": "ranger",
+    "level": 1,
+    "feature": "Favored Enemy"
+   },
+   "source": {
+    "section": "Classes > Ranger > Level 1: Favored Enemy",
+    "page": 58
+   }
+  },
+  {
+   "spell": "speak_with_animals",
+   "granted_by": {
+    "kind": "class_feature",
+    "class": "druid",
+    "level": 1,
+    "feature": "Druidic"
+   },
+   "source": {
+    "section": "Classes > Druid > Level 1: Druidic",
+    "page": 42
+   }
+  },
+  {
+   "spell": "speak_with_animals",
+   "granted_by": {
+    "kind": "species_lineage",
+    "species": "Gnome",
+    "level": 1,
+    "lineage": "Forest Gnome"
+   },
+   "source": {
+    "section": "Character Origins > Species Descriptions > Gnome > Gnomish Lineage",
+    "page": 85
+   }
+  }
+ ]
 }

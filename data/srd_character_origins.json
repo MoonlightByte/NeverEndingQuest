@@ -551,5 +551,31 @@
    "section": "Classes > Druid > Druid Class Features > Level 1: Primal Order",
    "page": 42
   }
- ]
+ ],
+ "ability_score_methods": {
+  "section": "Character Creation > Step 3: Ability Scores > Generate Your Scores",
+  "page": 21,
+  "standard_array": [
+   15,
+   14,
+   13,
+   12,
+   10,
+   8
+  ],
+  "random_generation": "Roll four d6s and record the total of the highest three dice. Do this five more times, so you have six numbers.",
+  "point_cost": {
+   "budget": 27,
+   "costs": {
+    "8": 0,
+    "9": 1,
+    "10": 2,
+    "11": 3,
+    "12": 4,
+    "13": 5,
+    "14": 7,
+    "15": 9
+   }
+  }
+ }
 }

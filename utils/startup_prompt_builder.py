@@ -4,6 +4,7 @@
 import json
 from pathlib import Path
 
+from core.nql import creation_scope
 from utils.encoding_utils import safe_json_load
 from utils.startup_contract import STARTUP_REVIEW_SCHEMA, startup_response_schema
 
@@ -20,53 +21,9 @@ STARTUP_RULES_REFERENCE_PURPOSE = "startup_rules_reference"
 ORIGINS_FILE = "data/srd_character_origins.json"
 
 
-def _typed_options(option_items, catalog):
-    """A starting-package choice's typed options, whole: each option's key, its items (catalog ids with
-    the catalog's printed names, choose_one ids, uncatalogued keys, slots) and its coins. The game's own
-    fields for an uncatalogued item (item_type, description) stay in the data."""
-    def item(entry):
-        typed = {k: v for k, v in entry.items() if k not in ("item_type", "description")}
-        if entry.get("catalog_id") in catalog:
-            typed["name"] = catalog[entry["catalog_id"]]
-        if isinstance(entry.get("choose_one"), list):
-            typed["choose_one"] = [{"catalog_id": i, "name": catalog.get(i)} for i in entry["choose_one"]]
-        return typed
-    return {key: {"items": [item(e) for e in option.get("items") or []], "coins": option.get("coins")}
-            for key, option in option_items.items()}
-
-
-def _level_1_choices(choice_points, catalog):
-    """A new character's level-1 choices for one class (multiclass-only entries omitted)."""
-    choices = []
-    for point in choice_points.get("1", []):
-        if point.get("applies") == "multiclass":
-            continue
-        entry = {"name": point["name"], "count": point["count"]}
-        if isinstance(point.get("option_source"), list):
-            entry["options"] = point["option_source"]
-        if isinstance(point.get("option_items"), dict):
-            entry["option_items"] = _typed_options(point["option_items"], catalog)
-        # A class order's typed grants (Protector, Warden) and the choices an option opens
-        # (Thaumaturge's and Magician's extra cantrip), as choices.json carries them.
-        for key in ("option_grants", "then"):
-            if isinstance(point.get(key), dict):
-                entry[key] = point[key]
-        entry["text"] = point.get("evidence")
-        entry["page"] = point.get("source", {}).get("page")
-        choices.append(entry)
-    return choices
-
-
-def _level_1_features(progression_class):
-    """A class's fixed level-1 feature names and level-1 class-table values, or nothing."""
-    if not isinstance(progression_class, dict):
-        return {}
-    features = (progression_class.get("features_by_level") or {}).get("1")
-    if not isinstance(features, list):
-        return {}
-    table = {column: values["1"] for column, values in (progression_class.get("table_columns") or {}).items()
-             if isinstance(values, dict) and "1" in values}
-    return {"features": list(features), "class_table_at_level_1": table}
+_typed_options = creation_scope.typed_options
+_level_1_choices = creation_scope.level_1_choices
+_level_1_features = creation_scope.level_1_features
 
 
 def build_startup_rules_reference():
