@@ -264,7 +264,7 @@ def _feat_spell_points(background: Dict[str, Any], d: _Data) -> List[Tuple[str, 
 def _ability_options(background: Dict[str, Any]) -> List[str]:
     """The background's ability increases as option keys: "+2 <ability>, +1 <ability>" for each ordered pair
     of its three abilities, and "+1 each" (background_ability_scores_rule)."""
-    abilities = [a.strip() for a in str(background.get("ability_scores") or "").split(",") if a.strip()]
+    abilities = list(background.get("ability_keys") or [])
     pairs = ["+2 %s, +1 %s" % (a, b) for a in abilities for b in abilities if a != b]
     return pairs + ["+1 each"] if len(abilities) == 3 else []
 

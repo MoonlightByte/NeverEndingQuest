@@ -1420,3 +1420,19 @@ def test_whole_mode_rules_reference_carries_no_engine_flags():
     reference = json.dumps(build_startup_rules_reference(), sort_keys=True)
     assert "equippable" not in reference and '"aliases"' not in reference
     assert hashlib.sha256(reference.encode()).hexdigest()[:12] == "95e91f196259"
+
+
+def test_background_ability_keys_are_authored_and_the_option_keys_unchanged():
+    # D-KW-18: a background's three abilities are an authored list in the data, never split from the
+    # "ability_scores" string at run time; the "+2 X, +1 Y" option keys stay the engine's enum.
+    import json as _json
+    from core.nql import creation_scope
+    origins = _json.load(open(ROOT / "data" / "srd_character_origins.json", encoding="utf-8"))
+    for background in origins["backgrounds"]:
+        assert background["ability_keys"] == [a.strip() for a in background["ability_scores"].split(",")]
+    sage = next(b for b in origins["backgrounds"] if b["key"] == "sage")
+    assert creation_scope._ability_options(sage) == [
+        "+2 Constitution, +1 Intelligence", "+2 Constitution, +1 Wisdom", "+2 Intelligence, +1 Constitution",
+        "+2 Intelligence, +1 Wisdom", "+2 Wisdom, +1 Constitution", "+2 Wisdom, +1 Intelligence", "+1 each"]
+    assert creation_scope._ability_options(dict(sage, ability_scores="Strength, Dexterity, Charisma")) == \
+        creation_scope._ability_options(sage)

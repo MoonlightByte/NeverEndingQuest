@@ -76,7 +76,8 @@ def build_startup_rules_reference():
         "background_ability_scores_rule": origins["background_ability_scores_rule"],
         "backgrounds": [dict(b, equipment_options=_typed_options(b["equipment_options"], catalog))
                         if isinstance(b.get("equipment_options"), dict) else b
-                        for b in _without(origins["backgrounds"], "feat_ref", "skill_keys", "tool_keys", "tool_choice")],
+                        for b in _without(origins["backgrounds"], "feat_ref", "skill_keys", "tool_keys", "tool_choice",
+                                           "ability_keys")],
         "species": _without(origins["species"], "key", "grants"),
         "origin_feats": _without(origins["origin_feats"], "key"),
         "fighting_style_feats": origins["fighting_style_feats"],
