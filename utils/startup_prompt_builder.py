@@ -128,6 +128,9 @@ the engine appends the new scope item and asks again for the same answer: answer
 from the new scope. A startup_choices_dropped item lists picks a switch removed;
 ask again for any the new build still needs. A startup_choice_refusal item names
 picks outside the current scope; correct them from the scope.
+Ids are for the typed fields only: catalog ids (itemdef:...), choice ids and
+option keys go in intent and starting_equipment, never in narration. The scope
+gives each its name; the player sees names only, such as "Chain Mail", not its id.
 """
 
 _WHOLE_COMPLETE = """build presented as complete names every required level-1 choice in the
