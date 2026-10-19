@@ -1173,7 +1173,9 @@ def _prepare_startup_proposal(authored_proposal, *, live_scope=None):
     provenance = {}
     if proposal["decision"] != "finalize_character":
         return proposal, provenance
-    character = sanitize_character_data(proposal["character"])
+    from utils.encoding_utils import sanitize_dict
+    # The loader's own form (#1288): the name is checked as it will read back.
+    character = sanitize_dict(sanitize_character_data(proposal["character"]))
     from updates.update_character_info import name_refusal
     detail = name_refusal(character.get("name"))
     if detail:
@@ -1241,6 +1243,8 @@ def _prepare_startup_proposal(authored_proposal, *, live_scope=None):
     detail = _order_choice_correction(character)
     if detail:
         raise ValueError(detail)
+    # Engine text too (#1288): what is saved reads back equal (read-back, ready check, resume).
+    character = sanitize_dict(character)
     try:
         validate(character, safe_json_load("schemas/char_schema.json"))
     except ValidationError as exc:
