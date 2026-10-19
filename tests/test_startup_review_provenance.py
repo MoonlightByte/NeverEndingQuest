@@ -1406,3 +1406,17 @@ def test_package_items_say_whether_equipped_can_name_them_and_their_aliases():
         unanswered_required=creation_scope.unanswered_required(scope, intent))
     system = messages[0]["content"]
     assert '"equippable": false' in system and '"aliases": ["Arcane Focus (Quarterstaff)", "Quarterstaff"]' in system
+    # The aliases are authored in the data (choices.json), never read from evidence text (D-KW).
+    import json as _json
+    data = _json.dumps(_json.load(open(ROOT / "data" / "srd" / "choices.json", encoding="utf-8")))
+    assert data.count('"aliases": ["Arcane Focus (Quarterstaff)", "Quarterstaff"]') == 1
+    assert data.count('"aliases": ["Druidic Focus (Quarterstaff)", "Quarterstaff"]') == 1
+
+
+def test_whole_mode_rules_reference_carries_no_engine_flags():
+    # nql-ee on #1297: the whole-mode rules reference is main's bytes; equippable and aliases are engine scope only.
+    import hashlib
+    from utils.startup_prompt_builder import build_startup_rules_reference
+    reference = json.dumps(build_startup_rules_reference(), sort_keys=True)
+    assert "equippable" not in reference and '"aliases"' not in reference
+    assert hashlib.sha256(reference.encode()).hexdigest()[:12] == "95e91f196259"
