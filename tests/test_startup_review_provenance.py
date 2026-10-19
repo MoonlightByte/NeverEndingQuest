@@ -1096,8 +1096,8 @@ def test_intent_rescopes_once_and_t128_reviews_without_interview_items(scoped, m
                          "previous_round_demands"}  # no sheet, no provenance
     # C4-switch-r2: what a finalize needs that has no choice id is typed for the review, and the background's
     # own skills are marked granted.
-    assert "starting_equipment.background_package" in body["unanswered_required"]
-    assert "ability_scores.assignment" in body["unanswered_required"]
+    ids = [entry["id"] for entry in body["unanswered_required"]]
+    assert "starting_equipment.background_package" in ids and "ability_scores.assignment" in ids
     assert facts["background"]["granted_skills"] == ["Insight", "Religion"]
     assert body["reply"]["intent"]["class_key"] == "cleric" and body["open_choice_ids"]
     # Leg 1 (T128 r2): starting_equipment rides in the reply (null before finalize), and the background's
@@ -1151,13 +1151,15 @@ def test_unanswered_required_lists_what_no_choice_id_stands_for():
     from core.nql import creation_scope
     scope = creation_scope.creation_scope({"class_key": "paladin", "species_key": "orc",
                                            "background_key": "soldier", "choices": {}})
+    slots = [{"id": "starting_equipment.slot:paladin.A.holy_symbol",
+              "package_choice_id": "paladin.core-paladin-traits.starting-equipment"},
+             {"id": "starting_equipment.slot:soldier.A.gaming_set", "package_choice_id": None}]
     assert creation_scope.unanswered_required(scope, {}) == [
-        "ability_scores.method", "ability_scores.assignment", "starting_equipment.background_package",
-        "starting_equipment.slot:paladin.A.holy_symbol", "starting_equipment.slot:soldier.A.gaming_set"]
+        {"id": "ability_scores.method"}, {"id": "ability_scores.assignment"},
+        {"id": "starting_equipment.background_package"}] + slots
     scores = {"ability_scores": {"method": "standard_array", "assignment": {"strength": 15}}}
     assert creation_scope.unanswered_required(scope, scores) == [
-        "starting_equipment.background_package",
-        "starting_equipment.slot:paladin.A.holy_symbol", "starting_equipment.slot:soldier.A.gaming_set"]
+        {"id": "starting_equipment.background_package"}] + slots
     assert creation_scope.unanswered_required(scope, scores, {"background_package": "A"}) == []
 
 
@@ -1269,3 +1271,28 @@ def test_scope_state_is_not_a_checkpoint_and_belongs_to_its_startup(scoped, monk
     later = dict(scoped._startup_progress(conversation), startup_id="another-startup")
     conversation.append({"role": "system", "content": json.dumps(later)})
     assert (scoped._scope_states(conversation) or [None])[-1] is None
+
+
+def test_bard_round_7_request_keeps_the_class_package_in_intent():
+    # D-ALLCLASS-2 (dplay-AC-bard rounds 6-8): T128 first asked for option A in intent, then reversed and asked
+    # to move it to starting_equipment. The round-7 request, rebuilt offline: the class package pick is in
+    # intent, its slot entry names that package's choice id, and the prompt says the pick stays in intent.
+    from core.nql import creation_scope
+    from utils.startup_prompt_builder import build_engine_review_request
+    package = "bard.core-bard-traits.starting-equipment"
+    intent = {"class_key": "bard", "species_key": "halfling", "background_key": "acolyte",
+              "choices": {package: ["A"]}}
+    scope = creation_scope.creation_scope(intent)
+    messages = build_engine_review_request(
+        facts=creation_scope.review_facts(scope), player_messages=[], latest_user_index=0,
+        previous_author_narration="", reply={"decision": "continue_interview", "intent": intent},
+        open_choice_ids=[], previous_round_demands=[],
+        unanswered_required=creation_scope.unanswered_required(scope, intent))
+    system = " ".join(messages[0]["content"].split())
+    assert ("The class's starting-equipment choice has a choice id: its package pick (A or B) belongs in "
+            "intent.choices; only the package's slots and the background's package go in starting_equipment.") in system
+    body = json.loads(messages[1]["content"])
+    assert body["reply"]["intent"]["choices"][package] == ["A"]
+    assert {"id": "starting_equipment.slot:bard.A.instrument", "package_choice_id": package} in body["unanswered_required"]
+    assert {"id": "starting_equipment.slot:acolyte.A.holy_symbol", "package_choice_id": None} in body["unanswered_required"]
+    assert all(entry["id"] != "starting_equipment.slot:" + package for entry in body["unanswered_required"])
