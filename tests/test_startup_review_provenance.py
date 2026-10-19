@@ -1246,6 +1246,25 @@ def test_an_approval_after_the_sheet_preview_must_finalize():
     assert "do not ask approval for details you add at finalize" not in build_character_creation_system_prompt()
 
 
+
+def test_the_engine_author_offers_only_the_scope_options():
+    # D-ALLCLASS-6 P1 (dplay-AC-difficult turn 13): Athletics was offered to a Soldier fighter.
+    import hashlib
+    from utils.startup_prompt_builder import build_character_creation_system_prompt
+    prompt = build_character_creation_system_prompt(scoped=True)
+    assert ("Offer only a choice's option_keys from the scope; a skill the background grants is never "
+            "offered.") in " ".join(prompt.split())
+    assert "a skill the background grants" not in build_character_creation_system_prompt()
+    assert hashlib.sha256(prompt.encode()).hexdigest()[:12] == "2df6e32ad30f"
+
+
+def test_the_engine_author_asks_one_choice_per_turn_for_a_new_player():
+    # D-ALLCLASS-6 P2 (dplay-AC-difficult turn 9): four long lists in one turn; the new player gave up the character.
+    from utils.startup_prompt_builder import build_character_creation_system_prompt
+    assert ("When the player says they are new or overwhelmed, ask one choice per turn and say how many "
+            "remain.") in " ".join(build_character_creation_system_prompt(scoped=True).split())
+    assert "new or overwhelmed" not in build_character_creation_system_prompt()
+
 def test_package_items_say_whether_equipped_can_name_them_and_their_aliases():
     # D-ALLCLASS-1 facts (dplay-AC-wizard): the author put "Spellbook at hand" in narration but equipped takes
     # catalog ids, and it listed the staff twice (as the focus and as a Quarterstaff); T128 rejected three times.
