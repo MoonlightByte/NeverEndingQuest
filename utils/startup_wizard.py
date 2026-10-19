@@ -28,18 +28,15 @@ from utils.capture.multi_model_capture import capture_and_fanout, register_calls
 register_callsite("T092", "utils/startup_wizard.py", 1035)
 register_callsite("T093", "utils/startup_wizard.py", 2032)
 register_callsite("T124", "utils/startup_wizard.py", 826)
-register_callsite("T128", "utils/startup_wizard.py", 1180)  # the engine review (D-CREATE-COST-5)
 from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
 from utils.startup_prompt_builder import build_character_creation_system_prompt as _build_character_creation_system_prompt
 from utils.startup_prompt_builder import build_startup_review_prompt
-from utils.startup_prompt_builder import build_engine_review_request
 from utils.startup_prompt_builder import (
     ORIGINS_FILE, STARTUP_RULES_REFERENCE_PURPOSE, build_startup_rules_reference,
 )
 from utils.startup_contract import (
     parse_startup_response, parse_startup_review, parse_startup_checkpoint,
-    parse_engine_review,
 )
 from core.nql import creation_build, creation_scope
 from utils.character_sheet_contract import (
@@ -1189,55 +1186,6 @@ def _review_startup_response(conversation, proposal, committed_facts, *,
             )})
 
 
-def _previous_author_narration(conversation, latest):
-    """The narration of the last author response before the latest player input, with its index (r3 G1)."""
-    for index in range(min(latest if latest is not None else len(conversation), len(conversation)) - 1, -1, -1):
-        message = conversation[index]
-        if message.get("role") != "assistant":
-            continue
-        try:
-            body = json.loads(message.get("content", ""))
-        except (TypeError, ValueError):
-            continue
-        if isinstance(body, dict) and "narration" in body:
-            return {"index": index, "content": body["narration"]}
-    return None
-
-
-def _engine_review(conversation, proposal, *, previous_demands, summary, live_scope, attempts=None):
-    """T128, the engine review (D-CREATE-COST-5 section 5): one call over the turn's intent and narration against the
-    current scope's own text. Returns the loop's review shape with the typed demands; None once `attempts`
-    answers (when given) had invalid structure."""
-    latest = _latest_player_index(conversation)
-    intent = proposal.get("intent") or {}
-    scope = _creation_scope_current(conversation) or creation_scope.creation_scope(intent) or {}
-    messages = build_engine_review_request(
-        facts=creation_scope.review_facts(scope),
-        player_messages=[{"index": i, "content": m.get("content")} for i, m in enumerate(conversation)
-                         if m.get("role") == "user"],
-        latest_user_index=latest, previous_author_narration=_previous_author_narration(conversation, latest),
-        reply=proposal, open_choice_ids=creation_scope.open_choice_ids(intent),
-        previous_round_demands=previous_demands, summary=summary,
-        unanswered_required=creation_scope.unanswered_required(scope, intent, proposal.get("starting_equipment")))
-    invalid = 0
-    while True:
-        raw = get_ai_response(messages, {"type": "json_object"}, persist_response=False, live_scope=live_scope,
-                              startup_phase="startup_review", task_id="T128")
-        try:
-            verdict = parse_engine_review(raw)
-        except ValueError as exc:
-            invalid += 1
-            if attempts is not None and invalid >= attempts:
-                return None
-            messages.append({"role": "system", "content": (
-                f"The rejected review has invalid structure: {exc}. Return the complete corrected review object.")})
-            continue
-        feedback = "\n".join(f"{d['field']} ({d['reason_kind']}): {d['demand']}" for d in verdict["demands"])
-        return {"version": 1, "accepted": verdict["accepted"], "feedback": feedback,
-                "needs_player_clarification": verdict["needs_player_clarification"],
-                "demands": verdict["demands"]}
-
-
 def _origin_key(name):
     """Typed name key: the whole name, trimmed and casefolded; no part is cut off (#855)."""
     return str(name or "").strip().casefold()
@@ -1635,7 +1583,6 @@ def ai_character_interview(conversation, module):
             correction_context = copy.deepcopy(conversation)
             rejected = 0
             rescoped = False  # one re-scope per T092 response chain (r3 section 3.2)
-            demands = []  # the previous review round's demands this turn (T128's contradiction check)
             turn_items = []  # scope, state and drop items made this turn; saved only when it publishes (T4)
             while True:
                 if rejected >= STARTUP_TURN_REJECTION_LIMIT:
@@ -1690,13 +1637,11 @@ def ai_character_interview(conversation, module):
                                             "unsupported mechanics or lost choices."),
                                 "changes": mechanics,
                             }
-                    # The mode selects only the review, read on every turn (Q1 option 1).
+                    # The mode selects only the review, read on every turn (Q1 option 1). D-ALLCLASS-4: the engine
+                    # path has no model review; the engine is the only gate (creation_build refusals,
+                    # unanswered_required, the typed schema), and its refusals reach the author as ValueError.
                     if _startup_review_mode() == "engine":
-                        final = proposal["decision"] == "finalize_character"
-                        review = _engine_review(
-                            correction_context, proposal, previous_demands=demands,
-                            summary=creation_build.render_sheet_summary(proposal["character"]) if final else None,
-                            live_scope=scope, attempts=STARTUP_TURN_REJECTION_LIMIT - rejected)
+                        review = {"accepted": True}
                     else:
                         # #1278's review over the engine-built sheet, against the reference a scoped history lacks.
                         review_request = copy.deepcopy(request)
@@ -1726,7 +1671,6 @@ def ai_character_interview(conversation, module):
                 if not review["accepted"]:
                     rejected += 1
                     rescoped = False
-                    demands = review.get("demands") or []
                     correction_context.append({"role": "system", "content": json.dumps({
                         "rejected_proposal": authored_proposal,
                         "canonical_candidate": proposal,

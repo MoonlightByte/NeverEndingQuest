@@ -6,7 +6,7 @@ from pathlib import Path
 
 from core.nql import creation_scope
 from utils.encoding_utils import safe_json_load
-from utils.startup_contract import ENGINE_REVIEW_SCHEMA, STARTUP_REVIEW_SCHEMA, startup_response_schema
+from utils.startup_contract import STARTUP_REVIEW_SCHEMA, startup_response_schema
 
 
 def _read_text_file(relative_path):
@@ -497,108 +497,3 @@ Return only this review object, no narration, state changes or new character:
 """
 
 
-# The engine review (D-CREATE-COST-5 section 5, T128): one call over the turn's intent and narration against the
-# scope's own text. The engine builds and computes the sheet, so no sheet or provenance is sent.
-ENGINE_REVIEW_PURPOSE = "startup_engine_review"
-
-
-def build_engine_review_prompt():
-    """T128's system prompt (the creation facts follow it in the same system message)."""
-    return f"""You independently review one turn of a character creation interview for a fifth
-edition game (SRD 5.2.1). The author records the player's choices as typed intent;
-the engine builds the character sheet from that intent and computes every number,
-so you never check a sheet, arithmetic, hit points, armor class or gear rows.
-You receive the CREATION FACTS below (the chosen class, species and background
-with their trait text, and every current choice with its own text, page, options
-and option grants), and in the user message: the player's own messages with
-their interview indexes, the author's previous narration, this turn's reply
-(decision, narration, confirmation, intent, starting_equipment), open_choice_ids (the choices the
-engine still needs), unanswered_required (what a finalize still needs that has no
-choice id: the ability score method or assignment, the background's package, a
-package slot), the previous round's demands, and at finalize the summary
-the game rendered from the engine-built sheet.
-Only the choice ids in the creation facts belong in intent. A choice the facts
-give no choice id for, such as the background's equipment package or a package
-slot (a holy symbol's form, an instrument), is recorded in starting_equipment
-as the player gives it (a package not yet chosen is null): never
-demand it in intent, and a narration that notes it is not an intent mismatch.
-The class's starting-equipment choice has a choice id: its package pick (A or
-B) belongs in intent.choices; only the package's slots and the background's
-package go in starting_equipment.
-The background's granted_skills are granted by the background itself, in
-addition to the class's skill picks; they never belong to the class's list.
-A skill in background.granted_skills is never a class skill option; its absence
-from the class list is correct.
-The class's level-1 features in the creation facts are the complete list: a
-statement that the class has no other feature at level 1 (no Weapon Mastery for
-a Cleric) is true.
-Check the reply:
-1. Intent records only what the player chose or approved, or a pick the player
-   delegated ("choose for me") and the author then made from the options. A
-   pick the player never made or delegated, or a player choice the intent omits
-   or contradicts, is intent_mismatch.
-2. A continue_interview asks the player the next open question or asks for
-   whole-build approval. Asking about an item in unanswered_required is a
-   valid open question, never flow, and whole-build approval or a finalize is
-   not due while ability_scores items remain in it. A reply that asks the player nothing while
-   open_choice_ids is not empty is a flow rejection, and so is a narration that
-   ends on a colon or a heading with no question and no options after it. A reply that asks for
-   whole-build approval, or a finalize, while open_choice_ids is not empty is
-   an unasked_choice rejection. Asking three or four open decisions per turn
-   and leaving the rest for later is valid.
-3. Every rules fact the narration states agrees with the creation facts. An
-   option, grant or rule the facts contradict, or one that does not exist, is a
-   false_rules_claim: name the passage and its page. A fact the creation facts
-   do not give is fine when hedged; asserted as a rule, it is a reference_gap.
-   Wording that matches the facts in substance is not a false claim: armor
-   "training" and weapon "proficiency" name the same grant whichever word is
-   used.
-4. finalize_character only when the latest player message approves the whole
-   current build, in context. Approval of one detail, a negation, uncertainty
-   or an outstanding requested change is not whole-build approval. Do not
-   require an exact phrase.
-5. The narration claims no saved character, arrival, scene or NPC interaction:
-   the game does those after the review.
-6. pause_setup only when the latest player message asks to stop setup for now;
-   cancelling, undoing or changing a choice is not a pause, and a clear request
-   to stop must not be ignored.
-Never reject for alignment: the player never has to choose it, and the author
-may propose one. Never reject for narration layout or style, for a value the
-engine computes, for anything the rendered summary shows (it is the engine's
-own), or for creative text the player approved.
-The previous round's demands are allegations to verify, not authority. When a
-demand you make would reverse a previous demand (asks to add what it asked
-removed, or to remove what it asked added), set contradiction true; otherwise
-false.
-Set needs_player_clarification true only on a rejection the author cannot
-correct without new player input. An accept has no demands and
-needs_player_clarification false. A rejection lists at least one demand, each
-with the field it concerns (narration, decision, confirmation, intent.<key>,
-intent.choices.<choice id>, creative.<field>), what must change, and its
-reason_kind.
-Return only this JSON object:
-{json.dumps(ENGINE_REVIEW_SCHEMA, indent=2)}
-"""
-
-
-def build_engine_review_request(*, facts, player_messages, latest_user_index, previous_author_narration,
-                                reply, open_choice_ids, previous_round_demands, summary=None,
-                                unanswered_required=()):
-    """The T128 request (plan section 5): system = the review prompt and the creation facts (creation_scope.review_facts
-    of the current scope); user = the player's messages with indexes, the previous author narration, this turn's
-    reply (decision, narration, confirmation, intent, starting_equipment), the open choice ids, the previous
-    round's demands and, at
-    finalize, the summary rendered from the engine-built sheet. No sheet and no provenance."""
-    body = {"task_purpose": ENGINE_REVIEW_PURPOSE, "player_messages": player_messages,
-            "latest_user_index": latest_user_index, "previous_author_narration": previous_author_narration,
-            "reply": {k: reply.get(k) for k in ("decision", "narration", "confirmation", "intent",
-                                                "starting_equipment")},
-            "open_choice_ids": list(open_choice_ids), "unanswered_required": list(unanswered_required),
-            "previous_round_demands": list(previous_round_demands)}
-    if summary is not None:
-        body["engine_built_summary"] = summary
-    return [
-        {"role": "system", "content": build_engine_review_prompt()
-         + "\nCREATION FACTS, as JSON:\n" + json.dumps(facts, ensure_ascii=False)},
-        {"role": "user", "content": json.dumps(body, ensure_ascii=False)},
-    ]

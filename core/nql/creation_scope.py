@@ -611,45 +611,6 @@ def scope_id(scope: Dict[str, Any]) -> str:
     return hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
 
 
-# --- the engine review's facts (D-CREATE-COST-5 section 5, audit A) ---
-
-_BACKGROUND_INTERNAL = ("feat_ref", "skill_keys", "tool_keys", "tool_choice")
-
-
-def _with_cantrip_text(choice: Dict[str, Any]) -> Dict[str, Any]:
-    """A cantrip choice's options with each spell's SRD description, by typed key from the spell repository
-    (all-class B4: an asserted cantrip effect is checked against the data, not hedged for its absence)."""
-    if choice.get("kind") != "cantrip" or not isinstance(choice.get("options"), list):
-        return choice
-    repository = _load(SPELLS_PATH) or {}
-    options = []
-    for option in choice["options"]:
-        entry = repository.get(option.get("key")) if isinstance(option, dict) else None
-        text = entry.get("description") if isinstance(entry, dict) else None
-        options.append(dict(option, text=text) if isinstance(text, str) and text else option)
-    return dict(choice, options=options)
-
-
-def review_facts(scope: Dict[str, Any]) -> Dict[str, Any]:
-    """What T128 checks a turn against: the current scope item as the author had it, less what only builds the
-    sheet. Its choices carry each open and picked choice's own text and page and the picked options' grants;
-    the species and background carry their trait text."""
-    facts: Dict[str, Any] = {k: scope[k] for k in ("ruleset", "scope_id", "intent", "menu", "considering",
-                                                   "class", "choices") if k in scope}
-    if facts.get("choices"):
-        facts["choices"] = [_with_cantrip_text(choice) for choice in facts["choices"]]
-    if scope.get("species") is not None:
-        facts["species"] = {k: v for k, v in scope["species"].items() if k not in ("grants", "key")}
-    if scope.get("background") is not None:
-        facts["background"] = {k: v for k, v in scope["background"].items() if k not in _BACKGROUND_INTERNAL}
-        # Granted by the background itself, never picked from the class list (C4-switch-r2 round 7).
-        facts["background"]["granted_skills"] = list(scope["background"].get("skill_keys") or [])
-    common = {k: v for k, v in (scope.get("common") or {}).items() if k != "sheet_representation"}
-    if common:
-        facts["common"] = common
-    return facts
-
-
 def _slot_ids(value) -> List[str]:
     """Every package slot id (a holy symbol's form, a gaming set) under one scope value."""
     if isinstance(value, dict):
@@ -666,8 +627,8 @@ def unanswered_required(scope: Dict[str, Any], intent: Dict[str, Any], starting_
     """What a finalize still needs that no choice id stands for (C4-switch-r2): the ability score method and
     assignment while intent lacks them, the background's package, and every slot of a chosen (or not yet
     chosen) package. A starting_equipment the author records as the player gives picks (D-CREATE-COST-5
-    amendment 2) answers what it already holds. Typed entries only; T128 reads asking for these as an open
-    question. A slot entry names the choice id of the package that holds it (D-ALLCLASS-2): a class package
+    amendment 2) answers what it already holds. Typed entries only; a finalize refuses while a starting_equipment
+    entry remains (D-ALLCLASS-4: the engine is the only gate). A slot entry names the choice id of the package that holds it (D-ALLCLASS-2): a class package
     pick is intent, only its slot is starting_equipment; a background slot has no package choice id (None)."""
     missing = []
     scores = (intent or {}).get("ability_scores") or {}
