@@ -15,7 +15,6 @@ passive perception) are recomputed from ability scores and the new proficiency b
 """
 import json
 import os
-import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -547,32 +546,29 @@ def _origins() -> Dict[str, Any]:
     return _ORIGINS
 
 
-def _slug(text: Any) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", str(text).lower()).strip("-")  # core/nql/creation_scope.py _slug
-
-
 def species_grants_gained(sheet: Dict[str, Any], picks: Optional[Dict[str, Any]],
                           new_level: int) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, str]]]:
     """The species grants that arrive at character level ``new_level`` (#1292): a lineage's or
     legacy's spell (``spells_by_level``: always prepared, cast once per Long Rest without a slot,
     with the lineage's spellcasting-ability pick; SRD p.84/86) and a level trait
     (``traits_by_level``: Draconic Flight, Large Form). ``picks`` is creation_picks(): typed
-    choice ids only. With no picks, a species that has a grant at this level gives the untyped
-    gap {"id": "species.unknown", "where": ...} instead of a guess. ([grants], gap or None)"""
+    choice ids only. With no picks, any species grant at this level gives the untyped gap
+    {"id": "species.unknown", "where": ...} instead of a guess. ([grants], gap or None)"""
     level = str(new_level)
     species = _origins().get("species") or []
     if picks is None:
-        race = str(sheet.get("race") or "").strip().casefold()
-        entry = next((s for s in species if str(s.get("name") or "").strip().casefold() == race), None)
-        grants = (entry or {}).get("grants") or {}
-        if (grants.get("traits_by_level") or {}).get(level) or any(
+        # No typed species without the record (the race text is never read): any species grant at this
+        # level is a gap for this sheet.
+        if any((s.get("grants") or {}).get("traits_by_level", {}).get(level) or any(
                 (option.get("spells_by_level") or {}).get(level)
-                for choice in grants.get("choices") or [] for option in choice.get("options") or []):
-            return [], {"id": "species.unknown", "where": "no engine creation record for this sheet"}
+                for choice in (s.get("grants") or {}).get("choices") or [] for option in choice.get("options") or [])
+               for s in species):
+            return [], {"id": "species.unknown", "where": "species grants cannot be typed without a creation record"}
         return [], None
     entry = next((s for s in species if s.get("key") == picks.get("species_key")), None)
     if entry is None:
         return [], None
+    from core.nql.creation_scope import _slug  # the engine's own choice-id issuer (one source of ids)
     grants = entry.get("grants") or {}
     spells = None
     out: List[Dict[str, Any]] = []
