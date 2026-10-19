@@ -630,18 +630,24 @@ def _slot_ids(value) -> List[str]:
     return []
 
 
-def unanswered_required(scope: Dict[str, Any], intent: Dict[str, Any], starting_equipment=None) -> List[str]:
+def unanswered_required(scope: Dict[str, Any], intent: Dict[str, Any], starting_equipment=None) -> List[Dict[str, Any]]:
     """What a finalize still needs that no choice id stands for (C4-switch-r2): the ability score method and
     assignment while intent lacks them and, until starting_equipment is given at finalize, the background's
-    package and every package slot. Typed ids only; T128 reads asking for these as an open question."""
+    package and every package slot. Typed entries only; T128 reads asking for these as an open question.
+    A slot entry names the choice id of the package that holds it (D-ALLCLASS-2): a class package pick is
+    intent, only its slot is starting_equipment; a background slot has no package choice id (None)."""
     missing = []
     scores = (intent or {}).get("ability_scores") or {}
     for key in ("method", "assignment"):
         if not scores.get(key):
-            missing.append("ability_scores." + key)
+            missing.append({"id": "ability_scores." + key})
     if starting_equipment is None:
         if (scope.get("background") or {}).get("equipment_options"):
-            missing.append("starting_equipment.background_package")
-        missing.extend("starting_equipment.slot:" + slot
-                       for slot in sorted(set(_slot_ids({k: scope.get(k) for k in ("class", "background", "choices")}))))
+            missing.append({"id": "starting_equipment.background_package"})
+        slots = {slot: None for slot in _slot_ids({k: scope.get(k) for k in ("class", "background")})}
+        for choice in scope.get("choices") or []:
+            for slot in _slot_ids(choice):
+                slots[slot] = choice.get("id")
+        missing.extend({"id": "starting_equipment.slot:" + slot, "package_choice_id": slots[slot]}
+                       for slot in sorted(slots))
     return missing
