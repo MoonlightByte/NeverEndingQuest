@@ -632,22 +632,30 @@ def _slot_ids(value) -> List[str]:
 
 def unanswered_required(scope: Dict[str, Any], intent: Dict[str, Any], starting_equipment=None) -> List[Dict[str, Any]]:
     """What a finalize still needs that no choice id stands for (C4-switch-r2): the ability score method and
-    assignment while intent lacks them and, until starting_equipment is given at finalize, the background's
-    package and every package slot. Typed entries only; T128 reads asking for these as an open question.
-    A slot entry names the choice id of the package that holds it (D-ALLCLASS-2): a class package pick is
-    intent, only its slot is starting_equipment; a background slot has no package choice id (None)."""
+    assignment while intent lacks them, the background's package, and every slot of a chosen (or not yet
+    chosen) package. A starting_equipment the author records as the player gives picks (D-CREATE-COST-5
+    amendment 2) answers what it already holds. Typed entries only; T128 reads asking for these as an open
+    question. A slot entry names the choice id of the package that holds it (D-ALLCLASS-2): a class package
+    pick is intent, only its slot is starting_equipment; a background slot has no package choice id (None)."""
     missing = []
     scores = (intent or {}).get("ability_scores") or {}
     for key in ("method", "assignment"):
         if not scores.get(key):
             missing.append({"id": "ability_scores." + key})
-    if starting_equipment is None:
-        if (scope.get("background") or {}).get("equipment_options"):
-            missing.append({"id": "starting_equipment.background_package"})
-        slots = {slot: None for slot in _slot_ids({k: scope.get(k) for k in ("class", "background")})}
-        for choice in scope.get("choices") or []:
-            for slot in _slot_ids(choice):
-                slots[slot] = choice.get("id")
-        missing.extend({"id": "starting_equipment.slot:" + slot, "package_choice_id": slots[slot]}
-                       for slot in sorted(slots))
+    equipment = starting_equipment if isinstance(starting_equipment, dict) else {}
+    picked = {pick.get("slot") for pick in equipment.get("slot_picks") or [] if isinstance(pick, dict)}
+    if (scope.get("background") or {}).get("equipment_options") and not equipment.get("background_package"):
+        missing.append({"id": "starting_equipment.background_package"})
+    slots = {slot: None for slot in _slot_ids({k: scope.get(k) for k in ("class", "background")})}
+    for choice in scope.get("choices") or []:
+        for slot in _slot_ids(choice):
+            slots[slot] = choice.get("id")
+    choices = (intent or {}).get("choices") or {}
+    for slot in sorted(slots):
+        package = slots[slot]
+        # A slot id is <owner>.<package key>.<slot>; a slot of a package not chosen is not needed.
+        chosen = (choices.get(package) or [None])[0] if package else equipment.get("background_package")
+        if slot in picked or (chosen and slot.split(".")[1] != chosen):
+            continue
+        missing.append({"id": "starting_equipment.slot:" + slot, "package_choice_id": package})
     return missing

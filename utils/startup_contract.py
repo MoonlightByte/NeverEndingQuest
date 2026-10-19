@@ -157,6 +157,11 @@ def startup_response_schema(*, scoped=False):
         for field in ("character", "origin"):
             del schema["properties"][field]
             schema["required"].remove(field)
+        # D-CREATE-COST-5 amendment 2 (D-ALLCLASS-2): package and slot picks are recorded as the player gives
+        # them, so an interview turn may carry a partial starting_equipment; a package not yet chosen is null.
+        packages = schema["properties"]["starting_equipment"]["properties"]
+        for key in ("background_package", "class_package"):
+            packages[key] = {"type": ["string", "null"]}
     return schema
 
 
@@ -231,7 +236,9 @@ def _check_engine_response(value, latest_user_index):
                 or type(index) is not int or type(latest_user_index) is not int
                 or index != latest_user_index):
             raise ValueError("Finalization requires whole-build approval of the latest actual player input")
-        if value["creative"] is None or value["starting_equipment"] is None:
+        equipment = value["starting_equipment"]
+        if (value["creative"] is None or equipment is None
+                or equipment["background_package"] is None or equipment["class_package"] is None):
             raise ValueError("Finalization requires creative (name, alignment, personality_traits, ideals, bonds, "
                              "flaws) and starting_equipment (the chosen package keys, slot_picks and equipped)")
         intent = value["intent"]
@@ -241,9 +248,9 @@ def _check_engine_response(value, latest_user_index):
                              "ability_scores (method and assignment)")
     elif confirmation["whole_build_approved"]:
         raise ValueError("An interview response cannot approve the build")
-    elif value["creative"] is not None or value["starting_equipment"] is not None:
-        raise ValueError("An interview response has creative and starting_equipment null; they are set at "
-                         "finalization")
+    elif value["creative"] is not None:
+        # starting_equipment may be partial before finalization (amendment 2): picks are recorded as given.
+        raise ValueError("An interview response has creative null; it is set at finalization")
     elif value["decision"] == "pause_setup" and (
             type(index) is not int or type(latest_user_index) is not int
             or index != latest_user_index):
