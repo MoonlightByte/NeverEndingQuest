@@ -1533,7 +1533,7 @@ def ai_character_interview(conversation, module):
 
     # The path comes from the history; the mode selects only a new interview's (r3.1 §3.6).
     path = _interview_path(conversation)
-    scoped = path == "scoped" if path is not None else _startup_review_mode() == "sectioned"
+    scoped = path == "scoped" or _startup_review_mode() == "sectioned"
     _append_system_once(conversation, build_character_creation_system_prompt(scoped=scoped))
     _append_system_once(conversation, json.dumps({
         "task_purpose": "startup_character_interview",
