@@ -10414,7 +10414,9 @@ def _provider_refusal_followup(exc):
 def _followup_failure_message(result):
     """The line a failed follow-up result shows the player (#735)."""
     if result.get("status") == "review_exhausted":
-        return _FOLLOWUP_NOT_APPLIED_MESSAGE
+        # D-COST-4: the authored in-character line, which claims nothing
+        # about earlier beats, so it is true on a follow-up too.
+        return _dm_fail_forward_line()
     return result.get("player_message") or _FOLLOWUP_NOT_APPLIED_MESSAGE
 
 
