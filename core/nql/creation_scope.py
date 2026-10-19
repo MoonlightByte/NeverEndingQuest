@@ -262,6 +262,14 @@ def _ability_options(background: Dict[str, Any]) -> List[str]:
     return pairs + ["+1 each"] if len(abilities) == 3 else []
 
 
+def background_tool_id(background: Dict[str, Any]) -> str:
+    """The id of a background's tool pick (tool_choice): background.<key>.<slug(the tool category)>, e.g.
+    background.soldier.gaming-set."""
+    tool = background.get("tool_choice") or {}
+    category = str(tool.get("option_source") or "").partition("category=")[2]
+    return "background.%s.%s" % (background["key"], _slug(tool.get("name") or category or "tool"))
+
+
 def issued_points(intent: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     """Every choice id the intent opens, with its typed entry, in order: the class's level-1 points and the
     sub-picks of the options the intent took; the background feat's spell picks; the standard languages
@@ -293,6 +301,14 @@ def issued_points(intent: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         out[bid] = {"id": bid, "kind": "ability_scores", "name": "Ability Score Increases", "count": 1, "section": "S1",
                     "option_keys": _ability_options(background), "text": d.origins["background_ability_scores_rule"],
                     "page": background.get("page")}
+    tool = (background or {}).get("tool_choice")
+    if isinstance(tool, dict):
+        tid = background_tool_id(background)
+        point = {"kind": "tool", "name": tool.get("name") or "Tool Proficiency", "count": int(tool.get("count") or 1),
+                 "option_source": tool.get("option_source"), "evidence": background.get("tool_proficiency"),
+                 "source": {"page": background.get("page")}}
+        out[tid] = _point_entry(tid, point, cls or "", d, "S2")
+    out.update(_species_points(intent.get("species_key"), picks, cls or "", d))
     for sid, sub in _feat_spell_points(background, d) if background else []:
         # Every pick of a feat that grants spells is reviewed with the spells (r3 §4.2: Magic Initiate -> S3).
         out[sid] = _point_entry(sid, sub, background["feat_ref"]["spell_list"].lower(), d, "S3")
@@ -304,6 +320,50 @@ def issued_points(intent: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
             "id": "languages.standard", "kind": "language", "name": "Standard Languages", "count": 2, "section": "S2",
             "option_keys": standard, "text": d.origins["languages_rule"]["passages"][0],
             "page": d.choices["languages"]["source"]["page"]}
+    return out
+
+
+def _species_points(key: Any, picks: Dict[str, Any], cls: str, d: _Data) -> Dict[str, Dict[str, Any]]:
+    """The species' level-1 choices from its typed grants (D-CREATE-COST-5): species.<key>.<slug(choice)>,
+    the size when the species offers two, a lineage's spellcasting ability once the lineage is picked, and
+    the sub-picks of a Versatile Origin feat that has them."""
+    species = d.species().get(key)
+    grants = (species or {}).get("grants")
+    if not isinstance(grants, dict):
+        return {}
+    page = (grants.get("source") or {}).get("page") or species.get("page")
+    out: Dict[str, Dict[str, Any]] = {}
+    if grants.get("size_options"):
+        sid = "species.%s.size" % key
+        out[sid] = {"id": sid, "kind": "size", "name": "Size", "count": 1, "section": "S1",
+                    "option_keys": list(grants["size_options"]), "text": species.get("size"), "page": page}
+    traits = {t.get("name"): t.get("text") for t in grants.get("traits") or [] if isinstance(t, dict)}
+    for choice in grants.get("choices") or []:
+        cid = "species.%s.%s" % (key, _slug(choice["name"]))
+        if choice.get("options_from"):
+            spec = choice["options_from"]
+            table = next((t for t in species.get("tables") or [] if t.get("title") == spec.get("table")), {})
+            column = (table.get("columns") or []).index(spec["option_column"]) if table else 0
+            entry = {"option_keys": [row[column] for row in table.get("rows") or []]}
+        elif choice.get("options"):
+            entry = {"option_keys": [o["name"] for o in choice["options"]]}
+        else:
+            entry = _resolved({"option_source": choice.get("option_source")}, cls, d)
+        out[cid] = dict({"id": cid, "kind": choice.get("kind") or "species_option", "name": choice["name"],
+                         "count": 1, "section": "S2", "text": traits.get(choice.get("trait") or choice["name"]),
+                         "page": page}, **entry)
+        if choice.get("spellcasting_ability") and picks.get(cid):
+            aid = "%s.spellcasting-ability" % cid
+            out[aid] = {"id": aid, "kind": "ability", "name": "Spellcasting Ability", "count": 1, "section": "S3",
+                        "option_keys": list(choice["spellcasting_ability"]), "text": out[cid]["text"], "page": page}
+        if choice.get("kind") == "feat":
+            for name in picks.get(cid) or []:
+                feat = next((f for f in d.choices["feats"] if f.get("name") == name), None)
+                for sub in (feat or {}).get("choices") or []:
+                    if sub.get("then"):
+                        continue  # a feat whose list is itself a pick (Magic Initiate) is offered whole: not typed
+                    sid = "%s.%s.%s" % (cid, _slug(name), _slug(sub["name"]))
+                    out[sid] = _point_entry(sid, sub, cls, d, "S2")
     return out
 
 

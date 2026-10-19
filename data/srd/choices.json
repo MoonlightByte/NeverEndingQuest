@@ -102,14 +102,14 @@
    "meaning": "Kinds of weapons the character has proficiency with."
   },
   {
-   "form": "tools:category=<Artisan's Tools|Musical Instrument>",
-   "resolves": "host",
-   "meaning": "Tools of that category in the SRD Equipment chapter."
+   "form": "tools:category=<Artisan's Tools|Gaming Set|Musical Instrument|Other Tools>",
+   "resolves": "file",
+   "meaning": "tools.entries in this file with that category."
   },
   {
    "form": "tools:all",
-   "resolves": "host",
-   "meaning": "Every tool in the SRD Equipment chapter."
+   "resolves": "file",
+   "meaning": "Every entry in tools.entries in this file."
   },
   {
    "form": "beasts:max_cr=<1/4|1/2|1>,fly=<yes|no>",
@@ -594,7 +594,13 @@
     "section": "Feats > Feat Descriptions > Fighting Style Feats > Archery",
     "page": 87
    },
-   "key": "archery"
+   "key": "archery",
+   "effect": {
+    "kind": "attack_bonus",
+    "value": 2,
+    "attacks": "ranged_weapon",
+    "sheet": "engine attack rows"
+   }
   },
   {
    "name": "Defense",
@@ -614,7 +620,17 @@
     "section": "Feats > Feat Descriptions > Fighting Style Feats > Defense",
     "page": 88
    },
-   "key": "defense"
+   "key": "defense",
+   "effect": {
+    "kind": "ac_bonus",
+    "value": 1,
+    "while_wearing": [
+     "light",
+     "medium",
+     "heavy"
+    ],
+    "sheet": "armorClass"
+   }
   },
   {
    "name": "Great Weapon Fighting",
@@ -634,7 +650,22 @@
     "section": "Feats > Feat Descriptions > Fighting Style Feats > Great Weapon Fighting",
     "page": 88
    },
-   "key": "great_weapon_fighting"
+   "key": "great_weapon_fighting",
+   "effect": {
+    "kind": "damage_die_floor",
+    "value": 3,
+    "replaces": [
+     1,
+     2
+    ],
+    "attacks": "melee_weapon",
+    "held": "two_hands",
+    "weapon_property_any": [
+     "Two-Handed",
+     "Versatile"
+    ],
+    "sheet": "none (roll rider)"
+   }
   },
   {
    "name": "Two-Weapon Fighting",
@@ -654,7 +685,12 @@
     "section": "Feats > Feat Descriptions > Fighting Style Feats > Two-Weapon Fighting",
     "page": 88
    },
-   "key": "two_weapon_fighting"
+   "key": "two_weapon_fighting",
+   "effect": {
+    "kind": "light_extra_attack_damage_modifier",
+    "weapon_property": "Light",
+    "sheet": "none (roll rider)"
+   }
   },
   {
    "name": "Boon of Combat Prowess",
@@ -939,6 +975,12 @@
    "source": {
     "section": "Classes > Warlock > Eldritch Invocation Options > Armor of Shadows",
     "page": 72
+   },
+   "effect": {
+    "kind": "cast_without_slot",
+    "spell": "mage_armor",
+    "target": "self",
+    "page": 72
    }
   },
   {
@@ -997,6 +1039,12 @@
    "choices": [],
    "source": {
     "section": "Classes > Warlock > Eldritch Invocation Options > Eldritch Mind",
+    "page": 72
+   },
+   "effect": {
+    "kind": "save_advantage",
+    "save": "Constitution",
+    "when": "maintain_concentration",
     "page": 72
    }
   },
@@ -1255,6 +1303,14 @@
    "source": {
     "section": "Classes > Warlock > Eldritch Invocation Options > Pact of the Blade",
     "page": 74
+   },
+   "effect": {
+    "kind": "pact_weapon",
+    "summon": "bonus_action",
+    "weapon": "Simple or Martial Melee",
+    "attack_ability": "Charisma",
+    "sheet": "none at creation (the bond is made in play)",
+    "page": 74
    }
   },
   {
@@ -1265,6 +1321,13 @@
    "choices": [],
    "source": {
     "section": "Classes > Warlock > Eldritch Invocation Options > Pact of the Chain",
+    "page": 74
+   },
+   "effect": {
+    "kind": "spell_known",
+    "spell": "find_familiar",
+    "cast_without_slot": true,
+    "casting": "magic_action",
     "page": 74
    }
   },
@@ -1620,7 +1683,16 @@
    },
    "tool_proficiencies": [
     "Herbalism Kit"
-   ]
+   ],
+   "languages": {
+    "granted": [
+     "Druidic"
+    ],
+    "source": {
+     "section": "Classes > Druid > Druid Class Features > Level 1: Druidic",
+     "page": 42
+    }
+   }
   },
   "fighter": {
    "primary_ability": {
@@ -9292,6 +9364,424 @@
     "section": "Character Origins > Species Descriptions > Gnome > Gnomish Lineage",
     "page": 85
    }
+  }
+ ],
+ "tools": {
+  "source": {
+   "section": "Equipment > Tools",
+   "pages": [
+    93,
+    94
+   ]
+  },
+  "rule": "Each tool, and each variant of Gaming Set and Musical Instrument, requires a separate proficiency (p. 93, Variants).",
+  "categories": [
+   "Artisan's Tools",
+   "Gaming Set",
+   "Musical Instrument",
+   "Other Tools"
+  ],
+  "entries": [
+   {
+    "key": "alchemists-supplies",
+    "name": "Alchemist's Supplies",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "50 GP",
+    "page": 93
+   },
+   {
+    "key": "brewers-supplies",
+    "name": "Brewer's Supplies",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "20 GP",
+    "page": 93
+   },
+   {
+    "key": "calligraphers-supplies",
+    "name": "Calligrapher's Supplies",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "10 GP",
+    "page": 93
+   },
+   {
+    "key": "carpenters-tools",
+    "name": "Carpenter's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "8 GP",
+    "page": 93
+   },
+   {
+    "key": "cartographers-tools",
+    "name": "Cartographer's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "15 GP",
+    "page": 93
+   },
+   {
+    "key": "cobblers-tools",
+    "name": "Cobbler's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "5 GP",
+    "page": 93
+   },
+   {
+    "key": "cooks-utensils",
+    "name": "Cook's Utensils",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "1 GP",
+    "page": 93
+   },
+   {
+    "key": "glassblowers-tools",
+    "name": "Glassblower's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "30 GP",
+    "page": 93
+   },
+   {
+    "key": "jewelers-tools",
+    "name": "Jeweler's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "25 GP",
+    "page": 93
+   },
+   {
+    "key": "leatherworkers-tools",
+    "name": "Leatherworker's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "5 GP",
+    "page": 93
+   },
+   {
+    "key": "masons-tools",
+    "name": "Mason's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "10 GP",
+    "page": 93
+   },
+   {
+    "key": "painters-supplies",
+    "name": "Painter's Supplies",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "10 GP",
+    "page": 93
+   },
+   {
+    "key": "potters-tools",
+    "name": "Potter's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "10 GP",
+    "page": 93
+   },
+   {
+    "key": "smiths-tools",
+    "name": "Smith's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "20 GP",
+    "page": 93
+   },
+   {
+    "key": "tinkers-tools",
+    "name": "Tinker's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "50 GP",
+    "page": 94
+   },
+   {
+    "key": "weavers-tools",
+    "name": "Weaver's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "1 GP",
+    "page": 94
+   },
+   {
+    "key": "woodcarvers-tools",
+    "name": "Woodcarver's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "1 GP",
+    "page": 94
+   },
+   {
+    "key": "disguise-kit",
+    "name": "Disguise Kit",
+    "category": "Other Tools",
+    "group": "Other Tools",
+    "cost": "25 GP",
+    "page": 94
+   },
+   {
+    "key": "forgery-kit",
+    "name": "Forgery Kit",
+    "category": "Other Tools",
+    "group": "Other Tools",
+    "cost": "15 GP",
+    "page": 94
+   },
+   {
+    "key": "herbalism-kit",
+    "name": "Herbalism Kit",
+    "category": "Other Tools",
+    "group": "Other Tools",
+    "cost": "5 GP",
+    "page": 94
+   },
+   {
+    "key": "navigators-tools",
+    "name": "Navigator's Tools",
+    "category": "Other Tools",
+    "group": "Other Tools",
+    "cost": "25 GP",
+    "page": 94
+   },
+   {
+    "key": "poisoners-kit",
+    "name": "Poisoner's Kit",
+    "category": "Other Tools",
+    "group": "Other Tools",
+    "cost": "50 GP",
+    "page": 94
+   },
+   {
+    "key": "thieves-tools",
+    "name": "Thieves' Tools",
+    "category": "Other Tools",
+    "group": "Other Tools",
+    "cost": "25 GP",
+    "page": 94
+   },
+   {
+    "key": "dice",
+    "name": "Dice",
+    "category": "Gaming Set",
+    "group": "Other Tools",
+    "cost": "1 SP",
+    "page": 94
+   },
+   {
+    "key": "dragonchess",
+    "name": "Dragonchess",
+    "category": "Gaming Set",
+    "group": "Other Tools",
+    "cost": "1 GP",
+    "page": 94
+   },
+   {
+    "key": "playing-cards",
+    "name": "Playing Cards",
+    "category": "Gaming Set",
+    "group": "Other Tools",
+    "cost": "5 SP",
+    "page": 94
+   },
+   {
+    "key": "three-dragon-ante",
+    "name": "Three-Dragon Ante",
+    "category": "Gaming Set",
+    "group": "Other Tools",
+    "cost": "1 GP",
+    "page": 94
+   },
+   {
+    "key": "bagpipes",
+    "name": "Bagpipes",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "30 GP",
+    "page": 94
+   },
+   {
+    "key": "drum",
+    "name": "Drum",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "6 GP",
+    "page": 94
+   },
+   {
+    "key": "dulcimer",
+    "name": "Dulcimer",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "25 GP",
+    "page": 94
+   },
+   {
+    "key": "flute",
+    "name": "Flute",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "2 GP",
+    "page": 94
+   },
+   {
+    "key": "horn",
+    "name": "Horn",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "3 GP",
+    "page": 94
+   },
+   {
+    "key": "lute",
+    "name": "Lute",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "35 GP",
+    "page": 94
+   },
+   {
+    "key": "lyre",
+    "name": "Lyre",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "30 GP",
+    "page": 94
+   },
+   {
+    "key": "pan-flute",
+    "name": "Pan Flute",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "12 GP",
+    "page": 94
+   },
+   {
+    "key": "shawm",
+    "name": "Shawm",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "2 GP",
+    "page": 94
+   },
+   {
+    "key": "viol",
+    "name": "Viol",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "30 GP",
+    "page": 94
+   }
+  ]
+ },
+ "package_slot_bindings": [
+  {
+   "slot": "bard.A.instrument",
+   "item_key": "musical-instrument",
+   "rule": "member_of",
+   "evidence": "Musical Instrument of your choice (Bard Starting Equipment A, p. 31): any instrument, not tied to the 3 Tool Proficiencies picks",
+   "page": 31,
+   "option_source": "tools:category=Musical Instrument"
+  },
+  {
+   "slot": "monk.A.tool_or_instrument",
+   "item_key": "artisans-tools-or-musical-instrument",
+   "rule": "equal",
+   "choice": {
+    "class": "monk",
+    "choice_point": "Tool Proficiencies",
+    "applies": "first_class"
+   },
+   "evidence": "Artisan's Tools or Musical Instrument chosen for the tool proficiency above (p. 49)",
+   "page": 49
+  },
+  {
+   "slot": "soldier.A.gaming_set",
+   "item_key": "gaming-set",
+   "rule": "equal",
+   "choice": {
+    "background": "soldier",
+    "field": "tool_choice"
+   },
+   "evidence": "Gaming Set (same as above) (Soldier equipment A, p. 83)",
+   "page": 83
+  }
+ ],
+ "species_damage_resistances": [
+  {
+   "species_key": "dwarf",
+   "trait": "Dwarven Resilience",
+   "damage_resistances": [
+    "Poison"
+   ],
+   "source": {
+    "section": "Character Origins > Species Descriptions > Dwarf > Dwarven Resilience",
+    "page": 84
+   },
+   "evidence": "Dwarven Resilience. You have Resistance to Poison damage."
+  },
+  {
+   "species_key": "dragonborn",
+   "choice_id": "species.dragonborn.draconic-ancestry",
+   "choice": "Draconic Ancestry",
+   "options_from": {
+    "table": "Draconic Ancestors",
+    "option_column": "Dragon",
+    "resistance_column": "Damage Type"
+   },
+   "source": {
+    "section": "Character Origins > Species Descriptions > Dragonborn > Damage Resistance",
+    "page": 84
+   },
+   "evidence": "Damage Resistance. You have Resistance to the damage type determined by your Draconic Ancestry trait."
+  },
+  {
+   "species_key": "tiefling",
+   "choice_id": "species.tiefling.fiendish-legacy",
+   "choice": "Fiendish Legacy",
+   "option": "Abyssal",
+   "damage_resistances": [
+    "Poison"
+   ],
+   "source": {
+    "section": "Character Origins > Species Descriptions > Tiefling > Fiendish Legacy",
+    "page": 86
+   },
+   "evidence": "You have Resistance to Poison damage. You also know the Poison Spray cantrip."
+  },
+  {
+   "species_key": "tiefling",
+   "choice_id": "species.tiefling.fiendish-legacy",
+   "choice": "Fiendish Legacy",
+   "option": "Chthonic",
+   "damage_resistances": [
+    "Necrotic"
+   ],
+   "source": {
+    "section": "Character Origins > Species Descriptions > Tiefling > Fiendish Legacy",
+    "page": 86
+   },
+   "evidence": "You have Resistance to Necrotic damage. You also know the Chill Touch cantrip."
+  },
+  {
+   "species_key": "tiefling",
+   "choice_id": "species.tiefling.fiendish-legacy",
+   "choice": "Fiendish Legacy",
+   "option": "Infernal",
+   "damage_resistances": [
+    "Fire"
+   ],
+   "source": {
+    "section": "Character Origins > Species Descriptions > Tiefling > Fiendish Legacy",
+    "page": 86
+   },
+   "evidence": "You have Resistance to Fire damage. You also know the Fire Bolt cantrip."
   }
  ]
 }

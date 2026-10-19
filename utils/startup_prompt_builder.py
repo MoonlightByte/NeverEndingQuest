@@ -21,10 +21,10 @@ STARTUP_RULES_REFERENCE_PURPOSE = "startup_rules_reference"
 ORIGINS_FILE = "data/srd_character_origins.json"
 
 
-def _without(entries, field):
-    """Entries without a typed key the engine scope reads (D-CREATE-COST-4): the whole reference is the
-    rollback profile and keeps #1278's bytes."""
-    return [{k: v for k, v in e.items() if k != field} if isinstance(e, dict) else e for e in entries]
+def _without(entries, *fields):
+    """Entries without the typed keys the engine scope and build read (D-CREATE-COST-4/-5): the whole
+    reference is the rollback profile and keeps #1278's bytes."""
+    return [{k: v for k, v in e.items() if k not in fields} if isinstance(e, dict) else e for e in entries]
 
 
 _typed_options = creation_scope.typed_options
@@ -76,8 +76,8 @@ def build_startup_rules_reference():
         "background_ability_scores_rule": origins["background_ability_scores_rule"],
         "backgrounds": [dict(b, equipment_options=_typed_options(b["equipment_options"], catalog))
                         if isinstance(b.get("equipment_options"), dict) else b
-                        for b in _without(origins["backgrounds"], "feat_ref")],
-        "species": _without(origins["species"], "key"),
+                        for b in _without(origins["backgrounds"], "feat_ref", "skill_keys", "tool_keys", "tool_choice")],
+        "species": _without(origins["species"], "key", "grants"),
         "origin_feats": _without(origins["origin_feats"], "key"),
         "fighting_style_feats": origins["fighting_style_feats"],
         "weapon_mastery_rule": origins["weapon_mastery_rule"],

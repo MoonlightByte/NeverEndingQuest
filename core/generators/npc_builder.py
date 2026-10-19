@@ -170,11 +170,12 @@ def _srd_origin_reference(npc_race, npc_background):
         match = [entry for entry in entries if str(entry.get("name", "")).casefold() == wanted]
         return match or list(entries)
 
-    # the slots are inside equipment_options; key and feat_ref are the creation scope's typed refs
-    startup_only = ("equipment_options", "key", "feat_ref")
+    # the slots are inside equipment_options; key, feat_ref and the typed lists are the creation scope's and
+    # the engine build's typed refs (D-CREATE-COST-4/-5)
+    startup_only = ("equipment_options", "key", "feat_ref", "skill_keys", "tool_keys", "tool_choice")
     return {
         "background_ability_scores_rule": origins["background_ability_scores_rule"],
-        "species": [{k: v for k, v in entry.items() if k != "key"}
+        "species": [{k: v for k, v in entry.items() if k not in ("key", "grants")}
                     for entry in named(origins["species"], npc_race)],
         "backgrounds": [{k: v for k, v in entry.items() if k not in startup_only}
                         for entry in named(origins["backgrounds"], npc_background)],
