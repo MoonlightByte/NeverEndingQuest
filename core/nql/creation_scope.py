@@ -308,7 +308,11 @@ def issued_points(intent: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         # A class skill pick never offers a skill the background already grants (typed set difference).
         for cid, entry in out.items():
             if entry.get("kind") == "skill" and isinstance(entry.get("option_keys"), list):
+                excluded = [k for k in entry["option_keys"] if k in granted]
                 entry["option_keys"] = [k for k in entry["option_keys"] if k not in granted]
+                if excluded:
+                    # Typed, so a review never asks for them back (all-class B3, dplay-AC-rogue round 6).
+                    entry["excluded_granted"] = excluded
     if background and _ability_options(background):
         bid = "background.%s.ability-scores" % background["key"]
         out[bid] = {"id": bid, "kind": "ability_scores", "name": "Ability Score Increases", "count": 1, "section": "S1",
@@ -417,6 +421,30 @@ def open_choice_ids(intent: Dict[str, Any]) -> List[str]:
 
 # --- the scope item ---
 
+def _background_tools(background: Dict[str, Any]) -> Dict[str, Any]:
+    """A background's tool, typed (dplay-AC-difficult turn 6): the fixed tool keys, or the tool choice's name
+    and option source."""
+    choice = background.get("tool_choice")
+    if isinstance(choice, dict):
+        return {"choose": {"name": choice.get("name"), "option_source": choice.get("option_source")}}
+    return {"granted": list(background.get("tool_keys") or [])}
+
+
+def _package_summary(background: Dict[str, Any], d: _Data) -> Dict[str, Any]:
+    """A background's starting-equipment options, typed: each option's items (catalog name or uncatalogued
+    name, with quantity) and its gold (dplay-AC-difficult turn 6)."""
+    out = {}
+    for key, option in (background.get("equipment_options") or {}).items():
+        items = []
+        for item in option.get("items") or []:
+            name = d.catalog.get(item.get("catalog_id")) or item.get("uncatalogued") or item.get("slot")
+            if isinstance(item.get("choose_one"), list):
+                name = "one of: %s" % ", ".join(d.catalog.get(i, i) for i in item["choose_one"])
+            items.append({"name": name, "quantity": item.get("quantity", 1)})
+        out[key] = {"items": items, "gp": (option.get("coins") or {}).get("gp", 0)}
+    return out
+
+
 def _menu(d: _Data, *, classes: bool, species: bool, backgrounds: bool) -> Dict[str, Any]:
     menu: Dict[str, Any] = {}
     if classes:
@@ -439,7 +467,8 @@ def _menu(d: _Data, *, classes: bool, species: bool, backgrounds: bool) -> Dict[
     if backgrounds:
         menu["backgrounds"] = [{"background_key": k, "name": b["name"],
                                 "line": "ability scores %s; feat %s; skills %s" % (
-                                    b.get("ability_scores"), b.get("feat"), b.get("skill_proficiencies"))}
+                                    b.get("ability_scores"), b.get("feat"), b.get("skill_proficiencies")),
+                                "tools": _background_tools(b), "equipment": _package_summary(b, d)}
                                for k, b in sorted(d.backgrounds().items())]
     return menu
 

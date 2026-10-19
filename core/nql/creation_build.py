@@ -430,6 +430,13 @@ def build_level_one_sheet(intent: Dict[str, Any], creative: Optional[Dict[str, A
     return sheet, {"engine_build": b.trace, "untyped": b.untyped, "creative_extra": extra}
 
 
+def _species_trait_names(sheet: Dict[str, Any]) -> List[str]:
+    """The summary's species traits, a trait with a picked option once, as "<choice>: <option>"
+    (dplay-AC-difficult turn 18). Display only; the sheet keeps both entries. Both names are engine-written."""
+    names = [t.get("name") for t in sheet.get("racialTraits") or [] if isinstance(t, dict)]
+    return [n for n in names if not any(isinstance(o, str) and o.startswith("%s: " % n) for o in names)]
+
+
 def render_sheet_summary(sheet: Dict[str, Any]) -> str:
     """The build summary the player approves, rendered from the engine-built sheet (D2, #1275): names and
     numbers only, never an id. Gear comes from the chosen packages when the character is saved."""
@@ -456,7 +463,7 @@ def render_sheet_summary(sheet: Dict[str, Any]) -> str:
         ("Languages:", sheet.get("languages")),
         ("Resistances:", sheet.get("damageResistances")),
         ("Class features:", [f.get("name") for f in sheet.get("classFeatures") or []]),
-        ("Species traits:", [t.get("name") for t in sheet.get("racialTraits") or []]),
+        ("Species traits:", _species_trait_names(sheet)),
         ("Feats:", [f.get("name") for f in sheet.get("feats") or []]),
         ("Cantrips:", spells.get("cantrips")),
         ("Level 1 spells:", spells.get("level1")),
