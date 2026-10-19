@@ -89,6 +89,16 @@ describe('useTurnStatus', () => {
     expect(renderHook(useTurnStatus).result.current).toBe('Working…')
   })
 
+  it('shows a terminal failure line verbatim once the server sends it without a wait (C6, Sentinel N1)', () => {
+    useSession.getState().setStatus({ message: 'Attempt 1, 5 s: ...', is_processing: true, wait: wait() })
+    const { result } = renderHook(useTurnStatus)
+    expect(result.current).toContain('The Dungeon Master is answering')
+    const refusal = 'The provider refused the API key (401). Open Settings and save the provider configuration to retry.'
+    act(() => { useSession.getState().setStatus({ message: refusal, is_processing: true }) })
+    expect(useSession.getState().wait).toBeNull()
+    expect(result.current).toBe(refusal)
+  })
+
   it('drops the wait when the status stops processing, and keeps recovery and welcome lines', () => {
     useSession.getState().setStatus({ message: 'x', is_processing: true, wait: wait() })
     useSession.getState().setStatus({ message: 'Enter your command:', is_processing: false, wait: wait() })
