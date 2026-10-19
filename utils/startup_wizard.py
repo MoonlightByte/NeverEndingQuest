@@ -180,11 +180,15 @@ class StartupCancelled(Exception):
 
 
 def _foreign_save(module_name):
-    """True when party_tracker.json is another module's save (D-1285-1): by
-    module id only, never a name. An empty tracker (after Reset) is never one."""
+    """True when party_tracker.json is another installed module's save
+    (D-1285-1): its module value is an installed folder id, never a name, and
+    not the selected one. Any other value (empty, a display name, a module no
+    longer installed) is not one: #1284 still empties the tracker at commit."""
     tracker = safe_json_load("party_tracker.json")
     module = tracker.get("module") if isinstance(tracker, dict) else None
-    return isinstance(module, str) and bool(module.strip()) and module != module_name
+    if not isinstance(module, str) or module == module_name:
+        return False
+    return module in {installed["name"] for installed in scan_available_modules()}
 
 
 def reset_foreign_save(module_name):
