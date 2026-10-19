@@ -600,12 +600,28 @@ def scope_id(scope: Dict[str, Any]) -> str:
 _BACKGROUND_INTERNAL = ("feat_ref", "skill_keys", "tool_keys", "tool_choice")
 
 
+def _with_cantrip_text(choice: Dict[str, Any]) -> Dict[str, Any]:
+    """A cantrip choice's options with each spell's SRD description, by typed key from the spell repository
+    (all-class B4: an asserted cantrip effect is checked against the data, not hedged for its absence)."""
+    if choice.get("kind") != "cantrip" or not isinstance(choice.get("options"), list):
+        return choice
+    repository = _load(SPELLS_PATH) or {}
+    options = []
+    for option in choice["options"]:
+        entry = repository.get(option.get("key")) if isinstance(option, dict) else None
+        text = entry.get("description") if isinstance(entry, dict) else None
+        options.append(dict(option, text=text) if isinstance(text, str) and text else option)
+    return dict(choice, options=options)
+
+
 def review_facts(scope: Dict[str, Any]) -> Dict[str, Any]:
     """What T128 checks a turn against: the current scope item as the author had it, less what only builds the
     sheet. Its choices carry each open and picked choice's own text and page and the picked options' grants;
     the species and background carry their trait text."""
     facts: Dict[str, Any] = {k: scope[k] for k in ("ruleset", "scope_id", "intent", "menu", "considering",
                                                    "class", "choices") if k in scope}
+    if facts.get("choices"):
+        facts["choices"] = [_with_cantrip_text(choice) for choice in facts["choices"]]
     if scope.get("species") is not None:
         facts["species"] = {k: v for k, v in scope["species"].items() if k not in ("grants", "key")}
     if scope.get("background") is not None:

@@ -1351,3 +1351,34 @@ def test_finalize_needs_every_package_and_slot_pick(wizard, authored):
             if e["id"].startswith("starting_equipment.slot:")]
     with pytest.raises(ValueError, match="every package and slot pick"):
         wizard._prepare_startup_proposal(proposal)
+
+
+def test_review_facts_carry_cantrip_text_and_t128_keeps_granted_skills_out_of_class_options():
+    # All-class B4 (dplay-AC-bard-r2/r3): T128 asked to hedge cantrip effects the facts did not give; each
+    # cantrip option now carries its SRD description, by typed key. B3 (bard, bard-r2): T128 asked to list the
+    # background's own skills among the class options.
+    import json as _json
+    from core.nql import creation_scope
+    from utils.startup_prompt_builder import build_engine_review_prompt
+    scope = creation_scope.creation_scope({"class_key": "bard", "species_key": "halfling",
+                                           "background_key": "acolyte", "choices": {}})
+    facts = creation_scope.review_facts(scope)
+    cantrips = next(c for c in facts["choices"] if c["id"] == "bard.spellcasting.cantrips")
+    mockery = next(o for o in cantrips["options"] if o["key"] == "vicious_mockery")
+    repository = _json.load(open(ROOT / "data" / "spell_repository.json", encoding="utf-8"))
+    assert mockery["text"] == repository["vicious_mockery"]["description"]
+    assert all("text" not in o for c in scope["choices"] for o in (c.get("options") or [])
+               if isinstance(o, dict) and c.get("kind") == "cantrip")
+    text = " ".join(build_engine_review_prompt().split())
+    assert ("A skill in background.granted_skills is never a class skill option; its absence from the class "
+            "list is correct.") in text
+
+
+def test_an_approval_after_the_sheet_preview_must_finalize():
+    # All-class A1 (dplay-AC-ranger): after "Yes, that's her. Let's start." the author kept asking approval
+    # for ideal, bond and flaw text it had just written; T128 demanded finalize 8 times before a handback.
+    from utils.startup_prompt_builder import build_character_creation_system_prompt
+    engine = " ".join(build_character_creation_system_prompt(scoped=True).split())
+    assert ("When the player approves the whole build, finalize with your proposed creative fields; do not ask "
+            "approval for details you add at finalize.") in engine
+    assert "do not ask approval for details you add at finalize" not in build_character_creation_system_prompt()

@@ -139,6 +139,8 @@ in intent. Never leave one open at finalize. A package or option the player has
 already named is chosen: record it and do not ask it again.
 Record package and slot picks in starting_equipment as soon as the player gives
 them, on every turn after; a package not yet chosen is null.
+When the player approves the whole build, finalize with your proposed creative
+fields; do not ask approval for details you add at finalize.
 Set intent.ability_scores to the player's method and the base score for each
 ability once the player has placed them. A startup_ability_roll item holds the
 engine's roll, made once for the interview: show those numbers and record the
@@ -524,6 +526,8 @@ B) belongs in intent.choices; only the package's slots and the background's
 package go in starting_equipment.
 The background's granted_skills are granted by the background itself, in
 addition to the class's skill picks; they never belong to the class's list.
+A skill in background.granted_skills is never a class skill option; its absence
+from the class list is correct.
 The class's level-1 features in the creation facts are the complete list: a
 statement that the class has no other feature at level 1 (no Weapon Mastery for
 a Cleric) is true.
