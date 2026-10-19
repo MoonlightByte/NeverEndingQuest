@@ -27,7 +27,8 @@
   "srd-choices/2 (NUM): class_traits.<class> gain saving_throws (ability names), armor_training (light, medium, heavy, shield: neq_armor's armor_category values) and weapon_proficiencies (rules: a weapon is proficient when one rule's category equals its weapon.category and, if the rule has property_any, it has one of those properties), with the printed text under printed.",
   "NUM-P1: class_traits.monk gains monk_weapons (rules {category, kind[, property_any]}) and martial_arts: at each Monk level the host declares the Condition types listed for that level's Martial Arts die (attack_features.nql), and every character gets srd:unarmed-strike.",
   "Starting Equipment option_items: per option, items as {catalog_id, quantity} (quantity in the item's own units: 20 Arrows is quantity 20), {choose_one: [ids]} for a printed item with several catalog forms (Holy Symbol), or {uncatalogued: text} for an item the catalog lacks (tools, instruments, the Spellbook); and coins. A Quarterstaff focus is the catalog's Staff or Wooden staff focus, which the SRD prints as also a Quarterstaff (evidence). Startup packages (data/srd_character_origins.json backgrounds carry the same equipment_options shape): an uncatalogued entry also carries key (a stable id), item_type and description; an entry that is a genuine player choice carries slot, an id unique across every class and background package (<class or background key>.<option>.<choice>). A slot with choose_one is a catalog pick, a slot with no catalog id is a named pick the player names; an entry without slot is a fixed item.",
-  "always_prepared lists the level-1 spells a class feature or species lineage keeps always prepared; spell is a data/spell_repository.json key. They do not count against a class's prepared picks."
+  "always_prepared lists the level-1 spells a class feature or species lineage keeps always prepared; spell is a data/spell_repository.json key. They do not count against a class's prepared picks.",
+  "Typed keys (D-CREATE-COST-4): feats[].key; a choice point's key, named by another point's options_from when that point's options are the first point's picks (the Wizard's prepared spells come from its spellbook)."
  ],
  "reference_forms": [
   {
@@ -330,7 +331,10 @@
   "source": {
    "section": "Character Creation > Create Your Character > Step 2: Character Origin > Choose Languages",
    "page": 20
-  }
+  },
+  "known": [
+   "Common"
+  ]
  },
  "damage_types": [
   "Acid",
@@ -359,7 +363,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Origin Feats > Alert",
     "page": 87
-   }
+   },
+   "key": "alert"
   },
   {
    "name": "Magic Initiate",
@@ -454,7 +459,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Origin Feats > Magic Initiate",
     "page": 87
-   }
+   },
+   "key": "magic_initiate"
   },
   {
    "name": "Savage Attacker",
@@ -467,7 +473,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Origin Feats > Savage Attacker",
     "page": 87
-   }
+   },
+   "key": "savage_attacker"
   },
   {
    "name": "Skilled",
@@ -491,7 +498,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Origin Feats > Skilled",
     "page": 87
-   }
+   },
+   "key": "skilled"
   },
   {
    "name": "Ability Score Improvement",
@@ -530,7 +538,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > General Feats > Ability Score Improvement",
     "page": 87
-   }
+   },
+   "key": "ability_score_improvement"
   },
   {
    "name": "Grappler",
@@ -564,7 +573,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > General Feats > Grappler",
     "page": 87
-   }
+   },
+   "key": "grappler"
   },
   {
    "name": "Archery",
@@ -583,7 +593,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Fighting Style Feats > Archery",
     "page": 87
-   }
+   },
+   "key": "archery"
   },
   {
    "name": "Defense",
@@ -602,7 +613,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Fighting Style Feats > Defense",
     "page": 88
-   }
+   },
+   "key": "defense"
   },
   {
    "name": "Great Weapon Fighting",
@@ -621,7 +633,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Fighting Style Feats > Great Weapon Fighting",
     "page": 88
-   }
+   },
+   "key": "great_weapon_fighting"
   },
   {
    "name": "Two-Weapon Fighting",
@@ -640,7 +653,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Fighting Style Feats > Two-Weapon Fighting",
     "page": 88
-   }
+   },
+   "key": "two_weapon_fighting"
   },
   {
    "name": "Boon of Combat Prowess",
@@ -675,7 +689,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Epic Boon Feats > Boon of Combat Prowess",
     "page": 88
-   }
+   },
+   "key": "boon_of_combat_prowess"
   },
   {
    "name": "Boon of Dimensional Travel",
@@ -710,7 +725,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Epic Boon Feats > Boon of Dimensional Travel",
     "page": 88
-   }
+   },
+   "key": "boon_of_dimensional_travel"
   },
   {
    "name": "Boon of Fate",
@@ -745,7 +761,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Epic Boon Feats > Boon of Fate",
     "page": 88
-   }
+   },
+   "key": "boon_of_fate"
   },
   {
    "name": "Boon of Irresistible Offense",
@@ -776,7 +793,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Epic Boon Feats > Boon of Irresistible Offense",
     "page": 88
-   }
+   },
+   "key": "boon_of_irresistible_offense"
   },
   {
    "name": "Boon of Spell Recall",
@@ -808,7 +826,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Epic Boon Feats > Boon of Spell Recall",
     "page": 88
-   }
+   },
+   "key": "boon_of_spell_recall"
   },
   {
    "name": "Boon of the Night Spirit",
@@ -843,7 +862,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Epic Boon Feats > Boon of the Night Spirit",
     "page": 88
-   }
+   },
+   "key": "boon_of_the_night_spirit"
   },
   {
    "name": "Boon of Truesight",
@@ -878,7 +898,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Epic Boon Feats > Boon of Truesight",
     "page": 88
-   }
+   },
+   "key": "boon_of_truesight"
   }
  ],
  "invocations": [
@@ -1838,7 +1859,16 @@
    },
    "tool_proficiencies": [
     "Thieves' Tools"
-   ]
+   ],
+   "languages": {
+    "granted": [
+     "Thieves' Cant"
+    ],
+    "source": {
+     "section": "Classes > Rogue > Rogue Class Features > Level 1: Thieves' Cant",
+     "page": 62
+    }
+   }
   },
   "sorcerer": {
    "primary_ability": {
@@ -7719,7 +7749,8 @@
       "section": "Classes > Wizard > Wizard Class Features > Level 1: Spellcasting",
       "page": 77
      },
-     "evidence": "It starts with six level 1 Wizard spells of your choice"
+     "evidence": "It starts with six level 1 Wizard spells of your choice",
+     "key": "wizard.spellbook"
     },
     {
      "kind": "cantrip",
@@ -7756,7 +7787,8 @@
       "section": "Classes > Wizard > Wizard Class Features > Level 1: Spellcasting",
       "page": 77
      },
-     "evidence": "To do so, choose four spells from your spellbook"
+     "evidence": "To do so, choose four spells from your spellbook",
+     "options_from": "wizard.spellbook"
     }
    ],
    "2": [
@@ -9252,9 +9284,9 @@
    "spell": "speak_with_animals",
    "granted_by": {
     "kind": "species_lineage",
-    "species": "Gnome",
     "level": 1,
-    "lineage": "Forest Gnome"
+    "lineage": "Forest Gnome",
+    "species_key": "gnome"
    },
    "source": {
     "section": "Character Origins > Species Descriptions > Gnome > Gnomish Lineage",

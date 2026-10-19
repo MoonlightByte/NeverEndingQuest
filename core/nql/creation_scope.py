@@ -70,11 +70,6 @@ def _slug(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", str(text).lower()).strip("-")
 
 
-def species_key(name: str) -> str:
-    """A species' key: its name, casefolded (the origins file carries names only)."""
-    return str(name).casefold()
-
-
 class _Data:
     """The data files for one call; None when any cannot be read."""
 
@@ -95,7 +90,7 @@ class _Data:
         return self.choices["choice_points"]
 
     def species(self) -> Dict[str, Dict[str, Any]]:
-        return {species_key(s["name"]): s for s in self.origins["species"]}
+        return {s["key"]: s for s in self.origins["species"]}
 
     def backgrounds(self) -> Dict[str, Dict[str, Any]]:
         return {b["key"]: b for b in self.origins["backgrounds"]}
@@ -188,7 +183,16 @@ def _resolved(point: Dict[str, Any], cls: str, d: _Data) -> Dict[str, Any]:
         return {"option_keys": [str(x) for x in source]}
     if leveling_choices.free_pick(source):
         return {"free_pick": True}
+    if isinstance(source, str) and source.split(":", 1)[0] == "languages":
+        known = set(d.choices["languages"].get("known") or [])
+        known.update(((d.choices["class_traits"].get(cls) or {}).get("languages") or {}).get("granted") or [])
+        names = leveling_choices.resolve_options(source, {}, cls, 1) or []
+        return {"option_keys": [n for n in names if n not in known]}
     names = leveling_choices.resolve_options(source, {}, cls, 1, point.get("filters"))
+    if not names and point.get("filters"):
+        # A filter that reads the sheet (proficient, no_expertise) has no sheet at creation: the
+        # unfiltered list is offered, and section 2 judges the requirement (nql-eb S1).
+        names = leveling_choices.resolve_options(source, {}, cls, 1)
     return {"option_keys": list(names)} if names is not None else {"free_pick": True}
 
 
@@ -221,10 +225,27 @@ def _class_points(cls: str, d: _Data) -> List[Tuple[str, Dict[str, Any]]]:
     return list(zip(ids, points))
 
 
-def _magic_initiate_list(background: Dict[str, Any]) -> Optional[str]:
-    """The spell list a background's Magic Initiate feat names ("Magic Initiate (Cleric)"), or None."""
-    match = re.fullmatch(r"Magic Initiate \((\w+)\)", str(background.get("feat") or ""))
-    return match.group(1) if match else None
+def _feat_spell_points(background: Dict[str, Any], d: _Data) -> List[Tuple[str, Dict[str, Any]]]:
+    """The spell picks of a background's Origin feat when its feat_ref names a spell list (Magic
+    Initiate (Cleric)): the feat's choice whose then carries that list, keyed by feat and list."""
+    ref = background.get("feat_ref") or {}
+    spell_list = ref.get("spell_list")
+    feat = next((f for f in d.choices["feats"] if f.get("key") == ref.get("feat_key")), None)
+    if not spell_list or feat is None:
+        return []
+    subs = next(((c.get("then") or {}).get(spell_list) for c in feat.get("choices") or []
+                 if spell_list in (c.get("then") or {})), None) or []
+    # The feat's other picks (its spellcasting ability); the list choice itself is fixed by the background.
+    subs = list(subs) + [c for c in feat.get("choices") or [] if not c.get("then")]
+    return [("feat.%s.%s.%s" % (_slug(feat["key"]), _slug(spell_list), _slug(sub["name"])), sub) for sub in subs]
+
+
+def _ability_options(background: Dict[str, Any]) -> List[str]:
+    """The background's ability increases as option keys: "+2 <ability>, +1 <ability>" for each ordered pair
+    of its three abilities, and "+1 each" (background_ability_scores_rule)."""
+    abilities = [a.strip() for a in str(background.get("ability_scores") or "").split(",") if a.strip()]
+    pairs = ["+2 %s, +1 %s" % (a, b) for a in abilities for b in abilities if a != b]
+    return pairs + ["+1 each"] if len(abilities) == 3 else []
 
 
 def issued_points(intent: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
@@ -234,17 +255,18 @@ def issued_points(intent: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     d = _Data()
     if not d.ok:
         return {}
+    intent = intent or {}
     picks = intent.get("choices") or {}
     out: Dict[str, Dict[str, Any]] = {}
     cls = intent.get("class_key")
     if cls in d.classes():
-        spellbook_id = None
-        for cid, point in _class_points(cls, d):
+        points = _class_points(cls, d)
+        # A point whose options are another point's picks names that point's key (options_from).
+        by_key = {point["key"]: cid for cid, point in points if point.get("key")}
+        for cid, point in points:
             entry = _point_entry(cid, point, cls, d)
-            if entry.get("from_spellbook"):
-                entry["from_choice"] = spellbook_id
-            if point.get("name") == "Spellbook":
-                spellbook_id = cid
+            if point.get("options_from"):
+                entry["from_choice"] = by_key.get(point["options_from"])
             out[cid] = entry
             for option, subs in (point.get("then") or {}).items():
                 if option in (picks.get(cid) or []):
@@ -252,15 +274,17 @@ def issued_points(intent: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
                         sid = "%s.%s.%s" % (cid, _slug(option), _slug(sub["name"]))
                         out[sid] = _point_entry(sid, sub, cls, d)
     background = d.backgrounds().get(intent.get("background_key"))
-    spell_list = _magic_initiate_list(background) if background else None
-    if spell_list:
-        feat = next(f for f in d.choices["feats"] if f["name"] == "Magic Initiate")
-        for sub in feat["choices"][0]["then"][spell_list]:
-            sid = "feat.magic-initiate.%s.%s" % (_slug(spell_list), _slug(sub["name"]))
-            out[sid] = _point_entry(sid, sub, spell_list.lower(), d)
+    if background and _ability_options(background):
+        bid = "background.%s.ability-scores" % background["key"]
+        out[bid] = {"id": bid, "kind": "ability_scores", "name": "Ability Score Increases", "count": 1,
+                    "option_keys": _ability_options(background), "text": d.origins["background_ability_scores_rule"],
+                    "page": background.get("page")}
+    for sid, sub in _feat_spell_points(background, d) if background else []:
+        out[sid] = _point_entry(sid, sub, background["feat_ref"]["spell_list"].lower(), d)
     if intent.get("species_key") in d.species():
-        granted = {"Common"}
-        standard = [n for n in d.choices["languages"]["standard"] if n not in granted]
+        known = set(d.choices["languages"].get("known") or [])
+        known.update(((d.choices["class_traits"].get(cls) or {}).get("languages") or {}).get("granted") or [])
+        standard = [n for n in d.choices["languages"]["standard"] if n not in known]
         out["languages.standard"] = {
             "id": "languages.standard", "kind": "language", "name": "Standard Languages", "count": 2,
             "option_keys": standard, "text": d.origins["languages_rule"]["passages"][0],
@@ -316,8 +340,10 @@ def _menu(d: _Data, *, classes: bool, species: bool, backgrounds: bool) -> Dict[
             abilities = " or ".join(primary.get("any_of") or []) or " and ".join(primary.get("all_of") or [])
             armor = ", ".join(traits.get("armor_training") or []) or "none"
             rows.append({"class_key": key, "name": key.capitalize(),
-                         "line": "primary %s; hit die %s; armor training %s; %s caster" % (
-                             abilities, prog.get("hit_die"), armor, prog.get("caster_kind") or "not a")})
+                         "line": "primary %s; hit die %s; armor training %s; %s" % (
+                             abilities, prog.get("hit_die"), armor,
+                             "%s caster" % prog["caster_kind"] if prog.get("caster_kind") not in (None, "none")
+                             else "no spellcasting")})
         menu["classes"] = rows
     if species:
         menu["species"] = [{"species_key": k, "name": s["name"], "line": "%s; speed %s" % (s.get("size"), s.get("speed"))}
@@ -325,8 +351,7 @@ def _menu(d: _Data, *, classes: bool, species: bool, backgrounds: bool) -> Dict[
     if backgrounds:
         menu["backgrounds"] = [{"background_key": k, "name": b["name"],
                                 "line": "ability scores %s; feat %s; skills %s" % (
-                                    ", ".join(b.get("ability_scores") or []), b.get("feat"),
-                                    ", ".join(b.get("skill_proficiencies") or []))}
+                                    b.get("ability_scores"), b.get("feat"), b.get("skill_proficiencies"))}
                                for k, b in sorted(d.backgrounds().items())]
     return menu
 
@@ -356,13 +381,13 @@ def _class_facts(cls: str, d: _Data) -> Dict[str, Any]:
 
 
 def _species_facts(key: str, d: _Data) -> Dict[str, Any]:
-    entry = dict(d.species()[key], species_key=key)
+    entry = dict(d.species()[key])
     bonuses = [b for b in d.progression.get("hp_bonuses") or []
-               if (b.get("granted_by") or {}).get("species") == entry["name"]]
+               if (b.get("granted_by") or {}).get("species_key") == key]
     if bonuses:
         entry["hp_bonuses"] = bonuses
     lineage = [a for a in d.choices.get("always_prepared") or []
-               if (a.get("granted_by") or {}).get("species") == entry["name"]]
+               if (a.get("granted_by") or {}).get("species_key") == key]
     if lineage:
         entry["always_prepared"] = lineage
     return entry
@@ -372,15 +397,18 @@ def _background_facts(key: str, d: _Data) -> Dict[str, Any]:
     entry = dict(d.backgrounds()[key])
     if isinstance(entry.get("equipment_options"), dict):
         entry["equipment_options"] = typed_options(entry["equipment_options"], d.catalog)
-    feat_name = re.sub(r" \(.*\)$", "", str(entry.get("feat") or ""))
-    feat = [f for f in d.origins.get("origin_feats") or [] if f.get("name") == feat_name]
+    feat_key = (entry.get("feat_ref") or {}).get("feat_key")
+    feat = [f for f in d.origins.get("origin_feats") or [] if f.get("key") == feat_key]
     if feat:
         entry["origin_feat"] = feat[0]
     return entry
 
 
 def _common(cls: Optional[str], d: _Data) -> Dict[str, Any]:
-    names = [p["name"] for p in d.classes()[cls].get("1", [])] if cls in d.classes() else []
+    points = [p for p in d.classes()[cls].get("1", []) if p.get("applies") != "multiclass"] if cls in d.classes() else []
+    # Weapon Mastery's options are the weapons reference form; Fighting Style is its own kind.
+    mastery = any(str(p.get("option_source") or "").split(":", 1)[0] == "weapons" for p in points)
+    styles = any(p.get("kind") == "fighting_style" for p in points)
     common: Dict[str, Any] = {
         "sheet_representation": SHEET_REPRESENTATION,
         "background_ability_scores_rule": d.origins["background_ability_scores_rule"],
@@ -393,7 +421,7 @@ def _common(cls: Optional[str], d: _Data) -> Dict[str, Any]:
                   if e.get("kind") == "armor" and not e.get("magical")],
     }
     weapons = [e for e in d.items if e.get("kind") == "weapon" and not e.get("magical")]
-    if "Weapon Mastery" in names:
+    if mastery:
         common["weapons"] = [{"name": e["name"], "description": e["description"]} for e in weapons]
         common["weapon_mastery_rule"] = d.origins["weapon_mastery_rule"]
         common["weapon_mastery_properties"] = d.origins["weapon_mastery_properties"]
@@ -407,7 +435,7 @@ def _common(cls: Optional[str], d: _Data) -> Dict[str, Any]:
                     listed.update([item.get("catalog_id")] + list(item.get("choose_one") or []))
         common["weapons"] = [{"name": e["name"], "description": e["description"]} for e in weapons
                              if e["id"] in listed]
-    if "Fighting Style" in names:
+    if styles:
         common["fighting_style_feats"] = d.origins["fighting_style_feats"]
     return common
 

@@ -38,6 +38,7 @@ from utils.startup_prompt_builder import (
 from utils.startup_contract import (
     parse_startup_response, parse_startup_review, parse_startup_checkpoint,
 )
+from core.nql import creation_scope
 from utils.character_sheet_contract import (
     extract_json_object,
     repair_required_ammunition_field,
@@ -797,9 +798,9 @@ def _use_existing_startup_character(conversation, module, selected):
                               live_scope=scope, preserve_existing=True)
     return character["name"]
 
-def build_character_creation_system_prompt():
+def build_character_creation_system_prompt(*, scoped=False):
     """Build and return the startup wizard character-creation system prompt."""
-    return _build_character_creation_system_prompt()
+    return _build_character_creation_system_prompt(scoped=scoped)
 
 def _paused_player_indexes(conversation):
     """Player inputs whose request to stop setup a published pause_setup already honored."""
@@ -859,6 +860,117 @@ def _append_startup_rules_reference(conversation):
                 category="startup")
         return
     conversation.append({"role": "system", "content": json.dumps(reference, ensure_ascii=False)})
+
+
+def _system_records(conversation, purpose):
+    """The code-authored system records with this task_purpose, in history order."""
+    records = []
+    for message in conversation:
+        if message.get("role") != "system":
+            continue
+        try:
+            record = json.loads(message.get("content", ""))
+        except (ValueError, TypeError):
+            continue
+        if isinstance(record, dict) and record.get("task_purpose") == purpose:
+            records.append(record)
+    return records
+
+
+def _interview_path(conversation):
+    """The path an interview is on, from its history's task_purpose values only (D-CREATE-COST-4):
+    "scoped" once it holds an engine scope item, "whole" while it holds the creation reference,
+    None for a new interview."""
+    if _system_records(conversation, creation_scope.SCOPE_PURPOSE):
+        return "scoped"
+    if _startup_rules_reference_present(conversation):
+        return "whole"
+    return None
+
+
+def _startup_review_mode():
+    from model_config import STARTUP_REVIEW_MODE
+    return STARTUP_REVIEW_MODE if STARTUP_REVIEW_MODE in ("sectioned", "whole") else "sectioned"
+
+
+def _creation_scope_current(conversation):
+    """The interview's current engine scope item (the latest appended), or None."""
+    scopes = _system_records(conversation, creation_scope.SCOPE_PURPOSE)
+    return scopes[-1] if scopes else None
+
+
+SCOPE_STATE_PURPOSE = "startup_scope_state"
+
+
+def _scope_state(conversation):
+    """The latest scope state record (scope id, intent, sticky verdicts), or None. It is its own
+    typed item, never a checkpoint field: code before COST-4 skips it (r3.1, CR-9)."""
+    states = _system_records(conversation, SCOPE_STATE_PURPOSE)
+    return states[-1] if states else None
+
+
+def _append_scope(conversations, scope, intent):
+    """Append a scope item and its state record to each history (the interview and the request base)."""
+    state = _scope_state(conversations[0]) or {}
+    record = {"task_purpose": SCOPE_STATE_PURPOSE,
+              "startup_id": (_startup_progress(conversations[0]) or {}).get("startup_id"),
+              "scope_id": scope["scope_id"], "intent": intent, "sticky": state.get("sticky") or {}}
+    for conversation in conversations:
+        conversation.append({"role": "system", "content": json.dumps(scope, ensure_ascii=False)})
+        conversation.append({"role": "system", "content": json.dumps(record, ensure_ascii=False)})
+
+
+class StartupScopeRefusal(ValueError):
+    """A scoped response's picks the engine refuses (typed; no reviewer call)."""
+
+    def __init__(self, problems, open_ids=None):
+        self.problems = problems
+        self.open_ids = open_ids or []
+        super().__init__("choices outside the current scope" if problems
+                         else "finalize with open choice ids")
+
+    def record(self):
+        return {"task_purpose": "startup_choice_refusal", "problems": self.problems,
+                "open_choice_ids": self.open_ids,
+                "instruction": ("Correct these picks from the current scope; a finalize needs every "
+                                "issued choice id filled with its count.")}
+
+
+def _scoped_intent(conversations, proposal, rescoped):
+    """Apply the engine scope to a parsed scoped response (D-CREATE-COST-4 §1, §3).
+
+    Picks the previous scope issued and the new intent's scope does not (a switch) are dropped
+    into one typed startup_choices_dropped item. A changed scope is appended; returns True when
+    T092 must be asked again for the same answer (at most once per response chain). Picks outside
+    the scope, and a finalize with open choice ids, raise StartupScopeRefusal."""
+    intent = proposal["intent"]
+    # Every id an earlier scope of this interview issued: a pick under one the new scope does not issue
+    # is a switch's leftover (dropped), not a refusal.
+    previous = set()
+    for state in _system_records(conversations[0], SCOPE_STATE_PURPOSE):
+        previous.update(creation_scope.issued_points(state.get("intent")))
+    issued = creation_scope.issued_points(intent)
+    dropped = {cid: picks for cid, picks in (intent.get("choices") or {}).items()
+               if cid in previous and cid not in issued}
+    if dropped:
+        intent["choices"] = {cid: picks for cid, picks in intent["choices"].items() if cid not in dropped}
+        for conversation in conversations:
+            conversation.append({"role": "system", "content": json.dumps({
+                "task_purpose": "startup_choices_dropped", "dropped": dropped,
+                "instruction": "These picks belong to an earlier choice; the current scope does not issue them.",
+            }, ensure_ascii=False)})
+    scope = creation_scope.creation_scope(intent)
+    current = _creation_scope_current(conversations[0])
+    if scope is not None and (current is None or current.get("scope_id") != scope["scope_id"]):
+        _append_scope(conversations, scope, intent)
+        if not rescoped:
+            return True
+    problems = creation_scope.choice_problems(intent)
+    open_ids = (creation_scope.open_choice_ids(intent)
+                if proposal["decision"] == "finalize_character" else [])
+    if problems or open_ids:
+        raise StartupScopeRefusal(problems, open_ids)
+    return False
 
 
 def _append_system_once(conversation, content):
@@ -1271,7 +1383,10 @@ def ai_character_interview(conversation, module):
         LiveProviderSuperseded, open_live_turn_scope, finish_live_turn_scope,
     )
 
-    _append_system_once(conversation, build_character_creation_system_prompt())
+    # The path comes from the history; the mode selects only a new interview's (r3.1 §3.6).
+    path = _interview_path(conversation)
+    scoped = path == "scoped" or _startup_review_mode() == "sectioned"
+    _append_system_once(conversation, build_character_creation_system_prompt(scoped=scoped))
     _append_system_once(conversation, json.dumps({
         "task_purpose": "startup_character_interview",
         "selected_adventure": module,
@@ -1279,7 +1394,14 @@ def ai_character_interview(conversation, module):
                        "Old history is context, not proof of approval or saved state. "
                        "Follow the current startup response contract.",
     }, ensure_ascii=False))
-    _append_startup_rules_reference(conversation)
+    if not scoped:
+        _append_startup_rules_reference(conversation)
+    elif path is None:
+        menu = creation_scope.creation_scope({})
+        if menu is not None:
+            _append_scope([conversation], menu, None)
+        else:
+            warning("Startup creation scope unavailable; the interview continues without it", category="startup")
     print("\nDungeon Master: Let's build your character together.")
     while True:
         scope = open_live_turn_scope()
@@ -1287,6 +1409,7 @@ def ai_character_interview(conversation, module):
             save_startup_conversation(conversation, live_scope=scope)
             correction_context = copy.deepcopy(conversation)
             rejected = 0
+            rescoped = False  # one re-scope per T092 response chain (r3 §3.2)
             while True:
                 if rejected >= STARTUP_TURN_REJECTION_LIMIT:
                     # Fail forward: hand the turn back unpublished; nothing is approved or saved.
@@ -1316,7 +1439,11 @@ def ai_character_interview(conversation, module):
                                       persist_response=False, live_scope=scope)
                 try:
                     authored_proposal = copy.deepcopy(
-                        parse_startup_response(raw, latest_user_index=current_index))
+                        parse_startup_response(raw, latest_user_index=current_index, scoped=scoped))
+                    if scoped:
+                        if _scoped_intent([conversation, correction_context], authored_proposal, rescoped):
+                            rescoped = True
+                            continue
                     if (authored_proposal["decision"] == "pause_setup"
                             and current_index in _paused_player_indexes(conversation)):
                         raise ValueError("That request to stop was already honored; the player is "
@@ -1337,8 +1464,15 @@ def ai_character_interview(conversation, module):
                         request, proposal, facts, authored_proposal=authored_proposal,
                         normalization_provenance=provenance, live_scope=scope,
                         attempts=STARTUP_TURN_REJECTION_LIMIT - rejected)
+                except StartupScopeRefusal as exc:
+                    rejected += 1
+                    rescoped = False
+                    correction_context.append({"role": "system", "content": json.dumps(
+                        dict(exc.record(), rejected_response=raw), ensure_ascii=False)})
+                    continue
                 except ValueError as exc:
                     rejected += 1
+                    rescoped = False
                     correction_context.append({"role": "system", "content": (
                         f"Rejected startup proposal (not approved): {exc}. "
                         f"Correct this response using the retained player choices: {raw}"
@@ -1350,6 +1484,7 @@ def ai_character_interview(conversation, module):
                     continue
                 if not review["accepted"]:
                     rejected += 1
+                    rescoped = False
                     correction_context.append({"role": "system", "content": json.dumps({
                         "rejected_proposal": authored_proposal,
                         "canonical_candidate": proposal,

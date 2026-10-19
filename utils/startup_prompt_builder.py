@@ -21,6 +21,12 @@ STARTUP_RULES_REFERENCE_PURPOSE = "startup_rules_reference"
 ORIGINS_FILE = "data/srd_character_origins.json"
 
 
+def _without(entries, field):
+    """Entries without a typed key the engine scope reads (D-CREATE-COST-4): the whole reference is the
+    rollback profile and keeps #1278's bytes."""
+    return [{k: v for k, v in e.items() if k != field} if isinstance(e, dict) else e for e in entries]
+
+
 _typed_options = creation_scope.typed_options
 _level_1_choices = creation_scope.level_1_choices
 _level_1_features = creation_scope.level_1_features
@@ -69,9 +75,10 @@ def build_startup_rules_reference():
             "\"Divine Order: <option>\" or \"Primal Order: <option>\"."),
         "background_ability_scores_rule": origins["background_ability_scores_rule"],
         "backgrounds": [dict(b, equipment_options=_typed_options(b["equipment_options"], catalog))
-                        if isinstance(b.get("equipment_options"), dict) else b for b in origins["backgrounds"]],
-        "species": origins["species"],
-        "origin_feats": origins["origin_feats"],
+                        if isinstance(b.get("equipment_options"), dict) else b
+                        for b in _without(origins["backgrounds"], "feat_ref")],
+        "species": _without(origins["species"], "key"),
+        "origin_feats": _without(origins["origin_feats"], "key"),
         "fighting_style_feats": origins["fighting_style_feats"],
         "weapon_mastery_rule": origins["weapon_mastery_rule"],
         "weapon_mastery_properties": origins["weapon_mastery_properties"],
@@ -90,12 +97,54 @@ def build_startup_rules_reference():
     }
 
 
-def build_character_creation_system_prompt():
-    """Build module-independent character authorship instructions."""
+_WHOLE_FACTS = """The interview carries the game's SRD 5.2.1 creation reference (task_purpose
+startup_rules_reference). Use it for species, background, Origin feat, weapon
+mastery and level-1 class choice facts, and follow its sheet_representation.
+SRD 5.2.1 backgrounds have no background features from older editions.
+Classes and backgrounds come from the reference. For a request outside it, such
+as a noble, keep the concept in the backstory and recommend the closest
+reference background for the player to choose.
+"""
+
+# The scoped path (D-CREATE-COST-4): engine scope items instead of the whole reference, and the intent contract.
+_SCOPED_FACTS = """The interview carries the game's SRD 5.2.1 creation scope (task_purpose
+startup_creation_scope), which the engine appends as the player's choices
+narrow: a menu while the class, species or background is not yet named, then
+the facts and level-1 choices of the ones named. The latest scope item is the
+current one. Use it for species, background, Origin feat, weapon mastery, spell
+and level-1 class choice facts, and follow its sheet_representation.
+SRD 5.2.1 backgrounds have no background features from older editions.
+Classes, species and backgrounds come from the scope. For a request outside it,
+such as a noble, keep the concept in the backstory and recommend the closest
+scope background for the player to choose.
+INTENT, ON EVERY RESPONSE: set intent to what the player has chosen or approved
+so far, never to your own suggestion. class_key, species_key and background_key
+are the scope's keys, null until the player chooses. choices maps each choice id
+of the current scope to the option keys picked, exactly as the scope gives them
+(spells by their key); a pick the player delegated to you and then approved
+counts as chosen. considering lists the class, species and background keys the
+player is asking about but has not chosen. When the intent changes the scope,
+the engine appends the new scope item and asks again for the same answer: answer
+from the new scope. A startup_choices_dropped item lists picks a switch removed;
+ask again for any the new build still needs. A startup_choice_refusal item names
+picks outside the current scope; correct them from the scope.
+"""
+
+_WHOLE_COMPLETE = """build presented as complete names every required level-1 choice in the
+reference: background"""
+_SCOPED_COMPLETE = """build presented as complete fills every choice id in the current scope with its
+count of picks: background"""
+
+
+def build_character_creation_system_prompt(*, scoped=False):
+    """Build module-independent character authorship instructions. scoped: the engine-scope
+    author prompt (D-CREATE-COST-4); otherwise the whole-reference prompt, byte for byte."""
     schema = safe_json_load("schemas/char_schema.json")
     if not schema:
         raise ValueError("Could not load character schema")
     leveling_info = _read_text_file("prompts/leveling/leveling_info.txt")
+    facts = _SCOPED_FACTS if scoped else _WHOLE_FACTS
+    complete = _SCOPED_COMPLETE if scoped else _WHOLE_COMPLETE
     return f"""You are a friendly character creation guide for a fifth edition
 fantasy adventure, using SRD 5.2.1. The installed adventure and its real context
 are supplied by the wizard; never assume a particular campaign or destination.
@@ -106,14 +155,7 @@ build, and honor revisions. Do not choose those major decisions for the player.
 The player chooses the ability-score method. For player-rolled scores, ask them
 to submit their actual results and allocation; never invent, replace, or reroll
 them. Use supplied rules for mechanics and preserve accepted choices.
-The interview carries the game's SRD 5.2.1 creation reference (task_purpose
-startup_rules_reference). Use it for species, background, Origin feat, weapon
-mastery and level-1 class choice facts, and follow its sheet_representation.
-SRD 5.2.1 backgrounds have no background features from older editions.
-Classes and backgrounds come from the reference. For a request outside it, such
-as a noble, keep the concept in the backstory and recommend the closest
-reference background for the player to choose.
-Extra gear is bought or found in play; a keepsake from the backstory stays in
+{facts}Extra gear is bought or found in play; a keepsake from the backstory stays in
 the backstory text.
 After the player approves the whole current build, the next step is
 finalize_character with the full sheet: fill derived values (hit points, armor
@@ -129,8 +171,7 @@ choice is still open, such as a gaming set or a skill pick, ask only that once
 and keep everything approved; never invent a player choice.
 When the player delegates open choices to you, decide each one and present a
 single recommended pick per choice for approval, never a menu of options. A
-build presented as complete names every required level-1 choice in the
-reference: background ability increases, every skill, tool or gaming set pick,
+{complete} ability increases, every skill, tool or gaming set pick,
 each Origin feat and its own choices, class choices, both the class and the
 background starting equipment, each package choice (holy symbol, instrument,
 gaming set) and what is worn or held.
@@ -224,7 +265,7 @@ normalization_provenance describes actual game derivations, not player choices
 or extra author requirements. Do not attempt to remove fields the engine writes.
 
 STARTUP RESPONSE SCHEMA:
-{json.dumps(startup_response_schema(), indent=2)}
+{json.dumps(startup_response_schema(scoped=scoped), indent=2)}
 
 CHARACTER SCHEMA:
 {json.dumps(schema, indent=2)}

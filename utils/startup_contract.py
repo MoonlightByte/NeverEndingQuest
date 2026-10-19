@@ -66,12 +66,29 @@ STARTUP_CHECKPOINT_SCHEMA = _object_schema({
 })
 
 
-def startup_response_schema():
+# The player's typed intent on the scoped path (D-CREATE-COST-4): what the player
+# chose or approved so far, the picks keyed by the choice ids the engine scope
+# issued, and the options the player is only asking about (considering).
+STARTUP_INTENT_SCHEMA = _object_schema({
+    "class_key": {"type": ["string", "null"]},
+    "species_key": {"type": ["string", "null"]},
+    "background_key": {"type": ["string", "null"]},
+    "choices": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+    "considering": _object_schema({
+        "class_keys": {"type": "array", "items": {"type": "string"}},
+        "species_keys": {"type": "array", "items": {"type": "string"}},
+        "background_keys": {"type": "array", "items": {"type": "string"}},
+    }),
+})
+
+
+def startup_response_schema(*, scoped=False):
     """STARTUP_RESPONSE_SCHEMA with the origin enums from the data: the 12 class
     keys of choices.json and the background keys of the origins file. Built at
     each call, never at import; when the data cannot be read the schema is
     returned without the enums, and a finalize then reaches the grant, which
-    reports the data unavailable."""
+    reports the data unavailable. scoped adds the required intent, with the
+    class, species and background enums (null until chosen)."""
     from core.nql.startup_rows import package_records
     schema = copy.deepcopy(STARTUP_RESPONSE_SCHEMA)
     records = package_records()
@@ -79,6 +96,16 @@ def startup_response_schema():
         origin = schema["properties"]["origin"]["properties"]
         origin["class_key"]["enum"] = sorted(records.classes)
         origin["background_key"]["enum"] = sorted(records.backgrounds)
+    if scoped:
+        from core.nql import creation_scope
+        intent = copy.deepcopy(STARTUP_INTENT_SCHEMA)
+        for field, keys in (("class_key", creation_scope.class_keys()),
+                            ("species_key", creation_scope.species_keys()),
+                            ("background_key", creation_scope.background_keys())):
+            if keys:
+                intent["properties"][field]["enum"] = keys + [None]
+        schema["properties"]["intent"] = intent
+        schema["required"].append("intent")
     return schema
 
 
@@ -105,9 +132,10 @@ def _parse_object(text, schema):
     return _validate(value, schema)
 
 
-def parse_startup_response(text, *, latest_user_index):
-    """Check wire shape/reference; the caller supplies its actual user index."""
-    value = _parse_object(text, startup_response_schema())
+def parse_startup_response(text, *, latest_user_index, scoped=False):
+    """Check wire shape/reference; the caller supplies its actual user index.
+    scoped: the response carries intent, and a finalize's origin must equal it."""
+    value = _parse_object(text, startup_response_schema(scoped=scoped))
     confirmation = value["confirmation"]
     index = confirmation["player_message_index"]
     if value["decision"] == "finalize_character":
@@ -120,6 +148,9 @@ def parse_startup_response(text, *, latest_user_index):
         if value["origin"] is None or value["starting_equipment"] is None:
             raise ValueError("Finalization requires origin (class_key, background_key) and starting_equipment "
                              "(the chosen package keys, slot_picks and equipped)")
+        if scoped and (value["origin"]["class_key"], value["origin"]["background_key"]) != (
+                value["intent"]["class_key"], value["intent"]["background_key"]):
+            raise ValueError("Finalization requires origin class_key and background_key equal to intent's")
     elif value["character"] is not None or confirmation["whole_build_approved"]:
         raise ValueError("An interview response cannot approve or contain a character")
     elif value["origin"] is not None or value["starting_equipment"] is not None:

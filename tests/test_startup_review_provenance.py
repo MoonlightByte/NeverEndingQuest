@@ -65,6 +65,9 @@ def wizard(tmp_path, monkeypatch):
     shutil.copy2(ROOT / "prompts" / "leveling" / "leveling_info.txt",
                  tmp_path / "prompts" / "leveling" / "leveling_info.txt")
     from utils import startup_wizard
+    import model_config
+    # These rows drive the whole-reference path (#1278), kept as the rollback profile (D-CREATE-COST-4).
+    monkeypatch.setattr(model_config, "STARTUP_REVIEW_MODE", "whole")
     monkeypatch.setattr(startup_wizard.api_client, "create_completion", forbidden)
     monkeypatch.setattr(startup_wizard, "capture_and_fanout", forbidden)
     return startup_wizard
