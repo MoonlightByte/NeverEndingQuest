@@ -19,7 +19,11 @@ from typing import Optional
 
 from utils.enhanced_logger import debug, warning
 from utils.module_path_manager import ModulePathManager
-from utils.transient_filesystem import read_bytes_preserving_errors, retry_transient_filesystem
+from utils.transient_filesystem import (
+    is_transient_filesystem_error,
+    read_bytes_preserving_errors,
+    retry_transient_filesystem,
+)
 
 OK = "ok"
 MISSING = "missing"
@@ -37,6 +41,7 @@ class CurrentLocationRead:
     area: Optional[dict] = None
     location: Optional[dict] = None
     detail: str = ""
+    busy: bool = False
 
 
 def read_current_location(party_tracker_data) -> CurrentLocationRead:
@@ -58,7 +63,9 @@ def read_current_location(party_tracker_data) -> CurrentLocationRead:
     except FileNotFoundError:
         return failed(MISSING, f"{area_file} does not exist")
     except OSError as e:
-        return failed(UNREADABLE, f"{area_file} could not be read ({e})")
+        return CurrentLocationRead(UNREADABLE, area_id, location_id, area_file,
+                                   detail=f"{area_file} could not be read ({e})",
+                                   busy=is_transient_filesystem_error(e))
     try:
         area = json.loads(raw.decode("utf-8"))
     except UnicodeDecodeError as e:
@@ -74,9 +81,16 @@ def read_current_location(party_tracker_data) -> CurrentLocationRead:
     return CurrentLocationRead(OK, area_id, location_id, area_file, area, location)
 
 
-def current_location_data(party_tracker_data, *, consumer) -> Optional[dict]:
-    """The current location's data, or None after one line naming why."""
+def current_location_data(party_tracker_data, *, consumer, wait=None) -> Optional[dict]:
+    """The current location's data, or None after one line naming why.
+
+    With ``wait`` (a no-argument callable), a busy area file waits and is read
+    again, with no deadline and nothing logged per retry; a stop the wait
+    raises propagates (B1)."""
     read = read_current_location(party_tracker_data)
+    while read.busy and wait is not None:
+        wait()
+        read = read_current_location(party_tracker_data)
     if read.status == OK:
         return read.location
     line = f"LOCATION: {consumer}: the current location is {read.status}: {read.detail}"

@@ -866,6 +866,7 @@ modules/[module_name]/
 ├── encounters/         # Combat encounters
 ├── images/            # Screenshots and portraits
 ├── module_plot.json   # Quest progression
+├── module_items.json  # Typed loot items (optional)
 ├── party_tracker.json # Party state
 └── [name]_module.json # Module metadata
 ```

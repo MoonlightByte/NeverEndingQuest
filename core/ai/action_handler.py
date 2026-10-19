@@ -3234,15 +3234,16 @@ def _party_error(operation, text):
     )
 
 
-def _party_sheet_path(module, name):
+def _party_sheet_path(module, name, *, wait=None):
     """The sheet path a companion name resolves to (the name lookup the
-    sheets already use; the sheet gate keeps it one-to-one)."""
+    sheets already use; the sheet gate keeps it one-to-one). With ``wait``,
+    a busy sheet or listing waits (P3a)."""
     from updates.update_character_info import find_character_file_fuzzy, normalize_character_name
 
     name = str(name or "")
     path_manager = ModulePathManager(str(module or "").replace(" ", "_"))
     return path_manager.get_character_path(
-        find_character_file_fuzzy(name) or normalize_character_name(name)
+        find_character_file_fuzzy(name, wait=wait) or normalize_character_name(name)
     )
 
 
@@ -6308,6 +6309,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 _engine_request_id(invocation_claim, action_context, "acquireItem"),
                 party_tracker_data,
                 kind=parameters.get("kind"),
+                catalog_id=parameters.get("catalogId"),
             )
             if result.get("success"):
                 info(f"SUCCESS: {result.get('message')}", category="storage_operations")
@@ -6315,17 +6317,22 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 needs_conversation_history_update = True
             else:
                 print(f"ERROR: Acquisition failed: {result.get('error')}")
-                error_message = (
-                    f"Acquire Error: {result.get('error', 'the acquisition was refused')}. Nothing changed: no coins "
-                    "moved and no item was added. Later actions from this response have not executed. Do not repeat "
-                    "earlier completed actions; name a catalog item and a whole-lot quantity the character can pay "
-                    "for, or, only when no catalog item can record what the narration showed, narrate briefly why it "
-                    "changed."
-                )
+                if result.get("listing") is not None:
+                    # P3a: a catalogId take is refused with its location's listing.
+                    from core.managers.item_acquisition import dispatch_refusal
+                    error_message = dispatch_refusal(result.get("error", "the acquisition was refused"), result["listing"])
+                else:
+                    error_message = (
+                        f"Acquire Error: {result.get('error', 'the acquisition was refused')}. Nothing changed: no coins "
+                        "moved and no item was added. Later actions from this response have not executed. Do not repeat "
+                        "earlier completed actions; name a catalog item and a whole-lot quantity the character can pay "
+                        "for, or, only when no catalog item can record what the narration showed, narrate briefly why it "
+                        "changed."
+                    )
                 conversation_history.append({"role": "user", "content": error_message})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as e:
             print(f"ERROR: Exception while processing acquireItem: {str(e)}")
