@@ -1,0 +1,13 @@
+{
+  "_comment": "D-COST-4 (#193): in-character DM lines shown when a turn's review cannot settle. Each admits the slip and asks the player to restate; none may claim anything happened. Nothing in the game changes on these turns.",
+  "lines": [
+    "I wasn't able to do that, let's try again. What were you thinking?",
+    "Sorry, I was distracted by my pet dragon. Say that again?",
+    "Hold on, I lost my place in my notes. What did you want to do?",
+    "My dice rolled off the table and I missed that. Run it by me once more?",
+    "Forgive me, my mind wandered to the next chapter. What was your move?",
+    "I got that a little tangled. Tell me again what you'd like to do?",
+    "Apologies, a gust blew my map off the table. Where were we? What are you trying?",
+    "I didn't quite catch that one. Could you say it again, maybe one step at a time?"
+  ]
+}

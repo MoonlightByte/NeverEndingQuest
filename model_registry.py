@@ -392,17 +392,6 @@ _declare(
          "same Luna low binding as the T047 interview it replaces.",
 )
 _declare(
-    "T047",
-    _profiles(
-        "OPENAI_GPT56_LUNA_LOW",
-        "LEVELUP_CONV_GEMINI_FLASH_LOW",
-        "LEVELUP_CONV_LEGACY",
-        "LEVELUP_CONV_LMSTUDIO",
-    ),
-    note="#323 level-up interview on Luna low (owner ruling 2026-09-14: the whole level-up path runs on "
-         "Luna; replays showed reasoning=none re-emits rejected answers while low converges in 1-2 rounds).",
-)
-_declare(
     "T086",
     _profiles(
         "OPENAI_GPT56_LUNA_NONE",
@@ -410,17 +399,6 @@ _declare(
         "LEVELUP_CONV_LEGACY",
         "LEVELUP_CONV_LMSTUDIO",
     ),
-)
-_declare(
-    "T048",
-    _profiles(
-        "OPENAI_GPT56_LUNA_LOW",
-        "LEVELUP_VAL_GEMINI_PRO_LOW",
-        "LEVELUP_VAL_LEGACY",
-        "LEVELUP_VAL_LMSTUDIO",
-    ),
-    note="#323 owner-selected Terra low for the level-up full validator. "
-         "Narrow interview controls passed; full saved-level-up acceptance remains pending.",
 )
 _declare(
     "T049",
@@ -757,36 +735,6 @@ _declare(
 )
 
 
-_declare(
-    "T115 T117",
-    _profiles(
-        "OPENAI_GPT56_LUNA_LOW",
-        "LEVELUP_CONV_GEMINI_FLASH_LOW",
-        "LEVELUP_CONV_LEGACY",
-        "LEVELUP_CONV_LMSTUDIO",
-    ),
-    note="Required private level-up domain authors: features, spells, numbers (#323).",
-)
-_declare(
-    "T119",
-    _profiles(
-        "OPENAI_GPT56_LUNA_LOW",
-        "LEVELUP_CONV_GEMINI_FLASH_LOW",
-        "LEVELUP_CONV_LEGACY",
-        "LEVELUP_CONV_LMSTUDIO",
-    ),
-    note="Required private level-up numbers author (#323); Luna low with the rest of the level-up path (2026-09-14).",
-)
-_declare(
-    "T116 T118 T120",
-    _profiles(
-        "OPENAI_GPT56_LUNA_LOW",
-        "LEVELUP_VAL_GEMINI_PRO_LOW",
-        "LEVELUP_VAL_LEGACY",
-        "LEVELUP_VAL_LMSTUDIO",
-    ),
-    note="Required focused reviews of level-up domain proposals (#323).",
-)
 
 
 def _build_bindings():
@@ -817,8 +765,6 @@ OPENAI_OUTPUT_CEILING_CHARS: Mapping[str, int] = {
     "T040": 3344,  # n=31 p95=836 max=949
     "T042": 13512,  # n=90 p95=3378 max=3798
     "T044": 5416,  # n=31 p95=1354 max=1535
-    "T047": 12060,  # n=58 p95=3015 max=3348
-    "T048": 4252,  # n=42 p95=1063 max=2558
     "T049": 1168,  # n=60 p95=292 max=309
     "T051": 14628,  # n=117 p95=3657 max=3906
     "T052": 4204,  # n=38 p95=1051 max=1518
@@ -838,11 +784,6 @@ OPENAI_OUTPUT_CEILING_CHARS: Mapping[str, int] = {
     "T105": 2776,  # n=477 p95=694 max=1275
     "T107": 5372,  # n=858 p95=1343 max=1884
     "T112": 376,  # n=102 p95=94 max=175
-    "T115": 70596,  # n=139 p95=17649 max=18283
-    "T116": 16460,  # n=36 p95=4115 max=4936
-    "T117": 23192,  # n=80 p95=5798 max=6774
-    "T118": 11128,  # n=32 p95=2782 max=3118
-    "T119": 38248,  # n=104 p95=9562 max=11583
 }
 
 
@@ -850,18 +791,18 @@ def openai_output_ceiling(task_id):
     """The output ceiling for one callsite on the openai provider, or None."""
     value = OPENAI_OUTPUT_CEILING_CHARS.get(task_id)
     return value if isinstance(value, int) and value > 0 else None
-# Reviewed source inventory: 86 registered callsite IDs (T014 and T091 retired in P4-e/P4-f, T024 in keyword GEN-11, T066 in keyword H5, T053 in keyword validation DS-3, T050 in keyword validation V5, T017 in keyword KW-6, T128 in D-ALLCLASS-4; T125 added in keyword validation V4, T126 in #1118, T127 in #1260, T128 in D-CREATE-COST-5) plus enabled T104, plus the
+# Reviewed source inventory: 78 registered callsite IDs (T014 and T091 retired in P4-e/P4-f, T024 in keyword GEN-11, T066 in keyword H5, T053 in keyword validation DS-3, T050 in keyword validation V5, T017 in keyword KW-6, T128 in D-ALLCLASS-4, the retired level-up interview, validator and domain layer in D-COST-2; T125 added in keyword validation V4, T126 in #1118, T127 in #1260, T128 in D-CREATE-COST-5) plus enabled T104, plus the
 # NPC-voice family T105 (voice+affinity) and T107 (profile seed). Keep this
 # independent from _DECLARATIONS so deleting/adding a binding cannot make the
 # expected set silently redefine itself.
 REGISTERED_TASK_IDS = tuple(
     "T012 T013 T015 T016 T018 T019 T020 T021 T022 T023 T025 "
     "T026 T027 T028 T029 T030 T031 T032 T033 T034 T035 T036 T037 T038 T039 "
-    "T040 T041 T042 T043 T044 T045 T046 T047 T048 T049 T051 T052 "
+    "T040 T041 T042 T043 T044 T045 T046 T049 T051 T052 "
     "T054 T059 T063 T064 T065 T067 T078 T079 T081 T082 T083 T084 "
     "T085 T086 T087 T088 T089 T090 T092 T093 T094 T095 T096 T097 T098 "
     "T099 T100 T101 T102 T103 T105 T107 T108 T112 T113 T114 "
-    "T115 T116 T117 T118 T119 T120 T121 T122 T123 T124 T125 T126 T127".split()
+    "T121 T122 T123 T124 T125 T126 T127".split()
 )
 EXPECTED_TASK_IDS = tuple(sorted(REGISTERED_TASK_IDS + ("T104",)))
 

@@ -1526,3 +1526,40 @@ def test_an_accepted_miscellaneous_row_is_not_retyped(wizard):
     rows = [r["item_name"] for r in validator.extract_inventory_data(after)["equipment"]]
     assert rows == ["Odd Gadget"]
 
+
+def test_a_level_up_calls_only_t121_and_the_retired_ids_are_gone(wizard, authored, monkeypatch, tmp_path):
+    # D-COST-2 (#193): the retired level-up interview (T047), validator (T048) and domain authors and
+    # reviewers (T115-T120) are deleted; the table-driven session's T121 is the one level-up call.
+    import re
+    import model_registry
+    from core.leveling import tables
+    from core.managers import level_up_session
+    from utils.capture import live_provider_call
+    retired = {"T047", "T048", "T115", "T116", "T117", "T118", "T119", "T120"}
+    calls = []
+
+    def record(task_id, *args, **kwargs):
+        calls.append(task_id)
+        raise RuntimeError("no provider in this row")
+    monkeypatch.setattr(level_up_session, "capture_and_fanout", record)
+    sheet = _as_class(copy.deepcopy(authored["character"]), "Fighter", [("Second Wind", None)])
+    session = level_up_session.LevelUpSession(sheet["name"], 1, 2)
+    session._sheet = sheet
+    session._path = str(tmp_path / "fighter.json")
+    session._settled = tables.settle(sheet, 2)
+    try:
+        session._ask_agent([])
+    except RuntimeError:
+        pass
+    assert calls == ["T121"]
+    assert not retired & set(model_registry.REGISTERED_TASK_IDS)
+    assert live_provider_call._LEVEL_UP_TASK_IDS == frozenset({"T121"})
+    pattern = re.compile(r"\bT(047|048|11[5-9]|120)\b")
+    hits = []
+    for path in list(ROOT.glob("*.py")) + list(ROOT.glob("core/**/*.py")) + list(ROOT.glob("utils/**/*.py")) \
+            + list(ROOT.glob("updates/**/*.py")) + list(ROOT.glob("prompts/**/*.txt")):
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if pattern.search(line) and not (path.name == "model_registry.py" and "it replaces" in line):
+                hits.append("%s:%d" % (path.relative_to(ROOT), number))
+    assert hits == []
+

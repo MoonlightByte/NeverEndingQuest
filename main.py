@@ -138,7 +138,6 @@ from updates.update_character_info import (
     character_update_affects_error,
     update_character_info,
 )
-from core.managers.level_up_manager import LevelUpSession # Add this line
 from core.ai.incremental_compression import IncrementalLocationCompressor
 
 # Import new manager modules
@@ -2948,6 +2947,53 @@ def parse_json_safely(text):
 VALIDATION_CATEGORIES = ("none", "reference", "missing_action", "unrequested_action", "action_order",
                          "travel", "combat", "resources", "inventory", "party", "module", "other")
 
+# D-COST-4 (#193): T065 attempts (provider errors and unparseable verdicts
+# together) one review of one draft may spend before the turn fails forward.
+_T065_ATTEMPT_LIMIT = 3
+_T065_EXHAUSTED = {"status": "t065_exhausted"}
+# The verdict contract _parse_dm_validation_verdict reads, as a strict schema.
+_T065_VERDICT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "valid": {"type": "boolean"},
+        "reason": {"type": "string"},
+        "category": {"type": "string", "enum": list(VALIDATION_CATEGORIES)},
+    },
+    "required": ["valid", "reason", "category"],
+    "additionalProperties": False,
+}
+_DM_FAIL_FORWARD_LINES_PATH = os.path.join("data", "dm_fail_forward_lines.json")
+_DM_FAIL_FORWARD_FALLBACK = "I lost the thread there for a moment. What were you thinking of doing?"
+
+
+def _t065_response_format(provider, validation_config):
+    """The provider's transport form of the T065 verdict schema (transport only)."""
+    config = dict(validation_config)
+    if provider in ("openai", "legacy"):
+        config["response_format"] = {"type": "json_schema", "json_schema": {
+            "name": "t065_verdict", "strict": True, "schema": _T065_VERDICT_SCHEMA}}
+    elif provider == "gemini":
+        from model_config import convert_to_gemini_schema
+
+        config["response_schema"] = convert_to_gemini_schema(
+            _T065_VERDICT_SCHEMA, preserve_required=True, preserve_constraints=True)
+        config["response_format"] = {"type": "json_object"}
+    return config
+
+
+def _dm_fail_forward_line():
+    """One in-character DM line that admits the slip and asks the player to
+    restate (D-COST-4), drawn from the authored list in data. Never an error."""
+    import random
+
+    try:
+        with open(_DM_FAIL_FORWARD_LINES_PATH, "r", encoding="utf-8") as f:
+            lines = [line for line in json.load(f).get("lines", [])
+                     if isinstance(line, str) and line.strip()]
+    except (OSError, ValueError, AttributeError):
+        lines = []
+    return random.choice(lines) if lines else _DM_FAIL_FORWARD_FALLBACK
+
 
 def _parse_dm_validation_verdict(response_text):
     """Parse T065's exact semantic-validation response contract.
@@ -4427,9 +4473,17 @@ def validate_ai_response(
     else:  # legacy
         validation_config = config.DM_VALIDATION_LEGACY
 
+    validation_config = _t065_response_format(_val_provider, validation_config)
     attempt = 0
     while True:
         attempt += 1
+        if attempt > _T065_ATTEMPT_LIMIT:
+            warning(
+                f"VALIDATION: T065 gave no usable verdict in {_T065_ATTEMPT_LIMIT} "
+                "attempts; the turn fails forward without change.",
+                category="ai_validation",
+            )
+            return _T065_EXHAUSTED
         try:
             if invocation_claim is not None:
                 require_current_invocation(invocation_claim)
@@ -4462,7 +4516,7 @@ def validate_ai_response(
         try:
             from utils.api_logger import log_api_call
             log_api_call("validation", validation_messages_for_diagnostics, validation_result,
-                        metadata={"attempt": attempt, "max_retries": None,
+                        metadata={"attempt": attempt, "max_retries": _T065_ATTEMPT_LIMIT,
                                   "block_bytes": _block_bytes(validation_messages_for_diagnostics, {
                                       "validator_prompt": validation_prompt_text,
                                       "structure_note": structure_validation_note,
@@ -7240,6 +7294,11 @@ def _get_ai_response_impl(
         # from the welcome remains possible (D-214-3) - this is a routing
         # skip, not a semantic restriction.
         prediction = {"requires_actions": True, "reason": "skipped-welcome"}
+    elif not config.ENABLE_INTELLIGENT_ROUTING:
+        # D-COST-1: the registry binding decides T067's model, so the T082
+        # prediction changed nothing; it is not called unless legacy routing
+        # is switched on.
+        prediction = {"requires_actions": True, "reason": "routing off (D-COST-1)"}
     elif validation_retry_count == 0 and not has_module_creation_prompt:
         prediction = predict_actions_required(user_input)
     elif has_module_creation_prompt:
@@ -10267,10 +10326,6 @@ _DM_REVIEW_REJECTION_LIMIT = 10
 # #729: unusable T114 verdicts one review may draw before the turn fails
 # without change (an unreviewed roster change never commits).
 _GUARDIAN_UNUSABLE_LIMIT = 3
-_DM_REVIEW_EXHAUSTED_MESSAGE = (
-    "Nothing in your game was changed. The DM could not settle a response "
-    "for that action. You can try it again one step at a time."
-)
 # #950: the game's own code failed while a draft was reviewed. A follow-up
 # review may run after an earlier beat committed, so this does not claim
 # that nothing changed.
@@ -10512,7 +10567,8 @@ def _review_dm_candidate(
             )
             return {
                 "status": "review_exhausted",
-                "player_message": _DM_REVIEW_EXHAUSTED_MESSAGE,
+                # D-COST-4: the same in-character fail-forward line as T065.
+                "player_message": _dm_fail_forward_line(),
             }
         approved_transition_plan = None
         if module_snapshot is None:
@@ -11124,6 +11180,11 @@ def _review_dm_candidate(
                 turn_roster=turn_roster,
             )
             require_current()
+            if validation_result is _T065_EXHAUSTED:
+                return {
+                    "status": "review_exhausted",
+                    "player_message": _dm_fail_forward_line(),
+                }
             if isinstance(validation_result, tuple):
                 is_valid, validated_content = validation_result
                 validation_reason = "" if is_valid else validated_content
