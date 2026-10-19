@@ -1382,3 +1382,27 @@ def test_an_approval_after_the_sheet_preview_must_finalize():
     assert ("When the player approves the whole build, finalize with your proposed creative fields; do not ask "
             "approval for details you add at finalize.") in engine
     assert "do not ask approval for details you add at finalize" not in build_character_creation_system_prompt()
+
+
+def test_package_items_say_whether_equipped_can_name_them_and_their_aliases():
+    # D-ALLCLASS-1 facts (dplay-AC-wizard): the author put "Spellbook at hand" in narration but equipped takes
+    # catalog ids, and it listed the staff twice (as the focus and as a Quarterstaff); T128 rejected three times.
+    # Each package item now says, from the data, whether equipped can name it, and its other names.
+    from core.nql import creation_scope
+    from utils.startup_prompt_builder import build_engine_review_request
+    intent = {"class_key": "wizard", "species_key": "elf", "background_key": "sage",
+              "choices": {"wizard.core-wizard-traits.starting-equipment": ["A"]}}
+    scope = creation_scope.creation_scope(intent)
+    package = next(c for c in scope["choices"] if c["id"] == "wizard.core-wizard-traits.starting-equipment")
+    items = {i.get("catalog_id") or i.get("key"): i for i in package["options"]["A"]["items"]}
+    assert items["spellbook"]["equippable"] is False and "aliases" not in items["spellbook"]
+    staff = items["itemdef:srd/arcane-focus-staff"]
+    assert staff["equippable"] is True and staff["aliases"] == ["Arcane Focus (Quarterstaff)", "Quarterstaff"]
+    assert items["itemdef:srd/robe"]["equippable"] is True
+    messages = build_engine_review_request(
+        facts=creation_scope.review_facts(scope), player_messages=[], latest_user_index=0,
+        previous_author_narration="", reply={"decision": "continue_interview", "intent": intent},
+        open_choice_ids=[], previous_round_demands=[],
+        unanswered_required=creation_scope.unanswered_required(scope, intent))
+    system = messages[0]["content"]
+    assert '"equippable": false' in system and '"aliases": ["Arcane Focus (Quarterstaff)", "Quarterstaff"]' in system
