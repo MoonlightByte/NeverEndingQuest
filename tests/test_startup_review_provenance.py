@@ -1048,12 +1048,20 @@ def test_engine_prompt_rewrite_anchors_hold():
         assert new in engine
 
 
-def test_engine_prompt_drift_fails_forward_to_the_unedited_prompt(wizard, monkeypatch):
+def test_engine_prompt_drift_fails_forward_and_a_finalize_still_builds(wizard, authored, monkeypatch):
     from utils import startup_prompt_builder as builder
     monkeypatch.setattr(builder, "_ENGINE_EDITS", (("not in the T092 text", "x"),))
     engine = builder.build_character_creation_system_prompt(scoped=True)
-    # The interview goes on: the engine lines are in the facts block, the rewrites are skipped.
-    assert "THE ENGINE BUILDS THE SHEET" in engine and "CHARACTER SCHEMA:" in engine
+    # The interview goes on (N8): the rewrites are skipped, the engine lines are in the facts block, and
+    # (N9) the sheet schema is gone and the contract line stands before the response schema.
+    assert "THE ENGINE BUILDS THE SHEET" in engine and "CHARACTER SCHEMA:" not in engine
+    assert engine.index(builder.ENGINE_CONTRACT_OVERRIDE) < engine.index("STARTUP RESPONSE SCHEMA:")
+    # A finalize under the fallback prompt is the engine shape, and the game builds and commits it.
+    result, conversation, commits, authors, reviewers = run_interview(
+        wizard, authored, monkeypatch, review=lambda p: {"version": 1, "accepted": True, "feedback": "",
+                                                         "needs_player_clarification": False})
+    assert any(builder.ENGINE_CONTRACT_OVERRIDE in m["content"] for m in authors[0] if m["role"] == "system")
+    assert len(commits) == 1 and commits[0]["maxHitPoints"] == 12
 
 
 def test_new_interview_gets_the_scoped_prompt_and_menu_not_the_reference(scoped, monkeypatch):
@@ -1086,6 +1094,10 @@ def test_intent_rescopes_once_and_t128_reviews_without_interview_items(scoped, m
     assert set(body) == {"task_purpose", "player_messages", "latest_user_index", "previous_author_narration",
                          "reply", "open_choice_ids", "previous_round_demands"}  # no sheet, no provenance
     assert body["reply"]["intent"]["class_key"] == "cleric" and body["open_choice_ids"]
+    # Leg 1 (T128 r2): starting_equipment rides in the reply (null before finalize), and the background's
+    # package slots are in the facts (R12: the Acolyte holy symbol's forms).
+    assert "starting_equipment" in body["reply"] and body["reply"]["starting_equipment"] is None
+    assert "Holy Symbol (Amulet)" in json.dumps(facts["background"]["equipment_options"])
     scopes = scoped._system_records(conversation, "startup_creation_scope")
     assert len({s["scope_id"] for s in scopes}) == 2
     assert scoped._scope_states(conversation)[-1]["intent"]["class_key"] == "cleric"
@@ -1111,11 +1123,30 @@ def test_t128_prompt_pins_the_asks_nothing_and_rules_claim_rules():
     # alignment never a ground (R01-R03).
     from utils.startup_prompt_builder import build_engine_review_prompt
     text = " ".join(build_engine_review_prompt().split())
-    assert "A reply that asks the player nothing while open_choice_ids is not empty is a flow rejection." in text
+    assert "A reply that asks the player nothing while open_choice_ids is not empty is a flow rejection," in text
     assert ("A reply that asks for whole-build approval, or a finalize, while open_choice_ids is not empty is "
             "an unasked_choice rejection.") in text
     assert "or one that does not exist, is a false_rules_claim" in text
     assert "Never reject for alignment" in text
+    # T128 r2 (leg 1): slot picks and packages are never demanded in intent; the features list is complete
+    # (R08, P2); substance over wording (R01); a narration ending on a colon asks nothing (R11).
+    assert "is recorded in starting_equipment at finalize" in text and "never demand it in intent" in text
+    assert "The class's level-1 features in the creation facts are the complete list" in text
+    assert "Wording that matches the facts in substance is not a false claim" in text
+    assert "ends on a colon or a heading with no question and no options after it" in text
+
+
+@pytest.mark.parametrize("field", ["flaws", "ideals", "name"])
+@pytest.mark.parametrize("value", ["", "   "])
+def test_an_empty_creative_field_is_a_schema_retry_not_a_build_refusal(wizard, authored, field, value):
+    # Leg 1: every captured finalize left flaws empty. The author fills it (proposing one for approval).
+    from utils.startup_contract import parse_startup_response
+    proposal = _engine_finalize(authored)
+    proposal["creative"][field] = value
+    with pytest.raises(ValueError):
+        parse_startup_response(json.dumps(proposal), latest_user_index=0, scoped=True)
+    proposal["creative"][field] = "Too proud to retreat"
+    assert parse_startup_response(json.dumps(proposal), latest_user_index=0, scoped=True)
 
 
 @pytest.mark.parametrize("verdict", [
