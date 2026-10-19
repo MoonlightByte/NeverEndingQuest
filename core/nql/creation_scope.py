@@ -425,16 +425,30 @@ def open_choices(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     package choice lists each package's items and gold; a free pick names its option source."""
     picks = intent.get("choices") or {}
     d = _Data()
+    points = issued_points(intent)
+
+    def names(point: Dict[str, Any], keys: List[str]) -> List[str]:
+        # A spell option row carries its key and name; the player sees names (#1275).
+        named = {o["key"]: o.get("name") or o["key"] for o in point.get("options") or []
+                 if isinstance(o, dict) and "key" in o} if isinstance(point.get("options"), list) else {}
+        return [named.get(k, k) for k in keys]
+
     out = []
-    for cid, point in issued_points(intent).items():
+    for cid, point in points.items():
         if len(picks.get(cid) or []) >= point["count"]:
             continue
         entry = {"id": cid, "name": point.get("name"), "count": point["count"],
                  "chosen": list(picks.get(cid) or [])}
-        if isinstance(point.get("options"), dict):
+        source = points.get(point.get("from_choice") or "")
+        if source is not None:
+            # Prepared from another pick (a wizard prepares from the spellbook): its options are that
+            # choice's picks so far, and the pointer says so.
+            entry["from_choice"] = point["from_choice"]
+            entry["options"] = names(source, list(picks.get(point["from_choice"]) or []))
+        elif isinstance(point.get("options"), dict):
             entry["packages"] = _packages(point["options"], d)
         elif isinstance(point.get("option_keys"), list):
-            entry["options"] = list(point["option_keys"])
+            entry["options"] = names(point, list(point["option_keys"]))
         elif point.get("free_pick"):
             entry["free_pick"] = point.get("option_source") or True
         out.append(entry)
