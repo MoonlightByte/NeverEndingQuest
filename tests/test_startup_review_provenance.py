@@ -1427,3 +1427,34 @@ def test_the_preview_summary_shows_hit_points_and_the_saved_line_shows_armor_cla
         " Armor class 17, hit points 12."
     assert startup_wizard._saved_defense_line({"armorClass": 17}) == ""
 
+
+@pytest.mark.parametrize("intent, cid, key, expected", [
+    # desktop L5 turn 5: "choose how Sage improves her abilities:" with no options in the reply.
+    ({"class_key": "fighter", "species_key": "dwarf", "background_key": "sage", "choices": {}},
+     "background.sage.ability-scores", "options", "+2 Constitution, +1 Intelligence"),
+    # desktop L5 turn 9: "choose Pip's Rogue starting equipment:" with no packages in the reply.
+    ({"class_key": "rogue", "species_key": "halfling", "background_key": "criminal", "choices": {}},
+     "rogue.core-rogue-traits.starting-equipment", "packages", "A"),
+])
+def test_the_open_choices_record_carries_each_open_choice_with_its_options(wizard, intent, cid, key, expected):
+    conversation = [{"role": "system", "content": json.dumps(creation_scope_item(intent))}]
+    proposal = {"decision": "continue_interview", "intent": intent}
+    assert wizard._scoped_intent([conversation], proposal, rescoped=True) is False
+    record = json.loads(conversation[-1]["content"])
+    assert record["task_purpose"] == "startup_open_choices"
+    entry = next(e for e in record["open_choices"] if e["id"] == cid)
+    assert expected in entry[key] and entry["name"] and entry["count"] >= 1
+    assert [e["id"] for e in record["open_choices"]] == record["open_choice_ids"]
+
+
+def test_the_menu_turn_carries_background_tools_and_gear():
+    # desktop L5 turn 1: the guide named the four backgrounds without their tools and gear.
+    from core.nql import creation_scope
+    for row in creation_scope.creation_scope({})["menu"]["backgrounds"]:
+        assert row["tools"] and row["equipment"]
+
+
+def creation_scope_item(intent):
+    from core.nql import creation_scope
+    return creation_scope.creation_scope(intent)
+
