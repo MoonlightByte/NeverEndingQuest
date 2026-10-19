@@ -6,7 +6,7 @@ from pathlib import Path
 
 from core.nql import creation_scope
 from utils.encoding_utils import safe_json_load
-from utils.startup_contract import STARTUP_REVIEW_SCHEMA, startup_response_schema
+from utils.startup_contract import SECTION_REVIEW_SCHEMA, STARTUP_REVIEW_SCHEMA, startup_response_schema
 
 
 def _read_text_file(relative_path):
@@ -376,3 +376,72 @@ An accepted proposal has needs_player_clarification false.
 Return only this review object, no narration, state changes or new character:
 {json.dumps(STARTUP_REVIEW_SCHEMA, indent=2)}
 """
+
+
+# Sectioned review (D-CREATE-COST-3, T128-T131). The common block is the T124 prompt the replay proved,
+# pointed at what a section request carries: the player's own messages and the scope slice, not the interview.
+_SECTION_COMMON_EDITS = (
+    ("against the complete\nrelevant interview, latest actual player input/index,",
+     "against the player's own messages (each with its interview index), the latest\nactual player input/index,"),
+    ("Check its stated rules facts against the startup_rules_reference in the\ninterview,",
+     "Check its stated rules facts against the creation scope slice in the system\nmessage,"),
+    ("When a stated fact\nis absent from the reference,", "When a stated fact\nis absent from the slice,"),
+    ("A feature named in a class's class_level_1 features is a supplied level-1 fact,\n"
+     "as are its class_table_at_level_1 values:",
+     "A feature named in the slice's class features is a supplied level-1 fact,\n"
+     "as are its class_table_at_level_1 values:"),
+    ("hedge only mechanics the reference does not give.", "hedge only mechanics the slice does not give."),
+    ("by name, against the startup_rules_reference.", "by name, against the slice."),
+    ("verify the proposed replacement against\nthe actual reference in the interview",
+     "verify the proposed replacement against\nthe actual slice"),
+)
+
+SECTION_SCOPES = {
+    "S1": ("numbers and flow",
+           "the character's identity (name, species, class, background, alignment, history and other descriptive "
+           "fields), the ability-score method and allocation with the background increases, level, and the numbers "
+           "derived from them (modifiers, hit points, armor class, proficiency bonus, saving throws), and the reply "
+           "itself: its decision, confirmation and narration"),
+    "S2": ("proficiencies and languages",
+           "skill, tool, armor and weapon proficiencies and training, expertise, languages, weapon mastery, a "
+           "fighting style, the class's level-1 order choice with what it grants, the Origin feat and the species "
+           "traits"),
+    "S3": ("spells",
+           "cantrips, prepared and known spells, the spellbook, spellcasting ability, spell slots, and every spell "
+           "granted by a class feature, feat or species, with their counts"),
+    "S4": ("equipment",
+           "the starting equipment package choices and their picks (slots), the items, coins and gold, catalog item "
+           "ids, what is worn or held, and equipment-derived entries"),
+}
+SECTION_SUPPLIED_ELSEWHERE = (
+    "The other sections' facts and fields are reviewed by other reviewers and are supplied to them; do not call "
+    "them absent or unsupplied, and do not reject for them.")
+SECTION_FLOW = (
+    "You also judge whether the reply is complete and asks the player the next open question, whether the decision "
+    "and confirmation are right, whether the intent records only what the player chose, and whether it claims no "
+    "saved state. A reply that asks nothing while choices remain open is a rejection. The slice's open_choice_ids "
+    "lists the choices still unfilled.")
+
+
+def build_section_review_common():
+    """The block every section request opens with, identical for all four (it caches)."""
+    text = build_startup_review_prompt()
+    for old, new in _SECTION_COMMON_EDITS:
+        if text.count(old) != 1:
+            raise ValueError("section review prompt: the T124 text changed near %r" % old[:40])
+        text = text.replace(old, new)
+    head, _, _ = text.rpartition("Return only this review object, no narration, state changes or new character:")
+    return head + (
+        "Return only one JSON object, the section review below, no narration, state changes or new character. "
+        "A rejection lists each demand with the field it concerns; an accept has no demands:\n"
+        + json.dumps(SECTION_REVIEW_SCHEMA, indent=2) + "\n")
+
+
+def build_section_review_prompt(section):
+    """The section block for one reviewer (S1-S4): its scope, the supplied-elsewhere rule and, for S1, flow."""
+    name, what = SECTION_SCOPES[section]
+    block = (f"SECTION {section} of 4 ({name}). This review covers only {what}. Judge only this section, and "
+             f"accept when nothing in it is wrong. {SECTION_SUPPLIED_ELSEWHERE}")
+    if section == "S1":
+        block += " " + SECTION_FLOW
+    return block + f' Set "section" to "{section}".'

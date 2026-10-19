@@ -196,9 +196,23 @@ def _resolved(point: Dict[str, Any], cls: str, d: _Data) -> Dict[str, Any]:
     return {"option_keys": list(names)} if names is not None else {"free_pick": True}
 
 
-def _point_entry(cid: str, point: Dict[str, Any], cls: str, d: _Data) -> Dict[str, Any]:
+def _section_of(point: Dict[str, Any]) -> str:
+    """The reviewer section a choice belongs to, from typed fields (r3 §4.2): a starting package is S4;
+    spells and invocations (the spells reference form, the cantrip and prepared kinds) are S3; the
+    background's ability split is S1; skills, tools, languages, masteries, styles and orders are S2."""
+    head = str(point.get("option_source") or "").split(":", 1)[0]
+    if isinstance(point.get("option_items"), dict):
+        return "S4"
+    if point.get("kind") in ("cantrip", "prepared_spells") or head in ("spells", "invocations"):
+        return "S3"
+    if point.get("kind") == "ability_scores":
+        return "S1"
+    return "S2"
+
+
+def _point_entry(cid: str, point: Dict[str, Any], cls: str, d: _Data, section: Optional[str] = None) -> Dict[str, Any]:
     entry = {"id": cid, "kind": point.get("kind"), "name": point["name"], "feature": point.get("feature"),
-             "count": point["count"]}
+             "count": point["count"], "section": section or _section_of(point)}
     entry.update(_resolved(point, cls, d))
     for key in ("option_grants",):
         if isinstance(point.get(key), dict):
@@ -276,17 +290,18 @@ def issued_points(intent: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
     background = d.backgrounds().get(intent.get("background_key"))
     if background and _ability_options(background):
         bid = "background.%s.ability-scores" % background["key"]
-        out[bid] = {"id": bid, "kind": "ability_scores", "name": "Ability Score Increases", "count": 1,
+        out[bid] = {"id": bid, "kind": "ability_scores", "name": "Ability Score Increases", "count": 1, "section": "S1",
                     "option_keys": _ability_options(background), "text": d.origins["background_ability_scores_rule"],
                     "page": background.get("page")}
     for sid, sub in _feat_spell_points(background, d) if background else []:
-        out[sid] = _point_entry(sid, sub, background["feat_ref"]["spell_list"].lower(), d)
+        # Every pick of a feat that grants spells is reviewed with the spells (r3 §4.2: Magic Initiate -> S3).
+        out[sid] = _point_entry(sid, sub, background["feat_ref"]["spell_list"].lower(), d, "S3")
     if intent.get("species_key") in d.species():
         known = set(d.choices["languages"].get("known") or [])
         known.update(((d.choices["class_traits"].get(cls) or {}).get("languages") or {}).get("granted") or [])
         standard = [n for n in d.choices["languages"]["standard"] if n not in known]
         out["languages.standard"] = {
-            "id": "languages.standard", "kind": "language", "name": "Standard Languages", "count": 2,
+            "id": "languages.standard", "kind": "language", "name": "Standard Languages", "count": 2, "section": "S2",
             "option_keys": standard, "text": d.origins["languages_rule"]["passages"][0],
             "page": d.choices["languages"]["source"]["page"]}
     return out
@@ -512,3 +527,121 @@ def scope_id(scope: Dict[str, Any]) -> str:
     """The scope's identity: sha256 of its canonical JSON without the id, first 16 hex digits."""
     body = {k: v for k, v in scope.items() if k != "scope_id"}
     return hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+
+
+# --- section slices (r3 §5) and the leaves each section reviews (r3 §4.2) ---
+
+SECTIONS = ("S1", "S2", "S3", "S4")
+_CLASS_KEYS = {
+    "S1": ("class_key", "name", "primary_ability", "saving_throws", "hit_die", "hp_at_first_level",
+           "hp_at_first_level_base", "proficiency_bonus_at_level_1", "features", "class_table_at_level_1",
+           "armor_training", "weapon_proficiencies", "spellcasting_ability"),
+    "S2": ("class_key", "name", "armor_training", "weapon_proficiencies", "tool_proficiencies", "order_options"),
+    "S3": ("class_key", "name", "spellcasting_ability", "spell_slots_at_level_1", "pact_slots_at_level_1",
+           "cantrips_known_at_level_1", "prepared_spells_at_level_1", "features", "class_table_at_level_1",
+           "always_prepared", "order_options"),
+    "S4": ("class_key", "name", "armor_training", "weapon_proficiencies", "spellcasting_ability"),
+}
+_COMMON_KEYS = {
+    "S1": ("sheet_representation", "background_ability_scores_rule", "ability_score_methods", "armor"),
+    "S2": ("sheet_representation", "languages", "armor", "weapons", "weapon_mastery_rule",
+           "weapon_mastery_properties", "fighting_style_feats"),
+    "S3": ("sheet_representation", "cantrip_rule"),
+    "S4": ("sheet_representation", "armor", "weapons"),
+}
+
+
+def section_slices(scope: Dict[str, Any], intent: Optional[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """Each section's part of a scope item (r3 §5): whole entries, never rewritten. Every slice carries the
+    identity part of the intent read-only; S1 also the open choice ids (the completeness fact) and the
+    menu and considered options (flow)."""
+    common = scope.get("common") or {}
+    out = {}
+    for sid in SECTIONS:
+        part: Dict[str, Any] = {k: scope[k] for k in ("ruleset", "attribution", "scope_id") if k in scope}
+        part["intent"] = scope.get("intent")
+        if "class" in scope:
+            part["class"] = {k: scope["class"][k] for k in _CLASS_KEYS[sid] if k in scope["class"]}
+        species = scope.get("species")
+        if species is not None and sid != "S4":
+            part["species"] = species if sid != "S1" else {
+                k: species[k] for k in ("key", "name", "creature_type", "size", "speed", "hp_bonuses") if k in species}
+        background = scope.get("background")
+        if background is not None:
+            if sid == "S4":
+                part["background"] = {k: background[k] for k in ("key", "name", "equipment", "equipment_options")
+                                      if k in background}
+            else:
+                part["background"] = {k: v for k, v in background.items() if k != "equipment_options"}
+        if "menu" in scope and sid in ("S1", "S2"):
+            part["menu"] = scope["menu"]
+        if "considering" in scope and sid == "S1":
+            part["considering"] = scope["considering"]
+        part.update({k: common[k] for k in _COMMON_KEYS[sid] if k in common})
+        part["choices"] = [c for c in scope.get("choices") or [] if c.get("section") == sid]
+        if sid == "S1":
+            part["open_choice_ids"] = open_choice_ids(intent) if intent else []
+        out[sid] = part
+    return out
+
+
+# The sheet fields each section reviews (r3 §4.2 field map); a field no section names is S1's.
+SHEET_FIELDS = {
+    "S2": ("skills", "expertise", "proficiencies", "languages", "feats", "classFeatures", "racialTraits",
+           "damageResistances", "senses"),
+    "S3": ("spellcasting", "feats", "classFeatures", "racialTraits"),
+    "S4": ("equipment", "currency", "ammunition", "attacksAndSpellcasting", "equipment_effects", "acquisitions"),
+}
+PROVENANCE_FIELDS = {
+    "S1": ("hit_points", "engine_projection", "mechanics_notes", "schema_null_drops"),
+    "S2": ("order_grants", "mechanics_notes"),
+    "S3": ("use_pools", "order_grants"),
+    "S4": ("starting_packages", "engine_rows", "engine_projection"),
+}
+
+
+def _sheet_leaves(character: Any, sid: str) -> Any:
+    if not isinstance(character, dict):
+        return character
+    if sid == "S1":
+        others = {f for fields in SHEET_FIELDS.values() for f in fields}
+        return {k: v for k, v in character.items() if k not in others}
+    return {k: character[k] for k in SHEET_FIELDS[sid] if k in character}
+
+
+def _intent_leaves(intent: Any, sid: str, issued: Dict[str, Dict[str, Any]]) -> Any:
+    if not isinstance(intent, dict):
+        return intent
+    leaves = {k: intent.get(k) for k in ("class_key", "species_key", "background_key")}
+    leaves["choices"] = {cid: picks for cid, picks in (intent.get("choices") or {}).items()
+                         if (issued.get(cid) or {}).get("section", "S1") == sid}
+    if sid == "S1":
+        leaves["considering"] = intent.get("considering")
+    return leaves
+
+
+def section_leaves(proposal: Dict[str, Any], sid: str) -> Dict[str, Any]:
+    """A response's leaves one section reviews (r3 §4.2). On an interview turn the narration, decision and
+    confirmation are every section's (they ask the player about all of it); at finalize only S1's."""
+    issued = issued_points(proposal.get("intent"))
+    final = proposal.get("decision") == "finalize_character"
+    leaves: Dict[str, Any] = {"intent": _intent_leaves(proposal.get("intent"), sid, issued)}
+    if not final or sid == "S1":
+        leaves.update({k: proposal.get(k) for k in ("decision", "narration", "confirmation")})
+    if final:
+        leaves["character"] = _sheet_leaves(proposal.get("character"), sid)
+        if sid in ("S1", "S4"):
+            leaves["origin"] = proposal.get("origin")
+        if sid == "S4":
+            leaves["starting_equipment"] = proposal.get("starting_equipment")
+    return leaves
+
+
+def provenance_leaves(provenance: Any, sid: str) -> Any:
+    if not isinstance(provenance, dict):
+        return provenance
+    return {k: provenance[k] for k in PROVENANCE_FIELDS[sid] if k in provenance}
+
+
+def snapshot_hash(value: Any) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
