@@ -78,6 +78,11 @@ class StatusManager:
         self._lock = threading.Lock()
         self._status_callback = None
         self._compression_callback = None  # For compression progress events
+        # One publication: (message, is_processing, wait, seq), replaced whole
+        # under the lock (#1271). ``wait`` is the typed in-flight model call
+        # record, or None.
+        self._published = (self._status, self._is_processing, None, 0)
+        self._detail_callback = None
         
     def set_callback(self, callback: Callable[[str, bool], None]):
         """Set a callback function to be called when status changes
@@ -86,9 +91,25 @@ class StatusManager:
             callback: Function that takes (status_message, is_processing) as arguments
         """
         self._status_callback = callback
-        
+
+    def set_detail_callback(self, callback: Callable[[tuple], None]):
+        """Set a callback that receives each whole publication tuple
+        (message, is_processing, wait, seq) (#1271). It runs inside the status
+        lock, which is not reentrant: it must never call back into this
+        manager."""
+        self._detail_callback = callback
+
+    def _publish(self, message, is_processing, wait, detail_only=False):
+        # Caller holds self._lock.
+        seq = self._published[3] + 1
+        self._published = (message, is_processing, wait if is_processing else None, seq)
+        if self._status_callback and not detail_only:
+            self._status_callback(message, is_processing)
+        if self._detail_callback:
+            self._detail_callback(self._published)
+
     def update_status(self, message: str, is_processing: bool = True,
-                      at_input_boundary: bool = False, owner_scope=None):
+                      at_input_boundary: bool = False, owner_scope=None, wait=None):
         """Update the current status message
 
         Args:
@@ -108,6 +129,8 @@ class StatusManager:
                 then publishes through this same lock is always final: a stale
                 owner's line can only precede it, never follow it. Absent = the
                 ordinary unowned publication, byte-identical to before (#323).
+            wait: Optional typed record of the model call that owns this
+                processing status (#1271); dropped when not processing.
         """
         with self._lock:
             if owner_scope is not None and owner_scope.is_superseded():
@@ -126,9 +149,31 @@ class StatusManager:
                     pass
             self._status = message
             self._is_processing = is_processing
-            if self._status_callback:
-                self._status_callback(message, is_processing)
+            self._publish(message, is_processing, wait)
         return True
+
+    def publish_wait(self, wait) -> bool:
+        """Replace only the typed wait record of the current processing status
+        (#1271). Only the detail callback hears it, so console and headless
+        output are unchanged. Refused when not processing or superseded."""
+        with self._lock:
+            if not self._is_processing:
+                return False
+            try:
+                from utils.capture.live_provider_call import get_live_turn_scope
+
+                scope = get_live_turn_scope()
+                if scope is not None and scope.is_superseded():
+                    return False
+            except ImportError:
+                pass
+            self._publish(self._status, True, wait, detail_only=True)
+        return True
+
+    def get_status_detail(self) -> tuple:
+        """The current publication: (message, is_processing, wait, seq)."""
+        with self._lock:
+            return self._published
                 
     def get_status(self) -> tuple[str, bool]:
         """Get the current status and processing state
@@ -189,6 +234,35 @@ class StatusManager:
 
 # Global status manager instance
 status_manager = StatusManager()
+
+
+def wait_payload(wait, now=None):
+    """The status event's ``wait`` object for a stored record (#1271), or None.
+
+    A record holds monotonic anchors (startedAt, lastActivityAt, retryUntil);
+    the durations are taken here, at send time, so a reconnect sees fresh
+    values. Every field is the server's own typed state."""
+    if not isinstance(wait, dict):
+        return None
+    now = time.monotonic() if now is None else now
+
+    def since(anchor):
+        return max(0, int((now - anchor) * 1000)) if isinstance(anchor, (int, float)) else None
+
+    until = wait.get("retryUntil")
+    return {
+        "kind": "provider_call",
+        "purpose": wait.get("purpose"),
+        "taskId": wait.get("taskId"),
+        "provider": wait.get("provider"),
+        "providerName": wait.get("providerName"),
+        "attempt": wait.get("attempt"),
+        "maxAttempts": wait.get("maxAttempts"),
+        "elapsedMs": since(wait.get("startedAt")) or 0,
+        "phase": wait.get("phase"),
+        "lastActivityMs": since(wait.get("lastActivityAt")),
+        "retryInMs": max(0, int((until - now) * 1000)) if isinstance(until, (int, float)) else None,
+    }
 
 # --- Input-poll lifecycle pump hook (issue #214) ---------------------------
 # The blocking input adapters (WebInput.readline / HeadlessInput.readline)
@@ -304,6 +378,11 @@ def set_status_callback(callback: Callable[[str, bool], None]):
         callback: Function that takes (status_message, is_processing) as arguments
     """
     status_manager.set_callback(callback)
+
+def set_detail_callback(callback: Callable[[tuple], None]):
+    """Set the global whole-publication callback (#1271); see
+    StatusManager.set_detail_callback."""
+    status_manager.set_detail_callback(callback)
 
 def set_compression_callback(callback: Callable[[str, dict], None]):
     """Set the global compression callback function

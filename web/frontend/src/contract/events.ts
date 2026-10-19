@@ -161,6 +161,26 @@ export interface RestoreResult {
   restart_required?: boolean;
 }
 
+/**
+ * #1271: the typed record of the model call that owns a processing status.
+ * Every field is the server's own state; the client renders it from fixed
+ * maps and never reads the status text.
+ */
+export interface WaitRecord {
+  kind: 'provider_call';
+  purpose: 'character_setup' | 'starting_location' | 'level_up' | 'combat' | 'turn' | string;
+  taskId: string;
+  provider: string | null;
+  providerName: string | null;
+  /** The attempt in progress, or during a retry wait the next one. */
+  attempt: number;
+  maxAttempts: number | null;
+  elapsedMs: number;
+  phase: string | null;
+  lastActivityMs: number | null;
+  retryInMs: number | null;
+}
+
 export interface ServerEvents {
   roll_prompt: { prompt: RulesRollPrompt | null };
   connected: {
@@ -173,7 +193,7 @@ export interface ServerEvents {
   game_resumed: { is_processing: boolean; message: string };
   game_output: GameMessage;
   debug_output: { type: 'debug'; content: string; timestamp: string };
-  status_update: { message: string; is_processing: boolean; recovery_required?: boolean };
+  status_update: { message: string; is_processing: boolean; recovery_required?: boolean; wait?: WaitRecord | null };
   startup_status: { status: 'in_progress' | 'ready' | 'failed'; phase: string; startupAttemptId?: string };
   game_started: { message: string };
   startup_recovery_response: { status: string; error?: string; retryAfterSeconds?: number; expectedStartupAttemptId?: string };
@@ -185,6 +205,7 @@ export interface ServerEvents {
     game_running: boolean;
     is_processing: boolean;
     status_message: string;
+    wait?: WaitRecord | null;
     startup?: { status: 'idle' | 'in_progress' | 'ready' | 'failed'; phase: string; startupAttemptId?: string };
     operations?: {
       restore?: RestoreResult | null;

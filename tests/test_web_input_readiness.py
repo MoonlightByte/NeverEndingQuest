@@ -108,17 +108,21 @@ def test_startup_reclaims_callback_before_a_fast_worker_can_report_ready():
     node.decorator_list = []
     events = []
     callbacks = []
+    details = []
     def start():
-        assert callbacks == [emit_status]
+        # #1271: the web hears whole publications only, reclaimed before start.
+        assert callbacks == [None]
+        assert details == [emit_detail]
         events.append('ready')
-    emit_status = lambda *args: None
+    emit_detail = lambda *args: None
     env = dict(game_thread=None, _web_gameplay_paused=lambda: False,
                uninstall_debug_interceptor=lambda: None,
                sys=SimpleNamespace(), WebOutputCapture=lambda *a, **kw: None,
                debug_output_queue=None, original_stdout=None, original_stderr=None,
                WebInput=lambda q: None, user_input_queue=None,
                set_player_output_sink=lambda sink: None, _queue_safe_player_output=None,
-               set_status_callback=callbacks.append, emit_status_update=emit_status,
+               set_status_callback=callbacks.append, set_detail_callback=details.append,
+               emit_status_detail=emit_detail,
                load_message_cache=lambda **kw: None,
                threading=SimpleNamespace(Thread=lambda **kw: SimpleNamespace(start=start)),
                run_game_loop=lambda: None,

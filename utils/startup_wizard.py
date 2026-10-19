@@ -2167,7 +2167,7 @@ def _startup_provider_pause(player_message, scope):
         raise LiveProviderSuperseded("startup provider wait superseded")
 
 
-def _startup_provider_failure(exc, failures, scope, pending):
+def _startup_provider_failure(exc, failures, scope, pending, wait=None):
     """One completed startup provider error (#1267); returns the count to carry.
 
     Transient requests reissue inside the shared transport, so this sees a
@@ -2176,7 +2176,8 @@ def _startup_provider_failure(exc, failures, scope, pending):
     failure, never added to. A refused request (HTTP 400) keeps that automatic
     correction inside the bound; an account refusal (quota, key, model access)
     asks the player at once. At the bound the player is told once and their
-    next input retries (0 is returned)."""
+    next input retries (0 is returned). ``wait`` ({taskId, provider,
+    startedAt}) lets the web show the retry wait (#1271)."""
     from utils.capture.live_provider_call import _interruptible_wait
     from utils.provider_errors import (
         PROVIDER_MAX_FAILURES, classify_provider_error, provider_failure_policy,
@@ -2194,8 +2195,37 @@ def _startup_provider_failure(exc, failures, scope, pending):
         return 0
     # Every retry waits provider_retry_delay, not decision["delay"]: the play turn
     # waits 0 for an unclassified error, and #1267 is a repeating one.
-    _interruptible_wait(provider_retry_delay(failures - 1), scope, pending, display_status)
+    delay = provider_retry_delay(failures - 1)
+    if wait is not None:
+        _publish_startup_wait(wait, failures + 1, PROVIDER_MAX_FAILURES, delay)
+    _interruptible_wait(delay, scope, pending, display_status)
     return failures
+
+
+def _publish_startup_wait(wait, attempt, max_attempts, delay):
+    """The web's typed record of a bounded startup retry wait (#1271). Wait-only:
+    console and headless text are unchanged. ``attempt`` is the next one."""
+    import time
+
+    try:
+        from core.managers.status_manager import status_manager
+        from utils.capture.live_provider_call import wait_purpose
+        from utils.provider_errors import provider_display_name
+
+        status_manager.publish_wait({
+            "purpose": wait_purpose(wait.get("taskId")),
+            "taskId": wait.get("taskId"),
+            "provider": wait.get("provider"),
+            "providerName": provider_display_name(wait.get("provider")),
+            "attempt": attempt,
+            "maxAttempts": max_attempts,
+            "startedAt": wait.get("startedAt"),
+            "phase": None,
+            "lastActivityAt": None,
+            "retryUntil": time.monotonic() + delay,
+        })
+    except Exception:
+        pass  # presentational only
 
 
 def get_ai_response(conversation, response_format=None, *, persist_response=True, live_scope=None,
@@ -2222,6 +2252,8 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
 
     request_messages = copy.deepcopy(conversation)
     failures = 0
+    import time
+    started = time.monotonic()  # the player's wait, for #1271
     error_note = []  # the one correction note after a failed attempt (#1267)
     _emit_startup_phase(startup_phase)
     status_processing_ai()
@@ -2266,7 +2298,8 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                     "Retain the player choices and return the requested response."
                 )}]
                 failures = _startup_provider_failure(
-                    exc, failures, scope, "Character setup is still pending; your choices are retained.")
+                    exc, failures, scope, "Character setup is still pending; your choices are retained.",
+                    {"taskId": task_id, "provider": provider, "startedAt": started})
                 if not failures:
                     _emit_startup_phase(startup_phase)
                     status_processing_ai()
@@ -2374,6 +2407,8 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
             + json.dumps(module_data, ensure_ascii=True)
         )}]
         failures = 0
+        import time
+        started = time.monotonic()  # the player's wait, for #1271
         error_note = []  # the one correction note after a failed attempt (#1267)
         while True:
             try:
@@ -2420,7 +2455,8 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
                     "return a complete grounded proposal."
                 )}]
                 failures = _startup_provider_failure(
-                    exc, failures, scope, "Still determining the adventure's starting location.")
+                    exc, failures, scope, "Still determining the adventure's starting location.",
+                    {"taskId": "T093", "provider": provider, "startedAt": started})
                 if not failures:
                     _emit_startup_phase("startup_location")
                     status_processing_ai()
