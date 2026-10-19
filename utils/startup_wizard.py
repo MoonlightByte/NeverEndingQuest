@@ -1443,7 +1443,9 @@ def _prepare_startup_proposal(authored_proposal, *, live_scope=None):
             break
     # The step-7 rule applies only after an applied grant; a (d) at the grant keeps main's fallbacks.
     faults = [] if unavailable is None else None
-    character, mechanics = startup_mechanics(character, provenance=provenance, faults=faults)
+    # #1280 / B1: the interview passes its typed intent (an empty one when the path has none), never race.
+    intent = proposal.get("intent") if isinstance(proposal.get("intent"), dict) else {}
+    character, mechanics = startup_mechanics(character, provenance=provenance, faults=faults, intent=intent)
     while faults:
         # The step-7 rule: a busy engine reissues only the rows step, on the projected sheet.
         outcome = _startup_engine_fault(faults.pop(), live_scope, "attack_rows", timeouts)
@@ -1462,7 +1464,7 @@ def _prepare_startup_proposal(authored_proposal, *, live_scope=None):
         # (d) after a successful grant: the character is rebuilt from the zeroed sheet, once, with no
         # engine fault rule, so no sheet commits granted gear without engine rows.
         display_status("Finishing your character without starting gear.")
-        character, mechanics = startup_mechanics(copy.deepcopy(zeroed), provenance=provenance)
+        character, mechanics = startup_mechanics(copy.deepcopy(zeroed), provenance=provenance, intent=intent)
     provenance["starting_packages"] = dict(unavailable or dict(grant, status="applied"), authored=authored_gear)
     provenance["mechanics_notes"] = identity_notes + mechanics
     # Equipment checks read the sheet as the engine left it; armorClass is the
@@ -2047,7 +2049,8 @@ def expected_starting_hit_points(character):
 def _apply_species_resistances(character, intent, provenance):
     """#1280: the species' damage resistances from the typed table, added to the sheet (never removing an
     entry). With the creation intent, its picked options count (Draconic Ancestry, Fiendish Legacy); without
-    one (a supplied sheet), only the species' unconditional grants apply."""
+    one (a supplied sheet), the canonical species named by race grants its unconditional ones. A live
+    interview always passes its intent, so race is never read there."""
     from core.leveling import choices as leveling_choices
     notes = []
     applied = leveling_choices.apply_species_resistances(character, intent)
@@ -2056,7 +2059,10 @@ def _apply_species_resistances(character, intent, provenance):
             notes.append(f"damageResistances + {', '.join(entry['added'])} (Resistance from {entry['source']})")
     if provenance is not None and applied:
         provenance["species_resistances"] = {"source": "core.leveling.choices.apply_species_resistances",
-                                             "grants": copy.deepcopy(applied)}
+                                             "grants": copy.deepcopy([e for e in applied if not e.get("untyped")])}
+        gaps = [e["untyped"] for e in applied if e.get("untyped")]
+        if gaps:
+            provenance["species_resistances"]["untyped"] = gaps
     return notes
 
 

@@ -472,13 +472,24 @@ def species_damage_resistances(intent: Any) -> List[Dict[str, Any]]:
 def apply_species_resistances(sheet: Dict[str, Any], intent: Any = None) -> List[Dict[str, Any]]:
     """Add the species' granted damage resistances to the sheet in place: each type is appended unless an
     entry equals it (casefolded); nothing is removed or rewritten, and the sheet's own list is never the
-    source. With no intent, the species is the one named by race, with no picks (unconditional grants only).
-    Returns [{source, added, present}]; with no grant the sheet is untouched."""
+    source. With no intent (a supplied sheet), the species is the one whose canonical name equals the typed
+    race field exactly, with no picks (unconditional grants only); a race that is no canonical name grants
+    nothing and returns the one untyped gap entry. Returns [{source, added, present}]; with no grant the
+    sheet is untouched."""
     if intent is None:
-        race = str((sheet or {}).get("race") or "").strip().casefold()
-        key = next((s.get("key") for s in _origins().get("species") or []
-                    if str(s.get("name") or "").casefold() == race), None)
+        # EXC-COST5-1 (D-KW exception, supplied sheets only): a free-string race (char_schema string,
+        # frozen) matched exactly against the closed set of canonical species names; a non-match grants
+        # nothing and records gap species.unknown; never normalised; a typed species_key (the headless
+        # input record's) is preferred when present.
+        race = (sheet or {}).get("race")
+        key = next((s.get("key") for s in _origins().get("species") or [] if s.get("name") == race), None)
+        if key is None:
+            return [{"source": None, "added": [], "present": [],
+                     "untyped": {"id": "species.unknown", "grant": "damage resistances", "where": "race"}}]
         intent = {"species_key": key, "choices": {}}
+    if intent.get("species_key") not in [s.get("key") for s in _origins().get("species") or []]:
+        return [{"source": None, "added": [], "present": [],
+                 "untyped": {"id": "species.unknown", "grant": "damage resistances", "where": "species_key"}}]
     found = species_damage_resistances(intent)
     if not found:
         return []

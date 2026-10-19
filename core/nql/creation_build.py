@@ -62,7 +62,9 @@ def _ability_scores(b: _Build, background: Dict[str, Any]) -> Dict[str, int]:
     spec = b.intent.get("ability_scores") or {}
     methods = b.d.origins.get("ability_score_methods") or {}
     method = spec.get("method")
-    assignment = {str(k).casefold(): v for k, v in (spec.get("assignment") or {}).items()}
+    assignment = spec.get("assignment") if isinstance(spec.get("assignment"), dict) else {}
+    if set(assignment) != set(ABILITIES):  # the schema's six lowercase keys, matched exactly (N2)
+        raise BuildRefusal([{"field": "intent.ability_scores.assignment", "problem": "keys must be %s" % ", ".join(ABILITIES)}])
     base = {a: assignment.get(a) for a in ABILITIES}
     if any(type(v) is not int for v in base.values()):
         raise BuildRefusal([{"field": "intent.ability_scores.assignment", "problem": "six whole-number scores"}])
@@ -321,7 +323,7 @@ def build_level_one_sheet(intent: Dict[str, Any], creative: Dict[str, Any],
     if origin_feat is not None:
         name = background.get("feat") or origin_feat["name"]
         source = "%s background (SRD 5.2.1)" % background["name"]
-        text = descriptions.get(name) or origin_feat.get("text") or ""
+        text = origin_feat.get("text") or descriptions.get(name) or ""  # the SRD data text wins (N3)
         feats.append({"name": b.source("feats", "origins.backgrounds[%s].feat_ref" % background_key, name),
                       "description": text, "source": source})
         background_feature = {"name": "Origin feat: %s" % name, "description": text, "source": source}
