@@ -10322,10 +10322,6 @@ _DM_REVIEW_REJECTION_LIMIT = 10
 # #729: unusable T114 verdicts one review may draw before the turn fails
 # without change (an unreviewed roster change never commits).
 _GUARDIAN_UNUSABLE_LIMIT = 3
-_DM_REVIEW_EXHAUSTED_MESSAGE = (
-    "Nothing in your game was changed. The DM could not settle a response "
-    "for that action. You can try it again one step at a time."
-)
 # #950: the game's own code failed while a draft was reviewed. A follow-up
 # review may run after an earlier beat committed, so this does not claim
 # that nothing changed.
@@ -10567,7 +10563,8 @@ def _review_dm_candidate(
             )
             return {
                 "status": "review_exhausted",
-                "player_message": _DM_REVIEW_EXHAUSTED_MESSAGE,
+                # D-COST-4: the same in-character fail-forward line as T065.
+                "player_message": _dm_fail_forward_line(),
             }
         approved_transition_plan = None
         if module_snapshot is None:
