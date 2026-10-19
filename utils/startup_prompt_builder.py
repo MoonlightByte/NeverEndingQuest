@@ -581,6 +581,18 @@ Return only this JSON object:
 """
 
 
+def _with_reply_fields(facts):
+    """The facts with the reply's typed field locations from the scoped schema (dplay-AC-rogue: T128 asked for an
+    intent.name the schema has not; the name is a creative field, set at finalize)."""
+    from utils.startup_contract import startup_response_schema
+    properties = startup_response_schema(scoped=True)["properties"]
+    fields = {key: sorted((properties[key].get("properties") or {}).keys())
+              for key in ("intent", "creative") if isinstance(properties.get(key), dict)}
+    if "creative" in fields:
+        fields["creative_set_at"] = "finalize_character"
+    return dict(facts, reply_fields=fields)
+
+
 def build_engine_review_request(*, facts, player_messages, latest_user_index, previous_author_narration,
                                 reply, open_choice_ids, previous_round_demands, summary=None,
                                 unanswered_required=()):
@@ -599,6 +611,6 @@ def build_engine_review_request(*, facts, player_messages, latest_user_index, pr
         body["engine_built_summary"] = summary
     return [
         {"role": "system", "content": build_engine_review_prompt()
-         + "\nCREATION FACTS, as JSON:\n" + json.dumps(facts, ensure_ascii=False)},
+         + "\nCREATION FACTS, as JSON:\n" + json.dumps(_with_reply_fields(facts), ensure_ascii=False)},
         {"role": "user", "content": json.dumps(body, ensure_ascii=False)},
     ]

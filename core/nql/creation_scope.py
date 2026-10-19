@@ -308,7 +308,11 @@ def issued_points(intent: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         # A class skill pick never offers a skill the background already grants (typed set difference).
         for cid, entry in out.items():
             if entry.get("kind") == "skill" and isinstance(entry.get("option_keys"), list):
+                excluded = [k for k in entry["option_keys"] if k in granted]
                 entry["option_keys"] = [k for k in entry["option_keys"] if k not in granted]
+                if excluded:
+                    # Typed, so a review never asks for them back (all-class B3, dplay-AC-rogue round 6).
+                    entry["excluded_granted"] = excluded
     if background and _ability_options(background):
         bid = "background.%s.ability-scores" % background["key"]
         out[bid] = {"id": bid, "kind": "ability_scores", "name": "Ability Score Increases", "count": 1, "section": "S1",
