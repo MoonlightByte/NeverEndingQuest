@@ -2385,6 +2385,11 @@ def update_party_tracker(module_name, character_name, *, live_scope=None, starti
         _emit_startup_phase("startup_party_commit")
         party_data = safe_json_load("party_tracker.json") or {}
         same_module = party_data.get("module") == module_name
+        if not same_module:
+            # Another module's save (its player file missing, or a reused headless
+            # folder): start from what Reset leaves, never its calendar, events,
+            # combat, companions or quests (#1283, D-1283-1). Compared by module id.
+            party_data = {}
         world = copy.deepcopy(party_data.get("worldConditions") or {})
         current = {
             "areaId": world.get("currentAreaId"), "locationId": world.get("currentLocationId"),
