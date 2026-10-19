@@ -26,7 +26,9 @@
   "Text is ASCII: curly quotes became straight ones and dashes became hyphens.",
   "srd-choices/2 (NUM): class_traits.<class> gain saving_throws (ability names), armor_training (light, medium, heavy, shield: neq_armor's armor_category values) and weapon_proficiencies (rules: a weapon is proficient when one rule's category equals its weapon.category and, if the rule has property_any, it has one of those properties), with the printed text under printed.",
   "NUM-P1: class_traits.monk gains monk_weapons (rules {category, kind[, property_any]}) and martial_arts: at each Monk level the host declares the Condition types listed for that level's Martial Arts die (attack_features.nql), and every character gets srd:unarmed-strike.",
-  "Starting Equipment option_items: per option, items as {catalog_id, quantity} (quantity in the item's own units: 20 Arrows is quantity 20), {choose_one: [ids]} for a printed item with several catalog forms (Holy Symbol), or {uncatalogued: text} for an item the catalog lacks (tools, instruments, the Spellbook); and coins. A Quarterstaff focus is the catalog's Staff or Wooden staff focus, which the SRD prints as also a Quarterstaff (evidence). Startup packages (data/srd_character_origins.json backgrounds carry the same equipment_options shape): an uncatalogued entry also carries key (a stable id), item_type and description; an entry that is a genuine player choice carries slot, an id unique across every class and background package (<class or background key>.<option>.<choice>). A slot with choose_one is a catalog pick, a slot with no catalog id is a named pick the player names; an entry without slot is a fixed item."
+  "Starting Equipment option_items: per option, items as {catalog_id, quantity} (quantity in the item's own units: 20 Arrows is quantity 20), {choose_one: [ids]} for a printed item with several catalog forms (Holy Symbol), or {uncatalogued: text} for an item the catalog lacks (tools, instruments, the Spellbook); and coins. A Quarterstaff focus is the catalog's Staff or Wooden staff focus, which the SRD prints as also a Quarterstaff (evidence). Startup packages (data/srd_character_origins.json backgrounds carry the same equipment_options shape): an uncatalogued entry also carries key (a stable id), item_type and description; an entry that is a genuine player choice carries slot, an id unique across every class and background package (<class or background key>.<option>.<choice>). A slot with choose_one is a catalog pick, a slot with no catalog id is a named pick the player names; an entry without slot is a fixed item.",
+  "always_prepared lists the level-1 spells a class feature or species lineage keeps always prepared; spell is a data/spell_repository.json key. They do not count against a class's prepared picks.",
+  "Typed keys (D-CREATE-COST-4): feats[].key; a choice point's key, named by another point's options_from when that point's options are the first point's picks (the Wizard's prepared spells come from its spellbook)."
  ],
  "reference_forms": [
   {
@@ -100,14 +102,14 @@
    "meaning": "Kinds of weapons the character has proficiency with."
   },
   {
-   "form": "tools:category=<Artisan's Tools|Musical Instrument>",
-   "resolves": "host",
-   "meaning": "Tools of that category in the SRD Equipment chapter."
+   "form": "tools:category=<Artisan's Tools|Gaming Set|Musical Instrument|Other Tools>",
+   "resolves": "file",
+   "meaning": "tools.entries in this file with that category."
   },
   {
    "form": "tools:all",
-   "resolves": "host",
-   "meaning": "Every tool in the SRD Equipment chapter."
+   "resolves": "file",
+   "meaning": "Every entry in tools.entries in this file."
   },
   {
    "form": "beasts:max_cr=<1/4|1/2|1>,fly=<yes|no>",
@@ -329,7 +331,10 @@
   "source": {
    "section": "Character Creation > Create Your Character > Step 2: Character Origin > Choose Languages",
    "page": 20
-  }
+  },
+  "known": [
+   "Common"
+  ]
  },
  "damage_types": [
   "Acid",
@@ -358,7 +363,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Origin Feats > Alert",
     "page": 87
-   }
+   },
+   "key": "alert"
   },
   {
    "name": "Magic Initiate",
@@ -453,7 +459,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Origin Feats > Magic Initiate",
     "page": 87
-   }
+   },
+   "key": "magic_initiate"
   },
   {
    "name": "Savage Attacker",
@@ -466,7 +473,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Origin Feats > Savage Attacker",
     "page": 87
-   }
+   },
+   "key": "savage_attacker"
   },
   {
    "name": "Skilled",
@@ -490,7 +498,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Origin Feats > Skilled",
     "page": 87
-   }
+   },
+   "key": "skilled"
   },
   {
    "name": "Ability Score Improvement",
@@ -529,7 +538,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > General Feats > Ability Score Improvement",
     "page": 87
-   }
+   },
+   "key": "ability_score_improvement"
   },
   {
    "name": "Grappler",
@@ -563,7 +573,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > General Feats > Grappler",
     "page": 87
-   }
+   },
+   "key": "grappler"
   },
   {
    "name": "Archery",
@@ -582,6 +593,13 @@
    "source": {
     "section": "Feats > Feat Descriptions > Fighting Style Feats > Archery",
     "page": 87
+   },
+   "key": "archery",
+   "effect": {
+    "kind": "attack_bonus",
+    "value": 2,
+    "attacks": "ranged_weapon",
+    "sheet": "engine attack rows"
    }
   },
   {
@@ -601,6 +619,17 @@
    "source": {
     "section": "Feats > Feat Descriptions > Fighting Style Feats > Defense",
     "page": 88
+   },
+   "key": "defense",
+   "effect": {
+    "kind": "ac_bonus",
+    "value": 1,
+    "while_wearing": [
+     "light",
+     "medium",
+     "heavy"
+    ],
+    "sheet": "armorClass"
    }
   },
   {
@@ -620,6 +649,22 @@
    "source": {
     "section": "Feats > Feat Descriptions > Fighting Style Feats > Great Weapon Fighting",
     "page": 88
+   },
+   "key": "great_weapon_fighting",
+   "effect": {
+    "kind": "damage_die_floor",
+    "value": 3,
+    "replaces": [
+     1,
+     2
+    ],
+    "attacks": "melee_weapon",
+    "held": "two_hands",
+    "weapon_property_any": [
+     "Two-Handed",
+     "Versatile"
+    ],
+    "sheet": "none (roll rider)"
    }
   },
   {
@@ -639,6 +684,12 @@
    "source": {
     "section": "Feats > Feat Descriptions > Fighting Style Feats > Two-Weapon Fighting",
     "page": 88
+   },
+   "key": "two_weapon_fighting",
+   "effect": {
+    "kind": "light_extra_attack_damage_modifier",
+    "weapon_property": "Light",
+    "sheet": "none (roll rider)"
    }
   },
   {
@@ -674,7 +725,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Epic Boon Feats > Boon of Combat Prowess",
     "page": 88
-   }
+   },
+   "key": "boon_of_combat_prowess"
   },
   {
    "name": "Boon of Dimensional Travel",
@@ -709,7 +761,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Epic Boon Feats > Boon of Dimensional Travel",
     "page": 88
-   }
+   },
+   "key": "boon_of_dimensional_travel"
   },
   {
    "name": "Boon of Fate",
@@ -744,7 +797,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Epic Boon Feats > Boon of Fate",
     "page": 88
-   }
+   },
+   "key": "boon_of_fate"
   },
   {
    "name": "Boon of Irresistible Offense",
@@ -775,7 +829,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Epic Boon Feats > Boon of Irresistible Offense",
     "page": 88
-   }
+   },
+   "key": "boon_of_irresistible_offense"
   },
   {
    "name": "Boon of Spell Recall",
@@ -807,7 +862,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Epic Boon Feats > Boon of Spell Recall",
     "page": 88
-   }
+   },
+   "key": "boon_of_spell_recall"
   },
   {
    "name": "Boon of the Night Spirit",
@@ -842,7 +898,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Epic Boon Feats > Boon of the Night Spirit",
     "page": 88
-   }
+   },
+   "key": "boon_of_the_night_spirit"
   },
   {
    "name": "Boon of Truesight",
@@ -877,7 +934,8 @@
    "source": {
     "section": "Feats > Feat Descriptions > Epic Boon Feats > Boon of Truesight",
     "page": 88
-   }
+   },
+   "key": "boon_of_truesight"
   }
  ],
  "invocations": [
@@ -916,6 +974,12 @@
    "choices": [],
    "source": {
     "section": "Classes > Warlock > Eldritch Invocation Options > Armor of Shadows",
+    "page": 72
+   },
+   "effect": {
+    "kind": "cast_without_slot",
+    "spell": "mage_armor",
+    "target": "self",
     "page": 72
    }
   },
@@ -975,6 +1039,12 @@
    "choices": [],
    "source": {
     "section": "Classes > Warlock > Eldritch Invocation Options > Eldritch Mind",
+    "page": 72
+   },
+   "effect": {
+    "kind": "save_advantage",
+    "save": "Constitution",
+    "when": "maintain_concentration",
     "page": 72
    }
   },
@@ -1233,6 +1303,14 @@
    "source": {
     "section": "Classes > Warlock > Eldritch Invocation Options > Pact of the Blade",
     "page": 74
+   },
+   "effect": {
+    "kind": "pact_weapon",
+    "summon": "bonus_action",
+    "weapon": "Simple or Martial Melee",
+    "attack_ability": "Charisma",
+    "sheet": "none at creation (the bond is made in play)",
+    "page": 74
    }
   },
   {
@@ -1243,6 +1321,13 @@
    "choices": [],
    "source": {
     "section": "Classes > Warlock > Eldritch Invocation Options > Pact of the Chain",
+    "page": 74
+   },
+   "effect": {
+    "kind": "spell_known",
+    "spell": "find_familiar",
+    "cast_without_slot": true,
+    "casting": "magic_action",
     "page": 74
    }
   },
@@ -1514,6 +1599,13 @@
     "Saving Throw Proficiencies": "Dexterity and Charisma",
     "Armor Training": "Light armor",
     "Weapon Proficiencies": "Simple weapons"
+   },
+   "spellcasting_ability": {
+    "ability": "Charisma",
+    "source": {
+     "section": "Classes > Bard > Level 1: Spellcasting",
+     "page": 32
+    }
    }
   },
   "cleric": {
@@ -1544,6 +1636,13 @@
     "Saving Throw Proficiencies": "Wisdom and Charisma",
     "Armor Training": "Light and Medium armor and Shields",
     "Weapon Proficiencies": "Simple weapons"
+   },
+   "spellcasting_ability": {
+    "ability": "Wisdom",
+    "source": {
+     "section": "Classes > Cleric > Level 1: Spellcasting",
+     "page": 37
+    }
    }
   },
   "druid": {
@@ -1572,7 +1671,27 @@
    "printed": {
     "Saving Throw Proficiencies": "Intelligence and Wisdom",
     "Armor Training": "Light armor and Shields",
-    "Weapon Proficiencies": "Simple weapons"
+    "Weapon Proficiencies": "Simple weapons",
+    "Tool Proficiencies": "Herbalism Kit"
+   },
+   "spellcasting_ability": {
+    "ability": "Wisdom",
+    "source": {
+     "section": "Classes > Druid > Level 1: Spellcasting",
+     "page": 42
+    }
+   },
+   "tool_proficiencies": [
+    "Herbalism Kit"
+   ],
+   "languages": {
+    "granted": [
+     "Druidic"
+    ],
+    "source": {
+     "section": "Classes > Druid > Druid Class Features > Level 1: Druidic",
+     "page": 42
+    }
    }
   },
   "fighter": {
@@ -1725,6 +1844,13 @@
     "Saving Throw Proficiencies": "Wisdom and Charisma",
     "Armor Training": "Light, Medium, and Heavy armor and Shields",
     "Weapon Proficiencies": "Simple and Martial weapons"
+   },
+   "spellcasting_ability": {
+    "ability": "Charisma",
+    "source": {
+     "section": "Classes > Paladin > Level 1: Spellcasting",
+     "page": 54
+    }
    }
   },
   "ranger": {
@@ -1759,6 +1885,13 @@
     "Saving Throw Proficiencies": "Strength and Dexterity",
     "Armor Training": "Light and Medium armor and Shields",
     "Weapon Proficiencies": "Simple and Martial weapons"
+   },
+   "spellcasting_ability": {
+    "ability": "Wisdom",
+    "source": {
+     "section": "Classes > Ranger > Level 1: Spellcasting",
+     "page": 58
+    }
    }
   },
   "rogue": {
@@ -1793,7 +1926,20 @@
    "printed": {
     "Saving Throw Proficiencies": "Dexterity and Intelligence",
     "Armor Training": "Light armor",
-    "Weapon Proficiencies": "Simple weapons and Martial weapons that have the Finesse or Light property"
+    "Weapon Proficiencies": "Simple weapons and Martial weapons that have the Finesse or Light property",
+    "Tool Proficiencies": "Thieves' Tools"
+   },
+   "tool_proficiencies": [
+    "Thieves' Tools"
+   ],
+   "languages": {
+    "granted": [
+     "Thieves' Cant"
+    ],
+    "source": {
+     "section": "Classes > Rogue > Rogue Class Features > Level 1: Thieves' Cant",
+     "page": 62
+    }
    }
   },
   "sorcerer": {
@@ -1820,6 +1966,13 @@
     "Saving Throw Proficiencies": "Constitution and Charisma",
     "Armor Training": "None",
     "Weapon Proficiencies": "Simple weapons"
+   },
+   "spellcasting_ability": {
+    "ability": "Charisma",
+    "source": {
+     "section": "Classes > Sorcerer > Level 1: Spellcasting",
+     "page": 65
+    }
    }
   },
   "warlock": {
@@ -1848,6 +2001,13 @@
     "Saving Throw Proficiencies": "Wisdom and Charisma",
     "Armor Training": "Light armor",
     "Weapon Proficiencies": "Simple weapons"
+   },
+   "spellcasting_ability": {
+    "ability": "Charisma",
+    "source": {
+     "section": "Classes > Warlock > Level 1: Pact Magic",
+     "page": 72
+    }
    }
   },
   "wizard": {
@@ -1874,6 +2034,13 @@
     "Saving Throw Proficiencies": "Intelligence and Wisdom",
     "Armor Training": "None",
     "Weapon Proficiencies": "Simple weapons"
+   },
+   "spellcasting_ability": {
+    "ability": "Intelligence",
+    "source": {
+     "section": "Classes > Wizard > Level 1: Spellcasting",
+     "page": 78
+    }
    }
   }
  },
@@ -7654,7 +7821,8 @@
       "section": "Classes > Wizard > Wizard Class Features > Level 1: Spellcasting",
       "page": 77
      },
-     "evidence": "It starts with six level 1 Wizard spells of your choice"
+     "evidence": "It starts with six level 1 Wizard spells of your choice",
+     "key": "wizard.spellbook"
     },
     {
      "kind": "cantrip",
@@ -7691,7 +7859,8 @@
       "section": "Classes > Wizard > Wizard Class Features > Level 1: Spellcasting",
       "page": 77
      },
-     "evidence": "To do so, choose four spells from your spellbook"
+     "evidence": "To do so, choose four spells from your spellbook",
+     "options_from": "wizard.spellbook"
     }
    ],
    "2": [
@@ -9155,5 +9324,465 @@
     "evidence": "Whenever you finish a Long Rest, you can study your spellbook and replace one of those spells with an eligible spell of the same level from the book"
    }
   ]
- }
+ },
+ "always_prepared": [
+  {
+   "spell": "hunter_s_mark",
+   "granted_by": {
+    "kind": "class_feature",
+    "class": "ranger",
+    "level": 1,
+    "feature": "Favored Enemy"
+   },
+   "source": {
+    "section": "Classes > Ranger > Level 1: Favored Enemy",
+    "page": 58
+   }
+  },
+  {
+   "spell": "speak_with_animals",
+   "granted_by": {
+    "kind": "class_feature",
+    "class": "druid",
+    "level": 1,
+    "feature": "Druidic"
+   },
+   "source": {
+    "section": "Classes > Druid > Level 1: Druidic",
+    "page": 42
+   }
+  },
+  {
+   "spell": "speak_with_animals",
+   "granted_by": {
+    "kind": "species_lineage",
+    "level": 1,
+    "lineage": "Forest Gnome",
+    "species_key": "gnome"
+   },
+   "source": {
+    "section": "Character Origins > Species Descriptions > Gnome > Gnomish Lineage",
+    "page": 85
+   }
+  }
+ ],
+ "tools": {
+  "source": {
+   "section": "Equipment > Tools",
+   "pages": [
+    93,
+    94
+   ]
+  },
+  "names_are_keys": "Proficiency lists elsewhere (backgrounds tool_keys, sheet proficiencies.tools) hold entries[].name; key is the slug for ids.",
+  "rule": "Each tool, and each variant of Gaming Set and Musical Instrument, requires a separate proficiency (p. 93, Variants).",
+  "categories": [
+   "Artisan's Tools",
+   "Gaming Set",
+   "Musical Instrument",
+   "Other Tools"
+  ],
+  "entries": [
+   {
+    "key": "alchemists-supplies",
+    "name": "Alchemist's Supplies",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "50 GP",
+    "page": 93
+   },
+   {
+    "key": "brewers-supplies",
+    "name": "Brewer's Supplies",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "20 GP",
+    "page": 93
+   },
+   {
+    "key": "calligraphers-supplies",
+    "name": "Calligrapher's Supplies",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "10 GP",
+    "page": 93
+   },
+   {
+    "key": "carpenters-tools",
+    "name": "Carpenter's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "8 GP",
+    "page": 93
+   },
+   {
+    "key": "cartographers-tools",
+    "name": "Cartographer's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "15 GP",
+    "page": 93
+   },
+   {
+    "key": "cobblers-tools",
+    "name": "Cobbler's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "5 GP",
+    "page": 93
+   },
+   {
+    "key": "cooks-utensils",
+    "name": "Cook's Utensils",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "1 GP",
+    "page": 93
+   },
+   {
+    "key": "glassblowers-tools",
+    "name": "Glassblower's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "30 GP",
+    "page": 93
+   },
+   {
+    "key": "jewelers-tools",
+    "name": "Jeweler's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "25 GP",
+    "page": 93
+   },
+   {
+    "key": "leatherworkers-tools",
+    "name": "Leatherworker's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "5 GP",
+    "page": 93
+   },
+   {
+    "key": "masons-tools",
+    "name": "Mason's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "10 GP",
+    "page": 93
+   },
+   {
+    "key": "painters-supplies",
+    "name": "Painter's Supplies",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "10 GP",
+    "page": 93
+   },
+   {
+    "key": "potters-tools",
+    "name": "Potter's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "10 GP",
+    "page": 93
+   },
+   {
+    "key": "smiths-tools",
+    "name": "Smith's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "20 GP",
+    "page": 93
+   },
+   {
+    "key": "tinkers-tools",
+    "name": "Tinker's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "50 GP",
+    "page": 94
+   },
+   {
+    "key": "weavers-tools",
+    "name": "Weaver's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "1 GP",
+    "page": 94
+   },
+   {
+    "key": "woodcarvers-tools",
+    "name": "Woodcarver's Tools",
+    "category": "Artisan's Tools",
+    "group": "Artisan's Tools",
+    "cost": "1 GP",
+    "page": 94
+   },
+   {
+    "key": "disguise-kit",
+    "name": "Disguise Kit",
+    "category": "Other Tools",
+    "group": "Other Tools",
+    "cost": "25 GP",
+    "page": 94
+   },
+   {
+    "key": "forgery-kit",
+    "name": "Forgery Kit",
+    "category": "Other Tools",
+    "group": "Other Tools",
+    "cost": "15 GP",
+    "page": 94
+   },
+   {
+    "key": "herbalism-kit",
+    "name": "Herbalism Kit",
+    "category": "Other Tools",
+    "group": "Other Tools",
+    "cost": "5 GP",
+    "page": 94
+   },
+   {
+    "key": "navigators-tools",
+    "name": "Navigator's Tools",
+    "category": "Other Tools",
+    "group": "Other Tools",
+    "cost": "25 GP",
+    "page": 94
+   },
+   {
+    "key": "poisoners-kit",
+    "name": "Poisoner's Kit",
+    "category": "Other Tools",
+    "group": "Other Tools",
+    "cost": "50 GP",
+    "page": 94
+   },
+   {
+    "key": "thieves-tools",
+    "name": "Thieves' Tools",
+    "category": "Other Tools",
+    "group": "Other Tools",
+    "cost": "25 GP",
+    "page": 94
+   },
+   {
+    "key": "dice",
+    "name": "Dice",
+    "category": "Gaming Set",
+    "group": "Other Tools",
+    "cost": "1 SP",
+    "page": 94
+   },
+   {
+    "key": "dragonchess",
+    "name": "Dragonchess",
+    "category": "Gaming Set",
+    "group": "Other Tools",
+    "cost": "1 GP",
+    "page": 94
+   },
+   {
+    "key": "playing-cards",
+    "name": "Playing Cards",
+    "category": "Gaming Set",
+    "group": "Other Tools",
+    "cost": "5 SP",
+    "page": 94
+   },
+   {
+    "key": "three-dragon-ante",
+    "name": "Three-Dragon Ante",
+    "category": "Gaming Set",
+    "group": "Other Tools",
+    "cost": "1 GP",
+    "page": 94
+   },
+   {
+    "key": "bagpipes",
+    "name": "Bagpipes",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "30 GP",
+    "page": 94
+   },
+   {
+    "key": "drum",
+    "name": "Drum",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "6 GP",
+    "page": 94
+   },
+   {
+    "key": "dulcimer",
+    "name": "Dulcimer",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "25 GP",
+    "page": 94
+   },
+   {
+    "key": "flute",
+    "name": "Flute",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "2 GP",
+    "page": 94
+   },
+   {
+    "key": "horn",
+    "name": "Horn",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "3 GP",
+    "page": 94
+   },
+   {
+    "key": "lute",
+    "name": "Lute",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "35 GP",
+    "page": 94
+   },
+   {
+    "key": "lyre",
+    "name": "Lyre",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "30 GP",
+    "page": 94
+   },
+   {
+    "key": "pan-flute",
+    "name": "Pan Flute",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "12 GP",
+    "page": 94
+   },
+   {
+    "key": "shawm",
+    "name": "Shawm",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "2 GP",
+    "page": 94
+   },
+   {
+    "key": "viol",
+    "name": "Viol",
+    "category": "Musical Instrument",
+    "group": "Other Tools",
+    "cost": "30 GP",
+    "page": 94
+   }
+  ]
+ },
+ "package_slot_bindings": [
+  {
+   "slot": "bard.A.instrument",
+   "item_key": "musical-instrument",
+   "rule": "category",
+   "category": "Musical Instrument",
+   "evidence": "Musical Instrument of your choice (Bard Starting Equipment A, p. 31): any Musical Instrument; the SRD does not tie it to the Bard's 3 instrument proficiencies",
+   "page": 31
+  },
+  {
+   "slot": "monk.A.tool_or_instrument",
+   "item_key": "artisans-tools-or-musical-instrument",
+   "rule": "equal",
+   "choice": {
+    "class": "monk",
+    "choice_point": "Tool Proficiencies",
+    "applies": "first_class"
+   },
+   "evidence": "Artisan's Tools or Musical Instrument chosen for the tool proficiency above (p. 49)",
+   "page": 49
+  },
+  {
+   "slot": "soldier.A.gaming_set",
+   "item_key": "gaming-set",
+   "rule": "equal",
+   "choice": {
+    "background": "soldier",
+    "field": "tool_choice"
+   },
+   "evidence": "Gaming Set (same as above) (Soldier equipment A, p. 83)",
+   "page": 83
+  }
+ ],
+ "species_damage_resistances": [
+  {
+   "species_key": "dwarf",
+   "trait": "Dwarven Resilience",
+   "damage_resistances": [
+    "Poison"
+   ],
+   "source": {
+    "section": "Character Origins > Species Descriptions > Dwarf > Dwarven Resilience",
+    "page": 84
+   },
+   "evidence": "Dwarven Resilience. You have Resistance to Poison damage."
+  },
+  {
+   "species_key": "dragonborn",
+   "choice_id": "species.dragonborn.draconic-ancestry",
+   "choice": "Draconic Ancestry",
+   "options_from": {
+    "table": "Draconic Ancestors",
+    "option_column": "Dragon",
+    "resistance_column": "Damage Type"
+   },
+   "source": {
+    "section": "Character Origins > Species Descriptions > Dragonborn > Damage Resistance",
+    "page": 84
+   },
+   "evidence": "Damage Resistance. You have Resistance to the damage type determined by your Draconic Ancestry trait."
+  },
+  {
+   "species_key": "tiefling",
+   "choice_id": "species.tiefling.fiendish-legacy",
+   "choice": "Fiendish Legacy",
+   "option": "Abyssal",
+   "damage_resistances": [
+    "Poison"
+   ],
+   "source": {
+    "section": "Character Origins > Species Descriptions > Tiefling > Fiendish Legacy",
+    "page": 86
+   },
+   "evidence": "You have Resistance to Poison damage. You also know the Poison Spray cantrip."
+  },
+  {
+   "species_key": "tiefling",
+   "choice_id": "species.tiefling.fiendish-legacy",
+   "choice": "Fiendish Legacy",
+   "option": "Chthonic",
+   "damage_resistances": [
+    "Necrotic"
+   ],
+   "source": {
+    "section": "Character Origins > Species Descriptions > Tiefling > Fiendish Legacy",
+    "page": 86
+   },
+   "evidence": "You have Resistance to Necrotic damage. You also know the Chill Touch cantrip."
+  },
+  {
+   "species_key": "tiefling",
+   "choice_id": "species.tiefling.fiendish-legacy",
+   "choice": "Fiendish Legacy",
+   "option": "Infernal",
+   "damage_resistances": [
+    "Fire"
+   ],
+   "source": {
+    "section": "Character Origins > Species Descriptions > Tiefling > Fiendish Legacy",
+    "page": 86
+   },
+   "evidence": "You have Resistance to Fire damage. You also know the Fire Bolt cantrip."
+  }
+ ]
 }

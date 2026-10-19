@@ -158,7 +158,8 @@ def _srd_origin_reference(npc_race, npc_background):
     ability score rule, the species the request names (every species when it
     names none, or one the data does not have, such as a subrace) and likewise
     the background, each entry as the origins file holds it, less the new
-    character's typed starting packages (key, equipment_options and its slots),
+    character's typed starting packages (key, equipment_options and its slots)
+    and the creation scope's typed refs (species key, background feat_ref),
     which no NPC draft uses."""
     from core.leveling.fighting_style import ORIGINS_BASENAME
     from utils.encoding_utils import safe_json_load
@@ -169,10 +170,13 @@ def _srd_origin_reference(npc_race, npc_background):
         match = [entry for entry in entries if str(entry.get("name", "")).casefold() == wanted]
         return match or list(entries)
 
-    startup_only = ("equipment_options", "key")  # the slots are inside equipment_options
+    # the slots are inside equipment_options; key, feat_ref and the typed lists are the creation scope's and
+    # the engine build's typed refs (D-CREATE-COST-4/-5)
+    startup_only = ("equipment_options", "key", "feat_ref", "skill_keys", "tool_keys", "tool_choice")
     return {
         "background_ability_scores_rule": origins["background_ability_scores_rule"],
-        "species": named(origins["species"], npc_race),
+        "species": [{k: v for k, v in entry.items() if k not in ("key", "grants")}
+                    for entry in named(origins["species"], npc_race)],
         "backgrounds": [{k: v for k, v in entry.items() if k not in startup_only}
                         for entry in named(origins["backgrounds"], npc_background)],
     }

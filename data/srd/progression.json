@@ -4480,7 +4480,8 @@
    "name": "Dwarven Toughness",
    "granted_by": {
     "kind": "species trait",
-    "species": "Dwarf"
+    "species": "Dwarf",
+    "species_key": "dwarf"
    },
    "per_character_level": 1,
    "evidence": "Dwarven Toughness. Your Hit Point maximum increases by 1, and it increases by 1 again whenever you gain a level."

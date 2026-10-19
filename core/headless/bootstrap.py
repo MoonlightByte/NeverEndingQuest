@@ -235,6 +235,11 @@ def seed_character(character_file, module_name):
         save_character_to_module,
         update_party_tracker,
     )
+    # #1280 / B1: the input record may carry a typed species_key beside the sheet; it is taken out before
+    # the schema check (char_schema is frozen, so the saved sheet never carries it) and is the species
+    # the engine grants from. Without it startup_mechanics falls back to EXC-COST5-1 on race.
+    species_key = character_data.pop("species_key", None)
+    intent = {"species_key": species_key, "choices": {}} if isinstance(species_key, str) else None
     character_data = auto_fix_character_data(character_data)
     valid, validation_error = validate_character_with_recovery(
         character_data, mechanics=False)
@@ -244,7 +249,7 @@ def seed_character(character_file, module_name):
             % (character_file, validation_error))
     # Engine AC projection + SRD level-1 hit points, as the interview
     # applies them at finalize (#531, #532); the notes are logged there.
-    character_data, _ = startup_mechanics(character_data)
+    character_data, _ = startup_mechanics(character_data, intent=intent)
     # The starting checks read the sheet as the engine left it, in the
     # wizard's order (#797): an authored AC the projection corrects is not
     # refused, and a sheet still wrong after it is.

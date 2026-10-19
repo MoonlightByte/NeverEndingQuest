@@ -122,6 +122,13 @@ def resolve_options(source: Any, sheet: Dict[str, Any], cls: str, new_level: int
                     filters: Optional[List[str]] = None) -> Optional[List[str]]:
     """The option names for a choice point, or None when the host has no list (free pick)."""
     filters = filters or []
+    if isinstance(source, str) and " | " in source:
+        # A union of forms ("skills:all | tools:all"): its options are every part's, or a free pick when
+        # any part has no list.
+        parts = [resolve_options(part.strip(), sheet, cls, new_level) for part in source.split(" | ")]
+        if any(part is None for part in parts):
+            return None
+        return _apply_filters([n for part in parts for n in part], filters, sheet)
     if isinstance(source, list):
         names = [str(x) for x in source]
     elif not isinstance(source, str):
@@ -161,14 +168,21 @@ def resolve_options(source: Any, sheet: Dict[str, Any], cls: str, new_level: int
             names = sorted({str(e.get("item_name")) for e in sheet.get("equipment") or []
                             if isinstance(e, dict) and e.get("item_type") == "weapon" and e.get("item_name")})
             return _apply_filters(names, filters, sheet) or None
+        elif head == "tools" and isinstance(data().get("tools"), dict):
+            # The SRD tool table (pp. 93-94): tools:all, or tools:category=<category>.
+            names = [t["name"] for t in data()["tools"].get("entries") or []
+                     if not args.get("category") or t.get("category") == args["category"]]
         else:
-            return None   # tools, beasts: the agent picks, code accepts a name
+            return None   # beasts: the agent picks, code accepts a name
     return _apply_filters(names, filters, sheet)
 
 
 def free_pick(source: Any) -> bool:
     """True when the host cannot enumerate the options, so any named pick is accepted."""
-    return isinstance(source, str) and source.split(":", 1)[0] in ("weapons", "tools", "beasts")
+    if isinstance(source, str) and " | " in source:
+        return any(free_pick(part.strip()) for part in source.split(" | "))
+    head = source.split(":", 1)[0] if isinstance(source, str) else None
+    return head in ("weapons", "beasts") or (head == "tools" and not isinstance(data().get("tools"), dict))
 
 
 def _spell_options(args: Dict[str, str], flags: set, sheet: Dict[str, Any], cls: str, new_level: int) -> List[str]:
@@ -405,3 +419,103 @@ def check_pick(point: Dict[str, Any], value: Any, sheet: Dict[str, Any], cls: st
             if p not in options:
                 return False, f"{p!r} is not one of the options for {point['id']}: {options}"
     return True, ""
+
+
+# --- species damage resistances (#1280) ---
+
+_ORIGINS: Optional[Dict[str, Any]] = None
+
+
+def _origins() -> Dict[str, Any]:
+    global _ORIGINS
+    if _ORIGINS is None:
+        path = os.path.join(os.path.dirname(os.path.dirname(tables._DATA)), "srd_character_origins.json")
+        with open(path, "r", encoding="utf-8") as handle:
+            _ORIGINS = json.load(handle)
+    return _ORIGINS
+
+
+def _resistance_options(entry: Dict[str, Any]) -> List[Tuple[Optional[str], List[str]]]:
+    """[(option, damage types)] of one species_damage_resistances entry; options_from reads the species table."""
+    spec = entry.get("options_from")
+    if not spec:
+        return [(entry.get("option"), list(entry.get("damage_resistances") or []))]
+    species = next((s for s in _origins().get("species") or [] if s.get("key") == entry.get("species_key")), {})
+    table = next((t for t in species.get("tables") or [] if t.get("title") == spec.get("table")), None)
+    if table is None:
+        return []
+    oi, ri = table["columns"].index(spec["option_column"]), table["columns"].index(spec["resistance_column"])
+    return [(row[oi], [row[ri]]) for row in table["rows"]]
+
+
+def species_damage_resistances(intent: Any) -> List[Dict[str, Any]]:
+    """The species' damage resistance grants for a creation intent {species_key, choices}: the unconditional
+    ones, and the ones of the options picked under their typed choice id. Reads only the table and the intent."""
+    intent = intent if isinstance(intent, dict) else {}
+    key, picks = intent.get("species_key"), intent.get("choices") or {}
+    out = []
+    for entry in data().get("species_damage_resistances") or []:
+        if entry.get("species_key") != key:
+            continue
+        if not entry.get("choice_id"):
+            out.append({"source": entry.get("trait"), "choice_id": None, "option": None,
+                        "damage_resistances": list(entry.get("damage_resistances") or [])})
+            continue
+        chosen = picks.get(entry["choice_id"]) or []
+        for option, kinds in _resistance_options(entry):
+            if option in chosen:
+                out.append({"source": "%s: %s" % (entry.get("choice"), option), "choice_id": entry["choice_id"],
+                            "option": option, "damage_resistances": kinds})
+    return out
+
+
+def species_key_for(sheet: Any, intent: Any = None) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    """(species key, untyped gap or None) for the engine's species grants (#1280, B1).
+
+    With a creation intent (a dict; the live interview always passes one) its species_key, never race.
+    Without one (a supplied sheet): EXC-COST5-1 (D-KW exception, supplied sheets only): a free-string race
+    (char_schema string, frozen) matched exactly against the closed set of canonical species names; a
+    non-match grants nothing and records gap species.unknown; never normalised; a typed species_key (the
+    headless input record's, passed as the intent) is preferred when present."""
+    species = _origins().get("species") or []
+    if isinstance(intent, dict):
+        key = intent.get("species_key")
+        if key in [s.get("key") for s in species]:
+            return key, None
+        return None, {"id": "species.unknown", "grant": "species grants", "where": "species_key"}
+    race = (sheet or {}).get("race")
+    key = next((s.get("key") for s in species if s.get("name") == race), None)
+    if key is None:
+        return None, {"id": "species.unknown", "grant": "species grants", "where": "race"}
+    return key, None
+
+
+def apply_species_resistances(sheet: Dict[str, Any], intent: Any = None) -> List[Dict[str, Any]]:
+    """Add the species' granted damage resistances to the sheet in place: each type is appended unless an
+    entry equals it (casefolded); nothing is removed or rewritten, and the sheet's own list is never the
+    source. The species is species_key_for's (the intent's, or EXC-COST5-1 on a supplied sheet); with no
+    species the sheet is untouched and the one untyped gap entry is returned. Returns
+    [{source, added, present}]; with no grant the sheet is untouched."""
+    key, gap = species_key_for(sheet, intent)
+    if gap is not None:
+        return [{"source": None, "added": [], "present": [], "untyped": dict(gap, grant="damage resistances")}]
+    intent = {"species_key": key, "choices": (intent or {}).get("choices") or {}} if isinstance(intent, dict) \
+        else {"species_key": key, "choices": {}}
+    found = species_damage_resistances(intent)
+    if not found:
+        return []
+    have = sheet.get("damageResistances") if isinstance(sheet.get("damageResistances"), list) else []
+    seen = {x.strip().casefold() for x in have if isinstance(x, str)}
+    entries = []
+    for grant in found:
+        added, present = [], []
+        for kind in grant["damage_resistances"]:
+            if kind.casefold() in seen:
+                present.append(kind)
+            else:
+                have.append(kind)
+                seen.add(kind.casefold())
+                added.append(kind)
+        entries.append({"source": grant["source"], "added": added, "present": present})
+    sheet["damageResistances"] = have
+    return entries
