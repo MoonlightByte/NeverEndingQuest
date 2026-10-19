@@ -916,8 +916,25 @@ def _scope_states(conversation):
     states = _system_records(conversation, SCOPE_STATE_PURPOSE)
     startup_id = (_startup_progress(conversation) or {}).get("startup_id")
     if startup_id is not None:
-        states = [s for s in states if s.get("startup_id") == startup_id]
+        # A record written before the history's first checkpoint has no id; that checkpoint minted the id of
+        # the same startup, so the record is the first startup's and no later one's.
+        first = _first_startup_id(conversation)
+        states = [s for s in states if s.get("startup_id") == startup_id
+                  or (s.get("startup_id") is None and startup_id == first)]
     return states
+
+
+def _first_startup_id(conversation):
+    for message in conversation:
+        if message.get("role") != "system":
+            continue
+        try:
+            record = json.loads(message.get("content", ""))
+        except (TypeError, ValueError):
+            continue
+        if isinstance(record, dict) and "startup_checkpoint_version" in record:
+            return record.get("startup_id")
+    return None
 
 
 def _scope_state(conversation):
@@ -979,17 +996,20 @@ def _scoped_intent(conversations, proposal, rescoped):
                 "task_purpose": "startup_choices_dropped", "dropped": dropped,
                 "instruction": "These picks belong to an earlier choice; the current scope does not issue them.",
             }, ensure_ascii=False)})
+    # A refused intent never becomes the scope: picks are checked before any scope is appended.
+    problems = creation_scope.choice_problems(intent)
+    if problems:
+        raise StartupScopeRefusal(problems, [])
     scope = creation_scope.creation_scope(intent)
     current = _creation_scope_current(conversations[0])
     if scope is not None and (current is None or current.get("scope_id") != scope["scope_id"]):
         _append_scope(conversations, scope, intent)
         if not rescoped:
             return True
-    problems = creation_scope.choice_problems(intent)
     open_ids = (creation_scope.open_choice_ids(intent)
                 if proposal["decision"] == "finalize_character" else [])
-    if problems or open_ids:
-        raise StartupScopeRefusal(problems, open_ids)
+    if open_ids:
+        raise StartupScopeRefusal([], open_ids)
     return False
 
 
