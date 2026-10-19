@@ -205,7 +205,8 @@ _declare(
     ),
     note="Startup semantic reviewer (#682), split from T092 so the reviewer binds alone. OpenAI=gpt-5.6-luna|low "
          "(D-CREATE-COST-2 amendment 4, 2026-10-19: terra|low was 98% of a creation's cost; in the headless Cleric "
-         "creation L4h gpt-5.6-luna|low gave 11 reviews, 3 rejections, all real catches, no reference-gap rejection, "
+         "creation L4h gpt-5.6-luna|low gave 11 reviews, 3 rejections, each a real mistake in the draft (one already "
+         "normalized by the engine), no reference-gap rejection, "
          "no contradiction, mean 4.9 s, max 7.0 s; the creation cost $0.1097, the reviewer $0.093). Fallback: "
          "gpt-6-luna|medium (OPENAI_GPT56_LUNA_MEDIUM), consistent in creation L2 at $0.102 with reviews averaging "
          "44 s; gpt-6-luna|low reversed its own demand three times at finalize and saved nothing. Before that "
