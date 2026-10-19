@@ -292,6 +292,18 @@ def _track_module_primary(response, task_id, provider, requested_model):
         pass
 
 
+def _variant_provider_configured(variant):
+    """True when the variant's provider can be called: OpenAI (the primary provider's own credentials), or
+    Gemini with a key available to its client (#1308). Any other provider is never fired."""
+    provider = variant.get("provider")
+    if provider == "openai":
+        return True
+    if provider == "gemini":
+        from utils.capture.gemini_caller import gemini_configured
+        return gemini_configured()
+    return False
+
+
 def _fire_background_variant(variant, task_id, messages, invocation_id,
                               caller_temperature, caller_kwargs):
     """Execute one variant call and write result. Runs in thread pool."""
@@ -592,6 +604,13 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         # Get variants (check task_overrides first, then per-callsite configs)
         variants = [] if live_policy else cfg.get("task_overrides", {}).get(task_id)
 
+        # An empty tier-variant list means shadows are off for that tier: no
+        # per-callsite config re-enables them (#1308). task_overrides above
+        # stays an explicit per-task opt-in.
+        tier_variants = cfg.get(f"{tier}_tier_variants", [])
+        if variants is None and not tier_variants:
+            variants = []
+
         # Then try per-callsite config dicts from model_config.py
         if variants is None:
             from model_config import get_capture_variants_for_task
@@ -599,7 +618,7 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
 
         # Fall back to tier-based variants (backwards compatibility)
         if variants is None:
-            variants = cfg.get(f"{tier}_tier_variants", [])
+            variants = tier_variants
 
         # Get source location from registered metadata
         meta = _callsite_meta_for(task_id, runtime_file)
@@ -623,6 +642,9 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
         for variant in variants:
             # Skip disabled variants (enabled defaults to True if not specified)
             if not variant.get("enabled", True):
+                continue
+            # Never call a provider that is not configured (#1308).
+            if not _variant_provider_configured(variant):
                 continue
             # Skip an exact effective duplicate of the selected primary call.
             if _variant_matches_primary(

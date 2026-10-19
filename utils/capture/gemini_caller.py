@@ -37,33 +37,40 @@ THINKING_SUPPORTED_MODELS = [
 ]
 
 
+def _resolve_api_key():
+    """The Gemini key from config.GEMINI_API_KEY, else google_api.pi; None when neither holds one."""
+    api_key = None
+    try:
+        import config
+        if hasattr(config, 'GEMINI_API_KEY') and config.GEMINI_API_KEY:
+            api_key = config.GEMINI_API_KEY
+    except ImportError:
+        pass
+    if not api_key:
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        api_key_file = os.path.join(project_root, "google_api.pi")
+        if os.path.exists(api_key_file):
+            with open(api_key_file, 'r') as f:
+                content = f.read().strip()
+                if 'api_key=' in content:
+                    api_key = content.split('api_key=')[1].strip()
+                else:
+                    api_key = content
+    return api_key or None
+
+
+def gemini_configured():
+    """True when a Gemini key is available to _get_client (#1308: an unconfigured provider is never called)."""
+    return _resolve_api_key() is not None
+
+
 def _get_client():
     global _gemini_client
     if _gemini_client is None:
         with _client_lock:
             if _gemini_client is None:
                 from google import genai
-                api_key = None
-
-                # First try config.GEMINI_API_KEY
-                try:
-                    import config
-                    if hasattr(config, 'GEMINI_API_KEY') and config.GEMINI_API_KEY:
-                        api_key = config.GEMINI_API_KEY
-                except ImportError:
-                    pass
-
-                # Fall back to google_api.pi file
-                if not api_key:
-                    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                    api_key_file = os.path.join(project_root, "google_api.pi")
-                    if os.path.exists(api_key_file):
-                        with open(api_key_file, 'r') as f:
-                            content = f.read().strip()
-                            if 'api_key=' in content:
-                                api_key = content.split('api_key=')[1].strip()
-                            else:
-                                api_key = content
+                api_key = _resolve_api_key()
 
                 if not api_key:
                     raise RuntimeError(
