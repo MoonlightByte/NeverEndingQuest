@@ -99,6 +99,18 @@ describe('skills', () => {
     expect(skillBonus('Stealth', 'dexterity', oldFormat)).toBe(7)
   })
 
+  it('doubles the proficiency bonus for typed expertise (#1307, L5 sheet)', () => {
+    const l5 = {
+      abilities: { dexterity: 17, intelligence: 13 },
+      proficiencyBonus: 2,
+      skills: ['Stealth', 'Investigation', 'Perception'],
+      expertise: ['Stealth', 'Investigation'],
+    }
+    expect(skillBonus('Stealth', 'dexterity', l5)).toBe(7) // 3 + 2 x 2
+    expect(skillBonus('Investigation', 'intelligence', l5)).toBe(5) // 1 + 2 x 2
+    expect(skillBonus('Acrobatics', 'dexterity', l5)).toBe(3)
+  })
+
   it('builds NPC skill rows from the object format', () => {
     const rows = skillRows({ skills: { Perception: 4, Insight: -1 } })
     expect(rows).toEqual([
