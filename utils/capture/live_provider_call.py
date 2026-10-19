@@ -37,8 +37,6 @@ _REQUIRED_TASK_IDS = frozenset(
         "T042",
         "T043",
         "T044",
-        "T047",
-        "T048",
         "T049",
         "T065",
         "T067",
@@ -50,12 +48,6 @@ _REQUIRED_TASK_IDS = frozenset(
         "T096",
         "T097",
         "T114",
-        "T115",
-        "T116",
-        "T117",
-        "T118",
-        "T119",
-        "T120",
         "T121",
         "T124",
         "T126",
@@ -102,7 +94,7 @@ _CONNECT_SECONDS = 5.0
 # that accepts the body and never replies (run 9, 2026-09-14: one call in
 # ~330) is reissued after 2 minutes instead of 10. Still a reissue trigger,
 # never a terminal (#193 B2-iii); owner ruling 2026-09-14.
-_LEVEL_UP_TASK_IDS = frozenset({"T047", "T048", "T115", "T116", "T117", "T118", "T119", "T120", "T121"})
+_LEVEL_UP_TASK_IDS = frozenset({"T121"})
 _LEVEL_UP_BACKSTOP_SECONDS = 120.0
 _NO_WATCHDOG_ADVISORY_TASK_IDS = frozenset({"T105", "T112"})
 # Combat-turn tasks, from their call sites (#1271): combat_manager.py
@@ -111,8 +103,7 @@ _NO_WATCHDOG_ADVISORY_TASK_IDS = frozenset({"T105", "T112"})
 _COMBAT_TASK_IDS = frozenset({"T040", "T041", "T042", "T043", "T044", "T096", "T097", "T126"})
 # Tasks whose SUCCESS envelopes are also written to the master log by the
 # parent (their callers do not log_api_call themselves).
-_SUCCESS_LOG_TASK_IDS = frozenset({"T047", "T048", "T105", "T108", "T113",
-                                   "T115", "T116", "T117", "T118", "T119", "T120", "T121"})
+_SUCCESS_LOG_TASK_IDS = frozenset({"T105", "T108", "T113", "T121"})
 _MAX_BACKOFF_SECONDS = 8.0
 _PERMANENT_ERROR_SECONDS = 60.0
 # Transport phases the child reports, in the order a healthy generation
