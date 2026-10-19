@@ -15,6 +15,7 @@ passive perception) are recomputed from ability scores and the new proficiency b
 """
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -531,6 +532,66 @@ def hp_bonuses_gained(sheet: Dict[str, Any], cls: str, subclass: Optional[str],
                 continue
             out.append((name, entry["per_class_level"] * (new_level if new_level == start else 1)))
     return out
+
+
+_ORIGINS_DATA = os.path.join(os.path.dirname(os.path.dirname(_DATA)), "srd_character_origins.json")
+_SPELL_DATA = os.path.join(os.path.dirname(os.path.dirname(_DATA)), "spell_repository.json")
+_ORIGINS: Optional[Dict[str, Any]] = None
+
+
+def _origins() -> Dict[str, Any]:
+    global _ORIGINS
+    if _ORIGINS is None:
+        with open(_ORIGINS_DATA, "r", encoding="utf-8") as handle:
+            _ORIGINS = json.load(handle)
+    return _ORIGINS
+
+
+def _slug(text: Any) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", str(text).lower()).strip("-")  # core/nql/creation_scope.py _slug
+
+
+def species_grants_gained(sheet: Dict[str, Any], picks: Optional[Dict[str, Any]],
+                          new_level: int) -> Tuple[List[Dict[str, Any]], Optional[Dict[str, str]]]:
+    """The species grants that arrive at character level ``new_level`` (#1292): a lineage's or
+    legacy's spell (``spells_by_level``: always prepared, cast once per Long Rest without a slot,
+    with the lineage's spellcasting-ability pick; SRD p.84/86) and a level trait
+    (``traits_by_level``: Draconic Flight, Large Form). ``picks`` is creation_picks(): typed
+    choice ids only. With no picks, a species that has a grant at this level gives the untyped
+    gap {"id": "species.unknown", "where": ...} instead of a guess. ([grants], gap or None)"""
+    level = str(new_level)
+    species = _origins().get("species") or []
+    if picks is None:
+        race = str(sheet.get("race") or "").strip().casefold()
+        entry = next((s for s in species if str(s.get("name") or "").strip().casefold() == race), None)
+        grants = (entry or {}).get("grants") or {}
+        if (grants.get("traits_by_level") or {}).get(level) or any(
+                (option.get("spells_by_level") or {}).get(level)
+                for choice in grants.get("choices") or [] for option in choice.get("options") or []):
+            return [], {"id": "species.unknown", "where": "no engine creation record for this sheet"}
+        return [], None
+    entry = next((s for s in species if s.get("key") == picks.get("species_key")), None)
+    if entry is None:
+        return [], None
+    grants = entry.get("grants") or {}
+    spells = None
+    out: List[Dict[str, Any]] = []
+    for choice in grants.get("choices") or []:
+        cid = "species.%s.%s" % (entry["key"], _slug(choice["name"]))
+        picked = picks["choices"].get(cid) or []
+        ability = (picks["choices"].get("%s.spellcasting-ability" % cid) or [None])[0]
+        for option in [o for o in choice.get("options") or [] if o.get("name") in picked]:
+            for key in (option.get("spells_by_level") or {}).get(level) or []:
+                if spells is None:
+                    with open(_SPELL_DATA, "r", encoding="utf-8") as handle:
+                        spells = json.load(handle)
+                out.append({"kind": "spell", "spell": key, "name": spells[key]["name"],
+                            "level": spells[key]["level"], "ability": ability,
+                            "uses": {"maximum": 1, "refresh": ["long_rest"]},
+                            "source": "%s: %s" % (choice["name"], option["name"])})
+    for trait in (grants.get("traits_by_level") or {}).get(level) or []:
+        out.append(dict(trait, kind="trait", source="%s species" % entry["name"]))
+    return out, None
 
 
 def apply_asi(abilities: Dict[str, int], increases: Dict[str, int]) -> Tuple[Dict[str, int], str]:

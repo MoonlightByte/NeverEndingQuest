@@ -1,0 +1,61 @@
+# SPDX-FileCopyrightText: 2024 MoonlightByte
+# SPDX-License-Identifier: Fair-Source-1.0
+# License: See LICENSE file in the repository root
+"""The typed creation picks of an engine-built hero (#1292; D-1292-1 and its amendment).
+
+Setup archives its history as startup_conversation_archive_<ts>.json at the game root
+(utils/startup_wizard.py cleanup_startup_conversation). The newest archive whose final
+checkpoint saved this sheet (its character_path) is the creation's. Its startup_engine_build
+record is paired by the checkpoint's startup_id, and the finalize proposal just before that
+record holds the typed intent the record was built from. Names are never compared and
+racialTraits is never read: no matching record is None (the caller's untyped gap).
+"""
+import glob
+import json
+import os
+from typing import Any, Dict, Optional
+
+from utils.file_operations import safe_read_json
+
+ENGINE_BUILD_PURPOSE = "startup_engine_build"  # utils/startup_wizard.py ENGINE_BUILD_PURPOSE
+
+
+def _record(item: Any) -> Optional[Dict[str, Any]]:
+    try:
+        value = json.loads(item.get("content") or "")
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _same_path(a: Any, b: str) -> bool:
+    return isinstance(a, str) and bool(a) and \
+        os.path.normcase(os.path.abspath(a)) == os.path.normcase(os.path.abspath(b))
+
+
+def creation_picks(character_path: str, root: str = ".") -> Optional[Dict[str, Any]]:
+    """{species_key, choices} from the archived creation of the sheet at ``character_path``, or None."""
+    for path in sorted(glob.glob(os.path.join(root, "startup_conversation_archive_*.json")), reverse=True):
+        history = safe_read_json(path)
+        if not isinstance(history, list):
+            continue
+        items = [(item.get("role"), _record(item)) for item in history if isinstance(item, dict)]
+        checkpoints = [r for _, r in items if r and "startup_checkpoint_version" in r]
+        if not checkpoints or not _same_path(checkpoints[-1].get("character_path"), character_path):
+            continue
+        startup_id = checkpoints[-1].get("startup_id")
+        proposal, picks = None, None
+        for role, record in items:
+            if not record:
+                continue
+            if role == "assistant" and record.get("decision") == "finalize_character":
+                proposal = record
+            elif record.get("task_purpose") == ENGINE_BUILD_PURPOSE and startup_id \
+                    and record.get("startup_id") == startup_id:
+                intent = (proposal or {}).get("intent")
+                if isinstance(intent, dict) and intent.get("species_key") and isinstance(intent.get("choices"), dict):
+                    picks = {"species_key": intent["species_key"], "choices": intent["choices"]}
+        # The newest archive that saved this sheet decides: without an engine record it was not built
+        # on the engine path, and an older archive of the same path belongs to an earlier game.
+        return picks
+    return None

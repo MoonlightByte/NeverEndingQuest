@@ -463,6 +463,15 @@ def _class_facts(cls: str, d: _Data) -> Dict[str, Any]:
 
 def _species_facts(key: str, d: _Data) -> Dict[str, Any]:
     entry = dict(d.species()[key])
+    if isinstance(entry.get("grants"), dict):
+        # Creation is level 1: the grants above it (#1292, read at level-up) stay out of the scope.
+        grants = {k: v for k, v in entry["grants"].items() if k != "traits_by_level"}
+        grants["choices"] = [dict(c, options=[{k: v for k, v in o.items() if k not in ("spells_by_level", "spells_by_level_cite")}
+                                              for o in c["options"]]) if isinstance(c.get("options"), list) else c
+                             for c in grants.get("choices") or []]
+        if "choices" not in entry["grants"]:
+            del grants["choices"]
+        entry["grants"] = grants
     bonuses = [b for b in d.progression.get("hp_bonuses") or []
                if (b.get("granted_by") or {}).get("species_key") == key]
     if bonuses:
