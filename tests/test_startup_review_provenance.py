@@ -1092,7 +1092,13 @@ def test_intent_rescopes_once_and_t128_reviews_without_interview_items(scoped, m
     assert body["task_purpose"] == "startup_engine_review"
     assert [p["content"] for p in body["player_messages"]] == ["A dwarf cleric acolyte, please."]
     assert set(body) == {"task_purpose", "player_messages", "latest_user_index", "previous_author_narration",
-                         "reply", "open_choice_ids", "previous_round_demands"}  # no sheet, no provenance
+                         "reply", "open_choice_ids", "unanswered_required",
+                         "previous_round_demands"}  # no sheet, no provenance
+    # C4-switch-r2: what a finalize needs that has no choice id is typed for the review, and the background's
+    # own skills are marked granted.
+    assert "starting_equipment.background_package" in body["unanswered_required"]
+    assert "ability_scores.assignment" in body["unanswered_required"]
+    assert facts["background"]["granted_skills"] == ["Insight", "Religion"]
     assert body["reply"]["intent"]["class_key"] == "cleric" and body["open_choice_ids"]
     # Leg 1 (T128 r2): starting_equipment rides in the reply (null before finalize), and the background's
     # package slots are in the facts (R12: the Acolyte holy symbol's forms).
@@ -1134,6 +1140,25 @@ def test_t128_prompt_pins_the_asks_nothing_and_rules_claim_rules():
     assert "The class's level-1 features in the creation facts are the complete list" in text
     assert "Wording that matches the facts in substance is not a false claim" in text
     assert "ends on a colon or a heading with no question and no options after it" in text
+    # C4-switch-r2: rounds 10-12 demanded approval while the ability scores and a holy symbol's form were
+    # unanswered; round 7 read the Soldier's skills as a class-list error.
+    assert "Asking about an item in unanswered_required is a valid open question, never flow" in text
+    assert "not due while ability_scores items remain in it" in text
+    assert "granted_skills are granted by the background itself" in text
+
+
+def test_unanswered_required_lists_what_no_choice_id_stands_for():
+    from core.nql import creation_scope
+    scope = creation_scope.creation_scope({"class_key": "paladin", "species_key": "orc",
+                                           "background_key": "soldier", "choices": {}})
+    assert creation_scope.unanswered_required(scope, {}) == [
+        "ability_scores.method", "ability_scores.assignment", "starting_equipment.background_package",
+        "starting_equipment.slot:paladin.A.holy_symbol", "starting_equipment.slot:soldier.A.gaming_set"]
+    scores = {"ability_scores": {"method": "standard_array", "assignment": {"strength": 15}}}
+    assert creation_scope.unanswered_required(scope, scores) == [
+        "starting_equipment.background_package",
+        "starting_equipment.slot:paladin.A.holy_symbol", "starting_equipment.slot:soldier.A.gaming_set"]
+    assert creation_scope.unanswered_required(scope, scores, {"background_package": "A"}) == []
 
 
 @pytest.mark.parametrize("field", ["flaws", "ideals", "name"])
