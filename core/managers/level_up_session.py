@@ -465,7 +465,9 @@ class LevelUpSession:
             s.features = tables.features_for(cls, chosen_subclass, s.new_level)
         # #858: the typed per-level hit point bonuses (species trait, subclass feature)
         # from the SRD hp_bonuses table, after the hit die minimum.
-        for bonus_name, amount in tables.hp_bonuses_gained(sheet, cls, chosen_subclass, s.new_level):
+        from core.leveling.creation_picks import creation_picks
+        picks = creation_picks(self._path)
+        for bonus_name, amount in tables.hp_bonuses_gained(sheet, cls, chosen_subclass, s.new_level, picks):
             gain += amount
             how += f" + {amount} {bonus_name}"
         # 2. features: new ones with the agent's text, pools resized from the table.
@@ -531,8 +533,7 @@ class LevelUpSession:
             if spell_changes:
                 changes["spellcasting"] = spell_changes
         # 3b. species grants at this character level (#1292): typed from the creation archive, else a gap
-        from core.leveling.creation_picks import creation_picks
-        species_grants, species_gap = tables.species_grants_gained(sheet, creation_picks(self._path), s.new_level)
+        species_grants, species_gap = tables.species_grants_gained(sheet, picks, s.new_level)
         species_names: List[str] = []
         if species_gap:
             info(f"LEVEL-UP: {self.character_name}: not typed: species grants at level {s.new_level} "

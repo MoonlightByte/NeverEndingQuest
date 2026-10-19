@@ -504,17 +504,16 @@ def con_increase_hp(before: Any, after: Any, earlier_levels: int) -> int:
 
 
 def hp_bonuses_gained(sheet: Dict[str, Any], cls: str, subclass: Optional[str],
-                      new_level: int) -> List[Tuple[str, int]]:
+                      new_level: int, picks: Optional[Dict[str, Any]] = None) -> List[Tuple[str, int]]:
     """The hit point maximum increases the SRD hp_bonuses table grants for gaining
-    ``new_level`` (#858), from typed facts only: a species trait whose species is
-    the sheet's race (stripped, casefolded, exact) gives its per_character_level
-    every level; a subclass feature of this class whose subclass is ``subclass``
+    ``new_level`` (#858), from typed facts only: a species trait whose species_key is
+    the typed creation record's (``picks``, creation_picks) gives its per_character_level
+    every level; a sheet with no record gets none (species_grants_gained reports the gap); a subclass feature of this class whose subclass is ``subclass``
     (casefolded) gives, on reaching its from_class_level, per_class_level for each
     class level so far (the SRD's "increases by 3" at Sorcerer 3), then
     per_class_level each later level. Level 1 is the startup derivation's.
     [(name, amount)]."""
     out: List[Tuple[str, int]] = []
-    race = str(sheet.get("race") or "").strip().casefold()
     chosen = str(subclass or "").strip().casefold()
     for entry in tables().get("hp_bonuses") or []:
         if not isinstance(entry, dict) or not str(entry.get("name") or "").strip():
@@ -522,7 +521,7 @@ def hp_bonuses_gained(sheet: Dict[str, Any], cls: str, subclass: Optional[str],
         granted = entry.get("granted_by") if isinstance(entry.get("granted_by"), dict) else {}
         name = str(entry["name"]).strip()
         if granted.get("kind") == "species trait" and type(entry.get("per_character_level")) is int:
-            if race and str(granted.get("species") or "").strip().casefold() == race:
+            if picks is not None and granted.get("species_key") == picks.get("species_key"):
                 out.append((name, entry["per_character_level"]))
         elif granted.get("kind") == "subclass feature" and type(entry.get("per_class_level")) is int:
             start = entry.get("from_class_level")
@@ -552,14 +551,17 @@ def species_grants_gained(sheet: Dict[str, Any], picks: Optional[Dict[str, Any]]
     legacy's spell (``spells_by_level``: always prepared, cast once per Long Rest without a slot,
     with the lineage's spellcasting-ability pick; SRD p.84/86) and a level trait
     (``traits_by_level``: Draconic Flight, Large Form). ``picks`` is creation_picks(): typed
-    choice ids only. With no picks, any species grant at this level gives the untyped gap
+    choice ids only. With no picks, any species grant at this level (or a species per-level hit
+    point bonus, which applies at every level) gives the untyped gap
     {"id": "species.unknown", "where": ...} instead of a guess. ([grants], gap or None)"""
     level = str(new_level)
     species = _origins().get("species") or []
     if picks is None:
         # No typed species without the record (the race text is never read): any species grant at this
-        # level is a gap for this sheet.
-        if any((s.get("grants") or {}).get("traits_by_level", {}).get(level) or any(
+        # level, or any species per-level hit point bonus (Dwarven Toughness, hp_bonuses), is a gap.
+        per_level = any((e.get("granted_by") or {}).get("kind") == "species trait"
+                        and type(e.get("per_character_level")) is int for e in tables().get("hp_bonuses") or [])
+        if per_level or any((s.get("grants") or {}).get("traits_by_level", {}).get(level) or any(
                 (option.get("spells_by_level") or {}).get(level)
                 for choice in (s.get("grants") or {}).get("choices") or [] for option in choice.get("options") or [])
                for s in species):
