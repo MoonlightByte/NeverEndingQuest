@@ -1473,6 +1473,60 @@ def test_a_wizard_open_choices_record_names_spells_and_points_prepared_at_the_sp
     assert all(e.get("options") or e.get("packages") or e.get("free_pick") for e in record.values())
 
 
+def _t079_run(wizard, authored, monkeypatch, tmp_path, answers, changes):
+    """One updateCharacterInfo through the real T079 loop with canned answers; returns the task ids called
+    and the classifier calls."""
+    import types as _types
+    import updates.update_character_info as character_info
+    from core.managers import effects_runtime
+    sheet = copy.deepcopy(authored["character"])
+    path = tmp_path / "hero.json"
+    path.write_text(json.dumps(sheet), encoding="utf-8")
+    calls, classified = [], []
+
+    def provider(task_id, *args, **kwargs):
+        calls.append(task_id)
+        content = json.dumps(answers[min(len(calls), len(answers)) - 1])
+        return _types.SimpleNamespace(choices=[_types.SimpleNamespace(message=_types.SimpleNamespace(content=content))])
+
+    def classify(*args, **kwargs):
+        classified.append(args[0])
+        return {"operation": "none"}
+    monkeypatch.setattr(character_info, "capture_and_fanout", provider)
+    monkeypatch.setattr(character_info, "get_character_path", lambda name, role=None: str(path))
+    monkeypatch.setattr(character_info, "detect_character_role", lambda name: "player")
+    monkeypatch.setattr(effects_runtime, "classify_effect", classify)
+    lazy = effects_runtime._lazy_classifier(sheet["name"], changes, sheet, 0)
+    character_info._update_character_info_unlocked(sheet["name"], changes, "player", managed_effect_operation=lazy,
+                                                   prepare_only=True)
+    return calls, classified
+
+
+def test_a_no_change_update_is_one_t079_call_and_no_classifier(wizard, authored, monkeypatch, tmp_path):
+    # D-COST-6 (#193): the first {} is accepted; no confirmation re-ask and no lazy T078.
+    calls, classified = _t079_run(wizard, authored, monkeypatch, tmp_path, [{}], "She admires the sunset.")
+    assert calls == ["T079"] and classified == []
+
+
+def test_a_flagged_effect_change_still_classifies(wizard, authored, monkeypatch, tmp_path):
+    # D-COST-6: an answer that flags an effect change still runs the classifier once.
+    calls, classified = _t079_run(wizard, authored, monkeypatch, tmp_path, [{"effectChange": True}],
+                                  "She is blessed for one minute.")
+    assert calls[0] == "T079" and len(classified) == 1
+
+
+def test_an_accepted_miscellaneous_row_is_not_retyped(wizard):
+    # D-COST-7 (#193): a new row typed miscellaneous (a valid schema value) no longer reaches T052.
+    from core.validation.character_validator import AICharacterValidator
+    validator = AICharacterValidator.__new__(AICharacterValidator)
+    before = {"equipment": []}
+    after = {"equipment": [{"item_name": "Lucky Pebble", "item_type": "miscellaneous", "quantity": 1},
+                           {"item_name": "Odd Gadget", "item_type": "gizmo", "quantity": 1}]}
+    validator._focus_names = {"Lucky Pebble", "Odd Gadget"}
+    rows = [r["item_name"] for r in validator.extract_inventory_data(after)["equipment"]]
+    assert rows == ["Odd Gadget"]
+
+
 def test_a_level_up_calls_only_t121_and_the_retired_ids_are_gone(wizard, authored, monkeypatch, tmp_path):
     # D-COST-2 (#193): the retired level-up interview (T047), validator (T048) and domain authors and
     # reviewers (T115-T120) are deleted; the table-driven session's T121 is the one level-up call.
