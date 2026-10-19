@@ -1436,3 +1436,26 @@ def test_background_ability_keys_are_authored_and_the_option_keys_unchanged():
         "+2 Intelligence, +1 Wisdom", "+2 Wisdom, +1 Constitution", "+2 Wisdom, +1 Intelligence", "+1 each"]
     assert creation_scope._ability_options(dict(sage, ability_scores="Strength, Dexterity, Charisma")) == \
         creation_scope._ability_options(sage)
+
+
+def test_review_facts_type_the_excluded_granted_skills_and_where_the_name_goes():
+    # dplay-AC-rogue: T128 asked to add the Criminal's Sleight of Hand and Stealth to the rogue skill options
+    # (B3 again, round 6), and three times for an intent.name the scoped schema has not (the name is creative,
+    # set at finalize). Both are typed facts now.
+    from core.nql import creation_scope
+    from utils.startup_prompt_builder import build_engine_review_request
+    intent = {"class_key": "rogue", "species_key": "tiefling", "background_key": "criminal", "choices": {}}
+    scope = creation_scope.creation_scope(intent)
+    skills = next(c for c in scope["choices"] if c["id"] == "rogue.core-rogue-traits.skill-proficiencies")
+    assert skills["excluded_granted"] == ["Sleight of Hand", "Stealth"]
+    assert not set(skills["excluded_granted"]) & set(skills["option_keys"])
+    messages = build_engine_review_request(
+        facts=creation_scope.review_facts(scope), player_messages=[], latest_user_index=0,
+        previous_author_narration="", reply={"decision": "continue_interview", "intent": intent},
+        open_choice_ids=[], previous_round_demands=[],
+        unanswered_required=creation_scope.unanswered_required(scope, intent))
+    facts = json.loads(messages[0]["content"].split("CREATION FACTS, as JSON:\n", 1)[1])
+    assert "name" in facts["reply_fields"]["creative"] and "name" not in facts["reply_fields"]["intent"]
+    assert facts["reply_fields"]["creative_set_at"] == "finalize_character"
+    excluded = next(c for c in facts["choices"] if c["id"] == "rogue.core-rogue-traits.skill-proficiencies")
+    assert excluded["excluded_granted"] == ["Sleight of Hand", "Stealth"]
