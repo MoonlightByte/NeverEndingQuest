@@ -263,6 +263,13 @@ def seed_character(character_file, module_name):
         raise BootstrapError(
             "character file %s failed schema validation after the starting "
             "projection: %s" % (character_file, exc.message))
+    # Another module's save in a reused folder is reset first, as setup does
+    # (#1285). Its lines go to stderr: new-game's stdout is one JSON result.
+    import contextlib
+    import sys
+    from utils.startup_wizard import reset_foreign_save
+    with contextlib.redirect_stdout(sys.stderr):
+        reset_foreign_save(module_name)
     if not save_character_to_module(character_data, module_name):
         raise BootstrapError(
             "failed to save character %r into module %r"
