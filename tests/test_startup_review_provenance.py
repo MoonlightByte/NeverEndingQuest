@@ -1458,3 +1458,17 @@ def creation_scope_item(intent):
     from core.nql import creation_scope
     return creation_scope.creation_scope(intent)
 
+
+def test_a_wizard_open_choices_record_names_spells_and_points_prepared_at_the_spellbook(wizard):
+    # nql-ee on #1310: the wizard's prepared spells came with no options; they are the spellbook picks.
+    intent = {"class_key": "wizard", "species_key": "elf", "background_key": "sage",
+              "choices": {"wizard.spellcasting.spellbook": ["alarm", "shield"]}}
+    conversation = [{"role": "system", "content": json.dumps(creation_scope_item(intent))}]
+    assert wizard._scoped_intent([conversation], {"decision": "continue_interview", "intent": intent},
+                                 rescoped=True) is False
+    record = {e["id"]: e for e in json.loads(conversation[-1]["content"])["open_choices"]}
+    prepared = record["wizard.spellcasting.prepared-spells"]
+    assert prepared["from_choice"] == "wizard.spellcasting.spellbook" and prepared["options"] == ["Alarm", "Shield"]
+    assert "Fire Bolt" in record["wizard.spellcasting.cantrips"]["options"]
+    assert all(e.get("options") or e.get("packages") or e.get("free_pick") for e in record.values())
+
