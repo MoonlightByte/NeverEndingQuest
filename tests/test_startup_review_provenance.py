@@ -1383,3 +1383,28 @@ def test_the_summary_lists_a_species_trait_with_a_picked_option_once():
     assert "- Giant Ancestry: Stone's Endurance" in summary and "- Giant Ancestry\n" not in summary
     assert {"Giant Ancestry", "Giant Ancestry: Stone's Endurance"} <= {t["name"] for t in sheet["racialTraits"]}
 
+
+def test_the_fold_keys_on_the_species_choice_authored_trait_field():
+    # nql-ee on #1304: the fold reads the choice's authored "trait" field, not the choice name.
+    import json
+    with open("data/srd_character_origins.json") as f:
+        species = {s["key"]: s for s in json.load(f)["species"]}
+    choice = next(c for c in species["goliath"]["grants"]["choices"] if not c.get("kind"))
+    assert choice["trait"] == "Giant Ancestry"
+
+
+def test_the_preview_summary_shows_hit_points_and_the_saved_line_shows_armor_class(wizard):
+    # dplay-AC-difficult turn 18: the player asked for the armor class; the preview had neither number.
+    from core.nql import creation_build
+    startup_wizard = wizard
+    intent = _complete_order_intent("cleric", "cleric.divine-order.divine-order", "Protector")
+    sheet, built = creation_build.build_level_one_sheet(intent, None, preview=True)
+    built["hit_points"] = startup_wizard.expected_starting_hit_points(sheet, intent)[0]
+    con = sheet["abilities"]["constitution"]
+    assert built["hit_points"] == 8 + (con - 10) // 2   # cleric d8 maximum + Constitution modifier
+    assert "Hit points %d" % built["hit_points"] in creation_build.render_sheet_summary(sheet, built)
+    assert "armor class" not in creation_build.render_sheet_summary(sheet, built)
+    assert startup_wizard._saved_defense_line({"armorClass": 17, "maxHitPoints": 12}) == \
+        " Armor class 17, hit points 12."
+    assert startup_wizard._saved_defense_line({"armorClass": 17}) == ""
+

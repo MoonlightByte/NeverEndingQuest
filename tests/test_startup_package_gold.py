@@ -752,7 +752,7 @@ def test_g7_player_visible_fix_arm(wizard, monkeypatch, tmp_path):
     assert [(a["name"], a["quantity"]) for a in sheet["ammunition"]] == [("Arrows", 20)]
     assert state["player"]["currency"]["gold"] == 61
     assert inventory["equipment"] == sheet["equipment"] and inventory["ammunition"] == sheet["ammunition"]
-    assert len(welcome) == 1 and welcome[0].endswith("Welcome, Bram Holloway! You start with 61 gold.")
+    assert len(welcome) == 1 and welcome[0].endswith("Welcome, Bram Holloway! You start with 61 gold. Armor class 15, hit points 12.")
     assert event["player"]["currency"]["gold"] == 64  # control: what final-557's player saw
 
 
@@ -760,7 +760,7 @@ def test_g7_player_visible_main_arm_fails(wizard, monkeypatch, tmp_path, main_ar
     sheet, state, inventory, welcome, _ = _commit_and_read(wizard, monkeypatch, tmp_path, main_arm)
     assert sheet == main_arm and state["player"]["currency"]["gold"] == 64
     assert inventory["equipment"] == sheet["equipment"]
-    assert welcome[0].endswith("You start with 64 gold.")
+    assert welcome[0].endswith("You start with 64 gold. Armor class 15, hit points 12.")
     with pytest.raises(AssertionError):
         assert_f1(sheet)
 
@@ -773,7 +773,7 @@ def test_g6_pre_upgrade_approved_candidate_commits_unchanged(wizard, monkeypatch
 
 def test_welcome_line_for_a_character_picked_from_the_list(wizard, monkeypatch, tmp_path, main_arm):
     _, _, _, welcome, _ = _commit_and_read(wizard, monkeypatch, tmp_path, main_arm, created=False)
-    assert welcome[0].endswith("Welcome, Bram Holloway! You have 64 gold.")
+    assert welcome[0].endswith("Welcome, Bram Holloway! You have 64 gold. Armor class 15, hit points 12.")
 
 
 # ---- Mutants: each must fail the gate it targets -------------------------------------

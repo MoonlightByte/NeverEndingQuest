@@ -373,8 +373,8 @@ def build_level_one_sheet(intent: Dict[str, Any], creative: Optional[Dict[str, A
     trait_names = {t.get("name") if isinstance(t, dict) else t for t in species_grants.get("traits") or []}
     for choice in [c for c in (species.get("grants") or {}).get("choices") or [] if not c.get("kind")]:
         cid = "species.%s.%s" % (species_key, _slug(choice["name"]))
-        if b.picked(cid) and choice["name"] in trait_names:
-            folded.append(choice["name"])   # the data's trait the choice belongs to, by its key name
+        if b.picked(cid) and choice.get("trait") in trait_names:
+            folded.append(choice["trait"])   # the authored trait the choice belongs to
         for option in b.picked(cid):
             name = b.source("racialTraits", cid, "%s: %s" % (choice["name"], option))
             racial.append({"name": name, "description": descriptions.get(name, ""),
@@ -459,6 +459,10 @@ def render_sheet_summary(sheet: Dict[str, Any], built: Optional[Dict[str, Any]] 
     lines += ["- %s %d (%s)" % (a.capitalize(), abilities[a], mod(abilities[a])) for a in ABILITIES if a in abilities]
     if sheet.get("maxHitPoints"):  # the finalized sheet; a preview's are not derived yet
         lines += ["", "Hit points %s, armor class %s" % (sheet["maxHitPoints"], sheet.get("armorClass"))]
+    elif (built or {}).get("hit_points"):
+        # The preview's level-1 maximum from the typed derivation (dplay-AC-difficult turn 18); armor class
+        # needs the granted gear, so it comes with the saved sheet.
+        lines += ["", "Hit points %s" % built["hit_points"]]
     sections = [
         ("Saving throws:", sheet.get("savingThrows")),
         ("Skills:", sheet.get("skills")),
