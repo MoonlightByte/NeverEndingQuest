@@ -139,6 +139,8 @@ in intent. Never leave one open at finalize. A package or option the player has
 already named is chosen: record it and do not ask it again.
 Record package and slot picks in starting_equipment as soon as the player gives
 them, on every turn after; a package not yet chosen is null.
+When the player approves the whole build, finalize with your proposed creative
+fields; do not ask approval for details you add at finalize.
 Set intent.ability_scores to the player's method and the base score for each
 ability once the player has placed them. A startup_ability_roll item holds the
 engine's roll, made once for the interview: show those numbers and record the
