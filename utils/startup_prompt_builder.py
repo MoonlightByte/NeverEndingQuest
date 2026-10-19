@@ -426,12 +426,16 @@ SECTION_FLOW = (
     "lists the choices still unfilled.")
 
 
+class SectionPromptDrift(ValueError):
+    """The T124 text no longer holds a passage the section prompts rewrite (Sentinel N6)."""
+
+
 def build_section_review_common():
     """The block every section request opens with, identical for all four (it caches)."""
     text = build_startup_review_prompt()
     for old, new in _SECTION_COMMON_EDITS:
         if text.count(old) != 1:
-            raise ValueError("section review prompt: the T124 text changed near %r" % old[:40])
+            raise SectionPromptDrift("section review prompt: the T124 text changed near %r" % old[:40])
         text = text.replace(old, new)
     head, _, _ = text.rpartition("Return only this review object, no narration, state changes or new character:")
     return head + (

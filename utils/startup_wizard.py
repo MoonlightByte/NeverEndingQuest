@@ -36,7 +36,9 @@ from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
 from utils.startup_prompt_builder import build_character_creation_system_prompt as _build_character_creation_system_prompt
 from utils.startup_prompt_builder import build_startup_review_prompt
-from utils.startup_prompt_builder import build_section_review_common, build_section_review_prompt
+from utils.startup_prompt_builder import (
+    SectionPromptDrift, build_section_review_common, build_section_review_prompt,
+)
 from utils.startup_prompt_builder import (
     ORIGINS_FILE, STARTUP_RULES_REFERENCE_PURPOSE, build_startup_rules_reference,
 )
@@ -1531,7 +1533,7 @@ def ai_character_interview(conversation, module):
 
     # The path comes from the history; the mode selects only a new interview's (r3.1 §3.6).
     path = _interview_path(conversation)
-    scoped = path == "scoped" or _startup_review_mode() == "sectioned"
+    scoped = path == "scoped" if path is not None else _startup_review_mode() == "sectioned"
     _append_system_once(conversation, build_character_creation_system_prompt(scoped=scoped))
     _append_system_once(conversation, json.dumps({
         "task_purpose": "startup_character_interview",
@@ -1611,13 +1613,25 @@ def ai_character_interview(conversation, module):
                     scope_item = (creation_scope.creation_scope(proposal["intent"])
                                   if scoped and _creation_scope_current(correction_context) is not None else None)
                     if scope_item is not None:
+                        try:
+                            build_section_review_common()
+                        except SectionPromptDrift as exc:
+                            # Fail forward (N6): the creation goes on under the whole review.
+                            warning(f"STARTUP: sectioned review unavailable, using the whole review: {exc}",
+                                    category="startup")
+                            scope_item = None
+                    if scope_item is not None:
                         review = _review_sections(
                             request, scope_item, proposal, facts, authored_proposal=authored_proposal,
                             normalization_provenance=provenance, live_scope=scope, sticky=sticky,
                             attempts=STARTUP_TURN_REJECTION_LIMIT - rejected)
                     else:
+                        review_request = request
+                        if scoped:  # the whole review checks against the reference a scoped history lacks
+                            review_request = copy.deepcopy(request)
+                            _append_startup_rules_reference(review_request)
                         review = _review_startup_response(
-                            request, proposal, facts, authored_proposal=authored_proposal,
+                            review_request, proposal, facts, authored_proposal=authored_proposal,
                             normalization_provenance=provenance, live_scope=scope,
                             attempts=STARTUP_TURN_REJECTION_LIMIT - rejected)
                 except StartupScopeRefusal as exc:
