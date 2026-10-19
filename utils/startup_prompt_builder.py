@@ -517,6 +517,9 @@ give no choice id for, such as the background's equipment package or a package
 slot (a holy symbol's form, an instrument), is recorded in starting_equipment
 at finalize, and the reply's starting_equipment is null before then: never
 demand it in intent, and a narration that notes it is not an intent mismatch.
+The class's starting-equipment choice has a choice id: its package pick (A or
+B) belongs in intent.choices; only the package's slots and the background's
+package go in starting_equipment.
 The background's granted_skills are granted by the background itself, in
 addition to the class's skill picks; they never belong to the class's list.
 The class's level-1 features in the creation facts are the complete list: a
