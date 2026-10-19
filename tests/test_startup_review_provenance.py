@@ -1347,3 +1347,35 @@ def test_the_engine_build_carries_the_order_grants_so_preview_equals_saved(cls, 
     repaired = copy.deepcopy(final)
     assert all(entry["added"] == [] for entry in choices.apply_order_grants(repaired)) and repaired == final
     assert any(t["source"].startswith("choices.order_grants.") for t in built["engine_build"])
+
+
+def test_the_background_menu_carries_typed_tools_and_equipment():
+    # dplay-AC-difficult turn 6: the guide said the backgrounds' tool and equipment "haven't been provided yet".
+    from core.nql import creation_scope
+    menu = {b["background_key"]: b for b in creation_scope.creation_scope({})["menu"]["backgrounds"]}
+    assert menu["criminal"]["tools"] == {"granted": ["Thieves' Tools"]}
+    assert menu["soldier"]["tools"]["choose"]["option_source"] == "tools:category=Gaming Set"
+    criminal_a = menu["criminal"]["equipment"]["A"]
+    assert {"name": "Thieves' Tools", "quantity": 1} in criminal_a["items"] and criminal_a["gp"] == 16
+    assert menu["soldier"]["equipment"]["B"] == {"items": [], "gp": 50}
+
+
+def test_a_class_skill_pick_types_the_background_granted_skills_it_excludes():
+    # dplay-AC-difficult turn 13: Athletics was offered to a Soldier fighter; the engine refused the pick.
+    from core.nql import creation_scope
+    scope = creation_scope.creation_scope({"class_key": "fighter", "species_key": "goliath",
+                                           "background_key": "soldier", "choices": {}})
+    skill = next(c for c in scope["choices"] if c.get("kind") == "skill")
+    assert skill["excluded_granted"] == ["Athletics", "Intimidation"]
+    assert not set(skill["excluded_granted"]) & set(skill["option_keys"])
+
+
+def test_the_summary_lists_a_species_trait_with_a_picked_option_once():
+    # dplay-AC-difficult turn 18: "Giant Ancestry" showed twice. The sheet keeps both entries.
+    from core.nql import creation_build
+    sheet = {"racialTraits": [{"name": "Giant Ancestry"}, {"name": "Powerful Build"},
+                              {"name": "Giant Ancestry: Stone's Endurance"}]}
+    summary = creation_build.render_sheet_summary(sheet)
+    assert "- Giant Ancestry: Stone's Endurance" in summary and "- Giant Ancestry\n" not in summary
+    assert len(sheet["racialTraits"]) == 3
+
