@@ -7240,6 +7240,11 @@ def _get_ai_response_impl(
         # from the welcome remains possible (D-214-3) - this is a routing
         # skip, not a semantic restriction.
         prediction = {"requires_actions": True, "reason": "skipped-welcome"}
+    elif not config.ENABLE_INTELLIGENT_ROUTING:
+        # D-COST-1: the registry binding decides T067's model, so the T082
+        # prediction changed nothing; it is not called unless legacy routing
+        # is switched on.
+        prediction = {"requires_actions": True, "reason": "routing off (D-COST-1)"}
     elif validation_retry_count == 0 and not has_module_creation_prompt:
         prediction = predict_actions_required(user_input)
     elif has_module_creation_prompt:

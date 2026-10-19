@@ -927,7 +927,7 @@ NPC_BACKFILL_T113_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 NPC_BACKFILL_T113_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
 # --- Model Routing Settings ---
-ENABLE_INTELLIGENT_ROUTING = True                        # Enable/disable action-based model routing
+ENABLE_INTELLIGENT_ROUTING = False                       # Legacy T082 routing; off by D-COST-1 (T067 binding decides)
 MAX_VALIDATION_RETRIES = 1                              # Retry with full model after this many validation failures
 
 # --- Model Provider Selection ---
