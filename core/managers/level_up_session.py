@@ -51,6 +51,52 @@ def _spell_index() -> Dict[str, Dict[str, Any]]:
     return out
 
 
+def _species_changes(sheet: Dict[str, Any], changes: Dict[str, Any],
+                     grants: List[Dict[str, Any]]) -> Tuple[Dict[str, Any], List[str]]:
+    """The sheet changes for gained species grants (#1292). A spell joins its level's list (and the
+    prepared list when the sheet keeps one); a racialTraits entry records its ability and its free
+    cast. A trait joins racialTraits with its text. The per-spell ability and the use count are text:
+    no char_schema field holds them (NEQ-SCHEMA-01). A sheet with no spellcasting block gets no spell."""
+    out: Dict[str, Any] = {}
+    names: List[str] = []
+    traits = list(sheet.get("racialTraits") or [])
+    known = {t.get("name") for t in traits if isinstance(t, dict)}
+    stored = sheet.get("spellcasting") if isinstance(sheet.get("spellcasting"), dict) else None
+    casting = copy.deepcopy(changes.get("spellcasting") or {})
+    lists = copy.deepcopy(casting.get("spells") or (stored or {}).get("spells") or {})
+    prepared = casting.get("preparedSpells", (stored or {}).get("preparedSpells"))
+    for grant in grants:
+        if grant["kind"] == "spell":
+            if stored is None:
+                warning(f"LEVEL-UP: species spell {grant['name']} not added: the sheet has no spellcasting block",
+                        category="level_up")
+                continue
+            slot = "level%d" % grant["level"]
+            if grant["name"] not in (lists.get(slot) or []):
+                lists[slot] = list(lists.get(slot) or []) + [grant["name"]]
+            if isinstance(prepared, list) and grant["name"] not in prepared:
+                prepared = list(prepared) + [grant["name"]]
+            entry = {"name": "%s (%s)" % (grant["name"], grant["source"]),
+                     "description": ("Always prepared. Cast it once without a spell slot and regain that use when "
+                                     "you finish a Long Rest; it can also be cast with spell slots of its level. "
+                                     "Spellcasting ability: %s." % (grant.get("ability") or "not recorded")),
+                     "source": grant["source"]}
+        else:
+            entry = {"name": grant["name"], "description": grant.get("text") or "", "source": grant["source"]}
+        if entry["name"] not in known:
+            traits.append(entry)
+            known.add(entry["name"])
+            names.append(entry["name"])
+    if names:
+        out["racialTraits"] = traits
+    if stored is not None and lists != (stored.get("spells") or {}):
+        casting["spells"] = lists
+        if isinstance(prepared, list):
+            casting["preparedSpells"] = prepared
+        out["spellcasting"] = casting
+    return out, names
+
+
 class LevelUpSession:
     def __init__(self, character_name, current_level, new_level, *, accepted_history=None, player_input=None):
         self.character_name = character_name
@@ -484,6 +530,16 @@ class LevelUpSession:
                 spell_changes["spells"] = spells
             if spell_changes:
                 changes["spellcasting"] = spell_changes
+        # 3b. species grants at this character level (#1292): typed from the creation archive, else a gap
+        from core.leveling.creation_picks import creation_picks
+        species_grants, species_gap = tables.species_grants_gained(sheet, creation_picks(self._path), s.new_level)
+        species_names: List[str] = []
+        if species_gap:
+            info(f"LEVEL-UP: {self.character_name}: not typed: species grants at level {s.new_level} "
+                 f"({species_gap['where']})", category="level_up")
+        if species_grants:
+            species_changes, species_names = _species_changes(sheet, changes, species_grants)
+            changes.update(species_changes)
         # 4. prepare (typed totals, level-up path), then engine growth, then commit atomically
         from updates.update_character_info import load_schema  # noqa: WPS433
         schema = load_schema()
@@ -533,6 +589,10 @@ class LevelUpSession:
         info(f"LEVEL-UP: {self.character_name} -> level {s.new_level} ({how}); engine ops {growth.operations}",
              category="level_up")
         summary = self._summary(after, how)
+        if species_names:
+            summary += " Species: %s." % ", ".join(species_names)
+        elif species_gap:
+            summary += " Species grants for this level are not typed for this character (no creation record)."
         if style_moved:
             summary += " " + style_notes[-1]
         text = (narration + " " if narration else "") + summary

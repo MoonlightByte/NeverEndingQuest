@@ -333,6 +333,7 @@
    ],
    "key": "dragonborn",
    "grants": {
+    "traits_by_level": {"5": [{"name": "Draconic Flight", "text": "When you reach character level 5, you can channel draconic magic to give yourself temporary flight. As a Bonus Action, you sprout spectral wings on your back that last for 10 minutes or until you retract the wings (no action required) or have the Incapacitated condition. During that time, you have a Fly Speed equal to your Speed. Your wings appear to be made of the same energy as your Breath Weapon. Once you use this trait, you can't use it again until you finish a Long Rest.", "uses": {"maximum": 1, "refresh": ["long_rest"]}, "cite": "SRD 5.2.1 p.84, Dragonborn traits: Draconic Flight"}]},
     "size": "Medium",
     "speed": 30,
     "darkvision": 60,
@@ -490,20 +491,26 @@
         "darkvision": 120,
         "cantrips": [
          "dancing_lights"
-        ]
+        ],
+        "spells_by_level": {"3": ["faerie_fire"], "5": ["darkness"]},
+        "spells_by_level_cite": "SRD 5.2.1 p.84, Elven Lineages table, Drow row, Level 3 and Level 5 columns"
        },
        {
         "name": "High Elf",
         "cantrips": [
          "prestidigitation"
-        ]
+        ],
+        "spells_by_level": {"3": ["detect_magic"], "5": ["misty_step"]},
+        "spells_by_level_cite": "SRD 5.2.1 p.84, Elven Lineages table, High Elf row, Level 3 and Level 5 columns"
        },
        {
         "name": "Wood Elf",
         "speed": 35,
         "cantrips": [
          "druidcraft"
-        ]
+        ],
+        "spells_by_level": {"3": ["longstrider"], "5": ["pass_without_trace"]},
+        "spells_by_level_cite": "SRD 5.2.1 p.84, Elven Lineages table, Wood Elf row, Level 3 and Level 5 columns"
        }
       ]
      },
@@ -592,6 +599,7 @@
    "page": 85,
    "key": "goliath",
    "grants": {
+    "traits_by_level": {"5": [{"name": "Large Form", "text": "Starting at character level 5, you can change your size to Large as a Bonus Action if you're in a big enough space. This transformation lasts for 10 minutes or until you end it (no action required). For that duration, you have Advantage on Strength checks, and your Speed increases by 10 feet. Once you use this trait, you can't use it again until you finish a Long Rest.", "uses": {"maximum": 1, "refresh": ["long_rest"]}, "cite": "SRD 5.2.1 p.85, Goliath traits: Giant Ancestry, Large Form"}]},
     "size": "Medium",
     "speed": 35,
     "darkvision": 0,
@@ -835,19 +843,25 @@
         "name": "Abyssal",
         "cantrips": [
          "poison_spray"
-        ]
+        ],
+        "spells_by_level": {"3": ["ray_of_sickness"], "5": ["hold_person"]},
+        "spells_by_level_cite": "SRD 5.2.1 p.86, Fiendish Legacies table, Abyssal row, Level 3 and Level 5 columns"
        },
        {
         "name": "Chthonic",
         "cantrips": [
          "chill_touch"
-        ]
+        ],
+        "spells_by_level": {"3": ["false_life"], "5": ["ray_of_enfeeblement"]},
+        "spells_by_level_cite": "SRD 5.2.1 p.86, Fiendish Legacies table, Chthonic row, Level 3 and Level 5 columns"
        },
        {
         "name": "Infernal",
         "cantrips": [
          "fire_bolt"
-        ]
+        ],
+        "spells_by_level": {"3": ["hellish_rebuke"], "5": ["darkness"]},
+        "spells_by_level_cite": "SRD 5.2.1 p.86, Fiendish Legacies table, Infernal row, Level 3 and Level 5 columns"
        }
       ]
      }
