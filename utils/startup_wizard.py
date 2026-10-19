@@ -28,25 +28,20 @@ from utils.capture.multi_model_capture import capture_and_fanout, register_calls
 register_callsite("T092", "utils/startup_wizard.py", 1035)
 register_callsite("T093", "utils/startup_wizard.py", 2032)
 register_callsite("T124", "utils/startup_wizard.py", 826)
-# D-CREATE-COST-3 sectioned review: S1 numbers and flow, S2 proficiencies and languages, S3 spells, S4 equipment.
-SECTION_TASK_IDS = {"S1": "T128", "S2": "T129", "S3": "T130", "S4": "T131"}
-for _task_id in SECTION_TASK_IDS.values():
-    register_callsite(_task_id, "utils/startup_wizard.py", 1100)
+register_callsite("T128", "utils/startup_wizard.py", 1180)  # the engine review (D-CREATE-COST-5)
 from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
 from utils.startup_prompt_builder import build_character_creation_system_prompt as _build_character_creation_system_prompt
 from utils.startup_prompt_builder import build_startup_review_prompt
-from utils.startup_prompt_builder import (
-    SectionPromptDrift, build_section_review_common, build_section_review_prompt,
-)
+from utils.startup_prompt_builder import build_engine_review_request
 from utils.startup_prompt_builder import (
     ORIGINS_FILE, STARTUP_RULES_REFERENCE_PURPOSE, build_startup_rules_reference,
 )
 from utils.startup_contract import (
     parse_startup_response, parse_startup_review, parse_startup_checkpoint,
-    parse_section_review, merge_section_reviews,
+    parse_engine_review,
 )
-from core.nql import creation_scope
+from core.nql import creation_build, creation_scope
 from utils.character_sheet_contract import (
     extract_json_object,
     repair_required_ammunition_field,
@@ -885,17 +880,6 @@ def _system_records(conversation, purpose):
     return records
 
 
-def _interview_path(conversation):
-    """The path an interview is on, from its history's task_purpose values only (D-CREATE-COST-4):
-    "scoped" once it holds an engine scope item, "whole" while it holds the creation reference,
-    None for a new interview."""
-    if _system_records(conversation, creation_scope.SCOPE_PURPOSE):
-        return "scoped"
-    if _startup_rules_reference_present(conversation):
-        return "whole"
-    return None
-
-
 def _startup_review_mode():
     """The review shape (D-CREATE-COST-5): "engine" (default) or "whole" (#1278's review over the engine-built
     sheet). "sectioned", set before the rename, reads as "engine"; any other value too (no authority)."""
@@ -987,19 +971,13 @@ def _sheet_preview(conversation, intent):
     return summary
 
 
-def _scope_state(conversation):
-    """The latest scope state record (scope id, intent, sticky verdicts), or None. It is its own
-    typed item, never a checkpoint field: code before COST-4 skips it (r3.1, CR-9)."""
-    states = _scope_states(conversation)
-    return states[-1] if states else None
-
-
 def _append_scope(conversations, scope, intent):
     """Append a scope item and its state record to each list (the first is read for the current state)."""
-    state = _scope_state(conversations[0]) or {}
+    # The state record is its own typed item, never a checkpoint field: code before COST-4 skips it (r3.1,
+    # CR-9). It keeps its COST-4 shape; sticky stays empty and an old one is ignored (COST-5 §5).
     record = {"task_purpose": SCOPE_STATE_PURPOSE,
               "startup_id": (_startup_progress(conversations[0]) or {}).get("startup_id"),
-              "scope_id": scope["scope_id"], "intent": intent, "sticky": state.get("sticky") or {}}
+              "scope_id": scope["scope_id"], "intent": intent, "sticky": {}}
     for conversation in conversations:
         conversation.append({"role": "system", "content": json.dumps(scope, ensure_ascii=False)})
         conversation.append({"role": "system", "content": json.dumps(record, ensure_ascii=False)})
@@ -1182,117 +1160,37 @@ def _previous_author_narration(conversation, latest):
     return None
 
 
-def _section_packets(conversation, scope_item, proposal, committed_facts, *, authored_proposal,
-                     normalization_provenance):
-    """Each section's request and snapshot hash (r3 §4.3): system = the common block, the section block and
-    the section's slice of the scope; user = the player's own messages with their indexes (S1 also the author
-    narration they answered) and the payload, sliced to the section's leaves at finalize. No interview items."""
-    intent = proposal.get("intent")
-    slices = creation_scope.section_slices(scope_item, intent)
-    common = build_section_review_common()
+def _engine_review(conversation, proposal, *, previous_demands, summary, live_scope, attempts=None):
+    """T128, the engine review (D-CREATE-COST-5 §5): one call over the turn's intent and narration against the
+    current scope's own text. Returns the loop's review shape with the typed demands; None once `attempts`
+    answers (when given) had invalid structure."""
     latest = _latest_player_index(conversation)
-    players = [{"index": i, "content": m.get("content")} for i, m in enumerate(conversation) if m.get("role") == "user"]
-    final = proposal.get("decision") == "finalize_character"
-    packets = {}
-    for section in creation_scope.SECTIONS:
-        body = {"task_purpose": "startup_section_review", "section": section, "player_messages": players}
-        if section == "S1":
-            body["previous_author_narration"] = _previous_author_narration(conversation, latest)
-        body["proposal"] = creation_scope.section_leaves(proposal, section) if final else proposal
-        body["authored_proposal"] = (creation_scope.section_leaves(authored_proposal, section) if final
-                                     else authored_proposal)
-        body["normalization_provenance"] = (creation_scope.provenance_leaves(normalization_provenance, section)
-                                            if final else normalization_provenance)
-        body["latest_user_index"] = latest
-        body["committed_facts"] = committed_facts
-        snapshot = {"slice": slices[section], "leaves": creation_scope.section_leaves(proposal, section),
-                    "provenance": body["normalization_provenance"] if final else None,
-                    "latest_user_index": latest if (not final or section == "S1") else None}
-        packets[section] = (creation_scope.snapshot_hash(snapshot), [
-            {"role": "system", "content": common + "\n" + build_section_review_prompt(section)
-             + "\n\nCREATION SCOPE SLICE (" + section + "), as JSON:\n" + json.dumps(slices[section], ensure_ascii=False)},
-            {"role": "user", "content": json.dumps(body, ensure_ascii=False)},
-        ])
-    return packets
-
-
-def _section_review(messages, section, scope, attempts):
-    """One section's parsed verdict; None once `attempts` answers (when given) had invalid structure."""
-    messages = copy.deepcopy(messages)
+    intent = proposal.get("intent") or {}
+    scope = _creation_scope_current(conversation) or creation_scope.creation_scope(intent) or {}
+    messages = build_engine_review_request(
+        facts=creation_scope.review_facts(scope),
+        player_messages=[{"index": i, "content": m.get("content")} for i, m in enumerate(conversation)
+                         if m.get("role") == "user"],
+        latest_user_index=latest, previous_author_narration=_previous_author_narration(conversation, latest),
+        reply=proposal, open_choice_ids=creation_scope.open_choice_ids(intent),
+        previous_round_demands=previous_demands, summary=summary)
     invalid = 0
     while True:
-        raw = get_ai_response(messages, {"type": "json_object"}, persist_response=False, live_scope=scope,
-                              startup_phase=None, task_id=SECTION_TASK_IDS[section], bound="raise")
+        raw = get_ai_response(messages, {"type": "json_object"}, persist_response=False, live_scope=live_scope,
+                              startup_phase="startup_review", task_id="T128")
         try:
-            return parse_section_review(raw, section=section)
+            verdict = parse_engine_review(raw)
         except ValueError as exc:
             invalid += 1
             if attempts is not None and invalid >= attempts:
                 return None
             messages.append({"role": "system", "content": (
-                f"The rejected review has invalid structure: {exc}. Return the complete corrected section review.")})
-
-
-def _review_sections(conversation, scope_item, proposal, committed_facts, *, authored_proposal,
-                     normalization_provenance, live_scope, sticky, attempts=None):
-    """The sectioned review (D-CREATE-COST-3): four parallel section reviews, merged into today's review shape;
-    None when a section had no valid structure within `attempts`.
-
-    Sticky verdicts: a section whose snapshot is unchanged since its last accept keeps it with no call. A section
-    that reached the #1267 bound is re-run after one player prompt for the round; the others keep their verdicts.
-    `sticky` is updated in place."""
-    from core.ai.level_up_specialists import collect_domain_work
-    from utils.capture.live_provider_call import LiveProviderSuperseded
-
-    packets = _section_packets(conversation, scope_item, proposal, committed_facts,
-                               authored_proposal=authored_proposal,
-                               normalization_provenance=normalization_provenance)
-    verdicts = {}
-    pending = []
-    for section, (snapshot, _messages) in packets.items():
-        prior = sticky.get(section) or {}
-        if prior.get("snapshot_hash") == snapshot and (prior.get("verdict") or {}).get("accepted"):
-            verdicts[section] = prior["verdict"]
-        else:
-            pending.append(section)
-    _emit_startup_phase("startup_review")
-    status_processing_ai()
-    while pending:
-        work = {section: (lambda scope, section=section: _section_review(packets[section][1], section, scope, attempts))
-                for section in pending}
-        results = collect_domain_work(work, live_scope, label="startup-review")
-        bounded = []
-        for section in pending:
-            result = results.get(section)
-            if isinstance(result, StartupProviderBound):
-                bounded.append(section)
-                continue
-            if isinstance(result, BaseException):
-                raise result
-            if result is None:
-                return None
-            verdicts[section] = result
-            sticky[section] = {"snapshot_hash": packets[section][0], "verdict": result}
-        if bounded:
-            failure = results[bounded[0]]
-            if live_scope.is_superseded():
-                raise LiveProviderSuperseded("startup review superseded")
-            if failure.provider is None or not _startup_configuration_handback(
-                    failure.exc, failure.provider, failure.revision, live_scope):
-                _startup_provider_pause(failure.player_message, live_scope)
-            _emit_startup_phase("startup_review")
-            status_processing_ai()
-        pending = bounded
-    return merge_section_reviews([verdicts[section] for section in creation_scope.SECTIONS])
-
-
-def _record_sticky(conversation, sticky):
-    """Append the scope state with the round's sticky verdicts when they changed (its own typed item)."""
-    state = _scope_state(conversation)
-    if state is None or state.get("sticky") == sticky:
-        return
-    conversation.append({"role": "system", "content": json.dumps(
-        dict(state, sticky=copy.deepcopy(sticky)), ensure_ascii=False)})
+                f"The rejected review has invalid structure: {exc}. Return the complete corrected review object.")})
+            continue
+        feedback = "\n".join(f"{d['field']} ({d['reason_kind']}): {d['demand']}" for d in verdict["demands"])
+        return {"version": 1, "accepted": verdict["accepted"], "feedback": feedback,
+                "needs_player_clarification": verdict["needs_player_clarification"],
+                "demands": verdict["demands"]}
 
 
 def _origin_key(name):
@@ -1681,7 +1579,7 @@ def ai_character_interview(conversation, module):
             correction_context = copy.deepcopy(conversation)
             rejected = 0
             rescoped = False  # one re-scope per T092 response chain (r3 §3.2)
-            sticky = copy.deepcopy((_scope_state(conversation) or {}).get("sticky") or {})
+            demands = []  # the previous review round's demands this turn (T128's contradiction check)
             turn_items = []  # scope, state and drop items made this turn; saved only when it publishes (T4)
             while True:
                 if rejected >= STARTUP_TURN_REJECTION_LIMIT:
@@ -1736,27 +1634,17 @@ def ai_character_interview(conversation, module):
                                             "unsupported mechanics or lost choices."),
                                 "changes": mechanics,
                             }
-                    scope_item = (creation_scope.creation_scope(proposal["intent"])
-                                  if scoped and _creation_scope_current(correction_context) is not None
-                                  and _startup_review_mode() != "whole" else None)
-                    if scope_item is not None:
-                        try:
-                            build_section_review_common()
-                        except SectionPromptDrift as exc:
-                            # Fail forward (N6): the creation goes on under the whole review.
-                            warning(f"STARTUP: sectioned review unavailable, using the whole review: {exc}",
-                                    category="startup")
-                            scope_item = None
-                    if scope_item is not None:
-                        review = _review_sections(
-                            request, scope_item, proposal, facts, authored_proposal=authored_proposal,
-                            normalization_provenance=provenance, live_scope=scope, sticky=sticky,
-                            attempts=STARTUP_TURN_REJECTION_LIMIT - rejected)
+                    # The mode selects only the review, read on every turn (Q1 option 1).
+                    if _startup_review_mode() == "engine":
+                        final = proposal["decision"] == "finalize_character"
+                        review = _engine_review(
+                            correction_context, proposal, previous_demands=demands,
+                            summary=creation_build.render_sheet_summary(proposal["character"]) if final else None,
+                            live_scope=scope, attempts=STARTUP_TURN_REJECTION_LIMIT - rejected)
                     else:
-                        review_request = request
-                        if scoped:  # the whole review checks against the reference a scoped history lacks
-                            review_request = copy.deepcopy(request)
-                            _append_startup_rules_reference(review_request)
+                        # #1278's review over the engine-built sheet, against the reference a scoped history lacks.
+                        review_request = copy.deepcopy(request)
+                        _append_startup_rules_reference(review_request)
                         review = _review_startup_response(
                             review_request, proposal, facts, authored_proposal=authored_proposal,
                             normalization_provenance=provenance, live_scope=scope,
@@ -1782,6 +1670,7 @@ def ai_character_interview(conversation, module):
                 if not review["accepted"]:
                     rejected += 1
                     rescoped = False
+                    demands = review.get("demands") or []
                     correction_context.append({"role": "system", "content": json.dumps({
                         "rejected_proposal": authored_proposal,
                         "canonical_candidate": proposal,
@@ -1797,8 +1686,6 @@ def ai_character_interview(conversation, module):
                     raise LiveProviderSuperseded("startup review superseded")
                 conversation.extend(turn_items)
                 conversation.append({"role": "assistant", "content": json.dumps(proposal, ensure_ascii=False)})
-                if scoped:
-                    _record_sticky(conversation, sticky)
                 summary = None
                 if proposal["decision"] == "finalize_character" and "engine_build" in provenance:
                     # Written before the approved checkpoint and the archive move, so it survives handoff.
@@ -1928,8 +1815,6 @@ def sanitize_character_data(data):
         return data.strip()
     else:
         return data
-
-DWARVEN_TOUGHNESS_TRAIT = "dwarven toughness"
 
 
 def _level_one_hit_die(class_name):
@@ -2100,15 +1985,6 @@ def _normalize_shield_defense(item):
         item["ac_bonus"] = max(0, base + bonus - 2)
     elif bonus > 0 and item.get("magical") is not True:
         item["ac_bonus"] = 0
-
-
-def _typed_entry_count(entries, name):
-    """How many typed {name, ...} entries carry this name (casefolded)."""
-    count = 0
-    for entry in entries if isinstance(entries, list) else []:
-        if isinstance(entry, dict) and str(entry.get("name", "")).strip().casefold() == name:
-            count += 1
-    return count
 
 
 def _species_hit_point_bonuses(character, intent=None):
@@ -2658,19 +2534,7 @@ def _startup_provider_pause(player_message, scope):
         raise LiveProviderSuperseded("startup provider wait superseded")
 
 
-class StartupProviderBound(Exception):
-    """A section request reached the #1267 bound, or needs the provider configuration, inside a parallel
-    review round (bound="raise"): the coordinator asks the player once for the whole round."""
-
-    def __init__(self, exc, player_message=None, *, provider=None, revision=None):
-        super().__init__(str(exc))
-        self.exc = exc
-        self.player_message = player_message
-        self.provider = provider
-        self.revision = revision
-
-
-def _startup_provider_failure(exc, failures, scope, pending, wait=None, *, bound="pause"):
+def _startup_provider_failure(exc, failures, scope, pending, wait=None):
     """One completed startup provider error (#1267); returns the count to carry.
 
     Transient requests reissue inside the shared transport, so this sees a
@@ -2694,8 +2558,6 @@ def _startup_provider_failure(exc, failures, scope, pending, wait=None, *, bound
             category="startup")
     if failures >= PROVIDER_MAX_FAILURES or (
             decision["stop"] and classification["category"] != "bad_request"):
-        if bound == "raise":
-            raise StartupProviderBound(exc, decision["player_message"])
         _startup_provider_pause(decision["player_message"], scope)
         return 0
     # Every retry waits provider_retry_delay, not decision["delay"]: the play turn
@@ -2734,13 +2596,10 @@ def _publish_startup_wait(wait, attempt, max_attempts, delay):
 
 
 def get_ai_response(conversation, response_format=None, *, persist_response=True, live_scope=None,
-                    startup_phase="startup_interview", task_id="T092", bound="pause"):
-    """Run T092 (author), T124 (semantic review) or a section review (T128-T131) through shared
-    cancellable transport.
+                    startup_phase="startup_interview", task_id="T092"):
+    """Run T092 (author), T124 (whole review) or T128 (engine review) through shared cancellable transport.
 
-    The borrowed scope stays open. bound="raise" (a section in a parallel round) raises
-    StartupProviderBound at the #1267 bound or for a configuration refusal instead of asking the player;
-    startup_phase None leaves the phase marker and status to the round's coordinator.
+    The borrowed scope stays open.
     """
     from utils.capture.live_provider_call import (
         LiveProviderSuperseded, finish_live_turn_scope, open_live_turn_scope,
@@ -2763,9 +2622,8 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
     import time
     started = time.monotonic()  # the player's wait, for #1271
     error_note = []  # the one correction note after a failed attempt (#1267)
-    if startup_phase is not None:
-        _emit_startup_phase(startup_phase)
-        status_processing_ai()
+    _emit_startup_phase(startup_phase)
+    status_processing_ai()
     try:
         while True:
             if scope.is_superseded():
@@ -2798,11 +2656,7 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
             except (StartupCancelled, KeyboardInterrupt, EOFError):
                 raise
             except Exception as exc:
-                if bound == "raise":
-                    from utils.startup_provider_recovery import configuration_required_message
-                    if configuration_required_message(exc) is not None:
-                        raise StartupProviderBound(exc, provider=provider, revision=revision) from exc
-                elif _startup_configuration_handback(exc, provider, revision, scope):
+                if _startup_configuration_handback(exc, provider, revision, scope):
                     _emit_startup_phase(startup_phase)
                     status_processing_ai()
                     continue
@@ -2812,15 +2666,14 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                 )}]
                 failures = _startup_provider_failure(
                     exc, failures, scope, "Character setup is still pending; your choices are retained.",
-                    {"taskId": task_id, "provider": provider, "startedAt": started}, bound=bound)
-                if not failures and startup_phase is not None:
+                    {"taskId": task_id, "provider": provider, "startedAt": started})
+                if not failures:
                     _emit_startup_phase(startup_phase)
                     status_processing_ai()
     finally:
         if owned:
             finish_live_turn_scope(scope)
-        if startup_phase is not None:
-            status_ready()
+        status_ready()
 
 
 def save_startup_conversation(conversation, *, live_scope=None):

@@ -215,21 +215,21 @@ _declare(
          "it twice blamed the author for engine-written savingThrowBonuses. Gemini/legacy/lmstudio keep T092's "
          "profiles.",
 )
-for _section_task, _section_name in (("T128", "S1 numbers and flow"), ("T129", "S2 proficiencies and languages"),
-                                     ("T130", "S3 spells"), ("T131", "S4 equipment")):
-    _declare(
-        _section_task,
-        _profiles(
-            "OPENAI_GPT56_LUNA_LOW",
-            "DM_MAIN_GEMINI_PRO_LOW",
-            "DM_MAIN_LEGACY",
-            "DM_MAIN_LMSTUDIO",
-        ),
-        note="Startup section reviewer, %s (D-CREATE-COST-3/-4): one of four parallel reviews of a startup "
-             "response, each with its own slice of the engine creation scope. OpenAI=gpt-6-luna|low, the sectioned "
-             "replay's winner (0 wrong facts, 0 stalls, 2 of 3 real catches, round wall max 8.0 s, $0.0039 per "
-             "four-section round). Gemini/legacy/lmstudio keep T124's." % _section_name,
-    )
+_declare(
+    "T128",
+    _profiles(
+        "OPENAI_GPT56_LUNA_LOW",
+        "DM_MAIN_GEMINI_PRO_LOW",
+        "DM_MAIN_LEGACY",
+        "DM_MAIN_LMSTUDIO",
+    ),
+    note="Startup engine reviewer (D-CREATE-COST-5 §5): one review per startup response of the typed intent and "
+         "the narration against the current creation scope's own text; the engine builds the sheet, so no sheet "
+         "is reviewed. OpenAI=gpt-6-luna|low (OPENAI_GPT56_LUNA_LOW), the model of every sectioned measurement "
+         "(COST-3 replay: 0 wrong facts, 0 stalls, round wall max 8.0 s). Fallback: gpt-5.6-luna|low "
+         "(STARTUP_REVIEW_T124_GPT_5_6_LUNA_LOW), T124's binding. Ceiling re-measured on the COST-5 replay. "
+         "T129-T131 (COST-3/-4 section reviewers) were retired before release. Gemini/legacy/lmstudio keep T124's.",
+)
 _declare(
     "T026",
     _profiles(
@@ -848,10 +848,7 @@ OPENAI_OUTPUT_CEILING_CHARS: Mapping[str, int] = {
     "T090": 5892,  # n=73 p95=1473 max=1580
     "T092": 18808,  # n=34 p95=4702 max=4747
     "T124": 4972,  # startup reviewer (split from T092): n=25 p95=1243 max=1347
-    "T128": 2972,  # startup section reviewers (D-CREATE-COST-3): sectioned replay n=140 p95=743 max=828
-    "T129": 2972,
-    "T130": 2972,
-    "T131": 2972,
+    "T128": 2972,  # startup engine reviewer; kept from the sectioned replay (n=140 p95=743 max=828), re-measured on COST-5's
     "T096": 7412,  # n=353 p95=1853 max=1896
     "T097": 3012,  # n=122 p95=753 max=826
     "T105": 2776,  # n=477 p95=694 max=1275
@@ -869,7 +866,7 @@ def openai_output_ceiling(task_id):
     """The output ceiling for one callsite on the openai provider, or None."""
     value = OPENAI_OUTPUT_CEILING_CHARS.get(task_id)
     return value if isinstance(value, int) and value > 0 else None
-# Reviewed source inventory: 90 registered callsite IDs (T014 and T091 retired in P4-e/P4-f, T024 in keyword GEN-11, T066 in keyword H5, T053 in keyword validation DS-3, T050 in keyword validation V5, T017 in keyword KW-6; T125 added in keyword validation V4, T126 in #1118, T127 in #1260, T128-T131 in D-CREATE-COST-4) plus enabled T104, plus the
+# Reviewed source inventory: 87 registered callsite IDs (T014 and T091 retired in P4-e/P4-f, T024 in keyword GEN-11, T066 in keyword H5, T053 in keyword validation DS-3, T050 in keyword validation V5, T017 in keyword KW-6; T125 added in keyword validation V4, T126 in #1118, T127 in #1260, T128 in D-CREATE-COST-5) plus enabled T104, plus the
 # NPC-voice family T105 (voice+affinity) and T107 (profile seed). Keep this
 # independent from _DECLARATIONS so deleting/adding a binding cannot make the
 # expected set silently redefine itself.
@@ -880,7 +877,7 @@ REGISTERED_TASK_IDS = tuple(
     "T054 T059 T063 T064 T065 T067 T078 T079 T081 T082 T083 T084 "
     "T085 T086 T087 T088 T089 T090 T092 T093 T094 T095 T096 T097 T098 "
     "T099 T100 T101 T102 T103 T105 T107 T108 T112 T113 T114 "
-    "T115 T116 T117 T118 T119 T120 T121 T122 T123 T124 T125 T126 T127 T128 T129 T130 T131".split()
+    "T115 T116 T117 T118 T119 T120 T121 T122 T123 T124 T125 T126 T127 T128".split()
 )
 EXPECTED_TASK_IDS = tuple(sorted(REGISTERED_TASK_IDS + ("T104",)))
 

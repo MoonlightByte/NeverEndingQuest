@@ -440,6 +440,8 @@ def render_sheet_summary(sheet: Dict[str, Any]) -> str:
                                          ", darkvision %s ft" % senses["darkvision"] if senses.get("darkvision") else ""),
              "", "Ability scores:"]
     lines += ["- %s %d (%s)" % (a.capitalize(), abilities[a], mod(abilities[a])) for a in ABILITIES if a in abilities]
+    if sheet.get("maxHitPoints"):  # the finalized sheet; a preview's are not derived yet
+        lines += ["", "Hit points %s, armor class %s" % (sheet["maxHitPoints"], sheet.get("armorClass"))]
     sections = [
         ("Saving throws:", sheet.get("savingThrows")),
         ("Skills:", sheet.get("skills")),

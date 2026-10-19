@@ -6,7 +6,7 @@ from pathlib import Path
 
 from core.nql import creation_scope
 from utils.encoding_utils import safe_json_load
-from utils.startup_contract import SECTION_REVIEW_SCHEMA, STARTUP_REVIEW_SCHEMA, startup_response_schema
+from utils.startup_contract import ENGINE_REVIEW_SCHEMA, STARTUP_REVIEW_SCHEMA, startup_response_schema
 
 
 def _read_text_file(relative_path):
@@ -215,15 +215,24 @@ the player's if given; otherwise propose one. The player never has to choose it.
 )
 
 
+def engine_prompt_drift(prompt, schema):
+    """The rewrite anchors the whole prompt no longer holds exactly once (empty when none drifted)."""
+    anchors = [old for old, _ in _ENGINE_EDITS] + ["CHARACTER SCHEMA:\n%s\n\n" % json.dumps(schema, indent=2)]
+    return [old[:60] for old in anchors if prompt.count(old) != 1]
+
+
 def _engine_prompt(prompt, schema):
+    """The engine-path author prompt. On drift (Sentinel N8) the interview goes on with the whole prompt as it
+    is, the engine lines already in its facts block, and a warning; a tracked test pins the anchors."""
+    drift = engine_prompt_drift(prompt, schema)
+    if drift:
+        from utils.enhanced_logger import warning
+        warning("STARTUP: engine prompt rewrite skipped, the whole prompt changed near %r" % drift,
+                category="startup")
+        return prompt
     for old, new in _ENGINE_EDITS:
-        if prompt.count(old) != 1:
-            raise ValueError("engine prompt edit no longer matches the whole prompt: %r" % old[:60])
         prompt = prompt.replace(old, new)
-    block = "CHARACTER SCHEMA:\n%s\n\n" % json.dumps(schema, indent=2)
-    if prompt.count(block) != 1:
-        raise ValueError("engine prompt edit no longer matches the whole prompt: CHARACTER SCHEMA")
-    return prompt.replace(block, "")
+    return prompt.replace("CHARACTER SCHEMA:\n%s\n\n" % json.dumps(schema, indent=2), "")
 
 
 def build_character_creation_system_prompt(*, scoped=False):
@@ -469,74 +478,81 @@ Return only this review object, no narration, state changes or new character:
 """
 
 
-# Sectioned review (D-CREATE-COST-3, T128-T131). The common block is the T124 prompt the replay proved,
-# pointed at what a section request carries: the player's own messages and the scope slice, not the interview.
-_SECTION_COMMON_EDITS = (
-    ("against the complete\nrelevant interview, latest actual player input/index,",
-     "against the player's own messages (each with its interview index), the latest\nactual player input/index,"),
-    ("Check its stated rules facts against the startup_rules_reference in the\ninterview,",
-     "Check its stated rules facts against the creation scope slice in the system\nmessage,"),
-    ("When a stated fact\nis absent from the reference,", "When a stated fact\nis absent from the slice,"),
-    ("A feature named in a class's class_level_1 features is a supplied level-1 fact,\n"
-     "as are its class_table_at_level_1 values:",
-     "A feature named in the slice's class features is a supplied level-1 fact,\n"
-     "as are its class_table_at_level_1 values:"),
-    ("hedge only mechanics the reference does not give.", "hedge only mechanics the slice does not give."),
-    ("by name, against the startup_rules_reference.", "by name, against the slice."),
-    ("verify the proposed replacement against\nthe actual reference in the interview",
-     "verify the proposed replacement against\nthe actual slice"),
-)
-
-SECTION_SCOPES = {
-    "S1": ("numbers and flow",
-           "the character's identity (name, species, class, background, alignment, history and other descriptive "
-           "fields), the ability-score method and allocation with the background increases, level, and the numbers "
-           "derived from them (modifiers, hit points, armor class, proficiency bonus, saving throws), and the reply "
-           "itself: its decision, confirmation and narration"),
-    "S2": ("proficiencies and languages",
-           "skill, tool, armor and weapon proficiencies and training, expertise, languages, weapon mastery, a "
-           "fighting style, the class's level-1 order choice with what it grants, the Origin feat and the species "
-           "traits"),
-    "S3": ("spells",
-           "cantrips, prepared and known spells, the spellbook, spellcasting ability, spell slots, and every spell "
-           "granted by a class feature, feat or species, with their counts"),
-    "S4": ("equipment",
-           "the starting equipment package choices and their picks (slots), the items, coins and gold, catalog item "
-           "ids, what is worn or held, and equipment-derived entries"),
-}
-SECTION_SUPPLIED_ELSEWHERE = (
-    "The other sections' facts and fields are reviewed by other reviewers and are supplied to them; do not call "
-    "them absent or unsupplied, and do not reject for them.")
-SECTION_FLOW = (
-    "You also judge whether the reply is complete and asks the player the next open question, whether the decision "
-    "and confirmation are right, whether the intent records only what the player chose, and whether it claims no "
-    "saved state. A reply that asks nothing while choices remain open is a rejection. The slice's open_choice_ids "
-    "lists the choices still unfilled.")
+# The engine review (D-CREATE-COST-5 §5, T128): one call over the turn's intent and narration against the
+# scope's own text. The engine builds and computes the sheet, so no sheet or provenance is sent.
+ENGINE_REVIEW_PURPOSE = "startup_engine_review"
 
 
-class SectionPromptDrift(ValueError):
-    """The T124 text no longer holds a passage the section prompts rewrite (Sentinel N6)."""
+def build_engine_review_prompt():
+    """T128's system prompt (the creation facts follow it in the same system message)."""
+    return f"""You independently review one turn of a character creation interview for a fifth
+edition game (SRD 5.2.1). The author records the player's choices as typed intent;
+the engine builds the character sheet from that intent and computes every number,
+so you never check a sheet, arithmetic, hit points, armor class or gear rows.
+You receive the CREATION FACTS below (the chosen class, species and background
+with their trait text, and every current choice with its own text, page, options
+and option grants), and in the user message: the player's own messages with
+their interview indexes, the author's previous narration, this turn's reply
+(decision, narration, confirmation, intent), open_choice_ids (the choices the
+engine still needs), the previous round's demands, and at finalize the summary
+the game rendered from the engine-built sheet.
+Check the reply:
+1. Intent records only what the player chose or approved, or a pick the player
+   delegated ("choose for me") and the author then made from the options. A
+   pick the player never made or delegated, or a player choice the intent omits
+   or contradicts, is intent_mismatch.
+2. A continue_interview asks the player the next open question or asks for
+   whole-build approval. A reply that asks the player nothing while
+   open_choice_ids is not empty is a flow rejection. A reply that asks for
+   whole-build approval, or a finalize, while open_choice_ids is not empty is
+   an unasked_choice rejection. Asking three or four open decisions per turn
+   and leaving the rest for later is valid.
+3. Every rules fact the narration states agrees with the creation facts. An
+   option, grant or rule the facts contradict, or one that does not exist, is a
+   false_rules_claim: name the passage and its page. A fact the creation facts
+   do not give is fine when hedged; asserted as a rule, it is a reference_gap.
+4. finalize_character only when the latest player message approves the whole
+   current build, in context. Approval of one detail, a negation, uncertainty
+   or an outstanding requested change is not whole-build approval. Do not
+   require an exact phrase.
+5. The narration claims no saved character, arrival, scene or NPC interaction:
+   the game does those after the review.
+6. pause_setup only when the latest player message asks to stop setup for now;
+   cancelling, undoing or changing a choice is not a pause, and a clear request
+   to stop must not be ignored.
+Never reject for alignment: the player never has to choose it, and the author
+may propose one. Never reject for narration layout or style, for a value the
+engine computes, for anything the rendered summary shows (it is the engine's
+own), or for creative text the player approved.
+The previous round's demands are allegations to verify, not authority. When a
+demand you make would reverse a previous demand (asks to add what it asked
+removed, or to remove what it asked added), set contradiction true; otherwise
+false.
+Set needs_player_clarification true only on a rejection the author cannot
+correct without new player input. An accept has no demands and
+needs_player_clarification false. A rejection lists at least one demand, each
+with the field it concerns (narration, decision, confirmation, intent.<key>,
+intent.choices.<choice id>, creative.<field>), what must change, and its
+reason_kind.
+Return only this JSON object:
+{json.dumps(ENGINE_REVIEW_SCHEMA, indent=2)}
+"""
 
 
-def build_section_review_common():
-    """The block every section request opens with, identical for all four (it caches)."""
-    text = build_startup_review_prompt()
-    for old, new in _SECTION_COMMON_EDITS:
-        if text.count(old) != 1:
-            raise SectionPromptDrift("section review prompt: the T124 text changed near %r" % old[:40])
-        text = text.replace(old, new)
-    head, _, _ = text.rpartition("Return only this review object, no narration, state changes or new character:")
-    return head + (
-        "Return only one JSON object, the section review below, no narration, state changes or new character. "
-        "A rejection lists each demand with the field it concerns; an accept has no demands:\n"
-        + json.dumps(SECTION_REVIEW_SCHEMA, indent=2) + "\n")
-
-
-def build_section_review_prompt(section):
-    """The section block for one reviewer (S1-S4): its scope, the supplied-elsewhere rule and, for S1, flow."""
-    name, what = SECTION_SCOPES[section]
-    block = (f"SECTION {section} of 4 ({name}). This review covers only {what}. Judge only this section, and "
-             f"accept when nothing in it is wrong. {SECTION_SUPPLIED_ELSEWHERE}")
-    if section == "S1":
-        block += " " + SECTION_FLOW
-    return block + f' Set "section" to "{section}".'
+def build_engine_review_request(*, facts, player_messages, latest_user_index, previous_author_narration,
+                                reply, open_choice_ids, previous_round_demands, summary=None):
+    """The T128 request (plan §5): system = the review prompt and the creation facts (creation_scope.review_facts
+    of the current scope); user = the player's messages with indexes, the previous author narration, this turn's
+    reply (decision, narration, confirmation, intent), the open choice ids, the previous round's demands and, at
+    finalize, the summary rendered from the engine-built sheet. No sheet and no provenance."""
+    body = {"task_purpose": ENGINE_REVIEW_PURPOSE, "player_messages": player_messages,
+            "latest_user_index": latest_user_index, "previous_author_narration": previous_author_narration,
+            "reply": {k: reply.get(k) for k in ("decision", "narration", "confirmation", "intent")},
+            "open_choice_ids": list(open_choice_ids), "previous_round_demands": list(previous_round_demands)}
+    if summary is not None:
+        body["engine_built_summary"] = summary
+    return [
+        {"role": "system", "content": build_engine_review_prompt()
+         + "\nCREATION FACTS, as JSON:\n" + json.dumps(facts, ensure_ascii=False)},
+        {"role": "user", "content": json.dumps(body, ensure_ascii=False)},
+    ]

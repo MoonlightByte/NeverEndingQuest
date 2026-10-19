@@ -52,15 +52,17 @@ STARTUP_REVIEW_SCHEMA = _object_schema({
     "needs_player_clarification": {"type": "boolean"},
 })
 
-# One section reviewer's typed verdict (D-CREATE-COST-3, T128-T131): demands name the field.
-SECTION_REVIEW_SCHEMA = _object_schema({
+# The engine review's typed verdict (D-CREATE-COST-5 §5, T128): each demand names its field and reason.
+REVIEW_REASON_KINDS = ("intent_mismatch", "unasked_choice", "flow", "reference_gap", "false_rules_claim", "other")
+ENGINE_REVIEW_SCHEMA = _object_schema({
     "version": {"type": "integer", "enum": [1]},
-    "section": {"type": "string", "enum": ["S1", "S2", "S3", "S4"]},
     "accepted": {"type": "boolean"},
     "needs_player_clarification": {"type": "boolean"},
     "demands": {"type": "array", "items": _object_schema({
         "field": {"type": "string"},
         "demand": {"type": "string"},
+        "reason_kind": {"type": "string", "enum": list(REVIEW_REASON_KINDS)},
+        "contradiction": {"type": "boolean"},
     })},
 })
 
@@ -294,24 +296,11 @@ def parse_startup_checkpoint(messages):
     return latest
 
 
-def parse_section_review(text, *, section):
-    """One section's verdict: its own section, a rejection with at least one demand, an accept
-    without clarification."""
-    value = _parse_object(text, SECTION_REVIEW_SCHEMA)
-    if value["section"] != section:
-        raise ValueError(f"This review is section {section}, not {value['section']}")
+def parse_engine_review(text):
+    """The T128 verdict: a rejection with at least one demand, an accept with none and no clarification."""
+    value = _parse_object(text, ENGINE_REVIEW_SCHEMA)
     if not value["accepted"] and not [d for d in value["demands"] if d["demand"].strip()]:
-        raise ValueError("A rejected section requires at least one demand")
-    if value["accepted"] and value["needs_player_clarification"]:
-        raise ValueError("An accepted section cannot still need player clarification")
+        raise ValueError("A rejection requires at least one demand")
+    if value["accepted"] and (value["demands"] or value["needs_player_clarification"]):
+        raise ValueError("An accept has no demands and needs no player clarification")
     return value
-
-
-def merge_section_reviews(verdicts):
-    """The four section verdicts as one review in today's shape (STARTUP_REVIEW_SCHEMA): any reject is a
-    reject, clarification if any section asks, the demands tagged by section in the feedback."""
-    rejected = [v for v in verdicts if not v["accepted"]]
-    feedback = "\n".join(f"[{v['section']}] {d['field']}: {d['demand']}"
-                         for v in rejected for d in v["demands"] if d["demand"].strip())
-    return {"version": 1, "accepted": not rejected, "feedback": feedback,
-            "needs_player_clarification": any(v["needs_player_clarification"] for v in rejected)}
