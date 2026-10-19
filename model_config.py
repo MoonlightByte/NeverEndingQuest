@@ -831,6 +831,9 @@ OPENAI_GPT56_TERRA_NONE = {"model": "gpt-5.6-terra", "reasoning_effort": "none"}
 OPENAI_GPT56_TERRA_LOW = {"model": "gpt-5.6-terra", "reasoning_effort": "low"}
 OPENAI_GPT56_TERRA_MEDIUM = {"model": "gpt-5.6-terra", "reasoning_effort": "medium"}
 OPENAI_GPT56_TERRA_HIGH = {"model": "gpt-5.6-terra", "reasoning_effort": "high"}
+# T124 on OpenAI (D-CREATE-COST-2 amendment 4): the real gpt-5.6-luna; the OPENAI_GPT56_LUNA_* profiles above send gpt-6-luna.
+# Effort low, so the provider guard strips the caller temperature (gpt-5.6-luna rejects temperature != 1 above none).
+STARTUP_REVIEW_T124_GPT_5_6_LUNA_LOW = {"model": "gpt-5.6-luna", "reasoning_effort": "low"}
 OPENAI_GPT56_SOL_NONE = {"model": "gpt-5.6-sol", "reasoning_effort": "none"}
 OPENAI_GPT56_SOL_LOW = {"model": "gpt-5.6-sol", "reasoning_effort": "low"}
 
