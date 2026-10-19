@@ -2948,6 +2948,53 @@ def parse_json_safely(text):
 VALIDATION_CATEGORIES = ("none", "reference", "missing_action", "unrequested_action", "action_order",
                          "travel", "combat", "resources", "inventory", "party", "module", "other")
 
+# D-COST-4 (#193): T065 attempts (provider errors and unparseable verdicts
+# together) one review of one draft may spend before the turn fails forward.
+_T065_ATTEMPT_LIMIT = 3
+_T065_EXHAUSTED = {"status": "t065_exhausted"}
+# The verdict contract _parse_dm_validation_verdict reads, as a strict schema.
+_T065_VERDICT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "valid": {"type": "boolean"},
+        "reason": {"type": "string"},
+        "category": {"type": "string", "enum": list(VALIDATION_CATEGORIES)},
+    },
+    "required": ["valid", "reason", "category"],
+    "additionalProperties": False,
+}
+_DM_FAIL_FORWARD_LINES_PATH = os.path.join("data", "dm_fail_forward_lines.json")
+_DM_FAIL_FORWARD_FALLBACK = "I lost the thread there for a moment. What were you thinking of doing?"
+
+
+def _t065_response_format(provider, validation_config):
+    """The provider's transport form of the T065 verdict schema (transport only)."""
+    config = dict(validation_config)
+    if provider in ("openai", "legacy"):
+        config["response_format"] = {"type": "json_schema", "json_schema": {
+            "name": "t065_verdict", "strict": True, "schema": _T065_VERDICT_SCHEMA}}
+    elif provider == "gemini":
+        from model_config import convert_to_gemini_schema
+
+        config["response_schema"] = convert_to_gemini_schema(
+            _T065_VERDICT_SCHEMA, preserve_required=True, preserve_constraints=True)
+        config["response_format"] = {"type": "json_object"}
+    return config
+
+
+def _dm_fail_forward_line():
+    """One in-character DM line that admits the slip and asks the player to
+    restate (D-COST-4), drawn from the authored list in data. Never an error."""
+    import random
+
+    try:
+        with open(_DM_FAIL_FORWARD_LINES_PATH, "r", encoding="utf-8") as f:
+            lines = [line for line in json.load(f).get("lines", [])
+                     if isinstance(line, str) and line.strip()]
+    except (OSError, ValueError, AttributeError):
+        lines = []
+    return random.choice(lines) if lines else _DM_FAIL_FORWARD_FALLBACK
+
 
 def _parse_dm_validation_verdict(response_text):
     """Parse T065's exact semantic-validation response contract.
@@ -4427,9 +4474,17 @@ def validate_ai_response(
     else:  # legacy
         validation_config = config.DM_VALIDATION_LEGACY
 
+    validation_config = _t065_response_format(_val_provider, validation_config)
     attempt = 0
     while True:
         attempt += 1
+        if attempt > _T065_ATTEMPT_LIMIT:
+            warning(
+                f"VALIDATION: T065 gave no usable verdict in {_T065_ATTEMPT_LIMIT} "
+                "attempts; the turn fails forward without change.",
+                category="ai_validation",
+            )
+            return _T065_EXHAUSTED
         try:
             if invocation_claim is not None:
                 require_current_invocation(invocation_claim)
@@ -4462,7 +4517,7 @@ def validate_ai_response(
         try:
             from utils.api_logger import log_api_call
             log_api_call("validation", validation_messages_for_diagnostics, validation_result,
-                        metadata={"attempt": attempt, "max_retries": None,
+                        metadata={"attempt": attempt, "max_retries": _T065_ATTEMPT_LIMIT,
                                   "block_bytes": _block_bytes(validation_messages_for_diagnostics, {
                                       "validator_prompt": validation_prompt_text,
                                       "structure_note": structure_validation_note,
@@ -11124,6 +11179,11 @@ def _review_dm_candidate(
                 turn_roster=turn_roster,
             )
             require_current()
+            if validation_result is _T065_EXHAUSTED:
+                return {
+                    "status": "review_exhausted",
+                    "player_message": _dm_fail_forward_line(),
+                }
             if isinstance(validation_result, tuple):
                 is_valid, validated_content = validation_result
                 validation_reason = "" if is_valid else validated_content
