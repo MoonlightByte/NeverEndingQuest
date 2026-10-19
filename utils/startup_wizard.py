@@ -2602,7 +2602,7 @@ def _publish_startup_wait(wait, attempt, max_attempts, delay):
 
 def get_ai_response(conversation, response_format=None, *, persist_response=True, live_scope=None,
                     startup_phase="startup_interview", task_id="T092"):
-    """Run T092 (author), T124 (whole review) or T128 (engine review) through shared cancellable transport.
+    """Run T092 (author) or T124 (whole review) through shared cancellable transport.
 
     The borrowed scope stays open.
     """
