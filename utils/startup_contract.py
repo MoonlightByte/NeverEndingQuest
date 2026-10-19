@@ -52,7 +52,7 @@ STARTUP_REVIEW_SCHEMA = _object_schema({
     "needs_player_clarification": {"type": "boolean"},
 })
 
-# The engine review's typed verdict (D-CREATE-COST-5 §5, T128): each demand names its field and reason.
+# The engine review's typed verdict (D-CREATE-COST-5 section 5, T128): each demand names its field and reason.
 REVIEW_REASON_KINDS = ("intent_mismatch", "unasked_choice", "flow", "reference_gap", "false_rules_claim", "other")
 ENGINE_REVIEW_SCHEMA = _object_schema({
     "version": {"type": "integer", "enum": [1]},

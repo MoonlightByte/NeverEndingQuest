@@ -223,7 +223,7 @@ _declare(
         "DM_MAIN_LEGACY",
         "DM_MAIN_LMSTUDIO",
     ),
-    note="Startup engine reviewer (D-CREATE-COST-5 §5): one review per startup response of the typed intent and "
+    note="Startup engine reviewer (D-CREATE-COST-5 section 5): one review per startup response of the typed intent and "
          "the narration against the current creation scope's own text; the engine builds the sheet, so no sheet "
          "is reviewed. OpenAI=gpt-6-luna|low (OPENAI_GPT56_LUNA_LOW), the model of every sectioned measurement "
          "(COST-3 replay: 0 wrong facts, 0 stalls, round wall max 8.0 s). Fallback: gpt-5.6-luna|low "

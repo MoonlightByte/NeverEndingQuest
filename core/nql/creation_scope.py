@@ -197,7 +197,7 @@ def _resolved(point: Dict[str, Any], cls: str, d: _Data) -> Dict[str, Any]:
 
 
 def _section_of(point: Dict[str, Any]) -> str:
-    """The reviewer section a choice belongs to, from typed fields (r3 §4.2): a starting package is S4;
+    """The reviewer section a choice belongs to, from typed fields (r3 section 4.2): a starting package is S4;
     spells and invocations (the spells reference form, the cantrip and prepared kinds) are S3; the
     background's ability split is S1; skills, tools, languages, masteries, styles and orders are S2."""
     head = str(point.get("option_source") or "").split(":", 1)[0]
@@ -316,7 +316,7 @@ def issued_points(intent: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
         out[tid] = _point_entry(tid, point, cls or "", d, "S2")
     out.update(_species_points(intent.get("species_key"), picks, cls or "", d))
     for sid, sub in _feat_spell_points(background, d) if background else []:
-        # Every pick of a feat that grants spells is reviewed with the spells (r3 §4.2: Magic Initiate -> S3).
+        # Every pick of a feat that grants spells is reviewed with the spells (r3 section 4.2: Magic Initiate -> S3).
         out[sid] = _point_entry(sid, sub, background["feat_ref"]["spell_list"].lower(), d, "S3")
     if intent.get("species_key") in d.species():
         known = set(d.choices["languages"].get("known") or [])
@@ -595,7 +595,7 @@ def scope_id(scope: Dict[str, Any]) -> str:
     return hashlib.sha256(json.dumps(body, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
 
 
-# --- the engine review's facts (D-CREATE-COST-5 §5, audit A) ---
+# --- the engine review's facts (D-CREATE-COST-5 section 5, audit A) ---
 
 _BACKGROUND_INTERNAL = ("feat_ref", "skill_keys", "tool_keys", "tool_choice")
 

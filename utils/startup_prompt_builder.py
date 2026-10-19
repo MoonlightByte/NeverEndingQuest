@@ -492,7 +492,7 @@ Return only this review object, no narration, state changes or new character:
 """
 
 
-# The engine review (D-CREATE-COST-5 §5, T128): one call over the turn's intent and narration against the
+# The engine review (D-CREATE-COST-5 section 5, T128): one call over the turn's intent and narration against the
 # scope's own text. The engine builds and computes the sheet, so no sheet or provenance is sent.
 ENGINE_REVIEW_PURPOSE = "startup_engine_review"
 
@@ -574,7 +574,7 @@ Return only this JSON object:
 def build_engine_review_request(*, facts, player_messages, latest_user_index, previous_author_narration,
                                 reply, open_choice_ids, previous_round_demands, summary=None,
                                 unanswered_required=()):
-    """The T128 request (plan §5): system = the review prompt and the creation facts (creation_scope.review_facts
+    """The T128 request (plan section 5): system = the review prompt and the creation facts (creation_scope.review_facts
     of the current scope); user = the player's messages with indexes, the previous author narration, this turn's
     reply (decision, narration, confirmation, intent, starting_equipment), the open choice ids, the previous
     round's demands and, at

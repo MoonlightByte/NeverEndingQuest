@@ -942,7 +942,7 @@ SCOPE_STATE_PURPOSE = "startup_scope_state"
 
 def _scope_states(conversation, purpose=SCOPE_STATE_PURPOSE):
     """This interview's scope state records (or other per-startup records of purpose), in order: by purpose
-    and the current checkpoint's startup_id (r3.1 §3.6); a record of another startup never applies to this one."""
+    and the current checkpoint's startup_id (r3.1 section 3.6); a record of another startup never applies to this one."""
     states = _system_records(conversation, purpose)
     startup_id = (_startup_progress(conversation) or {}).get("startup_id")
     if startup_id is not None:
@@ -1018,7 +1018,7 @@ def _sheet_preview(conversation, intent):
 def _append_scope(conversations, scope, intent):
     """Append a scope item and its state record to each list (the first is read for the current state)."""
     # The state record is its own typed item, never a checkpoint field: code before COST-4 skips it (r3.1,
-    # CR-9). It keeps its COST-4 shape; sticky stays empty and an old one is ignored (COST-5 §5).
+    # CR-9). It keeps its COST-4 shape; sticky stays empty and an old one is ignored (COST-5 section 5).
     record = {"task_purpose": SCOPE_STATE_PURPOSE,
               "startup_id": (_startup_progress(conversations[0]) or {}).get("startup_id"),
               "scope_id": scope["scope_id"], "intent": intent, "sticky": {}}
@@ -1044,7 +1044,7 @@ class StartupScopeRefusal(ValueError):
 
 
 def _scoped_intent(conversations, proposal, rescoped, persist=None):
-    """Apply the engine scope to a parsed scoped response (D-CREATE-COST-4 §1, §3).
+    """Apply the engine scope to a parsed scoped response (D-CREATE-COST-4 section 1, section 3).
 
     Picks the previous scope issued and the new intent's scope does not (a switch) are dropped
     into one typed startup_choices_dropped item. A changed scope is appended; returns True when
@@ -1205,7 +1205,7 @@ def _previous_author_narration(conversation, latest):
 
 
 def _engine_review(conversation, proposal, *, previous_demands, summary, live_scope, attempts=None):
-    """T128, the engine review (D-CREATE-COST-5 §5): one call over the turn's intent and narration against the
+    """T128, the engine review (D-CREATE-COST-5 section 5): one call over the turn's intent and narration against the
     current scope's own text. Returns the loop's review shape with the typed demands; None once `attempts`
     answers (when given) had invalid structure."""
     latest = _latest_player_index(conversation)
@@ -1627,7 +1627,7 @@ def ai_character_interview(conversation, module):
             save_startup_conversation(conversation, live_scope=scope)
             correction_context = copy.deepcopy(conversation)
             rejected = 0
-            rescoped = False  # one re-scope per T092 response chain (r3 §3.2)
+            rescoped = False  # one re-scope per T092 response chain (r3 section 3.2)
             demands = []  # the previous review round's demands this turn (T128's contradiction check)
             turn_items = []  # scope, state and drop items made this turn; saved only when it publishes (T4)
             while True:
