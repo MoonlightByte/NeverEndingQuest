@@ -1372,3 +1372,13 @@ def test_review_facts_carry_cantrip_text_and_t128_keeps_granted_skills_out_of_cl
     text = " ".join(build_engine_review_prompt().split())
     assert ("A skill in background.granted_skills is never a class skill option; its absence from the class "
             "list is correct.") in text
+
+
+def test_an_approval_after_the_sheet_preview_must_finalize():
+    # All-class A1 (dplay-AC-ranger): after "Yes, that's her. Let's start." the author kept asking approval
+    # for ideal, bond and flaw text it had just written; T128 demanded finalize 8 times before a handback.
+    from utils.startup_prompt_builder import build_character_creation_system_prompt
+    engine = " ".join(build_character_creation_system_prompt(scoped=True).split())
+    assert ("When the player approves the whole build, finalize with your proposed creative fields; do not ask "
+            "approval for details you add at finalize.") in engine
+    assert "do not ask approval for details you add at finalize" not in build_character_creation_system_prompt()
