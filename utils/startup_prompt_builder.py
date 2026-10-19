@@ -137,6 +137,8 @@ lists the choice ids still open: for each, ask the player, or, only when the
 player asks you to choose, pick from the scope's options yourself and record it
 in intent. Never leave one open at finalize. A package or option the player has
 already named is chosen: record it and do not ask it again.
+Record package and slot picks in starting_equipment as soon as the player gives
+them, on every turn after; a package not yet chosen is null.
 Set intent.ability_scores to the player's method and the base score for each
 ability once the player has placed them. A startup_ability_roll item holds the
 engine's roll, made once for the interview: show those numbers and record the
@@ -181,11 +183,11 @@ builds the sheet and you never write one. Set starting_equipment to"""),
 - Name the chosen starting packages and what is worn or held, on "- " lines.
 - End with this line on its own: Approve this build, or tell me what to change."""),
     ("""Its character, origin and starting_equipment must be null
-and whole_build_approved false.""", """Its creative and starting_equipment must be null
-and whole_build_approved false."""),
+and whole_build_approved false.""", """Its creative must be null, starting_equipment holds the
+package and slot picks given so far, and whole_build_approved is false."""),
     ("""build and you can provide its full character sheet.""", """build and no choice id is open."""),
     ("""It has character, origin and starting_equipment null, whole_build_approved
-false,""", """It has creative and starting_equipment null, whole_build_approved
+false,""", """It has creative null, starting_equipment as given so far, whole_build_approved
 false,"""),
     ("""Use the frozen CHARACTER SCHEMA for character, not for the outer response.
 Include ammunition (an empty array when none), all required fields, and valid
@@ -515,7 +517,7 @@ the game rendered from the engine-built sheet.
 Only the choice ids in the creation facts belong in intent. A choice the facts
 give no choice id for, such as the background's equipment package or a package
 slot (a holy symbol's form, an instrument), is recorded in starting_equipment
-at finalize, and the reply's starting_equipment is null before then: never
+as the player gives it (a package not yet chosen is null): never
 demand it in intent, and a narration that notes it is not an intent mismatch.
 The class's starting-equipment choice has a choice id: its package pick (A or
 B) belongs in intent.choices; only the package's slots and the background's

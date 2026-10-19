@@ -1448,6 +1448,13 @@ def _prepare_startup_proposal(authored_proposal, *, live_scope=None, rolled=None
     if proposal["decision"] != "finalize_character":
         return proposal, provenance
     if "creative" in proposal:
+        # Amendment 2: every package and slot the scope needs is in starting_equipment before the build.
+        scope = creation_scope.creation_scope(proposal["intent"]) or {}
+        open_gear = [entry["id"] for entry in creation_scope.unanswered_required(
+            scope, proposal["intent"], proposal["starting_equipment"]) if entry["id"].startswith("starting_equipment.")]
+        if open_gear:
+            raise ValueError("Finalization requires every package and slot pick in starting_equipment: missing "
+                             + ", ".join(open_gear))
         proposal["character"], proposal["origin"], provenance["engine_build"] = _engine_built_character(
             proposal, rolled)
     from utils.encoding_utils import sanitize_dict
