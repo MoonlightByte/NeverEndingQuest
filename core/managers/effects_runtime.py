@@ -151,9 +151,9 @@ class _lazy_classifier:
     """T078 on demand: the T079 loop calls this with each parsed delta.
 
     The classifier runs only when the update model flagged an effect change
-    ("effectChange": true) or answered with an empty delta (an effect-only
-    change leaves T079 nothing else to say). One T078 result is kept across
-    T079 reissues. A pure number change never pays for the classifier.
+    ("effectChange": true, alone for an effect-only change). A plain {} is
+    "no change" and is not classified (D-COST-6). One T078 result is kept
+    across T079 reissues. A pure number change never pays for the classifier.
     """
 
     def __init__(self, character_name, changes, sheet, now_scalar):
@@ -167,7 +167,9 @@ class _lazy_classifier:
         self.cast = None  # CN: (caster, spell, group, target, expiration) when the effect is a concentration
 
     def __call__(self, updates, effect_flag):
-        if self.result is None and (effect_flag is True or updates == {}):
+        # D-COST-6 (#193): only a T079 answer that flags an effect change is classified; a {} answer
+        # ("no change") no longer costs a T078 call.
+        if self.result is None and effect_flag is True:
             self.result = classify_effect(
                 self._name, self._changes, effective_sheet(self._sheet), self._now
             )

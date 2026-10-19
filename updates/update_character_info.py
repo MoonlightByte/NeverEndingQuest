@@ -2694,14 +2694,13 @@ Character Role: {character_role}
     # delta beside it needs no confirmation.
     # A callable operation is a lazy T078 classifier (core/managers/effects_runtime):
     # it is resolved on each parsed T079 delta below and runs the classifier only
-    # when the delta carries "effectChange" or is empty.
+    # when the delta carries "effectChange" (D-COST-6: never on a plain {}).
     lazy_classifier = managed_effect_operation if callable(managed_effect_operation) else None
     if lazy_classifier is not None:
         managed_effect_operation = None
     engine_owned_change = declarative_effects and managed_effect_operation
-    # A {} answer is accepted only when the immediately preceding T079 answer
-    # in this update was also {} (#432): the first one is asked to confirm.
-    previous_answer_was_empty = False
+    # A {} answer is the typed "no change" and is accepted at once (D-COST-6;
+    # it was re-asked for confirmation since #432).
     # An engine refusal that the model then abandons with {} (or that outlasts
     # the attempt bound) is reported to the caller as a refusal, not accepted
     # as "no change".
@@ -2734,8 +2733,6 @@ Character Role: {character_role}
                     pass
             
             raw_response = response.choices[0].message.content.strip()
-            prior_answer_was_empty = previous_answer_was_empty
-            previous_answer_was_empty = False
 
             # Log the raw LLM response for debugging ammunition issues
             if "ammunition" in changes.lower() or "bolt" in changes.lower() or "arrow" in changes.lower():
@@ -2826,24 +2823,11 @@ Character Role: {character_role}
             if updates == {}:
                 if last_engine_refusal:
                     raise EngineRefusedChange(last_engine_refusal)
-                previous_answer_was_empty = True
                 if not engine_owned_change:
-                    if not prior_answer_was_empty:
-                        confirmation_note = (
-                            "\n\nYour previous answer was {} (no character-sheet "
-                            "field changes). If the described change alters any "
-                            "field on this sheet (hit points, spell slots, "
-                            "equipment, ammunition, currency, experience, "
-                            "conditions or any other field), return those fields "
-                            "now. Narrative descriptions that no rule tracks, such "
-                            "as being wet or muddy, are not sheet changes. If it "
-                            "changes nothing on the sheet, return {} again."
-                        )
-                        messages[-1]["content"] += confirmation_note
-                        attempt += 1
-                        continue
+                    # D-COST-6 (#193): the first {} is the typed "no change" answer; it is no
+                    # longer re-asked for confirmation.
                     info(
-                        f"T079 confirmed no mechanical change for {character_name}",
+                        f"T079 reported no mechanical change for {character_name}",
                         category="character_updates",
                     )
 
