@@ -469,27 +469,38 @@ def species_damage_resistances(intent: Any) -> List[Dict[str, Any]]:
     return out
 
 
+def species_key_for(sheet: Any, intent: Any = None) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    """(species key, untyped gap or None) for the engine's species grants (#1280, B1).
+
+    With a creation intent (a dict; the live interview always passes one) its species_key, never race.
+    Without one (a supplied sheet): EXC-COST5-1 (D-KW exception, supplied sheets only): a free-string race
+    (char_schema string, frozen) matched exactly against the closed set of canonical species names; a
+    non-match grants nothing and records gap species.unknown; never normalised; a typed species_key (the
+    headless input record's, passed as the intent) is preferred when present."""
+    species = _origins().get("species") or []
+    if isinstance(intent, dict):
+        key = intent.get("species_key")
+        if key in [s.get("key") for s in species]:
+            return key, None
+        return None, {"id": "species.unknown", "grant": "species grants", "where": "species_key"}
+    race = (sheet or {}).get("race")
+    key = next((s.get("key") for s in species if s.get("name") == race), None)
+    if key is None:
+        return None, {"id": "species.unknown", "grant": "species grants", "where": "race"}
+    return key, None
+
+
 def apply_species_resistances(sheet: Dict[str, Any], intent: Any = None) -> List[Dict[str, Any]]:
     """Add the species' granted damage resistances to the sheet in place: each type is appended unless an
     entry equals it (casefolded); nothing is removed or rewritten, and the sheet's own list is never the
-    source. With no intent (a supplied sheet), the species is the one whose canonical name equals the typed
-    race field exactly, with no picks (unconditional grants only); a race that is no canonical name grants
-    nothing and returns the one untyped gap entry. Returns [{source, added, present}]; with no grant the
-    sheet is untouched."""
-    if intent is None:
-        # EXC-COST5-1 (D-KW exception, supplied sheets only): a free-string race (char_schema string,
-        # frozen) matched exactly against the closed set of canonical species names; a non-match grants
-        # nothing and records gap species.unknown; never normalised; a typed species_key (the headless
-        # input record's) is preferred when present.
-        race = (sheet or {}).get("race")
-        key = next((s.get("key") for s in _origins().get("species") or [] if s.get("name") == race), None)
-        if key is None:
-            return [{"source": None, "added": [], "present": [],
-                     "untyped": {"id": "species.unknown", "grant": "damage resistances", "where": "race"}}]
-        intent = {"species_key": key, "choices": {}}
-    if intent.get("species_key") not in [s.get("key") for s in _origins().get("species") or []]:
-        return [{"source": None, "added": [], "present": [],
-                 "untyped": {"id": "species.unknown", "grant": "damage resistances", "where": "species_key"}}]
+    source. The species is species_key_for's (the intent's, or EXC-COST5-1 on a supplied sheet); with no
+    species the sheet is untouched and the one untyped gap entry is returned. Returns
+    [{source, added, present}]; with no grant the sheet is untouched."""
+    key, gap = species_key_for(sheet, intent)
+    if gap is not None:
+        return [{"source": None, "added": [], "present": [], "untyped": dict(gap, grant="damage resistances")}]
+    intent = {"species_key": key, "choices": (intent or {}).get("choices") or {}} if isinstance(intent, dict) \
+        else {"species_key": key, "choices": {}}
     found = species_damage_resistances(intent)
     if not found:
         return []

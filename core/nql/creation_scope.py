@@ -296,6 +296,12 @@ def issued_points(intent: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
                         sid = "%s.%s.%s" % (cid, _slug(option), _slug(sub["name"]))
                         out[sid] = _point_entry(sid, sub, cls, d)
     background = d.backgrounds().get(intent.get("background_key"))
+    granted = set((background or {}).get("skill_keys") or [])
+    if granted:
+        # A class skill pick never offers a skill the background already grants (typed set difference).
+        for cid, entry in out.items():
+            if entry.get("kind") == "skill" and isinstance(entry.get("option_keys"), list):
+                entry["option_keys"] = [k for k in entry["option_keys"] if k not in granted]
     if background and _ability_options(background):
         bid = "background.%s.ability-scores" % background["key"]
         out[bid] = {"id": bid, "kind": "ability_scores", "name": "Ability Score Increases", "count": 1, "section": "S1",

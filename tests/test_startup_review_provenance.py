@@ -159,18 +159,17 @@ def test_authored_hit_points_are_set_exactly_before_projection(wizard, authored)
     assert hp["maximum"] == hp["current"] == candidate["character"]["maxHitPoints"]
 
 
-@pytest.mark.parametrize("cls, con, traits, feats, expected", [
-    ("Wizard", 8, [], [], 5),                                    # 6 - 1
-    ("Cleric", 12, ["Dwarven Toughness"], [], 10),               # 8 + 1 + 1
-    ("Barbarian", 10, [], [], 12),
-    ("Fighter", 14, [], ["Tough"], 12),                           # SRD 5.2.1 has no Tough feat
-    ("Sorcerer", 1, [], [], 1),                                   # 6 - 5
+@pytest.mark.parametrize("cls, con, race, feats, expected", [
+    ("Wizard", 8, "Human", [], 5),                               # 6 - 1
+    ("Cleric", 12, "Dwarf", [], 10),                             # 8 + 1 + Dwarven Toughness 1
+    ("Barbarian", 10, "Human", [], 12),
+    ("Fighter", 14, "Human", ["Tough"], 12),                      # SRD 5.2.1 has no Tough feat
+    ("Sorcerer", 1, "Human", [], 1),                              # 6 - 5
 ])
-def test_level_one_hit_points_come_from_progression(wizard, authored, cls, con, traits, feats, expected):
+def test_level_one_hit_points_come_from_progression(wizard, authored, cls, con, race, feats, expected):
     sheet = copy.deepcopy(authored["character"])
-    sheet["class"] = cls
+    sheet["class"], sheet["race"] = cls, race
     sheet["abilities"]["constitution"] = con
-    sheet["racialTraits"] = [{"name": name, "description": "typed"} for name in traits]
     sheet["feats"] = [{"name": name, "description": "typed"} for name in feats]
     maximum, terms = wizard.expected_starting_hit_points(sheet)
     assert maximum == expected
@@ -289,26 +288,27 @@ def test_style_not_recorded_as_level_up_writes_it_is_sent_back(wizard, authored,
     assert "one of: Archery, Defense, Great Weapon Fighting, Two-Weapon Fighting." in message
 
 
-@pytest.mark.parametrize("race, traits, bonus", [
-    ("Dwarf", ["Dwarven Toughness"], 1),
-    ("Dwarf", ["Dwarven Toughness (Hill)"], 1),
-    ("Dwarf", [], 1),
-    ("Dwarf", ["Dwarven Toughness", "Dwarven Toughness"], 1),
-    ("Hill Dwarf", ["Dwarven Toughness"], 1),
-    # No SRD 5.2.1 species is named "Hill Dwarf" and the engine has no species
-    # hit point rule, so neither side adds the bonus without the exact trait.
-    ("Hill Dwarf", [], 0),
-    ("Hill Dwarf", ["Dwarven Toughness (Hill)"], 0),
-    ("Human", [], 0),
+@pytest.mark.parametrize("race, traits, intent, bonus", [
+    ("Dwarf", ["Dwarven Toughness"], None, 1),
+    ("Dwarf", [], None, 1),
+    ("Dwarf", ["Dwarven Toughness", "Dwarven Toughness"], None, 1),
+    # A supplied sheet (no intent) is keyed on its race by exact canonical name only (EXC-COST5-1); a trait
+    # name is display text and never grants (B1, nql-c0 S2).
+    ("Hill Dwarf", ["Dwarven Toughness"], None, 0),
+    ("dwarf", [], None, 0),
+    ("Human", ["Dwarven Toughness"], None, 0),
+    # The interview passes its typed intent, and race text is never read.
+    ("Hill Dwarf", [], {"species_key": "dwarf", "choices": {}}, 1),
+    ("Dwarf", [], {"species_key": "human", "choices": {}}, 0),
+    ("Dwarf", [], {}, 0),
 ])
-def test_dwarven_toughness_comes_from_the_species(wizard, authored, race, traits, bonus):
-    # #855: keyed on race against progression.json hp_bonuses; the exact trait
-    # name still counts, once.
+def test_dwarven_toughness_comes_from_the_species(wizard, authored, race, traits, intent, bonus):
+    # #855: keyed on the typed species against progression.json hp_bonuses, once.
     sheet = copy.deepcopy(authored["character"])
     sheet["class"], sheet["race"] = "Cleric", race
     sheet["abilities"]["constitution"] = 12
     sheet["racialTraits"] = [{"name": name, "description": "typed"} for name in traits]
-    maximum, terms = wizard.expected_starting_hit_points(sheet)
+    maximum, terms = wizard.expected_starting_hit_points(sheet, intent)
     assert maximum == 8 + 1 + bonus
     assert ("Dwarven Toughness (+1)" in terms) == bool(bonus)
 
@@ -882,9 +882,11 @@ def scoped(wizard, monkeypatch):
 
 
 def _scoped_turn(intent, narration="Which divine order calls to her?"):
+    intent = dict({"ability_scores": None}, **intent) if isinstance(intent, dict) else intent
     return json.dumps({"version": 1, "decision": "continue_interview", "narration": narration,
                        "confirmation": {"player_message_index": None, "whole_build_approved": False},
-                       "character": None, "origin": None, "starting_equipment": None, "intent": intent})
+                       "character": None, "origin": None, "starting_equipment": None, "intent": intent,
+                       "creative": None})
 
 
 def _section_accept(task_id, wizard, messages=None):

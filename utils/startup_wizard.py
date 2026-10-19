@@ -910,10 +910,10 @@ def _creation_scope_current(conversation):
 SCOPE_STATE_PURPOSE = "startup_scope_state"
 
 
-def _scope_states(conversation):
-    """This interview's scope state records, in order: by purpose and the current checkpoint's startup_id
-    (r3.1 §3.6); a record of another startup never applies to this one."""
-    states = _system_records(conversation, SCOPE_STATE_PURPOSE)
+def _scope_states(conversation, purpose=SCOPE_STATE_PURPOSE):
+    """This interview's scope state records (or other per-startup records of purpose), in order: by purpose
+    and the current checkpoint's startup_id (r3.1 §3.6); a record of another startup never applies to this one."""
+    states = _system_records(conversation, purpose)
     startup_id = (_startup_progress(conversation) or {}).get("startup_id")
     if startup_id is not None:
         # A record written before the history's first checkpoint has no id; that checkpoint minted the id of
@@ -935,6 +935,17 @@ def _first_startup_id(conversation):
         if isinstance(record, dict) and "startup_checkpoint_version" in record:
             return record.get("startup_id")
     return None
+
+
+ABILITY_ROLL_PURPOSE = "startup_ability_roll"
+OPEN_CHOICES_PURPOSE = "startup_open_choices"
+
+
+def _ability_roll(conversation):
+    """This interview's engine ability roll (D-CREATE-COST-5, amendment 1f), or None: one per interview,
+    kept with the history and never rolled again on resume."""
+    rolls = _scope_states(conversation, ABILITY_ROLL_PURPOSE)
+    return rolls[-1] if rolls else None
 
 
 def _scope_state(conversation):
@@ -1000,16 +1011,45 @@ def _scoped_intent(conversations, proposal, rescoped):
     problems = creation_scope.choice_problems(intent)
     if problems:
         raise StartupScopeRefusal(problems, [])
+    ask_again = False
+    if ((intent.get("ability_scores") or {}).get("method") == "random"
+            and _ability_roll(conversations[0]) is None):
+        # The engine rolls once, the first time the player's method is random; the author assigns the
+        # rolled numbers and never invents its own (amendment 1f).
+        from core.nql.creation_build import roll_ability_scores
+        record = dict({"task_purpose": ABILITY_ROLL_PURPOSE,
+                       "startup_id": (_startup_progress(conversations[0]) or {}).get("startup_id")},
+                      **roll_ability_scores(),
+                      instruction=("The engine rolled these six ability scores (four d6, highest three). Show them "
+                                   "and assign them as the player wishes; they are never rolled again or replaced."))
+        for conversation in conversations:
+            conversation.append({"role": "system", "content": json.dumps(record, ensure_ascii=False)})
+        ask_again = True
     scope = creation_scope.creation_scope(intent)
     current = _creation_scope_current(conversations[0])
     if scope is not None and (current is None or current.get("scope_id") != scope["scope_id"]):
         _append_scope(conversations, scope, intent)
-        if not rescoped:
-            return True
-    open_ids = (creation_scope.open_choice_ids(intent)
-                if proposal["decision"] == "finalize_character" else [])
-    if open_ids:
-        raise StartupScopeRefusal([], open_ids)
+        ask_again = True
+    if ask_again and not rescoped:
+        return True
+    open_ids = creation_scope.open_choice_ids(intent)
+    if proposal["decision"] == "finalize_character":
+        if open_ids:
+            raise StartupScopeRefusal([], open_ids)
+        return False
+    reported = _scope_states(conversations[0], OPEN_CHOICES_PURPOSE)
+    if not reported or reported[-1].get("open_choice_ids") != open_ids:
+        # Amendment 2: the engine reports what is still open, as typed ids (their options are in the scope).
+        # The author asks the player for each, or picks itself only when the player delegates; never filled
+        # silently, and never read from the player's words by code.
+        record = {"task_purpose": OPEN_CHOICES_PURPOSE,
+                  "startup_id": (_startup_progress(conversations[0]) or {}).get("startup_id"),
+                  "open_choice_ids": open_ids,
+                  "instruction": ("Each open choice id is answered in intent from its scope options: ask the player, "
+                                  "or choose yourself only when the player asks you to choose. Finalize only when "
+                                  "none are open.")}
+        for conversation in conversations:
+            conversation.append({"role": "system", "content": json.dumps(record, ensure_ascii=False)})
     return False
 
 
@@ -1995,35 +2035,35 @@ def _typed_entry_count(entries, name):
     return count
 
 
-def _species_hit_point_bonuses(character):
+def _species_hit_point_bonuses(character, intent=None):
     """The level-1 hit point bonuses a species trait grants, from the SRD
     progression tables' hp_bonuses (data/srd/progression.json): each entry of
-    kind "species trait" whose species is the sheet's race (casefolded), at
-    per_character_level (expected_starting_hit_points runs only for a level-1
-    sheet, so the bonus is that value; never multiplied by the authored level,
-    which the schema lets be 1.0). A sheet whose race is not that species but
-    lists the trait by its exact name keeps the bonus, counted once. Without
-    the table, an exact Dwarven Toughness entry gives +1. [(name, bonus)]."""
-    from core.leveling import tables
-    race = str(character.get("race", "")).strip().casefold()
-    traits = character.get("racialTraits")
-    entries = [e for e in tables.tables().get("hp_bonuses") or [] if isinstance(e, dict)]
-    if not entries:
-        return [("Dwarven Toughness", 1)] if _typed_entry_count(traits, DWARVEN_TOUGHNESS_TRAIT) else []
+    kind "species trait" whose species_key is the character's typed species
+    (choices.species_key_for: the creation intent's, or EXC-COST5-1 on a
+    supplied sheet), at per_character_level (expected_starting_hit_points runs
+    only for a level-1 sheet, so the bonus is that value; never multiplied by
+    the authored level, which the schema lets be 1.0). Without a typed species
+    no bonus applies; racialTraits names are display only and never read
+    here (B1, nql-c0 S2). [(name, bonus)]."""
+    from core.leveling import tables, choices as leveling_choices
+    key, _ = leveling_choices.species_key_for(character, intent)
+    if key is None:
+        return []
     out = []
-    for entry in entries:
+    for entry in tables.tables().get("hp_bonuses") or []:
+        if not isinstance(entry, dict):
+            continue
         granted = entry.get("granted_by") if isinstance(entry.get("granted_by"), dict) else {}
         per_level = entry.get("per_character_level")
         name = str(entry.get("name", "")).strip()
         if granted.get("kind") != "species trait" or type(per_level) is not int or not name:
             continue
-        if (str(granted.get("species", "")).strip().casefold() == race
-                or _typed_entry_count(traits, name.casefold())):
+        if granted.get("species_key") == key:
             out.append((name, per_level))
     return out
 
 
-def expected_starting_hit_points(character):
+def expected_starting_hit_points(character, intent=None):
     """SRD 5.2.1 level-1 hit point maximum from the sheet's typed facts, with
     the terms that make it up: the class's hit die maximum from the progression
     tables, the Constitution modifier and Dwarven Toughness (minimum 1). SRD 5.2.1
@@ -2040,7 +2080,7 @@ def expected_starting_hit_points(character):
     con_mod = (con - 10) // 2
     terms = [f"{class_name} d{die} maximum {die}", f"Constitution {con} ({con_mod:+d})"]
     expected = die + con_mod
-    for name, bonus in _species_hit_point_bonuses(character):
+    for name, bonus in _species_hit_point_bonuses(character, intent):
         expected += bonus
         terms.append(f"{name} (+{bonus})")
     return max(1, expected), terms
@@ -2087,7 +2127,7 @@ def startup_mechanics(character, *, provenance=None, faults=None, intent=None):
     if not isinstance(character, dict):
         return character, notes
     name = character.get("name", "Unknown")
-    expected, terms = expected_starting_hit_points(character)
+    expected, terms = expected_starting_hit_points(character, intent)
     if provenance is not None and expected is not None:
         provenance["hit_points"] = {
             "source": "utils.startup_wizard.expected_starting_hit_points",

@@ -91,6 +91,29 @@ STARTUP_INTENT_SCHEMA = _object_schema({
         "species_keys": {"type": "array", "items": {"type": "string"}},
         "background_keys": {"type": "array", "items": {"type": "string"}},
     }),
+    # D-CREATE-COST-5 (amendment 1f): the method the player chose and the base score per ability, as typed
+    # fields the author sets; null until chosen. A random method's numbers are the engine's roll item.
+    "ability_scores": dict(_object_schema({
+        "method": {"type": "string", "enum": ["standard_array", "point_buy", "random"]},
+        "assignment": dict(_object_schema({ability: {"type": "integer"} for ability in (
+            "strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")}),
+            type=["object", "null"]),
+    }), type=["object", "null"]),
+})
+
+# The creative fields of an engine-built character (D-CREATE-COST-5, amendment 1a): copied verbatim, never
+# read for mechanics. backstory and appearance never reach the sheet (char_schema is frozen); they ride in
+# the startup_engine_build item. feature_descriptions: display text per engine-named feature (D1).
+STARTUP_CREATIVE_SCHEMA = _object_schema({
+    "name": {"type": "string"},
+    "alignment": {"type": "string"},
+    "personality_traits": {"type": "string"},
+    "ideals": {"type": "string"},
+    "bonds": {"type": "string"},
+    "flaws": {"type": "string"},
+    "backstory": {"type": ["string", "null"]},
+    "appearance": {"type": ["string", "null"]},
+    "feature_descriptions": {"type": ["object", "null"], "additionalProperties": {"type": "string"}},
 })
 
 
@@ -118,7 +141,18 @@ def startup_response_schema(*, scoped=False):
                 intent["properties"][field]["enum"] = keys + [None]
         schema["properties"]["intent"] = intent
         schema["required"].append("intent")
+        creative = dict(copy.deepcopy(STARTUP_CREATIVE_SCHEMA), type=["object", "null"])
+        alignment = (_char_schema().get("properties") or {}).get("alignment") or {}
+        if alignment.get("enum"):
+            creative["properties"]["alignment"]["enum"] = list(alignment["enum"])
+        schema["properties"]["creative"] = creative
+        schema["required"].append("creative")
     return schema
+
+
+def _char_schema():
+    from utils.encoding_utils import safe_json_load
+    return safe_json_load("schemas/char_schema.json") or {}
 
 
 def _validate(value, schema):
@@ -165,6 +199,8 @@ def parse_startup_response(text, *, latest_user_index, scoped=False):
             raise ValueError("Finalization requires origin class_key and background_key equal to intent's")
     elif value["character"] is not None or confirmation["whole_build_approved"]:
         raise ValueError("An interview response cannot approve or contain a character")
+    elif scoped and value.get("creative") is not None:
+        raise ValueError("An interview response has creative null; it is set at finalization")
     elif value["origin"] is not None or value["starting_equipment"] is not None:
         raise ValueError("An interview response has origin and starting_equipment null; they are set at finalization")
     elif value["decision"] == "pause_setup" and (

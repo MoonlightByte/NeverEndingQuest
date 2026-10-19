@@ -10,6 +10,7 @@ The numbers the existing finalize derives (hit points, armor class, every bonus 
 slots) are left to it: the sheet built here goes through ``_prepare_startup_proposal`` like an authored
 one, from the startup repair onward.
 """
+import random
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.leveling import choices as leveling_choices
@@ -57,9 +58,19 @@ def _spell_names(b: _Build, keys: List[str]) -> List[str]:
     return [b.d.spell_name.get(k, k) for k in keys]
 
 
-def _ability_scores(b: _Build, background: Dict[str, Any]) -> Dict[str, int]:
+def roll_ability_scores(rng: Any = None) -> Dict[str, Any]:
+    """The engine's random generation (p. 21): four d6, the highest three summed, six times.
+    {"rolled": [6 totals], "dice": [[4 d6] x6]}; rng defaults to the system source."""
+    rng = rng or random.SystemRandom()
+    dice = [[rng.randint(1, 6) for _ in range(4)] for _ in range(6)]
+    return {"rolled": [sum(sorted(d)[1:]) for d in dice], "dice": dice}
+
+
+def _ability_scores(b: _Build, background: Dict[str, Any], rolled: Optional[List[int]]) -> Dict[str, int]:
     """Base scores by the declared method, then the background's issued increase (max 20; p.21, p.83)."""
     spec = b.intent.get("ability_scores") or {}
+    if "rolled" in spec:  # numbers never come from intent (S1)
+        raise BuildRefusal([{"field": "intent.ability_scores.rolled", "problem": "the engine's roll item is the only source"}])
     methods = b.d.origins.get("ability_score_methods") or {}
     method = spec.get("method")
     assignment = spec.get("assignment") if isinstance(spec.get("assignment"), dict) else {}
@@ -78,7 +89,7 @@ def _ability_scores(b: _Build, background: Dict[str, Any]) -> Dict[str, int]:
         if sum(costs[str(v)] for v in base.values()) > (methods.get("point_cost") or {}).get("budget", 27):
             raise BuildRefusal([{"field": "intent.ability_scores", "problem": "point-buy cost over the budget"}])
     elif method == "random":
-        rolled = spec.get("rolled")
+        # The engine's persisted roll item is the only source (N1); intent never carries numbers.
         if not isinstance(rolled, list) or sorted(base.values()) != sorted(rolled):
             raise BuildRefusal([{"field": "intent.ability_scores", "problem": "not the engine-rolled set"}])
     else:
@@ -245,8 +256,8 @@ def _unique(values: List[str]) -> List[str]:
     return out
 
 
-def build_level_one_sheet(intent: Dict[str, Any], creative: Dict[str, Any],
-                          data: Optional[_Data] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def build_level_one_sheet(intent: Dict[str, Any], creative: Dict[str, Any], data: Optional[_Data] = None,
+                          *, rolled: Optional[List[int]] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """The level-1 sheet for a complete intent, and its provenance {engine_build, untyped}.
 
     Raises BuildRefusal when the intent has open or refused picks, an invalid ability-score assignment, or
@@ -350,8 +361,8 @@ def build_level_one_sheet(intent: Dict[str, Any], creative: Dict[str, Any],
         name = trait.get("name") if isinstance(trait, dict) else trait
         text = (trait.get("text") if isinstance(trait, dict) else None) or descriptions.get(name, "")
         racial.append({"name": name, "description": text, "source": "%s species" % species["name"]})
-    # A picked species choice is recorded as "<choice>: <option>" ("Draconic Ancestry: Red"), the name the
-    # headless path's resistance and lineage readers match (audit F).
+    # A picked species choice is shown as "<choice>: <option>" ("Draconic Ancestry: Red"). Display only: every
+    # engine reader takes the typed choice id from the intent (N4).
     for choice in [c for c in (species.get("grants") or {}).get("choices") or [] if not c.get("kind")]:
         cid = "species.%s.%s" % (species_key, _slug(choice["name"]))
         for option in b.picked(cid):
@@ -367,7 +378,7 @@ def build_level_one_sheet(intent: Dict[str, Any], creative: Dict[str, Any],
         "level": 1, "race": species["name"], "class": class_name, "background": background["name"],
         "subclass": None, "status": "alive", "condition": "none", "condition_affected": [],
         "experience_points": 0, "temporaryEffects": [], "injuries": [],
-        "abilities": _ability_scores(b, background),
+        "abilities": _ability_scores(b, background, rolled),
         "savingThrows": b.source("savingThrows", "choices.class_traits.%s.saving_throws" % cls,
                                  list(traits.get("saving_throws") or [])),
         "skills": _unique(background_skills + picks["skills"] + species_picks["skills"]),
@@ -394,8 +405,12 @@ def build_level_one_sheet(intent: Dict[str, Any], creative: Dict[str, Any],
     for key in ("size", "speed"):
         if key in species_grants:
             sheet[key] = species_grants[key]
-    sheet["senses"] = {"darkvision": species_grants.get("darkvision", 0), "passivePerception": 10}
-    for key in ("backstory", "appearance"):
-        if isinstance(creative.get(key), str) and creative[key].strip():
-            sheet[key] = creative[key]
-    return sheet, {"engine_build": b.trace, "untyped": b.untyped}
+    # An untyped darkvision is left out (listed in untyped), never written as 0 (nql-c0 S3).
+    sheet["senses"] = {"passivePerception": 10}
+    if "darkvision" in species_grants:
+        sheet["senses"]["darkvision"] = species_grants["darkvision"]
+    # char_schema is frozen (NEQ-SCHEMA-01) and has no backstory or appearance property: they stay in the
+    # build's provenance (the startup_engine_build item) until the owner rules on a schema delta (D3).
+    extra = {k: creative[k] for k in ("backstory", "appearance")
+             if isinstance(creative.get(k), str) and creative[k].strip()}
+    return sheet, {"engine_build": b.trace, "untyped": b.untyped, "creative_extra": extra}
