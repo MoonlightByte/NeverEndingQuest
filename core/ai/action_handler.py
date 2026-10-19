@@ -632,10 +632,18 @@ def _new_current_transition_checkpoint(
 
 
 class ModuleNotJoinedError(ValueError):
-    """The destination module is installed but not joined to the world (#720)."""
+    """The destination module is installed but not joined to the world (#720),
+    or the value is not a module id at all (#1287): then the joined ids are
+    returned to the agent, never guessed from the value."""
 
-    def __init__(self, module_name):
+    def __init__(self, module_name, joined_ids=None):
         self.module_name = module_name
+        if joined_ids is not None:
+            super().__init__(
+                "module %r is not a module id; the joined module ids are: %s"
+                % (module_name, ", ".join(sorted(joined_ids)))
+            )
+            return
         super().__init__(
             "module %s is installed but not joined to this world, so it is "
             "not a travel destination" % module_name
@@ -661,10 +669,14 @@ def resolve_cross_module_target_projection(target_module, parameters):
     if not isinstance(registry, dict) or not isinstance(registry.get("modules"), dict):
         import errno
         raise OSError(errno.EIO, "World registry could not be verified")
-    # The same name the snapshot below reads (spaces read as underscores).
-    if not ModuleStitcher.is_joined_registry_module(
-        registry, str(target_module or "").replace(" ", "_")
-    ):
+    # #1287: the exact folder id only; a display form is refused, never stored.
+    target_module = str(target_module or "")
+    if target_module not in registry["modules"]:
+        raise ModuleNotJoinedError(target_module, joined_ids=[
+            key for key in registry["modules"]
+            if ModuleStitcher.is_joined_registry_module(registry, key)
+        ])
+    if not ModuleStitcher.is_joined_registry_module(registry, target_module):
         raise ModuleNotJoinedError(target_module)
     from utils.path_encounter_analyzer import build_active_module_snapshot
     snapshot = build_active_module_snapshot(target_module)
@@ -6477,6 +6489,15 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             # Check if module is being changed
             new_module = parameters.get("module")
             if new_module and new_module != current_module:
+                # A usable destination requires both real IDs and an exact
+                # module id (#1287). Models may emit the full field shape with
+                # empty strings; treating those keys as "provided" publishes a
+                # module with a blank world projection and strands the player
+                # at "()" in the web UI. Resolved first, so a refusal reads and
+                # builds nothing.
+                parameters.update(
+                    resolve_cross_module_target_projection(new_module, parameters)
+                )
                 print(f"DEBUG: [Module Transition] Module change detected: {current_module} -> {new_module}")
                 print(f"DEBUG: [Party Tracker Before Update] Module: {current_party_data.get('module', 'Unknown')}")
                 info(f"STATE_CHANGE: Module change detected: {current_module} -> {new_module}", category="module_management")
@@ -6526,14 +6547,6 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         info(f"SUCCESS: Campaign context prepared for {new_module}", category="module_management")
                     else:
                         warning(f"STATE_CHANGE: No campaign context to inject for {new_module} - context was empty", category="module_management")
-                
-                # A usable destination requires both real IDs. Models may emit
-                # the full field shape with empty strings; treating those keys
-                # as "provided" publishes a module with a blank world
-                # projection and strands the player at "()" in the web UI.
-                parameters.update(
-                    resolve_cross_module_target_projection(new_module, parameters)
-                )
             
             # Update party tracker with all provided parameters
             for key, value in parameters.items():
