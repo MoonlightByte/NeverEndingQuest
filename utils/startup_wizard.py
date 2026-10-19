@@ -1115,7 +1115,8 @@ def _scoped_intent(conversations, proposal, rescoped, persist=None):
         record = {"task_purpose": OPEN_CHOICES_PURPOSE,
                   "startup_id": (_startup_progress(conversations[0]) or {}).get("startup_id"),
                   "open_choice_ids": open_ids,
-                  "instruction": ("Each open choice id is answered in intent from its scope options: ask the player, "
+                  "open_choices": creation_scope.open_choices(intent),
+                  "instruction": ("Each open choice id is answered in intent from its options listed here: ask the player, "
                                   "or choose yourself only when the player asks you to choose. Finalize only when "
                                   "none are open.")}
         for conversation in conversations:
