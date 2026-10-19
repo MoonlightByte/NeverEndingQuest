@@ -835,9 +835,9 @@ OPENAI_GPT56_TERRA_HIGH = {"model": "gpt-5.6-terra", "reasoning_effort": "high"}
 # Effort low, so the provider guard strips the caller temperature (gpt-5.6-luna rejects temperature != 1 above none).
 STARTUP_REVIEW_T124_GPT_5_6_LUNA_LOW = {"model": "gpt-5.6-luna", "reasoning_effort": "low"}
 # D-CREATE-COST-5 (Q1 option 1): every startup interview takes the one engine path, and the engine builds
-# the sheet from the typed intent. This selects only the review: "engine" (one T128 review of intent and
-# turn) or "whole" (#1278's T124 review over the engine-built sheet), the rollback. "sectioned", the
-# COST-4 name, reads as "engine".
+# the sheet from the typed intent. This selects only the review: "engine" (no model review; the engine is the
+# only gate, D-ALLCLASS-4) or "whole" (#1278's T124 review over the engine-built sheet), the rollback.
+# "sectioned", the COST-4 name, reads as "engine".
 STARTUP_REVIEW_MODE = "engine"
 OPENAI_GPT56_SOL_NONE = {"model": "gpt-5.6-sol", "reasoning_effort": "none"}
 OPENAI_GPT56_SOL_LOW = {"model": "gpt-5.6-sol", "reasoning_effort": "low"}

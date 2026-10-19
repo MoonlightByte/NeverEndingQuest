@@ -953,24 +953,13 @@ def _scoped_turn(intent, narration="Which divine order calls to her?"):
                        "starting_equipment": None, "intent": intent, "creative": None})
 
 
-def _engine_accept(messages=None):
-    return json.dumps({"version": 1, "accepted": True, "needs_player_clarification": False, "demands": []})
-
-
-def _engine_reject(field="narration", demand="Ask the player first.", reason_kind="flow", contradiction=False):
-    return json.dumps({"version": 1, "accepted": False, "needs_player_clarification": False, "demands": [
-        {"field": field, "demand": demand, "reason_kind": reason_kind, "contradiction": contradiction}]})
-
-
-def _run_scoped(wizard, monkeypatch, answers, lines, conversation=None, review=None):
+def _run_scoped(wizard, monkeypatch, answers, lines, conversation=None):
     """Drive ai_character_interview with scripted T092 answers and player lines; returns the history and calls."""
     calls = []
 
     def model(messages, *args, **kwargs):
         task = kwargs.get("task_id", "T092")
         calls.append((task, copy.deepcopy(messages)))
-        if task == "T128":
-            return (review or _engine_accept)(messages)
         return answers.pop(0)
 
     lines = iter(lines)
@@ -1069,82 +1058,17 @@ def test_new_interview_gets_the_scoped_prompt_and_menu_not_the_reference(scoped,
     purposes = _purposes(conversation)
     assert "startup_rules_reference" not in purposes
     assert purposes.count("startup_creation_scope") == 1 and purposes.count("startup_scope_state") >= 1
-    assert [task for task, _ in calls if task != "T092"] == ["T128"]
+    assert [task for task, _ in calls] == ["T092"]  # D-ALLCLASS-4: one model call per interview turn, no review
 
 
-def test_intent_rescopes_once_and_t128_reviews_without_interview_items(scoped, monkeypatch):
+def test_intent_rescopes_once_and_no_review_call_follows(scoped, monkeypatch):
     answers = [_scoped_turn(SCOPED_BLANK), _scoped_turn(SCOPED_CLERIC), _scoped_turn(SCOPED_CLERIC)]
     conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte, please."])
-    assert [task for task, _ in calls].count("T092") == 3  # the menu answer, then the re-ask after the re-scope
-    reviews = [messages for task, messages in calls if task == "T128"]
-    assert len(reviews) == 2  # the menu turn's, then the cleric turn's: one call each
-    messages = reviews[1]
-    assert [m["role"] for m in messages] == ["system", "user"]
-    facts = json.loads(messages[0]["content"].split("CREATION FACTS, as JSON:\n", 1)[1])
-    assert facts["class"]["name"] == "Cleric" and facts["species"]["name"] == "Dwarf"
-    assert "grants" not in facts["species"] and "sheet_representation" not in facts.get("common", {})
-    order = next(c for c in facts["choices"] if c["id"] == "cleric.divine-order.divine-order")
-    assert order["text"] and order["page"] == 37
-    # Audit A: each option's own SRD text (R04's Thaumaturge claim is checked against it).
-    options = {o["name"]: o["text"] for o in facts["class"]["order_options"][0]["options"]}
-    assert "Intelligence (Arcana or Religion) checks" in options["Thaumaturge"]
-    body = json.loads(messages[1]["content"])
-    assert body["task_purpose"] == "startup_engine_review"
-    assert [p["content"] for p in body["player_messages"]] == ["A dwarf cleric acolyte, please."]
-    assert set(body) == {"task_purpose", "player_messages", "latest_user_index", "previous_author_narration",
-                         "reply", "open_choice_ids", "unanswered_required",
-                         "previous_round_demands"}  # no sheet, no provenance
-    # C4-switch-r2: what a finalize needs that has no choice id is typed for the review, and the background's
-    # own skills are marked granted.
-    ids = [entry["id"] for entry in body["unanswered_required"]]
-    assert "starting_equipment.background_package" in ids and "ability_scores.assignment" in ids
-    assert facts["background"]["granted_skills"] == ["Insight", "Religion"]
-    assert body["reply"]["intent"]["class_key"] == "cleric" and body["open_choice_ids"]
-    # Leg 1 (T128 r2): starting_equipment rides in the reply (null before finalize), and the background's
-    # package slots are in the facts (R12: the Acolyte holy symbol's forms).
-    assert "starting_equipment" in body["reply"] and body["reply"]["starting_equipment"] is None
-    assert "Holy Symbol (Amulet)" in json.dumps(facts["background"]["equipment_options"])
+    assert [task for task, _ in calls] == ["T092"] * 3  # the menu answer, then the re-ask after the re-scope
+    assert "startup_engine_review" not in _purposes(conversation)
     scopes = scoped._system_records(conversation, "startup_creation_scope")
     assert len({s["scope_id"] for s in scopes}) == 2
     assert scoped._scope_states(conversation)[-1]["intent"]["class_key"] == "cleric"
-
-
-def test_a_rejected_round_sends_its_demands_to_the_next_review(scoped, monkeypatch):
-    verdicts = [_engine_accept(), _engine_reject("intent.choices.cleric.divine-order.divine-order",
-                                                 "Ask which order; the player never chose.", "intent_mismatch"),
-                _engine_accept()]
-    answers = [_scoped_turn(SCOPED_BLANK)] + [_scoped_turn(SCOPED_CLERIC)] * 3
-    conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte."],
-                                      review=lambda messages: verdicts.pop(0))
-    reviews = [json.loads(m[1]["content"]) for task, m in calls if task == "T128"]
-    assert [r["previous_round_demands"] for r in reviews][0] == []
-    assert reviews[-1]["previous_round_demands"][0]["reason_kind"] == "intent_mismatch"
-    correction = next(json.loads(m["content"]) for task, messages in calls if task == "T092"
-                      for m in messages if m["role"] == "system" and '"review_feedback"' in m["content"])
-    assert "intent_mismatch" in correction["review_feedback"]
-
-
-def test_t128_prompt_pins_the_asks_nothing_and_rules_claim_rules():
-    # Audit G: leg 1's known rejects R04 (false_rules_claim), R07 (unasked_choice) and R11 (flow), and
-    # alignment never a ground (R01-R03).
-    from utils.startup_prompt_builder import build_engine_review_prompt
-    text = " ".join(build_engine_review_prompt().split())
-    assert "A reply that asks the player nothing while open_choice_ids is not empty is a flow rejection," in text
-    assert ("A reply that asks for whole-build approval, or a finalize, while open_choice_ids is not empty is "
-            "an unasked_choice rejection.") in text
-    assert "or one that does not exist, is a false_rules_claim" in text
-    assert "Never reject for alignment" in text
-    # T128 r2 (leg 1): slot picks and packages are never demanded in intent; the features list is complete
-    # (R08, P2); substance over wording (R01); a narration ending on a colon asks nothing (R11).
-    assert "is recorded in starting_equipment as the player gives it" in text and "never demand it in intent" in text
-    assert "The class's level-1 features in the creation facts are the complete list" in text
-    assert "Wording that matches the facts in substance is not a false claim" in text
-    assert "ends on a colon or a heading with no question and no options after it" in text
-    # C4-switch-r2: rounds 10-12 demanded approval while the ability scores and a holy symbol's form were
-    # unanswered; round 7 read the Soldier's skills as a class-list error.
-    assert "Asking about an item in unanswered_required is a valid open question, never flow" in text
-    assert "not due while ability_scores items remain in it" in text
-    assert "granted_skills are granted by the background itself" in text
 
 
 def test_unanswered_required_lists_what_no_choice_id_stands_for():
@@ -1177,19 +1101,6 @@ def test_an_empty_creative_field_is_a_schema_retry_not_a_build_refusal(wizard, a
         parse_startup_response(json.dumps(proposal), latest_user_index=0, scoped=True)
     proposal["creative"][field] = "Too proud to retreat"
     assert parse_startup_response(json.dumps(proposal), latest_user_index=0, scoped=True)
-
-
-@pytest.mark.parametrize("verdict", [
-    {"version": 1, "accepted": True, "needs_player_clarification": False,
-     "demands": [{"field": "narration", "demand": "x", "reason_kind": "flow", "contradiction": False}]},
-    {"version": 1, "accepted": False, "needs_player_clarification": False, "demands": []},
-    {"version": 1, "accepted": False, "needs_player_clarification": False,
-     "demands": [{"field": "creative.alignment", "demand": "x", "reason_kind": "alignment", "contradiction": False}]},
-])
-def test_an_invalid_t128_verdict_is_refused(verdict):
-    from utils.startup_contract import parse_engine_review
-    with pytest.raises(ValueError):
-        parse_engine_review(json.dumps(verdict))
 
 
 @pytest.mark.parametrize("value, mode", [("engine", "engine"), ("whole", "whole"), ("sectioned", "engine"),
@@ -1248,14 +1159,11 @@ def test_a_pick_outside_the_scope_is_refused_typed_and_never_reviewed(scoped, mo
 
 
 def test_scope_items_are_saved_only_when_the_turn_publishes(scoped, monkeypatch):
-    # A turn whose response never publishes leaves the saved history's scope state as it was (r3.1 T4).
-    def refuse_cleric(messages):
-        if json.loads(messages[1]["content"])["reply"]["intent"]["class_key"] != "cleric":
-            return _engine_accept()
-        return _engine_reject("intent.class_key", "Ask the player first.", "intent_mismatch")
-    answers = [_scoped_turn(SCOPED_BLANK)] + [_scoped_turn(SCOPED_CLERIC)] * 12
-    conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte."], review=refuse_cleric)
-    assert any(task != "T092" for task, _ in calls[2:])  # the cleric turn reached its reviewers
+    # A turn whose response never publishes leaves the saved history's scope state as it was (r3.1 T4). The
+    # cleric turn re-scopes, then every answer is refused by the contract until the handback.
+    answers = [_scoped_turn(SCOPED_BLANK), _scoped_turn(SCOPED_CLERIC)] + ["{}"] * 12
+    conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte."])
+    assert len(calls) >= 3 and {task for task, _ in calls} == {"T092"}
     states = scoped._system_records(conversation, "startup_scope_state")
     assert states and all((s.get("intent") or {}).get("class_key") != "cleric" for s in states)
     assert len(scoped._system_records(conversation, "startup_creation_scope")) == 1  # only the menu's
@@ -1274,31 +1182,6 @@ def test_scope_state_is_not_a_checkpoint_and_belongs_to_its_startup(scoped, monk
     later = dict(scoped._startup_progress(conversation), startup_id="another-startup")
     conversation.append({"role": "system", "content": json.dumps(later)})
     assert (scoped._scope_states(conversation) or [None])[-1] is None
-
-
-def test_bard_round_7_request_keeps_the_class_package_in_intent():
-    # D-ALLCLASS-2 (dplay-AC-bard rounds 6-8): T128 first asked for option A in intent, then reversed and asked
-    # to move it to starting_equipment. The round-7 request, rebuilt offline: the class package pick is in
-    # intent, its slot entry names that package's choice id, and the prompt says the pick stays in intent.
-    from core.nql import creation_scope
-    from utils.startup_prompt_builder import build_engine_review_request
-    package = "bard.core-bard-traits.starting-equipment"
-    intent = {"class_key": "bard", "species_key": "halfling", "background_key": "acolyte",
-              "choices": {package: ["A"]}}
-    scope = creation_scope.creation_scope(intent)
-    messages = build_engine_review_request(
-        facts=creation_scope.review_facts(scope), player_messages=[], latest_user_index=0,
-        previous_author_narration="", reply={"decision": "continue_interview", "intent": intent},
-        open_choice_ids=[], previous_round_demands=[],
-        unanswered_required=creation_scope.unanswered_required(scope, intent))
-    system = " ".join(messages[0]["content"].split())
-    assert ("The class's starting-equipment choice has a choice id: its package pick (A or B) belongs in "
-            "intent.choices; only the package's slots and the background's package go in starting_equipment.") in system
-    body = json.loads(messages[1]["content"])
-    assert body["reply"]["intent"]["choices"][package] == ["A"]
-    assert {"id": "starting_equipment.slot:bard.A.instrument", "package_choice_id": package} in body["unanswered_required"]
-    assert {"id": "starting_equipment.slot:acolyte.A.holy_symbol", "package_choice_id": None} in body["unanswered_required"]
-    assert all(entry["id"] != "starting_equipment.slot:" + package for entry in body["unanswered_required"])
 
 
 def _bard_interview_turn(equipment):
@@ -1353,27 +1236,6 @@ def test_finalize_needs_every_package_and_slot_pick(wizard, authored):
         wizard._prepare_startup_proposal(proposal)
 
 
-def test_review_facts_carry_cantrip_text_and_t128_keeps_granted_skills_out_of_class_options():
-    # All-class B4 (dplay-AC-bard-r2/r3): T128 asked to hedge cantrip effects the facts did not give; each
-    # cantrip option now carries its SRD description, by typed key. B3 (bard, bard-r2): T128 asked to list the
-    # background's own skills among the class options.
-    import json as _json
-    from core.nql import creation_scope
-    from utils.startup_prompt_builder import build_engine_review_prompt
-    scope = creation_scope.creation_scope({"class_key": "bard", "species_key": "halfling",
-                                           "background_key": "acolyte", "choices": {}})
-    facts = creation_scope.review_facts(scope)
-    cantrips = next(c for c in facts["choices"] if c["id"] == "bard.spellcasting.cantrips")
-    mockery = next(o for o in cantrips["options"] if o["key"] == "vicious_mockery")
-    repository = _json.load(open(ROOT / "data" / "spell_repository.json", encoding="utf-8"))
-    assert mockery["text"] == repository["vicious_mockery"]["description"]
-    assert all("text" not in o for c in scope["choices"] for o in (c.get("options") or [])
-               if isinstance(o, dict) and c.get("kind") == "cantrip")
-    text = " ".join(build_engine_review_prompt().split())
-    assert ("A skill in background.granted_skills is never a class skill option; its absence from the class "
-            "list is correct.") in text
-
-
 def test_an_approval_after_the_sheet_preview_must_finalize():
     # All-class A1 (dplay-AC-ranger): after "Yes, that's her. Let's start." the author kept asking approval
     # for ideal, bond and flaw text it had just written; T128 demanded finalize 8 times before a handback.
@@ -1389,7 +1251,6 @@ def test_package_items_say_whether_equipped_can_name_them_and_their_aliases():
     # catalog ids, and it listed the staff twice (as the focus and as a Quarterstaff); T128 rejected three times.
     # Each package item now says, from the data, whether equipped can name it, and its other names.
     from core.nql import creation_scope
-    from utils.startup_prompt_builder import build_engine_review_request
     intent = {"class_key": "wizard", "species_key": "elf", "background_key": "sage",
               "choices": {"wizard.core-wizard-traits.starting-equipment": ["A"]}}
     scope = creation_scope.creation_scope(intent)
@@ -1399,13 +1260,6 @@ def test_package_items_say_whether_equipped_can_name_them_and_their_aliases():
     staff = items["itemdef:srd/arcane-focus-staff"]
     assert staff["equippable"] is True and staff["aliases"] == ["Arcane Focus (Quarterstaff)", "Quarterstaff"]
     assert items["itemdef:srd/robe"]["equippable"] is True
-    messages = build_engine_review_request(
-        facts=creation_scope.review_facts(scope), player_messages=[], latest_user_index=0,
-        previous_author_narration="", reply={"decision": "continue_interview", "intent": intent},
-        open_choice_ids=[], previous_round_demands=[],
-        unanswered_required=creation_scope.unanswered_required(scope, intent))
-    system = messages[0]["content"]
-    assert '"equippable": false' in system and '"aliases": ["Arcane Focus (Quarterstaff)", "Quarterstaff"]' in system
     # The aliases are authored in the data (choices.json), never read from evidence text (D-KW).
     import json as _json
     data = _json.dumps(_json.load(open(ROOT / "data" / "srd" / "choices.json", encoding="utf-8")))
@@ -1436,3 +1290,20 @@ def test_background_ability_keys_are_authored_and_the_option_keys_unchanged():
         "+2 Intelligence, +1 Wisdom", "+2 Wisdom, +1 Constitution", "+2 Wisdom, +1 Intelligence", "+1 each"]
     assert creation_scope._ability_options(dict(sage, ability_scores="Strength, Dexterity, Charisma")) == \
         creation_scope._ability_options(sage)
+
+
+def test_a_refused_finalize_reprompts_the_author_with_typed_problems_and_no_review(scoped, monkeypatch):
+    # D-ALLCLASS-4: the engine is the only gate. A finalize the contract refuses goes back to the author with the
+    # typed problem in the same turn; no review call is made and no review record is written.
+    finalize = json.loads(_scoped_turn(SCOPED_CLERIC))
+    finalize.update(decision="finalize_character", starting_equipment=None,
+                    confirmation={"player_message_index": 1, "whole_build_approved": True})
+    answers = [_scoped_turn(SCOPED_BLANK), _scoped_turn(SCOPED_CLERIC), json.dumps(finalize),
+               _scoped_turn(SCOPED_CLERIC)]
+    conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte. Finish her."])
+    assert {task for task, _ in calls} == {"T092"} and len(calls) == 4
+    retry = calls[3][1]
+    refusal = [m["content"] for m in retry if m.get("role") == "system"
+               and str(m.get("content", "")).startswith("Rejected startup proposal (not approved):")]
+    assert refusal and "finalize" in refusal[-1].lower()
+    assert "startup_engine_review" not in _purposes(conversation)
