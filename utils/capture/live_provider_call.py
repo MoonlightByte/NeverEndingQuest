@@ -105,6 +105,10 @@ _CONNECT_SECONDS = 5.0
 _LEVEL_UP_TASK_IDS = frozenset({"T047", "T048", "T115", "T116", "T117", "T118", "T119", "T120", "T121"})
 _LEVEL_UP_BACKSTOP_SECONDS = 120.0
 _NO_WATCHDOG_ADVISORY_TASK_IDS = frozenset({"T105", "T112"})
+# Combat-turn tasks, from their call sites (#1271): combat_manager.py
+# T040-T044, combat_agent.py T096/T097, roll_answer.py T126 (read only by the
+# combat orchestrator today).
+_COMBAT_TASK_IDS = frozenset({"T040", "T041", "T042", "T043", "T044", "T096", "T097", "T126"})
 # Tasks whose SUCCESS envelopes are also written to the master log by the
 # parent (their callers do not log_api_call themselves).
 _SUCCESS_LOG_TASK_IDS = frozenset({"T047", "T048", "T105", "T108", "T113",
@@ -1047,6 +1051,19 @@ class _GenerationReader(threading.Thread):
             self.finished = True
 
 
+def wait_purpose(task_id):
+    """What a waiting model call is for, from its task id alone (#1271)."""
+    if task_id in ("T092", "T124"):
+        return "character_setup"
+    if task_id == "T093":
+        return "starting_location"
+    if task_id in _LEVEL_UP_TASK_IDS:
+        return "level_up"
+    if task_id in _COMBAT_TASK_IDS:
+        return "combat"
+    return "turn"
+
+
 def _emit_working(message):
     from core.managers.status_manager import status_manager
 
@@ -1446,15 +1463,64 @@ def call_live_provider(
         elapsed = max(1, int(time.monotonic() - logical_started))
         return "Still working on character setup (%d seconds elapsed)..." % elapsed
 
+    # #1271: the input-locking channel also carries a typed record of this
+    # call. Caller-owned sinks (the welcome channel, the T105 batch) do not.
+    publish_wait = emit is _emit_working
+    purpose = wait_purpose(task_id)
+
+    def wait_record(retry_until=None):
+        reader = current_reader["reader"]
+        state = reader.snapshot() if reader is not None else None
+        generation_started = current_reader["started"]
+        last = state.get("last_progress") if state else None
+        return {
+            "purpose": purpose,
+            "taskId": task_id,
+            "provider": frozen_kwargs.get("_request_provider"),
+            "providerName": provider_name,
+            # The attempt in progress, or during a retry wait the next one.
+            "attempt": failure_count + 1,
+            "maxAttempts": None,
+            "startedAt": logical_started,
+            "phase": state.get("current") if state else None,
+            "lastActivityAt": (generation_started + float(last)
+                               if last is not None and generation_started is not None else None),
+            "retryUntil": retry_until,
+        }
+
+    def emit_status(message, retry_until=None):
+        if not publish_wait:
+            _safe_emit(emit, message)
+            return
+        from core.managers.status_manager import status_manager
+
+        record = wait_record(retry_until)
+        _safe_emit(lambda text: status_manager.update_status(text, True, wait=record), message)
+
+    def retry_wait(seconds, message):
+        retry_until = time.monotonic() + max(0.0, float(seconds))
+        _interruptible_wait(
+            seconds, scope, message,
+            lambda text: emit_status(text, retry_until), authority_check,
+        )
+
+    if publish_wait:
+        # Elapsed time from 0 s, without a new text line (headless unchanged).
+        try:
+            from core.managers.status_manager import status_manager
+
+            status_manager.publish_wait(wait_record())
+        except Exception:
+            pass
+
     while True:
         try:
             _check_live_authority(scope, authority_check)
         except OSError:
             failure_count += 1
-            _interruptible_wait(
-                _delay_for_error({}, failure_count), scope,
-                "Still working; checking the current adventure...", emit,
-                authority_check,
+            retry_wait(
+                _delay_for_error({}, failure_count),
+                "Still working; checking the current adventure...",
             )
             continue
         generation = (
@@ -1498,14 +1564,11 @@ def call_live_provider(
                     task_id, {"error_class": "process_setup_unavailable"}
                 )
             failure_count += 1
-            _interruptible_wait(
+            retry_wait(
                 _delay_for_error({}, failure_count),
-                scope,
                 wizard_heartbeat if wizard_task else (
                     "Still working; preparing a fresh provider connection..."
                 ),
-                emit,
-                authority_check,
             )
             continue
 
@@ -1601,8 +1664,7 @@ def call_live_provider(
                     break
                 time.sleep(0.25)
                 if time.monotonic() >= next_heartbeat:
-                    _safe_emit(
-                        emit,
+                    emit_status(
                         wizard_heartbeat() if wizard_task else (
                             turn_heartbeat(generation)
                         ),
@@ -1692,10 +1754,9 @@ def call_live_provider(
                 _check_live_authority(scope, authority_check)
             except OSError:
                 failure_count += 1
-                _interruptible_wait(
-                    _delay_for_error({}, failure_count), scope,
-                    "Still working; checking the current adventure...", emit,
-                    authority_check,
+                retry_wait(
+                    _delay_for_error({}, failure_count),
+                    "Still working; checking the current adventure...",
                 )
                 continue
             return response
@@ -1730,13 +1791,7 @@ def call_live_provider(
                 envelope.get("error_class", "transport_unavailable"),
                 envelope.get("http_status"),
             )
-            _interruptible_wait(
-                _delay_for_error(envelope, failure_count),
-                scope,
-                "",
-                emit,
-                authority_check,
-            )
+            retry_wait(_delay_for_error(envelope, failure_count), "")
             continue
         if policy == "advisory":
             raise LiveProviderUnavailable(task_id, envelope)
@@ -1785,15 +1840,12 @@ def call_live_provider(
             notify_player_once(
                 "class:%s" % envelope.get("disposition"), reason
             )
-            _safe_emit(emit, "%s %s" % (turn_heartbeat(generation), reason))
-        _interruptible_wait(
+            emit_status("%s %s" % (turn_heartbeat(generation), reason))
+        retry_wait(
             _delay_for_error(envelope, failure_count),
-            scope,
             wizard_heartbeat if wizard_task else (
                 lambda: turn_heartbeat(generation)
             ),
-            emit,
-            authority_check,
         )
 
 

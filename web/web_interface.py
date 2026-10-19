@@ -95,7 +95,7 @@ install_debug_interceptor()
 # Import the main game module and reset logic
 import main as dm_main
 import utils.reset_campaign as reset_campaign
-from core.managers.status_manager import set_status_callback, set_compression_callback
+from core.managers.status_manager import set_status_callback, set_detail_callback, set_compression_callback, wait_payload
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
 # Import toolkit components for API support
@@ -761,8 +761,9 @@ def log_web_audit(event_name, **fields):
     debug(message, category="web_interface")
 
 # Status callback function
-def emit_status_update(status_message, is_processing):
-    """Emit status updates to the frontend"""
+def emit_status_update(status_message, is_processing, wait=None):
+    """Emit status updates to the frontend. ``wait`` is the typed record of
+    the model call that owns a processing status (#1271)."""
     restore = _web_restore_state()
     recovery_required = restore.get('can_resume') is False
     if restore.get('pending') and not is_processing:
@@ -770,14 +771,26 @@ def emit_status_update(status_message, is_processing):
         is_processing = True
     if recovery_required and not is_processing:
         status_message = restore.get('message', 'Gameplay is paused. Choose Load, Reset, or Exit.')
-    socketio.emit('status_update', {
+    payload = {
         'message': status_message,
         'is_processing': is_processing,
         'recovery_required': recovery_required,
-    })
+    }
+    if wait is not None and is_processing:
+        payload['wait'] = wait_payload(wait)
+    socketio.emit('status_update', payload)
 
-# Set the status callback
-set_status_callback(emit_status_update)
+def emit_status_detail(detail):
+    """#1271: one status publication (message, is_processing, wait, seq), sent
+    whole so a message never travels with another publication's wait. It runs
+    inside the status lock, which is not reentrant: never call back into the
+    status manager from here."""
+    message, is_processing, wait, _seq = detail
+    emit_status_update(message, is_processing, wait)
+
+# Set the status callback: the web hears whole publications only.
+set_status_callback(None)
+set_detail_callback(emit_status_detail)
 
 # Set the compression callback
 def emit_compression_event(event_type, data):
@@ -2838,9 +2851,9 @@ def _emit_game_resumed():
     """
     from core.managers.status_manager import status_manager
     try:
-        status_message, is_processing = status_manager.get_status()
+        status_message, is_processing, wait, _seq = status_manager.get_status_detail()
     except Exception:
-        status_message, is_processing = '', False
+        status_message, is_processing, wait = '', False, None
     startup = _startup_ui_projection(True)
     emit('startup_status', startup)
     emit('game_resumed', {
@@ -2851,6 +2864,7 @@ def _emit_game_resumed():
     })
     emit('status_update', {
         'message': status_message or '', 'is_processing': bool(is_processing),
+        **({'wait': wait_payload(wait)} if wait is not None and is_processing else {}),
     })
 
 
@@ -2859,9 +2873,9 @@ def handle_ui_snapshot_request(data=None):
     """Return one authoritative lifecycle/processing snapshot on reconnect."""
     from core.managers.status_manager import status_manager
     try:
-        status_message, is_processing = status_manager.get_status()
+        status_message, is_processing, wait, _seq = status_manager.get_status_detail()
     except Exception:
-        status_message, is_processing = '', False
+        status_message, is_processing, wait = '', False, None
     running = bool(game_thread and game_thread.is_alive() and not _web_gameplay_paused())
     with _ui_operation_lock:
         operations = {
@@ -2872,10 +2886,12 @@ def handle_ui_snapshot_request(data=None):
     if restore.get('pending') or restore.get('can_resume') is False:
         status_message = restore.get('message', status_message)
         is_processing = bool(restore.get('pending'))
+        wait = None  # a lifecycle status, not a model call (#1271)
     emit('ui_state_snapshot', _ui_response(data, {
         'game_running': running,
         'is_processing': bool(is_processing),
         'status_message': status_message or '',
+        'wait': wait_payload(wait) if wait is not None and is_processing else None,
         'startup': _startup_ui_projection(running),
         'operations': operations,
         'roll_prompt': rules_roll_prompt.current() if running else None,
@@ -3575,7 +3591,8 @@ def handle_start_game():
     set_player_output_sink(_queue_safe_player_output)
     # Startup imports can install the terminal callback before capture exists.
     # Reclaim status delivery when this browser owns the game.
-    set_status_callback(emit_status_update)
+    set_status_callback(None)
+    set_detail_callback(emit_status_detail)
 
     # Start the game in a separate thread
     startup_handoff_active = True
