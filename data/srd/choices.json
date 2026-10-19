@@ -3946,7 +3946,8 @@
          "catalog_id": "itemdef:srd/druidic-focus-wooden-staff",
          "quantity": 1,
          "printed": "Druidic Focus (Quarterstaff)",
-         "evidence": "Wooden staff (also a Quarterstaff)"
+         "evidence": "Wooden staff (also a Quarterstaff)",
+         "aliases": ["Druidic Focus (Quarterstaff)", "Quarterstaff"]
         },
         {
          "catalog_id": "itemdef:srd/explorers-pack",
@@ -7771,7 +7772,8 @@
          "catalog_id": "itemdef:srd/arcane-focus-staff",
          "quantity": 1,
          "printed": "Arcane Focus (Quarterstaff)",
-         "evidence": "Staff (also a Quarterstaff)"
+         "evidence": "Staff (also a Quarterstaff)",
+         "aliases": ["Arcane Focus (Quarterstaff)", "Quarterstaff"]
         },
         {
          "catalog_id": "itemdef:srd/robe",

@@ -113,22 +113,29 @@ def background_keys() -> List[str]:
 
 # --- typed options (moved from utils/startup_prompt_builder.py; the whole reference keeps using them) ---
 
-def typed_options(option_items: Dict[str, Any], catalog: Dict[str, str]) -> Dict[str, Any]:
+def typed_options(option_items: Dict[str, Any], catalog: Dict[str, str], flags: bool = False) -> Dict[str, Any]:
     """A starting-package choice's typed options, whole: each option's key, its items (catalog ids with
     the catalog's printed names, choose_one ids, uncatalogued keys, slots) and its coins. The game's own
-    fields for an uncatalogued item (item_type, description) stay in the data."""
+    fields for an uncatalogued item (item_type, description) stay in the data. With flags (the engine
+    scope, D-ALLCLASS-1 after dplay-AC-wizard), each item says whether starting_equipment.equipped can
+    name it (a catalog item or a choose_one slot) and the data's authored aliases, when it has them."""
     def item(entry):
-        typed = {k: v for k, v in entry.items() if k not in ("item_type", "description")}
+        typed = {k: v for k, v in entry.items() if k not in ("item_type", "description", "aliases")}
         if entry.get("catalog_id") in catalog:
             typed["name"] = catalog[entry["catalog_id"]]
         if isinstance(entry.get("choose_one"), list):
             typed["choose_one"] = [{"catalog_id": i, "name": catalog.get(i)} for i in entry["choose_one"]]
+        if flags:
+            typed["equippable"] = entry.get("catalog_id") in catalog or isinstance(entry.get("choose_one"), list)
+            if entry.get("aliases"):
+                typed["aliases"] = list(entry["aliases"])
         return typed
     return {key: {"items": [item(e) for e in option.get("items") or []], "coins": option.get("coins")}
             for key, option in option_items.items()}
 
 
-def level_1_choices(choice_points: Dict[str, Any], catalog: Dict[str, str]) -> List[Dict[str, Any]]:
+def level_1_choices(choice_points: Dict[str, Any], catalog: Dict[str, str],
+                    flags: bool = False) -> List[Dict[str, Any]]:
     """A new character's level-1 choices for one class (multiclass-only entries omitted)."""
     out = []
     for point in choice_points.get("1", []):
@@ -138,7 +145,7 @@ def level_1_choices(choice_points: Dict[str, Any], catalog: Dict[str, str]) -> L
         if isinstance(point.get("option_source"), list):
             entry["options"] = point["option_source"]
         if isinstance(point.get("option_items"), dict):
-            entry["option_items"] = typed_options(point["option_items"], catalog)
+            entry["option_items"] = typed_options(point["option_items"], catalog, flags=flags)
         # A class order's typed grants (Protector, Warden) and the choices an option opens
         # (Thaumaturge's and Magician's extra cantrip), as choices.json carries them.
         for key in ("option_grants", "then"):
@@ -170,7 +177,7 @@ def _resolved(point: Dict[str, Any], cls: str, d: _Data) -> Dict[str, Any]:
     source = point.get("option_source")
     if isinstance(point.get("option_items"), dict):
         return {"option_keys": sorted(point["option_items"]),
-                "options": typed_options(point["option_items"], d.catalog)}
+                "options": typed_options(point["option_items"], d.catalog, flags=True)}
     if isinstance(source, str) and source.startswith("spells:"):
         if "spellbook" in source:
             # The prepared spells come from this character's own spellbook picks (an empty sheet resolves
@@ -477,7 +484,7 @@ def _species_facts(key: str, d: _Data) -> Dict[str, Any]:
 def _background_facts(key: str, d: _Data) -> Dict[str, Any]:
     entry = dict(d.backgrounds()[key])
     if isinstance(entry.get("equipment_options"), dict):
-        entry["equipment_options"] = typed_options(entry["equipment_options"], d.catalog)
+        entry["equipment_options"] = typed_options(entry["equipment_options"], d.catalog, flags=True)
     feat_key = (entry.get("feat_ref") or {}).get("feat_key")
     feat = [f for f in d.origins.get("origin_feats") or [] if f.get("key") == feat_key]
     if feat:
