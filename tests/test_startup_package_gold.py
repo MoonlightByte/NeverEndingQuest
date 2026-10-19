@@ -592,7 +592,8 @@ def _g4b_disclosed(wizard, monkeypatch, tmp_path):
     assert facts["starting_packages"] == {"status": "engine_unavailable", "armor_class": "unchecked",
                                           "policy": "D-PKG-1"}
     assert REVIEWER_LINE in startup_prompt_builder.build_startup_review_prompt()
-    assert commits[0]["currency"]["gold"] == 0 and commits[0]["armorClass"] == 15
+    # The engine-built sheet keeps its unarmored base (10 + Dex 17's +3) when no armor can be projected.
+    assert commits[0]["currency"]["gold"] == 0 and commits[0]["armorClass"] == 13
     notice = ("Dungeon Master: The rules engine could not run, so Bram Holloway starts with no gold, no starting "
               f"gear and no weapons. To play with them, make sure {apply.binary_path()} runs on this computer, "
               "reset the campaign, and create the character again; otherwise you can play on without them.")
@@ -647,6 +648,10 @@ def test_g4b_reviewer_gets_the_engine_result(wizard, monkeypatch, tmp_path):
 # ---- G5, resume ---------------------------------------------------------------
 
 def test_g5_paused_conversation_keeps_its_reference(wizard, monkeypatch):
+    # D-CREATE-COST-5 amendment 1c: a paused interview from before the engine-built sheet resumes on the engine
+    # path. Its reference stays as it was (same bytes, once), the menu scope is added, a model-written sheet
+    # is refused, and the engine builds the approved build from typed intent.
+    from test_startup_review_provenance import _engine_finalize
     conversation = copy.deepcopy(_record(F557, 10)["input"]["messages"][:-1])
 
     def references(messages):
@@ -657,11 +662,14 @@ def test_g5_paused_conversation_keeps_its_reference(wizard, monkeypatch):
     before = references(conversation)
     assert len(before) == 1
     latest = max(i for i, m in enumerate(conversation) if m["role"] == "user")
-    missing = _picked(_captured(F557, 10), "fighter", "soldier", dict(BRAM_PICKS, background_package="A"))
+    old_shape = _picked(_captured(F557, 10), "fighter", "soldier", dict(BRAM_PICKS, background_package="A"))
+    missing = _engine_finalize(copy.deepcopy(old_shape))
     valid = copy.deepcopy(missing)
     valid["starting_equipment"]["slot_picks"] = [{"slot": "soldier.A.gaming_set", "display_name": "Dice Set"}]
-    for proposal in (missing, valid):
+    for proposal in (old_shape, missing, valid):
         proposal["confirmation"]["player_message_index"] = latest
+    # The first engine answer re-scopes once (menu to the build's scope) and is asked again.
+    answers = [old_shape, missing, missing, valid]
     authors, commits = [], []
     monkeypatch.setattr(wizard, "save_startup_conversation", lambda *a, **k: None)
     monkeypatch.setattr(wizard, "_commit_startup_build", lambda c, m, s, **k: commits.append(copy.deepcopy(s)))
@@ -670,16 +678,21 @@ def test_g5_paused_conversation_keeps_its_reference(wizard, monkeypatch):
         if kwargs.get("startup_phase") == "startup_review":
             return json.dumps({"version": 1, "accepted": True, "feedback": "Ok.", "needs_player_clarification": False})
         authors.append(copy.deepcopy(messages))
-        return json.dumps(missing if len(authors) == 1 else valid)
+        return json.dumps(answers[len(authors) - 1])
 
     monkeypatch.setattr(wizard, "get_ai_response", model)
     with redirect_stdout(io.StringIO()):
         wizard.ai_character_interview(conversation, {"name": "The_Thornwood_Watch"})
     assert references(conversation) == before  # the f2ee68ae-era reference, same bytes, once
-    assert len(authors) == 2 and references(authors[1]) == before
-    refusal = authors[1][-2]["content"]
+    assert len(authors) == 4 and all(references(a) == before for a in authors)
+    purposes = [(json.loads(m["content"]) if m["content"].startswith("{") else {}).get("task_purpose")
+                for m in conversation if m["role"] == "system"]
+    assert "startup_creation_scope" in purposes and "startup_engine_build" in purposes
+    assert authors[1][-2]["content"].startswith("Rejected startup proposal")  # the model-written sheet
+    refusal = authors[3][-2]["content"]
     assert refusal.startswith("Rejected startup proposal") and "soldier.A.gaming_set" in refusal
     assert len(commits) == 1 and commits[0]["currency"]["gold"] == 25
+    assert commits[0]["name"] == old_shape["character"]["name"]
 
 
 # ---- G6 and G7, the commit and what the player sees ---------------------------------

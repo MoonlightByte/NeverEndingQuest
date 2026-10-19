@@ -666,10 +666,66 @@ def test_raise_never_lowers_and_leaves_ability_pools_to_level_up(wizard, authore
     assert "spellSlots level1 max 0 -> 2 (SRD Sorcerer level 1)" in effects.corrections_made
 
 
+def _engine_finalize(authored):
+    """A captured whole-path finalize as the engine path sends it (D-CREATE-COST-5): typed intent, creative and
+    starting_equipment, no sheet. Each pick is the option the captured sheet names, never one granted twice;
+    the base scores are its scores less the background increase that leaves a standard array (else a point
+    buy)."""
+    import re
+    from core.nql import creation_scope
+    sheet = authored["character"]
+    text = json.dumps(sheet)
+    keys = {"Human": "human", "Dwarf": "dwarf"}
+    origin = authored.get("origin") or {"class_key": "fighter", "background_key": "soldier"}
+    intent = {"class_key": origin["class_key"], "species_key": keys[sheet["race"]],
+              "background_key": origin["background_key"], "choices": {},
+              "considering": {"class_keys": [], "species_keys": [], "background_keys": []}, "ability_scores": None}
+    origins = json.loads((ROOT / "data" / "srd_character_origins.json").read_text(encoding="utf-8"))
+    taken = set(next(b for b in origins["backgrounds"] if b["key"] == intent["background_key"])["skill_keys"])
+    mastery = next((f["description"] for f in sheet.get("classFeatures") or [] if f["name"] == "Weapon Mastery"), "")
+    named = re.findall(r"properties of (.+?)\.", mastery)
+    # A sheet that never names its masteries (Alden) masters the weapons it attacks with.
+    mastered = (re.split(r",? and |, ", named[0]) if named
+                else [row["name"] for row in sheet.get("attacksAndSpellcasting") or [] if row.get("type") != "spell"])
+    for _ in range(4):  # a pick opens its own sub-picks
+        for cid, point in creation_scope.issued_points(intent).items():
+            if cid in intent["choices"]:
+                continue
+            options = list(point.get("option_keys") or [])
+            if cid.endswith(".ability-scores"):
+                fits = []
+                for option in options:
+                    base = dict(sheet["abilities"])
+                    raises = re.findall(r"\+(\d) (\w+)", option)
+                    if raises and raises[0][1] == "each":  # "+1 each to Strength, Dexterity and Constitution"
+                        raises = [("1", a) for a in re.findall(r"[A-Z]\w+", option)]
+                    for amount, ability in raises:
+                        base[ability.lower()] -= int(amount)
+                    if sorted(base.values()) == [8, 10, 12, 13, 14, 15]:
+                        fits.insert(0, (option, "standard_array", base))
+                    elif all(8 <= v <= 15 for v in base.values()):
+                        fits.append((option, "point_buy", base))
+                intent["choices"][cid] = [fits[0][0]]
+                intent["ability_scores"] = {"method": fits[0][1], "assignment": fits[0][2]}
+                continue
+            if point.get("free_pick") and point["name"] == "Weapon Mastery":
+                padded = mastered + [w for w in ("Longsword", "Greatsword", "Javelin") if w not in mastered]
+                intent["choices"][cid] = padded[:point["count"]]
+                continue
+            options = [o for o in options if o not in taken]
+            named = [o for o in options if re.search(r"\b%s\b" % re.escape(str(o)), text)]
+            intent["choices"][cid] = (named + [o for o in options if o not in named])[:point["count"]]
+            taken.update(intent["choices"][cid])
+    creative = {k: sheet[k] for k in ("name", "alignment", "personality_traits", "ideals", "bonds", "flaws")}
+    return {"version": 1, "decision": "finalize_character", "narration": authored["narration"],
+            "confirmation": dict(authored["confirmation"], player_message_index=0), "intent": intent,
+            "starting_equipment": copy.deepcopy(authored["starting_equipment"]),
+            "creative": dict(creative, backstory=None, appearance=None, feature_descriptions=None)}
+
+
 def run_interview(wizard, authored, monkeypatch, *, review, stop_after_rejection=False):
     from utils.capture.live_provider_call import LiveProviderSuperseded
-    proposal = copy.deepcopy(authored)
-    proposal["confirmation"]["player_message_index"] = 0
+    proposal = _engine_finalize(authored)
     original = copy.deepcopy(proposal)
     conversation = [{"role": "user", "content": "I approve Alden's complete current build."}]
     commits = []
@@ -684,7 +740,8 @@ def run_interview(wizard, authored, monkeypatch, *, review, stop_after_rejection
             reviewer_requests.append(copy.deepcopy(payload))
             return json.dumps(review(payload))
         author_requests.append(copy.deepcopy(messages))
-        if len(author_requests) > 1 and stop_after_rejection:
+        if stop_after_rejection and any("Rejected startup proposal" in m["content"] or '"rejected_proposal"' in m["content"]
+                                        for m in messages if m["role"] == "system"):
             raise LiveProviderSuperseded("test-only stop after observed rejection")
         return json.dumps(proposal)
 
@@ -699,62 +756,60 @@ def run_interview(wizard, authored, monkeypatch, *, review, stop_after_rejection
     return result, conversation, commits, author_requests, reviewer_requests
 
 
-def test_actual_interview_reviews_both_sources_and_publishes_canonical(wizard, authored, monkeypatch):
+def test_actual_interview_reviews_the_engine_built_sheet_and_publishes_it(wizard, authored, monkeypatch):
     def review(payload):
-        assert payload["authored_proposal"]["character"]["equipment_effects"] == []
-        assert "savingThrowBonuses" not in payload["authored_proposal"]["character"]
-        assert payload["proposal"]["character"]["equipment_effects"]
-        assert payload["proposal"]["character"]["savingThrowBonuses"]
+        # D-CREATE-COST-5: the author sent intent and creative; the engine built the sheet under review.
+        assert "character" not in payload["authored_proposal"]
+        assert payload["authored_proposal"]["creative"]["name"] == authored["character"]["name"]
+        candidate = payload["proposal"]["character"]
+        assert candidate["name"] == authored["character"]["name"]
+        assert candidate["armorClass"] == 17 and candidate["maxHitPoints"] == 12
+        assert candidate["equipment_effects"] and candidate["savingThrowBonuses"]
+        assert _style_entries(candidate) == ["Fighting Style: Defense"]
         assert payload["normalization_provenance"]["engine_projection"]["applied"]
-        # The reviewer receives the Fighting Style move, the Second Wind pool and
-        # the AC result as committed facts.
+        assert payload["normalization_provenance"]["engine_build"]["untyped"] == []
         changes = payload["committed_facts"]["startup_mechanics"]["changes"]
-        assert changes[:2] == [CAPTURED_STYLE_NOTE, SECOND_WIND_NOTE]
-        assert changes[2].startswith("armorClass 18 -> 17")
-        return {"version": 1, "accepted": True, "feedback": "Both sources reviewed.",
+        assert SECOND_WIND_NOTE in changes
+        assert changes[-1].startswith("armorClass 11 -> 17")
+        return {"version": 1, "accepted": True, "feedback": "Engine-built sheet reviewed.",
                 "needs_player_clarification": False}
 
     result, conversation, commits, authors, reviewers = run_interview(wizard, authored, monkeypatch, review=review)
-    assert len(authors) == len(reviewers) == len(commits) == 1
+    # The first answer re-scopes once (the menu becomes the build's scope), then it is reviewed.
+    assert len(authors) == 2 and len(reviewers) == len(commits) == 1
     assert result == commits[0] == reviewers[0]["proposal"]["character"]
     assert wizard._startup_progress(conversation)["phase"] == "approved"
+    records = [json.loads(m["content"]) for m in conversation
+               if m["role"] == "system" and m["content"].startswith("{")]
+    built = next(i for i, r in enumerate(records) if r.get("task_purpose") == "startup_engine_build")
+    approved = next(i for i, r in enumerate(records) if r.get("phase") == "approved")
+    # The typed build record precedes the approved checkpoint, so the archive keeps it.
+    assert built < approved
+    built = records[built]
+    assert built["untyped"] == [] and built["engine_build"] and "creative_extra" in built
 
 
-@pytest.mark.parametrize("defect", ["narration", "mechanics", "identity", "author_saves", "author_effects"])
+@pytest.mark.parametrize("defect", ["narration", "identity"])
 @pytest.mark.parametrize("needs_clarification", [False, True])
 def test_negative_review_retains_authorship_and_never_commits(wizard, authored, monkeypatch, defect, needs_clarification):
     if defect == "narration":
         authored["narration"] = "You have arrived and your character was saved."
-    elif defect == "mechanics":
-        authored["character"]["hitPoints"] = authored["character"]["maxHitPoints"] = 99
-    elif defect == "identity":
-        authored["character"]["name"] = "Unapproved replacement"
-    elif defect == "author_saves":
-        authored["character"]["savingThrowBonuses"] = {"strength": 99}
     else:
-        authored["character"]["equipment_effects"] = [{
-            "name": "Authored AC", "type": "bonus", "target": "AC", "value": 99,
-            "description": "Invented", "source": "author"}]
+        authored["character"]["name"] = "Unapproved replacement"
 
     def review(payload):
         assert payload["normalization_provenance"]["engine_projection"]["applied"]
-        if defect == "mechanics":
-            # Hit points are code output (#570): the candidate carries the exact
-            # maximum; the authored 99 stays visible as authorship.
-            assert payload["proposal"]["character"]["maxHitPoints"] == 12
-            assert payload["authored_proposal"]["character"]["maxHitPoints"] == 99
-            assert payload["normalization_provenance"]["hit_points"]["expected_maximum"] == 12
-        if defect == "author_saves":
-            assert payload["authored_proposal"]["character"]["savingThrowBonuses"]["strength"] == 99
-            assert payload["proposal"]["character"]["savingThrowBonuses"]["strength"] == 5
+        if defect == "identity":
+            # Creative fields are copied as written (amendment 1a): the reviewer sees the authored name.
+            assert payload["proposal"]["character"]["name"] == "Unapproved replacement"
         return {"version": 1, "accepted": False, "feedback": "Rejected " + defect,
                 "needs_player_clarification": needs_clarification}
 
     result, conversation, commits, authors, reviewers = run_interview(
         wizard, authored, monkeypatch, review=review, stop_after_rejection=True)
     assert result is None and commits == []
-    assert len(reviewers) == 1 and len(authors) == 2
-    correction = next(json.loads(m["content"]) for m in authors[1]
+    assert len(reviewers) == 1
+    correction = next(json.loads(m["content"]) for m in authors[-1]
                       if m["role"] == "system" and '"rejected_proposal"' in m["content"])
     assert correction["rejected_proposal"] == reviewers[0]["authored_proposal"]
     assert correction["canonical_candidate"] == reviewers[0]["proposal"]
@@ -763,22 +818,33 @@ def test_negative_review_retains_authorship_and_never_commits(wizard, authored, 
     if needs_clarification:
         assert correction["instruction"] == "Propose a continue_interview question; do not finalize."
     assert not any(m["role"] == "assistant" for m in conversation)
+    assert not any('"startup_engine_build"' in m["content"] for m in conversation)
 
 
-@pytest.mark.parametrize("defect", ["approval", "index", "schema"])
+@pytest.mark.parametrize("defect", ["approval", "index", "schema", "refusal"])
 def test_invalid_consent_or_schema_cannot_reach_review(wizard, authored, monkeypatch, defect):
-    if defect == "approval":
-        authored["confirmation"]["whole_build_approved"] = False
-    elif defect == "index":
+    def defective(proposal):
+        if defect == "approval":
+            proposal["confirmation"]["whole_build_approved"] = False
+        elif defect == "schema":
+            proposal["intent"]["ability_scores"] = None
+        elif defect == "refusal":  # an engine refusal is a typed rejection of the turn (amendment 1e)
+            proposal["intent"]["ability_scores"]["assignment"]["strength"] = 16
+        return proposal
+
+    engine_finalize = _engine_finalize
+    monkeypatch.setitem(globals(), "_engine_finalize", lambda a: defective(engine_finalize(a)))
+    if defect == "index":
         # run_interview uses 0; intercept parsing's reference instead.
         monkeypatch.setattr(wizard, "_latest_player_index", lambda messages: 99)
-    else:
-        authored["character"]["spellcasting"]["ability"] = None
     result, conversation, commits, authors, reviewers = run_interview(
         wizard, authored, monkeypatch, review=lambda p: pytest.fail("Review must not run"),
         stop_after_rejection=True)
     assert result is None and not commits and not reviewers
-    assert len(authors) == 2
+    rejection = next(m["content"] for m in authors[-1]
+                     if m["role"] == "system" and "Rejected startup proposal" in m["content"])
+    if defect == "refusal":
+        assert "The engine cannot build this character" in rejection
 
 
 def test_fenced_json_uses_real_startup_parser_without_changing_probe(wizard, authored):
@@ -794,8 +860,7 @@ def test_network_is_forbidden(wizard):
 
 def test_superseded_review_cannot_publish(wizard, authored, monkeypatch):
     from utils.capture.live_provider_call import LiveProviderSuperseded
-    proposal = copy.deepcopy(authored)
-    proposal["confirmation"]["player_message_index"] = 0
+    proposal = _engine_finalize(authored)
     monkeypatch.setattr(wizard, "save_startup_conversation", lambda *a, **k: None)
     monkeypatch.setattr(wizard, "_commit_startup_build", lambda *a, **k: pytest.fail("No commit after cancellation"))
 
@@ -885,8 +950,7 @@ def _scoped_turn(intent, narration="Which divine order calls to her?"):
     intent = dict({"ability_scores": None}, **intent) if isinstance(intent, dict) else intent
     return json.dumps({"version": 1, "decision": "continue_interview", "narration": narration,
                        "confirmation": {"player_message_index": None, "whole_build_approved": False},
-                       "character": None, "origin": None, "starting_equipment": None, "intent": intent,
-                       "creative": None})
+                       "starting_equipment": None, "intent": intent, "creative": None})
 
 
 def _section_accept(task_id, wizard, messages=None):
@@ -931,6 +995,40 @@ def _purposes(conversation):
             record = None
         out.append(record.get("task_purpose") if isinstance(record, dict) else None)
     return out
+
+
+def test_the_roll_is_saved_when_made_and_a_handback_never_rolls_again(scoped, monkeypatch):
+    # Amendment 1f, N7: one roll per interview. The roll item is saved the moment it is made, outside the
+    # turn's discardable items, so four rejections and a handback keep it and the next turn reuses it.
+    saved = []
+    monkeypatch.setattr(scoped, "save_startup_conversation", lambda c, **k: saved.append(copy.deepcopy(c)))
+    random_intent = {"class_key": None, "species_key": None, "background_key": None, "choices": {},
+                     "considering": {"class_keys": [], "species_keys": [], "background_keys": []},
+                     "ability_scores": {"method": "random", "assignment": None}}
+    answers = ([_scoped_turn(random_intent)] + ["not a startup response"] * scoped.STARTUP_TURN_REJECTION_LIMIT
+               + [_scoped_turn(random_intent, "Here are your six rolled scores.")])
+    conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["Roll for me."])
+    rolls = [json.loads(m["content"]) for m in conversation if '"startup_ability_roll"' in m.get("content", "")]
+    assert len(rolls) == 1 and len(rolls[0]["rolled"]) == 6
+    handback = _purposes(conversation).index("startup_turn_handback")
+    assert _purposes(conversation).index("startup_ability_roll") < handback
+    assert scoped._ability_roll(saved[-1]) == rolls[0]
+    assert [m["role"] for m in conversation].count("assistant") == 1   # only the second turn published
+
+
+def test_a_complete_intent_shows_the_engine_built_summary_once(scoped, monkeypatch, authored, capsys):
+    # D2 (#1275): once no id is open, the player sees the summary the game renders from the engine-built sheet,
+    # and the author gets it as a typed startup_sheet_preview item; an unchanged build is not shown again.
+    intent = _engine_finalize(authored)["intent"]
+    # The first answer re-scopes once (menu to build scope); the second turn's build is unchanged.
+    answers = [_scoped_turn(intent, "Here is Alden.")] * 2 + [_scoped_turn(intent, "Anything to change?")]
+    conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["Show me."])
+    previews = [json.loads(m["content"]) for m in conversation if '"startup_sheet_preview"' in m.get("content", "")]
+    assert len(previews) == 1 and previews[0]["untyped"] == []
+    summary = previews[0]["summary"]
+    assert summary.startswith("Human Fighter, Soldier background") and "- Strength 16 (+3)" in summary
+    assert "itemdef:" not in summary and "fighter." not in summary
+    assert capsys.readouterr().out.count(summary) == 1
 
 
 def test_section_prompts_pin_the_t124_text_they_rewrite():
