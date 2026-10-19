@@ -897,8 +897,10 @@ def _interview_path(conversation):
 
 
 def _startup_review_mode():
+    """The review shape (D-CREATE-COST-5): "engine" (default) or "whole" (#1278's review over the engine-built
+    sheet). "sectioned", set before the rename, reads as "engine"; any other value too (no authority)."""
     from model_config import STARTUP_REVIEW_MODE
-    return STARTUP_REVIEW_MODE if STARTUP_REVIEW_MODE in ("sectioned", "whole") else "sectioned"
+    return "whole" if STARTUP_REVIEW_MODE == "whole" else "engine"
 
 
 def _creation_scope_current(conversation):
@@ -948,6 +950,43 @@ def _ability_roll(conversation):
     return rolls[-1] if rolls else None
 
 
+ENGINE_BUILD_PURPOSE = "startup_engine_build"
+SHEET_PREVIEW_PURPOSE = "startup_sheet_preview"
+
+
+def _persist_system_record(conversation, record, live_scope):
+    """Append a code-authored record to the saved history and save it now (the ability roll)."""
+    conversation.append({"role": "system", "content": json.dumps(record, ensure_ascii=False)})
+    save_startup_conversation(conversation, live_scope=live_scope)
+
+
+def _sheet_preview(conversation, intent):
+    """Once no choice id is open, the engine builds the sheet for the published intent and the player sees
+    the summary rendered from it (D2); the author gets it as a typed startup_sheet_preview item. Returns the
+    summary text when it changed since the last preview, else None."""
+    from core.nql import creation_build
+    if creation_scope.open_choice_ids(intent):
+        return None
+    roll = _ability_roll(conversation)
+    try:
+        sheet, built = creation_build.build_level_one_sheet(
+            intent, None, rolled=roll["rolled"] if roll else None, preview=True)
+    except creation_build.BuildRefusal:
+        return None   # the ability scores are not set yet: nothing to preview
+    summary = creation_build.render_sheet_summary(sheet)
+    previews = _scope_states(conversation, SHEET_PREVIEW_PURPOSE)
+    if previews and previews[-1].get("summary") == summary:
+        return None
+    conversation.append({"role": "system", "content": json.dumps({
+        "task_purpose": SHEET_PREVIEW_PURPOSE,
+        "startup_id": (_startup_progress(conversation) or {}).get("startup_id"),
+        "summary": summary, "untyped": built["untyped"],
+        "instruction": ("The game showed the player this summary of the engine-built sheet after your "
+                        "narration. It is the build the player approves; never restate it differently."),
+    }, ensure_ascii=False)})
+    return summary
+
+
 def _scope_state(conversation):
     """The latest scope state record (scope id, intent, sticky verdicts), or None. It is its own
     typed item, never a checkpoint field: code before COST-4 skips it (r3.1, CR-9)."""
@@ -982,7 +1021,7 @@ class StartupScopeRefusal(ValueError):
                                 "issued choice id filled with its count.")}
 
 
-def _scoped_intent(conversations, proposal, rescoped):
+def _scoped_intent(conversations, proposal, rescoped, persist=None):
     """Apply the engine scope to a parsed scoped response (D-CREATE-COST-4 §1, §3).
 
     Picks the previous scope issued and the new intent's scope does not (a switch) are dropped
@@ -990,7 +1029,8 @@ def _scoped_intent(conversations, proposal, rescoped):
     T092 must be asked again for the same answer (at most once per response chain; a rejection starts a
     new chain). Picks outside the scope, and a finalize with open choice ids, raise StartupScopeRefusal.
     conversations are the turn's request base and its pending items: the saved history gets the items only
-    when the turn publishes (r3.1, T4)."""
+    when the turn publishes (r3.1, T4). The ability roll is the exception: persist saves it the moment it
+    is made, so no handback or restart rolls again (amendment 1f, N7)."""
     intent = proposal["intent"]
     # Every id an earlier scope of this interview issued: a pick under one the new scope does not issue
     # is a switch's leftover (dropped), not a refusal.
@@ -1022,8 +1062,9 @@ def _scoped_intent(conversations, proposal, rescoped):
                       **roll_ability_scores(),
                       instruction=("The engine rolled these six ability scores (four d6, highest three). Show them "
                                    "and assign them as the player wishes; they are never rolled again or replaced."))
-        for conversation in conversations:
-            conversation.append({"role": "system", "content": json.dumps(record, ensure_ascii=False)})
+        conversations[0].append({"role": "system", "content": json.dumps(record, ensure_ascii=False)})
+        if persist is not None:
+            persist(record)
         ask_again = True
     scope = creation_scope.creation_scope(intent)
     current = _creation_scope_current(conversations[0])
@@ -1436,7 +1477,21 @@ def _startup_engine_fault(fault, scope, call, timeouts):
     return None
 
 
-def _prepare_startup_proposal(authored_proposal, *, live_scope=None):
+def _engine_built_character(proposal, rolled):
+    """The engine-built level-1 sheet for a finalize's typed intent and creative fields (D-CREATE-COST-5),
+    and its provenance; an engine refusal is a typed rejection of the turn (amendment 1e)."""
+    from core.nql import creation_build
+    try:
+        sheet, built = creation_build.build_level_one_sheet(proposal["intent"], proposal["creative"],
+                                                           rolled=rolled)
+    except creation_build.BuildRefusal as exc:
+        raise ValueError("The engine cannot build this character from intent: %s"
+                         % json.dumps(exc.problems, ensure_ascii=False)) from None
+    origin = {"class_key": proposal["intent"]["class_key"], "background_key": proposal["intent"]["background_key"]}
+    return sheet, origin, built
+
+
+def _prepare_startup_proposal(authored_proposal, *, live_scope=None, rolled=None):
     """Normalize a private copy; keep authorship distinct from engine output.
 
     A new character's class and background are written from its typed origin, its authored purse and
@@ -1449,6 +1504,9 @@ def _prepare_startup_proposal(authored_proposal, *, live_scope=None):
     provenance = {}
     if proposal["decision"] != "finalize_character":
         return proposal, provenance
+    if "creative" in proposal:
+        proposal["character"], proposal["origin"], provenance["engine_build"] = _engine_built_character(
+            proposal, rolled)
     character = sanitize_character_data(proposal["character"])
     from updates.update_character_info import name_refusal
     detail = name_refusal(character.get("name"))
@@ -1597,9 +1655,10 @@ def ai_character_interview(conversation, module):
         LiveProviderSuperseded, open_live_turn_scope, finish_live_turn_scope,
     )
 
-    # The path comes from the history; the mode selects only a new interview's (r3.1 §3.6).
-    path = _interview_path(conversation)
-    scoped = path == "scoped" or _startup_review_mode() == "sectioned"
+    # D-CREATE-COST-5 (Q1 option 1, amendment 1c): one creation path. The engine builds the sheet from the
+    # typed intent; an interview begun before this continues here and re-asks the typed intent it lacks
+    # (never derived from old prose). STARTUP_REVIEW_MODE selects only the review.
+    scoped = True
     _append_system_once(conversation, build_character_creation_system_prompt(scoped=scoped))
     _append_system_once(conversation, json.dumps({
         "task_purpose": "startup_character_interview",
@@ -1608,9 +1667,7 @@ def ai_character_interview(conversation, module):
                        "Old history is context, not proof of approval or saved state. "
                        "Follow the current startup response contract.",
     }, ensure_ascii=False))
-    if not scoped:
-        _append_startup_rules_reference(conversation)
-    elif path is None:
+    if _creation_scope_current(conversation) is None:
         menu = creation_scope.creation_scope({})
         if menu is not None:
             _append_scope([conversation], menu, None)
@@ -1657,14 +1714,17 @@ def ai_character_interview(conversation, module):
                     authored_proposal = copy.deepcopy(
                         parse_startup_response(raw, latest_user_index=current_index, scoped=scoped))
                     if scoped:
-                        if _scoped_intent([correction_context, turn_items], authored_proposal, rescoped):
+                        if _scoped_intent([correction_context, turn_items], authored_proposal, rescoped,
+                                          persist=lambda record: _persist_system_record(conversation, record, scope)):
                             rescoped = True
                             continue
                     if (authored_proposal["decision"] == "pause_setup"
                             and current_index in _paused_player_indexes(conversation)):
                         raise ValueError("That request to stop was already honored; the player is "
                                          "back, so continue the interview")
-                    proposal, provenance = _prepare_startup_proposal(authored_proposal, live_scope=scope)
+                    roll = _ability_roll(correction_context)
+                    proposal, provenance = _prepare_startup_proposal(
+                        authored_proposal, live_scope=scope, rolled=roll["rolled"] if roll else None)
                     if proposal["decision"] == "finalize_character":
                         facts.update(_starting_gear_facts(proposal, provenance))
                         mechanics = provenance["mechanics_notes"]
@@ -1677,7 +1737,8 @@ def ai_character_interview(conversation, module):
                                 "changes": mechanics,
                             }
                     scope_item = (creation_scope.creation_scope(proposal["intent"])
-                                  if scoped and _creation_scope_current(correction_context) is not None else None)
+                                  if scoped and _creation_scope_current(correction_context) is not None
+                                  and _startup_review_mode() != "whole" else None)
                     if scope_item is not None:
                         try:
                             build_section_review_common()
@@ -1738,6 +1799,15 @@ def ai_character_interview(conversation, module):
                 conversation.append({"role": "assistant", "content": json.dumps(proposal, ensure_ascii=False)})
                 if scoped:
                     _record_sticky(conversation, sticky)
+                summary = None
+                if proposal["decision"] == "finalize_character" and "engine_build" in provenance:
+                    # Written before the approved checkpoint and the archive move, so it survives handoff.
+                    conversation.append({"role": "system", "content": json.dumps(dict(
+                        {"task_purpose": ENGINE_BUILD_PURPOSE,
+                         "startup_id": (_startup_progress(conversation) or {}).get("startup_id")},
+                        **provenance["engine_build"]), ensure_ascii=False)})
+                elif proposal["decision"] == "continue_interview" and scoped:
+                    summary = _sheet_preview(conversation, proposal["intent"])
                 if proposal["decision"] == "finalize_character":
                     notice = _starting_gear_notice(proposal["character"], provenance)
                     if notice:
@@ -1759,6 +1829,8 @@ def ai_character_interview(conversation, module):
                     return proposal["character"]
                 _set_startup_progress(conversation, live_scope=scope, phase="interview")
                 print(f"\nDungeon Master: {proposal['narration']}")
+                if summary:
+                    print(f"\n{summary}")
                 if proposal["decision"] == "pause_setup":
                     # The reviewed typed decision, never the player's words (#855).
                     raise StartupCancelled()

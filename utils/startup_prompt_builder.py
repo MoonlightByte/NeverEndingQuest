@@ -131,12 +131,99 @@ picks outside the current scope; correct them from the scope.
 Ids are for the typed fields only: catalog ids (itemdef:...), choice ids and
 option keys go in intent and starting_equipment, never in narration. The scope
 gives each its name; the player sees names only, such as "Chain Mail", not its id.
+THE ENGINE BUILDS THE SHEET: you record choices; the engine builds the whole
+character from intent and computes every number. A startup_open_choices item
+lists the choice ids still open: for each, ask the player, or, only when the
+player asks you to choose, pick from the scope's options yourself and record it
+in intent. Never leave one open at finalize. A package or option the player has
+already named is chosen: record it and do not ask it again.
+Set intent.ability_scores to the player's method and the base score for each
+ability once the player has placed them. A startup_ability_roll item holds the
+engine's roll, made once for the interview: show those numbers and record the
+player's assignment of exactly them.
+Once no choice id is open and the ability scores are set, the game shows the
+player a summary rendered from the engine-built sheet after your narration (a
+startup_sheet_preview item): that is the build the player approves.
+An interview begun before the engine built sheets may lack typed intent: ask
+again for any choice the intent does not hold. Earlier prose, sheets and rolls
+are context, never recorded choices.
 """
 
 _WHOLE_COMPLETE = """build presented as complete names every required level-1 choice in the
 reference: background"""
 _SCOPED_COMPLETE = """build presented as complete fills every choice id in the current scope with its
 count of picks: background"""
+
+
+# The engine-path author prompt (D-CREATE-COST-5): the whole prompt with the parts that ask the author to
+# write a sheet replaced. Each old text must occur exactly once (the whole prompt stays #1278's bytes).
+_ENGINE_EDITS = (
+    ("""The player chooses the ability-score method. For player-rolled scores, ask them
+to submit their actual results and allocation; never invent, replace, or reroll
+them.""", """The player chooses the ability-score method: standard array, point buy, or random.
+For random, the engine rolls once for the interview; never ask the player to roll,
+and when a player states rolls of their own, offer the engine's roll, the standard
+array or point buy instead."""),
+    ("""finalize_character with the full sheet: fill derived values (hit points, armor
+class, modifiers, proficiency bonus) from the approved choices. Set origin to
+the class and background keys, and starting_equipment to""", """finalize_character with intent, creative and starting_equipment; the engine
+builds the sheet and you never write one. Set starting_equipment to"""),
+    ("""A whole-build summary that asks for approval:
+- Start with one short lead sentence.
+- Then these labelled sections in this order, each label alone on its own line
+  and its items below it as "- " lines: "Ability scores:" (one line per
+  ability, such as "- Strength 15 (+2)"), "Background & feats:", "Skills:",
+  "Weapons & masteries:", "Equipment:", and "Spells:" (leave Spells out for a
+  build with no spells). Put a blank line between sections.
+- End with this line on its own: Approve this build, or tell me what to change.""", """A turn that asks for whole-build approval (no choice id open, ability scores set):
+- Write one short lead sentence naming the character's concept; the game then
+  shows the player the summary it renders from the engine-built sheet.
+- Name the chosen starting packages and what is worn or held, on "- " lines.
+- End with this line on its own: Approve this build, or tell me what to change."""),
+    ("""Its character, origin and starting_equipment must be null
+and whole_build_approved false.""", """Its creative and starting_equipment must be null
+and whole_build_approved false."""),
+    ("""build and you can provide its full character sheet.""", """build and no choice id is open."""),
+    ("""It has character, origin and starting_equipment null, whole_build_approved
+false,""", """It has creative and starting_equipment null, whole_build_approved
+false,"""),
+    ("""Use the frozen CHARACTER SCHEMA for character, not for the outer response.
+Include ammunition (an empty array when none), all required fields, and valid
+enum values. New characters start at level 1 with experience_points 0 and player
+role/type. Preserve existing dictionary-form skills when supplied; do not turn
+existing data into empty defaults. For new builds include chosen proficiencies,
+consistent languages, attacks, modifiers and SRD features, and write
+"currency": {"gold": 0, "silver": 0, "copper": 0}, "equipment": [] and
+"ammunition": []: the game replaces all three from the chosen packages. Spell
+attacks use type "spell"; the engine writes the weapon attack rows. No schema
+metadata in a character object. Unused temporaryEffects, injuries and
+equipment_effects are empty arrays, not invented timed effects.
+Starting gear is represented once: the game merges the two packages, and an item
+both list is one row with the quantities summed.
+The attack list describes available options, not weapons wielded simultaneously.
+Keep carried/stowed weapons and their attack statistics without falsely marking
+them wielded or changing armor class; describe prerequisites when relevant.
+Keep approved backstory in the existing descriptive fields or interview context;
+do not distort a mechanical background name to satisfy an invented schema slot.
+""", """CREATIVE, AT FINALIZE: name, alignment, personality_traits, ideals, bonds and
+flaws, in the player's words or as you proposed and the player approved; and
+optionally backstory, appearance and feature_descriptions (one short description
+per class feature the engine names, written from that feature's scope text). The
+engine copies them as written and never reads them for mechanics. Alignment is
+the player's if given; otherwise propose one. The player never has to choose it.
+"""),
+)
+
+
+def _engine_prompt(prompt, schema):
+    for old, new in _ENGINE_EDITS:
+        if prompt.count(old) != 1:
+            raise ValueError("engine prompt edit no longer matches the whole prompt: %r" % old[:60])
+        prompt = prompt.replace(old, new)
+    block = "CHARACTER SCHEMA:\n%s\n\n" % json.dumps(schema, indent=2)
+    if prompt.count(block) != 1:
+        raise ValueError("engine prompt edit no longer matches the whole prompt: CHARACTER SCHEMA")
+    return prompt.replace(block, "")
 
 
 def build_character_creation_system_prompt(*, scoped=False):
@@ -148,7 +235,7 @@ def build_character_creation_system_prompt(*, scoped=False):
     leveling_info = _read_text_file("prompts/leveling/leveling_info.txt")
     facts = _SCOPED_FACTS if scoped else _WHOLE_FACTS
     complete = _SCOPED_COMPLETE if scoped else _WHOLE_COMPLETE
-    return f"""You are a friendly character creation guide for a fifth edition
+    prompt = f"""You are a friendly character creation guide for a fifth edition
 fantasy adventure, using SRD 5.2.1. The installed adventure and its real context
 are supplied by the wizard; never assume a particular campaign or destination.
 
@@ -276,6 +363,7 @@ CHARACTER SCHEMA:
 LEVELING INFORMATION:
 {leveling_info}
 """
+    return _engine_prompt(prompt, schema) if scoped else prompt
 
 
 def build_startup_review_prompt():

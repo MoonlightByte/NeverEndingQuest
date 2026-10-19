@@ -834,10 +834,11 @@ OPENAI_GPT56_TERRA_HIGH = {"model": "gpt-5.6-terra", "reasoning_effort": "high"}
 # T124 on OpenAI (D-CREATE-COST-2 amendment 4): the real gpt-5.6-luna; the OPENAI_GPT56_LUNA_* profiles above send gpt-6-luna.
 # Effort low, so the provider guard strips the caller temperature (gpt-5.6-luna rejects temperature != 1 above none).
 STARTUP_REVIEW_T124_GPT_5_6_LUNA_LOW = {"model": "gpt-5.6-luna", "reasoning_effort": "low"}
-# D-CREATE-COST-4: new startup interviews take the engine-scoped path ("sectioned"); "whole" is
-# the #1278 path (full reference, one T124 review), kept as the rollback profile (D-CREATE-COST-3
-# amendment 2 (3)). It selects new interviews only; a resumed one follows its own history.
-STARTUP_REVIEW_MODE = "sectioned"
+# D-CREATE-COST-5 (Q1 option 1): every startup interview takes the one engine path, and the engine builds
+# the sheet from the typed intent. This selects only the review: "engine" (one T128 review of intent and
+# turn) or "whole" (#1278's T124 review over the engine-built sheet), the rollback. "sectioned", the
+# COST-4 name, reads as "engine".
+STARTUP_REVIEW_MODE = "engine"
 OPENAI_GPT56_SOL_NONE = {"model": "gpt-5.6-sol", "reasoning_effort": "none"}
 OPENAI_GPT56_SOL_LOW = {"model": "gpt-5.6-sol", "reasoning_effort": "low"}
 

@@ -256,8 +256,9 @@ def _unique(values: List[str]) -> List[str]:
     return out
 
 
-def build_level_one_sheet(intent: Dict[str, Any], creative: Dict[str, Any], data: Optional[_Data] = None,
-                          *, rolled: Optional[List[int]] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+def build_level_one_sheet(intent: Dict[str, Any], creative: Optional[Dict[str, Any]], data: Optional[_Data] = None,
+                          *, rolled: Optional[List[int]] = None,
+                          preview: bool = False) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """The level-1 sheet for a complete intent, and its provenance {engine_build, untyped}.
 
     Raises BuildRefusal when the intent has open or refused picks, an invalid ability-score assignment, or
@@ -267,12 +268,17 @@ def build_level_one_sheet(intent: Dict[str, Any], creative: Dict[str, Any], data
     if not d.ok:
         raise BuildRefusal([{"field": "data", "problem": "the data files cannot be read"}])
     intent = intent or {}
+    if preview:
+        # The interview preview (startup_sheet_preview): the mechanics only, before any creative field exists.
+        creative = {field: "" for field in CREATIVE_FIELDS}
+        creative["alignment"] = "neutral"
     creative = creative or {}
+    creative = {k: v for k, v in creative.items() if v is not None}  # an optional creative field may be null
     problems: List[Dict[str, Any]] = []
     extra = sorted(set(creative) - set(CREATIVE_FIELDS) - set(OPTIONAL_CREATIVE_FIELDS))
     if extra:
         problems.append({"field": "creative", "problem": "not creative fields: %s" % ", ".join(extra)})
-    for field in CREATIVE_FIELDS:
+    for field in CREATIVE_FIELDS if not preview else ():
         if not isinstance(creative.get(field), str) or not creative[field].strip():
             problems.append({"field": "creative.%s" % field, "problem": "missing"})
     problems += [dict(p, field=p["choice_id"]) for p in creation_scope.choice_problems(intent)]
@@ -400,6 +406,9 @@ def build_level_one_sheet(intent: Dict[str, Any], creative: Dict[str, Any], data
         "hitPoints": 0, "maxHitPoints": 0, "armorClass": 10, "initiative": 0, "proficiencyBonus": 2,
         "exp_required_for_next_level": 300,
     }
+    # Unarmored (10 + Dexterity modifier) until the finalize projects the packages' armor; with the engine
+    # unavailable it stays, disclosed as unchecked (D-PKG-1), and is true of a character with no gear.
+    sheet["armorClass"] = 10 + (sheet["abilities"]["dexterity"] - 10) // 2
     if background_feature is not None:
         sheet["backgroundFeature"] = background_feature
     for key in ("size", "speed"):
@@ -414,3 +423,40 @@ def build_level_one_sheet(intent: Dict[str, Any], creative: Dict[str, Any], data
     extra = {k: creative[k] for k in ("backstory", "appearance")
              if isinstance(creative.get(k), str) and creative[k].strip()}
     return sheet, {"engine_build": b.trace, "untyped": b.untyped, "creative_extra": extra}
+
+
+def render_sheet_summary(sheet: Dict[str, Any]) -> str:
+    """The build summary the player approves, rendered from the engine-built sheet (D2, #1275): names and
+    numbers only, never an id. Gear comes from the chosen packages when the character is saved."""
+    def mod(score: int) -> str:
+        return "%+d" % ((score - 10) // 2)
+    abilities = sheet.get("abilities") or {}
+    casting = sheet.get("spellcasting") if isinstance(sheet.get("spellcasting"), dict) else {}
+    spells = casting.get("spells") or {}
+    proficiencies = sheet.get("proficiencies") or {}
+    senses = sheet.get("senses") or {}
+    lines = ["%s %s, %s background" % (sheet.get("race"), sheet.get("class"), sheet.get("background")),
+             "Size %s, speed %s ft%s" % (sheet.get("size"), sheet.get("speed"),
+                                         ", darkvision %s ft" % senses["darkvision"] if senses.get("darkvision") else ""),
+             "", "Ability scores:"]
+    lines += ["- %s %d (%s)" % (a.capitalize(), abilities[a], mod(abilities[a])) for a in ABILITIES if a in abilities]
+    sections = [
+        ("Saving throws:", sheet.get("savingThrows")),
+        ("Skills:", sheet.get("skills")),
+        ("Expertise:", sheet.get("expertise")),
+        ("Armor and weapons:", (proficiencies.get("armor") or []) + (proficiencies.get("weapons") or [])),
+        ("Tools:", proficiencies.get("tools")),
+        ("Languages:", sheet.get("languages")),
+        ("Resistances:", sheet.get("damageResistances")),
+        ("Class features:", [f.get("name") for f in sheet.get("classFeatures") or []]),
+        ("Species traits:", [t.get("name") for t in sheet.get("racialTraits") or []]),
+        ("Feats:", [f.get("name") for f in sheet.get("feats") or []]),
+        ("Cantrips:", spells.get("cantrips")),
+        ("Level 1 spells:", spells.get("level1")),
+    ]
+    for label, items in sections:
+        items = [str(i) for i in items or [] if i]
+        if items:
+            lines += ["", label] + ["- %s" % i for i in items]
+    lines += ["", "Starting gear comes from your chosen packages when the character is saved."]
+    return "\n".join(lines)

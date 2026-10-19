@@ -147,6 +147,11 @@ def startup_response_schema(*, scoped=False):
             creative["properties"]["alignment"]["enum"] = list(alignment["enum"])
         schema["properties"]["creative"] = creative
         schema["required"].append("creative")
+        # D-CREATE-COST-5: the engine builds the sheet from intent; the author never writes it, and origin is
+        # intent's class and background.
+        for field in ("character", "origin"):
+            del schema["properties"][field]
+            schema["required"].remove(field)
     return schema
 
 
@@ -180,8 +185,11 @@ def _parse_object(text, schema):
 
 def parse_startup_response(text, *, latest_user_index, scoped=False):
     """Check wire shape/reference; the caller supplies its actual user index.
-    scoped: the response carries intent, and a finalize's origin must equal it."""
+    scoped: the engine path (D-CREATE-COST-5): the response carries intent and, at finalize, creative and
+    starting_equipment instead of a sheet."""
     value = _parse_object(text, startup_response_schema(scoped=scoped))
+    if scoped:
+        return _check_engine_response(value, latest_user_index)
     confirmation = value["confirmation"]
     index = confirmation["player_message_index"]
     if value["decision"] == "finalize_character":
@@ -199,10 +207,38 @@ def parse_startup_response(text, *, latest_user_index, scoped=False):
             raise ValueError("Finalization requires origin class_key and background_key equal to intent's")
     elif value["character"] is not None or confirmation["whole_build_approved"]:
         raise ValueError("An interview response cannot approve or contain a character")
-    elif scoped and value.get("creative") is not None:
-        raise ValueError("An interview response has creative null; it is set at finalization")
     elif value["origin"] is not None or value["starting_equipment"] is not None:
         raise ValueError("An interview response has origin and starting_equipment null; they are set at finalization")
+    elif value["decision"] == "pause_setup" and (
+            type(index) is not int or type(latest_user_index) is not int
+            or index != latest_user_index):
+        raise ValueError("A pause must cite the latest actual player input, which asked to stop")
+    elif index is not None and (type(index) is not int or index != latest_user_index):
+        raise ValueError("Confirmation reference must be null or the latest actual player input")
+    return value
+
+
+def _check_engine_response(value, latest_user_index):
+    confirmation = value["confirmation"]
+    index = confirmation["player_message_index"]
+    if value["decision"] == "finalize_character":
+        if (confirmation["whole_build_approved"] is not True
+                or type(index) is not int or type(latest_user_index) is not int
+                or index != latest_user_index):
+            raise ValueError("Finalization requires whole-build approval of the latest actual player input")
+        if value["creative"] is None or value["starting_equipment"] is None:
+            raise ValueError("Finalization requires creative (name, alignment, personality_traits, ideals, bonds, "
+                             "flaws) and starting_equipment (the chosen package keys, slot_picks and equipped)")
+        intent = value["intent"]
+        missing = [k for k in ("class_key", "species_key", "background_key", "ability_scores") if intent.get(k) is None]
+        if missing or (intent["ability_scores"] or {}).get("assignment") is None:
+            raise ValueError("Finalization requires the intent's class_key, species_key, background_key and "
+                             "ability_scores (method and assignment)")
+    elif confirmation["whole_build_approved"]:
+        raise ValueError("An interview response cannot approve the build")
+    elif value["creative"] is not None or value["starting_equipment"] is not None:
+        raise ValueError("An interview response has creative and starting_equipment null; they are set at "
+                         "finalization")
     elif value["decision"] == "pause_setup" and (
             type(index) is not int or type(latest_user_index) is not int
             or index != latest_user_index):
