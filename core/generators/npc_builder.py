@@ -172,7 +172,8 @@ def _srd_origin_reference(npc_race, npc_background):
 
     # the slots are inside equipment_options; key, feat_ref and the typed lists are the creation scope's and
     # the engine build's typed refs (D-CREATE-COST-4/-5)
-    startup_only = ("equipment_options", "key", "feat_ref", "skill_keys", "tool_keys", "tool_choice")
+    startup_only = ("equipment_options", "key", "feat_ref", "skill_keys", "tool_keys", "tool_choice",
+                    "ability_keys")
     return {
         "background_ability_scores_rule": origins["background_ability_scores_rule"],
         "species": [{k: v for k, v in entry.items() if k not in ("key", "grants")}

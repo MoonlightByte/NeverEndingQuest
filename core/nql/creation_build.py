@@ -97,7 +97,7 @@ def _ability_scores(b: _Build, background: Dict[str, Any], rolled: Optional[List
     scores = dict(b.source("abilities.base", "intent.ability_scores (%s)" % method, base))
     bid = "background.%s.ability-scores" % background["key"]
     choice = (b.picked(bid) or [None])[0]
-    abilities = [a.strip() for a in str(background.get("ability_scores") or "").split(",") if a.strip()]
+    abilities = list(background.get("ability_keys") or [])
     increases: Dict[str, int] = {}
     if choice == "+1 each":
         increases = {a.lower(): 1 for a in abilities}
