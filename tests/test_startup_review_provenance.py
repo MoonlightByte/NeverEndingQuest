@@ -1307,3 +1307,43 @@ def test_a_refused_finalize_reprompts_the_author_with_typed_problems_and_no_revi
                and str(m.get("content", "")).startswith("Rejected startup proposal (not approved):")]
     assert refusal and "finalize" in refusal[-1].lower()
     assert "startup_engine_review" not in _purposes(conversation)
+
+
+def _complete_order_intent(cls, order, option):
+    from core.nql import creation_scope
+    intent = {"class_key": cls, "species_key": "human", "background_key": "sage", "choices": {order: [option]},
+              "considering": {"class_keys": [], "species_keys": [], "background_keys": []},
+              "ability_scores": {"method": "standard_array", "assignment": {
+                  "strength": 15, "dexterity": 14, "constitution": 13, "intelligence": 12, "wisdom": 10,
+                  "charisma": 8}}}
+    for _ in range(12):
+        open_ids = creation_scope.open_choice_ids(intent)
+        if not open_ids:
+            break
+        points = creation_scope.issued_points(intent)
+        for cid in open_ids:
+            intent["choices"][cid] = list((points[cid].get("option_keys") or [])[:points[cid].get("count") or 1])
+    assert not creation_scope.open_choice_ids(intent)
+    return intent
+
+
+@pytest.mark.parametrize("cls, order, option, armor, weapon", [
+    ("druid", "druid.primal-order.primal-order", "Warden", "Medium", "Martial"),
+    ("cleric", "cleric.divine-order.divine-order", "Protector", "Heavy", "Martial"),
+])
+def test_the_engine_build_carries_the_order_grants_so_preview_equals_saved(cls, order, option, armor, weapon):
+    # All-class D1 (dplay-AC-druid turn 9): the preview showed Light armor and Simple weapons for a Warden; the
+    # order's grants were written only by the save repair. The build now runs the same pass: the preview has
+    # them, and the repair adds nothing to a finalized sheet.
+    import copy
+    from core.nql import creation_build
+    from core.leveling import choices
+    intent = _complete_order_intent(cls, order, option)
+    preview, _ = creation_build.build_level_one_sheet(intent, None, preview=True)
+    assert armor in preview["proficiencies"]["armor"] and weapon in preview["proficiencies"]["weapons"]
+    creative = {field: "x" for field in creation_build.CREATIVE_FIELDS}
+    creative.update(name="Order Test", alignment="neutral")
+    final, built = creation_build.build_level_one_sheet(intent, creative)
+    repaired = copy.deepcopy(final)
+    assert all(entry["added"] == [] for entry in choices.apply_order_grants(repaired)) and repaired == final
+    assert any(t["source"].startswith("choices.order_grants.") for t in built["engine_build"])
