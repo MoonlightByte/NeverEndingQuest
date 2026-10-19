@@ -939,10 +939,10 @@ SCOPED_CLERIC = dict(SCOPED_BLANK, class_key="cleric", species_key="dwarf", back
 @pytest.fixture
 def scoped(wizard, monkeypatch):
     import model_config
-    monkeypatch.setattr(model_config, "STARTUP_REVIEW_MODE", "sectioned")
+    monkeypatch.setattr(model_config, "STARTUP_REVIEW_MODE", "engine")
     monkeypatch.setattr(wizard, "save_startup_conversation", lambda *a, **k: None)
     monkeypatch.setattr(wizard, "_review_startup_response",
-                        lambda *a, **k: pytest.fail("No whole review on the scoped path"))
+                        lambda *a, **k: pytest.fail("No whole review in the engine mode"))
     return wizard
 
 
@@ -953,21 +953,24 @@ def _scoped_turn(intent, narration="Which divine order calls to her?"):
                        "starting_equipment": None, "intent": intent, "creative": None})
 
 
-def _section_accept(task_id, wizard, messages=None):
-    section = {v: k for k, v in wizard.SECTION_TASK_IDS.items()}[task_id]
-    return json.dumps({"version": 1, "section": section, "accepted": True,
-                       "needs_player_clarification": False, "demands": []})
+def _engine_accept(messages=None):
+    return json.dumps({"version": 1, "accepted": True, "needs_player_clarification": False, "demands": []})
 
 
-def _run_scoped(wizard, monkeypatch, answers, lines, conversation=None, section=None):
+def _engine_reject(field="narration", demand="Ask the player first.", reason_kind="flow", contradiction=False):
+    return json.dumps({"version": 1, "accepted": False, "needs_player_clarification": False, "demands": [
+        {"field": field, "demand": demand, "reason_kind": reason_kind, "contradiction": contradiction}]})
+
+
+def _run_scoped(wizard, monkeypatch, answers, lines, conversation=None, review=None):
     """Drive ai_character_interview with scripted T092 answers and player lines; returns the history and calls."""
     calls = []
 
     def model(messages, *args, **kwargs):
         task = kwargs.get("task_id", "T092")
         calls.append((task, copy.deepcopy(messages)))
-        if task in wizard.SECTION_TASK_IDS.values():
-            return (section or _section_accept)(task, wizard, messages)
+        if task == "T128":
+            return (review or _engine_accept)(messages)
         return answers.pop(0)
 
     lines = iter(lines)
@@ -1031,16 +1034,26 @@ def test_a_complete_intent_shows_the_engine_built_summary_once(scoped, monkeypat
     assert capsys.readouterr().out.count(summary) == 1
 
 
-def test_section_prompts_pin_the_t124_text_they_rewrite():
-    # A T124 edit must fail here, not at a player's first sectioned review (Sentinel N6).
+def test_engine_prompt_rewrite_anchors_hold():
+    # A T092 prompt edit must fail here, not at a player's first interview (Sentinel N8).
     from utils import startup_prompt_builder as builder
-    text = builder.build_startup_review_prompt()
-    for old, _new in builder._SECTION_COMMON_EDITS:
-        assert text.count(old) == 1, old
-    common = builder.build_section_review_common()
-    assert "startup_rules_reference" not in common
-    for section in ("S1", "S2", "S3", "S4"):
-        assert f'"section" to "{section}"' in builder.build_section_review_prompt(section)
+    import utils.encoding_utils as encoding
+    schema = encoding.safe_json_load(str(ROOT / "schemas" / "char_schema.json"))
+    whole = builder.build_character_creation_system_prompt()
+    assert builder.engine_prompt_drift(whole.replace(builder._WHOLE_FACTS, builder._SCOPED_FACTS)
+                                       .replace(builder._WHOLE_COMPLETE, builder._SCOPED_COMPLETE), schema) == []
+    engine = builder.build_character_creation_system_prompt(scoped=True)
+    assert "CHARACTER SCHEMA:" not in engine and "THE ENGINE BUILDS THE SHEET" in engine
+    for _old, new in builder._ENGINE_EDITS:
+        assert new in engine
+
+
+def test_engine_prompt_drift_fails_forward_to_the_unedited_prompt(wizard, monkeypatch):
+    from utils import startup_prompt_builder as builder
+    monkeypatch.setattr(builder, "_ENGINE_EDITS", (("not in the T092 text", "x"),))
+    engine = builder.build_character_creation_system_prompt(scoped=True)
+    # The interview goes on: the engine lines are in the facts block, the rewrites are skipped.
+    assert "THE ENGINE BUILDS THE SHEET" in engine and "CHARACTER SCHEMA:" in engine
 
 
 def test_new_interview_gets_the_scoped_prompt_and_menu_not_the_reference(scoped, monkeypatch):
@@ -1048,128 +1061,87 @@ def test_new_interview_gets_the_scoped_prompt_and_menu_not_the_reference(scoped,
     purposes = _purposes(conversation)
     assert "startup_rules_reference" not in purposes
     assert purposes.count("startup_creation_scope") == 1 and purposes.count("startup_scope_state") >= 1
-    assert scoped._interview_path(conversation) == "scoped"
-    assert [task for task, _ in calls if task == "T124"] == []
+    assert [task for task, _ in calls if task != "T092"] == ["T128"]
 
 
-def test_intent_rescopes_once_and_sections_review_without_interview_items(scoped, monkeypatch):
+def test_intent_rescopes_once_and_t128_reviews_without_interview_items(scoped, monkeypatch):
     answers = [_scoped_turn(SCOPED_BLANK), _scoped_turn(SCOPED_CLERIC), _scoped_turn(SCOPED_CLERIC)]
     conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte, please."])
     assert [task for task, _ in calls].count("T092") == 3  # the menu answer, then the re-ask after the re-scope
-    sections = [messages for task, messages in calls if task != "T092"]
-    assert sorted({task for task, _ in calls if task != "T092"}) == ["T128", "T129", "T130", "T131"]
-    assert len(sections) == 8  # the menu turn's round, then the cleric turn's
-    for messages in sections[4:]:
-        assert [m["role"] for m in messages] == ["system", "user"]
-        body = json.loads(messages[1]["content"])
-        assert body["task_purpose"] == "startup_section_review"
-        assert [p["content"] for p in body["player_messages"]] == ["A dwarf cleric acolyte, please."]
-        assert ("previous_author_narration" in body) is (body["section"] == "S1")
+    reviews = [messages for task, messages in calls if task == "T128"]
+    assert len(reviews) == 2  # the menu turn's, then the cleric turn's: one call each
+    messages = reviews[1]
+    assert [m["role"] for m in messages] == ["system", "user"]
+    facts = json.loads(messages[0]["content"].split("CREATION FACTS, as JSON:\n", 1)[1])
+    assert facts["class"]["name"] == "Cleric" and facts["species"]["name"] == "Dwarf"
+    assert "grants" not in facts["species"] and "sheet_representation" not in facts.get("common", {})
+    order = next(c for c in facts["choices"] if c["id"] == "cleric.divine-order.divine-order")
+    assert order["text"] and order["page"] == 37
+    # Audit A: each option's own SRD text (R04's Thaumaturge claim is checked against it).
+    options = {o["name"]: o["text"] for o in facts["class"]["order_options"][0]["options"]}
+    assert "Intelligence (Arcana or Religion) checks" in options["Thaumaturge"]
+    body = json.loads(messages[1]["content"])
+    assert body["task_purpose"] == "startup_engine_review"
+    assert [p["content"] for p in body["player_messages"]] == ["A dwarf cleric acolyte, please."]
+    assert set(body) == {"task_purpose", "player_messages", "latest_user_index", "previous_author_narration",
+                         "reply", "open_choice_ids", "previous_round_demands"}  # no sheet, no provenance
+    assert body["reply"]["intent"]["class_key"] == "cleric" and body["open_choice_ids"]
     scopes = scoped._system_records(conversation, "startup_creation_scope")
     assert len({s["scope_id"] for s in scopes}) == 2
-    assert scoped._scope_state(conversation)["intent"]["class_key"] == "cleric"
+    assert scoped._scope_states(conversation)[-1]["intent"]["class_key"] == "cleric"
 
 
-def test_unchanged_section_snapshots_keep_their_accepts_with_no_call(scoped, monkeypatch):
-    answers = [_scoped_turn(SCOPED_BLANK), _scoped_turn(SCOPED_CLERIC), _scoped_turn(SCOPED_CLERIC)]
-    conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte, please."])
-    first = len([task for task, _ in calls if task != "T092"])
-    assert sorted(scoped._scope_state(conversation)["sticky"]) == ["S1", "S2", "S3", "S4"]
-    sticky = copy.deepcopy(scoped._scope_state(conversation)["sticky"])
-    proposal = json.loads(_scoped_turn(SCOPED_CLERIC))
-    scope_item = scoped.creation_scope.creation_scope(SCOPED_CLERIC)
-    review = scoped._review_sections(conversation, scope_item, proposal, {"character_saved": False},
-                                     authored_proposal=proposal, normalization_provenance={},
-                                     live_scope=None, sticky=sticky)
-    assert review["accepted"] is True and first == 8
-    assert len([task for task, _ in calls if task != "T092"]) == first  # no call: every snapshot was unchanged
+def test_a_rejected_round_sends_its_demands_to_the_next_review(scoped, monkeypatch):
+    verdicts = [_engine_accept(), _engine_reject("intent.choices.cleric.divine-order.divine-order",
+                                                 "Ask which order; the player never chose.", "intent_mismatch"),
+                _engine_accept()]
+    answers = [_scoped_turn(SCOPED_BLANK)] + [_scoped_turn(SCOPED_CLERIC)] * 3
+    conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte."],
+                                      review=lambda messages: verdicts.pop(0))
+    reviews = [json.loads(m[1]["content"]) for task, m in calls if task == "T128"]
+    assert [r["previous_round_demands"] for r in reviews][0] == []
+    assert reviews[-1]["previous_round_demands"][0]["reason_kind"] == "intent_mismatch"
+    correction = next(json.loads(m["content"]) for task, messages in calls if task == "T092"
+                      for m in messages if m["role"] == "system" and '"review_feedback"' in m["content"])
+    assert "intent_mismatch" in correction["review_feedback"]
 
 
-def test_a_class_switch_drops_the_old_picks_in_one_typed_item(scoped, monkeypatch):
-    paladin = dict(SCOPED_CLERIC, class_key="paladin")
-    answers = [_scoped_turn(SCOPED_BLANK), _scoped_turn(SCOPED_CLERIC), _scoped_turn(SCOPED_CLERIC),
-               _scoped_turn(paladin), _scoped_turn(dict(paladin, choices={}))]
-    conversation, _ = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte.", "A paladin instead."])
-    dropped = scoped._system_records(conversation, "startup_choices_dropped")
-    assert [d["dropped"] for d in dropped] == [{"cleric.divine-order.divine-order": ["Thaumaturge"]}]
-    assert scoped._scope_state(conversation)["intent"]["class_key"] == "paladin"
+def test_t128_prompt_pins_the_asks_nothing_and_rules_claim_rules():
+    # Audit G: leg 1's known rejects R04 (false_rules_claim), R07 (unasked_choice) and R11 (flow), and
+    # alignment never a ground (R01-R03).
+    from utils.startup_prompt_builder import build_engine_review_prompt
+    text = " ".join(build_engine_review_prompt().split())
+    assert "A reply that asks the player nothing while open_choice_ids is not empty is a flow rejection." in text
+    assert ("A reply that asks for whole-build approval, or a finalize, while open_choice_ids is not empty is "
+            "an unasked_choice rejection.") in text
+    assert "or one that does not exist, is a false_rules_claim" in text
+    assert "Never reject for alignment" in text
 
 
-def test_a_pick_outside_the_scope_is_refused_typed_and_never_reviewed(scoped, monkeypatch):
-    bad = dict(SCOPED_CLERIC, choices={"cleric.divine-order.divine-order": ["Nope"]})
-    answers = [_scoped_turn(SCOPED_BLANK), _scoped_turn(SCOPED_CLERIC), _scoped_turn(bad)] + [_scoped_turn(SCOPED_CLERIC)] * 3
-    conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte."])
-    refused_at, request = next((i, m) for i, (t, m) in enumerate(calls)
-                               if t == "T092" and "startup_choice_refusal" in _purposes(m))
-    at = _purposes(request).index("startup_choice_refusal")
-    refusal = json.loads(request[at]["content"])
-    assert refusal["problems"] and refusal["open_choice_ids"] == []
-    assert calls[refused_at - 1][0] == "T092"  # the refused answer had no section call
-    # The refused intent never became the scope: no state in any later request carries its pick.
-    for task, messages in calls[refused_at:]:
-        for state in scoped._system_records(messages, "startup_scope_state"):
-            assert "Nope" not in json.dumps(state["intent"])
-    assert "startup_choice_refusal" not in _purposes(conversation)  # the saved history keeps only the published turn
+@pytest.mark.parametrize("verdict", [
+    {"version": 1, "accepted": True, "needs_player_clarification": False,
+     "demands": [{"field": "narration", "demand": "x", "reason_kind": "flow", "contradiction": False}]},
+    {"version": 1, "accepted": False, "needs_player_clarification": False, "demands": []},
+    {"version": 1, "accepted": False, "needs_player_clarification": False,
+     "demands": [{"field": "creative.alignment", "demand": "x", "reason_kind": "alignment", "contradiction": False}]},
+])
+def test_an_invalid_t128_verdict_is_refused(verdict):
+    from utils.startup_contract import parse_engine_review
+    with pytest.raises(ValueError):
+        parse_engine_review(json.dumps(verdict))
 
 
-def test_scope_items_are_saved_only_when_the_turn_publishes(scoped, monkeypatch):
-    # A turn whose response never publishes leaves the saved history's scope state as it was (r3.1 T4).
-    def refuse_cleric(task, wizard, messages):
-        if json.loads(messages[1]["content"])["proposal"]["intent"]["class_key"] != "cleric":
-            return _section_accept(task, wizard)
-        section = {v: k for k, v in wizard.SECTION_TASK_IDS.items()}[task]
-        return json.dumps({"version": 1, "section": section, "accepted": False, "needs_player_clarification": False,
-                           "demands": [{"field": "intent", "demand": "Ask the player first."}]})
-    answers = [_scoped_turn(SCOPED_BLANK)] + [_scoped_turn(SCOPED_CLERIC)] * 12
-    conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte."], section=refuse_cleric)
-    assert any(task != "T092" for task, _ in calls[2:])  # the cleric turn reached its reviewers
-    states = scoped._system_records(conversation, "startup_scope_state")
-    assert states and all((s.get("intent") or {}).get("class_key") != "cleric" for s in states)
-    assert len(scoped._system_records(conversation, "startup_creation_scope")) == 1  # only the menu's
+@pytest.mark.parametrize("value, mode", [("engine", "engine"), ("whole", "whole"), ("sectioned", "engine"),
+                                         ("bogus", "engine")])
+def test_review_mode_values_and_the_stale_fallback(wizard, monkeypatch, value, mode):
+    import model_config
+    monkeypatch.setattr(model_config, "STARTUP_REVIEW_MODE", value)
+    assert wizard._startup_review_mode() == mode
 
 
-def test_scope_state_is_not_a_checkpoint_and_belongs_to_its_startup(scoped, monkeypatch):
-    from utils.startup_contract import parse_startup_checkpoint
-    conversation, _ = _run_scoped(scoped, monkeypatch, [_scoped_turn(SCOPED_BLANK)], [])
-    without = [m for m, p in zip(conversation, _purposes(conversation)) if p != "startup_scope_state"]
-    assert len(without) < len(conversation)
-    assert parse_startup_checkpoint(conversation) == parse_startup_checkpoint(without)
-    state = scoped._scope_state(conversation)
-    assert state is not None and state["startup_id"] is None  # written before the first checkpoint
-    assert scoped._scope_state(conversation) == state
-    # A later startup in the same history never reads this one's state.
-    later = dict(scoped._startup_progress(conversation), startup_id="another-startup")
-    conversation.append({"role": "system", "content": json.dumps(later)})
-    assert scoped._scope_state(conversation) is None
-
-
-def test_a_bounded_section_round_asks_the_player_once(scoped, monkeypatch):
-    from utils.capture.live_provider_call import finish_live_turn_scope, open_live_turn_scope
-    proposal = json.loads(_scoped_turn(SCOPED_CLERIC))
-    scope_item = scoped.creation_scope.creation_scope(SCOPED_CLERIC)
-    bounded, pauses = {"left": 2}, []
-
-    def model(messages, *args, **kwargs):
-        if kwargs["task_id"] in ("T129", "T130") and bounded["left"]:
-            bounded["left"] -= 1
-            raise scoped.StartupProviderBound(RuntimeError("quota"), "The provider is unavailable.")
-        return _section_accept(kwargs["task_id"], scoped)
-
-    monkeypatch.setattr(scoped, "get_ai_response", model)
-    monkeypatch.setattr(scoped, "_startup_provider_pause", lambda message, scope: pauses.append(message))
-    scope = open_live_turn_scope()
-    try:
-        review = scoped._review_sections([{"role": "user", "content": "A dwarf cleric."}], scope_item, proposal,
-                                         {"character_saved": False}, authored_proposal=proposal,
-                                         normalization_provenance={}, live_scope=scope, sticky={})
-    finally:
-        finish_live_turn_scope(scope)
-    assert review["accepted"] is True and pauses == ["The provider is unavailable."]
-
-
-def test_t124_drift_fails_forward_to_the_whole_review(scoped, monkeypatch):
-    from utils import startup_prompt_builder as builder
-    monkeypatch.setattr(builder, "_SECTION_COMMON_EDITS", (("not in the T124 text", "x"),))
+def test_the_whole_mode_reviews_the_engine_built_turn_with_t124(scoped, monkeypatch):
+    import model_config
+    monkeypatch.setattr(model_config, "STARTUP_REVIEW_MODE", "whole")
     reviewed = []
 
     def whole(request, *args, **kwargs):
@@ -1182,5 +1154,62 @@ def test_t124_drift_fails_forward_to_the_whole_review(scoped, monkeypatch):
     answers = [_scoped_turn(SCOPED_BLANK), _scoped_turn(SCOPED_CLERIC), _scoped_turn(SCOPED_CLERIC)]
     conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte."])
     assert reviewed and all(reviewed)
-    assert not scoped._startup_rules_reference_present(conversation)
+    assert not scoped._startup_rules_reference_present(conversation)  # the history stays on the engine path
     assert all(task == "T092" for task, _ in calls)
+
+
+
+def test_a_class_switch_drops_the_old_picks_in_one_typed_item(scoped, monkeypatch):
+    paladin = dict(SCOPED_CLERIC, class_key="paladin")
+    answers = [_scoped_turn(SCOPED_BLANK), _scoped_turn(SCOPED_CLERIC), _scoped_turn(SCOPED_CLERIC),
+               _scoped_turn(paladin), _scoped_turn(dict(paladin, choices={}))]
+    conversation, _ = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte.", "A paladin instead."])
+    dropped = scoped._system_records(conversation, "startup_choices_dropped")
+    assert [d["dropped"] for d in dropped] == [{"cleric.divine-order.divine-order": ["Thaumaturge"]}]
+    assert (scoped._scope_states(conversation) or [None])[-1]["intent"]["class_key"] == "paladin"
+
+
+def test_a_pick_outside_the_scope_is_refused_typed_and_never_reviewed(scoped, monkeypatch):
+    bad = dict(SCOPED_CLERIC, choices={"cleric.divine-order.divine-order": ["Nope"]})
+    answers = [_scoped_turn(SCOPED_BLANK), _scoped_turn(SCOPED_CLERIC), _scoped_turn(bad)] + [_scoped_turn(SCOPED_CLERIC)] * 3
+    conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte."])
+    refused_at, request = next((i, m) for i, (t, m) in enumerate(calls)
+                               if t == "T092" and "startup_choice_refusal" in _purposes(m))
+    at = _purposes(request).index("startup_choice_refusal")
+    refusal = json.loads(request[at]["content"])
+    assert refusal["problems"] and refusal["open_choice_ids"] == []
+    assert calls[refused_at - 1][0] == "T092"  # the refused answer had no review call
+    # The refused intent never became the scope: no state in any later request carries its pick.
+    for task, messages in calls[refused_at:]:
+        for state in scoped._system_records(messages, "startup_scope_state"):
+            assert "Nope" not in json.dumps(state["intent"])
+    assert "startup_choice_refusal" not in _purposes(conversation)  # the saved history keeps only the published turn
+
+
+def test_scope_items_are_saved_only_when_the_turn_publishes(scoped, monkeypatch):
+    # A turn whose response never publishes leaves the saved history's scope state as it was (r3.1 T4).
+    def refuse_cleric(messages):
+        if json.loads(messages[1]["content"])["reply"]["intent"]["class_key"] != "cleric":
+            return _engine_accept()
+        return _engine_reject("intent.class_key", "Ask the player first.", "intent_mismatch")
+    answers = [_scoped_turn(SCOPED_BLANK)] + [_scoped_turn(SCOPED_CLERIC)] * 12
+    conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte."], review=refuse_cleric)
+    assert any(task != "T092" for task, _ in calls[2:])  # the cleric turn reached its reviewers
+    states = scoped._system_records(conversation, "startup_scope_state")
+    assert states and all((s.get("intent") or {}).get("class_key") != "cleric" for s in states)
+    assert len(scoped._system_records(conversation, "startup_creation_scope")) == 1  # only the menu's
+
+
+def test_scope_state_is_not_a_checkpoint_and_belongs_to_its_startup(scoped, monkeypatch):
+    from utils.startup_contract import parse_startup_checkpoint
+    conversation, _ = _run_scoped(scoped, monkeypatch, [_scoped_turn(SCOPED_BLANK)], [])
+    without = [m for m, p in zip(conversation, _purposes(conversation)) if p != "startup_scope_state"]
+    assert len(without) < len(conversation)
+    assert parse_startup_checkpoint(conversation) == parse_startup_checkpoint(without)
+    state = (scoped._scope_states(conversation) or [None])[-1]
+    assert state is not None and state["startup_id"] is None  # written before the first checkpoint
+    assert (scoped._scope_states(conversation) or [None])[-1] == state
+    # A later startup in the same history never reads this one's state.
+    later = dict(scoped._startup_progress(conversation), startup_id="another-startup")
+    conversation.append({"role": "system", "content": json.dumps(later)})
+    assert (scoped._scope_states(conversation) or [None])[-1] is None
