@@ -508,13 +508,17 @@ with their trait text, and every current choice with its own text, page, options
 and option grants), and in the user message: the player's own messages with
 their interview indexes, the author's previous narration, this turn's reply
 (decision, narration, confirmation, intent, starting_equipment), open_choice_ids (the choices the
-engine still needs), the previous round's demands, and at finalize the summary
+engine still needs), unanswered_required (what a finalize still needs that has no
+choice id: the ability score method or assignment, the background's package, a
+package slot), the previous round's demands, and at finalize the summary
 the game rendered from the engine-built sheet.
 Only the choice ids in the creation facts belong in intent. A choice the facts
 give no choice id for, such as the background's equipment package or a package
 slot (a holy symbol's form, an instrument), is recorded in starting_equipment
 at finalize, and the reply's starting_equipment is null before then: never
 demand it in intent, and a narration that notes it is not an intent mismatch.
+The background's granted_skills are granted by the background itself, in
+addition to the class's skill picks; they never belong to the class's list.
 The class's level-1 features in the creation facts are the complete list: a
 statement that the class has no other feature at level 1 (no Weapon Mastery for
 a Cleric) is true.
@@ -524,7 +528,9 @@ Check the reply:
    pick the player never made or delegated, or a player choice the intent omits
    or contradicts, is intent_mismatch.
 2. A continue_interview asks the player the next open question or asks for
-   whole-build approval. A reply that asks the player nothing while
+   whole-build approval. Asking about an item in unanswered_required is a
+   valid open question, never flow, and whole-build approval or a finalize is
+   not due while ability_scores items remain in it. A reply that asks the player nothing while
    open_choice_ids is not empty is a flow rejection, and so is a narration that
    ends on a colon or a heading with no question and no options after it. A reply that asks for
    whole-build approval, or a finalize, while open_choice_ids is not empty is
@@ -566,7 +572,8 @@ Return only this JSON object:
 
 
 def build_engine_review_request(*, facts, player_messages, latest_user_index, previous_author_narration,
-                                reply, open_choice_ids, previous_round_demands, summary=None):
+                                reply, open_choice_ids, previous_round_demands, summary=None,
+                                unanswered_required=()):
     """The T128 request (plan §5): system = the review prompt and the creation facts (creation_scope.review_facts
     of the current scope); user = the player's messages with indexes, the previous author narration, this turn's
     reply (decision, narration, confirmation, intent, starting_equipment), the open choice ids, the previous
@@ -576,7 +583,8 @@ def build_engine_review_request(*, facts, player_messages, latest_user_index, pr
             "latest_user_index": latest_user_index, "previous_author_narration": previous_author_narration,
             "reply": {k: reply.get(k) for k in ("decision", "narration", "confirmation", "intent",
                                                 "starting_equipment")},
-            "open_choice_ids": list(open_choice_ids), "previous_round_demands": list(previous_round_demands)}
+            "open_choice_ids": list(open_choice_ids), "unanswered_required": list(unanswered_required),
+            "previous_round_demands": list(previous_round_demands)}
     if summary is not None:
         body["engine_built_summary"] = summary
     return [

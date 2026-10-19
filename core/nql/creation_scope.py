@@ -610,7 +610,38 @@ def review_facts(scope: Dict[str, Any]) -> Dict[str, Any]:
         facts["species"] = {k: v for k, v in scope["species"].items() if k not in ("grants", "key")}
     if scope.get("background") is not None:
         facts["background"] = {k: v for k, v in scope["background"].items() if k not in _BACKGROUND_INTERNAL}
+        # Granted by the background itself, never picked from the class list (C4-switch-r2 round 7).
+        facts["background"]["granted_skills"] = list(scope["background"].get("skill_keys") or [])
     common = {k: v for k, v in (scope.get("common") or {}).items() if k != "sheet_representation"}
     if common:
         facts["common"] = common
     return facts
+
+
+def _slot_ids(value) -> List[str]:
+    """Every package slot id (a holy symbol's form, a gaming set) under one scope value."""
+    if isinstance(value, dict):
+        found = [value["slot"]] if isinstance(value.get("slot"), str) else []
+        for child in value.values():
+            found.extend(_slot_ids(child))
+        return found
+    if isinstance(value, list):
+        return [slot for child in value for slot in _slot_ids(child)]
+    return []
+
+
+def unanswered_required(scope: Dict[str, Any], intent: Dict[str, Any], starting_equipment=None) -> List[str]:
+    """What a finalize still needs that no choice id stands for (C4-switch-r2): the ability score method and
+    assignment while intent lacks them and, until starting_equipment is given at finalize, the background's
+    package and every package slot. Typed ids only; T128 reads asking for these as an open question."""
+    missing = []
+    scores = (intent or {}).get("ability_scores") or {}
+    for key in ("method", "assignment"):
+        if not scores.get(key):
+            missing.append("ability_scores." + key)
+    if starting_equipment is None:
+        if (scope.get("background") or {}).get("equipment_options"):
+            missing.append("starting_equipment.background_package")
+        missing.extend("starting_equipment.slot:" + slot
+                       for slot in sorted(set(_slot_ids({k: scope.get(k) for k in ("class", "background", "choices")}))))
+    return missing

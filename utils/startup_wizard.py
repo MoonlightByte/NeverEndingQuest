@@ -1217,7 +1217,8 @@ def _engine_review(conversation, proposal, *, previous_demands, summary, live_sc
                          if m.get("role") == "user"],
         latest_user_index=latest, previous_author_narration=_previous_author_narration(conversation, latest),
         reply=proposal, open_choice_ids=creation_scope.open_choice_ids(intent),
-        previous_round_demands=previous_demands, summary=summary)
+        previous_round_demands=previous_demands, summary=summary,
+        unanswered_required=creation_scope.unanswered_required(scope, intent, proposal.get("starting_equipment")))
     invalid = 0
     while True:
         raw = get_ai_response(messages, {"type": "json_object"}, persist_response=False, live_scope=live_scope,
