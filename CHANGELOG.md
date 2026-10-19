@@ -100,6 +100,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - A new game started over another adventure's save (for example after its character file went missing) no longer inherits that game's date, events, active fight, companions, quests or weather; its party tracker starts empty, as after Reset. Resuming the same adventure keeps everything (#1283).
+- A new game started over another adventure's save now runs the full Reset first, right after the adventure is chosen: the old game is backed up, and its conversation, world record, journal and saved characters no longer carry into the new game. In the browser, the old game's lines leave the log. A paused character interview continues where it stopped; resuming the same adventure is untouched (#1285).
 - Choosing a new game's starting location no longer retries without end when the AI keeps naming a place that isn't in the adventure, and each retry no longer re-sends the whole adventure. After four rejected answers the game starts where the story starts and says so (#1270).
 - The Character panel and the character sheet now list your character's languages (#1276).
 - While the game waits on the AI, the line above the input now says what it is waiting for and for how long (for example "Setting up your character (3 min 25 s): OpenAI is working"), shows a retry and its countdown, and after a minute says your turn is safe and need not be sent again. Before, a long call showed only a fixed phrase such as "Your deeds leave their mark…" (#1271).

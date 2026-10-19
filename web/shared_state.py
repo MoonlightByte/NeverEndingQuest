@@ -79,3 +79,25 @@ def emit_player_output(message, *, commit_guard=None):
         return False
 
 print("[SHARED STATE] Module progress queue initialized")
+
+
+# #1285: how the active frontend clears its message log when setup resets
+# another adventure's save. Only the web registers one.
+_message_log_reset_listener = None
+
+
+def set_message_log_reset_listener(listener):
+    global _message_log_reset_listener
+    _message_log_reset_listener = listener
+
+
+def message_log_reset():
+    """Best-effort, as player output is: a failed listener is never fatal."""
+    listener = _message_log_reset_listener
+    if listener is None:
+        return False
+    try:
+        listener()
+    except Exception:
+        return False
+    return True
