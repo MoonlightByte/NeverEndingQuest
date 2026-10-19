@@ -1136,7 +1136,7 @@ def test_t128_prompt_pins_the_asks_nothing_and_rules_claim_rules():
     assert "Never reject for alignment" in text
     # T128 r2 (leg 1): slot picks and packages are never demanded in intent; the features list is complete
     # (R08, P2); substance over wording (R01); a narration ending on a colon asks nothing (R11).
-    assert "is recorded in starting_equipment at finalize" in text and "never demand it in intent" in text
+    assert "is recorded in starting_equipment as the player gives it" in text and "never demand it in intent" in text
     assert "The class's level-1 features in the creation facts are the complete list" in text
     assert "Wording that matches the facts in substance is not a false claim" in text
     assert "ends on a colon or a heading with no question and no options after it" in text
@@ -1160,7 +1160,10 @@ def test_unanswered_required_lists_what_no_choice_id_stands_for():
     scores = {"ability_scores": {"method": "standard_array", "assignment": {"strength": 15}}}
     assert creation_scope.unanswered_required(scope, scores) == [
         {"id": "starting_equipment.background_package"}] + slots
-    assert creation_scope.unanswered_required(scope, scores, {"background_package": "A"}) == []
+    equipment = {"background_package": "A", "class_package": "A", "equipped": [],
+                 "slot_picks": [{"slot": "paladin.A.holy_symbol", "display_name": "Amulet"},
+                                {"slot": "soldier.A.gaming_set", "display_name": "Playing Cards"}]}
+    assert creation_scope.unanswered_required(scope, scores, equipment) == []
 
 
 @pytest.mark.parametrize("field", ["flaws", "ideals", "name"])
@@ -1296,3 +1299,55 @@ def test_bard_round_7_request_keeps_the_class_package_in_intent():
     assert {"id": "starting_equipment.slot:bard.A.instrument", "package_choice_id": package} in body["unanswered_required"]
     assert {"id": "starting_equipment.slot:acolyte.A.holy_symbol", "package_choice_id": None} in body["unanswered_required"]
     assert all(entry["id"] != "starting_equipment.slot:" + package for entry in body["unanswered_required"])
+
+
+def _bard_interview_turn(equipment):
+    package = "bard.core-bard-traits.starting-equipment"
+    return {"version": 1, "decision": "continue_interview", "narration": "Which two cantrips would Pip like?",
+            "confirmation": {"player_message_index": 0, "whole_build_approved": False}, "creative": None,
+            "starting_equipment": equipment,
+            "intent": {"class_key": "bard", "species_key": "halfling", "background_key": "acolyte",
+                       "choices": {package: ["A"]},
+                       "considering": {"class_keys": [], "species_keys": [], "background_keys": []},
+                       "ability_scores": None}}
+
+
+def test_package_and_slot_picks_have_a_typed_place_on_interview_turns():
+    # D-CREATE-COST-5 amendment 2 (dplay-AC-bard-r2): the author had nowhere typed for the lute, the holy
+    # symbol's form or the Acolyte package before finalize, and tried four refused shapes: slot ids in
+    # intent (not_issued), a reply without its required fields, the class package dropped from intent, and
+    # an invented background package choice id. Each pick now has its place in a partial starting_equipment.
+    from core.nql import creation_scope
+    from utils.startup_contract import parse_startup_response
+    equipment = {"background_package": "A", "class_package": None, "equipped": [],
+                 "slot_picks": [{"slot": "bard.A.instrument", "display_name": "Lute"},
+                                {"slot": "acolyte.A.holy_symbol", "display_name": "Amulet"}]}
+    turn = _bard_interview_turn(equipment)
+    parsed = parse_startup_response(json.dumps(turn), latest_user_index=0, scoped=True)
+    assert parsed["starting_equipment"] == equipment
+    scope = creation_scope.creation_scope(turn["intent"])
+    left = [entry["id"] for entry in creation_scope.unanswered_required(scope, turn["intent"], equipment)]
+    assert not [entry for entry in left if entry.startswith("starting_equipment.")]
+    # The four shapes stay what they were: none is needed now.
+    assert parse_startup_response(json.dumps(_bard_interview_turn(None)), latest_user_index=0, scoped=True)
+    missing_fields = {k: v for k, v in turn.items() if k not in ("intent", "confirmation")}
+    with pytest.raises(ValueError):
+        parse_startup_response(json.dumps(missing_fields), latest_user_index=0, scoped=True)
+    assert set(creation_scope.issued_points(turn["intent"])).isdisjoint(
+        {"bard.A.instrument", "acolyte.A.holy_symbol", "background.acolyte.equipment",
+         "background.acolyte.starting-equipment"})
+    from utils.startup_prompt_builder import build_character_creation_system_prompt
+    text = " ".join(build_character_creation_system_prompt(scoped=True).split())
+    assert "Record package and slot picks in starting_equipment as soon as the player gives them" in text
+
+
+def test_finalize_needs_every_package_and_slot_pick(wizard, authored):
+    # Amendment 2: the engine never fills a pick; a finalize without a needed slot is a typed rejection.
+    from core.nql import creation_scope
+    proposal = _engine_finalize(authored)
+    proposal["starting_equipment"].update(background_package="A", slot_picks=[])
+    scope = creation_scope.creation_scope(proposal["intent"])
+    assert [e for e in creation_scope.unanswered_required(scope, proposal["intent"], proposal["starting_equipment"])
+            if e["id"].startswith("starting_equipment.slot:")]
+    with pytest.raises(ValueError, match="every package and slot pick"):
+        wizard._prepare_startup_proposal(proposal)
