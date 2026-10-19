@@ -1373,9 +1373,13 @@ def test_a_class_skill_pick_types_the_background_granted_skills_it_excludes():
 def test_the_summary_lists_a_species_trait_with_a_picked_option_once():
     # dplay-AC-difficult turn 18: "Giant Ancestry" showed twice. The sheet keeps both entries.
     from core.nql import creation_build
-    sheet = {"racialTraits": [{"name": "Giant Ancestry"}, {"name": "Powerful Build"},
-                              {"name": "Giant Ancestry: Stone's Endurance"}]}
-    summary = creation_build.render_sheet_summary(sheet)
+    intent = _complete_order_intent("cleric", "cleric.divine-order.divine-order", "Protector")
+    intent["species_key"] = "goliath"
+    intent["choices"] = {k: v for k, v in intent["choices"].items() if not k.startswith("species.human.")}
+    intent["choices"]["species.goliath.giant-ancestry"] = ["Stone's Endurance"]
+    sheet, built = creation_build.build_level_one_sheet(intent, None, preview=True)
+    assert built["folded_traits"] == ["Giant Ancestry"]
+    summary = creation_build.render_sheet_summary(sheet, built)
     assert "- Giant Ancestry: Stone's Endurance" in summary and "- Giant Ancestry\n" not in summary
-    assert len(sheet["racialTraits"]) == 3
+    assert {"Giant Ancestry", "Giant Ancestry: Stone's Endurance"} <= {t["name"] for t in sheet["racialTraits"]}
 
