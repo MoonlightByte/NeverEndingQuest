@@ -1580,6 +1580,10 @@ def _starting_gear_notice(character, provenance):
 # a valid verdict within the remaining budget also hands the turn back. Not
 # persisted: a restart replays the turn with a fresh count.
 STARTUP_TURN_REJECTION_LIMIT = 4
+# T093 starting-location proposals that complete but don't resolve (D-1270-1,
+# a B2-iv class matching the limit above); provider errors don't count. After
+# this many in a row the party starts at the plot's starting area (D-1270-2).
+STARTUP_LOCATION_REJECTION_LIMIT = 4
 STARTUP_HANDBACK_NOTICE = (
     "I could not finish that build yet. Your choices so far "
     "are kept and no character has been saved. Tell me what to adjust, or say "
@@ -2403,6 +2407,30 @@ def _resolve_startup_location(module_name, candidate):
     return dict(candidate, areaName=area["areaName"], locationName=location["name"])
 
 
+def _startup_location_choices(module_data):
+    """The installed module's places as typed ids (#1270): the list a T093
+    correction chooses from, and the fall-forward start (D-1270-2): the first
+    location of the plot's first area, else of the first area by id."""
+    choices = []
+    areas = module_data.get("areas") or {}
+    for area_id in sorted(areas):
+        area = areas[area_id]
+        if not isinstance(area, dict) or not area.get("areaName"):
+            continue
+        locations = area.get("locations", [])
+        if isinstance(locations, dict):
+            locations = list(locations.values())
+        for location in locations:
+            if isinstance(location, dict) and location.get("locationId") and location.get("name"):
+                choices.append({"areaId": area_id, "areaName": area["areaName"],
+                                "locationId": location["locationId"], "locationName": location["name"]})
+    points = (module_data.get("plot") or {}).get("plotPoints") or []
+    plot_area = points[0].get("location") if points and isinstance(points[0], dict) else None
+    start = next((choice for choice in choices if choice["areaId"] == plot_area),
+                 choices[0] if choices else None)
+    return choices, start
+
+
 def update_party_tracker(module_name, character_name, *, live_scope=None, starting_location=None):
     """Commit the selected identity and a real location through the shared writer."""
     with _startup_operation(live_scope) as scope:
@@ -2809,6 +2837,7 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
     with _startup_operation(live_scope) as scope:
         _emit_startup_phase("startup_location")
         module_data = load_module_for_ai_analysis(module_name)
+        choices, fall_forward = _startup_location_choices(module_data or {})
         messages = [{"role": "user", "content": (
             "Analyze this installed adventure's plot and areas to choose its intended "
             "starting location for the player's new adventure. Use actual areaId and "
@@ -2824,6 +2853,11 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
         import time
         started = time.monotonic()  # the player's wait, for #1271
         error_note = []  # the one correction note after a failed attempt (#1267)
+        # The latest rejected proposal and the typed choices (#1270): replaced
+        # each round, kept across a provider error, never accumulated.
+        correction_note = []
+        invalid = 0
+        rejected = []
         while True:
             try:
                 revision = configuration_revision(provider)
@@ -2831,7 +2865,7 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
                     "T093", api_client.create_completion,
                     _request_provider=provider, _live_selected="required",
                     _detached_scope=scope,
-                    messages=copy.deepcopy(messages + error_note),
+                    messages=copy.deepcopy(messages + correction_note + error_note),
                     model=mini_cfg["model"], temperature=0.7, response_format=None,
                     **{key: value for key, value in mini_cfg.items() if key != "model"},
                 )
@@ -2846,13 +2880,32 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
                 if location is not None:
                     return location
                 error_note = []
-                messages.append({"role": "system", "content": (
+                invalid += 1
+                rejected.append([candidate.get("areaId"), candidate.get("locationId")]
+                                if isinstance(candidate, dict) else "unparseable")
+                if invalid >= STARTUP_LOCATION_REJECTION_LIMIT:
+                    location = _resolve_startup_location(
+                        module_name, fall_forward and dict(fall_forward, weather="", politicalClimate=""))
+                    if location is not None:
+                        warning(f"T093 proposals rejected {invalid} times ({rejected}); starting at "
+                                f"{location['areaId']}/{location['locationId']}", category="startup")
+                        print("\nDungeon Master: The AI could not settle on a starting location, so your "
+                              f"adventure begins where the story starts: {location['locationName']} "
+                              f"in {location['areaName']}.")
+                        return location
+                    # No place in this module resolves: wait for the player, then 4 fresh rounds.
+                    _startup_provider_pause(
+                        "The AI could not find a starting location in this adventure, so setup is waiting.", scope)
+                    invalid, rejected, correction_note = 0, [], []
+                    _emit_startup_phase("startup_location")
+                    status_processing_ai()
+                    continue
+                correction_note = [{"role": "system", "content": (
                     "The rejected response is incomplete or its IDs do not resolve in "
-                    "the selected module. Correct all six fields using these actual "
-                    "module files. No location has been committed. Rejected response: "
-                    + raw + "\nCURRENT MODULE DATA:\n"
-                    + json.dumps(load_module_for_ai_analysis(module_name), ensure_ascii=True)
-                )})
+                    "the selected module. No location has been committed. Return all six "
+                    "fields for one of these actual locations. Rejected response: "
+                    + raw + "\nLOCATIONS:\n" + json.dumps(choices, ensure_ascii=True)
+                )}]
             except (LiveProviderSuperseded, ReadOnlySaveStop):
                 raise
             except (StartupCancelled, KeyboardInterrupt, EOFError):
