@@ -998,7 +998,7 @@ def _sheet_preview(conversation, intent):
             intent, None, rolled=roll["rolled"] if roll else None, preview=True)
     except creation_build.BuildRefusal:
         return None   # the ability scores are not set yet: nothing to preview
-    summary = creation_build.render_sheet_summary(sheet)
+    summary = creation_build.render_sheet_summary(sheet, built)
     previews = _scope_states(conversation, SHEET_PREVIEW_PURPOSE)
     if previews and previews[-1].get("summary") == summary:
         return None

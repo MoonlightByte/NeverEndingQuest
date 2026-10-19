@@ -369,8 +369,12 @@ def build_level_one_sheet(intent: Dict[str, Any], creative: Optional[Dict[str, A
         racial.append({"name": name, "description": text, "source": "%s species" % species["name"]})
     # A picked species choice is shown as "<choice>: <option>" ("Draconic Ancestry: Red"). Display only: every
     # engine reader takes the typed choice id from the intent (N4).
+    folded = []
+    trait_names = {t.get("name") if isinstance(t, dict) else t for t in species_grants.get("traits") or []}
     for choice in [c for c in (species.get("grants") or {}).get("choices") or [] if not c.get("kind")]:
         cid = "species.%s.%s" % (species_key, _slug(choice["name"]))
+        if b.picked(cid) and choice["name"] in trait_names:
+            folded.append(choice["name"])   # the data's trait the choice belongs to, by its key name
         for option in b.picked(cid):
             name = b.source("racialTraits", cid, "%s: %s" % (choice["name"], option))
             racial.append({"name": name, "description": descriptions.get(name, ""),
@@ -427,10 +431,18 @@ def build_level_one_sheet(intent: Dict[str, Any], creative: Optional[Dict[str, A
     # build's provenance (the startup_engine_build item) until the owner rules on a schema delta (D3).
     extra = {k: creative[k] for k in ("backstory", "appearance")
              if isinstance(creative.get(k), str) and creative[k].strip()}
-    return sheet, {"engine_build": b.trace, "untyped": b.untyped, "creative_extra": extra}
+    return sheet, {"engine_build": b.trace, "untyped": b.untyped, "creative_extra": extra, "folded_traits": folded}
 
 
-def render_sheet_summary(sheet: Dict[str, Any]) -> str:
+def _species_trait_names(sheet: Dict[str, Any], built: Optional[Dict[str, Any]]) -> List[str]:
+    """The summary's species traits, a trait with a picked option once, as "<choice>: <option>"
+    (dplay-AC-difficult turn 18): the build names the folded base traits by the species choice it picked.
+    Display only; the sheet keeps both entries."""
+    folded = set((built or {}).get("folded_traits") or [])
+    return [t.get("name") for t in sheet.get("racialTraits") or [] if isinstance(t, dict) and t.get("name") not in folded]
+
+
+def render_sheet_summary(sheet: Dict[str, Any], built: Optional[Dict[str, Any]] = None) -> str:
     """The build summary the player approves, rendered from the engine-built sheet (D2, #1275): names and
     numbers only, never an id. Gear comes from the chosen packages when the character is saved."""
     def mod(score: int) -> str:
@@ -456,7 +468,7 @@ def render_sheet_summary(sheet: Dict[str, Any]) -> str:
         ("Languages:", sheet.get("languages")),
         ("Resistances:", sheet.get("damageResistances")),
         ("Class features:", [f.get("name") for f in sheet.get("classFeatures") or []]),
-        ("Species traits:", [t.get("name") for t in sheet.get("racialTraits") or []]),
+        ("Species traits:", _species_trait_names(sheet, built)),
         ("Feats:", [f.get("name") for f in sheet.get("feats") or []]),
         ("Cantrips:", spells.get("cantrips")),
         ("Level 1 spells:", spells.get("level1")),
