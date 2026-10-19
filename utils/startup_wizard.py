@@ -221,6 +221,15 @@ def reset_foreign_save(module_name):
     return True
 
 
+def _saved_defense_line(character):
+    """The saved sheet's armor class and hit points for the post-save line (dplay-AC-difficult turn 18): the
+    engine-projected values, which the interview preview cannot show before the gear is granted."""
+    ac, hp = character.get("armorClass"), character.get("maxHitPoints")
+    if type(ac) is not int or type(hp) is not int:
+        return ""
+    return f" Armor class {ac}, hit points {hp}."
+
+
 def run_startup_sequence():
     """Resume the shared setup, publishing success only from verified files."""
     from utils.capture.live_provider_call import LiveProviderSuperseded
@@ -255,7 +264,7 @@ def run_startup_sequence():
         purse = "You start with" if _startup_interview_started(conversation) else "You have"
         cleanup_startup_conversation()
         print(f"\nDungeon Master: Your character setup is saved and verified. Welcome, {character['name']}! "
-              f"{purse} {balance(character)['gold']} gold.")
+              f"{purse} {balance(character)['gold']} gold.{_saved_defense_line(character)}")
         return True
     except LiveProviderSuperseded:
         raise
@@ -998,6 +1007,7 @@ def _sheet_preview(conversation, intent):
             intent, None, rolled=roll["rolled"] if roll else None, preview=True)
     except creation_build.BuildRefusal:
         return None   # the ability scores are not set yet: nothing to preview
+    built["hit_points"] = expected_starting_hit_points(sheet, intent)[0]
     summary = creation_build.render_sheet_summary(sheet, built)
     previews = _scope_states(conversation, SHEET_PREVIEW_PURPOSE)
     if previews and previews[-1].get("summary") == summary:
