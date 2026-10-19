@@ -138,6 +138,10 @@ lists the choice ids still open: for each, ask the player, or, only when the
 player asks you to choose, pick from the scope's options yourself and record it
 in intent. Never leave one open at finalize. A package or option the player has
 already named is chosen: record it and do not ask it again.
+Offer only a choice's option_keys from the scope; a skill the background grants
+is never offered.
+When the player says they are new or overwhelmed, ask one choice per turn and
+say how many remain.
 Record package and slot picks in starting_equipment as soon as the player gives
 them, on every turn after; a package not yet chosen is null.
 When the player approves the whole build, finalize with your proposed creative
