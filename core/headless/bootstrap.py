@@ -275,6 +275,9 @@ def seed_character(character_file, module_name):
     from utils.startup_wizard import reset_foreign_save
     with contextlib.redirect_stdout(sys.stderr):
         reset_foreign_save(module_name)
+    # The loader's own form (#1288): the seed reads back equal after the save.
+    from utils.encoding_utils import sanitize_dict
+    character_data = sanitize_dict(character_data)
     if not save_character_to_module(character_data, module_name):
         raise BootstrapError(
             "failed to save character %r into module %r"
