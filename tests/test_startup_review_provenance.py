@@ -677,7 +677,7 @@ def run_interview(wizard, authored, monkeypatch, *, review, stop_after_rejection
 
     def model(messages, *args, **kwargs):
         if kwargs.get("startup_phase") == "startup_review":
-            payload = json.loads(messages[1]["content"])
+            payload = json.loads(messages[-1]["content"])  # the review payload is the last item (D-CREATE-COST-1)
             reviewer_requests.append(copy.deepcopy(payload))
             return json.dumps(review(payload))
         author_requests.append(copy.deepcopy(messages))
@@ -821,7 +821,7 @@ def test_continue_interview_never_projects_or_commits(wizard, monkeypatch):
 
     def model(messages, *args, **kwargs):
         if kwargs.get("startup_phase") == "startup_review":
-            payload = json.loads(messages[1]["content"])
+            payload = json.loads(messages[-1]["content"])  # the review payload is the last item (D-CREATE-COST-1)
             assert payload["authored_proposal"] == payload["proposal"]
             assert payload["normalization_provenance"] == {}
             return json.dumps({"version": 1, "accepted": True, "feedback": "Valid question.",

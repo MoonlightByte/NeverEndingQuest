@@ -861,6 +861,16 @@ def _append_startup_rules_reference(conversation):
     conversation.append({"role": "system", "content": json.dumps(reference, ensure_ascii=False)})
 
 
+def _append_system_once(conversation, content):
+    """Append a code-authored system message unless the identical one is already there (#1277).
+
+    A resumed interview keeps the copy it has; a changed prompt or record is still appended.
+    """
+    if any(m.get("role") == "system" and m.get("content") == content for m in conversation):
+        return
+    conversation.append({"role": "system", "content": content})
+
+
 def _startup_progress(conversation):
     try:
         return parse_startup_checkpoint(conversation)
@@ -885,12 +895,22 @@ def _set_startup_progress(conversation, *, live_scope=None, **changes):
 def _review_startup_response(conversation, proposal, committed_facts, *,
                              authored_proposal, normalization_provenance, live_scope,
                              attempts=None):
-    """Return the parsed review; None once `attempts` reviews (when given) had invalid structure."""
-    review_messages = [
-        {"role": "system", "content": build_startup_review_prompt()},
+    """Return the parsed review; None once `attempts` reviews (when given) had invalid structure.
+
+    Stable content first, one input item per interview message, so a provider's
+    prompt cache can reuse the interview from the previous review; the turn's
+    proposal is the last item (D-CREATE-COST-1). Each item is the message's own
+    JSON, as the interview list carried it.
+    """
+    review_messages = [{"role": "system", "content": build_startup_review_prompt()}]
+    review_messages += [{"role": "user", "content": json.dumps(message, ensure_ascii=False)}
+                        for message in conversation]
+    review_messages += [
         {"role": "user", "content": json.dumps({
             "task_purpose": "startup_semantic_review",
-            "interview": conversation, "proposal": proposal,
+            "interview": {"messages": len(conversation),
+                          "supplied_as": "the preceding items, one per interview message, in order"},
+            "proposal": proposal,
             "authored_proposal": authored_proposal,
             "normalization_provenance": normalization_provenance,
             "latest_user_index": _latest_player_index(conversation),
@@ -1251,14 +1271,14 @@ def ai_character_interview(conversation, module):
         LiveProviderSuperseded, open_live_turn_scope, finish_live_turn_scope,
     )
 
-    conversation.append({"role": "system", "content": build_character_creation_system_prompt()})
-    conversation.append({"role": "system", "content": json.dumps({
+    _append_system_once(conversation, build_character_creation_system_prompt())
+    _append_system_once(conversation, json.dumps({
         "task_purpose": "startup_character_interview",
         "selected_adventure": module,
         "instruction": "Continue the actual interview or begin with an identity question. "
                        "Old history is context, not proof of approval or saved state. "
                        "Follow the current startup response contract.",
-    }, ensure_ascii=False)})
+    }, ensure_ascii=False))
     _append_startup_rules_reference(conversation)
     print("\nDungeon Master: Let's build your character together.")
     while True:
