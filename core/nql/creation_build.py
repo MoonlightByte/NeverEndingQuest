@@ -419,6 +419,10 @@ def build_level_one_sheet(intent: Dict[str, Any], creative: Optional[Dict[str, A
     sheet["senses"] = {"passivePerception": 10}
     if "darkvision" in species_grants:
         sheet["senses"]["darkvision"] = species_grants["darkvision"]
+    # A class order's typed grants (Protector, Warden), the same pass the save repair runs (#888), so the
+    # interview preview and the finalized sheet equal the saved one (all-class D1, dplay-AC-druid turn 9).
+    for entry in leveling_choices.apply_order_grants(sheet):
+        b.source("proficiencies", "choices.order_grants.%s" % entry["feature"], entry["added"])
     # char_schema is frozen (NEQ-SCHEMA-01) and has no backstory or appearance property: they stay in the
     # build's provenance (the startup_engine_build item) until the owner rules on a schema delta (D3).
     extra = {k: creative[k] for k in ("backstory", "appearance")
