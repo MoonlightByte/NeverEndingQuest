@@ -149,6 +149,8 @@ export function CharacterSheet({ expanded = false, hideIdentity = false }: { exp
     return { name: str(item['name'], 'Unknown'), detail: str(item['description']), suffix }
   })
   const racialTraits = featureItems('racialTraits').filter((trait) => !['Ability Score Increase', 'Languages', 'Extra Language'].includes(trait.name))
+  // #1276: the typed languages field, shown as written (the trait filter above drops its prose restatement).
+  const languages = arr(stats['languages']).filter((name): name is string => typeof name === 'string' && name.trim() !== '').map((name) => ({ name }))
   const background = rec(stats['backgroundFeature'])
 
   return (
@@ -301,6 +303,7 @@ export function CharacterSheet({ expanded = false, hideIdentity = false }: { exp
       <SheetSection title="Class Features" items={featureItems('classFeatures')} />
       {arr(stats['temporaryEffects']).length > 0 && <SheetSection title="Active Effects" items={featureItems('temporaryEffects')} rightSuffix />}
       {racialTraits.length > 0 && <SheetSection title="Racial Traits" items={racialTraits} />}
+      {languages.length > 0 && <SheetSection title="Languages" items={languages} tooltips={false} />}
       {background?.['name'] !== undefined && <SheetSection title="Background" items={[{ name: str(background['name']), detail: str(background['description']) }]} />}
       {arr(stats['feats']).length > 0 && <SheetSection title="Feats" items={featureItems('feats')} />}
       {expanded && (['personality_traits', 'ideals', 'bonds', 'flaws'] as const).some(key => str(stats[key])) && <section className="tcs-biography"><h4>Personality & bonds</h4><dl>{(['personality_traits', 'ideals', 'bonds', 'flaws'] as const).map(key => str(stats[key]) ? <div key={key}><dt>{capitalizeWords(key.replace(/_/g, ' '))}</dt><dd>{str(stats[key])}</dd></div> : null)}</dl></section>}
