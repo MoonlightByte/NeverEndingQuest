@@ -2044,7 +2044,23 @@ def expected_starting_hit_points(character):
     return max(1, expected), terms
 
 
-def startup_mechanics(character, *, provenance=None, faults=None):
+def _apply_species_resistances(character, intent, provenance):
+    """#1280: the species' damage resistances from the typed table, added to the sheet (never removing an
+    entry). With the creation intent, its picked options count (Draconic Ancestry, Fiendish Legacy); without
+    one (a supplied sheet), only the species' unconditional grants apply."""
+    from core.leveling import choices as leveling_choices
+    notes = []
+    applied = leveling_choices.apply_species_resistances(character, intent)
+    for entry in applied:
+        if entry["added"]:
+            notes.append(f"damageResistances + {', '.join(entry['added'])} (Resistance from {entry['source']})")
+    if provenance is not None and applied:
+        provenance["species_resistances"] = {"source": "core.leveling.choices.apply_species_resistances",
+                                             "grants": copy.deepcopy(applied)}
+    return notes
+
+
+def startup_mechanics(character, *, provenance=None, faults=None, intent=None):
     """Derive a new character's engine-owned and SRD-derived numbers.
 
     The level-1 hit point maximum is set exactly to the SRD derivation from
@@ -2084,6 +2100,7 @@ def startup_mechanics(character, *, provenance=None, faults=None):
         character["hitPoints"] = expected
     notes.extend(_canonicalize_fighting_style(character, provenance))
     notes.extend(_apply_order_grants(character, provenance))
+    notes.extend(_apply_species_resistances(character, intent, provenance))
     notes.extend(_level_one_pools_and_slots(character, provenance))
     from core.nql.resources import add_feat_usage as _add_feat_usage
     for _feat in _add_feat_usage(character):

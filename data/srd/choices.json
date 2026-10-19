@@ -9374,6 +9374,7 @@
     94
    ]
   },
+  "names_are_keys": "Proficiency lists elsewhere (backgrounds tool_keys, sheet proficiencies.tools) hold entries[].name; key is the slug for ids.",
   "rule": "Each tool, and each variant of Gaming Set and Musical Instrument, requires a separate proficiency (p. 93, Variants).",
   "categories": [
    "Artisan's Tools",
@@ -9684,10 +9685,10 @@
   {
    "slot": "bard.A.instrument",
    "item_key": "musical-instrument",
-   "rule": "member_of",
-   "evidence": "Musical Instrument of your choice (Bard Starting Equipment A, p. 31): any instrument, not tied to the 3 Tool Proficiencies picks",
-   "page": 31,
-   "option_source": "tools:category=Musical Instrument"
+   "rule": "category",
+   "category": "Musical Instrument",
+   "evidence": "Musical Instrument of your choice (Bard Starting Equipment A, p. 31): any Musical Instrument; the SRD does not tie it to the Bard's 3 instrument proficiencies",
+   "page": 31
   },
   {
    "slot": "monk.A.tool_or_instrument",

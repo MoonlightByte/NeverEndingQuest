@@ -44,8 +44,10 @@ class _Build:
         self.trace.append({"field": field, "source": source, "value": value})
         return value
 
-    def gap(self, grant: str, where: str) -> None:
-        self.untyped.append({"grant": grant, "where": where})
+    def gap(self, gid: str, grant: str, where: str) -> None:
+        """A grant with no typed source: {id, grant, where}; id is species.<key>.<field or heading slug>,
+        background.<key>.<field>, a choice id, or the data table's path."""
+        self.untyped.append({"id": gid, "grant": grant, "where": where})
 
     def picked(self, cid: str) -> List[str]:
         return list(self.picks.get(cid) or [])
@@ -163,7 +165,7 @@ def _species_grants(b: _Build, species: Dict[str, Any]) -> Dict[str, Any]:
         if key in grants:
             out[key] = b.source(key, "origins.species[%s].grants.%s" % (species["key"], key), grants[key])
         else:
-            b.gap("species %s" % key, "origins.species[%s]" % species["key"])
+            b.gap("species.%s.%s" % (species["key"], key), "species %s" % key, "origins.species[%s]" % species["key"])
     if grants.get("size_options"):
         cid = "species.%s.size" % species["key"]
         picked = b.picked(cid)
@@ -175,7 +177,7 @@ def _species_grants(b: _Build, species: Dict[str, Any]) -> Dict[str, Any]:
 def _resistances(b: _Build, intent: Dict[str, Any]) -> List[str]:
     """Species damage resistances (#1280): the typed table's grants for the species and its picked options."""
     if not isinstance(b.d.choices.get("species_damage_resistances"), list):
-        b.gap("damage resistances", "choices.species_damage_resistances")
+        b.gap("choices.species_damage_resistances", "damage resistances", "choices.species_damage_resistances")
         return []
     out: List[str] = []
     for grant in leveling_choices.species_damage_resistances(intent):
@@ -213,7 +215,7 @@ def _species_picks(b: _Build, species: Dict[str, Any]) -> Dict[str, Any]:
                 feat = next((f for f in b.d.choices["feats"] if f.get("name") == name), None) or {}
                 for sub in feat.get("choices") or []:
                     if sub.get("then"):
-                        b.gap("%s spell picks" % name, cid)
+                        b.gap("%s.%s" % (cid, _slug(name)), "%s spell picks" % name, cid)
                         continue
                     sid = "%s.%s.%s" % (cid, _slug(name), _slug(sub["name"]))
                     for p in b.picked(sid):
@@ -279,11 +281,11 @@ def build_level_one_sheet(intent: Dict[str, Any], creative: Dict[str, Any],
     # Background skills and tools: typed lists (``skill_keys``, ``tool_keys``); the printed strings are prose.
     background_skills = background.get("skill_keys")
     if not isinstance(background_skills, list):
-        b.gap("background skills", "origins.backgrounds[%s].skill_keys" % background_key)
+        b.gap("background.%s.skill-keys" % background_key, "background skills", "origins.backgrounds[%s].skill_keys" % background_key)
         background_skills = []
     background_tools = background.get("tool_keys")
     if not isinstance(background_tools, list):
-        b.gap("background tools", "origins.backgrounds[%s].tool_keys" % background_key)
+        b.gap("background.%s.tool-keys" % background_key, "background tools", "origins.backgrounds[%s].tool_keys" % background_key)
         background_tools = []
     tool_id = creation_scope.background_tool_id(background)
     tool_pick = [b.source("proficiencies.tools", tool_id, p) for p in b.picked(tool_id)]
@@ -324,7 +326,7 @@ def build_level_one_sheet(intent: Dict[str, Any], creative: Dict[str, Any],
                       "description": text, "source": source})
         background_feature = {"name": "Origin feat: %s" % name, "description": text, "source": source}
     else:
-        b.gap("origin feat", "origins.backgrounds[%s].feat_ref" % background_key)
+        b.gap("background.%s.feat-ref" % background_key, "origin feat", "origins.backgrounds[%s].feat_ref" % background_key)
 
     always = [a["spell"] for a in d.choices.get("always_prepared") or []
               if (a.get("granted_by") or {}).get("class") == cls
