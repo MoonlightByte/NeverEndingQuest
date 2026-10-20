@@ -4156,7 +4156,9 @@
     "section": "Equipment > Adventuring Gear",
     "page": 95
    },
-   "equipment": "gear:worn"
+   "equipment": "gear:worn",
+   "use": {"activation": "bonus_action", "heal": {"count": 2, "sides": 4, "bonus": 2},
+    "source": "SRD 5.2.1 p.95", "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"}
   },
   {
    "id": "itemdef:srd/pouch",

@@ -418,9 +418,9 @@ creatures entry is set and cleared by code; never declare or remove it.
 
 An actor may also take ONE Bonus Action in the same turn, beside its Action:
 put it in the intent's bonusAction, never in action, targets or resources.
-bonusAction.featureName is exactly one name from bonusActionNames for that
-actor; a feature not listed there is not a Bonus Action and never goes in
-bonusAction (leave bonusAction out). Code resolves the bonus action first,
+For a feature, bonusAction.featureName is exactly one name from bonusActionNames
+for that actor; an unlisted feature never goes in bonusAction.
+Code resolves the bonus action first,
 then the Action, which keeps its own rules (a dodge still has no targets);
 only an Off-hand Attack comes after the Action.
 Second Wind: bonusAction {featureName:'Second Wind', targets:[{combatantId:
@@ -434,6 +434,8 @@ the other: bonusAction {featureName:'Off-hand Attack', abilityRow: the other
 weapon's attack rowRef, ability: its name, targetId}, with no targets, rolls or request for
 it; code rolls it (the player's dice are asked by code) and scores it. The
 Action's own attack count never includes it.
+
+A healing potion listed in bonusActionItems is a Bonus Action: emit bonusAction {item:{nqlId:the listed equipment id}, targetId:the drinker}, or item:{catalog_id:the listed catalog id} when no nqlId exists. Use only these typed ids, never an item name. It may accompany a leveled spell Action; the engine consumes one potion, rolls its catalog healing and caps HP before resolving the Action. The target must be a present living participant; you rule whether another participant is within reach and omit the potion use with an explanation if not. Represent every part of the turn as its Action or single bonusAction, or ask a choice when incompatible; never narrate a potion as already drunk while a roll is pending. Recorded spell attacks, including Ray of Frost, are scored by code: supply the cast and target, without deciding hit/miss or requesting damage yourself. Narrate only typed operations that resolved.
 
 A player's plain swing with one listed melee weapon at one hostile creature
 is asked for and scored by code: declare action='attack', the weapon row's
@@ -617,14 +619,22 @@ def request_intent_batch(
     # its class features whose SRD activation is a Bonus Action (typed data,
     # data/srd/progression.json feature_activation), from the sheet.
     from core.combat.bonus_actions import bonus_action_names
+    from core.nql.item_use import available as available_items
+    bonus_items = {}
     bonus_names = {}
     for actor_id in pending_ids:
         creature = combatant_by_id(encounter, actor_id)
-        names = bonus_action_names((characters or {}).get((creature or {}).get("name")))
+        sheet = (characters or {}).get((creature or {}).get("name"))
+        names = bonus_action_names(sheet)
+        items = available_items(sheet)
+        if items:
+            bonus_items[actor_id] = items
         if names:
             bonus_names[actor_id] = names
     if bonus_names:
         payload["bonusActionNames"] = bonus_names
+    if bonus_items:
+        payload["bonusActionItems"] = bonus_items
     if contextual_payload:
         payload["spellActionIndex"] = contextual_payload.get("spellActionIndex", [])
         if contextual_payload.get("encounterContext"):

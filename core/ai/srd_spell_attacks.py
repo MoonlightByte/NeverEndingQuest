@@ -81,7 +81,7 @@ def load_spell_attacks():
     srd_roll_contracts.check_source("srd_spell_attacks", metadata)
     contracts = srd_roll_contracts.load_spell_roll_contracts().get("contracts") or {}
     for key, record in records.items():
-        if not isinstance(record, dict) or set(record) != RECORD_FIELDS:
+        if not isinstance(record, dict) or set(record) - {"onHit"} != RECORD_FIELDS:
             raise SpellAttackDataError("%s has invalid fields" % key)
         if not record.get("_srd_attribution") or not str(record.get("source") or "").startswith("SRD 5.2.1 p."):
             raise SpellAttackDataError("%s lacks its SRD source or attribution" % key)
@@ -100,6 +100,12 @@ def load_spell_attacks():
             raise SpellAttackDataError("%s names no verified roll contract" % key)
         if _attack_phases(contract) == (None, None):
             raise SpellAttackDataError("%s's roll contract is not one spell attack and damage on a hit" % key)
+        for rider in record.get("onHit", []):
+            effect = rider.get("effect") if isinstance(rider, dict) else None
+            if (not isinstance(effect, dict) or type(effect.get("roundsRemaining")) is not int
+                    or effect["roundsRemaining"] <= 0 or effect.get("durationKind") != "rounds"
+                    or effect.get("tickTrigger") != "end_of_round"):
+                raise SpellAttackDataError("%s rider requires a typed round duration" % key)
     return document
 
 

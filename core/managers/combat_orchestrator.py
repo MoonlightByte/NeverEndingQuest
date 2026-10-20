@@ -1222,12 +1222,15 @@ def _validate_bonus_actions(batch, encounter, characters):
         problem = bonus_action_problem(sheet, bonus, intent=intent, encounter=encounter,
                                        asking=isinstance(intent.get("requiresPlayerInput"), dict))
         if problem:
+            from core.combat.bonus_actions import item_bonus_refusal
+            refusal = item_bonus_refusal(sheet, bonus)
+            extra = {"playerResourceRefusal": [refusal]} if refusal else {}
             raise CombatIntentError(
                 problem,
                 intent.get("actorId"),
                 {"violations": [problem], "bonusActionNames": names, "bonusActionProblem": problem,
                  "bonusActionNameRefused": bonus_name_refused(sheet, bonus),
-                 "bonusActionOptions": bonus_action_options(sheet, bonus), "retryable": True},
+                 "bonusActionOptions": bonus_action_options(sheet, bonus), "retryable": True, **extra},
             )
 
 

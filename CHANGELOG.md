@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Healing potions resolve as typed combat bonus actions; Ray of Frost uses engine attack scoring and a non-stacking, timed slow (#1331).
+
 ### Added
 - Level-up now grants the species spells and traits that arrive above level 1: the Elven Lineage and Fiendish Legacy spells at levels 3 and 5 (always prepared, once per Long Rest without a slot, with the lineage's spellcasting ability), and Draconic Flight and Large Form at level 5. They are read from the typed picks in the character's creation record; a character without one gets a note instead of a guess (#1292).
 - A module can now author typed loot: items in `modules/<module>/module_items.json`, listed on a location as `lootItems`. The DM sees each listed item with how many remain, and a character takes one with acquireItem by its catalogId at no cost; each is taken at most as many times as authored, across the whole party. Every other item, invented ones included, is recorded exactly as before (P3a, Refs #193).

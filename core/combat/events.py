@@ -62,8 +62,9 @@ def validate_event(event):
     bonus = event.get("bonusAction")
     if bonus is not None:
         # R2: the actor's typed Bonus Action, resolved before its Action.
-        if not isinstance(bonus, dict) or not isinstance(bonus.get("featureName"), str):
-            problems.append("bonusAction must be an object with a featureName")
+        if not isinstance(bonus, dict) or not (
+                isinstance(bonus.get("featureName"), str) ^ isinstance(bonus.get("item"), dict)):
+            problems.append("bonusAction must have one featureName or typed item")
             bonus = {}
         for target in (bonus.get("outcome") or {}).get("targets") or []:
             if not isinstance(target, dict) or any(field not in target for field in REQUIRED_TARGET_FIELDS):
