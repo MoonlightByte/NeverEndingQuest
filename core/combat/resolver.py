@@ -2613,6 +2613,19 @@ def player_spell_attack_entry(encounter, characters, intent):
     dice = srd_spell_attacks.damage_dice(phase, slot_level, level)
     if dice is None:
         return None
+    # The authored rider wins over a model copy of that same effect.
+    riders = record.get("onHit") or []
+    names = {r["effect"]["name"] for r in riders}
+    if riders:
+        intent["effects"] = [op for op in effects if (op.get("effect") or {}).get("name") not in names]
+        for rider in riders:
+            op = {"op": "add", "applyOn": "hit", "hitTargetId": target["combatantId"],
+                  "effect": deepcopy(rider["effect"])}
+            if target.get("type") in ("player", "npc"):
+                op["owner"] = target["name"]
+            else:
+                op["combatantId"] = target["combatantId"]
+            intent["effects"].append(op)
     entry = {
         "name": record["name"],
         "type": record["attack"],
@@ -4914,6 +4927,15 @@ def apply_resolution(encounter, characters, resolution):
                         usage["current"] = min(cap, setter(int(usage.get("current", 0) or 0)))
                     break
         elif resource["kind"] == "item":
+            if isinstance(resource.get("item"), dict):
+                from core.nql.item_use import resolve_row
+                found = resolve_row(sheet, resource["item"])
+                if found is not None:
+                    index, item = found
+                    item["quantity"] = setter(item["quantity"])
+                    if item["quantity"] == 0:
+                        sheet["equipment"].pop(index)
+                continue
             for item in sheet.get("equipment", []):
                 if isinstance(item, dict) and item.get("item_name") == resource.get("name"):
                     item["quantity"] = setter(int(item.get("quantity", 0) or 0))

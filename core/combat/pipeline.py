@@ -281,12 +281,15 @@ def resolve_effect_clock_window(encounter, characters, pending_turn):
 def _raise_bonus_problem(sheet, bonus, actor_id, problem):
     """The typed correction for a bonusAction that cannot be ruled as given."""
     if problem:
+        from core.combat.bonus_actions import item_bonus_refusal
+        refusal = item_bonus_refusal(sheet, bonus)
+        extra = {"playerResourceRefusal": [refusal]} if refusal else {}
         raise CombatIntentError(
             problem,
             actor_id,
             {"violations": [problem], "bonusActionNames": bonus_action_names(sheet),
              "bonusActionProblem": problem, "bonusActionNameRefused": bonus_name_refused(sheet, bonus),
-             "bonusActionOptions": bonus_action_options(sheet, bonus), "retryable": True},
+             "bonusActionOptions": bonus_action_options(sheet, bonus), "retryable": True, **extra},
         )
 
 
@@ -361,7 +364,14 @@ def _resolve_bonus_action(encounter, characters, actor, controller, intent, bonu
     characters); the record rides on the actor's one event."""
     actor_id = actor.get("combatantId")
     sheet = (characters or {}).get(actor.get("name"))
-    _raise_bonus_problem(sheet, bonus, actor_id, bonus_action_problem(sheet, bonus, actor_id=actor_id))
+    _raise_bonus_problem(sheet, bonus, actor_id, bonus_action_problem(sheet, bonus, encounter=encounter, actor_id=actor_id))
+    if "item" in bonus:
+        from core.combat.bonus_actions import resolve_item_bonus
+        from core.nql.apply import EngineUnavailable
+        try:
+            return resolve_item_bonus(encounter, characters, actor, intent, bonus, event_id)
+        except (ValueError, EngineUnavailable) as error:
+            raise CombatIntentError(str(error), actor_id, {"retryable": True}) from error
     sub = bonus_subintent(intent, bonus, actor.get("name"))
     sub["stateVersion"] = intent.get("stateVersion")
     resolution = resolve_adjudicated(

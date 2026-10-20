@@ -91,6 +91,8 @@ def holds_two_light_melee(sheet: Optional[Dict[str, Any]]) -> bool:
 def bonus_name_refused(sheet: Optional[Dict[str, Any]], bonus: Any) -> bool:
     """True when a declared bonusAction names no feature in the actor's
     bonusActionNames (the correction then lists the names)."""
+    if isinstance(bonus, dict) and "item" in bonus:
+        return False
     return not isinstance(bonus, dict) or bonus.get("featureName") not in bonus_action_names(sheet)
 
 
@@ -104,6 +106,8 @@ def bonus_action_problem(sheet: Optional[Dict[str, Any]], bonus: Any, intent: Op
     names = bonus_action_names(sheet)
     if not isinstance(bonus, dict):
         return "bonusAction must be one object"
+    if "item" in bonus:
+        return item_bonus_problem(sheet, bonus, encounter)
     name = bonus.get("featureName")
     if name not in names:
         return ("bonusAction.featureName must be one of this actor's bonusActionNames (%s)"
@@ -266,3 +270,68 @@ def bonus_record(bonus: Dict[str, Any], event: Dict[str, Any]) -> Dict[str, Any]
         record["rolls"] = deepcopy(event["rolls"])
     return record
 
+
+
+def item_bonus_problem(sheet, bonus, encounter):
+    """P3/r3: only owned stock and present living targets; reach stays agentic."""
+    from core.nql.item_use import resolve_row, use_data
+    from core.managers.combat_state import combatant_by_id, normalize_status
+    if set(bonus) != {"item", "targetId"}:
+        return "item bonusAction must contain only item and targetId; one Bonus Action per turn"
+    found = resolve_row(sheet, bonus["item"])
+    if found is None:
+        return "item bonusAction requires one owned item by nqlId or catalog_id, never a name"
+    row = found[1]
+    if type(row.get("quantity")) is not int or row["quantity"] <= 0:
+        return "You have no %s left. Nothing was spent." % row.get("item_name", "item")
+    if use_data(row) is None:
+        return "item has no typed bonus-action use"
+    target = combatant_by_id(encounter or {}, bonus.get("targetId"))
+    if target is None or normalize_status(target.get("status")) not in ("alive", "unconscious"):
+        return "item bonusAction targetId must name a present, living encounter participant"
+    return None
+
+
+def resolve_item_bonus(encounter, characters, actor, intent, bonus, event_id):
+    """Engine-owned heal and spend, as one replayable bonus-action event."""
+    from core.nql import item_use
+    from core.combat.resolver import resolution_from_event, apply_resolution
+    from core.managers.combat_state import combatant_by_id
+    sheet = characters[actor["name"]]
+    target = combatant_by_id(encounter, bonus["targetId"])
+    target_sheet = deepcopy(characters.get(target["name"]) or target)
+    target_sheet.update(hitPoints=target["currentHitPoints"], maxHitPoints=target["maxHitPoints"])
+    owner_sheet = deepcopy(sheet)
+    owner_sheet["hitPoints"] = actor["currentHitPoints"]
+    if target["combatantId"] == actor["combatantId"]:
+        target_sheet = owner_sheet
+    result = item_use.heal(owner_sheet, target_sheet, bonus["item"])
+    row = item_use.resolve_row(sheet, bonus["item"])[1]
+    event = {"eventId": event_id + "-B", "actorId": actor["combatantId"],
+             "stateVersion": intent["stateVersion"],
+             "intent": {"action": "useItem", "item": deepcopy(bonus["item"])},
+             "outcome": {"kind": "healing", "targets": [{"combatantId": target["combatantId"],
+                 "hpBefore": target["currentHitPoints"], "hpAfter": result["hitPoints"], "statusAfter": "alive"}]},
+             "resources": [{"owner": actor["name"], "kind": "item", "name": row["item_name"],
+                 "item": deepcopy(bonus["item"]), "delta": -1, "before": row["quantity"],
+                 "after": result["quantity"], "engine": True}],
+             "rolls": result["rolls"], "effects": []}
+    updated, sheets = apply_resolution(encounter, characters, resolution_from_event(encounter, characters, event))
+    record = {"item": deepcopy(bonus["item"]), "targetId": bonus["targetId"],
+              "outcome": event["outcome"], "resources": event["resources"], "rolls": event["rolls"]}
+    return record, updated, sheets
+
+
+def item_bonus_refusal(sheet, bonus):
+    """The existing #968 player-choice record for absent consumable stock."""
+    from core.nql.item_use import resolve_row
+    if not isinstance(bonus, dict) or not isinstance(bonus.get("item"), dict):
+        return None
+    found = resolve_row(sheet, bonus["item"])
+    row = found[1] if found else {}
+    quantity = row.get("quantity", 0)
+    if type(quantity) is int and quantity > 0:
+        return None
+    return {"owner": (sheet or {}).get("name"), "kind": "item", "name": row.get("item_name", "requested item"),
+            "item": deepcopy(bonus["item"]), "before": quantity, "need": 1, "max": None,
+            "actor": (sheet or {}).get("name")}

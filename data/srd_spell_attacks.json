@@ -6,7 +6,9 @@
     "source": "System Reference Document 5.2.1, CC BY 4.0",
     "sourceRepository": "data/spell_repository.json",
     "sourceSha256": "5fafd1c79e869dbca686e3efbc18e9e680119b55a662400b1e1513892c9068ee",
-    "totalRecords": 3,
+    "totalRecords": 4,
+    "riderTiming": "Ray of Frost expires at end of round N+1; SRD says start of caster next turn. Approved end-of-round approximation.",
+    "excludedRiders": ["Chill Touch: prevents healing", "Shocking Grasp: prevents Opportunity Attacks", "Guiding Bolt: existing record retained; next-attack advantage outside this change"],
     "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
   },
   "attacks": {
@@ -27,6 +29,32 @@
       "contractKey": "guiding_bolt",
       "source": "SRD 5.2.1 p.138",
       "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "ray_of_frost": {
+      "name": "Ray of Frost",
+      "attack": "ranged",
+      "damageKind": "cold",
+      "abilityModifierToDamage": false,
+      "contractKey": "ray_of_frost",
+      "source": "SRD 5.2.1 p.157",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0",
+      "onHit": [
+        {
+          "effect": {
+            "name": "Ray of Frost",
+            "description": "Cold reduces the target's speed by 10 feet.",
+            "modifiers": [
+              {
+                "stat": "speed",
+                "value": -10
+              }
+            ],
+            "roundsRemaining": 1,
+            "tickTrigger": "end_of_round",
+            "durationKind": "rounds"
+          }
+        }
+      ]
     },
     "spiritual_weapon": {
       "name": "Spiritual Weapon",
