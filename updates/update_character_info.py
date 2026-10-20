@@ -1914,8 +1914,42 @@ _GEMINI_DELTA_SCHEMAS = {
     },
     "effectChange": {"type": "boolean"},
 }
+# D-COST-8 (#193): effectChange as T078's {operation, effect, remove} object. The engine checks the
+# strict contract (effects_agent._check_contract); this only shapes Gemini's output.
+_GEMINI_EFFECT_OBJECT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "operation": {"type": "string", "enum": ["none", "add", "remove"]},
+        "effect": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"}, "description": {"type": "string"}, "source": {"type": "string"},
+                "modifiers": {"type": "array", "items": {"type": "object", "properties": {
+                    "stat": {"type": "string"}, "value": {"type": "integer"}, "die": {"type": "string"},
+                    "affectsMax": {"type": "boolean"}}}},
+                "conditions": {"type": "array", "items": {"type": "string"}},
+                "incapacitates": {"type": "boolean"}, "durationKind": {"type": "string"},
+                "durationValue": {"type": "integer"}, "restKind": {"type": "string"},
+                "concentration": {"type": "boolean"}, "caster": {"type": "string"},
+                "onApply": {"type": "array", "items": {"type": "object", "properties": {
+                    "stat": {"type": "string"}, "delta": {"type": "integer"}}}},
+                "onRemove": {"type": "array", "items": {"type": "object", "properties": {
+                    "stat": {"type": "string"}, "delta": {"type": "integer"}}}},
+            },
+        },
+        "remove": {"type": "object", "properties": {"effectId": {"type": "string"}, "name": {"type": "string"}}},
+    },
+    "required": ["operation", "effect", "remove"],
+}
 # A declared field the update must return, as the key the engine accepts.
 _GEMINI_REQUIRED_KEY = {"hitPoints": "hpDelta", "currency": "currencyDelta"}
+
+
+def _effects_classifier_mode():
+    """D-COST-8: "merged" (T079 returns the effect object) or "separate" (T078 classifies)."""
+    import model_config
+    mode = getattr(model_config, "EFFECTS_CLASSIFIER_MODE", "merged")
+    return mode if mode in ("merged", "separate") else "merged"
 
 
 def build_requested_character_delta_gemini_schema(affects, character_schema):
@@ -1944,6 +1978,8 @@ def build_requested_character_delta_gemini_schema(affects, character_schema):
         if field not in _GEMINI_REFUSED_TOTALS
     }
     delta_properties.update(copy.deepcopy(_GEMINI_DELTA_SCHEMAS))
+    if _effects_classifier_mode() == "merged":
+        delta_properties["effectChange"] = copy.deepcopy(_GEMINI_EFFECT_OBJECT_SCHEMA)
     # A declared spellcasting change may or may not be a slot: spellcasting
     # and spellSlotDelta are both offered and the completeness gate requires
     # one of them.
@@ -2296,7 +2332,22 @@ def _update_character_info_unlocked(
     - Read the supplied effective values as the character's current player-visible values.
     - If the requested change adds or removes a temporary effect, return any other
       one-time costs or permanent changes only. Do not manually reverse an expired effect.
-    - When the change creates, ends or alters a temporary effect (a spell buff or debuff, a
+"""
+        if _effects_classifier_mode() == "merged":
+            # D-COST-8 (#193): the effect contract and its rules are T078's, word for word
+            # (effects_agent.EFFECT_CONTRACT_RULES); T079 returns the classification itself.
+            from core.ai.effects_agent import EFFECT_CONTRACT_RULES
+            effects_update_rules += """    - When the change creates, ends or alters a temporary effect (a spell buff or debuff, a
+      potion's lasting effect, a curse, a blessing, a condition with a duration), include
+      "effectChange" in your delta beside any other fields (or alone when nothing else
+      changes), in this shape. In these rules, currentEffectiveSheet means the Current
+      character data above, and the change text means Changes to make.
+""" + EFFECT_CONTRACT_RULES + """
+    - Omit "effectChange" for everything else: damage, healing, coins, items, experience, rests,
+      slot or resource spending with no lasting effect. An omitted effectChange means no
+      temporary effect; operation none is also accepted."""
+        else:
+            effects_update_rules += """    - When the change creates, ends or alters a temporary effect (a spell buff or debuff, a
       potion's lasting effect, a curse, a blessing, a condition with a duration), include
       "effectChange": true in your delta beside any other fields (or alone when nothing else
       changes). Omit it for everything else: damage, healing, coins, items, experience, rests,
@@ -2812,7 +2863,22 @@ Character Role: {character_role}
             if isinstance(updates, dict):
                 effect_flag = updates.pop("effectChange", None)
             if lazy_classifier is not None and isinstance(updates, dict):
-                managed_effect_operation = lazy_classifier(updates, effect_flag)
+                from core.ai.effects_agent import EffectsAgentContractError
+                try:
+                    managed_effect_operation = lazy_classifier(updates, effect_flag)
+                except EffectsAgentContractError as contract_error:
+                    # D-COST-8 (#193): T079's effectChange object failed T078's contract; the same
+                    # correction T078 gave, inside T079's bounded loop.
+                    bounded_failure_count += 1
+                    last_update_error = contract_error
+                    messages[-1]["content"] += (
+                        "\n\nYour previous effectChange failed the strict contract: %s. Return the "
+                        "complete delta again with a corrected effectChange object. Remember: "
+                        "operation=remove takes an empty effect {}; a change that casts a new spell is "
+                        "operation=add for that new spell with an empty remove {} (a replaced "
+                        "concentration ends by itself)." % contract_error)
+                    attempt += 1
+                    continue
                 engine_owned_change = declarative_effects and managed_effect_operation
             if not _is_meaningful_character_delta(updates, schema) and not (
                 engine_owned_change
