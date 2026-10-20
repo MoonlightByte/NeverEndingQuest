@@ -10322,7 +10322,8 @@ def _travel_unsupported_siblings(actions, check_outcomes):
 
 # #488: rejected drafts one review may spend before the turn fails without
 # change. Recovered turns in live runs needed at most 7.
-_DM_REVIEW_REJECTION_LIMIT = 10
+# 2026-10-20: 5, L7 turn 42 burned 20 calls on a lost turn
+_DM_REVIEW_REJECTION_LIMIT = 5
 # #729: unusable T114 verdicts one review may draw before the turn fails
 # without change (an unreviewed roster change never commits).
 _GUARDIAN_UNUSABLE_LIMIT = 3
