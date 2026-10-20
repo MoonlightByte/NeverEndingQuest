@@ -1609,7 +1609,7 @@ The commitment point is reached when ANY of these conditions occur:
 3. Both sides are aware of each other AND at least one side intends violence
 
 ### MANDATORY COMBAT TRANSITION PROTOCOL:
-Outside combat: a spell/weapon aimed at a creature or NPC starts createEncounter, with that attack as openingAction; take no attack roll and narrate no hit/damage before entry. An object/obstacle target is narrated, with at most one rollCheck ability/skill check, never an attack roll or invented opponent. Resolve declared sneaking/hiding/positioning checks before combat and carry their result into encounterSummary.
+Outside combat: a spell/weapon aimed at a creature or NPC starts createEncounter, with that attack as openingAction; take no attack roll and narrate no hit/damage before entry. An object/obstacle target is narrated, with at most one rollCheck ability/skill check, never an attack roll or invented opponent. When no check is required, narrate the spell or weapon effect on the object to its outcome in this same reply; do not leave the attempt pending or wait for CHECK RESULTS. Resolve declared sneaking/hiding/positioning checks before combat and carry their result into encounterSummary.
 When the Combat Commitment Point is reached and no earlier player-input prerequisite remains:
 1. IMMEDIATELY STOP processing any further actions narratively
 2. Call exactly one createEncounter with appropriate parameters; any already-resolved earlier prerequisite's state-update actions must precede it. This permits no further narrative combat actions.
