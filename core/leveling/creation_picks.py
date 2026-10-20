@@ -67,19 +67,31 @@ def recover_feat_spell_bindings(sheet: Dict[str, Any], character_path: str, root
     feats = sheet.get("feats") or []
     if not any(isinstance(f, dict) and "grantedSpells" not in f for f in feats):
         return False
-    picked = creation_picks(character_path, root)
-    if not picked:
-        return False
     from core.nql.creation_scope import _Data, _feat_spell_points
     data = _Data()
-    background = data.backgrounds().get(picked.get("background_key"))
-    if not background:
+    if not data.ok:
         return False
-    name = background.get("feat")
-    spells = []
-    for sid, point in _feat_spell_points(background, data):
-        if point.get("kind") != "cantrip" and str(point.get("option_source") or "").startswith("spells:"):
-            spells.extend(picked["choices"].get(sid) or [])
+    grants = {}
+    for key, background in data.backgrounds().items():
+        origin = next((f for f in data.origins.get("origin_feats") or []
+                       if f.get("key") == (background.get("feat_ref") or {}).get("feat_key")), None)
+        if origin is None:
+            continue
+        name = background.get("feat") or origin["name"]
+        points = [sid for sid, point in _feat_spell_points(background, data)
+                  if point.get("kind") != "cantrip"
+                  and str(point.get("option_source") or "").startswith("spells:")]
+        if points and any(isinstance(f, dict) and f.get("name") == name
+                          and "grantedSpells" not in f for f in feats):
+            grants[key] = (name, points)
+    # Only typed spell-granting origins can need archive recovery. Ordinary feats never read it.
+    if not grants:
+        return False
+    picked = creation_picks(character_path, root)
+    if not picked or picked.get("background_key") not in grants:
+        return False
+    name, points = grants[picked["background_key"]]
+    spells = [spell for sid in points for spell in picked["choices"].get(sid) or []]
     if not spells:
         return False
     changed = False
