@@ -151,7 +151,7 @@ def update_character_with_effects(
 def _classifier_mode():
     """D-COST-8 (#193): "merged" (T079's effectChange is the classification) or "separate" (T078)."""
     import model_config
-    mode = getattr(model_config, "EFFECTS_CLASSIFIER_MODE", "merged")
+    mode = model_config.EFFECTS_CLASSIFIER_MODE
     return mode if mode in ("merged", "separate") else "merged"
 
 

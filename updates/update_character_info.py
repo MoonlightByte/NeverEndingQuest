@@ -1945,13 +1945,6 @@ _GEMINI_EFFECT_OBJECT_SCHEMA = {
 _GEMINI_REQUIRED_KEY = {"hitPoints": "hpDelta", "currency": "currencyDelta"}
 
 
-def _effects_classifier_mode():
-    """D-COST-8: "merged" (T079 returns the effect object) or "separate" (T078 classifies)."""
-    import model_config
-    mode = getattr(model_config, "EFFECTS_CLASSIFIER_MODE", "merged")
-    return mode if mode in ("merged", "separate") else "merged"
-
-
 def build_requested_character_delta_gemini_schema(affects, character_schema):
     """Build a Gemini schema that requires the declared fields.
 
@@ -1978,7 +1971,8 @@ def build_requested_character_delta_gemini_schema(affects, character_schema):
         if field not in _GEMINI_REFUSED_TOTALS
     }
     delta_properties.update(copy.deepcopy(_GEMINI_DELTA_SCHEMAS))
-    if _effects_classifier_mode() == "merged":
+    from core.managers.effects_runtime import _classifier_mode
+    if _classifier_mode() == "merged":
         delta_properties["effectChange"] = copy.deepcopy(_GEMINI_EFFECT_OBJECT_SCHEMA)
     # A declared spellcasting change may or may not be a slot: spellcasting
     # and spellSlotDelta are both offered and the completeness gate requires
@@ -2333,7 +2327,8 @@ def _update_character_info_unlocked(
     - If the requested change adds or removes a temporary effect, return any other
       one-time costs or permanent changes only. Do not manually reverse an expired effect.
 """
-        if _effects_classifier_mode() == "merged":
+        from core.managers.effects_runtime import _classifier_mode
+        if _classifier_mode() == "merged":
             # D-COST-8 (#193): the effect contract and its rules are T078's, word for word
             # (effects_agent.EFFECT_CONTRACT_RULES); T079 returns the classification itself.
             from core.ai.effects_agent import EFFECT_CONTRACT_RULES
