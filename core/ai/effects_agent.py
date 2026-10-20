@@ -45,12 +45,9 @@ def _provider_config():
     return provider, dict(getattr(config, names[provider]))
 
 
-def _system_prompt():
-    return """You classify temporary effects for a deterministic 5th-edition fantasy RPG engine.
-Return JSON only. The engine owns arithmetic, clocks, persistence, expiry, and removal.
-
-Return exactly:
-{
+# The effect contract and its rules: T078's prompt and, word for word, T079's declarative effect rule
+# (D-COST-8, #193). One source, so the two never drift.
+EFFECT_CONTRACT_RULES = """{
   "operation": "none|add|remove",
   "effect": {
     "name": "effect or spell name",
@@ -110,6 +107,14 @@ one concentration per caster and ends the spell on everyone when it breaks). Do 
 fields outside this contract."""
 
 
+def _system_prompt():
+    return """You classify temporary effects for a deterministic 5th-edition fantasy RPG engine.
+Return JSON only. The engine owns arithmetic, clocks, persistence, expiry, and removal.
+
+Return exactly:
+""" + EFFECT_CONTRACT_RULES
+
+
 _REQUIRED_EFFECT_FIELDS = {
     "name",
     "description",
@@ -135,6 +140,20 @@ def _parse(content):
         result = json.loads(blob)
     except json.JSONDecodeError as exc:
         raise EffectsAgentContractError("T078 returned malformed JSON") from exc
+    return _check_contract(result)
+
+
+# T078's correction after a contract failure; T079's loop sends the same text (D-COST-8).
+CONTRACT_CORRECTION = (
+    "Your previous response failed the strict contract: %s. "
+    "Return a corrected complete JSON object only. Remember: operation=remove takes an "
+    "empty effect {}; a change that casts a new spell is operation=add for that new spell "
+    "with an empty remove {} (a replaced concentration ends by itself)."
+)
+
+
+def _check_contract(result):
+    """The strict {operation, effect, remove} contract, for T078's answer and T079's effectChange object."""
     if not isinstance(result, dict) or set(result) != {"operation", "effect", "remove"}:
         raise EffectsAgentContractError("T078 requires exactly operation, effect, and remove")
     if (
@@ -233,6 +252,15 @@ def _finalize(effect, now_scalar, owner, change_description):
     return normalized
 
 
+def classification_from_object(obj, character_name, change_description, now_scalar):
+    """T079's effectChange object (D-COST-8, #193), checked against the same contract T078 answers and
+    finalized the same way. Raises EffectsAgentContractError with the contract's message."""
+    result = _check_contract(deepcopy(obj))
+    if result["operation"] == "add":
+        result["effect"] = _finalize(result["effect"], now_scalar, character_name, change_description)
+    return result
+
+
 def classify_effect(character_name, change_description, sheet, now_scalar, max_attempts=2):
     """Return ``{shouldTrack, effect}`` without mutating any state."""
     provider, call_config = _provider_config()
@@ -280,10 +308,5 @@ def classify_effect(character_name, change_description, sheet, now_scalar, max_a
             raise
         except Exception as exc:
             last_error = exc
-            correction = (
-                "Your previous response failed the strict contract: %s. "
-                "Return a corrected complete JSON object only. Remember: operation=remove takes an "
-                "empty effect {}; a change that casts a new spell is operation=add for that new spell "
-                "with an empty remove {} (a replaced concentration ends by itself)." % exc
-            )
+            correction = CONTRACT_CORRECTION % exc
     raise EffectsAgentContractError("T078 failed after retries: %s" % last_error)

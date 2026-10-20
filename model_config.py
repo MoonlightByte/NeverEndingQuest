@@ -826,6 +826,10 @@ STARTUP_REVIEW_T124_GPT_5_6_LUNA_LOW = {"model": "gpt-5.6-luna", "reasoning_effo
 # only gate, D-ALLCLASS-4) or "whole" (#1278's T124 review over the engine-built sheet), the rollback.
 # "sectioned", the COST-4 name, reads as "engine".
 STARTUP_REVIEW_MODE = "engine"
+# D-COST-8 (#193): "merged" has T079 return the typed effect object itself (effectChange as
+# T078's {operation, effect, remove} contract), one call per effect-bearing update; "separate" is the
+# rollback, T079 flags effectChange: true and T078 classifies.
+EFFECTS_CLASSIFIER_MODE = "merged"
 OPENAI_GPT56_SOL_NONE = {"model": "gpt-5.6-sol", "reasoning_effort": "none"}
 OPENAI_GPT56_SOL_LOW = {"model": "gpt-5.6-sol", "reasoning_effort": "low"}
 

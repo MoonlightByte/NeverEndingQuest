@@ -11,7 +11,8 @@ application, removal, notification delivery, and crash-safe replay.
 from copy import deepcopy
 import os
 
-from core.ai.effects_agent import classify_effect
+from core.ai.effects_agent import (EffectsAgentContractError, classification_from_object,
+                                    classify_effect)
 from core.effects.clock import scalar_from_calendar
 from core.effects.effective import effective_sheet
 from core.effects.lifecycle import apply_effect_ops, plan_expirations, plan_rest_clears
@@ -147,6 +148,13 @@ def update_character_with_effects(
     return success
 
 
+def _classifier_mode():
+    """D-COST-8 (#193): "merged" (T079's effectChange is the classification) or "separate" (T078)."""
+    import model_config
+    mode = model_config.EFFECTS_CLASSIFIER_MODE
+    return mode if mode in ("merged", "separate") else "merged"
+
+
 class _lazy_classifier:
     """T078 on demand: the T079 loop calls this with each parsed delta.
 
@@ -169,10 +177,23 @@ class _lazy_classifier:
     def __call__(self, updates, effect_flag):
         # D-COST-6 (#193): only a T079 answer that flags an effect change is classified; a {} answer
         # ("no change") no longer costs a T078 call.
-        if self.result is None and effect_flag is True:
+        merged = _classifier_mode() == "merged"
+        fresh = False
+        if self.result is None and merged and effect_flag is not None:
+            # D-COST-8 (#193): T079's effectChange is the classification itself, checked against T078's
+            # contract and finalized the same way; no T078 call. A contract error raises for T079's loop.
+            if not isinstance(effect_flag, dict):
+                raise EffectsAgentContractError(
+                    "effectChange must be the effect object {operation, effect, remove}, not %r"
+                    % (effect_flag,))
+            self.result = classification_from_object(effect_flag, self._name, self._changes, self._now)
+            fresh = True
+        elif self.result is None and not merged and effect_flag:
             self.result = classify_effect(
                 self._name, self._changes, effective_sheet(self._sheet), self._now
             )
+            fresh = True
+        if fresh:
             if self.result["operation"] == "add":
                 effect = self.result["effect"]
                 # CN: the classifier states the caster; the record joins the caster's

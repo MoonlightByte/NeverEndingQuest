@@ -1509,7 +1509,10 @@ def test_a_no_change_update_is_one_t079_call_and_no_classifier(wizard, authored,
 
 
 def test_a_flagged_effect_change_still_classifies(wizard, authored, monkeypatch, tmp_path):
-    # D-COST-6: an answer that flags an effect change still runs the classifier once.
+    # D-COST-6: an answer that flags an effect change still runs the classifier once. D-COST-8: this is the
+    # "separate" rollback mode; merged mode reads the effect object from T079 itself.
+    import model_config
+    monkeypatch.setattr(model_config, "EFFECTS_CLASSIFIER_MODE", "separate")
     calls, classified = _t079_run(wizard, authored, monkeypatch, tmp_path, [{"effectChange": True}],
                                   "She is blessed for one minute.")
     assert calls[0] == "T079" and len(classified) == 1
@@ -1562,4 +1565,130 @@ def test_a_level_up_calls_only_t121_and_the_retired_ids_are_gone(wizard, authore
             if pattern.search(line) and not (path.name == "model_registry.py" and "it replaces" in line):
                 hits.append("%s:%d" % (path.relative_to(ROOT), number))
     assert hits == []
+
+
+_NOW = 1492 * 365 * 86400  # any valid game-seconds scalar
+_BLESS = {"operation": "add", "remove": {"effectId": "", "name": ""}, "effect": {
+    "name": "Bless", "description": "Adds 1d4 to attack rolls and saving throws.", "source": "Cleric",
+    "modifiers": [{"stat": "attackRolls", "die": "1d4"}, {"stat": "savingThrows", "die": "1d4"}],
+    "conditions": [], "incapacitates": False, "durationKind": "minutes", "durationValue": 1,
+    "restKind": "none", "concentration": True, "caster": "Cleric", "onApply": [], "onRemove": []}}
+
+
+def _t079_effects(wizard, authored, monkeypatch, tmp_path, answers, changes, mode="merged", classify_as=None):
+    """The real T079 loop with declarative effects on, canned T079 answers and a counted T078; returns the
+    task ids, the T078 calls, the lazy classifier and the first request's messages."""
+    import types as _types
+    import model_config
+    import updates.update_character_info as character_info
+    from core.managers import effects_runtime, effects_state
+    monkeypatch.setattr(model_config, "EFFECTS_CLASSIFIER_MODE", mode)
+    monkeypatch.setattr(effects_state, "campaign_effects_migrated", lambda: True)
+    sheet = copy.deepcopy(authored["character"])
+    path = tmp_path / "hero.json"
+    path.write_text(json.dumps(sheet), encoding="utf-8")
+    calls, classified, requests = [], [], []
+
+    def provider(task_id, *args, **kwargs):
+        calls.append(task_id)
+        requests.append(copy.deepcopy(kwargs.get("messages")))
+        content = json.dumps(answers[min(len(calls), len(answers)) - 1])
+        return _types.SimpleNamespace(choices=[_types.SimpleNamespace(message=_types.SimpleNamespace(content=content))])
+
+    def classify(name, change, sheet_view, now):
+        classified.append(name)
+        from core.ai import effects_agent
+        return effects_agent.classification_from_object(classify_as or {"operation": "none", "effect": {},
+                                                                         "remove": {}}, name, change, now)
+    monkeypatch.setattr(character_info, "capture_and_fanout", provider)
+    monkeypatch.setattr(character_info, "get_character_path", lambda name, role=None: str(path))
+    monkeypatch.setattr(character_info, "detect_character_role", lambda name: "player")
+    monkeypatch.setattr(effects_runtime, "classify_effect", classify)
+    from core.effects.clock import scalar_from_calendar
+    (tmp_path / "party_tracker.json").write_text(json.dumps({"module": "Keep", "worldConditions": {}}), encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    lazy = effects_runtime._lazy_classifier(sheet["name"], changes, sheet, scalar_from_calendar({}))
+    character_info._update_character_info_unlocked(sheet["name"], changes, "player", managed_effect_operation=lazy,
+                                                   prepare_only=True)
+    return calls, classified, lazy, requests
+
+
+@pytest.mark.parametrize("obj, problem", [
+    (dict(_BLESS, extra=1), "requires exactly operation, effect, and remove"),
+    ({"operation": "remove", "effect": {"name": "Bless"}, "remove": {"effectId": "e1", "name": "Bless"}},
+     "remove result has an invalid shape"),
+    ({**_BLESS, "effect": {**_BLESS["effect"], "caster": ""}}, "concentration effect requires a caster"),
+    ({**_BLESS, "effect": {**_BLESS["effect"], "durationKind": "weeks"}}, "durationKind is invalid"),
+])
+def test_the_effect_object_is_held_to_t078s_exact_contract(obj, problem):
+    # D-COST-8 (#193): T079's effectChange object and T078's answer pass the same check, with the same message.
+    from core.ai import effects_agent
+    for check in (lambda: effects_agent._parse(json.dumps(obj)),
+                  lambda: effects_agent.classification_from_object(obj, "Hero", "x", _NOW)):
+        with pytest.raises(effects_agent.EffectsAgentContractError, match=problem):
+            check()
+    for good in (_BLESS, {"operation": "none", "effect": {}, "remove": {}}):
+        assert effects_agent.classification_from_object(good, "Hero", "x", _NOW)["operation"] == good["operation"]
+
+
+def test_a_merged_effect_is_one_t079_call_and_equals_the_separate_record(wizard, authored, monkeypatch, tmp_path):
+    # D-COST-8: T079 returns the classification; 0 T078 calls; the engine record equals today's T079 + T078.
+    calls, classified, lazy, _ = _t079_effects(wizard, authored, monkeypatch, tmp_path,
+                                               [{"effectChange": _BLESS}], "The cleric blesses her.")
+    assert calls == ["T079"] and classified == []
+    merged = copy.deepcopy(lazy.operation)
+    calls2, classified2, lazy2, _ = _t079_effects(wizard, authored, monkeypatch, tmp_path,
+                                                  [{"effectChange": True}], "The cleric blesses her.",
+                                                  mode="separate", classify_as=_BLESS)
+    assert calls2 == ["T079"] and len(classified2) == 1
+    def without_ids(operation):  # effectId and concentrationId are minted per record
+        return [{**op, "effect": {k: v for k, v in op["effect"].items() if k not in ("effectId", "concentrationId")}}
+                for op in operation]
+    assert without_ids(merged) == without_ids(lazy2.operation) and merged[0]["op"] == "add" and merged[0]["effect"]["name"] == "Bless"
+
+
+def test_a_delta_and_an_effect_in_one_answer_apply_together(wizard, authored, monkeypatch, tmp_path):
+    calls, classified, lazy, _ = _t079_effects(wizard, authored, monkeypatch, tmp_path,
+                                               [{"hpDelta": -2, "effectChange": _BLESS}], "Hurt, then blessed.")
+    assert calls == ["T079"] and classified == [] and lazy.operation[0]["op"] == "add"
+
+
+def test_an_effect_contract_error_is_corrected_inside_t079(wizard, authored, monkeypatch, tmp_path):
+    bad = {**_BLESS, "effect": {**_BLESS["effect"], "durationKind": "weeks"}}
+    calls, classified, lazy, requests = _t079_effects(
+        wizard, authored, monkeypatch, tmp_path, [{"effectChange": bad}, {"effectChange": _BLESS}], "Blessed.")
+    assert calls == ["T079", "T079"] and classified == [] and lazy.operation[0]["op"] == "add"
+    from core.ai.effects_agent import CONTRACT_CORRECTION
+    assert requests[1][-1]["content"].endswith(
+        CONTRACT_CORRECTION % "T078 durationKind is invalid" + " Return the complete delta again.")
+
+
+def test_a_boolean_effect_change_is_refused_in_merged_mode(wizard, authored, monkeypatch, tmp_path):
+    calls, classified, lazy, requests = _t079_effects(
+        wizard, authored, monkeypatch, tmp_path, [{"effectChange": True}, {"effectChange": _BLESS}], "Blessed.")
+    assert calls == ["T079", "T079"] and classified == [] and "not True" in requests[1][-1]["content"]
+
+
+def test_none_and_omitted_change_nothing_and_remove_needs_an_exact_id(wizard, authored, monkeypatch, tmp_path):
+    for answer in ({"hpDelta": -1}, {"hpDelta": -1, "effectChange": {"operation": "none", "effect": {},
+                                                                      "remove": {}}}):
+        calls, classified, lazy, _ = _t079_effects(wizard, authored, monkeypatch, tmp_path, [answer], "A scratch.")
+        assert calls == ["T079"] and classified == [] and not lazy.operation
+
+
+def test_the_merged_t079_prompt_carries_t078s_rules_verbatim(wizard, authored, monkeypatch, tmp_path):
+    import hashlib
+    from core.ai import effects_agent
+    rules = effects_agent.EFFECT_CONTRACT_RULES
+    assert hashlib.sha256(effects_agent._system_prompt().encode()).hexdigest()[:12] == "c48e6369bd27"
+    *_, merged = _t079_effects(wizard, authored, monkeypatch, tmp_path, [{}], "Nothing.")
+    *_, separate = _t079_effects(wizard, authored, monkeypatch, tmp_path, [{}], "Nothing.", mode="separate")
+    merged_system, separate_system = merged[0][0]["content"], separate[0][0]["content"]
+    assert rules in merged_system and rules not in separate_system
+    assert "currentEffectiveSheet means the Current" in merged_system and "An omitted effectChange means no" in merged_system
+    assert "operation none is also accepted" not in merged_system
+    assert '"effectChange": true in your delta' in separate_system
+    # The T079 prompt pins: separate (the rollback) is main's prompt byte for byte; merged adds the block.
+    assert hashlib.sha256(separate_system.encode()).hexdigest()[:12] == "79e671ba7ed1"
+    assert hashlib.sha256(merged_system.encode()).hexdigest()[:12] == "273f736565d3"
 
