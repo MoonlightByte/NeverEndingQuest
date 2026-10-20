@@ -45,6 +45,7 @@ import config
 import jsonschema
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from model_config import convert_to_gemini_schema
+import copy
 register_callsite("T036", "core/generators/plot_generator.py", 404)
 register_callsite("T037", "core/generators/plot_generator.py", 504)
 
@@ -347,6 +348,36 @@ class PlotPromptGuide:
     - Mutually exclusive (completing one fails another)
     """
 
+
+def _nullable_strict_schema(schema: Any) -> Any:
+    """OpenAI strict subset of ``schema`` (D-COST-5 F1): every property is
+    required, and a property the source schema leaves optional is nullable
+    instead. The caller drops null keys, so saved plots keep today's format."""
+    if isinstance(schema, list):
+        return [_nullable_strict_schema(value) for value in schema]
+    if not isinstance(schema, dict):
+        return copy.deepcopy(schema)
+    strict = {key: _nullable_strict_schema(value) for key, value in schema.items()
+              if key not in {"$schema", "examples"}}
+    if strict.get("type") == "object" or "properties" in strict:
+        source_required = set(schema.get("required", []))
+        for name, prop in strict.get("properties", {}).items():
+            if name not in source_required and isinstance(prop, dict) and "type" in prop:
+                prop["type"] = [prop["type"], "null"]
+        strict["additionalProperties"] = False
+        strict["required"] = sorted(strict.get("properties", {}))
+    return strict
+
+
+def _drop_null_keys(value: Any) -> Any:
+    """Remove keys whose value is null, at every level (D-COST-5 F1)."""
+    if isinstance(value, dict):
+        return {key: _drop_null_keys(item) for key, item in value.items() if item is not None}
+    if isinstance(value, list):
+        return [_drop_null_keys(item) for item in value]
+    return value
+
+
 class PlotGenerator:
     def __init__(self):
         self.prompt_guide = PlotPromptGuide()
@@ -431,10 +462,24 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
             f"T036 {field_path} failed validation after 2 attempts: {last_error}"
         )
 
+    def plot_structure_schema(self, valid_location_ids: List[str]) -> Dict[str, Any]:
+        """The T037 reply schema: plotPoints from plot_schema.json, with every
+        location reference typed to the module's location IDs (D-COST-5)."""
+        plot_points = copy.deepcopy(self.schema["properties"]["plotPoints"])
+        item = plot_points["items"]["properties"]
+        item["location"]["enum"] = list(valid_location_ids)
+        item["sideQuests"]["items"]["properties"]["involvedLocations"]["items"]["enum"] = list(valid_location_ids)
+        return {"type": "object", "properties": {"plotPoints": plot_points}, "required": ["plotPoints"]}
+
     def generate_plot_structure(self, num_plot_points: int, 
                                 context: Dict[str, Any],
-                                context_header: str = "") -> Dict[str, Any]:
-        """Generate the complete plot structure"""
+                                context_header: str = "",
+                                valid_location_ids: Optional[List[str]] = None,
+                                repair: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Generate the complete plot structure.
+
+        ``repair`` ({"previous": plot, "errors": [...]}) asks for a targeted
+        correction of a plot that failed validation (D-COST-5)."""
         
         # Generate a full plot structure in one go for better coherence
         prompt = f"""{context_header}Create a complete plot structure for a 5e adventure with {num_plot_points} main plot points.
@@ -478,6 +523,13 @@ Return a JSON object with this structure:
 IMPORTANT: Each plot point should have its sideQuests array (can be empty). Side quests are nested within plot points, not at the root level.
 Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
 """
+        if repair:
+            prompt += (
+                "\nREPAIR: your previous plot failed validation. Previous plot:\n"
+                + json.dumps({"plotPoints": repair["previous"].get("plotPoints", [])}, indent=2)
+                + "\nVALIDATION ERRORS:\n- " + "\n- ".join(repair["errors"])
+                + "\nReturn the complete plotPoints again, changing only what the errors name.\n"
+            )
 
         from model_config import MODEL_PROVIDER
         if MODEL_PROVIDER == "openai":
@@ -493,7 +545,19 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
         # the plot structure, not DM narration. DM_MAIN_* dicts are shared across
         # callsites, so attach per-call via extra_params (not the dict).
         extra_params = {k: v for k, v in main_cfg.items() if k != "model"}
-        if MODEL_PROVIDER == "gemini":
+        response_format = {"type": "json_object"}
+        if valid_location_ids:
+            # D-COST-5: the location IDs are typed, so a dangling reference
+            # cannot be produced. LM Studio keeps json_object and the prompt list.
+            typed = self.plot_structure_schema(valid_location_ids)
+            if MODEL_PROVIDER in ("openai", "legacy"):
+                response_format = {"type": "json_schema", "json_schema": {
+                    "name": "t037_plot_structure", "strict": True,
+                    "schema": _nullable_strict_schema(typed)}}
+            elif MODEL_PROVIDER == "gemini":
+                extra_params["response_schema"] = convert_to_gemini_schema(
+                    typed, preserve_required=True, preserve_constraints=True)
+        elif MODEL_PROVIDER == "gemini":
             if _PLOT_SCHEMA_GEMINI is None:
                 raise RuntimeError(
                     "issue #128: Gemini plot schema is None (schemas/plot_schema.json "
@@ -502,39 +566,42 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 )
             extra_params["response_schema"] = _PLOT_SCHEMA_GEMINI
 
-        # MP-H1: a malformed AI response previously raised an uncaught
-        # JSONDecodeError that crashed the entire module build. Retry once on
-        # a parse failure, then fail with a clear, logged error instead.
-        last_err = None
-        for attempt in range(2):
-            response = capture_and_fanout("T037", api_client.create_completion,
-                _request_provider=MODEL_PROVIDER,
-                messages=[
-                    {"role": "system", "content": "You are an expert 5e adventure designer."},
-                    {"role": "user", "content": prompt}
-                ],
-                model=main_cfg["model"],
-                temperature=0.8,
-                response_format={"type": "json_object"},
-                **extra_params)
-            raw = response.choices[0].message.content
-            try:
-                return json.loads(raw)
-            except (json.JSONDecodeError, TypeError) as e:
-                last_err = e
-                print(f"WARNING: T037 plot structure returned invalid JSON "
-                      f"(attempt {attempt + 1}/2): {e}. Raw (truncated): {str(raw)[:300]}")
-        raise ValueError(
-            f"Plot structure generation returned invalid JSON after 2 attempts: {last_err}"
-        )
+        # MP-H1: a malformed response fails with a clear ValueError, never an
+        # uncaught JSONDecodeError. D-COST-5: one call; the caller's bounded
+        # repair loop owns the retry (no nested identical-prompt retry).
+        response = capture_and_fanout("T037", api_client.create_completion,
+            _request_provider=MODEL_PROVIDER,
+            messages=[
+                {"role": "system", "content": "You are an expert 5e adventure designer."},
+                {"role": "user", "content": prompt}
+            ],
+            model=main_cfg["model"],
+            temperature=0.8,
+            response_format=response_format,
+            **extra_params)
+        raw = response.choices[0].message.content
+        try:
+            structure = json.loads(raw)
+        except (json.JSONDecodeError, TypeError) as e:
+            print(f"WARNING: T037 plot structure returned invalid JSON: {e}. "
+                  f"Raw (truncated): {str(raw)[:300]}")
+            raise ValueError(f"Plot structure generation returned invalid JSON: {e}")
+        if not isinstance(structure, dict):
+            raise ValueError("Plot structure generation returned a non-object")
+        return _drop_null_keys(structure)
     
     def generate_plot(self, module_data: Dict[str, Any], 
                      area_data: Dict[str, Any],
                      location_data: Dict[str, Any],
                      initial_concept: str = None,
                      context=None,
-                     context_header: str = "") -> Dict[str, Any]:
-        """Generate a complete plot file for an area"""
+                     context_header: str = "",
+                     valid_location_ids: Optional[List[str]] = None,
+                     repair: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Generate a complete plot file for an area.
+
+        With ``repair`` the previous plot's title and objective are kept and
+        only the plot structure is corrected (D-COST-5)."""
         
         # Build generation context from existing data
         generation_context = {
@@ -576,13 +643,17 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
         elif isinstance(context, dict):
             field_context = context
         
-        # Generate title and objective first
-        plot_data["plotTitle"] = self.generate_field("plotTitle", 
-            self.schema["properties"]["plotTitle"], field_context)
+        # Generate title and objective first (a repair keeps the previous ones)
+        previous = (repair or {}).get("previous") or {}
+        if repair and previous.get("plotTitle") and previous.get("mainObjective"):
+            plot_data["plotTitle"] = previous["plotTitle"]
+            plot_data["mainObjective"] = previous["mainObjective"]
+        else:
+            plot_data["plotTitle"] = self.generate_field("plotTitle",
+                self.schema["properties"]["plotTitle"], field_context)
+            plot_data["mainObjective"] = self.generate_field("mainObjective",
+                self.schema["properties"]["mainObjective"], field_context)
         field_context["plotTitle"] = plot_data["plotTitle"]
-        
-        plot_data["mainObjective"] = self.generate_field("mainObjective",
-            self.schema["properties"]["mainObjective"], field_context)
         field_context["mainObjective"] = plot_data["mainObjective"]
         
         print(f"Generated plot title: {plot_data['plotTitle']}")
@@ -604,7 +675,9 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
         # Generate complete plot structure
         num_plot_points = min(8, max(4, len(location_data.get("locations", [])) // 3))
 
-        plot_structure = self.generate_plot_structure(num_plot_points, field_context, context_header)
+        plot_structure = self.generate_plot_structure(
+            num_plot_points, field_context, context_header,
+            valid_location_ids=valid_location_ids, repair=repair)
         
         plot_data["plotPoints"] = plot_structure["plotPoints"]
         

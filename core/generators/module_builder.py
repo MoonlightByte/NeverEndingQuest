@@ -342,6 +342,51 @@ def _useful_string(value, field):
     return value.strip()
 
 
+# D-COST-5 F2: the one definition of T028's fields. The validator and the
+# strict request schema both read these, so they cannot drift.
+_T028_ROOT_FIELDS = (
+    "plotTitle", "mainObjective", "plotPoints", "activeQuests",
+    "completedQuests", "failedQuests", "worldEvents", "dmNotes",
+)
+_T028_PLOT_POINT_FIELDS = (
+    "id", "title", "description", "location", "nextPoints", "status",
+    "plotImpact", "sideQuests",
+)
+_T028_SIDE_QUEST_FIELDS = (
+    "id", "title", "description", "involvedLocations", "status", "plotImpact",
+)
+
+
+def _t028_schema(area_ids: List[str]) -> Dict[str, Any]:
+    """T028's reply schema with typed area IDs, pinned to the contract fields."""
+    def obj(fields, props):
+        assert tuple(props) == fields
+        return {"type": "object", "properties": props,
+                "required": list(fields), "additionalProperties": False}
+
+    area_enum = {"type": "string", "enum": list(area_ids)}
+    text = {"type": "string"}
+    side_quest = obj(_T028_SIDE_QUEST_FIELDS, {
+        "id": text, "title": text, "description": text,
+        "involvedLocations": {"type": "array", "items": area_enum},
+        "status": text, "plotImpact": text,
+    })
+    plot_point = obj(_T028_PLOT_POINT_FIELDS, {
+        "id": text, "title": text, "description": text, "location": area_enum,
+        "nextPoints": {"type": "array", "items": text},
+        "status": text, "plotImpact": text,
+        "sideQuests": {"type": "array", "items": side_quest},
+    })
+    string_list = {"type": "array", "items": text}
+    return obj(_T028_ROOT_FIELDS, {
+        "plotTitle": text, "mainObjective": text,
+        "plotPoints": {"type": "array", "items": plot_point},
+        "activeQuests": string_list, "completedQuests": string_list,
+        "failedQuests": string_list, "worldEvents": string_list,
+        "dmNotes": string_list,
+    })
+
+
 def _validate_unified_plot_contract(
     value: Any,
     area_ids: List[str],
@@ -349,10 +394,7 @@ def _validate_unified_plot_contract(
     expected_side_quests: int,
 ) -> Dict[str, Any]:
     """Validate T028 identities/references before the unified plot is saved."""
-    root_fields = {
-        "plotTitle", "mainObjective", "plotPoints", "activeQuests",
-        "completedQuests", "failedQuests", "worldEvents", "dmNotes",
-    }
+    root_fields = set(_T028_ROOT_FIELDS)
     if not isinstance(value, dict) or set(value) != root_fields:
         raise ValueError("T028 requires the exact unified-plot root fields")
     _useful_string(value["plotTitle"], "plotTitle")
@@ -372,10 +414,7 @@ def _validate_unified_plot_contract(
     valid_areas = set(area_ids)
     side_quest_ids = []
     for pp in plot_points:
-        required = {
-            "id", "title", "description", "location", "nextPoints", "status",
-            "plotImpact", "sideQuests",
-        }
+        required = set(_T028_PLOT_POINT_FIELDS)
         if set(pp) != required:
             raise ValueError(f"T028 {pp.get('id')} has missing or extra fields")
         _useful_string(pp["title"], f"{pp['id']}.title")
@@ -394,10 +433,7 @@ def _validate_unified_plot_contract(
             raise ValueError(f"T028 {pp['id']}.sideQuests must be an array")
 
         for sq in pp["sideQuests"]:
-            sq_fields = {
-                "id", "title", "description", "involvedLocations", "status",
-                "plotImpact",
-            }
+            sq_fields = set(_T028_SIDE_QUEST_FIELDS)
             if not isinstance(sq, dict) or set(sq) != sq_fields:
                 raise ValueError("T028 side quest has missing or extra fields")
             side_quest_ids.append(sq["id"])
@@ -1438,23 +1474,29 @@ The area ID {area_id} is not a location ID and must never be used in those field
             errors = []
             plot_data = None
             for attempt in range(2):
-                attempt_context = area_specific_context
-                if errors:
-                    attempt_context += (
-                        "\nPREVIOUS PLOT VALIDATION ERRORS:\n- "
-                        + "\n- ".join(errors)
-                        + "\nRegenerate the complete plot. Correct every error and "
-                        "use only the exact valid location IDs listed above.\n"
-                    )
-
-                plot_data = self.plot_gen.generate_plot(
-                    self.module_data,
-                    area_data,
-                    location_data,
-                    f"Create a plot specifically for {area_data['areaName']}, a {area_data.get('areaType', 'region')} area",
-                    context=self.context,
-                    context_header=attempt_context,
+                # D-COST-5: the retry is a targeted repair of the previous
+                # plot from its validation errors, with typed location IDs.
+                repair = (
+                    {"previous": plot_data, "errors": errors}
+                    if errors and plot_data else None
                 )
+                try:
+                    plot_data = self.plot_gen.generate_plot(
+                        self.module_data,
+                        area_data,
+                        location_data,
+                        f"Create a plot specifically for {area_data['areaName']}, a {area_data.get('areaType', 'region')} area",
+                        context=self.context,
+                        context_header=area_specific_context,
+                        valid_location_ids=valid_location_ids,
+                        repair=repair,
+                    )
+                except ValueError as exc:
+                    # An unparseable reply leaves nothing to repair.
+                    plot_data = None
+                    errors = [str(exc)]
+                    self.log(f"Plot generation failed for {area_id} (attempt {attempt + 1}/2): {exc}")
+                    continue
 
                 # MP-C2: reject dangling references before they reach disk.
                 # One bounded semantic retry repairs ordinary model slips;
@@ -1469,6 +1511,9 @@ The area ID {area_id} is not a location ID and must never be used in those field
                     f"Plot validation failed for {area_id} "
                     f"(attempt {attempt + 1}/2): {'; '.join(errors)}"
                 )
+
+            if plot_data is None:
+                raise ValueError(f"Plot generation failed for {area_id}: {'; '.join(errors)}")
 
             if errors:
                 # Last resort before discarding a fully generated module:
@@ -1621,22 +1666,46 @@ IMPORTANT:
             else:  # legacy
                 main_cfg = config.DM_MAIN_LEGACY
 
+            # D-COST-5: typed area IDs under a schema pinned to the contract;
+            # LM Studio keeps json_object with the IDs in the prompt.
+            t028_extra = {k: v for k, v in main_cfg.items() if k != "model"}
+            t028_format = {"type": "json_object"}
+            t028_schema = _t028_schema(list(self.areas_data))
+            if MODEL_PROVIDER in ("openai", "legacy"):
+                t028_format = {"type": "json_schema", "json_schema": {
+                    "name": "t028_unified_plot", "strict": True, "schema": t028_schema}}
+            elif MODEL_PROVIDER == "gemini":
+                from model_config import convert_to_gemini_schema
+                t028_extra["response_schema"] = convert_to_gemini_schema(
+                    t028_schema, preserve_required=True, preserve_constraints=True)
+
             last_error = None
+            last_reply = None
             unified_plot = None
             for attempt in range(2):
+                attempt_prompt = prompt
+                if last_error is not None:
+                    # A targeted repair: the previous reply and its contract
+                    # error, not the identical prompt again.
+                    attempt_prompt += (
+                        "\n\nREPAIR: your previous response failed validation.\n"
+                        f"ERROR: {last_error}\nPREVIOUS RESPONSE:\n{last_reply}\n"
+                        "Return the complete JSON again, changing only what the error names."
+                    )
                 response = capture_and_fanout("T028", api_client.create_completion,
                     _request_provider=MODEL_PROVIDER,
                     messages=[
                         {"role": "system", "content": "You are an expert 5th edition module designer specializing in creating coherent, engaging adventure narratives."},
-                        {"role": "user", "content": prompt}
+                        {"role": "user", "content": attempt_prompt}
                     ],
                     model=main_cfg["model"],
                     temperature=0.7,
-                    response_format={"type": "json_object"},
-                    **{k: v for k, v in main_cfg.items() if k != "model"})
+                    response_format=t028_format,
+                    **t028_extra)
+                last_reply = response.choices[0].message.content
                 try:
                     unified_plot = _validate_unified_plot_contract(
-                        json.loads(response.choices[0].message.content),
+                        json.loads(last_reply),
                         list(self.areas_data),
                         len(all_plot_points),
                         len(all_side_quests),
