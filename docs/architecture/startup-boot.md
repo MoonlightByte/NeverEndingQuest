@@ -174,3 +174,18 @@ Other historical anchors are not recertified by this note.
 - Wizard and new-game behavior: #114, #115, #170, #232, #234, #235, and #257.
 - Welcome and UI handoff: #214, #221, and #248.
 - Legacy/startup reconciliation: #158, #199, and #238.
+
+## #1323 typed feat spell payment (D-1323-1 candidate)
+
+Creation keeps the origin feat's chosen leveled spell in optional grantedSpells
+entries (spell key and resource name). Runtime sheet repair recovers a missing
+binding only from the creation archive paired to this sheet path and startup id.
+No matching archive leaves an older save playable without guessing a binding.
+Both shared DM/validator sheet views carry the complete binding.
+
+A spell's updateCharacterInfo parameters may carry castingResource (feature with
+featureName, or slot with integer level). Both ordinary and staged effects updates
+pass it into atomic character preparation. Code replaces updater payment deltas
+with exactly one chosen engine delta; the existing resource engine checks the
+pool and owns its result. T079 still supplies the spell effect. No schema file or
+engine binary change. Live acceptance is recorded separately with the draft PR.

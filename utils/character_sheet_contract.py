@@ -544,6 +544,13 @@ def repair_and_persist_character(
     from core.nql.legacy_loadout import migrate as migrate_legacy_loadout
     raw_changes = list(raw_changes) + migrate_legacy_loadout(repaired_data)
 
+    try:
+        from core.leveling.creation_picks import recover_feat_spell_bindings
+        if recover_feat_spell_bindings(repaired_data, character_file_path):
+            raw_changes.append("feat_spell_bindings=recovered")
+    except Exception as exc:  # an absent/unavailable archive never blocks loading
+        warning(f"REPAIR: feat spell bindings not checked for {character_file_path}: {exc}", category="character_repair")
+
     # A class order's typed grants (Divine Order: Protector, Primal Order: Warden)
     # on a hero saved before character creation wrote them (#888). Taken only when
     # the engine reads something new, and said in one line once the sheet is saved.

@@ -52,6 +52,23 @@ class ResourceOutcome:
     treated: Optional[Dict[str, Any]] = None  # K1: DamageApplied.resource for a kinded hp damage (requested, treated)
 
 
+def casting_resource_delta(choice: Any) -> Dict[str, Any]:
+    """Resolve a typed casting payment, once, before the existing engine transaction."""
+    if not isinstance(choice, dict):
+        raise ValueError("castingResource must be an object")
+    if choice.get("kind") == "feature":
+        name = choice.get("featureName")
+        if isinstance(name, str) and name.strip():
+            return {USE_DELTA: {name: -1}}
+        raise ValueError("feature castingResource requires featureName")
+    if choice.get("kind") == "slot":
+        level = choice.get("level")
+        if type(level) is int and 1 <= level <= 9:
+            return {SLOT_DELTA: {f"level{level}": -1}}
+        raise ValueError("slot castingResource requires integer level 1..9")
+    raise ValueError("castingResource kind must be feature or slot")
+
+
 def _q(value: str) -> str:
     return genesis._q(value)
 

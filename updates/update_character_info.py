@@ -1881,13 +1881,15 @@ def requested_character_update_fields(affects):
     return required
 
 
-def validate_requested_character_update_completeness(affects, updates):
+def validate_requested_character_update_completeness(affects, updates, casting_resource=None):
     """Return ``(is_complete, missing_fields)`` for a declared T079 request."""
     required = requested_character_update_fields(affects)
     present = set(updates) if isinstance(updates, dict) else set()
     for delta_key, owned_field in ENGINE_DELTA_FIELDS.items():
         if delta_key in present:
             present.add(owned_field)
+    if isinstance(casting_resource, dict) and casting_resource.get("kind") == "feature" and "featureUseDelta" in present:
+        present.add("spellcasting")
     missing = sorted(required - present)
     return not missing, missing
 
@@ -2125,6 +2127,7 @@ def update_character_info(
     *,
     commit_guard=None,
     affects=None,
+    casting_resource=None,
 ):
     """Run one complete character update transaction under a per-file lock."""
     lock = _get_character_update_lock(character_name, character_role)
@@ -2156,6 +2159,7 @@ def update_character_info(
                     structural_reissue=commit_guard is not None,
                     commit_guard=commit_guard,
                     affects=affects,
+                    casting_resource=casting_resource,
                 )
             return _update_character_info_unlocked(
                 character_name,
@@ -2166,6 +2170,7 @@ def update_character_info(
                 structural_reissue=commit_guard is not None,
                 commit_guard=commit_guard,
                 affects=affects,
+                casting_resource=casting_resource,
             )
 
 
@@ -2180,6 +2185,7 @@ def _update_character_info_unlocked(
     *,
     commit_guard=None,
     affects=None,
+    casting_resource=None,
 ):
     """
     Unified function to update character information for both players and NPCs
@@ -2198,6 +2204,14 @@ def _update_character_info_unlocked(
             pass
     debug(f"STATE_CHANGE: Updating character info for: {character_name}", category="character_updates")
     
+    payment = None
+    if casting_resource is not None:
+        from core.nql.resources import casting_resource_delta
+        try:
+            payment = casting_resource_delta(casting_resource)
+        except ValueError as exc:
+            raise EngineRefusedChange(str(exc)) from exc
+
     # An exact party-name match (#900) when the character's file is not found
     original_name = character_name
     party_tracker_data = safe_json_load("party_tracker.json")
@@ -2669,6 +2683,12 @@ Character Role: {character_role}
         {"role": "user", "content": f"Changes to make: {changes}"}
     ]
     
+    if payment is not None:
+        messages.insert(-1, {"role": "user", "content":
+            "Typed castingResource: " + json.dumps(casting_resource) +
+            ". The host owns this payment; return the spell effect and other changes, "
+            "never resource totals. The host supplies exactly one selected payment delta."})
+
     # Add conversation history for context (last 10 messages)
     if history:
         recent_history = history[-10:]
@@ -2872,7 +2892,7 @@ Character Role: {character_role}
                     continue
                 engine_owned_change = declarative_effects and managed_effect_operation
             if not _is_meaningful_character_delta(updates, schema) and not (
-                engine_owned_change
+                engine_owned_change or payment is not None
             ):
                 raise ValueError(
                     "T079 returned an empty or unrecognized character delta"
@@ -2906,9 +2926,16 @@ Character Role: {character_role}
                     managed_effect_operation if declarative_effects else None,
                 )
 
+            if payment is not None:
+                # The accepted typed choice owns payment, never the updater's prose interpretation.
+                updates.pop("spellSlotDelta", None)
+                updates.pop("featureUseDelta", None)
+                updates.update(payment)
+
             is_complete, missing_fields = validate_requested_character_update_completeness(
                 affects,
                 updates,
+                casting_resource=casting_resource,
             )
             if not is_complete:
                 missing_list = ", ".join(missing_fields)

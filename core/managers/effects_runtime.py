@@ -102,6 +102,7 @@ def update_character_with_effects(
     party_tracker_data=None,
     action_context=None,
     affects=None,
+    casting_resource=None,
 ):
     """Classifier-first T078 -> T079 character update for a migrated campaign."""
     if not campaign_effects_migrated():
@@ -110,6 +111,7 @@ def update_character_with_effects(
         success = update_character_info(
             character_name, changes, action_context=action_context,
             affects=affects,
+            casting_resource=casting_resource,
         )
         if success:
             from updates.update_character_effects import update_character_effects
@@ -137,6 +139,7 @@ def update_character_with_effects(
                 managed_effect_operation=classifier,
                 action_context=action_context,
                 affects=affects,
+                casting_resource=casting_resource,
             )
     if success and classifier.cast:
         from core.managers.concentration_runtime import record_cast
@@ -358,7 +361,7 @@ def _end_concentration_group(matches, reason):
         end_group(group, f"ended by the DM: {reason}", except_effect_id=removed[0] if len(removed) == 1 else None)
 
 
-def prepare_character_update(character_name, changes, party_tracker_data=None, affects=None):
+def prepare_character_update(character_name, changes, party_tracker_data=None, affects=None, casting_resource=None):
     """Freeze required T078/T079 output and advisory sheet corrections."""
     resolved, role, _path, sheet = _resolve_character(character_name)
     classifier = _lazy_classifier(resolved, changes, sheet, _world_scalar(party_tracker_data))
@@ -370,6 +373,7 @@ def prepare_character_update(character_name, changes, party_tracker_data=None, a
         prepare_only=True,
         structural_reissue=True,
         affects=affects,
+        casting_resource=casting_resource,
     )
     if not isinstance(receipt, dict):
         raise CharacterProposalDropped(resolved)

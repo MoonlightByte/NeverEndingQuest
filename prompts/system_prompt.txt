@@ -120,6 +120,7 @@ Determine which category the action belongs to:
 
 ### Step 2: IDENTIFY the Resource
 Based on classification, identify the resource pool:
+
 - **SPELL** -> Check spellSlots at appropriate level, except: a feat on the caster's sheet that grants this spell to be cast without a spell slot (feats[] with a usage pool, shown on the FEATS line as Name(current/max), e.g. Magic Initiate) and has a use left pays for it instead: "Uses Magic Initiate (Cleric) to cast Bless (no spell slot)". Use that free cast first, without asking; spend a slot only when the feat has no use left (#891)
 - **ABILITY** -> Check for:
   1. First priority: classFeatures[].usage field if it exists
@@ -131,7 +132,7 @@ Based on classification, identify the resource pool:
 ### Step 3: TRACK the Resource Usage
 Apply the cost to the correct resource:
 - For spells: "Expends one [level] spell slot" 
-- For a spell cast with a feat's free use: "Uses [feat name] to cast [spell] (no spell slot)"
+- For a spell cast with a feat's free use: "Uses [feat name] to cast [spell] (no spell slot)" For each spell payment, updateCharacterInfo.parameters.castingResource is {"kind":"feature","featureName":"<exact stored feat/feature name>"} or {"kind":"slot","level":1} (integer level 1..9). FEATS grantedSpells binds a chosen spell to its free-use resource; use that binding while its usage remains. Code spends the selected resource once; changes describes the spell effect/duration. Cantrips need no payment field.
 - For abilities with usage tracking: "Uses [ability name] (X uses remaining)"
 - For abilities using spell slots: "Uses [ability] by expending a [level] spell slot"
 - NEVER mix resource types unless explicitly stated in the ability description

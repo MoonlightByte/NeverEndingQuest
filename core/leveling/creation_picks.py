@@ -54,8 +54,49 @@ def creation_picks(character_path: str, root: str = ".") -> Optional[Dict[str, A
                     and record.get("startup_id") == startup_id:
                 intent = (proposal or {}).get("intent")
                 if isinstance(intent, dict) and intent.get("species_key") and isinstance(intent.get("choices"), dict):
-                    picks = {"species_key": intent["species_key"], "choices": intent["choices"]}
+                    picks = {"species_key": intent["species_key"], "choices": intent["choices"],
+                             "background_key": intent.get("background_key")}
         # The newest archive that saved this sheet decides: without an engine record it was not built
         # on the engine path, and an older archive of the same path belongs to an earlier game.
         return picks
     return None
+
+
+def recover_feat_spell_bindings(sheet: Dict[str, Any], character_path: str, root: str = ".") -> bool:
+    """Recover missing origin-feat grants from this sheet's paired typed creation."""
+    feats = sheet.get("feats") or []
+    if not any(isinstance(f, dict) and "grantedSpells" not in f for f in feats):
+        return False
+    from core.nql.creation_scope import _Data, _feat_spell_points
+    data = _Data()
+    if not data.ok:
+        return False
+    grants = {}
+    for key, background in data.backgrounds().items():
+        origin = next((f for f in data.origins.get("origin_feats") or []
+                       if f.get("key") == (background.get("feat_ref") or {}).get("feat_key")), None)
+        if origin is None:
+            continue
+        name = background.get("feat") or origin["name"]
+        points = [sid for sid, point in _feat_spell_points(background, data)
+                  if point.get("kind") != "cantrip"
+                  and str(point.get("option_source") or "").startswith("spells:")]
+        if points and any(isinstance(f, dict) and f.get("name") == name
+                          and "grantedSpells" not in f for f in feats):
+            grants[key] = (name, points)
+    # Only typed spell-granting origins can need archive recovery. Ordinary feats never read it.
+    if not grants:
+        return False
+    picked = creation_picks(character_path, root)
+    if not picked or picked.get("background_key") not in grants:
+        return False
+    name, points = grants[picked["background_key"]]
+    spells = [spell for sid in points for spell in picked["choices"].get(sid) or []]
+    if not spells:
+        return False
+    changed = False
+    for feat in feats:
+        if isinstance(feat, dict) and feat.get("name") == name and "grantedSpells" not in feat:
+            feat["grantedSpells"] = [{"spell": key, "resource": name} for key in spells]
+            changed = True
+    return changed
