@@ -2613,11 +2613,12 @@ def player_spell_attack_entry(encounter, characters, intent):
     dice = srd_spell_attacks.damage_dice(phase, slot_level, level)
     if dice is None:
         return None
-    # The authored rider wins over a model copy of that same effect.
+    # The record owns all effects of this attack on its target, regardless of name.
     riders = record.get("onHit") or []
-    names = {r["effect"]["name"] for r in riders}
     if riders:
-        intent["effects"] = [op for op in effects if (op.get("effect") or {}).get("name") not in names]
+        intent["effects"] = [op for op in effects
+                             if op.get("combatantId") != target["combatantId"]
+                             and op.get("owner") != target["name"]]
         for rider in riders:
             op = {"op": "add", "applyOn": "hit", "hitTargetId": target["combatantId"],
                   "effect": deepcopy(rider["effect"])}
@@ -4932,9 +4933,8 @@ def apply_resolution(encounter, characters, resolution):
                 found = resolve_row(sheet, resource["item"])
                 if found is not None:
                     index, item = found
+                    # Keep zero-stock rows, as the existing item path does (#1121/#1197).
                     item["quantity"] = setter(item["quantity"])
-                    if item["quantity"] == 0:
-                        sheet["equipment"].pop(index)
                 continue
             for item in sheet.get("equipment", []):
                 if isinstance(item, dict) and item.get("item_name") == resource.get("name"):

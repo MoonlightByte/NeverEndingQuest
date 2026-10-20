@@ -77,7 +77,10 @@ def test_p1_p3a_heal_before_cantrip_and_durable_replay():
     assert roll["faces"] == [1, 1] and roll["bonus"] == 2 and roll["engine_drawn"]
     assert bonus["outcome"]["targets"][0]["hpAfter"] == 8
     after, sheets = r.apply_resolution(encounter, characters, r.resolution_from_event(encounter, characters, event))
-    assert sheets["Mira"]["hitPoints"] == 8 and sheets["Mira"]["equipment"] == []
+    assert sheets["Mira"]["hitPoints"] == 8 and sheets["Mira"]["equipment"][0]["quantity"] == 0
+    assert sheets["Mira"]["equipment"][0]["nql_id"] == "item:potion:mira"
+    assert len(sheets["Mira"]["equipment"]) == 1
+    assert item_use.available(sheets["Mira"]) == []
     assert after["creatures"][1]["currentHitPoints"] == 27
     again, sheets2 = r.apply_resolution(after, sheets, r.resolution_from_event(after, sheets, event))
     assert sheets2 == sheets and again == after
@@ -106,7 +109,7 @@ def test_p3b_ally_heal_and_owner_spend():
     event = result[0][0]
     _, sheets = r.apply_resolution(encounter, characters, r.resolution_from_event(encounter, characters, event))
     assert sheets["Ally"]["hitPoints"] == 6 and sheets["Mira"]["hitPoints"] == 4
-    assert sheets["Mira"]["equipment"] == []
+    assert sheets["Mira"]["equipment"][0]["quantity"] == 0
 
 
 @pytest.mark.parametrize("status", ["missing", "dead", "defeated"])
@@ -136,7 +139,7 @@ def test_p6_potion_and_leveled_spell_both_resolve():
                   resources=[{"owner": "Mira", "kind": "spellSlot", "name": "level1", "delta": -1}])
     event = window(encounter, characters, intent)[0][0]
     after, sheets = r.apply_resolution(encounter, characters, r.resolution_from_event(encounter, characters, event))
-    assert sheets["Mira"]["hitPoints"] == 8 and sheets["Mira"]["equipment"] == []
+    assert sheets["Mira"]["hitPoints"] == 8 and sheets["Mira"]["equipment"][0]["quantity"] == 0
     assert sheets["Mira"]["spellcasting"]["spellSlots"]["level1"]["current"] == 0
     assert after["creatures"][1]["currentHitPoints"] == 21
 
@@ -152,11 +155,12 @@ def test_r1_recorded_attack_miss_has_no_damage_or_rider():
     assert result["event"]["outcome"]["spellAttack"]["engine"] is True
 
 
-def test_r2_r4_rider_once_and_expires_in_ongoing_encounter():
+@pytest.mark.parametrize("model_name", ["Ray of Frost", "Frost slow"])
+def test_r2_r4_rider_once_and_expires_in_ongoing_encounter(model_name):
     encounter, characters = world()
     intent = cast()
     intent["effects"] = [{"op": "add", "combatantId": "g", "applyOn": "hit",
-                          "effect": {"name": "Ray of Frost", "modifiers": [{"stat": "speed", "value": -20}]}}]
+                          "effect": {"name": model_name, "modifiers": [{"stat": "speed", "value": -20}]}}]
     record, entry, hit = phase(encounter, characters, intent, 15, 5)
     assert hit and len(intent["effects"]) == 1
     record["phase"] = "damage"
@@ -196,6 +200,7 @@ def test_r5_excluded_and_g1_citations():
     use = item_use.use_data(world()[1]["Mira"]["equipment"][0])
     assert use["source"] == "SRD 5.2.1 p.95" and use["_srd_attribution"]
     assert "reach_ft" not in use
+    assert use["heal"] == {"count": 2, "sides": 4, "bonus": 2}
 
 
 def test_r6_untyped_rider_duration_refused(tmp_path, monkeypatch):

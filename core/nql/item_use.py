@@ -48,9 +48,11 @@ def heal(owner, target, reference, *, seed=None):
     use = use_data(row)
     if use is None:
         raise ValueError("item has no typed bonus-action use")
-    dice = use["heal"]["dice"].split("d")
-    count, sides = map(int, dice)
+    count = use["heal"]["count"]
+    sides = use["heal"]["sides"]
     bonus = use["heal"]["bonus"]
+    if any(type(value) is not int for value in (count, sides, bonus)):
+        raise ValueError("healing count, sides and bonus must be typed integers")
     sheets = [deepcopy(owner)] if owner["name"] == target["name"] else [deepcopy(owner), deepcopy(target)]
     cid, tid = genesis.character_id(owner), genesis.character_id(target)
     iid = row.get("nql_id") or "item:consumable"
