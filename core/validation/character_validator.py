@@ -688,7 +688,9 @@ class AICharacterValidator:
             item_type = str(item.get('item_type', '')).strip().lower()
             include = item_type not in VALID_INVENTORY_ITEM_TYPES
             if focus_names is not None:
-                include = str(item.get('item_name')) in focus_names and (include or item_type == 'miscellaneous')
+                # D-COST-7 (#193): a new row the schema already accepts, miscellaneous included, is not
+                # re-typed; only a row without a valid item_type reaches T052.
+                include = str(item.get('item_name')) in focus_names and include
             if include:
                 inventory_data['equipment'].append({
                     'row': index,
