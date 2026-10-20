@@ -135,7 +135,7 @@ GPT5_MINI_MODEL = "gpt-5-mini-2025-08-07"         # GPT-5 mini
 GPT5_FULL_MODEL = "gpt-5-2025-08-07"              # GPT-5 full
 
 # Intelligent routing based on action complexity
-ENABLE_INTELLIGENT_ROUTING = True                  # Action-based model selection
+ENABLE_INTELLIGENT_ROUTING = False                 # Legacy T082 routing; off by default since D-COST-1
 USE_COMPRESSED_COMBAT = True                       # Compressed combat prompts
 ```
 

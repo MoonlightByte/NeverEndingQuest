@@ -1,5 +1,18 @@
 # Provider Routing
 
+## Play-turn cost delta (2026-10-20; D-COST-1 and D-COST-4, #193)
+
+T082 (action prediction) no longer runs on a play turn. ENABLE_INTELLIGENT_ROUTING
+defaults to False (model_config.py), and main.py calls predict_actions_required only
+when that legacy flag is set. T067's model is its registry binding either way, so the
+prediction changed no request (#1313). T065 review attempts are capped: provider errors
+and unparseable verdicts count, and after _T065_ATTEMPT_LIMIT = 3 the review returns
+t065_exhausted (#1315). The OpenAI request carries the strict t065_verdict json_schema
+response_format, and Gemini the converted response_schema. On exhaustion the player gets
+one in-character line from the authored list data/dm_fail_forward_lines.json, never an
+error (#1317). This narrows item 18's "keep reissuing until useful output" for T065
+only; other required live tasks are unchanged.
+
 ## Issue 400 compression delta (2026-09-14; live evidence in the PR)
 
 T084 now asks the model for `{"text": "..."}` only: a numbered list of the
