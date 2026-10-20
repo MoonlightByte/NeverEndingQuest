@@ -1,5 +1,14 @@
 # Progression and Leveling
 
+## Retired level-up layer (2026-10-20; D-COST-2, #193)
+
+A level-up now calls only T121, the level-up agent (core/managers/level_up_session.py,
+prompts/leveling/level_up_agent.txt). The interview (T047), its validator (T048), the
+domain authors and proposal reviews (T115-T120), and their domain layer were deleted with
+their prompts and registry ids (#1314). Sections below that describe the interview,
+specialists or independent proposal reviews record the retired design, not current
+behaviour.
+
 ## #323 source-echo removal (2026-09-13; live acceptance pending)
 
 Specialist output now contains only calculations, rule facts/references, variations

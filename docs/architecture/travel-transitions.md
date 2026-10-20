@@ -1,5 +1,18 @@
 # Travel and Transitions
 
+## T065 prompt trim and review limits (2026-10-20; D-COST-3 and D-COST-4, #193)
+
+The validator prompt no longer states rules that code enforces (#1320). Transition order
+(exactly one transitionLocation, first) and the cross-module pair (updatePartyTracker
+then one updateTime) are main.py's invalid_transition_actions retries. Route validity is
+pre_validate_transition (core/ai/action_handler.py), whose reason codes main.py turns into
+typed retry corrections. T065 still judges what may follow a transition (the one-turn
+boundary, including the #594 CHECK RESULTS exception) and same-location moves. A paired
+replay of 50 recorded T065 inputs lost no transition reject (kit
+agents/play/records/t065-trim-step1). Rejected drafts per turn stay capped at
+_DM_REVIEW_REJECTION_LIMIT = 10 (#488), counted across all review stages. An exhausted
+turn ends without change and shows the same authored fail-forward line as T065.
+
 ## #248 implementation candidate (2026-09-06; acceptance pending)
 
 Interrupted-travel recovery now runs through the same inspector and v2 continuation before gameplay input, not inside the next player turn. Startup ownership begins before the ordered module-completion drain. T013/T063/T064 and existing receipts remain unchanged; no new crash store or replacement arrival. A retained conflict keeps control-only recovery active. Normal route/atlas/guardian validation is unchanged.
