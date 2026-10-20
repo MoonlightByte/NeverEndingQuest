@@ -2340,7 +2340,7 @@ def _update_character_info_unlocked(
 """ + EFFECT_CONTRACT_RULES + """
     - Omit "effectChange" for everything else: damage, healing, coins, items, experience, rests,
       slot or resource spending with no lasting effect. An omitted effectChange means no
-      temporary effect; operation none is also accepted."""
+      temporary effect."""
         else:
             effects_update_rules += """    - When the change creates, ends or alters a temporary effect (a spell buff or debuff, a
       potion's lasting effect, a curse, a blessing, a condition with a duration), include
@@ -2858,7 +2858,7 @@ Character Role: {character_role}
             if isinstance(updates, dict):
                 effect_flag = updates.pop("effectChange", None)
             if lazy_classifier is not None and isinstance(updates, dict):
-                from core.ai.effects_agent import EffectsAgentContractError
+                from core.ai.effects_agent import CONTRACT_CORRECTION, EffectsAgentContractError
                 try:
                     managed_effect_operation = lazy_classifier(updates, effect_flag)
                 except EffectsAgentContractError as contract_error:
@@ -2867,11 +2867,7 @@ Character Role: {character_role}
                     bounded_failure_count += 1
                     last_update_error = contract_error
                     messages[-1]["content"] += (
-                        "\n\nYour previous effectChange failed the strict contract: %s. Return the "
-                        "complete delta again with a corrected effectChange object. Remember: "
-                        "operation=remove takes an empty effect {}; a change that casts a new spell is "
-                        "operation=add for that new spell with an empty remove {} (a replaced "
-                        "concentration ends by itself)." % contract_error)
+                        "\n\n" + CONTRACT_CORRECTION % contract_error + " Return the complete delta again.")
                     attempt += 1
                     continue
                 engine_owned_change = declarative_effects and managed_effect_operation

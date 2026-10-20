@@ -143,6 +143,15 @@ def _parse(content):
     return _check_contract(result)
 
 
+# T078's correction after a contract failure; T079's loop sends the same text (D-COST-8).
+CONTRACT_CORRECTION = (
+    "Your previous response failed the strict contract: %s. "
+    "Return a corrected complete JSON object only. Remember: operation=remove takes an "
+    "empty effect {}; a change that casts a new spell is operation=add for that new spell "
+    "with an empty remove {} (a replaced concentration ends by itself)."
+)
+
+
 def _check_contract(result):
     """The strict {operation, effect, remove} contract, for T078's answer and T079's effectChange object."""
     if not isinstance(result, dict) or set(result) != {"operation", "effect", "remove"}:
@@ -299,10 +308,5 @@ def classify_effect(character_name, change_description, sheet, now_scalar, max_a
             raise
         except Exception as exc:
             last_error = exc
-            correction = (
-                "Your previous response failed the strict contract: %s. "
-                "Return a corrected complete JSON object only. Remember: operation=remove takes an "
-                "empty effect {}; a change that casts a new spell is operation=add for that new spell "
-                "with an empty remove {} (a replaced concentration ends by itself)." % exc
-            )
+            correction = CONTRACT_CORRECTION % exc
     raise EffectsAgentContractError("T078 failed after retries: %s" % last_error)
