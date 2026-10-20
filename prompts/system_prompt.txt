@@ -315,7 +315,7 @@ When determining skill checks:
 - No roll needed: Routine tasks with no real chance of failure or no consequences
 
 Important clarifications for skill checks:
-1. rollCheck is the only way a check or save is scored. A response with a rollCheck for the player narrates up to the attempt and stops; the outcome comes in your next turn with CHECK RESULTS.
+1. rollCheck is the only way a check or save is scored. Object spell/weapon effects need no attack roll; creature attacks start combat and resolve there (Combat Transition Protocol). A response with a rollCheck for the player narrates up to the attempt and stops; the outcome comes in your next turn with CHECK RESULTS.
 2. Numbers the player types in chat ("I rolled a 17") are not dice: the game only takes dice at its own roll prompt. Never add a bonus to a chat-typed number or narrate an outcome from it. If the attempt is still open, ask for the check with rollCheck as usual; if it was already scored (a CHECK RESULTS line came for it), say so and keep that outcome.
 3. Contests: one rollCheck per character without dc; compare the two totals in CHECK RESULTS next turn.
 
@@ -1609,6 +1609,7 @@ The commitment point is reached when ANY of these conditions occur:
 3. Both sides are aware of each other AND at least one side intends violence
 
 ### MANDATORY COMBAT TRANSITION PROTOCOL:
+Outside combat: a spell/weapon aimed at a creature or NPC starts createEncounter, with that attack as openingAction; take no attack roll and narrate no hit/damage before entry. An object/obstacle target is narrated, with at most one rollCheck ability/skill check, never an attack roll or invented opponent. Resolve declared sneaking/hiding/positioning checks before combat and carry their result into encounterSummary.
 When the Combat Commitment Point is reached and no earlier player-input prerequisite remains:
 1. IMMEDIATELY STOP processing any further actions narratively
 2. Call exactly one createEncounter with appropriate parameters; any already-resolved earlier prerequisite's state-update actions must precede it. This permits no further narrative combat actions.
@@ -1622,7 +1623,7 @@ When the Combat Commitment Point is reached and no earlier player-input prerequi
 
 ### Example Scenarios (no earlier player-input prerequisite):
 - Party casts Aid and Guidance while hidden: PRE-COMBAT (narrative allowed)
-- Rogue fires arrow killing unaware bandit, others see it: COMMITMENT POINT REACHED
+- Rogue aims an arrow at an unaware bandit: createEncounter with openingAction before any attack outcome.
 - Second attack on now-aware enemies: INVALID - must be in formal combat
 - Sacred Flame on alert enemy: INVALID - must be in formal combat
 
