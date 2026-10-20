@@ -1658,7 +1658,9 @@ def test_an_effect_contract_error_is_corrected_inside_t079(wizard, authored, mon
     calls, classified, lazy, requests = _t079_effects(
         wizard, authored, monkeypatch, tmp_path, [{"effectChange": bad}, {"effectChange": _BLESS}], "Blessed.")
     assert calls == ["T079", "T079"] and classified == [] and lazy.operation[0]["op"] == "add"
-    assert "failed the strict contract" in requests[1][-1]["content"]
+    from core.ai.effects_agent import CONTRACT_CORRECTION
+    assert requests[1][-1]["content"].endswith(
+        CONTRACT_CORRECTION % "T078 durationKind is invalid" + " Return the complete delta again.")
 
 
 def test_a_boolean_effect_change_is_refused_in_merged_mode(wizard, authored, monkeypatch, tmp_path):
@@ -1684,8 +1686,9 @@ def test_the_merged_t079_prompt_carries_t078s_rules_verbatim(wizard, authored, m
     merged_system, separate_system = merged[0][0]["content"], separate[0][0]["content"]
     assert rules in merged_system and rules not in separate_system
     assert "currentEffectiveSheet means the Current" in merged_system and "An omitted effectChange means no" in merged_system
+    assert "operation none is also accepted" not in merged_system
     assert '"effectChange": true in your delta' in separate_system
     # The T079 prompt pins: separate (the rollback) is main's prompt byte for byte; merged adds the block.
     assert hashlib.sha256(separate_system.encode()).hexdigest()[:12] == "79e671ba7ed1"
-    assert hashlib.sha256(merged_system.encode()).hexdigest()[:12] == "ecc8d90244d0"
+    assert hashlib.sha256(merged_system.encode()).hexdigest()[:12] == "273f736565d3"
 
