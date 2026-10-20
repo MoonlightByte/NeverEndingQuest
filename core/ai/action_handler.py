@@ -999,6 +999,7 @@ def prepare_current_transition_actions(operation_id):
                 receipt = prepare_character_update(
                     character_name, changes, party,
                     affects=parameters.get("affects"),
+                    casting_resource=parameters.get("castingResource"),
                 )
             except CharacterProposalDropped as dropped:
                 # #855: no usable proposal within the bounded tries. The
@@ -5508,6 +5509,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     party_tracker_data,
                     action_context=action_context,
                     affects=parameters.get("affects"),
+                    casting_resource=parameters.get("castingResource"),
                 )
                 debug(f"STATE_CHANGE: effects-aware character update returned {success}", category="character_updates")
                 if success:

@@ -991,6 +991,8 @@ def _feats_text(feats):
         if isinstance(feat, dict):
             name = _single_line(feat.get("name"))
             desc = _single_line(feat.get("description"))
+            if feat.get("grantedSpells"):
+                desc += " grantedSpells=" + json.dumps(feat["grantedSpells"], ensure_ascii=True)
             parts.append(f"{name}: {desc}" if desc else name)
         else:
             parts.append(_single_line(feat))

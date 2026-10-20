@@ -343,6 +343,8 @@ def build_level_one_sheet(intent: Dict[str, Any], creative: Optional[Dict[str, A
         text = origin_feat.get("text") or descriptions.get(name) or ""  # the SRD data text wins (N3)
         feats.append({"name": b.source("feats", "origins.backgrounds[%s].feat_ref" % background_key, name),
                       "description": text, "source": source})
+        if feat["spells"]:
+            feats[-1]["grantedSpells"] = [{"spell": key, "resource": name} for key in feat["spells"]]
         background_feature = {"name": "Origin feat: %s" % name, "description": text, "source": source}
     else:
         b.gap("background.%s.feat-ref" % background_key, "origin feat", "origins.backgrounds[%s].feat_ref" % background_key)

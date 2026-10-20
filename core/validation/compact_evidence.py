@@ -157,6 +157,8 @@ def feature_line(key, feature):
     if feature.get("source"):
         head += " [%s]" % one_line(feature["source"])
     desc = one_line(feature.get("description"))
+    if key == "FEAT" and feature.get("grantedSpells"):
+        head += " grantedSpells=" + val(feature["grantedSpells"])
     return "%s=%s%s" % (key, head, ": " + desc if desc else "")
 
 
