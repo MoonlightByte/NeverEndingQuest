@@ -358,7 +358,7 @@ def _nullable_strict_schema(schema: Any) -> Any:
     if not isinstance(schema, dict):
         return copy.deepcopy(schema)
     strict = {key: _nullable_strict_schema(value) for key, value in schema.items()
-              if key not in {"$schema", "examples", "description"}}
+              if key not in {"$schema", "examples"}}
     if strict.get("type") == "object" or "properties" in strict:
         source_required = set(schema.get("required", []))
         for name, prop in strict.get("properties", {}).items():
