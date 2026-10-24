@@ -580,6 +580,25 @@ def _loot_for_view(location, party_tracker_data):
     return loot_view(location, party.get("module"), party, wait=wait)
 
 
+def _engine_visited_places(party_tracker_data):
+    """#1352: the bare ids of the current module's places in the engine's live
+    map.visited (read only), sorted; None when the document or its map is
+    unavailable."""
+    module = str((party_tracker_data or {}).get("module") or "").replace(" ", "_")
+    if not module:
+        return None
+    try:
+        from core.nql import occupants as _occupants
+        live = _occupants._load(".")
+    except Exception:
+        return None
+    visited = ((live or {}).get("map") or {}).get("visited")
+    if not isinstance(visited, list):
+        return None
+    prefix = "loc:%s/" % module
+    return sorted(str(p)[len(prefix):] for p in visited if str(p).startswith(prefix))
+
+
 def update_conversation_history(
     conversation_history,
     party_tracker_data,
@@ -918,6 +937,12 @@ def update_conversation_history(
             for _authored_list in ("encounters", "monsters", "npcs"):
                 location_for_conversation.pop(_authored_list, None)
             location_for_conversation.update(_record)
+        # #1352: the engine's visited places of this module (live map.visited,
+        # the set its unvisited-stop verdict uses), so a draft can stop where
+        # the engine will. Absent while the engine document is unavailable.
+        _visited = _engine_visited_places(party_tracker_data)
+        if _visited is not None:
+            location_for_conversation["visitedPlaces"] = _visited
 
         new_history.append({
             "role": "system",
