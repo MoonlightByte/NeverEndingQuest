@@ -12,6 +12,9 @@ CONTRACT_VERSION = "typed-agentic-v1"
 PARTICIPATION_VALUES = {"active", "observer", "hidden", "unaware", "departed"}
 PERSISTENCE_VALUES = {"encounter", "canonical_character", "owner_gated_companion"}
 CONTROLLER_VALUES = {"human", "actor_agent"}
+# #1449: whom a listed NPC fights for in this fight (npc:N keys only). Staying
+# out is participation/initiativeEligible, never a side.
+SIDE_VALUES = {"hostile", "party"}
 CONTROLLER_SCOPE_VALUES = {"encounter", "turn", "temporary", "persistent"}
 OBJECTIVE_STATUS_VALUES = {"active", "satisfied", "failed", "abandoned"}
 
@@ -111,6 +114,12 @@ def reconcile_scene_manifest(parameters, canonical_snapshot):
             raise SceneReconciliationError(
                 f"surprised applies only to monster participants, not {key}"
             )
+        side = proposal.get("side")
+        if side is not None:
+            if not key.startswith("npc:"):
+                raise SceneReconciliationError(f"side applies only to npc participants, not {key}")
+            if side not in SIDE_VALUES:
+                raise SceneReconciliationError(f"invalid side for {key}: side is hostile or party")
 
         combatant_id = source["combatantId"]
         participant = {
@@ -121,6 +130,8 @@ def reconcile_scene_manifest(parameters, canonical_snapshot):
         }
         if surprised:
             participant["surprised"] = True
+        if side is not None:
+            participant["side"] = side
         participants.append(participant)
         controllers[combatant_id] = {
             "controller": controller,
@@ -304,6 +315,7 @@ def validate_typed_encounter_actions(response):
                 "Every participant requires participantKey, participation, "
                 "initiativeEligible boolean, and controller. "
                 "A monster participant may add surprised: true (boolean). "
+                "An npc participant may add side: hostile or party (whom it fights for in this fight). "
                 "participation is one of active, observer, hidden, unaware, departed; "
                 "controller is human or actor_agent; the engine sets persistence. "
                 "Each relation is {subjectKey, objectKey, disposition}. Each objective "

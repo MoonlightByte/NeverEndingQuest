@@ -392,6 +392,7 @@
               "sourceRef": {"type": "string", "minLength": 1},
               "displayName": {"type": "string", "minLength": 1},
               "participation": {"enum": ["active", "observer", "hidden", "unaware", "departed"]},
+              "side": {"enum": ["hostile", "party"]},
               "initiativeEligible": {"type": "boolean"},
               "persistence": {"enum": ["encounter", "canonical_character", "owner_gated_companion"]},
               "surprised": {"type": "boolean"},
