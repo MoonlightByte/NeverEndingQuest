@@ -42,8 +42,10 @@ from core.combat.resolver import (
 )
 from core.managers.combat_state import (
     combatant_by_id,
+    bystanders_attacked,
     combat_provenance,
     has_left_fight,
+    join_as_hostile,
     is_combatant_targetable,
     is_turn_eligible,
     resolve_creature_controller,
@@ -803,6 +805,14 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 actor_id,
                 {"violations": snapshot_problems},
             )
+        if controller == "human":
+            # #1415: an observer the player attacked joins the fight as a
+            # hostile; the record is replayed at commit (apply_staged_turn).
+            for joined_id in bystanders_attacked(next_encounter, resolution["event"]):
+                resolution["event"].setdefault("normalizations", []).append(
+                    {"kind": "bystanderJoinedHostile", "combatantId": joined_id, "by": actor_id}
+                )
+                join_as_hostile(next_encounter, joined_id)
         events.append(resolution["event"])
 
     if intent_index != len(intents):
