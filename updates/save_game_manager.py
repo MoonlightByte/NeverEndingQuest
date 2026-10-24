@@ -927,6 +927,7 @@ class SaveGameManager:
         save_mode: str = "essential",
         *,
         auto_checkpoint: Optional[str] = None,
+        auto_backup: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Generate metadata for a save game"""
         timestamp = datetime.now()
@@ -988,6 +989,10 @@ class SaveGameManager:
         if auto_checkpoint is not None:
             # #845: the typed marker that alone makes a save prunable.
             metadata["auto_checkpoint"] = auto_checkpoint
+        if auto_backup is not None:
+            # #1376: the typed kind of a save the game takes for itself
+            # (never pruned, never a checkpoint); the Load list labels it.
+            metadata["auto_backup"] = auto_backup
 
         return metadata
     
@@ -998,6 +1003,7 @@ class SaveGameManager:
         *,
         save_folder: Optional[str] = None,
         auto_checkpoint: Optional[str] = None,
+        auto_backup: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """Settle completion outside snapshot locks; recheck at the boundary."""
         from core.managers.campaign_manager import (
@@ -1025,7 +1031,7 @@ class SaveGameManager:
                     if settled and not outcome["blocked"]:
                         return self._create_save_at_boundary(
                             description, save_mode, save_folder=save_folder,
-                            auto_checkpoint=auto_checkpoint,
+                            auto_checkpoint=auto_checkpoint, auto_backup=auto_backup,
                         )
                 except _CampaignCompletionActive:
                     # New work appeared after settlement. Release and follow it.
@@ -1050,6 +1056,7 @@ class SaveGameManager:
         *,
         save_folder: Optional[str] = None,
         auto_checkpoint: Optional[str] = None,
+        auto_backup: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """Take one verified snapshot, or release its locks for settlement."""
         from core.managers.campaign_manager import _CampaignCompletionActive
@@ -1116,6 +1123,7 @@ class SaveGameManager:
                                         save_mode,
                                         save_folder=save_folder,
                                         auto_checkpoint=auto_checkpoint,
+                                        auto_backup=auto_backup,
                                         _cache_available=cache_available,
                                     )
                                 finally:
@@ -1142,6 +1150,7 @@ class SaveGameManager:
         *,
         save_folder: Optional[str] = None,
         auto_checkpoint: Optional[str] = None,
+        auto_backup: Optional[str] = None,
         _cache_available: bool = True,
     ) -> Tuple[bool, str]:
         """
@@ -1185,7 +1194,8 @@ class SaveGameManager:
             # Generate and save metadata. Until the last write the save is
             # marked unfinished, so it is never offered for Load (#1003).
             metadata = self.generate_save_metadata(
-                description, save_mode, auto_checkpoint=auto_checkpoint
+                description, save_mode, auto_checkpoint=auto_checkpoint,
+                auto_backup=auto_backup,
             )
             metadata["save_incomplete"] = True
             metadata_path = f"{save_path}/save_metadata.json"

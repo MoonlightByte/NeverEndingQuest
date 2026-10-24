@@ -38,10 +38,12 @@ from core.combat.resolver import (
     resolve_player_weapon_attack,
     stage_dodge,
     validate_intent,
+    _living_opponent_ids,
 )
 from core.managers.combat_state import (
     combatant_by_id,
     combat_provenance,
+    has_left_fight,
     is_combatant_targetable,
     is_turn_eligible,
     resolve_creature_controller,
@@ -155,6 +157,37 @@ def _recover_stale_known_target(original_encounter, current_encounter, actor, in
     normalization["action"] = "defend"
     normalization["remainingLegalTargets"] = len(legal_targets)
     return recovered, normalization
+
+
+def _defend_for_fled_target(current_encounter, actor, intent):
+    """#1379: on a typed encounter, a non-player known attack whose target
+    left the fight earlier in this batch (flee or yield) becomes Defend when
+    no opponent remains for the actor; the T096 contract already rules the
+    same ("If no valid opponent would remain, use defend"). Any other case is
+    the model's: the intent goes on to the normal correction. Only typed
+    fields are read."""
+    if (
+        actor.get("type") == "player"
+        or intent.get("mode", "known") != "known"
+        or intent.get("action") != "attack"
+        or not intent.get("targetId")
+    ):
+        return intent, None
+    target = combatant_by_id(current_encounter, intent["targetId"])
+    if not has_left_fight(target) or _living_opponent_ids(current_encounter, actor):
+        return intent, None
+    recovered = {
+        "actorId": actor.get("combatantId"),
+        "mode": "known",
+        "action": "defend",
+        "description": "The combatant takes a defensive stance.",
+    }
+    return recovered, {
+        "kind": "targetLeftFightDefend",
+        "actorId": actor.get("combatantId"),
+        "fromTargetId": intent["targetId"],
+        "action": "defend",
+    }
 
 
 def _record_character_state_after(event, before, after):
@@ -482,6 +515,10 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             actor,
             intent,
         )
+        if stale_target_normalization is None and combat_provenance(encounter) == "typed":
+            intent, stale_target_normalization = _defend_for_fled_target(
+                next_encounter, actor, intent
+            )
         intent["stateVersion"] = revision
         mode = intent.get("mode", "known")
         controller = resolve_creature_controller(
