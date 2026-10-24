@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs, useLog } from '../../stores'
-import { spendDisclaimer } from '../layout/SpendLine'
+import { spendDisclaimer } from '../layout/spendText'
 import type { ClientEvents } from '../../contract/events'
 
 type ProviderValue = ClientEvents['set_model_provider']['provider']
