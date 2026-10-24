@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A solo player who drops while an NPC only watches now gets the party-defeat pause, and fleeing alone ends the fight as a withdrawal: only the fight's initiative members count as standing allies (#1354).
 - A flat-damage attack (such as an Unarmed Strike) no longer asks the player for a damage roll: the request goes back to the model, and the engine scores the flat damage (#1337).
 - Combat XP now goes only to the fight's initiative members: an NPC who only watched (an observer, not in initiative) is no longer paid. Older encounters pay everyone as before (#1339).
 - Healing potions resolve as typed combat bonus actions; Ray of Frost uses engine attack scoring and a non-stacking, timed slow (#1331).
