@@ -145,9 +145,20 @@ def _drawn_item(event):
 def _bonus_fact(event, creatures, presentation=None):
     """R2: the typed Bonus Action resolved before this event's Action."""
     bonus = event.get("bonusAction")
-    if not isinstance(bonus, dict) or not bonus.get("featureName"):
+    if not isinstance(bonus, dict):
         return None
-    fact = {"featureName": bonus["featureName"]}
+    if bonus.get("featureName"):
+        fact = {"featureName": bonus["featureName"]}
+    elif isinstance(bonus.get("item"), dict):
+        # #1338: the item Bonus Action (#1333) is keyed by its stored id; name it
+        # from the engine's resource row, never from the sheet or the player's text.
+        row = next((r for r in bonus.get("resources") or []
+                    if isinstance(r, dict) and r.get("kind") == "item"), {})
+        fact = {"item": _public_copy(bonus["item"])}
+        if row.get("name"):
+            fact["itemName"] = row["name"]
+    else:
+        return None
     if bonus.get("option"):
         fact["option"] = bonus["option"]
     if bonus.get("order") == "afterAction":
