@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - A person the DM names directly in a fight is now matched to the person standing at that place, so if they turn on the party, how the fight left them is recorded there as well (#1415).
+- A Mage Armor cast before the rules engine knew its typed rule, in a saved game, now counts again: at load the effect takes its typed rule (13 + Dexterity) once, and the sheet shows the armor class the engine derives; an effect already over is left for the clock to end (#1442).
 - The session cost line now counts an AI answer that finished but was not used, for example the welcome back scene when you type before it arrives, and counts a request stopped part-way as possibly billed (#1435).
 - When someone who joined a fight against the party is beaten, killed, flees or surrenders, the place's record now says so, and the DM is told after the fight who turned on the party and how it ended; what that means for them afterwards is left to the story (#1415).
 - Mage Armor sets a character's base armor class to 13 + Dexterity while they wear no body armor, decided by the rules engine (a shield and other bonuses still add); it never stacks with Unarmored Defense or armor, and two characters with the same Mage Armor each keep their own (#1322).
