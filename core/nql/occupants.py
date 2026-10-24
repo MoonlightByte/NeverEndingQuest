@@ -3,11 +3,11 @@
 # License: See LICENSE file in the repository root
 """Location rosters through the rules engine: the live_state document.
 
-The engine (bin/nql-apply) keeps every location's monster groups and people
+The engine (bin/firelight-apply) keeps every location's monster groups and people
 as occupants: where they are, how many are left and how each one left
 (defeated, fled, surrendered, departed with a reason, joined, died). The
 record is ``live_state.json`` at the game root, written only by the engine
-and passed back whole on every call (NQL docs/LIVE_STATE.md). The world
+and passed back whole on every call (Firelight docs/LIVE_STATE.md). The world
 source for each call is rebuilt from the installed modules' authored masters
 (``areas/*_BU.json``) by utils/roster_conversion.py, so a place the document
 does not hold yet (a newly installed module) takes its seeds, and a place it
