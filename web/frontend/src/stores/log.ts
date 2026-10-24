@@ -81,12 +81,26 @@ export const useLog = create<LogState>((set) => ({
       }
       const trimmed = merged.slice(-MESSAGE_RING_LIMIT)
       const retainedCached = trimmed.filter((entry) => entry.cached).length
-      return { messages: trimmed.map((entry) => entry.message), previousSessionCount: retainedCached, historyPending: null }
+      // An image whose narration left the log would render as an orphan
+      // below the newest turn (#1373).
+      const keptIds = new Set(trimmed.map((entry) => entry.message.message_id).filter(Boolean))
+      return {
+        messages: trimmed.map((entry) => entry.message),
+        previousSessionCount: retainedCached,
+        historyPending: null,
+        images: s.images.filter((image) => !image.source_message_id || keptIds.has(image.source_message_id)),
+      }
     }),
   appendDebug: (message) =>
     set((s) => ({ debug: [...s.debug, message].slice(-DEBUG_RING_LIMIT) })),
   setTokens: (tokens) => set({ tokens }),
-  addImage: (image) => set((s) => image.request_id && s.images.some((entry) => entry.request_id === image.request_id) ? {} : ({ images: [...s.images, image] })),
+  addImage: (image) =>
+    set((s) => {
+      if (image.request_id && s.images.some((entry) => entry.request_id === image.request_id)) return {}
+      // A late image for narration no longer in the log is not stored (#1373).
+      if (image.source_message_id && !s.messages.some((message) => message.message_id === image.source_message_id)) return {}
+      return { images: [...s.images, image] }
+    }),
   imageFailed: (failure) =>
     set((s) => ({
       messages: [...s.messages, {

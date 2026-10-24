@@ -85,6 +85,14 @@ Seams: `web/frontend/src/services/socket.ts:140`,
 Policy: #193 p9/p10/p12, D-UI-1. Shared SaveGameManager gives headless/terminal the
 same cache snapshot/absence semantics; those surfaces do not generate a web log.
 
+#1373 delta (2026-10-24): the server emits `connected` and `cached_messages`
+before Socket.IO delivers `connect`, so React opens the history window in the
+`connected` handler. A same-instance reconnect now shows the server's cached
+history plus only output received during this connection (older scrollback
+from the tab is not kept, matching a page reload; D-1373-1), drops generated
+images whose narration left the log, and does not store a late image for
+narration no longer in the log.
+
 ## #248 implementation candidate (2026-09-06; acceptance pending)
 
 During pre-input travel recovery the existing processing surface shows progress or a control-required reason; lifecycle commands remain available. Early input remains in the existing queue with explicit deferred acknowledgment. Recovery Save cancellations are distinct correlated result/system-message terminals, never successful saves or generic failure narration. No new frontend event type or gameplay authority is introduced.
@@ -177,7 +185,7 @@ Startup delta verified 2026-09-05 against the `fix/issue-114-startup-repair` wor
 7. `web/web_interface.py::_startup_ui_projection` - startup projection, ordered reconnect, and snapshot truth (startup candidate).
 8. `web/web_interface.py::handle_action` - Save/Load/Reset dispatch and restart.
 9. `web/web_interface.py::handle_start_game` and `web/web_interface.py::run_game_loop` - one game thread and output pump.
-10. `web/frontend/src/services/socket.ts:158`, `web/frontend/src/stores/session.ts:77`, and `web/frontend/src/components/layout/HeaderBar.tsx:74` - ready refresh, interview/play permissions, and lifecycle availability (startup candidate).
+10. `web/frontend/src/services/socket.ts:160`, `web/frontend/src/stores/session.ts:77`, and `web/frontend/src/components/layout/HeaderBar.tsx:74` - ready refresh, interview/play permissions, and lifecycle availability (startup candidate).
 11. `web/frontend/src/services/hydration.ts:52-190` - correlation, coalescing, and stale rejection.
 12. `core/headless/protocol.py:5-118` - NDJSON protocol and serialized writer.
 13. `core/headless/streams.py:30-174` - output capture and blocking queue input.
