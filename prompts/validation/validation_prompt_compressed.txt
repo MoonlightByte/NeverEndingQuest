@@ -147,6 +147,7 @@ NARRATIVE ELABORATION: Location descriptions and NPC sketches are starting seeds
   unavailable: If supplied accepted facts say no valid route, no transitionLocation, no alternate destination, honest in-fiction explanation, player owns next choice
   invalid: Multiple transitions for one request
   required: updateTime for full journey
+  engine_travel_time: When the accepted Travel Agent facts carry travel_time with owner "engine", minutes_applied is the trip time and stands, even when below the normal-pace travel_minutes: these updateTime duration rules and the facts' travel_time_rule do not apply to it, and a narrated duration that differs from the normal-pace minutes is not a reason to reject.
 }
 
 @STORAGE_VALIDATION={
