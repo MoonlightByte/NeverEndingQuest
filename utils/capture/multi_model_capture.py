@@ -425,6 +425,9 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     detached_status = kwargs.pop("_detached_status", None)
     # Parent-only lifecycle observation: never a model option or capture field.
     authority_check = kwargs.pop("_live_authority_check", None)
+    # What the player waits for, when the task id alone cannot say (#1422 F2):
+    # parent-only, never a model option or capture field.
+    wait_purpose = kwargs.pop("_wait_purpose", None)
     if live_selected is None:
         from utils.capture.live_provider_call import live_provider_policy
 
@@ -500,6 +503,7 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
             scope=detached_scope,
             status_emit=detached_status,
             authority_check=authority_check,
+            purpose=wait_purpose,
         )
         primary_latency = round(time.time() - start, 3)
         _track_module_primary(

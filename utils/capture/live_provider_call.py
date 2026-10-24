@@ -1062,8 +1062,16 @@ class _GenerationReader(threading.Thread):
             self.finished = True
 
 
-def wait_purpose(task_id):
-    """What a waiting model call is for, from its task id alone (#1271)."""
+WAIT_PURPOSES = frozenset({
+    "character_setup", "adventure_choice", "starting_location", "level_up", "combat", "turn",
+})
+
+
+def wait_purpose(task_id, override=None):
+    """What a waiting model call is for (#1271): from its task id, unless the
+    caller names a known purpose (#1422 F2: T092 also writes the adventure menu)."""
+    if override in WAIT_PURPOSES:
+        return override
     if task_id in ("T092", "T124"):
         return "character_setup"
     if task_id == "T093":
@@ -1386,6 +1394,7 @@ def call_live_provider(
     scope=None,
     status_emit=None,
     authority_check=None,
+    purpose=None,
 ):
     """Run one frozen selected request under its required/advisory policy.
 
@@ -1397,6 +1406,8 @@ def call_live_provider(
     input-locking status manager.
     ``authority_check`` optionally observes the completion epoch in the parent,
     outside locks. It is never serialized into the provider request.
+    ``purpose`` names what the player is waiting for when the task id alone
+    cannot (#1422 F2); an unknown value falls back to the task id's purpose.
     """
     if task_id not in _LIVE_TASK_IDS:
         raise ValueError("task is outside the reviewed live provider allowlist")
@@ -1507,12 +1518,14 @@ def call_live_provider(
 
     def wizard_heartbeat():
         elapsed = max(1, int(time.monotonic() - logical_started))
+        if purpose == "adventure_choice":
+            return "Still preparing your adventure choices (%d seconds elapsed)..." % elapsed
         return "Still working on character setup (%d seconds elapsed)..." % elapsed
 
     # #1271: the input-locking channel also carries a typed record of this
     # call. Caller-owned sinks (the welcome channel, the T105 batch) do not.
     publish_wait = emit is _emit_working
-    purpose = wait_purpose(task_id)
+    purpose = wait_purpose(task_id, purpose)
 
     def wait_record(retry_until=None):
         reader = current_reader["reader"]

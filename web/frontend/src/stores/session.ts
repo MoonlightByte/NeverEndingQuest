@@ -24,6 +24,8 @@ export interface SessionState {
   waitReceivedAt: number
   /** #214: background startup-welcome liveness (presentational; never locks input). */
   welcomeMessage: string
+  /** #1422 F4: the welcome is a new game's opening scene (typing waits for it). */
+  welcomeOpeningScene: boolean
   /** Startup lifecycle (startup_status). */
   startupStatus: StartupStatus
   startupPhase: string
@@ -46,7 +48,7 @@ export interface SessionState {
   gameResumed: (isProcessing: boolean) => void
   setStatus: (status: ServerEvents['status_update']) => void
   setRestoreResult: (result: ServerEvents['restore_complete']) => void
-  setWelcome: (message: string) => void
+  setWelcome: (message: string, kind?: ServerEvents['welcome_progress']['kind']) => void
   setStartup: (status: 'in_progress' | 'ready' | 'failed', phase: string, startupAttemptId?: string) => void
   setRecovery: (recovery: ServerEvents['startup_recovery_response']) => void
   setVersion: (version: ServerEvents['version_status']) => void
@@ -63,6 +65,7 @@ export const useSession = create<SessionState>((set) => ({
   wait: null,
   waitReceivedAt: 0,
   welcomeMessage: '',
+  welcomeOpeningScene: false,
   startupStatus: 'idle',
   startupPhase: '',
   startupAttemptId: '',
@@ -85,7 +88,7 @@ export const useSession = create<SessionState>((set) => ({
     inputAuthorized: s.startupStatus === 'ready' || s.startupStatus === 'in_progress',
     startupInputReady: s.startupStatus === 'in_progress' && !isProcessing,
   })),
-  setWelcome: (message) => set({ welcomeMessage: message }),
+  setWelcome: (message, kind) => set({ welcomeMessage: message, welcomeOpeningScene: Boolean(message) && kind === 'opening_scene' }),
   setStatus: (status) =>
     set((s) => ({
       statusMessage: status.message,

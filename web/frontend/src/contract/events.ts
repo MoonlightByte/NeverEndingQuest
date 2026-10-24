@@ -168,7 +168,7 @@ export interface RestoreResult {
  */
 export interface WaitRecord {
   kind: 'provider_call';
-  purpose: 'character_setup' | 'starting_location' | 'level_up' | 'combat' | 'turn' | string;
+  purpose: 'character_setup' | 'adventure_choice' | 'starting_location' | 'level_up' | 'combat' | 'turn' | string;
   taskId: string;
   provider: string | null;
   providerName: string | null;
@@ -255,7 +255,7 @@ export interface ServerEvents {
     };
   };
   /** #214 D-214-4=A: background startup-welcome liveness (never input-locking). */
-  welcome_progress: { message: string };
+  welcome_progress: { message: string; kind?: 'opening_scene' | 'resume' };
   compression_start: { total_sections: number };
   compression_progress: { completed: number; total: number; from_cache: boolean };
   compression_complete: { reduction_percentage: number; original_size: number; compressed_size: number };
