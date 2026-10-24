@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- An enemy is no longer re-aimed at a bystander who is only watching the fight: an observer is not counted as an opponent, so after the player flees with no one else fighting the enemy defends without a model call (#1397).
 ## [2026.10.24.1] - 2026-10-24
 
 Combat, travel and character creation fixes from the October playtests, and a hard limit on model calls per turn.

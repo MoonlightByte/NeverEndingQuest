@@ -41,6 +41,7 @@ from core.effects.model import normalize_effect, validate_effect
 from core.managers.combat_state import (
     combatant_by_id,
     has_left_fight,
+    initiative_eligible_ids,
     is_combatant_targetable,
     is_hostile,
     is_party_member,
@@ -642,10 +643,14 @@ def _living_target_ids(encounter):
 
 
 def _living_opponent_ids(encounter, actor):
+    # #1397: an observer (initiativeEligible false) is not fighting, so it is
+    # never an opponent; legacy encounters keep every row.
+    eligible = initiative_eligible_ids(encounter)
     return [
         target_id
         for target_id in _living_target_ids(encounter)
-        if (combatant_by_id(encounter, target_id) or {}).get("faction")
+        if target_id in eligible
+        and (combatant_by_id(encounter, target_id) or {}).get("faction")
         != actor.get("faction")
     ]
 
@@ -695,12 +700,7 @@ def validate_intent(encounter, characters, intent, strict=None):
         if strict and not target_id:
             return False, Rejection(
                 reason="attack requires a targetId",
-                legalTargets=[
-                    target
-                    for target in _living_target_ids(encounter)
-                    if (combatant_by_id(encounter, target) or {}).get("faction")
-                    != actor.get("faction")
-                ],
+                legalTargets=_living_opponent_ids(encounter, actor),
                 retryable=True,
             )
         if target_id is not None and combatant_by_id(encounter, target_id) is None:
