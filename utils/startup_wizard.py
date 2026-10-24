@@ -696,10 +696,9 @@ def scan_existing_characters(module_name):
 def present_character_options(conversation, characters, module_name):
     """Show existing characters and option to create new one"""
     if not characters:
-        # No existing characters
-        ai_prompt = f"""The player has chosen a module but there are no existing player characters. Let them know they'll need to create a new character for this adventure. Be encouraging and exciting about the character creation process!"""
-        
-        _present_startup_menu(conversation, ai_prompt)
+        # #1368: no model call. This note is not a menu, so the menu prompt answered
+        # "No startup menu was supplied."; the interview opener welcomes the player
+        # into creation instead.
         return "create_new"
     
     # Build character list

@@ -149,6 +149,8 @@ When the player says they are new or overwhelmed, ask one choice per turn and
 say how many remain.
 Record package and slot picks in starting_equipment as soon as the player gives
 them, on every turn after; a package not yet chosen is null.
+A background's package is recorded only in starting_equipment.background_package;
+it has no choice id.
 When the player approves the whole build, finalize with your proposed creative
 fields; do not ask approval for details you add at finalize.
 Set intent.ability_scores to the player's method and the base score for each
