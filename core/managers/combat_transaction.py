@@ -1505,7 +1505,7 @@ def apply_staged_turn(
         for event in pending.get("events", []):
             for record in event.get("normalizations") or []:
                 if isinstance(record, dict) and record.get("kind") == "bystanderJoinedHostile":
-                    join_as_hostile(next_encounter, record.get("combatantId"))
+                    join_as_hostile(next_encounter, record.get("combatantId"), by=record.get("by"))
 
         violations = check_invariants(next_encounter, next_characters)
         if violations:

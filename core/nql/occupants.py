@@ -519,6 +519,46 @@ def combat_actions(live: Dict[str, Any], place: str, creatures: List[Dict[str, A
     return "\n".join(lines), unmatched
 
 
+def joined_person_actions(live: Dict[str, Any], place: str, encounter: Dict[str, Any]) -> str:
+    """The typed actions that record the fight's end on each person occupant
+    who joined it against the party (#1415 follow-up; ruling on #1403).
+
+    A creature counts when its sceneFacts row carries ``joinedHostile`` and
+    it has an ``occupantId`` naming a person occupant at the place (by id,
+    never a name). The outcome is ``died`` for a dead creature, else
+    ``creature_outcome``; one still standing gives no line. An uncounted
+    person is counted as 1 first. An occupant that is gone (absent, moved,
+    count 0, or already tallied) is skipped, since the engine refuses a
+    second resolve. Never an attitude: the DM decides what a betrayal means."""
+    from core.managers.combat_state import normalize_status
+
+    rows = ((encounter or {}).get("sceneFacts") or {}).get("participants") or []
+    joined = {row.get("combatantId") for row in rows
+              if isinstance(row, dict) and isinstance(row.get("joinedHostile"), dict)}
+    people = {o.get("id"): o for o in live.get("occupants") or []
+              if isinstance(o, dict) and o.get("kind") == "person"}
+    lines: List[str] = []
+    for creature in (encounter or {}).get("creatures") or []:
+        if not isinstance(creature, dict) or creature.get("combatantId") not in joined:
+            continue
+        occupant = people.get(creature.get("occupantId"))
+        if occupant is None or occupant.get("location") != place:
+            continue
+        settled = sum(int(e.get("count") or 0) for e in occupant.get("tally") or [] if isinstance(e, dict))
+        if occupant.get("count") == 0 or settled >= int(occupant.get("count", 1) or 0):
+            continue
+        if normalize_status(creature.get("status")) == "dead":
+            outcome = "died"
+        else:
+            outcome = creature_outcome(creature)
+        if outcome is None:
+            continue
+        if "count" not in occupant:
+            lines.append('count occupant "%s" as 1;' % occupant["id"])
+        lines.append('resolve occupant "%s" as %s;' % (occupant["id"], outcome))
+    return "\n".join(lines)
+
+
 def _room(occupant: Dict[str, Any], tally: Dict[str, int]) -> bool:
     used = sum(tally.values())
     if "count" in occupant:
@@ -552,6 +592,8 @@ def resolve_combat(encounter_id: str, *, root: str = ".") -> Optional[Dict[str, 
             return current
         live = current.get("live_state") or _load(root) or {}
         actions, unmatched = combat_actions(live, place, encounter.get("creatures") or [])
+        joined = joined_person_actions(live, place, encounter)
+        actions = "\n".join(part for part in (actions, joined) if part)
         if unmatched:
             info("OCCUPANTS: %s: no occupant at %s for enemies %s (free-name fight; recorded in "
                  "the encounter summary only)" % (encounter_id, place, ", ".join(unmatched)),

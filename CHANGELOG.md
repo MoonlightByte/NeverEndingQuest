@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When someone who joined a fight against the party is beaten, killed, flees or surrenders, the place's record now says so, and the DM is told after the fight who turned on the party and how it ended; what that means for them afterwards is left to the story (#1415).
 - The narrator and the round summary no longer see a blank or a later status for a creature whose status was not recorded: they are told "alive", "unconscious", "down", "watching, not fighting" or "left the scene" from what the fight records, and an earlier blow is described by the hit points it left (#1415).
 - A new player's first run reads better: Settings lists OpenAI (GPT-5 and newer) first as the recommended provider and shows "Loading provider..." instead of guessing Legacy; typing while the opening scene is being written no longer throws the scene away (your action runs right after it); the setup wizard's welcome line, its "Let's build your character together." line, the starting-gear notice and the reply to approving your character are now shown; and the adventure menu's wait says "Preparing your adventure choices" (#1422).
 - Two party members whose sheets carry the same effect (for example a copied or restored character) no longer stop the rules engine for the whole party: each keeps their own effect and numbers, such as their armor class (#1408).

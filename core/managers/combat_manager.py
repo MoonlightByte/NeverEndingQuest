@@ -160,6 +160,7 @@ from core.managers.combat_state import (
     initiative_eligible_ids,
     is_down,
     is_party_member,
+    normalize_status,
     recovery_action,
     resolve_creature_controller,
     round_events,
@@ -1993,7 +1994,50 @@ def combat_record_xp_receipt(encounter_id):
     return dict(receipt) if isinstance(receipt, dict) and receipt else None
 
 
-def render_combat_record_marker(summary_line, exit_kind=None, xp_receipt=None):
+def combat_record_joined_against_party(encounter_id):
+    """Who joined this fight against the party, from the typed sceneFacts
+    ``joinedHostile`` stamp (#1415 follow-up; ruling on #1403): name, the
+    occupant id or partyNPC, how the fight left them, and who they turned on.
+    None when nobody joined. Code records; the DM decides what it means."""
+    from core.nql.occupants import creature_outcome
+
+    if not encounter_id:
+        return None
+    try:
+        encounter = safe_json_load(
+            os.path.join("modules", "encounters", "encounter_%s.json" % encounter_id)
+        )
+    except Exception:
+        return None
+    if not isinstance(encounter, dict):
+        return None
+    party = safe_json_load("party_tracker.json") or {}
+    companions = {
+        npc.get("name") for npc in party.get("partyNPCs") or [] if isinstance(npc, dict)
+    }
+    joined = []
+    for row in (encounter.get("sceneFacts") or {}).get("participants") or []:
+        stamp = row.get("joinedHostile") if isinstance(row, dict) else None
+        creature = combatant_by_id(encounter, row.get("combatantId")) if isinstance(stamp, dict) else None
+        if creature is None:
+            continue
+        if normalize_status(creature.get("status")) == "dead":
+            outcome = "died"
+        else:
+            outcome = creature_outcome(creature) or "still standing"
+        entry = {"name": creature.get("name"), "outcome": outcome}
+        if creature.get("occupantId"):
+            entry["occupantId"] = creature["occupantId"]
+        if creature.get("name") in companions:
+            entry["partyNPC"] = True
+        if stamp.get("by"):
+            entry["by"] = combatant_presentation_name(encounter, stamp["by"])
+        joined.append(entry)
+    return joined or None
+
+
+def render_combat_record_marker(summary_line, exit_kind=None, xp_receipt=None,
+                                joined_against_party=None):
     """Return the historical combat record appended to the main history.
 
     ``summary_line`` is the "Combat Summary: ..." line. The normal flow and the
@@ -2009,6 +2053,10 @@ def render_combat_record_marker(summary_line, exit_kind=None, xp_receipt=None):
     ``xp_receipt`` is the encounter's typed combat XP receipt (#726). On the
     agentic exit it is stated as data, so the amount already awarded is a fact
     rather than something read back out of the summary's prose.
+
+    ``joined_against_party`` is combat_record_joined_against_party's list. On
+    the agentic exit it is stated as data; their attitude and party place are
+    left for the DM to decide.
     """
     if exit_kind == "agentic":
         contract = (
@@ -2024,6 +2072,14 @@ def render_combat_record_marker(summary_line, exit_kind=None, xp_receipt=None):
                 "\nCombat XP already applied by the combat system: "
                 + json.dumps(xp_receipt, sort_keys=True)
                 + "."
+            )
+        if joined_against_party:
+            contract += (
+                "\nJoined against the party in this fight (typed): "
+                + json.dumps(joined_against_party, sort_keys=True)
+                + ". Their attitude and party membership are unchanged; "
+                "setOccupantAttitude and updatePartyNPCs are yours to use if the "
+                "story calls for it."
             )
     else:
         contract = (
