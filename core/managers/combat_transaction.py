@@ -44,6 +44,7 @@ from core.managers.combat_state import (
     valid_pending_delivery,
     combat_provenance,
     combatant_by_id,
+    join_as_hostile,
     resolve_creature_controller,
 )
 from utils.encoding_utils import safe_json_load
@@ -1498,6 +1499,13 @@ def apply_staged_turn(
                 "The staged combat turn could not be replayed safely. "
                 "Restore the missing character data or a known-good save."
             ) from exc
+
+        # #1415: a bystander the player attacked joins as a hostile (the
+        # record the resolver wrote on the event; idempotent on a replay).
+        for event in pending.get("events", []):
+            for record in event.get("normalizations") or []:
+                if isinstance(record, dict) and record.get("kind") == "bystanderJoinedHostile":
+                    join_as_hostile(next_encounter, record.get("combatantId"))
 
         violations = check_invariants(next_encounter, next_characters)
         if violations:
