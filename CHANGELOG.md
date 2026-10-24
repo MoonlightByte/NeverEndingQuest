@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - An enemy whose only target fled earlier in the same combat window now defends without a model redraft; when other targets remain, the correction says the target left the fight instead of calling it down (#1379).
+- A combat round summary is no longer rejected (and re-asked next round) when a no-roll action such as defend leaves its roll empty (#1378).
 - A combat-start scene that names an NPC (or monster) key its own list does not reach now gets feedback naming that gap, so a watching NPC is added to npcs instead of being dropped from the fight (#1377).
 - A flat-damage swing (such as an Unarmed Strike) is taken over by the engine like any player attack: the player rolls only the d20, and the engine applies the flat damage, with no damage window and no model re-rule (#1350).
 - The combat-start initiative line for a typed encounter is its committed initiative order, so an observer NPC is no longer listed and combat validation no longer redrafts the opening over it (#1361).

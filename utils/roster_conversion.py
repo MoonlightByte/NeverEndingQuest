@@ -35,7 +35,7 @@ is created.
 Usage:
 
   python3 utils/roster_conversion.py <game root> <out dir>
-      [--nql-apply <binary>] [--modules Keep_of_Doom,The_Thornwood_Watch]
+      [--engine <binary>] [--modules Keep_of_Doom,The_Thornwood_Watch]
       [--lower Shadows_of_Frostmere] [--overrides overrides.json]
 
 Outputs: seed.nql (the world: every place and the authored seeds),
@@ -962,7 +962,7 @@ def call(binary, doc):
     try:
         return apply.call(doc, binary=binary, timeout=None)
     except apply.EngineUnavailable as exc:
-        raise SystemExit("nql-apply: %s" % exc)
+        raise SystemExit("engine: %s" % exc)
 
 
 def run_engine(binary, world, places, actions):
@@ -1115,7 +1115,8 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("root")
     ap.add_argument("out")
-    ap.add_argument("--nql-apply", default=None, help="the engine binary (default: bin/nql-apply or NQL_APPLY_BINARY)")
+    ap.add_argument("--engine", "--nql-apply", dest="nql_apply", default=None,
+                    help="the engine binary (default: FIRELIGHT_APPLY_BINARY or NQL_APPLY_BINARY, else bin/firelight-apply, else bin/nql-apply)")
     ap.add_argument("--modules", default="", help="comma-separated module names (default: every installed module)")
     ap.add_argument("--lower", default="", help="comma-separated modules flagged lower confidence")
     ap.add_argument("--overrides")

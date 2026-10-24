@@ -3413,7 +3413,6 @@ def _is_valid_combat_round_summary(summary, expected_round):
         "actor",
         "action",
         "target",
-        "roll",
         "result",
         "effects",
     )
@@ -3424,6 +3423,10 @@ def _is_valid_combat_round_summary(summary, expected_round):
             field in action and _is_nonempty_string(action[field])
             for field in required_action_strings
         ):
+            return False
+        # #1378: an action with no roll (defend, dodge) may leave roll empty;
+        # it is still a string. Nothing reads it but the summary's own text.
+        if not isinstance(action.get("roll"), str):
             return False
 
         # A round with no committed facts names no initiative, so T042 may
