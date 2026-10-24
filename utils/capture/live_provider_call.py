@@ -1304,6 +1304,16 @@ def _synthesized_envelope(error_class, task_id, request_kwargs, operation_id,
     }
 
 
+def _spend_provider(request_provider):
+    """The session cost line's provider kind (#1388): only OpenAI is priced.
+    Legacy runs on the OpenAI API with the same key, so it counts as openai."""
+    if request_provider in ("openai", "legacy"):
+        return "openai"
+    if request_provider == "gemini":
+        return "gemini"
+    return "local"
+
+
 def _is_billed_failure(envelope):
     """True when a failed generation was likely charged in full (#1342)."""
     if envelope.get("disposition") == "empty" or envelope.get("error_code") == "runaway_output":
@@ -1807,6 +1817,15 @@ def call_live_provider(
                     "Still working; checking the current adventure...",
                 )
                 continue
+            # #1388: the session cost line, priced by the requested catalog id.
+            from utils.session_spend import record_generation
+
+            record_generation(
+                frozen_kwargs.get("model"),
+                envelope.get("usage"),
+                provider=_spend_provider(frozen_kwargs.get("_request_provider")),
+                turn_key=operation_id,
+            )
             return response
 
         failure_count += 1
@@ -1829,6 +1848,9 @@ def call_live_provider(
             # #1342: bound the reissues of one logical call by billing class.
             if _is_billed_failure(envelope):
                 billed_reissues += 1
+                from utils.session_spend import record_possibly_billed
+
+                record_possibly_billed(turn_key=operation_id)
                 exhausted = billed_reissues > _BILLED_REISSUE_LIMIT
             else:
                 free_reissues += 1
