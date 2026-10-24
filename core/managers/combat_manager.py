@@ -2011,10 +2011,23 @@ def combat_record_joined_against_party(encounter_id):
         return None
     if not isinstance(encounter, dict):
         return None
-    party = safe_json_load("party_tracker.json") or {}
-    companions = {
-        npc.get("name") for npc in party.get("partyNPCs") or [] if isinstance(npc, dict)
-    }
+    try:
+        party = safe_json_load("party_tracker.json") or {}
+        companions = [npc for npc in party.get("partyNPCs") or [] if isinstance(npc, dict)]
+    except Exception:  # fail forward: the record goes without partyNPC flags
+        companions = []
+
+    def _companion(creature):
+        # By occupant id when both carry one; the exact name only as a fallback.
+        occupant_id = creature.get("occupantId")
+        for npc in companions:
+            if occupant_id and npc.get("occupantId"):
+                if npc["occupantId"] == occupant_id:
+                    return True
+            elif npc.get("name") == creature.get("name"):
+                return True
+        return False
+
     joined = []
     for row in (encounter.get("sceneFacts") or {}).get("participants") or []:
         stamp = row.get("joinedHostile") if isinstance(row, dict) else None
@@ -2028,7 +2041,7 @@ def combat_record_joined_against_party(encounter_id):
         entry = {"name": creature.get("name"), "outcome": outcome}
         if creature.get("occupantId"):
             entry["occupantId"] = creature["occupantId"]
-        if creature.get("name") in companions:
+        if _companion(creature):
             entry["partyNPC"] = True
         if stamp.get("by"):
             entry["by"] = combatant_presentation_name(encounter, stamp["by"])
