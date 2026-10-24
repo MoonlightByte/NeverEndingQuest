@@ -88,14 +88,14 @@ def reconcile_scene_manifest(parameters, canonical_snapshot):
     for key, source in canonical.items():
         proposal = proposed_by_key[key]
         participation = proposal.get("participation")
-        persistence = proposal.get("persistence")
+        # #1361: the engine sets persistence from the canonical source (built from real files); a
+        # model-supplied value is ignored.
+        persistence = "encounter" if source["sourceKind"] == "monster" else "canonical_character"
         controller = proposal.get("controller")
         if participation not in PARTICIPATION_VALUES:
             raise SceneReconciliationError(f"invalid participation for {key}")
         if type(proposal.get("initiativeEligible")) is not bool:
             raise SceneReconciliationError(f"initiativeEligible must be boolean for {key}")
-        if persistence not in PERSISTENCE_VALUES:
-            raise SceneReconciliationError(f"invalid persistence for {key}")
         if controller not in CONTROLLER_VALUES:
             raise SceneReconciliationError(f"invalid controller for {key}")
         scope = proposal.get("controllerScope", "encounter")
@@ -269,11 +269,10 @@ def validate_typed_encounter_actions(response):
                 f"{exc}. Use participant keys exactly [{keys}]. scene must contain "
                 "participants, relations, objectives, and disclosureGrants arrays. "
                 "Every participant requires participantKey, participation, "
-                "initiativeEligible boolean, persistence, and controller. "
+                "initiativeEligible boolean, and controller. "
                 "A monster participant may add surprised: true (boolean). "
                 "participation is one of active, observer, hidden, unaware, departed; "
-                "persistence is one of encounter, canonical_character, "
-                "owner_gated_companion; controller is human or actor_agent. "
+                "controller is human or actor_agent; the engine sets persistence. "
                 "Each relation is {subjectKey, objectKey, disposition}. Each objective "
                 "is {ownerKeys array, kind, targetKeys array, status}; status is active, "
                 "satisfied, failed, or abandoned. Each disclosure grant is "
