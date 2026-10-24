@@ -405,6 +405,27 @@ def choice_problems(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     return problems
 
 
+def turn_problems(intent: Dict[str, Any], choice_turn: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The typed contradictions of a response's choice_turn with its own intent (#1325): a refusal under an id
+    the scope did not issue or of an option the scope offers, and a question about an id that is not open.
+    A choice the player changes is reopened by clearing its picks in intent, then asked."""
+    issued = issued_points(intent)
+    open_ids = open_choice_ids(intent)
+    problems = []
+    for item in choice_turn.get("refused") or []:
+        point = issued.get(item["choice_id"])
+        if point is None:
+            problems.append({"choice_id": item["choice_id"], "problem": "refused_not_issued"})
+            continue
+        allowed = _allowed(point, intent, issued)
+        if allowed is not None and item["value"] in allowed:  # a free pick has no list to contradict
+            problems.append({"choice_id": item["choice_id"], "problem": "refused_offered", "value": item["value"]})
+    for cid in choice_turn.get("asks") or []:
+        if cid not in open_ids:
+            problems.append({"choice_id": cid, "problem": "asked_not_open"})
+    return problems
+
+
 def _allowed(point: Dict[str, Any], intent: Dict[str, Any], issued: Dict[str, Dict[str, Any]]) -> Optional[List[str]]:
     if point.get("free_pick"):
         return None

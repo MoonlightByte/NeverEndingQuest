@@ -89,6 +89,16 @@ STARTUP_INTENT_SCHEMA = _object_schema({
     }), type=["object", "null"]),
 })
 
+# What the narration asks and refuses this turn, as typed claims the engine checks against the scope (#1325):
+# a refusal of an offered option, or a question about a choice that is not open, is corrected, never published.
+STARTUP_CHOICE_TURN_SCHEMA = _object_schema({
+    "asks": {"type": "array", "items": {"type": "string"}},
+    "refused": {"type": "array", "items": _object_schema({
+        "choice_id": {"type": "string"},
+        "value": {"type": "string"},
+    })},
+})
+
 # The creative fields of an engine-built character (D-CREATE-COST-5, amendment 1a): copied verbatim, never
 # read for mechanics. backstory and appearance never reach the sheet (char_schema is frozen); they ride in
 # the startup_engine_build item. feature_descriptions: display text per engine-named feature (D1).
@@ -138,6 +148,8 @@ def startup_response_schema(*, scoped=False):
             creative["properties"]["alignment"]["enum"] = list(alignment["enum"])
         schema["properties"]["creative"] = creative
         schema["required"].append("creative")
+        schema["properties"]["choice_turn"] = STARTUP_CHOICE_TURN_SCHEMA
+        schema["required"].append("choice_turn")
         # D-CREATE-COST-5: the engine builds the sheet from intent; the author never writes it, and origin is
         # intent's class and background.
         for field in ("character", "origin"):
