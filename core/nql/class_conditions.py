@@ -20,7 +20,14 @@ the Condition instances a character holds:
   ``ac_formulas`` entry (Barbarian, Monk). The engine gates the defense terms
   by slot (``unless slot``, NQL 7316e58), so the instance does not depend on
   what the sheet wears. A sheet with two such classes keeps its primary
-  class's only (SRD: Unarmored Defense cannot be gained twice), with a note.
+  class's only (SRD: Unarmored Defense cannot be gained twice), with a note;
+- ``feature:ac-formula:<class>:<feature>`` (#1433): any other ``ac_formulas``
+  entry (a subclass or later-level base AC such as the Draconic Sorcerer's
+  Draconic Resilience), when the sheet's primary class is that class at a
+  typed single-class level at least the formula's and its subclass
+  (``core.leveling.tables.infer_subclass``) is the formula's. Genesis declares
+  the type and its alternative defense recipe only in a world where a sheet
+  holds it.
 
 It also writes the defense derive's Unarmored Defense terms from
 ``ac_formulas``. Missing or unreadable data means no terms and no instances
@@ -34,6 +41,7 @@ import json
 import os
 from typing import Any, Dict, List, Optional, Tuple
 
+from core.leveling import tables
 from core.nql import item_catalog
 
 _DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "srd")
@@ -42,6 +50,8 @@ CHOICES_PATH = os.path.join(_DIR, "choices.json")
 
 UNARMED_STRIKE = "srd:unarmed-strike"
 UNARMORED_DEFENSE_PREFIX = "feature:unarmored-defense:"
+AC_FORMULA_PREFIX = "feature:ac-formula:"
+AC_FORMULA_RECIPE_PREFIX = "ac-feature:"
 WEAPON_CATEGORIES = {"simple": "Simple", "martial": "Martial",
                      "simple weapons": "Simple", "martial weapons": "Martial"}
 _ABILITIES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
@@ -102,6 +112,89 @@ def unarmored_formulas() -> List[Tuple[str, List[str], bool]]:
             if not extra or any(a not in _ABILITIES for a in extra):
                 continue
             out.append((cls, extra, shape.get("shield") == "allowed"))
+    return out
+
+
+def _slug(text: str) -> str:
+    return "-".join("".join(c if c.isalnum() else " " for c in text.casefold()).split())
+
+
+def _recipe_formula(cls: str, formula: Any) -> Optional[Tuple[str, Optional[str], str, int, int, List[str], bool]]:
+    """(class, subclass, feature, level, base, abilities, shield allowed) of a typed ``ac_formulas``
+    entry that is a whole base AC while no armor is worn; None for any other shape."""
+    if not isinstance(formula, dict):
+        return None
+    shape = formula.get("formula") if isinstance(formula.get("formula"), dict) else {}
+    feature, subclass, level, base = formula.get("feature"), formula.get("subclass"), formula.get("level"), shape.get("base")
+    abilities = shape.get("abilities")
+    if not (isinstance(feature, str) and feature.strip() and (subclass is None or isinstance(subclass, str) and subclass.strip())
+            and type(level) is int and 1 <= level <= 20 and type(base) is int and 0 <= base <= 30
+            and shape.get("while") == "no armor" and shape.get("shield") in ("allowed", "not allowed")
+            and isinstance(abilities, list) and abilities
+            and all(isinstance(a, str) and a.casefold() in _ABILITIES for a in abilities)):
+        return None
+    return (cls, subclass.strip() if subclass else None, feature.strip(), level, base,
+            [a.casefold() for a in abilities], shape.get("shield") == "allowed")
+
+
+def _recipe_candidates(cls: str, record: Any) -> List[Any]:
+    """The class's ``ac_formulas`` entries unarmored_formulas does not take: a subclass's, or a later level's."""
+    formulas = (record or {}).get("ac_formulas") if isinstance(record, dict) else None
+    return [f for f in formulas or [] if not isinstance(f, dict) or f.get("subclass") or f.get("level") != 1]
+
+
+def recipe_formulas() -> List[Tuple[str, Optional[str], str, int, int, List[str], bool]]:
+    """#1433: every well-formed ac_formulas entry outside Unarmored Defense, in class order."""
+    out = []
+    for cls, record in _classes(_load(PROGRESSION_PATH), "classes").items():
+        for formula in _recipe_candidates(cls, record):
+            parsed = _recipe_formula(cls, formula)
+            if parsed is not None:
+                out.append(parsed)
+    return out
+
+
+def ac_formula_type(cls: str, feature: str) -> str:
+    return f"{AC_FORMULA_PREFIX}{cls}:{_slug(feature)}"
+
+
+def ac_formula_recipe(cls: str, feature: str) -> str:
+    return f"{AC_FORMULA_RECIPE_PREFIX}{cls}:{_slug(feature)}"
+
+
+def recipe_feature(recipe_name: Any) -> Optional[str]:
+    """The feature name behind a chosen ``ac-feature:`` defense recipe; None for any other recipe."""
+    if not (isinstance(recipe_name, str) and recipe_name.startswith(AC_FORMULA_RECIPE_PREFIX)):
+        return None
+    for cls, _, feature, _, _, _, _ in recipe_formulas():
+        if ac_formula_recipe(cls, feature) == recipe_name:
+            return feature
+    return None
+
+
+def _formula_instances(sheet: Dict[str, Any], names: List[str], notes: List[str], cid: str) -> List[str]:
+    primary = names[0] if names else None
+    out: List[str] = []
+    for cls, record in _classes(_load(PROGRESSION_PATH), "classes").items():
+        if cls not in names:
+            continue
+        for formula in _recipe_candidates(cls, record):
+            parsed = _recipe_formula(cls, formula)
+            if parsed is None:
+                notes.append(f"{cid}: {cls} ac_formulas entry {formula.get('feature') if isinstance(formula, dict) else formula!r}"
+                             " is not a typed base AC formula; not declared")
+                continue
+            _, subclass, feature, level, _, _, _ = parsed
+            if subclass is not None:
+                chosen = tables.infer_subclass(sheet, cls)
+                if not (isinstance(chosen, str) and chosen.casefold() == subclass.casefold()):
+                    continue
+            if cls != primary or len(names) > 1:
+                notes.append(f"{cid}: no typed {cls.capitalize()} level on a multiclass sheet; {feature} not declared")
+                continue
+            sheet_level = sheet.get("level")
+            if type(sheet_level) is int and level <= sheet_level <= 20:
+                out.append(ac_formula_type(cls, feature))
     return out
 
 
@@ -189,4 +282,5 @@ def instances(sheet: Dict[str, Any], notes: List[str], cid: str, with_pack: bool
         for other in ud:
             if other != keep:
                 notes.append(f"{cid}: Unarmored Defense from {other} not declared; the sheet already has it from {keep}")
+    out.extend(_formula_instances(sheet, names, notes, cid))
     return out

@@ -835,6 +835,26 @@ def ac_set_instance_id(recipe_name: str) -> Optional[str]:
     return "fx:" + recipe_name[len(AC_SET_RECIPE_PREFIX):]
 
 
+def ac_recipe(name: str, base: int, abilities: List[str], requires: str, shield_allowed: bool = True) -> str:
+    """#1433: one gated alternative recipe of the defense derive, eligible while its holder has
+    ``requires`` and wears no body armor (nor a shield when the rule forbids one): base plus each
+    ability's modifier. The engine picks the highest total and adds modifiers once (D-KW-8)."""
+    gate = ' unless slot "body"' + ('' if shield_allowed else ' unless slot "shield"')
+    terms = "".join(f' term stat {_q(a)} offset -10 divide 2;' for a in abilities)
+    return f' recipe {_q(name)} base {base} requires {_q(requires)}{gate} {{{terms} }}'
+
+
+def feature_defense_recipes(declared: List[str]) -> str:
+    """#1433: the alternative recipe of each class formula outside Unarmored Defense (Draconic
+    Resilience) whose condition type this world declares, which it does only when a sheet holds it."""
+    out = []
+    for cls, _, feature, _, base, abilities, shield_allowed in class_conditions.recipe_formulas():
+        tid = class_conditions.ac_formula_type(cls, feature)
+        if tid in declared:
+            out.append(ac_recipe(class_conditions.ac_formula_recipe(cls, feature), base, abilities, tid, shield_allowed))
+    return "".join(out)
+
+
 def effect_defense_recipes(sheets: List[Dict[str, Any]], gaps: Optional[List[str]] = None,
                            ids: Optional[Dict[Tuple[str, str], Tuple[str, str]]] = None) -> str:
     """#1322: the defense derive's gated alternative recipe for each live set effect (Mage Armor:
@@ -873,9 +893,7 @@ def effect_defense_recipes(sheets: List[Dict[str, Any]], gaps: Optional[List[str
                                 f"set rule {rule!r}; no recipe declared")
                 continue
             seen.add(tid)
-            term = f' term stat {_q(ability)} offset -10 divide 2;' if ability else ""
-            out.append(f' recipe {_q(ac_set_recipe_name(tid))} base {rule["base"]}'
-                       f' requires {_q(tid)} unless slot "body" {{{term} }}')
+            out.append(ac_recipe(ac_set_recipe_name(tid), rule["base"], [ability] if ability else [], tid))
     return "".join(out)
 
 
@@ -1533,6 +1551,8 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
         for kind in class_conditions.instances(sheet, notes, cid, with_pack):
             if kind.startswith("prof:weapon:") and kind not in condition_types:
                 continue  # no catalog weapon declares this type in this world
+            if kind.startswith(class_conditions.AC_FORMULA_PREFIX) and kind not in condition_types:
+                condition_types.append(kind)  # #1433: declared only in a world whose sheet holds it
             conditions.append(f"condition {_q(kind + ':' + cid.split(':', 1)[1])} of {_q(kind)} to {_q(cid)};")
         types, instances = _effect_lines(sheet, cid, gaps, effect_names, clock_tick, first_holders, effect_ids, notes)
         effect_types.extend(types)
@@ -1665,8 +1685,11 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     # NUM-H3b: Unarmored Defense terms from progression.json ac_formulas, gated
     # on the class Condition and on the slots the formula excludes.
     # #1322: a live set effect (Mage Armor) adds its gated alternative recipe.
+    # #1433: a held class formula (Draconic Resilience) adds its own, declared
+    # first so a permanent feature keeps a tie with a spell.
     lines.append(' derive stat "defense" { term stat "dexterity" offset -10 divide 2;'
-                 + class_conditions.defense_terms() + effect_defense_recipes(sheets, gaps, effect_ids) + ' }')
+                 + class_conditions.defense_terms() + feature_defense_recipes(condition_types)
+                 + effect_defense_recipes(sheets, gaps, effect_ids) + ' }')
     lines.append(srd_stats.DERIVE_RULES.rstrip("\n"))
     lines.append(srd_stats.XP_RULES.rstrip("\n"))
     lines.extend(d.rstrip("\n") for d in definitions)
