@@ -2611,7 +2611,7 @@ def _publish_startup_wait(wait, attempt, max_attempts, delay):
         from utils.provider_errors import provider_display_name
 
         status_manager.publish_wait({
-            "purpose": wait_purpose(wait.get("taskId")),
+            "purpose": wait_purpose(wait.get("taskId"), wait.get("purpose")),
             "taskId": wait.get("taskId"),
             "provider": wait.get("provider"),
             "providerName": provider_display_name(wait.get("provider")),
@@ -2667,6 +2667,8 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                     task_id, api_client.create_completion,
                     _request_provider=provider, _live_selected="required",
                     _detached_scope=scope,
+                    # #1422 F2: the adventure menu is not character setup.
+                    _wait_purpose=("adventure_choice" if startup_phase == "startup_module_selection" else None),
                     messages=copy.deepcopy(request_messages + error_note),
                     model=main_cfg["model"], temperature=0.7,
                     response_format=response_format,

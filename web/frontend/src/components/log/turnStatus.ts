@@ -9,6 +9,7 @@ import type { WaitRecord } from '../../contract/events'
 
 const PURPOSE: Record<string, string> = {
   character_setup: 'Setting up your character',
+  adventure_choice: 'Preparing your adventure choices',
   starting_location: 'Choosing your starting location',
   level_up: 'Working on your level-up',
   combat: 'Resolving the fight',

@@ -168,7 +168,7 @@ export interface RestoreResult {
  */
 export interface WaitRecord {
   kind: 'provider_call';
-  purpose: 'character_setup' | 'starting_location' | 'level_up' | 'combat' | 'turn' | string;
+  purpose: 'character_setup' | 'adventure_choice' | 'starting_location' | 'level_up' | 'combat' | 'turn' | string;
   taskId: string;
   provider: string | null;
   providerName: string | null;
