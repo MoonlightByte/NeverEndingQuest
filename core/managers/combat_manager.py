@@ -3599,6 +3599,20 @@ def run_combat_simulation(
            _finish_owned_combat_round_scope(owned_round_scope)
 
 
+def _resume_party_defeated(encounter_data):
+    """Whether a resumed agentic encounter has no party member standing (#1335).
+
+    Such a resume gets no T043 re-engagement narration: the down-scene rescue
+    rules assume a standing ally (a solo party heard invented companions), and
+    the party-defeat pause follows. A legacy encounter has no typed pause and
+    keeps its narration.
+    """
+    return (
+        (encounter_data.get("combatState") or {}).get("pipelineMode") == "agentic"
+        and all_party_resolved(encounter_data)
+    )
+
+
 def _run_combat_simulation(
     encounter_id,
     party_tracker_data,
@@ -4066,7 +4080,8 @@ def _run_combat_simulation(
            or combat_state.get("pendingDelivery") is not None
        )
    )
-   if is_resuming and not pending_agentic_recovery:
+   resume_party_defeated = _resume_party_defeated(encounter_data)
+   if is_resuming and not pending_agentic_recovery and not resume_party_defeated:
        # This is a resumed session. Inject a message to get a re-engagement narration.
        print("[COMBAT_MANAGER] Injecting 'player has returned' message to re-engage AI.")
        debug("RESUME: Starting combat resume flow", category="combat_events")
@@ -4367,6 +4382,13 @@ This is narration only. Do not advance the round or apply any combat action."""
        )
        parsed_response = json.loads(initial_response)
        _display_combat_narration(parsed_response['narration'])
+   elif is_resuming and resume_party_defeated and not pending_agentic_recovery:
+       # A pending agentic recovery keeps the deferral below.
+       debug(
+           "RESUME: Whole party defeated; no re-engagement narration, the "
+           "party-defeat pause follows (#1335)",
+           category="combat_events",
+       )
    else:
        # Staged mechanics are more authoritative than a generic re-engagement
        # scene. Recover/apply them in the loop first, then narrate that exact
