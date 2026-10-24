@@ -544,6 +544,35 @@ def repair_and_persist_character(
     from core.nql.legacy_loadout import migrate as migrate_legacy_loadout
     raw_changes = list(raw_changes) + migrate_legacy_loadout(repaired_data)
 
+    # #1442: a live effect saved before its spell's typed rule (a Mage Armor cast
+    # before #1421, modifiers []) takes the rule once, with a receipt; the engine
+    # then derives the armor class. Fail forward: the rule is kept when the
+    # engine is unavailable, and the next projection derives it.
+    rule_lines = []
+    try:
+        from core.effects.clock import scalar_from_calendar
+        from core.nql import armor_class
+        from core.nql.legacy_effect_rules import migrate as migrate_effect_rules
+        party = safe_read_json("party_tracker.json")
+        try:
+            now_tick = scalar_from_calendar(party.get("worldConditions") or {}) if isinstance(party, dict) else None
+        except (TypeError, ValueError):
+            now_tick = None
+        rule_changes, rule_gaps = migrate_effect_rules(repaired_data, now_tick)
+        for gap in rule_gaps:
+            warning(f"REPAIR: {gap}", category="character_repair")
+            rule_lines.append(f"[SYSTEM] {gap}.")
+        if rule_changes:
+            raw_changes = list(raw_changes) + rule_changes
+            projection = armor_class.project(repaired_data)
+            if projection.applied:
+                repaired_data = projection.sheet
+            else:
+                warning(f"REPAIR: armor class not re-derived for {character_file_path}: {projection.reason}",
+                        category="character_repair")
+    except Exception as exc:  # the repair pass never blocks a game from loading
+        warning(f"REPAIR: legacy effect rules not checked for {character_file_path}: {exc}", category="character_repair")
+
     try:
         from core.leveling.creation_picks import recover_feat_spell_bindings
         if recover_feat_spell_bindings(repaired_data, character_file_path):
@@ -601,5 +630,7 @@ def repair_and_persist_character(
             )
             for line in order_lines:
                 print(line)
+    for line in rule_lines:
+        print(line)
 
     return repaired_data, changes

@@ -1329,6 +1329,45 @@ def _is_billed_failure(envelope):
     return envelope.get("last_phase") in _BILLED_PHASES
 
 
+def _record_unused_generation(output, phase_state, frozen_kwargs, operation_id, generation):
+    """Count a generation whose result is not used (#1435): superseded, or
+    dropped on an unreadable authority. A completed answer is a call; one
+    stopped in a billed phase (#1342) is possibly billed. Never raises."""
+    try:
+        from utils.session_spend import record_generation, record_possibly_billed
+
+        envelope = None
+        if output:
+            try:
+                envelope = pickle.loads(output)
+            except (EOFError, pickle.PickleError, ValueError, TypeError):
+                envelope = None
+        envelope = envelope if isinstance(envelope, dict) else {}
+        if (
+            envelope.get("correlation") == {"operation_id": operation_id, "generation": generation}
+            and envelope.get("kind") == "success"
+            and isinstance(envelope.get("content"), str)
+            and bool(envelope["content"].strip())
+            and isinstance(envelope.get("usage"), dict)
+        ):
+            record_generation(
+                frozen_kwargs.get("model"),
+                envelope["usage"],
+                provider=_spend_provider(frozen_kwargs.get("_request_provider")),
+                turn_key=operation_id,
+            )
+            return
+        probe = {
+            "last_phase": (phase_state or {}).get("current"),
+            "disposition": envelope.get("disposition"),
+            "error_code": envelope.get("error_code"),
+        }
+        if _is_billed_failure(probe):
+            record_possibly_billed(turn_key=operation_id)
+    except Exception:
+        pass
+
+
 def _limit_envelope(error_class, task_id, request_kwargs):
     """Terminal envelope for a #1342 bound; classified non-retryable upstream."""
     return {
@@ -1687,7 +1726,8 @@ def call_live_provider(
         current_reader["started"] = started
         next_heartbeat = started + _HEARTBEAT_SECONDS
         envelope = None
-        superseded = False
+        superseded_error = None
+        spend_recorded = False
         output = None
         backstop_exhausted = False
         ack_backstop_exhausted = False
@@ -1696,8 +1736,8 @@ def call_live_provider(
             while True:
                 try:
                     _check_live_authority(scope, authority_check)
-                except LiveProviderSuperseded:
-                    superseded = True
+                except LiveProviderSuperseded as exc:
+                    superseded_error = exc
                     break
                 except OSError:
                     authority_unavailable = True
@@ -1753,12 +1793,20 @@ def call_live_provider(
                 _close_process_streams(process)
             writer.join()
         phase_state = reader.snapshot()
-        if superseded:
-            raise LiveProviderSuperseded("live player turn superseded")
-        try:
-            _check_live_authority(scope, authority_check)
-        except OSError:
-            authority_unavailable = True
+        if superseded_error is None:
+            try:
+                _check_live_authority(scope, authority_check)
+            except LiveProviderSuperseded as exc:
+                superseded_error = exc
+            except OSError:
+                authority_unavailable = True
+        if superseded_error is not None:
+            # #1435: an answer that finished, or was stopped part-way, still costs.
+            _record_unused_generation(output, phase_state, frozen_kwargs, operation_id, generation)
+            raise superseded_error
+        if output and authority_unavailable:
+            _record_unused_generation(output, phase_state, frozen_kwargs, operation_id, generation)
+            spend_recorded = True
         if output and not authority_unavailable:
             try:
                 envelope = pickle.loads(output)
@@ -1821,6 +1869,17 @@ def call_live_provider(
             and correlation_accepted
         ):
             response = _reconstruct_response(envelope)
+            # #1388: the session cost line, priced by the requested catalog id.
+            # Counted before the authority check: a dropped answer was still
+            # billed (#1435).
+            from utils.session_spend import record_generation
+
+            record_generation(
+                frozen_kwargs.get("model"),
+                envelope.get("usage"),
+                provider=_spend_provider(frozen_kwargs.get("_request_provider")),
+                turn_key=operation_id,
+            )
             try:
                 _check_live_authority(scope, authority_check)
             except OSError:
@@ -1830,15 +1889,6 @@ def call_live_provider(
                     "Still working; checking the current adventure...",
                 )
                 continue
-            # #1388: the session cost line, priced by the requested catalog id.
-            from utils.session_spend import record_generation
-
-            record_generation(
-                frozen_kwargs.get("model"),
-                envelope.get("usage"),
-                provider=_spend_provider(frozen_kwargs.get("_request_provider")),
-                turn_key=operation_id,
-            )
             return response
 
         failure_count += 1
@@ -1863,7 +1913,8 @@ def call_live_provider(
                 billed_reissues += 1
                 from utils.session_spend import record_possibly_billed
 
-                record_possibly_billed(turn_key=operation_id)
+                if not spend_recorded:  # already counted as an unused generation
+                    record_possibly_billed(turn_key=operation_id)
                 exhausted = billed_reissues > _BILLED_REISSUE_LIMIT
             else:
                 free_reissues += 1
