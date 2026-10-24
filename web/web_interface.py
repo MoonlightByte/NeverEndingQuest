@@ -313,6 +313,9 @@ def _web_save_manager():
 
 def _begin_web_restore(manager, message, previous_clean=True):
     global _restore_manager
+    # A Load or a Reset starts the session cost line over (#1388).
+    from utils.session_spend import reset_session
+    reset_session()
     with _ui_operation_lock:
         _restore_manager = manager
         _ui_operations['restore'] = {
@@ -2433,6 +2436,16 @@ def update_monster_description():
     except Exception as e:
         error(f"TOOLKIT: Failed to update monster description: {e}")
         return jsonify({'success': False, 'error': str(e)})
+
+
+def _session_spend_snapshot():
+    """The typed session cost object for token_update (#1388): numbers only."""
+    import model_config
+    from utils.session_spend import snapshot
+
+    provider = model_config.get_provider()
+    kind = "openai" if provider in ("openai", "legacy") else "gemini" if provider == "gemini" else "local"
+    return snapshot(kind)
 
 
 def _provider_credentials_available(provider):
@@ -4670,6 +4683,8 @@ def handle_generate_image(data):
             else:
                 # Re-raise if it's not a content policy issue
                 raise dalle_error
+        from utils.session_spend import record_other
+        record_other("portrait")  # #1388: billed per image, counted, not priced
         
         # Save the image locally with metadata
         try:
@@ -4798,6 +4813,8 @@ def generate_tts():
             input=text,
             speed=TTS_SPEED
         )
+        from utils.session_spend import record_other
+        record_other("voice")  # #1388: billed per character, counted, not priced
         
         # Return audio as streaming response
         return Response(
@@ -5181,7 +5198,8 @@ def send_output_to_clients():
                     socketio.emit('token_update', {
                         'tpm': stats.get('tpm', 0),
                         'rpm': stats.get('rpm', 0),
-                        'total_tokens': stats.get('total_tokens', 0)
+                        'total_tokens': stats.get('total_tokens', 0),
+                        'spend': _session_spend_snapshot(),
                     })
                 except:
                     # If anything fails, just send zeros (but don't spam)

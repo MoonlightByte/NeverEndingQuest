@@ -4400,6 +4400,7 @@
             <div class="location-details" id="location-details"></div>
         </div>
         <div class="status">
+            <span id="spend-line" class="spend-line" tabindex="0" style="display:none; font-size:0.75em; opacity:0.8; margin-right:8px; white-space:nowrap;"></span>
             <span id="status-text">Disconnected</span>
             <div class="status-indicator" id="status-indicator"></div>
             <button class="start-button" id="start-button" onclick="startGame()">Start Game</button>
@@ -4510,6 +4511,7 @@
                             Needed for the Legacy and OpenAI providers. Stored locally on this machine.
                             <span id="openai-key-status-text"></span>
                         </div>
+                        <div class="settings-help" id="spend-disclaimer" style="display:none;"></div>
                         <div class="settings-item" style="flex-direction:column; align-items:stretch; gap:6px;">
                             <input class="settings-select" type="password" id="openai-key-input"
                                    style="width:100%;" placeholder="sk-...">
@@ -5785,7 +5787,35 @@
             if (data.tpm !== undefined) document.getElementById('tpm-value').textContent = data.tpm.toLocaleString();
             if (data.rpm !== undefined) document.getElementById('rpm-value').textContent = data.rpm;
             if (data.total_tokens !== undefined) document.getElementById('total-tokens').textContent = data.total_tokens.toLocaleString();
+            if (data.spend) renderSpendLine(data.spend);
         });
+
+        // #1388: the session cost line and its approved disclaimer (same text as the React SpendLine).
+        function spendDisclaimer(pricedAt) {
+            return 'Estimate only: worked out from the token usage OpenAI reports with each response, at OpenAI\'s list prices dated ' + pricedAt + '. Your OpenAI bill is the authority.';
+        }
+        function spendDollars(usd) {
+            return usd < 0.01 ? 'under $0.01' : 'about $' + usd.toFixed(2);
+        }
+        function renderSpendLine(spend) {
+            const line = document.getElementById('spend-line');
+            const calls = 'This session: ' + spend.calls + ' AI ' + (spend.calls === 1 ? 'call' : 'calls');
+            let text;
+            if (!spend.available) text = 'This session: estimate unavailable';
+            else if (spend.provider_kind === 'local') text = calls + ', local model';
+            else if (spend.provider_kind !== 'openai') text = calls;
+            else text = calls + ', ' + spendDollars(spend.usd) + ' for AI text' + (spend.portraits + spend.voice > 0 ? '; images and voice not included' : '');
+            const hover = ['This turn: ' + spend.turn_calls + ' AI ' + (spend.turn_calls === 1 ? 'call' : 'calls') + (spend.provider_kind === 'openai' ? ', ' + spendDollars(spend.turn_usd) : ''),
+                'Tokens: ' + spend.prompt.toLocaleString() + ' in (' + spend.cached.toLocaleString() + ' cached), ' + spend.completion.toLocaleString() + ' out'];
+            if (spend.portraits + spend.voice > 0) hover.push('Images: ' + spend.portraits + ', voice clips: ' + spend.voice + ' (not priced)');
+            if (spend.possibly_billed > 0) hover.push(spend.possibly_billed + ' ' + (spend.possibly_billed === 1 ? 'retry' : 'retries') + ' that failed part-way may also have been billed.');
+            if (spend.provider_kind === 'openai') hover.push(spendDisclaimer(spend.priced_at));
+            line.textContent = text;
+            line.title = hover.join('\n');
+            line.style.display = '';
+            const note = document.getElementById('spend-disclaimer');
+            if (note && spend.priced_at) { note.textContent = spendDisclaimer(spend.priced_at); note.style.display = ''; }
+        }
         
         // Compression progress updates
         socket.on('compression_start', (data) => {

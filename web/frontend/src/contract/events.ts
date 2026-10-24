@@ -238,7 +238,16 @@ export interface ServerEvents {
   local_endpoint_test_result: { ok: boolean; detail: string };
   image_generated: { image_url: string; prompt: string; request_id?: string; source_message_id?: string };
   image_generation_error: { message: string; request_id?: string; source_message_id?: string };
-  token_update: { tpm: number; rpm: number; total_tokens: number };
+  token_update: {
+    tpm: number; rpm: number; total_tokens: number;
+    /** #1388: the session cost line, typed numbers only (absent on the fallback emit). */
+    spend?: {
+      calls: number; usd: number; prompt: number; cached: number; completion: number;
+      turn_calls: number; turn_usd: number; unpriced: number; possibly_billed: number;
+      portraits: number; voice: number; priced_at: string;
+      provider_kind: 'openai' | 'gemini' | 'local'; available: boolean;
+    };
+  };
   /** #214 D-214-4=A: background startup-welcome liveness (never input-locking). */
   welcome_progress: { message: string };
   compression_start: { total_sections: number };

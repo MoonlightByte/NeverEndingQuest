@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The web game shows what this play session has cost on your own OpenAI key: a header line such as "This session: 42 AI calls, about $0.19 for AI text", with this turn, the tokens and the disclaimer on hover, and the disclaimer once in Settings. Dollars are an estimate from the token usage OpenAI reports with each response, at the list prices in the model catalog, priced by the model the game asked for. Portraits and voice clips are counted but not priced, and a failed retry that may have been billed is counted without dollars. A local provider shows calls only. Load and Reset start the count over (#1388).
+
 ## [2026.10.24.1] - 2026-10-24
 
 Combat, travel and character creation fixes from the October playtests, and a hard limit on model calls per turn.

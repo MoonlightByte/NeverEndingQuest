@@ -5,6 +5,7 @@ import { useEmberViewport } from './useEmberViewport'
 import { useSession, useWorld, useDialogs } from '../../stores'
 import { SettingsMenu } from '../settings/SettingsMenu'
 import { useUiMode } from '../../modes/useUiMode'
+import { SpendLine } from './SpendLine'
 
 const injectedVersion = document
   .querySelector<HTMLMetaElement>('meta[name="neq-version"]')
@@ -103,6 +104,7 @@ export function HeaderBar() {
       </div>
 
       <div className="neq-header-actions flex items-center gap-2">
+        <SpendLine />
         <ConnectionDot />
         <button type="button" className={buttonClass} onClick={handleStart}
           disabled={!connected || isStarting || gameReady || recoveryRequired || restorePending}
