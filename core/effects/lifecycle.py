@@ -166,7 +166,7 @@ def _reconcile_with_engine(result, removed_owned):
     left = nql_effects.set_effects_left(removed_owned)
     if left:
         warning(
-            "[Effects Engine] %s: armor class from a set effect stays until the engine re-derives it: %s"
+            "[Effects Engine] %s: armor class from a set or floor effect stays until the engine re-derives it: %s"
             % (result.get("name"), left),
             category="effects_tracking",
         )
