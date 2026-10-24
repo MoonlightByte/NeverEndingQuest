@@ -1162,9 +1162,10 @@ When the Combat Commitment Point is reached (excluding historical records) and n
   `monster:1`, ... in `monsters` order. Never use a name as a participant key.
 - Every listed participant appears exactly once with `participation`
   (`active`, `observer`, `hidden`, `unaware`, or `departed`), boolean
-  `initiativeEligible`, `persistence` (`canonical_character` for the player and
-  canonical NPCs; `encounter` for encounter monsters), and `controller`
-  (`human` or `actor_agent`). Presence, relationship, controller, and initiative
+  `initiativeEligible`, and `controller` (`human` or `actor_agent`). The engine
+  sets persistence from the participant's source; omit it. A location occupant
+  who stays out of the fight is `participation: observer` with
+  `initiativeEligible: false`. Presence, relationship, controller, and initiative
   eligibility are separate facts; never infer one from another.
 - Surprise: add `"surprised": true` to a monster participant only when that
   monster had not noticed the party when the fight began: the party's Stealth
@@ -1210,8 +1211,8 @@ Combat Summary:
           "openingActionSource": "<latest_player_message | earlier_turn, required with openingAction>",
           "scene": {
             "participants": [
-              {"participantKey":"player:0","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"human"},
-              {"participantKey":"monster:0","participation":"active","initiativeEligible":true,"persistence":"encounter","controller":"actor_agent"}
+              {"participantKey":"player:0","participation":"active","initiativeEligible":true,"controller":"human"},
+              {"participantKey":"monster:0","participation":"active","initiativeEligible":true,"controller":"actor_agent"}
             ],
             "relations": [{"subjectKey":"monster:0","objectKey":"player:0","disposition":"hostile"}],
             "objectives": [{"ownerKeys":["monster:0"],"kind":"drive_off","targetKeys":["player:0"],"status":"active"}],
@@ -1237,11 +1238,11 @@ Sample 1 - The party has entered combat with an orc in the hidden entrance to th
         "encounterSummary": "An orc has appeared, ready to attack, as the party stands before the hidden entrance to the Dwarven Complex.",
         "scene": {
           "participants": [
-            {"participantKey":"player:0","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"human"},
-            {"participantKey":"npc:0","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"actor_agent"},
-            {"participantKey":"npc:1","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"actor_agent"},
-            {"participantKey":"npc:2","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"actor_agent"},
-            {"participantKey":"monster:0","participation":"active","initiativeEligible":true,"persistence":"encounter","controller":"actor_agent"}
+            {"participantKey":"player:0","participation":"active","initiativeEligible":true,"controller":"human"},
+            {"participantKey":"npc:0","participation":"active","initiativeEligible":true,"controller":"actor_agent"},
+            {"participantKey":"npc:1","participation":"active","initiativeEligible":true,"controller":"actor_agent"},
+            {"participantKey":"npc:2","participation":"active","initiativeEligible":true,"controller":"actor_agent"},
+            {"participantKey":"monster:0","participation":"active","initiativeEligible":true,"controller":"actor_agent"}
           ],
           "relations": [{"subjectKey":"monster:0","objectKey":"player:0","disposition":"hostile"}],
           "objectives": [{"ownerKeys":["monster:0"],"kind":"drive_off","targetKeys":["player:0"],"status":"active"}],
