@@ -67,11 +67,14 @@ def signed(value):
 
 
 def modifier_amount(modifier):
-    """A modifier's amount; a #1322 set rule as typed (armorClass set 13+dexterity), never null."""
+    """A modifier's amount; a #1322 set rule as typed (armorClass set 13+dexterity) and a #1434 floor
+    (armorClass at least 17), never null."""
     rule = modifier.get("set")
     if isinstance(rule, dict):
         ability = rule.get("plusAbility")
         return "set %s%s" % (val(rule.get("base")), "+" + val(ability) if ability else "")
+    if "atLeast" in modifier:
+        return "at least %s" % val(modifier.get("atLeast"))
     return signed(modifier.get("value"))
 
 
