@@ -343,12 +343,14 @@ def party_withdrawn(encounter):
 
     True when at least one party member left the fight on their feet and no
     party member can still act. The remaining hostiles are untouched: the
-    encounter completes as a withdrawal, not a victory or a defeat.
+    encounter completes as a withdrawal, not a victory or a defeat. Only the
+    committed initiative membership counts (#1354).
     """
+    members = initiative_eligible_ids(encounter)
     party = [
         creature
         for creature in encounter.get("creatures", [])
-        if is_party_member(creature)
+        if is_party_member(creature) and creature.get("combatantId") in members
     ]
     if not any(has_left_fight(creature) for creature in party):
         return False
@@ -405,12 +407,17 @@ def all_party_resolved(encounter):
     """Return whether every player/NPC combatant is physically down.
 
     A party member who left the fight on their feet (#466) is neither down
-    nor still fighting, so it is left out of the count.
+    nor still fighting, so it is left out of the count. On a typed encounter
+    only the committed initiative membership counts (#1354): an observer
+    standing beside a downed solo player is not a standing ally.
     """
+    members = initiative_eligible_ids(encounter)
     party = [
         creature
         for creature in encounter.get("creatures", [])
-        if is_party_member(creature) and not has_left_fight(creature)
+        if is_party_member(creature)
+        and creature.get("combatantId") in members
+        and not has_left_fight(creature)
     ]
     return bool(party) and all(
         normalize_status(creature.get("status")) != ACTIVE_STATUS
