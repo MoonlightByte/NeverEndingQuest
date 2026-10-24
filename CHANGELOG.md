@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Combat XP now goes only to the fight's initiative members: an NPC who only watched (an observer, not in initiative) is no longer paid. Older encounters pay everyone as before (#1339).
 - Healing potions resolve as typed combat bonus actions; Ray of Frost uses engine attack scoring and a non-stacking, timed slow (#1331).
 
 ### Added
