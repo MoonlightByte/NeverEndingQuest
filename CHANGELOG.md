@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - The session cost line now counts an AI answer that finished but was not used, for example the welcome back scene when you type before it arrives, and counts a request stopped part-way as possibly billed (#1435).
+- Headless mode now says when your action is queued for after a new game's opening scene, as the web game does (#1436).
 - The narrator and the round summary no longer see a blank or a later status for a creature whose status was not recorded: they are told "alive", "unconscious", "down", "watching, not fighting" or "left the scene" from what the fight records, and an earlier blow is described by the hit points it left (#1415).
 - A new player's first run reads better: Settings lists OpenAI (GPT-5 and newer) first as the recommended provider and shows "Loading provider..." instead of guessing Legacy; typing while the opening scene is being written no longer throws the scene away (your action runs right after it); the setup wizard's welcome line, its "Let's build your character together." line, the starting-gear notice and the reply to approving your character are now shown; and the adventure menu's wait says "Preparing your adventure choices" (#1422).
 - Two party members whose sheets carry the same effect (for example a copied or restored character) no longer stop the rules engine for the whole party: each keeps their own effect and numbers, such as their armor class (#1408).
