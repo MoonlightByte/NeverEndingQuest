@@ -4643,8 +4643,9 @@ def handle_generate_image(data):
         from datetime import datetime
         from utils.file_operations import safe_read_json, safe_write_json
         
-        # Initialize OpenAI client
-        client = OpenAI(api_key=config.OPENAI_API_KEY)
+        # Initialize the OpenAI client (#1399: base_url pinned to the OpenAI API)
+        from utils.openai_client import openai_api_client
+        client = openai_api_client()
         
         # Try to generate image
         try:
@@ -4803,8 +4804,9 @@ def generate_tts():
         else:
             selected_model = TTS_MODEL
         
-        # Initialize OpenAI client
-        client = OpenAI(api_key=config.OPENAI_API_KEY)
+        # Initialize the OpenAI client (#1399: base_url pinned to the OpenAI API)
+        from utils.openai_client import openai_api_client
+        client = openai_api_client()
         
         # Generate speech
         response = client.audio.speech.create(
