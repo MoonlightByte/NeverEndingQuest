@@ -156,6 +156,7 @@ from core.managers.combat_state import (
     ensure_combat_state,
     expected_automatic_actor_ids,
     expected_player_window_ids,
+    initiative_eligible_ids,
     is_down,
     recovery_action,
     resolve_creature_controller,
@@ -2337,6 +2338,28 @@ def _finalize_combat_exit(
     return dialogue_summary, player_info
 
 
+def _reward_paths(encounter_data, character_paths):
+    """Keep the sheets of the encounter's committed initiative members (#1339).
+
+    The intent context holds every present player and NPC, an observer
+    included; the reward goes only to the typed initiative membership, the set
+    the victory rule counts (#446). Each name resolves to its own creature rows
+    in ``creatures`` and is gated by combatantId; two rows sharing a name share
+    one sheet, which is paid once when any of them is a member. Legacy and
+    pre-typed encounters keep paying everyone (the membership is every row).
+    """
+    eligible = initiative_eligible_ids(encounter_data)
+    members = {
+        creature.get("name")
+        for creature in encounter_data.get("creatures", [])
+        if isinstance(creature, dict) and creature.get("combatantId") in eligible
+    }
+    return {
+        name: path for name, path in (character_paths or {}).items()
+        if name in members
+    }
+
+
 def _complete_agentic_combat(
     encounter_data,
     encounter_path,
@@ -2402,7 +2425,7 @@ def _complete_agentic_combat(
     xp_narrative, xp_awarded = calculate_xp()
     encounter_data = apply_combat_rewards(
         encounter_path,
-        character_paths,
+        _reward_paths(encounter_data, character_paths),
         xp_awarded,
     )
 
