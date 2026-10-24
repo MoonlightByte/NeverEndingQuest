@@ -700,6 +700,13 @@ def request_intent_batch(
     return result
 
 
+# #1423: read only when the dossier carries the hour (sceneDossier.scene).
+T097_SCENE_TIME_SENTENCE = (
+    " sceneDossier.scene.timeOfDay is the hour outside. It governs outdoor "
+    "daylight only: a place's own darkness - underground, indoors, a cave, a "
+    "moonless forest, or magical darkness - still applies whatever the hour, and "
+    "a fallen character's dimming senses are neither."
+)
 T097_SCENE_CONTRACT_SENTENCE = (
     "Use the supplied scene dossier and final authoritative facts as the complete "
     "truth for this pass; narrate only listed combatants, actions, equipment, "
@@ -827,6 +834,7 @@ def request_narration_candidate(
                 "word, his sword opening a warrior's arm, and only then speaks, low and "
                 "even: 'I'll keep the nearest blade off you, Eirik.' "
                 + T097_SCENE_CONTRACT_SENTENCE
+                + (T097_SCENE_TIME_SENTENCE if dossier.get("scene") else "")
             ),
         },
         {
@@ -967,10 +975,13 @@ def narrate_committed_events(
     """Compatibility wrapper for one T097 attempt with a truthful fallback."""
     from core.ai.combat_narration import (
         build_scene_dossier,
+        party_scene_time,
         render_committed_events,
     )
 
-    dossier = scene_dossier or build_scene_dossier(encounter, events, characters)
+    dossier = scene_dossier or build_scene_dossier(
+        encounter, events, characters, scene_time=party_scene_time()
+    )
     try:
         narration = request_narration_candidate(
             encounter,
