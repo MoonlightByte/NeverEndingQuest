@@ -68,6 +68,12 @@ def _spell_levels(path: str) -> Dict[str, int]:
 
 
 SPELL_LEVELS = _spell_levels(SPELL_REPOSITORY_PATH)
+if not SPELL_LEVELS:
+    # Fail forward: without levels the spell-key and slot-level checks are skipped,
+    # never every paid cast refused (the feat binding is still checked from the sheet).
+    from utils.enhanced_logger import warning
+    warning("SPELL_LEVELS is empty (%s unreadable): castingResource level checks skipped"
+            % SPELL_REPOSITORY_PATH, category="character_updates")
 
 
 def casting_resource_problem(choice: Any, sheet: Any) -> Optional[Tuple[str, str]]:
@@ -82,7 +88,7 @@ def casting_resource_problem(choice: Any, sheet: Any) -> Optional[Tuple[str, str
         return ("missing_spell", "castingResource needs spell, the spell's repository key "
                 "(the key feats[].grantedSpells stores)")
     level = SPELL_LEVELS.get(spell)
-    if level is None:
+    if level is None and SPELL_LEVELS:
         return ("unknown_spell", "castingResource spell %r is not a spell repository key" % spell)
     if level == 0:
         return ("cantrip_no_payment", "%s is a cantrip; a cantrip takes no castingResource" % spell)
@@ -96,7 +102,8 @@ def casting_resource_problem(choice: Any, sheet: Any) -> Optional[Tuple[str, str
                 if isinstance(grant, dict) and grant.get("spell") == spell and grant.get("resource") == name:
                     return None
         return ("feature_not_bound", "%s does not grant %s (feats[].grantedSpells)" % (name, spell))
-    if choice.get("kind") == "slot" and type(choice.get("level")) is int and choice["level"] < level:
+    if (choice.get("kind") == "slot" and level is not None
+            and type(choice.get("level")) is int and choice["level"] < level):
         return ("slot_below_spell_level", "a level %d slot cannot cast %s (level %d)"
                 % (choice["level"], spell, level))
     return None
