@@ -564,6 +564,8 @@ def repair_and_persist_character(
             rule_lines.append(f"[SYSTEM] {gap}.")
         if rule_changes:
             raw_changes = list(raw_changes) + rule_changes
+        # A receipt for a gap (#1446) writes no rule, so the armor class is left as it was.
+        if any(change.split("=", 1)[0].endswith(".modifiers") for change in rule_changes):
             projection = armor_class.project(repaired_data)
             if projection.applied:
                 repaired_data = projection.sheet
