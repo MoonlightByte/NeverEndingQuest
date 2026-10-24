@@ -83,6 +83,17 @@ def document_tick(live: Any) -> Optional[int]:
     return None
 
 
+def clock_tick(root: str = ".") -> Optional[int]:
+    """The clock now: the later of the document's tick and the tracker's (an
+    unavailable or refused engine leaves the tracker ahead), or None when
+    neither is readable."""
+    from core.nql import occupants
+    ticks = [t for t in (document_tick(occupants._load(root)),
+                         tracker_seconds(safe_json_load(_tracker_path(root))))
+             if type(t) is int]
+    return max(ticks) if ticks else None
+
+
 def project(root: str, tick: int) -> bool:
     """Write the tracker's four clock fields, and ``dayNightCycle`` from that
     time, from the document's tick when they differ. A stale cycle alone is

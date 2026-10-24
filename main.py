@@ -2121,14 +2121,26 @@ def _record_transition_departure_text(operation_id, text):
 
 
 def _transition_trip_minutes(checkpoint):
-    """The accepted trip time in minutes: the turn's first updateTime (the
-    travel-owned one, C11/D4), else the staged engine minutes; None when
-    neither is readable."""
+    """The trip time in minutes: what the clock moved for the turn's first
+    updateTime (the travel-owned one, C11/D4) from its receipt's `before` to
+    the tick recorded at its commit (#1420: the engine's trip can run past
+    the staged time), else that updateTime's minutes, else the staged engine
+    minutes; None when none is readable."""
+    from core.effects import clock as calendar
+
     deferred = checkpoint.get("deferred_actions")
     records = deferred.get("actions") if isinstance(deferred, dict) else None
     for record in records if isinstance(records, list) else []:
         if not isinstance(record, dict) or record.get("family") != "updateTime":
             continue
+        receipt = record.get("receipt") if isinstance(record.get("receipt"), dict) else {}
+        arrived = receipt.get("arrivedTick")
+        try:
+            start = calendar.scalar_from_calendar(receipt.get("before"))
+        except (calendar.GameTimeError, TypeError, KeyError, AttributeError):
+            start = None
+        if type(arrived) is int and type(start) is int and arrived > start:
+            return -(-(arrived - start) // 60)
         action = record.get("action") if isinstance(record.get("action"), dict) else {}
         try:
             minutes = int((action.get("parameters") or {}).get("timeEstimate"))
