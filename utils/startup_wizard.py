@@ -696,10 +696,9 @@ def scan_existing_characters(module_name):
 def present_character_options(conversation, characters, module_name):
     """Show existing characters and option to create new one"""
     if not characters:
-        # No existing characters
-        ai_prompt = f"""The player has chosen a module but there are no existing player characters. Let them know they'll need to create a new character for this adventure. Be encouraging and exciting about the character creation process!"""
-        
-        _present_startup_menu(conversation, ai_prompt)
+        # #1368: no model call. This note is not a menu, so the menu prompt answered
+        # "No startup menu was supplied."; the interview opener welcomes the player
+        # into creation instead.
         return "create_new"
     
     # Build character list
@@ -1077,6 +1076,12 @@ def _scoped_intent(conversations, proposal, rescoped, persist=None):
                 "task_purpose": "startup_choices_dropped", "dropped": dropped,
                 "instruction": "These picks belong to an earlier choice; the current scope does not issue them.",
             }, ensure_ascii=False)})
+    # #1368: the background package is recorded only in starting_equipment; the same pick mirrored under
+    # background.<key>.starting-equipment (the class package's shape) is redundant and is dropped.
+    mirror = "background.%s.starting-equipment" % intent.get("background_key")
+    held = (proposal.get("starting_equipment") or {}).get("background_package")
+    if held is not None and (intent.get("choices") or {}).get(mirror) == [held]:
+        intent["choices"] = {cid: picks for cid, picks in intent["choices"].items() if cid != mirror}
     # A refused intent never becomes the scope: picks are checked before any scope is appended.
     problems = creation_scope.choice_problems(intent)
     if problems:

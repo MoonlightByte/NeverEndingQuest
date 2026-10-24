@@ -49,6 +49,16 @@ def _sentence(text):
 # renders them for the moment the refusal reaches the player. Each reason and
 # fix stays on one source line.
 _ACCOUNT_REFUSALS = {
+    # #1342: the game's own bounds on a player's tokens, not account faults,
+    # but they reach the player at the same moments and end the same way.
+    "reissue_limit": {
+        "reason": "%(name)s kept failing to answer, so the game stopped retrying to save your tokens",
+        "fix": "Wait a minute, or check that provider's status",
+    },
+    "turn_call_ceiling": {
+        "reason": "That turn needed more AI calls than one turn is allowed, so the game stopped it to save your tokens",
+        "fix": "Wait a moment",
+    },
     "insufficient_quota": {
         "reason": "%(name)s refused the request: your account is out of funds or quota",
         "fix": "Add credit or raise the quota on that account",
@@ -265,6 +275,19 @@ def classify_provider_error(exc):
         return any(
             needle in code_blob or needle in text_blob for needle in needles
         )
+
+    # #1342: a live call that hit its reissue limit, or a turn that hit its
+    # generation ceiling. Checked first: the limit envelope can carry the 429
+    # it ended on, and another attempt would spend the tokens the bound saved.
+    for bound in ("turn_call_ceiling", "reissue_limit"):
+        if bound in codes:
+            return {
+                "category": bound,
+                "retryable": False,
+                "player_message": account_refusal_message(bound, provider, "turn"),
+                "retry_notice": None,
+                "provider": provider,
+            }
 
     # Out of credit arrives as a 429, exactly like a rate limit, but no number
     # of retries will pay the bill -- the error code separates them, not the
