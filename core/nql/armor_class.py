@@ -71,6 +71,23 @@ def _ac_entries(explanation: Dict[str, Any], names_by_id: Dict[str, str]) -> Lis
             "description": f"Base AC {base} from {name}",
             "source": name,
         })
+    # #1322: the engine chose a live set effect's recipe (Mage Armor). Named
+    # like worn armor: its base, with the ability its term reads.
+    chosen = recipe.get("name")
+    effect_name = (names_by_id.get(genesis.effect_instance_id({"effectId": chosen[len(genesis.AC_SET_RECIPE_PREFIX):]}))
+                   if isinstance(chosen, str) and chosen.startswith(genesis.AC_SET_RECIPE_PREFIX) else None)
+    if effect_name:
+        base = recipe.get("base")
+        abilities = [str((t.get("term") or {}).get("stat") or "").capitalize() for t in recipe.get("terms") or []
+                     if isinstance(t, dict) and t.get("active") is True]
+        entries.append({
+            "name": f"{effect_name} - Armor",
+            "type": "other",
+            "target": AC_TARGET,
+            "value": base if type(base) is int else None,
+            "description": f"Base AC {base}{''.join(' + ' + a for a in abilities)} from {effect_name}",
+            "source": effect_name,
+        })
     # NUM-H3b: an active Unarmored Defense term of the defense derive (a recipe
     # term whose typed requires names feature:unarmored-defense:<class>) is
     # named on the sheet, with the engine's exact amount and its ability.

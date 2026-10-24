@@ -1928,6 +1928,8 @@ _GEMINI_EFFECT_OBJECT_SCHEMA = {
                 "name": {"type": "string"}, "description": {"type": "string"}, "source": {"type": "string"},
                 "modifiers": {"type": "array", "items": {"type": "object", "properties": {
                     "stat": {"type": "string"}, "value": {"type": "integer"}, "die": {"type": "string"},
+                    "set": {"type": "object", "properties": {  # #1322: Mage Armor's base + ability
+                        "base": {"type": "integer"}, "plusAbility": {"type": "string", "nullable": True}}},
                     "affectsMax": {"type": "boolean"}}}},
                 "conditions": {"type": "array", "items": {"type": "string"}},
                 "incapacitates": {"type": "boolean"}, "durationKind": {"type": "string"},

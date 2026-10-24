@@ -135,6 +135,23 @@ def _die_stat(stat):
             or stat.startswith(("savingThrow.", "abilityCheck.")))
 
 
+def _normalize_set(stat, rule, value, die):
+    """The typed set rule of a modifier: {"base": 0-30, "plusAbility": ability or None}."""
+    if value is not None or die is not None:
+        raise ValueError("effect modifier needs exactly one of value, die or set")
+    if stat != "armorClass":
+        raise ValueError("effect modifier set applies only to armorClass")
+    if not isinstance(rule, dict) or set(rule) - {"base", "plusAbility"}:
+        raise ValueError('effect modifier set must be {"base": a whole number, "plusAbility": an ability or null}')
+    base = rule.get("base")
+    if type(base) is not int or not 0 <= base <= 30:
+        raise ValueError("effect modifier set base must be a whole number from 0 to 30")
+    ability = rule.get("plusAbility")
+    if ability is not None and ability not in ABILITY_NAMES:
+        raise ValueError("effect modifier set plusAbility must be an ability name or null")
+    return {"base": base, "plusAbility": ability}
+
+
 def normalize_modifier(modifier):
     if not isinstance(modifier, dict):
         raise ValueError("effect modifier must be an object")
@@ -145,6 +162,11 @@ def normalize_modifier(modifier):
         raise ValueError("current hitPoints cannot be a derived effect modifier")
     value = modifier.get("value")
     die = modifier.get("die")
+    if "set" in modifier:
+        # #1322: armor class becomes a base plus an ability modifier (Mage
+        # Armor: 13 + Dexterity). The engine derives it as a gated recipe;
+        # no number is computed here.
+        return {"stat": stat, "set": _normalize_set(stat, modifier["set"], value, die)}
     if die is not None or value is None:
         # Exactly one of value (a whole number) or die (#889).
         if value is not None or not isinstance(die, str) or not _MODIFIER_DIE.fullmatch(die):
