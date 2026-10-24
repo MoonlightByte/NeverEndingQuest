@@ -497,6 +497,21 @@ def _game_relative_character_path(path, npc_name):
     return path
 
 
+def _drop_model_recoverable(sheet):
+    """An ammunition row's count of recoverable shots is the engine's
+    (core/nql/ammunition); a new sheet starts with none, as the update path
+    drops it (stats.drop_model_totals) (#1458)."""
+    dropped = []
+    for row in sheet.get("ammunition") or []:
+        if isinstance(row, dict) and "recoverable" in row:
+            row.pop("recoverable")
+            dropped.append(str(row.get("name")))
+    if dropped:
+        info(f"NPC_CREATION: dropped model-written recoverable from {', '.join(dropped)}",
+             category="npc_creation")
+    return dropped
+
+
 def build_npc_file_with_path(
     npc_name,
     schema,
@@ -557,6 +572,7 @@ def build_npc_file_with_path(
         if existing is not None:
             transaction.remember_target(actual_target)
             return existing, actual_target
+        _drop_model_recoverable(generated)
         # Record the intended path before the atomic save. This closes the
         # post-replace/pre-marker crash window for cleaned NPC filenames.
         transaction.remember_target(actual_target)

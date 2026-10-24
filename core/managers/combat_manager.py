@@ -1997,6 +1997,31 @@ def combat_record_xp_receipt(encounter_id):
     return dict(receipt) if isinstance(receipt, dict) and receipt else None
 
 
+def _party_companions():
+    """The party tracker's partyNPCs, or None when the tracker is missing or
+    cannot be read."""
+    try:
+        party = safe_json_load("party_tracker.json")
+    except Exception:
+        return None
+    if not isinstance(party, dict):
+        return None
+    return [npc for npc in party.get("partyNPCs") or [] if isinstance(npc, dict)]
+
+
+def _is_companion(creature, companions):
+    """Whether a creature is one of the party's companions: by occupant id
+    when both carry one; the exact name only as a fallback."""
+    occupant_id = creature.get("occupantId")
+    for npc in companions:
+        if occupant_id and npc.get("occupantId"):
+            if npc["occupantId"] == occupant_id:
+                return True
+        elif npc.get("name") == creature.get("name"):
+            return True
+    return False
+
+
 def combat_record_joined_against_party(encounter_id):
     """Who joined this fight against the party, from the typed sceneFacts
     ``joinedHostile`` stamp (#1415 follow-up; ruling on #1403): name, the
@@ -2014,22 +2039,8 @@ def combat_record_joined_against_party(encounter_id):
         return None
     if not isinstance(encounter, dict):
         return None
-    try:
-        party = safe_json_load("party_tracker.json") or {}
-        companions = [npc for npc in party.get("partyNPCs") or [] if isinstance(npc, dict)]
-    except Exception:  # fail forward: the record goes without partyNPC flags
-        companions = []
-
-    def _companion(creature):
-        # By occupant id when both carry one; the exact name only as a fallback.
-        occupant_id = creature.get("occupantId")
-        for npc in companions:
-            if occupant_id and npc.get("occupantId"):
-                if npc["occupantId"] == occupant_id:
-                    return True
-            elif npc.get("name") == creature.get("name"):
-                return True
-        return False
+    # fail forward: an unreadable tracker gives the record no partyNPC flags
+    companions = _party_companions() or []
 
     joined = []
     for row in (encounter.get("sceneFacts") or {}).get("participants") or []:
@@ -2044,7 +2055,7 @@ def combat_record_joined_against_party(encounter_id):
         entry = {"name": creature.get("name"), "outcome": outcome}
         if creature.get("occupantId"):
             entry["occupantId"] = creature["occupantId"]
-        if _companion(creature):
+        if _is_companion(creature, companions):
             entry["partyNPC"] = True
         if stamp.get("by"):
             entry["by"] = combatant_presentation_name(encounter, stamp["by"])
@@ -2450,6 +2461,25 @@ def _reward_paths(encounter_data, character_paths):
     }
 
 
+def _xp_paths(encounter_data, character_paths):
+    """The reward members (#1339) who are on the party roster: the player and
+    the party's companions (#1458; ruling on #1403). A party-side NPC who is
+    not a companion fights beside the party for this fight and earns no XP;
+    ammunition recovery keeps every member. An unreadable tracker keeps the
+    members, so completion never fails on it."""
+    paths = _reward_paths(encounter_data, character_paths)
+    companions = _party_companions()
+    if companions is None:
+        return paths
+    roster = {
+        creature.get("name")
+        for creature in encounter_data.get("creatures", [])
+        if isinstance(creature, dict)
+        and (creature.get("type") == "player" or _is_companion(creature, companions))
+    }
+    return {name: path for name, path in paths.items() if name in roster}
+
+
 def _complete_agentic_combat(
     encounter_data,
     encounter_path,
@@ -2520,7 +2550,7 @@ def _complete_agentic_combat(
     xp_narrative, xp_awarded = calculate_xp()
     encounter_data = apply_combat_rewards(
         encounter_path,
-        _reward_paths(encounter_data, character_paths),
+        _xp_paths(encounter_data, character_paths),
         xp_awarded,
     )
 
@@ -3560,6 +3590,9 @@ def _is_valid_combat_round_summary(summary, expected_round):
         return False
     if not _is_string_list(round_end_state["dead"]):
         return False
+    # #1458: optional, so a summary in the old shape still passes.
+    if "unconscious" in round_end_state and not _is_string_list(round_end_state["unconscious"]):
+        return False
 
     if not all(
         _is_nonempty_string(character) and _is_string_list(conditions)
@@ -3600,19 +3633,21 @@ Create a JSON summary with EXACTLY this structure:
   "actions": [
     {{"actor": "name", "init": number or null, "action": "action_type", "target": "target_name", "roll": "dice+mod=total vs AC/DC", "result": "hit/miss/save/fail", "damage": "X type" or "heal": "X", "effects": "HP changes, conditions, etc"}}
   ],
-  "deaths": ["ALL creatures with HP 0 or listed as dead in the creature states -- include every dead creature regardless of when they died"],
+  "deaths": ["ALL creatures listed as dead in the creature states -- include every dead creature regardless of when they died"],
   "status_changes": ["new conditions or effects applied this round"],
   "resource_usage": {{"character": "resources used (spell slots, abilities, etc)"}},
   "narrative_highlights": ["evocative highlights capturing key dramatic moments, critical hits, deaths, powerful spells, or memorable character actions"],
   "round_end_state": {{
     "alive": ["Name (current/max HP)"],
     "dead": ["Name"],
+    "unconscious": ["Name"],
     "conditions": {{"Name": ["conditions"]}}
   }}
 }}
 
 CRITICAL RULES:
-- The "deaths" array MUST include every creature shown as dead or at 0 HP in the creature states, even if they died in a prior round. This is a complete death list for state tracking.
+- The "deaths" array MUST include every creature shown as dead in the creature states, even if they died in a prior round. This is a complete death list for state tracking.
+- "deaths" and "dead" list only creatures whose status is dead. A creature at 0 HP that is not dead (unconscious, stable, down) goes in "unconscious", never in "deaths" or "dead".
 - Focus on mechanical accuracy for the actions -- exact roll values, damage numbers, and HP totals.
 - Every action carries "damage" or "heal"; a miss, a failed attempt or a non-damaging action carries "damage": "0".
 - "init" is the initiative shown in the log or the facts; null when none is shown.
