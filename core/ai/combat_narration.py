@@ -217,7 +217,8 @@ def _fact_event(event, creatures, presentation=None):
             "tempHpBefore": target.get("tempHpBefore"),
             "tempHpAfter": target.get("tempHpAfter"),
             "statusAfter": display_status(
-                creatures.get(target.get("combatantId")) or {}, target.get("statusAfter")
+                creatures.get(target.get("combatantId")) or {}, target.get("statusAfter"),
+                hp=after,
             ),
             # CC: the engine's concentration save lines and what ended on a failure
             "engineChecks": target.get("engineChecks"),
@@ -365,6 +366,7 @@ def build_scene_dossier(encounter, events, characters=None, scene_time=None):
                     sheet.get("status", creature.get("status"))
                     if sheet_is_state_authority
                     else creature.get("status"),
+                    encounter=encounter,
                 ),
                 "condition": (
                     sheet.get("condition", creature.get("condition"))
@@ -385,7 +387,7 @@ def build_scene_dossier(encounter, events, characters=None, scene_time=None):
                     creatures, actor_id, presentation=presentation
                 ),
                 "initiative": creature.get("initiative"),
-                "status": display_status(creature),
+                "status": display_status(creature, encounter=encounter),
                 "actedThisRound": actor_id in (state.get("actedThisRound") or []),
             }
         )
