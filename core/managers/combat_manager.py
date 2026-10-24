@@ -1199,6 +1199,15 @@ def get_initiative_order(encounter_data):
     if not creatures:
         return "No creatures in encounter"
     
+    # A typed encounter's line is its committed initiativeOrder, the order the
+    # combat validation compares against: an observer outside the initiative
+    # membership is not listed (#1354 item C). Legacy encounters keep the
+    # sorted roster below.
+    committed = (encounter_data.get("combatState") or {}).get("initiativeOrder")
+    typed_order = combat_provenance(encounter_data) == "typed" and isinstance(committed, list) and committed
+    if typed_order:
+        creatures = [c for c in (combatant_by_id(encounter_data, cid) for cid in committed) if isinstance(c, dict)]
+
     # Filter out dead creatures - they should not be in the initiative order
     active_creatures = [c for c in creatures if c.get("status", "unknown").lower() != "dead"]
     
@@ -1206,7 +1215,10 @@ def get_initiative_order(encounter_data):
         return "All creatures are dead"
     
     # Sort by initiative (descending), then alphabetically for ties
-    sorted_creatures = sorted(active_creatures, key=lambda x: (-x.get("initiative", 0), x.get("name", "")))
+    if typed_order:
+        sorted_creatures = active_creatures
+    else:
+        sorted_creatures = sorted(active_creatures, key=lambda x: (-x.get("initiative", 0), x.get("name", "")))
     
     order_parts = []
     for creature in sorted_creatures:
