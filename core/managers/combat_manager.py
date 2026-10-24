@@ -3137,7 +3137,8 @@ def _round_facts_text(encounter, round_num):
                     display_status(
                         roster.get(str(target.get("combatantId"))) or {},
                         target.get("statusAfter"),
-                    ) or "unknown",
+                        hp=target.get("hpAfter"),
+                    ),
                 )
             )
         rolls = []
@@ -3193,7 +3194,7 @@ def _round_facts_text(encounter, round_num):
             "- %s: HP %s/%s, %s%s" % (
                 _name(creature.get("combatantId")),
                 creature.get("currentHitPoints"), creature.get("maxHitPoints"),
-                display_status(creature) or "unknown",
+                display_status(creature, encounter=encounter),
                 (", conditions " + ", ".join(conditions)) if conditions else "",
             )
         )

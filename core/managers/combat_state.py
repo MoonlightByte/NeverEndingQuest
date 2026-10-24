@@ -222,20 +222,57 @@ def has_left_fight(creature):
 LEFT_FIGHT_DISPLAY = "left the fight"
 
 
-def display_status(creature, status=None):
-    """The status a model is shown for ``creature`` (#1404).
+_UNSET = object()
+PARTICIPATION_DISPLAY = {
+    "observer": "watching, not fighting",
+    "departed": "left the scene",
+    "hidden": "not in the fight",
+    "unaware": "not in the fight",
+}
+
+
+def _hp_display(creature, hp):
+    if isinstance(hp, bool) or not isinstance(hp, (int, float)):
+        return "unknown"
+    if hp > 0:
+        return ACTIVE_STATUS
+    return "unconscious" if is_party_member(creature) else "down"
+
+
+def display_status(creature, status=_UNSET, *, hp=_UNSET, encounter=None):
+    """The status a model is shown for ``creature`` (#1404), never empty.
 
     A party member who left the fight on their feet (flee or yield) is
     stored ``defeated``, the marker has_left_fight reads; shown verbatim, a
     model reads it as a defeat. Such a member is shown "left the fight".
     ``status`` is the value the caller chose (a sheet's status, an event's
     statusAfter); it is replaced only when it is that same ``defeated``
-    marker. The stored status never changes.
+    marker. Omitted, the creature's stored status is read. The stored status
+    never changes.
+
+    A missing value (None, empty, not a string) is shown from typed fields.
+    An event caller passes ``hp`` (the target's hpAfter): only that HP is
+    read, never the creature's current state, so an earlier event does not
+    borrow a later status. Otherwise: left the fight, then the creature's
+    sceneFacts participation in ``encounter``, then its current HP. A party
+    member at 0 HP is unconscious (D-242-1), anyone else down.
     """
-    value = creature.get("status") if status is None and isinstance(creature, dict) else status
-    if normalize_status(value) == "defeated" and has_left_fight(creature):
+    value = creature.get("status") if status is _UNSET and isinstance(creature, dict) else status
+    if isinstance(value, str) and value.strip():
+        if normalize_status(value) == "defeated" and has_left_fight(creature):
+            return LEFT_FIGHT_DISPLAY
+        return value
+    if hp is not _UNSET:
+        return _hp_display(creature, hp)
+    if has_left_fight(creature):
         return LEFT_FIGHT_DISPLAY
-    return value
+    combatant_id = creature.get("combatantId") if isinstance(creature, dict) else None
+    for row in (((encounter or {}).get("sceneFacts") or {}).get("participants") or []):
+        if isinstance(row, dict) and combatant_id and row.get("combatantId") == combatant_id:
+            if row.get("participation") in PARTICIPATION_DISPLAY:
+                return PARTICIPATION_DISPLAY[row["participation"]]
+            break
+    return _hp_display(creature, (creature or {}).get("currentHitPoints") if isinstance(creature, dict) else None)
 
 
 def is_down(creature):
