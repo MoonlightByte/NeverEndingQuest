@@ -1617,6 +1617,9 @@ def _agentic_combat_context(encounter_data, path_manager, monster_templates):
                 character_paths[name] = path
                 context_sheets[name] = sheet
         elif creature.get("type") == "npc":
+            if creature.get("statsPending") is True:
+                # #1447: no sheet yet; the first intent that targets it builds one.
+                continue
             sheet, filename = load_npc_with_fuzzy_match(name, path_manager, encounter_data, creature)
             if isinstance(sheet, dict) and filename:
                 character_paths[name] = path_manager.get_character_path(filename)
@@ -2790,6 +2793,9 @@ def sync_active_encounter():
                 except Exception as e:
                     error(f"FAILURE: Failed to sync player data to encounter", exception=e, category="encounter_setup")
                     
+            elif creature["type"] == "npc" and creature.get("statsPending") is True:
+                # #1447: no sheet yet, so nothing to sync.
+                continue
             elif creature["type"] == "npc":
                 try:
                     # The NPC's own sheet: its recorded sourceRef, else its exact name
