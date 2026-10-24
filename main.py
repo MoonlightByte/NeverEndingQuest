@@ -2216,6 +2216,30 @@ def _transition_arrival_time(party):
     return {"clock": time_str[:5], "timeOfDay": get_time_context(time_str)}
 
 
+def _transition_trip_arrival_time(checkpoint):
+    """#1420: the clock and time of day at the trip's committed arrival (the
+    travel updateTime's `arrivedTick`, recorded when the engine trip
+    commits), or None when no arrival is recorded."""
+    from core.effects import clock as calendar
+    from utils.time_context import get_time_context
+
+    deferred = checkpoint.get("deferred_actions")
+    records = deferred.get("actions") if isinstance(deferred, dict) else None
+    for record in records if isinstance(records, list) else []:
+        if not isinstance(record, dict) or record.get("family") != "updateTime":
+            continue
+        receipt = record.get("receipt") if isinstance(record.get("receipt"), dict) else {}
+        arrived = receipt.get("arrivedTick")
+        if type(arrived) is not int:
+            return None
+        try:
+            time_str = str(calendar.calendar_from_scalar(arrived)["time"])
+        except calendar.GameTimeError:
+            return None
+        return {"clock": time_str[:5], "timeOfDay": get_time_context(time_str)}
+    return None
+
+
 def _transition_companions(party):
     """The party NPCs travelling with the player ([]: the player is alone)."""
     return [
@@ -2258,7 +2282,7 @@ def _transition_departure_prompt(checkpoint, party, dm_text=""):
     visit = _transition_previous_visit(checkpoint, party)
     if visit:
         facts["previousVisit"] = visit
-    arrival_time = _transition_arrival_time(party)
+    arrival_time = _transition_trip_arrival_time(checkpoint) or _transition_arrival_time(party)
     if arrival_time:
         facts["arrivalTime"] = arrival_time
     facts["companions"] = _transition_companions(party)
@@ -2502,6 +2526,7 @@ def _resume_cross_module_root(operation_id, *, publish=True, publication=None):
     # two modules; a trip already on record is skipped by its request id.
     from core.nql import travel
     travel.realign(checkpoint)
+    action_handler.commit_current_transition_arrival(operation_id)
 
     targeted, completion = retry_staged_module_completions(
         pending,
@@ -2627,6 +2652,8 @@ def _resume_v2_location_transition(operation_id, *, publish=True, publication=No
     # record is skipped by its request id.
     from core.nql import travel
     travel.realign(checkpoint)
+    action_handler.commit_current_transition_arrival(operation_id)
+    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
     context = {
         "origin_history_segment": checkpoint["origin_segment_before"],
         "origin_party_tracker": party,
