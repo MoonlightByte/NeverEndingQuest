@@ -2164,7 +2164,8 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
         hit, critical, kept, total, ac = player_weapon_attack_score(encounter, characters, record, entry)
         record.update({"hit": hit, "critical": critical, "attackKept": kept,
                        "attackTotal": total, "targetAC": ac})
-        if hit:
+        # #1350: a flat row has no damage die; its hit is ready for the engine.
+        if hit and not is_flat_attack(entry):
             record["phase"] = "damage"
             if not isinstance(record.get("spell"), dict):
                 record["greatWeapon"] = player_great_weapon(encounter, characters, record, entry)
