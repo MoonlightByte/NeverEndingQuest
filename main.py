@@ -2945,7 +2945,8 @@ def parse_json_safely(text):
 # T065's typed category: which of the validator's rules it applied. Counted
 # in diagnostics only; no code branches on it and it never reaches the DM.
 VALIDATION_CATEGORIES = ("none", "reference", "missing_action", "unrequested_action", "action_order",
-                         "travel", "combat", "resources", "inventory", "party", "module", "other")
+                         "travel", "combat", "resources", "inventory", "party", "module", "other",
+                         "ungrounded_destination")
 
 # D-COST-4 (#193): T065 attempts (provider errors and unparseable verdicts
 # together) one review of one draft may spend before the turn fails forward.
@@ -4600,6 +4601,9 @@ def validate_ai_response(
                 except Exception as log_error:
                     warning(f"VALIDATION: rejection log skipped: {log_error}", category="ai_validation")
 
+                if verdict_category == "ungrounded_destination":
+                    # #1357: the typed verdict the review loop reconciles.
+                    return (False, reason, verdict_category)
                 return (False, reason)  # Return tuple with failure status and reason
             else:
                 debug("SUCCESS: Validation passed successfully", category="ai_validation")
@@ -10495,6 +10499,37 @@ def _acquire_catalog_refusal(actions, party, wait):
     return None
 
 
+# #1357: at most this many places are offered in a destination clarification.
+_CLARIFY_PLACE_LIMIT = 4
+
+
+def _clarify_destination_candidate(party_tracker_data, module_snapshot):
+    """#1357: the turn for an ungrounded destination: one question naming the
+    current place and its neighbours the engine's live map marks visited
+    (never a place the party has not reached), with no actions."""
+    world = (party_tracker_data or {}).get("worldConditions") or {}
+    here = world.get("currentLocationId")
+    module = str((party_tracker_data or {}).get("module") or "").replace(" ", "_")
+    names = []
+    try:
+        from core.nql import occupants
+        live = occupants._load(".") or {}
+        visited = set((live.get("map") or {}).get("visited") or [])
+        nodes = (module_snapshot or {}).get("nodes") or {}
+        edges = (module_snapshot or {}).get("edges") or {}
+        for place in [here] + list(edges.get(here) or []):
+            node = nodes.get(place)
+            if node and "loc:%s/%s" % (module, place) in visited and node["location_name"] not in names:
+                names.append(node["location_name"])
+    except Exception as exc:
+        warning(f"VALIDATION: clarification places unavailable: {exc}", category="ai_validation")
+        names = []
+    question = "Where exactly do you want to go?"
+    if names:
+        question += " Places you know nearby: %s." % ", ".join(names[:_CLARIFY_PLACE_LIMIT])
+    return json.dumps({"narration": question, "actions": []})
+
+
 def _review_dm_candidate(
     initial_candidate, *, accepted_history, player_input, party,
     validation_prompt, npc_voice_batch, invocation_claim,
@@ -11224,7 +11259,20 @@ def _review_dm_candidate(
                     "player_message": _dm_fail_forward_line(),
                 }
             if isinstance(validation_result, tuple):
-                is_valid, validated_content = validation_result
+                is_valid, validated_content = validation_result[:2]
+                if not is_valid and validation_result[2:] == ("ungrounded_destination",):
+                    # #1357: the requested place matches no location record;
+                    # a redraft does not converge, so code asks one question
+                    # naming only places the party has reached, and nothing
+                    # commits.
+                    require_current()
+                    return {
+                        "status": "accepted",
+                        "candidate": _clarify_destination_candidate(
+                            party_tracker_data, module_snapshot),
+                        "approved_transition_plan": None,
+                        "review_feedback": copy.deepcopy(review_feedback),
+                    }
                 validation_reason = "" if is_valid else validated_content
                 if is_valid:
                     if validated_content != ai_response_content:
