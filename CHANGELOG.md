@@ -7,14 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026.10.24.1] - 2026-10-24
+
+Combat, travel and character creation fixes from the October playtests, and a hard limit on model calls per turn.
+
+### Fixed
+- Loading a save no longer replays an attack you had declared before saving into a new fight (#1334).
+- Character creation no longer offers a language and then refuses it, or asks again about a language you already chose (#1325).
+- Character creation skips an unneeded model call when you have no saved characters, and your background's skills, tool and gear are kept as the background lists them (#1368).
+- A potion drunk in a fight and a finished rest are now narrated as done, not as something about to happen (#1336, #1338).
+- Travel time is now set by the game from the route, so the DM no longer redrafts a journey over the minutes (#1348).
+- When a journey stops early at a place held by enemies, the narration no longer names or hints at who is waiting there; the encounter reveals them (#1351).
+- The DM's map no longer marks monsters, traps or treasure at places, so narration cannot foreshadow what has not been found (#1359).
+- Asking to go to a place the adventure does not have now gets one question naming places you have been, instead of a stalled turn (#1357).
+- Loading a save where a solo character has fallen now goes straight to the defeat pause, with no narration of companions who are not there (#1335).
+- A spell is checked against the slot or resource it uses before it is cast, so a cast can no longer be half applied (#1329).
+- A failing AI provider is now retried a limited number of times and then reported in plain words; no turn can make more than 24 model calls (#1342).
 - A combat round summary is no longer rejected (and re-asked next round) when a no-roll action such as defend leaves its roll empty (#1378).
-- A combat-start scene that names an NPC (or monster) key its own list does not reach now gets feedback naming that gap, so a watching NPC is added to npcs instead of being dropped from the fight (#1377).
-- A flat-damage swing (such as an Unarmed Strike) is taken over by the engine like any player attack: the player rolls only the d20, and the engine applies the flat damage, with no damage window and no model re-rule (#1350).
-- The combat-start initiative line for a typed encounter is its committed initiative order, so an observer NPC is no longer listed and combat validation no longer redrafts the opening over it (#1361).
-- A solo player who drops while an NPC only watches now gets the party-defeat pause, and fleeing alone ends the fight as a withdrawal: only the fight's initiative members count as standing allies (#1354).
-- A flat-damage attack (such as an Unarmed Strike) no longer asks the player for a damage roll: the request goes back to the model, and the engine scores the flat damage (#1337).
-- Combat XP now goes only to the fight's initiative members: an NPC who only watched (an observer, not in initiative) is no longer paid. Older encounters pay everyone as before (#1339).
-- Healing potions resolve as typed combat bonus actions; Ray of Frost uses engine attack scoring and a non-stacking, timed slow (#1331).
+- A watching NPC is no longer dropped from a fight when the fight's opening is redrafted (#1377).
+- An Unarmed Strike or other flat-damage attack now asks only for your d20 roll; the game applies the damage, with no damage roll (#1337, #1350).
+- A fight with a watching NPC starts faster: the NPC is no longer listed in the turn order or rejected by the scene check (#1361).
+- Playing alone beside a watching NPC, dropping to 0 HP now shows the party-defeat pause, and fleeing ends the fight as a withdrawal; only the people in the fight count as allies (#1354).
+- Combat XP now goes only to the people who fought; an NPC who only watched is no longer paid. Fights saved before this update pay as before (#1339).
+- Drinking a healing potion in a fight is now a bonus action the game resolves, and Ray of Frost is scored by the game, with a slow that lasts its set time and does not stack (#1331).
 
 ### Added
 - Level-up now grants the species spells and traits that arrive above level 1: the Elven Lineage and Fiendish Legacy spells at levels 3 and 5 (always prepared, once per Long Rest without a slot, with the lineage's spellcasting ability), and Draconic Flight and Large Form at level 5. They are read from the typed picks in the character's creation record; a character without one gets a note instead of a guess (#1292).
