@@ -110,6 +110,12 @@ function refreshAuthoritativeState(): void {
   // stale even before the tab has mounted, and a redundant response is cheap
   // (store write, no render for an unmounted tab).
   emitC('request_map_data', undefined)
+  if (import.meta.env.VITE_EDITION !== 'hosted') {
+    // #1399 G2: New game and Load need the provider and key status before
+    // Settings is ever opened.
+    emitC('get_model_provider', undefined)
+    emitC('get_openai_key', undefined)
+  }
 }
 
 // ---------- transport-level ----------
@@ -283,6 +289,7 @@ on('module_creation_progress', (p) => useDialogs.getState().moduleProgress(p))
 on('provider_changed', (p) => useDialogs.getState().setProvider(p))
 on('local_endpoint_changed', (p) => useDialogs.getState().setLocalEndpoint(p))
 on('openai_key_status', (p) => useDialogs.getState().setOpenaiKeyStatus(p))
+on('openai_key_check', (p) => useDialogs.getState().setOpenaiKeyCheck(p))
 on('gemini_key_status', (p) => useDialogs.getState().setGeminiKeyStatus(p))
 on('local_endpoint_test_result', (p) => useDialogs.getState().setEndpointTestResult(p))
 

@@ -4494,51 +4494,76 @@ def handle_set_local_endpoint(data):
 
 @socketio.on('get_openai_key')
 def handle_get_openai_key():
-    """Report ONLY whether an OpenAI key is configured. Never sends the secret."""
+    """Report ONLY whether an OpenAI key is configured. Never sends the secret.
+    ``keychain`` is False when a saved key lives in user_settings.json (#1399 G3)."""
     try:
-        import model_config, config as _cfg
-        stored = model_config.has_openai_key()
-        live = bool(getattr(_cfg, "OPENAI_API_KEY", "")) and \
-            getattr(_cfg, "OPENAI_API_KEY", "") != "your_openai_api_key_here"
-        emit('openai_key_status', {'has_key': bool(stored or live)})
+        emit('openai_key_status', _openai_key_status())
     except Exception as e:
         error(f"Error getting openai key status: {e}", exception=e, category="web_interface")
-        emit('openai_key_status', {'has_key': False})
+        emit('openai_key_status', {'has_key': False, 'keychain': True})
+
+
+def _openai_key_status():
+    """{'has_key', 'keychain'}: booleans only, never the key."""
+    import model_config, config as _cfg
+    from utils.secret_store import durable_store_available
+    live = bool(getattr(_cfg, "OPENAI_API_KEY", "")) and \
+        getattr(_cfg, "OPENAI_API_KEY", "") != "your_openai_api_key_here"
+    return {'has_key': bool(model_config.has_openai_key() or live),
+            'keychain': durable_store_available()}
 
 
 @socketio.on('set_openai_key')
 def handle_set_openai_key(data):
-    """Set the OpenAI key from the UI: update config live AND persist. No echo.
+    """Set the OpenAI key from the UI: check it once, update config live AND
+    persist. No echo.
+
+    #1399 G1: a non-blank key is first checked with one free models.list
+    (utils/openai_key_check). Only a key OpenAI rejects (401) is not saved;
+    every other result saves it, so a rate limit, an empty account or an
+    unreachable OpenAI never makes the player type the key again. The result
+    reaches the browser as a typed slug in 'openai_key_check'; the key, the
+    raw exception and the response body are never logged or sent.
 
     Scope of the live update: writing config.OPENAI_API_KEY reaches every reader
     that reads it at call time (utils/openai_client.get_openai_client and the
     per-request toolkit generators). A few long-lived managers cache an OpenAI
     client in __init__ (e.g. campaign_manager, storage_processor); those keep the
     previous key until the next restart -- a pre-existing pattern, not specific to
-    this feature. The PERSISTED key is applied at startup for ALL readers (see the
-    boot-time apply_persisted_openai_key above), so a player who sets the key in
-    Settings before starting a game -- the intended flow -- is fully covered.
+    this feature, which is why a running game is told to restart. The PERSISTED
+    key is applied at startup for ALL readers (see the boot-time
+    apply_persisted_openai_key above).
     """
     try:
         import model_config, config as _cfg
+        from utils.openai_key_check import REJECTED, check_openai_key
         api_key = ((data or {}).get('api_key') or '').strip()
         if not api_key:
             # Blank submit: do NOT wipe an existing key (prevents accidental erase
-            # from a double-click after the field auto-clears). Report status only.
-            live = bool(getattr(_cfg, "OPENAI_API_KEY", "")) and \
-                getattr(_cfg, "OPENAI_API_KEY", "") != "your_openai_api_key_here"
-            emit('openai_key_status', {'has_key': model_config.has_openai_key() or live})
+            # from a double-click after the field auto-clears). No check is made.
+            status = _openai_key_status()
+            emit('openai_key_status', status)
+            emit('openai_key_check', {'result': 'no_new_key', 'has_key': status['has_key']})
             return
-        _cfg.OPENAI_API_KEY = api_key            # live: all config.OPENAI_API_KEY readers
-        model_config.persist_openai_key(api_key) # survive restart
-        from utils.startup_provider_recovery import notify_configuration_saved
-        notify_configuration_saved('legacy')
-        notify_configuration_saved('openai')
-        debug("OpenAI API key updated via web UI", category="web_interface")
-        emit('openai_key_status', {'has_key': model_config.has_openai_key()}, broadcast=True)
-    except Exception as e:
-        error(f"Error setting openai key: {e}", exception=e, category="web_interface")
-        emit('error', {'message': "Failed to set OpenAI API key"})  # generic: no key leak
+        emit('openai_key_check', {'result': 'checking'})
+        check = check_openai_key(api_key)
+        if check['result'] != REJECTED:
+            _cfg.OPENAI_API_KEY = api_key            # live: all config.OPENAI_API_KEY readers
+            model_config.persist_openai_key(api_key) # survive restart
+            from utils.startup_provider_recovery import notify_configuration_saved
+            notify_configuration_saved('legacy')
+            notify_configuration_saved('openai')
+            debug("OpenAI API key updated via web UI", category="web_interface")
+        emit('openai_key_check', {
+            'result': check['result'],
+            'wait_seconds': check['wait_seconds'],
+            'restart_needed': check['result'] != REJECTED and bool(game_thread and game_thread.is_alive()),
+        })
+        emit('openai_key_status', _openai_key_status(), broadcast=True)
+    except Exception:
+        # Generic, and no exception text: it could carry key material (#1399).
+        error("Error setting openai key", category="web_interface")
+        emit('error', {'message': "Failed to set OpenAI API key"})
 
 @socketio.on('get_gemini_key')
 def handle_get_gemini_key():
