@@ -2238,6 +2238,7 @@ def _deliver_committed_turn(
     from core.combat.invocation import InvocationSupersededError
     from core.ai.combat_narration import (
         build_scene_dossier,
+        party_scene_time,
         progressive_narration_feedback,
     )
 
@@ -2251,7 +2252,9 @@ def _deliver_committed_turn(
     narration = delivery.get("narration")
     used_fallback = delivery.get("narrationFallback")
     if not isinstance(narration, str) or not narration.strip():
-        dossier = build_scene_dossier(encounter, events, characters)
+        dossier = build_scene_dossier(
+            encounter, events, characters, scene_time=party_scene_time()
+        )
         voice_envelope = normalize_npc_voice_intents(
             delivery.get("npcVoiceIntents")
         )
