@@ -163,6 +163,13 @@ def _reconcile_with_engine(result, removed_owned):
             % (result.get("name"), handled),
             category="effects_tracking",
         )
+    left = nql_effects.set_effects_left(removed_owned)
+    if left:
+        warning(
+            "[Effects Engine] %s: armor class from a set effect stays until the engine re-derives it: %s"
+            % (result.get("name"), left),
+            category="effects_tracking",
+        )
     for effect in removed_owned:
         effect.pop(genesis.EFFECT_ENGINE_OWNED, None)
     return result

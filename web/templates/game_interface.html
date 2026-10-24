@@ -4466,17 +4466,18 @@
                         <div class="settings-item settings-item-provider">
                             <div class="settings-provider-row">
                                 <label for="model-provider-select">Provider</label>
-                                <select class="settings-select" id="model-provider-select"
+                                <select class="settings-select" id="model-provider-select" disabled
                                         title="Each AI task uses a model selected specifically for that task type based on quality testing">
-                                    <option value="legacy">Legacy (GPT-4.1) - Stable baseline</option>
-                                    <option value="openai">OpenAI (GPT-5.x) - Next-gen, tested per task</option>
+                                    <option value="" id="provider-loading-option" disabled selected>Loading provider...</option>
+                                    <option value="openai">OpenAI (GPT-5 and newer) - Recommended, tested per task</option>
+                                    <option value="legacy">Legacy (GPT-4.1) - Older baseline</option>
                                     <option value="gemini">Gemini 3.1 - Alternative provider, tested per task</option>
                                     <option value="lmstudio">Local / Custom Server (LM Studio, Ollama, OpenRouter...)</option>
                                 </select>
                             </div>
                             <div class="settings-help settings-provider-help" id="provider-help-text">
                                 Models are selected per-task based on quality testing.
-                                Legacy is recommended for stability.
+                                OpenAI (GPT-5 and newer) is recommended.
                             </div>
                         </div>
                     </div>
@@ -6025,7 +6026,10 @@
             const input = document.getElementById('user-input');
             if (!input || input.disabled) return; // never fight a real turn's lock
             if (data && data.message) {
-                input.placeholder = data.message + " (you can act anytime)";
+                // #1422 F4: during a new game's opening scene, typing waits for it.
+                input.placeholder = data.message + (data.kind === 'opening_scene'
+                    ? " (anything you type now happens right after it)"
+                    : " (you can act anytime)");
             } else {
                 input.placeholder = "Enter your command...";
             }
@@ -7394,8 +7398,8 @@
             const providerSelect = document.getElementById('model-provider-select');
 
             const PROVIDER_HINTS = {
-                legacy:   'Legacy (GPT-4.1): stable baseline, recommended. Uses your OpenAI API key.',
-                openai:   'OpenAI (GPT-5.x): next-gen cloud, tested per task. Uses your OpenAI API key.',
+                openai:   'OpenAI (GPT-5 and newer): recommended. Each task uses the model tested best for it. Uses your OpenAI API key.',
+                legacy:   'Legacy (GPT-4.1): the older single-model baseline. Uses your OpenAI API key.',
                 gemini:   'Gemini 3.1: alternative cloud provider, tested per task. Requires a Google API key.',
                 lmstudio: 'Local / Custom Server: point at any OpenAI-compatible server below. Zero cost when local.'
             };
@@ -7527,6 +7531,9 @@
                 console.log('Provider change confirmed:', data);
                 legacyKey.provider = data.provider;
                 renderLegacyKeyPanel();
+                // #1422 F3: the page shows "Loading provider..." until the server says.
+                const loadingOption = document.getElementById('provider-loading-option');
+                if (loadingOption) loadingOption.remove();
                 providerSelect.value = data.provider;
                 updateProviderHint(data.provider);
                 toggleLocalFields(data.provider);

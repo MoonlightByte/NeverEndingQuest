@@ -12,19 +12,21 @@ import type { ClientEvents } from '../../contract/events'
 type ProviderValue = ClientEvents['set_model_provider']['provider']
 
 const PROVIDER_OPTIONS: Array<{ value: ProviderValue; label: string }> = [
-  { value: 'legacy', label: 'Legacy (GPT-4.1) - Stable baseline' },
-  { value: 'openai', label: 'OpenAI (GPT-5.x) - Next-gen, tested per task' },
+  { value: 'openai', label: 'OpenAI (GPT-5 and newer) - Recommended, tested per task' },
+  { value: 'legacy', label: 'Legacy (GPT-4.1) - Older baseline' },
   { value: 'gemini', label: 'Gemini 3.1 - Alternative provider, tested per task' },
   { value: 'lmstudio', label: 'Local / Custom Server (LM Studio, Ollama, OpenRouter...)' },
 ]
 
 const PROVIDER_HINTS: Record<ProviderValue, string> = {
-  legacy: 'Legacy (GPT-4.1): stable baseline, recommended. Uses your OpenAI API key.',
-  openai: 'OpenAI (GPT-5.x): next-gen cloud, tested per task. Uses your OpenAI API key.',
+  openai: 'OpenAI (GPT-5 and newer): recommended. Each task uses the model tested best for it. Uses your OpenAI API key.',
+  legacy: 'Legacy (GPT-4.1): the older single-model baseline. Uses your OpenAI API key.',
   gemini: 'Gemini 3.1: alternative cloud provider, tested per task. Requires a Google API key.',
   lmstudio:
     'Local / Custom Server: point at any OpenAI-compatible server below. Zero cost when local.',
 }
+
+const PROVIDER_LOADING = 'Loading provider...'
 
 const inputClass = 'neq-settings-select-parity'
 const smallButtonClass = 'neq-settings-button-small-parity'
@@ -67,8 +69,9 @@ function LocalProviderPanelBody() {
     return () => window.clearTimeout(timer)
   }, [pendingProvider])
 
-  const storedProvider = settings.provider ?? 'legacy'
-  const provider: string = pendingProvider ?? storedProvider
+  // #1422 F3: until the server reports the provider, show that it is loading;
+  // never a guessed provider.
+  const provider: string | null = pendingProvider ?? settings.provider
 
   const changeProvider = (value: string) => {
     if (!isProviderValue(value)) return
@@ -163,19 +166,23 @@ function LocalProviderPanelBody() {
             <select
               id="model-provider-select"
               className={inputClass}
-              value={provider}
-              disabled={pendingProvider !== null}
+              value={provider ?? ''}
+              disabled={provider === null || pendingProvider !== null}
               onChange={(e) => changeProvider(e.target.value)}
             >
-              {PROVIDER_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
+              {provider === null
+                ? <option value="">{PROVIDER_LOADING}</option>
+                : PROVIDER_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
             </select>
           </div>
         <p className="neq-settings-help-parity neq-settings-provider-help-parity">
-          {isProviderValue(provider)
-            ? PROVIDER_HINTS[provider]
-            : 'Models are selected per-task based on quality testing.'}
+          {provider === null
+            ? ''
+            : isProviderValue(provider)
+              ? PROVIDER_HINTS[provider]
+              : 'Models are selected per-task based on quality testing.'}
         </p>
         </div>
       </div>
