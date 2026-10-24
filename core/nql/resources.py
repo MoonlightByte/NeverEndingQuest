@@ -52,8 +52,69 @@ class ResourceOutcome:
     treated: Optional[Dict[str, Any]] = None  # K1: DamageApplied.resource for a kinded hp damage (requested, treated)
 
 
-def casting_resource_delta(choice: Any) -> Dict[str, Any]:
-    """Resolve a typed casting payment, once, before the existing engine transaction."""
+SPELL_REPOSITORY_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                                     "data", "spell_repository.json")
+
+
+def _spell_levels(path: str) -> Dict[str, int]:
+    """#1329: each spell_repository key with its typed integer level."""
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            spells = json.load(handle)
+    except (OSError, ValueError):
+        spells = {}
+    return {key: entry["level"] for key, entry in (spells if isinstance(spells, dict) else {}).items()
+            if isinstance(entry, dict) and type(entry.get("level")) is int}
+
+
+SPELL_LEVELS = _spell_levels(SPELL_REPOSITORY_PATH)
+
+
+def casting_resource_problem(choice: Any, sheet: Any) -> Optional[Tuple[str, str]]:
+    """#1329 (D-1329-1): (code, reason) when a typed castingResource cannot pay
+    for its typed ``spell``, else None. Only the choice's kind, featureName,
+    level and spell key are read, against the sheet's feats[].grantedSpells
+    binding and the spell_repository level; availability stays with the pool."""
+    if not isinstance(choice, dict):
+        return None
+    spell = choice.get("spell")
+    if not isinstance(spell, str) or not spell:
+        return ("missing_spell", "castingResource needs spell, the spell's repository key "
+                "(the key feats[].grantedSpells stores)")
+    level = SPELL_LEVELS.get(spell)
+    if level is None:
+        return ("unknown_spell", "castingResource spell %r is not a spell repository key" % spell)
+    if level == 0:
+        return ("cantrip_no_payment", "%s is a cantrip; a cantrip takes no castingResource" % spell)
+    if choice.get("kind") == "feature":
+        name = choice.get("featureName")
+        feats = sheet.get("feats") if isinstance(sheet, dict) else None
+        for feat in feats if isinstance(feats, list) else []:
+            if not isinstance(feat, dict) or feat.get("name") != name:
+                continue
+            for grant in feat.get("grantedSpells") or []:
+                if isinstance(grant, dict) and grant.get("spell") == spell and grant.get("resource") == name:
+                    return None
+        return ("feature_not_bound", "%s does not grant %s (feats[].grantedSpells)" % (name, spell))
+    if choice.get("kind") == "slot" and type(choice.get("level")) is int and choice["level"] < level:
+        return ("slot_below_spell_level", "a level %d slot cannot cast %s (level %d)"
+                % (choice["level"], spell, level))
+    return None
+
+
+def casting_resource_delta(choice: Any, sheet: Any = None) -> Dict[str, Any]:
+    """Resolve a typed casting payment, once, before the existing engine transaction.
+    With ``sheet``, a choice that names its spell must also be able to pay for it
+    (#1329); one without spell keeps the shape-only check (D-1329-1 last attempt)."""
+    delta = _casting_resource_shape(choice)
+    if sheet is not None and choice.get("spell") is not None:
+        problem = casting_resource_problem(choice, sheet)
+        if problem is not None:
+            raise ValueError(problem[1])
+    return delta
+
+
+def _casting_resource_shape(choice: Any) -> Dict[str, Any]:
     if not isinstance(choice, dict):
         raise ValueError("castingResource must be an object")
     if choice.get("kind") == "feature":

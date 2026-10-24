@@ -10459,6 +10459,41 @@ _TRAVEL_ORDER_FACT = (
 )
 
 
+def _casting_resource_refusal(actions, last_attempt):
+    """#1329 (D-1329-1): the engine's reason a draft's castingResource cannot pay
+    for its typed spell, before anything is shown, or None. Only the action's
+    typed characterName and castingResource are read, against the sheet
+    update_character_info would update. On the last attempt a missing spell
+    passes, shape-only, so the turn never fails on it."""
+    from core.nql.resources import casting_resource_problem
+    from updates.update_character_info import get_character_path, resolve_character_target
+
+    for action in actions:
+        if not isinstance(action, dict) or action.get("action") != action_handler.ACTION_UPDATE_CHARACTER_INFO:
+            continue
+        parameters = action.get("parameters")
+        parameters = parameters if isinstance(parameters, dict) else {}
+        choice = parameters.get("castingResource")
+        if not isinstance(choice, dict):
+            continue
+        name = parameters.get("characterName")
+        try:
+            sheet = safe_json_load(get_character_path(*resolve_character_target(name)))
+        except Exception:
+            sheet = None
+        problem = casting_resource_problem(choice, sheet)
+        if not isinstance(sheet, dict) and (problem or ("",))[0] != "missing_spell":
+            continue  # no readable sheet: the apply path owns the binding outcome
+        if problem is None:
+            continue
+        if problem[0] == "missing_spell" and last_attempt:
+            info("VALIDATION: castingResource without spell passed shape-only on the last attempt (#1329)",
+                 category="ai_validation")
+            continue
+        return problem[1]
+    return None
+
+
 def _acquire_catalog_refusal(actions, party, wait):
     """#878: the engine's reason a draft's acquireItem would be refused before
     any sheet or purse is read (an unknown catalog name, a quantity that is not
@@ -10738,6 +10773,28 @@ def _review_dm_candidate(
                     info(
                         "VALIDATION: acquireItem refused by the catalog before "
                         f"review; retry {retry_count}",
+                        category="ai_validation",
+                    )
+                    review_retry_status(retry_count)
+
+                casting_refusal = (
+                    _casting_resource_refusal(
+                        actions, rejected_drafts >= _DM_REVIEW_REJECTION_LIMIT - 1)
+                    if transition_check_passed else None
+                )
+                if casting_refusal:
+                    retry_count += 1
+                    transition_check_passed = False
+                    rejected_candidate = ai_response_content
+                    retry_correction = (
+                        "The previous structured response was rejected before "
+                        "anything was shown: " + casting_refusal + ". Keep the "
+                        "outcome your narration describes and correct only that "
+                        "updateCharacterInfo's castingResource. Return the complete "
+                        "corrected JSON."
+                    )
+                    info(
+                        f"VALIDATION: castingResource refused before review; retry {retry_count}",
                         category="ai_validation",
                     )
                     review_retry_status(retry_count)

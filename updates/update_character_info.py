@@ -2118,6 +2118,36 @@ def _translate_declarative_effect_delta(character_data, updates, operation):
     return translated
 
 
+def resolve_character_target(character_name, character_role=None):
+    """The (name, role) update_character_info reads and writes for a typed
+    characterName (#900 party-name match, then normalization); #1329's
+    draft precheck reads the same sheet."""
+    # An exact party-name match (#900) when the character's file is not found
+    party_tracker_data = safe_json_load("party_tracker.json")
+    
+    # First try with the original name
+    character_path = get_character_path(character_name, character_role)
+    if not os.path.exists(character_path):
+        # The party's exact name for it (#900)
+        party_name = fuzzy_match_character_name(character_name, party_tracker_data)
+        if party_name and party_name != character_name:
+            info(f"CHARACTER_LOOKUP: Resolved '{character_name}' to party name '{party_name}'", category="character_updates")
+            character_name = party_name
+        else:
+            # Still try normalization as a fallback
+            normalized_name = normalize_character_name(character_name)
+            if normalized_name != character_name:
+                debug(f"STATE_CHANGE: Normalized character name from '{character_name}' to '{normalized_name}'", category="character_updates")
+                character_name = normalized_name
+    
+    # Auto-detect character role if not provided
+    if character_role is None:
+        character_role = detect_character_role(character_name)
+        debug(f"STATE_CHANGE: Detected character role: {character_role}", category="character_updates")
+    
+    return character_name, character_role
+
+
 def update_character_info(
     character_name,
     changes,
@@ -2212,30 +2242,9 @@ def _update_character_info_unlocked(
         except ValueError as exc:
             raise EngineRefusedChange(str(exc)) from exc
 
-    # An exact party-name match (#900) when the character's file is not found
     original_name = character_name
-    party_tracker_data = safe_json_load("party_tracker.json")
-    
-    # First try with the original name
-    character_path = get_character_path(character_name, character_role)
-    if not os.path.exists(character_path):
-        # The party's exact name for it (#900)
-        party_name = fuzzy_match_character_name(character_name, party_tracker_data)
-        if party_name and party_name != character_name:
-            info(f"CHARACTER_LOOKUP: Resolved '{character_name}' to party name '{party_name}'", category="character_updates")
-            character_name = party_name
-        else:
-            # Still try normalization as a fallback
-            normalized_name = normalize_character_name(character_name)
-            if normalized_name != character_name:
-                debug(f"STATE_CHANGE: Normalized character name from '{character_name}' to '{normalized_name}'", category="character_updates")
-                character_name = normalized_name
-    
-    # Auto-detect character role if not provided
-    if character_role is None:
-        character_role = detect_character_role(character_name)
-        debug(f"STATE_CHANGE: Detected character role: {character_role}", category="character_updates")
-    
+    character_name, character_role = resolve_character_target(character_name, character_role)
+
     # Load schema and character data
     schema = load_schema()
     character_path = get_character_path(character_name, character_role)
@@ -2259,6 +2268,13 @@ def _update_character_info_unlocked(
     except Exception as e:
         error(f"FAILURE: Error loading character data", exception=e, category="file_operations")
         return False
+
+    if payment is not None:
+        # #1329: a castingResource naming its spell must be able to pay for it.
+        try:
+            casting_resource_delta(casting_resource, character_data)
+        except ValueError as exc:
+            raise EngineRefusedChange(str(exc)) from exc
     
     # A sheet whose armor projection is already outside the frozen schema would
     # be refused by the whole-sheet gate below on every ordinary update that
