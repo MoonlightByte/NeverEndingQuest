@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
-import { useDialogs } from '../../stores'
+import { useDialogs, useLog } from '../../stores'
+import { spendDisclaimer } from '../layout/SpendLine'
 import type { ClientEvents } from '../../contract/events'
 
 type ProviderValue = ClientEvents['set_model_provider']['provider']
@@ -121,6 +122,7 @@ function LocalProviderPanelBody() {
 
   // ---- API keys (blank submit keeps the stored key server-side) ----
   const [openaiKey, setOpenaiKey] = useState('')
+  const pricedAt = useLog((s) => s.tokens.spend?.priced_at)
   const [geminiKey, setGeminiKey] = useState('')
 
   const saveOpenaiKey = () => {
@@ -239,6 +241,7 @@ function LocalProviderPanelBody() {
           Needed for the Legacy and OpenAI providers. Stored locally on this machine.
           <span>{keyStatusText(settings.openaiHasKey)}</span>
         </p>
+        {pricedAt && <p className="neq-settings-help-parity neq-spend-disclaimer">{spendDisclaimer(pricedAt)}</p>}
         <div className="neq-settings-item neq-settings-stack-parity"><input
           type="password"
           aria-label="OpenAI API key"
