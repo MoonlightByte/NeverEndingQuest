@@ -1,7 +1,8 @@
 # KNOWN ISSUES - awaiting owner review (2026-08-30)
 
-OWNER DIRECTIVE: do NOT open GitHub issues for anything in this list until the owner
-has reviewed each item individually. This is the holding pen for real, transcript-cited
+Defects are filed as GitHub issues; the open list: https://github.com/MoonlightByte/NeverEndingQuest/issues?q=is%3Aissue+is%3Aopen
+
+This is the holding pen for real, transcript-cited
 defects that survived the 2026-08-30 play forensics, plus new findings from the
 good-play replays. Master evidence:
 

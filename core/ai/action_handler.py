@@ -4969,7 +4969,8 @@ def process_action(
                 print("[DEBUG ACTION_HANDLER] Appending this fight's combat summary to conversation history")
                 # Add clear historical marker to prevent Combat Commitment Point confusion
                 from core.managers.combat_manager import (
-                    combat_record_exit_kind, combat_record_xp_receipt,
+                    combat_record_exit_kind, combat_record_joined_against_party,
+                    combat_record_xp_receipt,
                     render_combat_record_marker,
                 )
                 modified_combat_summary = {
@@ -4978,6 +4979,7 @@ def process_action(
                         "Combat Summary: " + dialogue_summary,
                         combat_record_exit_kind(encounter_id),
                         combat_record_xp_receipt(encounter_id),
+                        combat_record_joined_against_party(encounter_id),
                     )
                 }
                 conversation_history.append(modified_combat_summary)
