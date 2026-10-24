@@ -22,9 +22,10 @@ Combat, travel and character creation fixes from the October playtests, and a ha
 - Asking to go to a place the adventure does not have now gets one question naming places you have been, instead of a stalled turn (#1357).
 - Loading a save where a solo character has fallen now goes straight to the defeat pause, with no narration of companions who are not there (#1335).
 - A spell is checked against the slot or resource it uses before it is cast, so a cast can no longer be half applied (#1329).
-- A failing AI provider is now retried a limited number of times and then reported in plain words; no turn can make more than 24 model calls (#1342).
+- A failing AI provider is now retried a limited number of times and then reported in plain words; no game turn can make more than 24 model calls (#1342).
+- An enemy whose only target fled earlier in the same combat window now defends without a model redraft; when other targets remain, the correction says the target left the fight instead of calling it down (#1379).
 - A combat round summary is no longer rejected (and re-asked next round) when a no-roll action such as defend leaves its roll empty (#1378).
-- A watching NPC is no longer dropped from a fight when the fight's opening is redrafted (#1377).
+- When a fight's opening leaves out a watching NPC, the game's check now says so, so the NPC is added to the fight instead of dropped (#1377).
 - An Unarmed Strike or other flat-damage attack now asks only for your d20 roll; the game applies the damage, with no damage roll (#1337, #1350).
 - A fight with a watching NPC starts faster: the NPC is no longer listed in the turn order or rejected by the scene check (#1361).
 - Playing alone beside a watching NPC, dropping to 0 HP now shows the party-defeat pause, and fleeing ends the fight as a withdrawal; only the people in the fight count as allies (#1354).
@@ -32,6 +33,7 @@ Combat, travel and character creation fixes from the October playtests, and a ha
 - Drinking a healing potion in a fight is now a bonus action the game resolves, and Ray of Frost is scored by the game, with a slow that lasts its set time and does not stack (#1331).
 
 ### Added
+- The Load list marks automatic backups made before a save-format conversion (#1376).
 - Level-up now grants the species spells and traits that arrive above level 1: the Elven Lineage and Fiendish Legacy spells at levels 3 and 5 (always prepared, once per Long Rest without a slot, with the lineage's spellcasting ability), and Draconic Flight and Large Form at level 5. They are read from the typed picks in the character's creation record; a character without one gets a note instead of a guess (#1292).
 - A module can now author typed loot: items in `modules/<module>/module_items.json`, listed on a location as `lootItems`. The DM sees each listed item with how many remain, and a character takes one with acquireItem by its catalogId at no cost; each is taken at most as many times as authored, across the whole party. Every other item, invented ones included, is recorded exactly as before (P3a, Refs #193).
 - In a fight, a character holding two Light melee weapons (a Shortsword and a Scimitar, two Daggers) can take the off-hand attack as a bonus action after an Attack action with one of them, as the SRD's Light property allows. The game asks the player's d20 and damage for it after the main swing and scores it, leaving out the ability modifier unless the character has the Two-Weapon Fighting style. Second Wind is no longer taken at full hit points, and a player's attack stating more swings than the character's Attack action makes is sent back to the combat model once, naming the off-hand attack. (Final playthrough F3, F4)

@@ -40,6 +40,7 @@ from core.effects.lifecycle import (
 from core.effects.model import normalize_effect, validate_effect
 from core.managers.combat_state import (
     combatant_by_id,
+    has_left_fight,
     is_combatant_targetable,
     is_hostile,
     is_party_member,
@@ -707,6 +708,13 @@ def validate_intent(encounter, characters, intent, strict=None):
                 reason="unknown targetId: %r" % target_id,
                 legalTargets=_living_opponent_ids(encounter, actor), retryable=True)
         target = combatant_by_id(encounter, target_id) if target_id else None
+        if target is not None and has_left_fight(target):
+            # #1379: the target left the fight (flee or yield) earlier in this
+            # batch; it is not down, and the correction says so.
+            return False, Rejection(
+                reason="target %s left the fight" % target_id,
+                legalTargets=_living_opponent_ids(encounter, actor), retryable=True,
+                targetLeft=True)
         if target is not None and not is_combatant_targetable(target):
             # targetDown marks a PROJECTED state: the target fell to an earlier
             # intent of the same ordered batch. The correction text keys on it.
