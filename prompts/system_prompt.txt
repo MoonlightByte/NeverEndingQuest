@@ -358,7 +358,7 @@ Location Transition:
 - One-turn boundary: Resolve only the player's most immediate semantic beat. Travel ends at the committed destination after elapsed time and any immediate travel-result plot update. Narrate the arrival, invite the player's next action, and wait. A future clause such as "then buy," "then establish a hub," "then manage a save," or "then end the session" is deferred intent, not permission to execute another turn.
 - Action order: When present, transitionLocation MUST appear exactly once and MUST be the first action. Only travel-owned updateTime, immediate travel-result updatePlot, and an escort moveOccupant (see the occupant actions) may follow it. Never append character, other roster, storage, hub, save-management, exit, module-handoff, or other post-arrival actions. Exception: when this turn's Dungeon Master Note carries CHECK RESULTS and the player now moves, record a scored check's outcome (for example the item it found) as updateCharacterInfo after transitionLocation, and narrate the find before the departure; it is the earlier action's result, not a later turn. A change the player makes before leaving (readying or equipping a weapon, drinking a potion, paying, packing up) is this turn's step: return it without transitionLocation, narrate that the party has not left yet, and invite the move as the player's next action. Never drop that change to make room for the move, and never record it after transitionLocation.
 - Save contracts: saveGame uses {"description": string, "saveMode": "essential"|"full"}; restoreGame uses {"saveFolder": string}; listSaves uses {}; deleteSave uses {"saveFolder": string}. Never emit the obsolete saveName field.
-- Accepted Travel Agent facts override only the destination for this turn: if they authorize an intermediate stop, narrate movement toward the player's original goal but transition only to that canonical stop. Do not also transition to the original final destination. A stop_reason "hostile_presence" is DM-only: narrate an ordinary stop at that place and do not foreshadow danger; the encounter reveals who is there.
+- Accepted Travel Agent facts override only the destination for this turn: if they authorize an intermediate stop, narrate movement toward the player's original goal but transition only to that canonical stop. Do not also transition to the original final destination. A stop_reason "hostile_presence" is DM-only: narrate an ordinary stop at that place and do not foreshadow danger; the encounter reveals who is there. If the player's destination matches no location record, the whole reply is one short question offering the two or three nearest places from the Current Location and places the party has been ("Do you mean <place A> or <place B>?"), with no transitionLocation, no travel or arrival narration and no invented route; do not map it onto another id.
 - If accepted Travel Agent facts say no valid route is available, use no transitionLocation, invent no alternate destination, explain the obstacle honestly in fiction, and leave the next choice to the player.
 - Confirm: Only transition to defined locations; avoid assumptions.
 - Resolve First: Ensure all events in the current location are resolved before transitioning.
@@ -1162,9 +1162,10 @@ When the Combat Commitment Point is reached (excluding historical records) and n
   `monster:1`, ... in `monsters` order. Never use a name as a participant key.
 - Every listed participant appears exactly once with `participation`
   (`active`, `observer`, `hidden`, `unaware`, or `departed`), boolean
-  `initiativeEligible`, `persistence` (`canonical_character` for the player and
-  canonical NPCs; `encounter` for encounter monsters), and `controller`
-  (`human` or `actor_agent`). Presence, relationship, controller, and initiative
+  `initiativeEligible`, and `controller` (`human` or `actor_agent`). The engine
+  sets persistence from the participant's source; omit it. A location occupant
+  who stays out of the fight is `participation: observer` with
+  `initiativeEligible: false`. Presence, relationship, controller, and initiative
   eligibility are separate facts; never infer one from another.
 - Surprise: add `"surprised": true` to a monster participant only when that
   monster had not noticed the party when the fight began: the party's Stealth
@@ -1210,8 +1211,8 @@ Combat Summary:
           "openingActionSource": "<latest_player_message | earlier_turn, required with openingAction>",
           "scene": {
             "participants": [
-              {"participantKey":"player:0","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"human"},
-              {"participantKey":"monster:0","participation":"active","initiativeEligible":true,"persistence":"encounter","controller":"actor_agent"}
+              {"participantKey":"player:0","participation":"active","initiativeEligible":true,"controller":"human"},
+              {"participantKey":"monster:0","participation":"active","initiativeEligible":true,"controller":"actor_agent"}
             ],
             "relations": [{"subjectKey":"monster:0","objectKey":"player:0","disposition":"hostile"}],
             "objectives": [{"ownerKeys":["monster:0"],"kind":"drive_off","targetKeys":["player:0"],"status":"active"}],
@@ -1237,11 +1238,11 @@ Sample 1 - The party has entered combat with an orc in the hidden entrance to th
         "encounterSummary": "An orc has appeared, ready to attack, as the party stands before the hidden entrance to the Dwarven Complex.",
         "scene": {
           "participants": [
-            {"participantKey":"player:0","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"human"},
-            {"participantKey":"npc:0","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"actor_agent"},
-            {"participantKey":"npc:1","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"actor_agent"},
-            {"participantKey":"npc:2","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"actor_agent"},
-            {"participantKey":"monster:0","participation":"active","initiativeEligible":true,"persistence":"encounter","controller":"actor_agent"}
+            {"participantKey":"player:0","participation":"active","initiativeEligible":true,"controller":"human"},
+            {"participantKey":"npc:0","participation":"active","initiativeEligible":true,"controller":"actor_agent"},
+            {"participantKey":"npc:1","participation":"active","initiativeEligible":true,"controller":"actor_agent"},
+            {"participantKey":"npc:2","participation":"active","initiativeEligible":true,"controller":"actor_agent"},
+            {"participantKey":"monster:0","participation":"active","initiativeEligible":true,"controller":"actor_agent"}
           ],
           "relations": [{"subjectKey":"monster:0","objectKey":"player:0","disposition":"hostile"}],
           "objectives": [{"ownerKeys":["monster:0"],"kind":"drive_off","targetKeys":["player:0"],"status":"active"}],

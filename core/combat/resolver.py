@@ -29,7 +29,6 @@ from core.combat.attacks import (
     attack_sequence,
     FLAT_DAMAGE_DICE,
     is_executable_attack,
-    is_flat_attack,
 )
 from core.effects.effective import effective_sheet, modifier_dice, modifier_total
 from core.effects.lifecycle import (
@@ -2280,10 +2279,8 @@ def _plain_weapon_attack(encounter, characters, intent):
             return None
     elif not _spends_ammunition(entry) or not _declares_one_shot(intent.get("resources")):
         return None
-    if is_flat_attack(entry):
-        # NUM-H3c: a flat row has no damage dice for the player to roll; the
-        # resolver scores it through the engine instead.
-        return None
+    # #1350: a flat row (NUM-H3c) is taken over too; its window asks only the
+    # d20 and the engine scores the flat damage.
     sequence = attack_sequence(
         sheet,
         selected=entry,
@@ -2439,7 +2436,7 @@ def _engine_score_only(entry, to_hit, mode, faces, ac, target, sheet):
     from core.nql import attacks
 
     try:
-        count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"))
+        count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"), flat_ok=True)
     except ValueError:
         return None
     scored = attacks.score(

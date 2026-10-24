@@ -21,7 +21,7 @@ from core.combat import (
     resolve_effect_clock_window,
     resolve_claimed_window,
 )
-from core.combat.attacks import attack_sequence
+from core.combat.attacks import attack_sequence, is_flat_attack
 from core.combat.bonus_actions import (
     OFF_HAND_ATTACK,
     bonus_action_names,
@@ -1179,6 +1179,43 @@ def _validate_player_weapon_question(batch, encounter, characters):
         )
 
 
+def _validate_flat_damage_request(batch, encounter, characters):
+    """#1337: a flat-damage row (damageDice "flat", such as an Unarmed Strike)
+    has no damage die; the engine scores its damage. A player damage roll
+    asked for the attack the intent's abilityRow names goes back to the model
+    as a correction. A spell's request (spellName) is not checked. Runs
+    before the last attempt only: there the useless ask passes and the engine
+    still scores the flat damage. The request's wording is never read."""
+    for intent in (batch or {}).get("intents", []) or []:
+        if not isinstance(intent, dict):
+            continue
+        actor = combatant_by_id(encounter, intent.get("actorId"))
+        request = intent.get("requiresPlayerInput")
+        if (
+            not isinstance(actor, dict)
+            or not _is_human_controlled(encounter, actor)
+            or not isinstance(request, dict)
+            or request.get("kind") != "roll"
+            or _roll_request_purpose(request) != "damage"
+            or (isinstance(request.get("spellName"), str) and request["spellName"].strip())
+        ):
+            continue
+        entry = attack_row(
+            (characters or {}).get(actor.get("name")), intent.get("abilityRow"), actor.get("combatantId")
+        )
+        if not is_flat_attack(entry):
+            continue
+        raise CombatIntentError(
+            (
+                "%s deals flat damage that the engine scores; do not ask for a "
+                "damage roll. Resolve the attack with the d20 you have."
+            )
+            % (entry.get("name") or "This attack"),
+            intent.get("actorId"),
+            {"retryable": True, "issue": "1337", "abilityRow": intent.get("abilityRow")},
+        )
+
+
 def _validate_feature_names(batch, encounter, characters):
     """8b: a heal paid with a class feature's pooled use (POOL_HEALS) names
     its option in the typed featureName, exactly as the actor's featureNames
@@ -2127,7 +2164,8 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
         hit, critical, kept, total, ac = player_weapon_attack_score(encounter, characters, record, entry)
         record.update({"hit": hit, "critical": critical, "attackKept": kept,
                        "attackTotal": total, "targetAC": ac})
-        if hit:
+        # #1350: a flat row has no damage die; its hit is ready for the engine.
+        if hit and not is_flat_attack(entry):
             record["phase"] = "damage"
             if not isinstance(record.get("spell"), dict):
                 record["greatWeapon"] = player_great_weapon(encounter, characters, record, entry)
@@ -3019,6 +3057,7 @@ def execute_agentic_turn(
                 # The last attempt lets a genuine question through rather than
                 # leave the player's turn without an answer.
                 _validate_player_weapon_question(batch, encounter, characters)
+                _validate_flat_damage_request(batch, encounter, characters)
                 _validate_feature_names(batch, encounter, characters)
             _validate_roll_request_phase(batch, encounter)
             try:

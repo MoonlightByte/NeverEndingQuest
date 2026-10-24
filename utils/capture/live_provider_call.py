@@ -105,7 +105,15 @@ _COMBAT_TASK_IDS = frozenset({"T040", "T041", "T042", "T043", "T044", "T096", "T
 # parent (their callers do not log_api_call themselves).
 _SUCCESS_LOG_TASK_IDS = frozenset({"T105", "T108", "T113", "T121"})
 _MAX_BACKOFF_SECONDS = 8.0
-_PERMANENT_ERROR_SECONDS = 60.0
+# #1342: reissues one logical call may spend. A billed generation reached the
+# provider's working phases (or answered empty or runaway), so the full prompt
+# was charged; a free one failed before acknowledgment and cost no tokens.
+_BILLED_REISSUE_LIMIT = 2
+_FREE_REISSUE_LIMIT = 6
+_BILLED_PHASES = frozenset({"acknowledged", "working", "receiving", "done"})
+# #1342: provider generations one live turn scope may spend, reissues
+# included. Every scope (play turn, combat round, wizard) has the same bound.
+_TURN_GENERATION_CEILING = 24
 # Transport phases the child reports, in the order a healthy generation
 # passes through them (#409 plan section 4). Evidence only: never authority.
 _PHASE_NAMES = (
@@ -191,11 +199,20 @@ class LiveTurnScope:
     controls_open: bool = True
     advisory_scopes: list = field(default_factory=list)
     purpose: str = "turn"
+    provider_generations: int = 0
 
     def next_generation(self):
         with self.lock:
             self.generation += 1
             return self.generation
+
+    def claim_provider_generation(self):
+        """Count one provider generation; False once the turn ceiling is spent (#1342)."""
+        with self.lock:
+            if self.provider_generations >= _TURN_GENERATION_CEILING:
+                return False
+            self.provider_generations += 1
+            return True
 
     def request_supersession(self, kind, operation_id=None):
         with self.lock:
@@ -270,6 +287,9 @@ class AdvisoryProviderScope:
         with self.lock:
             self.generation += 1
             return self.generation
+
+    def claim_provider_generation(self):
+        return self.parent.claim_provider_generation()
 
     def is_superseded(self):
         return self.sealed.is_set() or self.parent.is_superseded()
@@ -1246,9 +1266,9 @@ def _delay_for_error(envelope, failure_count):
     retry_after = envelope.get("retry_after")
     if isinstance(retry_after, (int, float)) and retry_after >= 0:
         return float(retry_after)
-    status = envelope.get("http_status")
-    if isinstance(status, int) and 400 <= status < 500:
-        return _PERMANENT_ERROR_SECONDS
+    # A retryable 4xx (408/409, a 429 without a quota code) takes the normal
+    # backoff unless the provider sent Retry-After; a flat 60 s per reissue
+    # hung the turn (#1342). Deterministic 4xx never reach here (#240).
     # Exponent capped at 4: 0.5 * 2**4 already equals _MAX_BACKOFF_SECONDS,
     # and an unbounded count overflows float at 2**1024 (#284 review C3-1).
     base = min(
@@ -1281,6 +1301,29 @@ def _synthesized_envelope(error_class, task_id, request_kwargs, operation_id,
             "operation_id": operation_id,
             "generation": generation,
         },
+    }
+
+
+def _is_billed_failure(envelope):
+    """True when a failed generation was likely charged in full (#1342)."""
+    if envelope.get("disposition") == "empty" or envelope.get("error_code") == "runaway_output":
+        return True
+    return envelope.get("last_phase") in _BILLED_PHASES
+
+
+def _limit_envelope(error_class, task_id, request_kwargs):
+    """Terminal envelope for a #1342 bound; classified non-retryable upstream."""
+    return {
+        "kind": "error",
+        "error_class": error_class,
+        "cause_class": None,
+        "error_code": error_class,
+        "disposition": "deterministic",
+        "provider": str(request_kwargs.get("_request_provider", "") or ""),
+        "model": str(request_kwargs.get("model", "") or ""),
+        "task_id": task_id,
+        "http_status": None,
+        "retry_after": None,
     }
 
 
@@ -1408,6 +1451,8 @@ def call_live_provider(
         )
     failure_count = 0
     runaway_trips = 0
+    billed_reissues = 0
+    free_reissues = 0
     logical_started = time.monotonic()
     notices_shown = set()
     player_turn = scope is not None and scope is get_live_turn_scope()
@@ -1514,6 +1559,18 @@ def call_live_provider(
                 "Still working; checking the current adventure...",
             )
             continue
+        claim = getattr(scope, "claim_provider_generation", None)
+        if claim is not None and not claim():
+            # #1342: the turn spent its provider generations. Nothing is sent;
+            # the caller's completed-refusal path ends the turn with one line.
+            _LOGGER.warning(
+                "LIVE_PROVIDER_TURN_CEILING task=%s generations=%d operation=%s",
+                task_id, _TURN_GENERATION_CEILING, operation_id,
+            )
+            raise LiveProviderCompletedError(
+                task_id,
+                _limit_envelope("turn_call_ceiling", task_id, frozen_kwargs),
+            )
         generation = (
             scope.next_generation() if scope is not None else failure_count + 1
         )
@@ -1768,6 +1825,25 @@ def call_live_provider(
                     task_id, frozen_kwargs.get("_output_ceiling_chars"), runaway_trips,
                 )
                 frozen_kwargs.pop("_output_ceiling_chars", None)
+        if envelope.get("disposition") in {"retryable_http", "retryable_transport", "empty"}:
+            # #1342: bound the reissues of one logical call by billing class.
+            if _is_billed_failure(envelope):
+                billed_reissues += 1
+                exhausted = billed_reissues > _BILLED_REISSUE_LIMIT
+            else:
+                free_reissues += 1
+                exhausted = free_reissues > _FREE_REISSUE_LIMIT
+            if exhausted:
+                _LOGGER.warning(
+                    "LIVE_PROVIDER_REISSUE_LIMIT task=%s billed=%d free=%d last=%s",
+                    task_id, billed_reissues, free_reissues,
+                    envelope.get("error_class"),
+                )
+                limit = _limit_envelope("reissue_limit", task_id, frozen_kwargs)
+                limit["http_status"] = envelope.get("http_status")
+                if policy == "advisory" and not completion_required:
+                    raise LiveProviderUnavailable(task_id, limit)
+                raise LiveProviderCompletedError(task_id, limit)
         if (
             policy == "advisory"
             and completion_required
