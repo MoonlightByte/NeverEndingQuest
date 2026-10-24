@@ -14,8 +14,8 @@ after the switch: play never writes it again.
 Four parts:
 
 - the declarations and the one-time conversion of a played plot, a port of
-  the engine repository's private reference tool (private/conversion/neq_quests.py, rules in
-  QUEST_CONVERSION.md): same function names, same decisions, so the
+  the engine's internal reference converter (not part of the public release;
+  see Firelight docs/QUESTS.md): same function names, same decisions, so the
   reference evidence compares line for line;
 - the DM action: ``update_line`` maps updatePlot to one engine line, and
   ``apply_update`` sends it with the occupant ladder; a refusal goes back to
