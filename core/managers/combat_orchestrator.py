@@ -75,6 +75,7 @@ from core.managers.combat_transaction import (
     record_narration_attempt,
     record_pending_player_request,
     stage_events,
+    write_pending_stats,
     write_weapon_attack,
 )
 from utils.encoding_utils import normalize_typography_deep, safe_json_load
@@ -101,6 +102,81 @@ def _phase_paused(technical_message, record):
     """The pause for an open code-issued roll phase: the DM's lead and its card."""
     return CombatTurnPaused(technical_message, player_message=record.get("lead") or None,
                             card=record.get("card"), card_id=record.get("cardId"))
+
+
+def _batch_targets(batch):
+    """(actorId, combatantId) for every id an intent batch targets: each
+    intent's targetId and targets[], and its bonusAction's targetId and
+    targets[]. Typed fields only."""
+    out = []
+    intents = batch.get("intents") if isinstance(batch, dict) else None
+    for intent in intents if isinstance(intents, list) else []:
+        if not isinstance(intent, dict):
+            continue
+        actor_id = intent.get("actorId")
+        bonus = intent.get("bonusAction")
+        for part in (intent, bonus if isinstance(bonus, dict) else {}):
+            if isinstance(part.get("targetId"), str):
+                out.append((actor_id, part["targetId"]))
+            targets = part.get("targets")
+            for entry in targets if isinstance(targets, list) else []:
+                if isinstance(entry, dict) and isinstance(entry.get("combatantId"), str):
+                    out.append((actor_id, entry["combatantId"]))
+    return out
+
+
+def _ensure_targeted_sheets(encounter_path, encounter, batch, characters,
+                            character_paths, pending, invocation_claim=None):
+    """#1447: a ``statsPending`` observer (a present person with no sheet
+    yet) that this batch targets gets its sheet before anything validates
+    or resolves the batch: the existing load_or_create_npc (T035 when no
+    sheet exists), once per creature per fight. Its stats are written to
+    the encounter and the sheet joins ``characters`` and
+    ``character_paths``. Returns (encounter, names built). When the build
+    fails the intent is corrected; the creature stays an observer."""
+    from core.generators.combat_builder import _roll_initiative, load_or_create_npc
+
+    built = []
+    for actor_id, target_id in _batch_targets(batch):
+        creature = combatant_by_id(encounter, target_id)
+        if not isinstance(creature, dict) or creature.get("statsPending") is not True:
+            continue
+        name = creature.get("name")
+        if creature.get("sheetBuildFailedAt") is None:
+            loaded = None
+            try:
+                loaded = load_or_create_npc(name)
+            except Exception as exc:
+                _LOGGER.warning("Sheet build for %s failed: %s", name, exc)
+            if loaded:
+                sheet, sheet_path = loaded
+                stats = {
+                    "currentHitPoints": sheet.get("hitPoints", 10),
+                    "maxHitPoints": sheet.get("maxHitPoints", 10),
+                    "armorClass": sheet.get("armorClass", 10),
+                    "initiative": _roll_initiative(sheet, sheet_backed=True),
+                }
+                encounter = write_pending_stats(
+                    encounter_path, pending["turnId"], target_id, stats, sheet_path,
+                    invocation_claim=invocation_claim,
+                )
+                character_paths[name] = str(sheet_path)
+                characters[name] = safe_json_load(str(sheet_path)) or deepcopy(sheet)
+                built.append(name)
+                continue
+            encounter = write_pending_stats(
+                encounter_path, pending["turnId"], target_id,
+                invocation_claim=invocation_claim,
+            )
+        raise CombatIntentError(
+            "%s (%s) can't be acted on right now: no character sheet could be made "
+            "for them. Leave them out of targetId, targets and bonusAction this "
+            "turn; keep the rest of the batch. For the player, ask with a "
+            "requiresPlayerInput choice instead of choosing for them." % (name, target_id),
+            actor_id,
+            {"retryable": True},
+        )
+    return encounter, built
 
 
 def _load_characters(character_paths, context_sheets=None):
@@ -2965,6 +3041,14 @@ def execute_agentic_turn(
                                         immutable_voice_intents)
 
         try:
+            # #1447: a sheetless observer the batch targets gets its sheet
+            # (one build per fight) before any check or resolution reads it.
+            encounter, built = _ensure_targeted_sheets(
+                encounter_path, encounter, batch, characters, character_paths,
+                pending, invocation_claim,
+            )
+            for name in built:
+                provider_characters[name] = deepcopy(characters[name])
             # K1 (2.1): a replied row position must still hold the row that was sent.
             _check_sent_rows(batch, sent_rows, encounter, characters)
             # #942: pass 2 spends the slot the answered roll was asked at.

@@ -304,10 +304,22 @@
           "maxHitPoints": {
             "type": "integer",
             "minimum": 1
+          },
+          "statsPending": {
+            "type": "boolean"
           }
         },
-        "required": ["name", "type", "initiative", "status", "conditions", "actions", "currentHitPoints", "maxHitPoints"],
+        "required": ["name", "type", "status", "conditions", "actions"],
         "allOf": [
+          {
+            "if": {
+              "properties": { "statsPending": { "const": true } },
+              "required": ["statsPending"]
+            },
+            "else": {
+              "required": ["initiative", "currentHitPoints", "maxHitPoints"]
+            }
+          },
           {
             "if": {
               "properties": { "type": { "const": "enemy" } }
@@ -382,7 +394,17 @@
               "participation": {"enum": ["active", "observer", "hidden", "unaware", "departed"]},
               "side": {"enum": ["hostile", "party"]},
               "initiativeEligible": {"type": "boolean"},
-              "persistence": {"enum": ["encounter", "canonical_character", "owner_gated_companion"]}
+              "persistence": {"enum": ["encounter", "canonical_character", "owner_gated_companion"]},
+              "surprised": {"type": "boolean"},
+              "occupantId": {"type": "string", "minLength": 1},
+              "provenance": {"type": "string", "minLength": 1},
+              "joinedHostile": {
+                "type": "object",
+                "properties": {
+                  "by": {"type": ["string", "null"]},
+                  "round": {"type": ["integer", "null"]}
+                }
+              }
             },
             "required": ["combatantId", "sourceKind", "sourceRef", "displayName", "participation", "initiativeEligible", "persistence"],
             "additionalProperties": false
