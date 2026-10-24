@@ -2,11 +2,11 @@
   "_metadata": {
     "schemaVersion": 1,
     "created": "2026-10-24",
-    "description": "Typed SRD 5.2.1 effect rules for spells whose saved effect records predate their typed modifier form (#1442): the modifiers a live record with no modifiers is given at load, hand-authored and reviewed against the SRD text; verified-only",
+    "description": "Typed SRD 5.2.1 effect rules for spells whose saved effect records predate their typed modifier form (#1442): the modifiers a live record with no modifiers is given at load (or, for a spell whose typed form needs a choice the record never kept, that choice, reported), hand-authored and reviewed against the SRD text; verified-only",
     "source": "System Reference Document 5.2.1, CC BY 4.0",
     "sourceRepository": "data/spell_repository.json",
     "sourceSha256": "5fafd1c79e869dbca686e3efbc18e9e680119b55a662400b1e1513892c9068ee",
-    "totalRecords": 2,
+    "totalRecords": 4,
     "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
   },
   "rules": {
@@ -35,6 +35,29 @@
       ],
       "evidence": "has an Armor Class of 17 if its AC is lower than that",
       "source": "SRD 5.2.1 Spells: Barkskin",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "bless": {
+      "name": "Bless",
+      "modifiers": [
+        {
+          "stat": "attackRolls",
+          "die": "1d4"
+        },
+        {
+          "stat": "savingThrows",
+          "die": "1d4"
+        }
+      ],
+      "evidence": "the target adds 1d4 to the attack roll or save",
+      "source": "SRD 5.2.1 Spells: Bless",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "guidance": {
+      "name": "Guidance",
+      "choice": "skill",
+      "evidence": "adds 1d4 to any ability check using the chosen skill",
+      "source": "SRD 5.2.1 Spells: Guidance",
       "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
     }
   }
