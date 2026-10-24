@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A Barkskin saved before the rules engine knew its typed rule, in a saved game from an earlier version, now takes its armor class floor of 17 when the game loads, the same way an old Mage Armor already does (#1442).
 - The DM can update a fight again when a bystander is watching, has joined against the party, or was caught by surprise; those fights' encounter updates were being rejected.
 - Casting a spell again while it is still active now renews it: the new casting replaces the active one with its full effect and a fresh duration, instead of spending the slot and changing nothing (#1442).
 - A trip inside a module is now told with the time it really took and the hour you really arrive: the travel narration reads both from the one arrival the game clock commits when the journey ends, so a 77 minute walk is no longer told as 58 and a noon arrival no longer as late morning (#1420).

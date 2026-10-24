@@ -6,7 +6,7 @@
     "source": "System Reference Document 5.2.1, CC BY 4.0",
     "sourceRepository": "data/spell_repository.json",
     "sourceSha256": "5fafd1c79e869dbca686e3efbc18e9e680119b55a662400b1e1513892c9068ee",
-    "totalRecords": 1,
+    "totalRecords": 2,
     "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
   },
   "rules": {
@@ -23,6 +23,18 @@
       ],
       "evidence": "base AC becomes 13 plus its Dexterity modifier",
       "source": "SRD 5.2.1 Spells: Mage Armor",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "barkskin": {
+      "name": "Barkskin",
+      "modifiers": [
+        {
+          "stat": "armorClass",
+          "atLeast": 17
+        }
+      ],
+      "evidence": "has an Armor Class of 17 if its AC is lower than that",
+      "source": "SRD 5.2.1 Spells: Barkskin",
       "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
     }
   }
