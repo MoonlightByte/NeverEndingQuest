@@ -293,8 +293,30 @@ def _spell_references(facts):
     return references
 
 
-def build_scene_dossier(encounter, events, characters=None):
-    """Build the complete compact T097 scene, with exact facts last."""
+def party_scene_time(path="party_tracker.json"):
+    """The hour outside from the party tracker's clock (#1423): the time of day
+    label the game's prompts use and the clock, or None when unreadable."""
+    from utils.encoding_utils import safe_json_load
+    from utils.time_context import get_time_context
+
+    try:
+        tracker = safe_json_load(path)
+    except Exception:
+        # A corrupt tracker never blocks the narration; it goes without the hour.
+        return None
+    world = tracker.get("worldConditions") if isinstance(tracker, dict) else None
+    time_str = world.get("time") if isinstance(world, dict) else None
+    if not isinstance(time_str, str):
+        return None
+    label = get_time_context(time_str)
+    if label == "unknown time":
+        return None
+    return {"timeOfDay": label, "clock": time_str[:5]}
+
+
+def build_scene_dossier(encounter, events, characters=None, scene_time=None):
+    """Build the complete compact T097 scene, with exact facts last.
+    `scene_time` is the hour outside (party_scene_time), when known."""
     encounter = encounter if isinstance(encounter, dict) else {}
     events = [event for event in (events or []) if isinstance(event, dict)]
     characters = characters if isinstance(characters, dict) else {}
@@ -386,6 +408,7 @@ def build_scene_dossier(encounter, events, characters=None):
         "contextVersion": 1,
         "encounterId": encounter.get("encounterId"),
         "location": encounter.get("locationName") or encounter.get("location"),
+        **({"scene": dict(scene_time)} if isinstance(scene_time, dict) else {}),
         "combatants": combatants,
         "initiative": {
             "round": state.get("round"),

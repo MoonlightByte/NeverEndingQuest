@@ -159,6 +159,7 @@ from core.managers.combat_state import (
     expected_player_window_ids,
     initiative_eligible_ids,
     is_down,
+    is_party_member,
     recovery_action,
     resolve_creature_controller,
     round_events,
@@ -2359,13 +2360,17 @@ def _reward_paths(encounter_data, character_paths):
     the victory rule counts (#446). Each name resolves to its own creature rows
     in ``creatures`` and is gated by combatantId; two rows sharing a name share
     one sheet, which is paid once when any of them is a member. Legacy and
-    pre-typed encounters keep paying everyone (the membership is every row).
+    pre-typed encounters keep paying every party-side row (the membership is
+    every row).
     """
     eligible = initiative_eligible_ids(encounter_data)
+    # #1415: a member that is not on the party side at fight end (a bystander
+    # who joined as a hostile, a party NPC turned hostile) is not paid.
     members = {
         creature.get("name")
         for creature in encounter_data.get("creatures", [])
         if isinstance(creature, dict) and creature.get("combatantId") in eligible
+        and is_party_member(creature)
     }
     return {
         name: path for name, path in (character_paths or {}).items()
