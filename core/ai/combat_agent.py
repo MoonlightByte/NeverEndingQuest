@@ -728,7 +728,9 @@ T097_SCENE_CONTRACT_SENTENCE = (
     "generic warnings or inventing additional actions, healing, or resources. "
     "A resource of kind charges states the item's count before and after; when "
     "its exhausted.outcome is destroyed the item is gone (narrate it crumbling, "
-    "cracking or burning out), when it is regained the item flared back to life."
+    "cracking or burning out), when it is regained the item flared back to life. "
+    "A bonusAction with itemName is an item the actor used this turn before the "
+    "Action; narrate the use and its applied hp change."
 )
 
 

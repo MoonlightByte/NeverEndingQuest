@@ -7673,6 +7673,32 @@ def _order_dm_request(messages):
     return main + rare + rest + volatile + tail
 
 
+def _engine_timed_candidate(candidate, travel_minutes):
+    """#1348: the candidate with the engine's travel time applied to the
+    actions after its transitionLocation (timed_deferred, as the apply path
+    does), and the minutes it then carries; (candidate, None) without engine
+    minutes or a readable transition. Unchanged actions keep the exact text."""
+    from core.nql.travel import timed_deferred
+
+    if type(travel_minutes) is not int:
+        return candidate, None
+    try:
+        data = json.loads(candidate)
+        actions = data["actions"]
+        index = next(i for i, action in enumerate(actions)
+                     if isinstance(action, dict) and action.get("action") == "transitionLocation")
+    except (TypeError, ValueError, KeyError, StopIteration):
+        return candidate, None
+    deferred = actions[index + 1:]
+    timed = timed_deferred(deferred, travel_minutes)
+    minutes = next(int(action["parameters"]["timeEstimate"]) for action in timed
+                   if isinstance(action, dict) and action.get("action") == "updateTime")
+    if timed == deferred:
+        return candidate, minutes
+    data["actions"] = actions[:index + 1] + timed
+    return json.dumps(data), minutes
+
+
 def _build_dm_review_request(
     accepted_history, latest_candidate, review_feedback, planner_projection,
     *, module_snapshot=None, installed_module_references="", atlas_stamps=None,
@@ -11169,6 +11195,15 @@ def _review_dm_candidate(
                     continue
                 approved_transition_plan = route_outcome.plan
                 planner_projection = {"reason_code": "approved", **dict(route_outcome.facts or {})}
+                # #1348: T065 reviews the travel time the engine will apply
+                # (the same split and timed_deferred as the apply path), told
+                # as a typed fact that the engine owns it.
+                ai_response_content, minutes_applied = _engine_timed_candidate(
+                    ai_response_content, getattr(route_outcome.plan, "travel_minutes", None))
+                normalization["candidate"] = ai_response_content
+                if minutes_applied is not None:
+                    planner_projection["travel_time"] = {
+                        "owner": "engine", "minutes_applied": minutes_applied}
 
             retry_stage = "validator"
             validation_result = validate_ai_response(

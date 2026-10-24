@@ -1047,7 +1047,8 @@ class StartupScopeRefusal(ValueError):
         return {"task_purpose": "startup_choice_refusal", "problems": self.problems,
                 "open_choice_ids": self.open_ids,
                 "instruction": ("Correct these picks from the current scope; a finalize needs every "
-                                "issued choice id filled with its count.")}
+                                "issued choice id filled with its count. Refuse only an option the scope "
+                                "does not offer, and ask only about open choice ids.")}
 
 
 def _scoped_intent(conversations, proposal, rescoped, persist=None):
@@ -1103,6 +1104,10 @@ def _scoped_intent(conversations, proposal, rescoped, persist=None):
     if ask_again and not rescoped:
         return True
     open_ids = creation_scope.open_choice_ids(intent)
+    # #1325: the narration's typed claims against the response's own intent; a correct turn costs no call.
+    problems = creation_scope.turn_problems(intent, proposal["choice_turn"])
+    if problems:
+        raise StartupScopeRefusal(problems, open_ids)
     if proposal["decision"] == "finalize_character":
         if open_ids:
             raise StartupScopeRefusal([], open_ids)
