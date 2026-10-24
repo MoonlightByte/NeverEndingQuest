@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A Mage Armor cast before the rules engine knew its typed rule, in a saved game, now counts again: at load the effect takes its typed rule (13 + Dexterity) once, and the sheet shows the armor class the engine derives; an effect already over is left for the clock to end (#1442).
 - When someone who joined a fight against the party is beaten, killed, flees or surrenders, the place's record now says so, and the DM is told after the fight who turned on the party and how it ended; what that means for them afterwards is left to the story (#1415).
 - Mage Armor sets a character's base armor class to 13 + Dexterity while they wear no body armor, decided by the rules engine (a shield and other bonuses still add); it never stacks with Unarmored Defense or armor, and two characters with the same Mage Armor each keep their own (#1322).
 - A level 3 Draconic Sorcerer's Draconic Resilience now counts: unarmored, their armor class is 10 plus their Dexterity and Charisma modifiers (a shield still adds), chosen by the rules engine against worn armor and Mage Armor, and the sheet names it "Draconic Resilience - Armor" (#1433).
