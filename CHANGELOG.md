@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A known enemy attack that names a bystander who is only watching the fight is now refused with "not in the fight" and the fighting targets, instead of hitting the bystander (#1401).
 - An enemy is no longer re-aimed at a bystander who is only watching the fight: an observer is not counted as an opponent, so after the player flees with no one else fighting the enemy defends without a model call (#1397).
 - The web game shows what this play session has cost on your own OpenAI key: a header line such as "This session: 42 AI calls, about $0.19 for AI text", with this turn, the tokens and the disclaimer on hover, and the disclaimer once in Settings. Dollars are an estimate from the token usage OpenAI reports with each response, at the list prices in the model catalog, priced by the model the game asked for. Portraits and voice clips are counted but not priced, and a failed retry that may have been billed is counted without dollars. A local provider shows calls only. Load and Reset start the count over (#1388).
 
