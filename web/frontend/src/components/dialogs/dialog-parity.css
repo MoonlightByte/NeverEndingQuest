@@ -235,6 +235,7 @@
 }
 .neq-save-mode-badge-parity.essential { background-color: #2196f3; }
 .neq-save-mode-badge-parity.full { background-color: #ff9800; }
+.neq-save-mode-badge-parity.auto-backup { background-color: #757575; }
 .neq-save-detail-row-parity {
   display: flex;
   align-items: flex-start;
