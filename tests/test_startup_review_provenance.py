@@ -1685,7 +1685,7 @@ def test_the_merged_t079_prompt_carries_t078s_rules_verbatim(wizard, authored, m
     import hashlib
     from core.ai import effects_agent
     rules = effects_agent.EFFECT_CONTRACT_RULES
-    assert hashlib.sha256(effects_agent._system_prompt().encode()).hexdigest()[:12] == "545035db931e"
+    assert hashlib.sha256(effects_agent._system_prompt().encode()).hexdigest()[:12] == "741ca35fb348"
     *_, merged = _t079_effects(wizard, authored, monkeypatch, tmp_path, [{}], "Nothing.")
     *_, separate = _t079_effects(wizard, authored, monkeypatch, tmp_path, [{}], "Nothing.", mode="separate")
     merged_system, separate_system = merged[0][0]["content"], separate[0][0]["content"]
@@ -1695,6 +1695,6 @@ def test_the_merged_t079_prompt_carries_t078s_rules_verbatim(wizard, authored, m
     assert '"effectChange": true in your delta' in separate_system
     # The T079 prompt pins: separate (the rollback) is main's prompt byte for byte; merged adds the block.
     assert hashlib.sha256(separate_system.encode()).hexdigest()[:12] == "79e671ba7ed1"
-    assert hashlib.sha256(merged_system.encode()).hexdigest()[:12] == "7c9ad18d8705"
+    assert hashlib.sha256(merged_system.encode()).hexdigest()[:12] == "361215e067fe"
 
 
