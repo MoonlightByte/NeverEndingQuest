@@ -4382,9 +4382,8 @@ This is narration only. Do not advance the round or apply any combat action."""
        )
        parsed_response = json.loads(initial_response)
        _display_combat_narration(parsed_response['narration'])
-   elif not pending_agentic_recovery:
-       # Reached only by a resume (a fresh start took the branch above) whose whole party is down;
-       # a pending agentic recovery keeps the deferral below.
+   elif is_resuming and resume_party_defeated and not pending_agentic_recovery:
+       # A pending agentic recovery keeps the deferral below.
        debug(
            "RESUME: Whole party defeated; no re-engagement narration, the "
            "party-defeat pause follows (#1335)",
