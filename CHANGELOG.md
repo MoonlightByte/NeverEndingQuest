@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A named person standing where a fight starts, or a companion travelling with you, is now in the fight as a bystander even when the scene left them out, so the turn rulings can see them; a group, a person with no character sheet, or one recorded dead is not added (#1425).
 - The combat narrator now knows the hour outside, so a daytime fight in the open is no longer told "in the dark"; a cave or other dark place keeps its dark (#1423).
 - A bystander you attack in a fight now joins it as a hostile: they take turns from the next round, the fight is not won while they stand, and they are not paid XP at its end; the turn ruling no longer refuses an attack on an ally or bystander (#1415).
 - The travel narration now says how long the journey took by the game clock, so a trip the clock counts as 65 minutes is no longer told as 49 (#1420).
