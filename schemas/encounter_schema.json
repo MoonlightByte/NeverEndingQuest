@@ -304,10 +304,22 @@
           "maxHitPoints": {
             "type": "integer",
             "minimum": 1
+          },
+          "statsPending": {
+            "type": "boolean"
           }
         },
-        "required": ["name", "type", "initiative", "status", "conditions", "actions", "currentHitPoints", "maxHitPoints"],
+        "required": ["name", "type", "status", "conditions", "actions"],
         "allOf": [
+          {
+            "if": {
+              "properties": { "statsPending": { "const": true } },
+              "required": ["statsPending"]
+            },
+            "else": {
+              "required": ["initiative", "currentHitPoints", "maxHitPoints"]
+            }
+          },
           {
             "if": {
               "properties": { "type": { "const": "enemy" } }

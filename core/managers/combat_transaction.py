@@ -962,6 +962,57 @@ def live_exchanges(pending):
     return [item for item in exchanges or [] if isinstance(item, dict) and item.get("withdrawn") is not True]
 
 
+def write_pending_stats(
+    encounter_path,
+    turn_id,
+    combatant_id,
+    stats=None,
+    sheet_ref=None,
+    timeout_seconds=5.0,
+    invocation_claim=None,
+):
+    """#1447: settle one ``statsPending`` observer while its turn is still
+    being chosen. With ``stats`` (currentHitPoints, maxHitPoints, armorClass,
+    initiative from the sheet just built) and ``sheet_ref`` (that sheet's
+    path), the creature takes the stats, ``statsPending`` is cleared,
+    ``sheetBuiltAt`` records the round, and its scene row now names the
+    sheet, so later loads find it by sourceRef. Without them the build
+    failed: ``sheetBuildFailedAt`` records the round and the creature stays
+    pending (one build per creature per fight). Returns the written
+    encounter."""
+    with _invocation_commit_authority(invocation_claim), path_transaction_lock(
+        encounter_path,
+        suffix=".combat.lock",
+        timeout_seconds=timeout_seconds,
+    ) as acquired:
+        if acquired is None:
+            raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
+        encounter = _load_object(encounter_path, "encounter")
+        state = ensure_combat_state(encounter)
+        pending = state.get("pendingTurn")
+        if not isinstance(pending, dict) or pending.get("turnId") != turn_id:
+            raise CombatTransactionError("The pending player turn changed")
+        if pending.get("stage") != "intent_pending":
+            raise CombatTransactionError("The pending player turn is already staged")
+        creature = combatant_by_id(encounter, combatant_id)
+        if not isinstance(creature, dict) or creature.get("statsPending") is not True:
+            raise CombatTransactionError("The creature has no pending stats")
+        if stats is None:
+            creature["sheetBuildFailedAt"] = state.get("round")
+        else:
+            for key in ("currentHitPoints", "maxHitPoints", "armorClass", "initiative"):
+                creature[key] = stats[key]
+            creature.pop("statsPending", None)
+            creature.pop("sheetBuildFailedAt", None)
+            creature["sheetBuiltAt"] = state.get("round")
+            for row in (encounter.get("sceneFacts") or {}).get("participants") or []:
+                if isinstance(row, dict) and row.get("combatantId") == combatant_id:
+                    row["sourceKind"] = "character"
+                    row["sourceRef"] = str(sheet_ref)
+        _write_object(encounter_path, encounter, "combat pending stats")
+        return encounter
+
+
 def write_weapon_attack(
     encounter_path,
     turn_id,
