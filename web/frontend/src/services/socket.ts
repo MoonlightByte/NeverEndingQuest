@@ -110,12 +110,6 @@ function refreshAuthoritativeState(): void {
   // stale even before the tab has mounted, and a redundant response is cheap
   // (store write, no render for an unmounted tab).
   emitC('request_map_data', undefined)
-  if (import.meta.env.VITE_EDITION !== 'hosted') {
-    // #1399 G2: New game and Load need the provider and key status before
-    // Settings is ever opened.
-    emitC('get_model_provider', undefined)
-    emitC('get_openai_key', undefined)
-  }
 }
 
 // ---------- transport-level ----------

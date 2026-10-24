@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { useEmberViewport } from './useEmberViewport'
@@ -49,6 +49,13 @@ export function HeaderBar() {
   const resetPending = useDialogs((s) => s.actionResult?.kind === 'reset')
   const isLocalEdition = (import.meta.env.VITE_EDITION ?? 'local') === 'local'
 
+  // #1399 G2: New game and Load need the provider and key status before
+  // Settings is ever opened; they can change while disconnected.
+  useEffect(() => {
+    if (!connected || !isLocalEdition) return
+    emitC('get_model_provider', undefined)
+    emitC('get_openai_key', undefined)
+  }, [connected, isLocalEdition])
   // #1399 G2: with no OpenAI key, New game and Load open Settings on the
   // guided key panel instead of starting; the panel resumes the action.
   const keyGate = (action: 'start' | 'load') => {
