@@ -135,9 +135,10 @@ NARRATIVE ELABORATION: Location descriptions and NPC sketches are starting seeds
 }
 
 @LOCATION_NPC_REFS={
-  valid: ONLY existing locations/NPCs from module files
-  invalid: Invented places/people ("sage by millhouse" when no millhouse)
-  fail_response: "References [X] which doesn't exist in module data"
+  valid: Locations from module data; a person or group in the origin record's occupants (by name or alias) is present there, as are party members and party NPCs
+  invalid: Invented places/people absent from the origin record's occupants, party, and module character lists ("sage by millhouse" when no millhouse)
+  never: Reject a present occupant as unlisted; check the origin record's occupants before any presence rejection
+  fail_response: "References [X], who is not in the origin record's occupants or the module data"
 }
 
 @MULTI_AREA_TRAVEL={
