@@ -2669,12 +2669,9 @@ def pre_validate_transition(
             if verdict == "halt":
                 stop = engine["stop"]
                 stop_name = place_name(stop)
-                hostiles = list(engine.get("hostiles") or [])
-                reason = (
-                    "a hostile presence holds %s (%s) on the way, so the party "
-                    "stops there first"
-                    % (stop_name, ", ".join(hostiles) or "present occupants")
-                )
+                # #1351: who holds the stop is DM-only (occupants carry no
+                # disclosure flag); the encounter flow reveals it, not travel.
+                reason = "the party stops at %s on the way first" % stop_name
                 return finish(
                     False,
                     "[TRAVEL SYSTEM] Travel stops early: %s. Transition only to "
@@ -2685,7 +2682,7 @@ def pre_validate_transition(
                         "stop_location_id": str(stop),
                         "stop_location_name": str(stop_name),
                         "reason": reason,
-                        "hostiles_present": hostiles,
+                        "stop_reason": "hostile_presence",
                         "authority": "engine",
                     },
                     intermediate_destination_id=stop,
