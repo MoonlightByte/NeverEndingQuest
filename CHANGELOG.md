@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the whole party falls, the pause no longer says nothing was saved after the fall, which was untrue once you saved at the pause (#1423).
 - The rules engine is now the public Firelight Engine v0.1.0 (github.com/MoonlightByte/firelight), shipped as `bin/firelight-apply`; `bin/nql-apply` is the same build under its old name (#1409).
 - First run with your own OpenAI key is guided: saving a key checks it once with OpenAI (a free request) and says whether it was accepted, rejected, rate limited (with the wait), refused, out of credit or not reachable, and only a rejected key is not saved. New game and Load with no key open Settings on a short guide (where to get a key, where to paste it) and carry on afterwards. Settings says when there is no system keychain and the key is kept in user_settings.json. The first start creates config.py and keeps running. Every client that carries the OpenAI key now always talks to api.openai.com, whatever OPENAI_BASE_URL says (#1399).
 - A known enemy attack that names a bystander who is only watching the fight is now refused with "not in the fight" and the fighting targets, instead of hitting the bystander (#1401).
