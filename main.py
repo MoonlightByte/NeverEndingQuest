@@ -10444,6 +10444,11 @@ def _followup_failure_message(result):
         # D-COST-4: the authored in-character line, which claims nothing
         # about earlier beats, so it is true on a follow-up too.
         return _dm_fail_forward_line()
+    if result.get("status") == "provider_error" and result.get("category") != "local_fault":
+        # #1342: a review refusal carries the turn moment ("Nothing in your
+        # game was changed"), false here: the parent beat already committed.
+        return (account_refusal_message(result.get("category"), result.get("provider"), "followup")
+                or _FOLLOWUP_NOT_APPLIED_MESSAGE)
     return result.get("player_message") or _FOLLOWUP_NOT_APPLIED_MESSAGE
 
 
