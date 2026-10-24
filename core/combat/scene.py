@@ -241,6 +241,28 @@ def validate_scene_proposal_shape(parameters):
     reconcile_scene_manifest(params, placeholder)
 
 
+def _listed_key_gaps(parameters):
+    """#1377: the scene's npc:N / monster:N keys whose position its own list
+    does not reach, in scene order. A key read as anything but a plain
+    position (npc:x, npc:-1, npc:01) is not a gap; today's sentence answers it.
+    Only the key strings and the list lengths are read."""
+    lengths = {
+        "npc": len(parameters.get("npcs") or []) if isinstance(parameters.get("npcs"), list) else 0,
+        "monster": len(parameters.get("monsters") or []) if isinstance(parameters.get("monsters"), list) else 0,
+    }
+    scene = parameters.get("scene")
+    participants = scene.get("participants") if isinstance(scene, dict) else None
+    gaps = []
+    for item in participants if isinstance(participants, list) else []:
+        key = item.get("participantKey") if isinstance(item, dict) else None
+        kind, _, position = key.partition(":") if isinstance(key, str) else ("", "", "")
+        if kind not in lengths or not (position.isascii() and position.isdigit()) or position != str(int(position)):
+            continue
+        if int(position) >= lengths[kind] and key not in gaps:
+            gaps.append(key)
+    return gaps
+
+
 def validate_typed_encounter_actions(response):
     """Reject incomplete typed encounter actions before any stateful handler runs."""
     payload = _require_object(response, "DM response")
@@ -265,8 +287,19 @@ def validate_typed_encounter_actions(response):
             validate_scene_proposal_shape(parameters)
         except SceneReconciliationError as exc:
             keys = ", ".join(expected_keys)
+            gaps = _listed_key_gaps(parameters)
+            remedy = (
+                " ".join(
+                    f"{key} needs {'an npcs' if key.startswith('npc:') else 'a monsters'} entry, "
+                    f"the {'occupant' if key.startswith('npc:') else 'monster'}'s name, or "
+                    "remove it if they are not here."
+                    for key in gaps
+                )
+                if gaps
+                else f"Use participant keys exactly [{keys}]."
+            )
             raise SceneReconciliationError(
-                f"{exc}. Use participant keys exactly [{keys}]. scene must contain "
+                f"{exc}. {remedy} scene must contain "
                 "participants, relations, objectives, and disclosureGrants arrays. "
                 "Every participant requires participantKey, participation, "
                 "initiativeEligible boolean, and controller. "

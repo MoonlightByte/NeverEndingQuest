@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A combat-start scene that names an NPC (or monster) key its own list does not reach now gets feedback naming that gap, so a watching NPC is added to npcs instead of being dropped from the fight (#1377).
 - A flat-damage swing (such as an Unarmed Strike) is taken over by the engine like any player attack: the player rolls only the d20, and the engine applies the flat damage, with no damage window and no model re-rule (#1350).
 - The combat-start initiative line for a typed encounter is its committed initiative order, so an observer NPC is no longer listed and combat validation no longer redrafts the opening over it (#1361).
 - A solo player who drops while an NPC only watches now gets the party-defeat pause, and fleeing alone ends the fight as a withdrawal: only the fight's initiative members count as standing allies (#1354).
