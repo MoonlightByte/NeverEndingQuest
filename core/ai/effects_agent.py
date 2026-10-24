@@ -93,6 +93,10 @@ an average. A die is accepted only on attackRolls, savingThrows,
 savingThrow.<ability>, abilityChecks and abilityCheck.skill.<skill>. Guidance
 is one modifier on the skill the caster chose, the skill in lowercase with
 hyphens: {"stat":"abilityCheck.skill.sleight-of-hand", "die":"1d4"}.
+An effect that sets armor class to a base plus an ability modifier (Mage
+Armor: 13 + Dexterity) uses {"stat":"armorClass", "set":{"base":13,
+"plusAbility":"dexterity"}} in place of value (plusAbility null for a flat
+base); the engine computes the armor class.
 
 Current hit points are a resource, not a derived modifier. For Aid-like effects
 that raise maximum and current HP, use a maxHitPoints modifier plus matching
@@ -257,7 +261,12 @@ def classification_from_object(obj, character_name, change_description, now_scal
     finalized the same way. Raises EffectsAgentContractError with the contract's message."""
     result = _check_contract(deepcopy(obj))
     if result["operation"] == "add":
-        result["effect"] = _finalize(result["effect"], now_scalar, character_name, change_description)
+        try:
+            result["effect"] = _finalize(result["effect"], now_scalar, character_name, change_description)
+        except ValueError as exc:
+            # A malformed modifier (a value with a set or a die, #1322) is a contract failure that
+            # T079's loop corrects, as T078's retry already does, not an uncaught error.
+            raise EffectsAgentContractError("T078 effect failed validation: %s" % exc) from exc
     return result
 
 

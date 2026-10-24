@@ -66,6 +66,15 @@ def signed(value):
     return "%+d" % value if type(value) is int else val(value)
 
 
+def modifier_amount(modifier):
+    """A modifier's amount; a #1322 set rule as typed (armorClass set 13+dexterity), never null."""
+    rule = modifier.get("set")
+    if isinstance(rule, dict):
+        ability = rule.get("plusAbility")
+        return "set %s%s" % (val(rule.get("base")), "+" + val(ability) if ability else "")
+    return signed(modifier.get("value"))
+
+
 def joined(items):
     return "[" + ", ".join(val(x) for x in items or []) + "]"
 
@@ -244,7 +253,7 @@ def compact_sheet(sheet):
         if e.get("source"):
             line += "; source %s" % one_line(e["source"])
         if e.get("modifiers"):
-            line += "; modifiers %s" % ", ".join("%s %s" % (val(m.get("stat")), signed(m.get("value")))
+            line += "; modifiers %s" % ", ".join("%s %s" % (val(m.get("stat")), modifier_amount(m))
                                                  for m in e["modifiers"] if isinstance(m, dict))
         if e.get("conditions"):
             line += "; conditions %s" % joined(e["conditions"])

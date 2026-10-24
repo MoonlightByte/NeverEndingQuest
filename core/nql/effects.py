@@ -233,6 +233,15 @@ def fallback_unbake(sheet: Dict[str, Any], removed: List[Dict[str, Any]]) -> Lis
     return handled
 
 
+def set_effects_left(removed: List[Dict[str, Any]]) -> List[str]:
+    """#1322: ended engineOwned effects whose armor class is a set rule (Mage Armor). Without the
+    engine nothing can take them off the stored number (no host arithmetic, D-KW-8): the stored
+    armorClass stays until the next projection re-derives it. Returns their names, for the gap."""
+    return [str(e.get("name")) for e in removed or []
+            if isinstance(e, dict) and e.get(genesis.EFFECT_ENGINE_OWNED) is True
+            and any(isinstance(m, dict) and isinstance(m.get("set"), dict) for m in e.get("modifiers") or [])]
+
+
 # ---------------------------------------------------------------------------
 # Time (E12b): the engine clock ends timed effects; nothing compares dates.
 # ---------------------------------------------------------------------------
