@@ -86,13 +86,15 @@ and `ts` (unix seconds).
 | `hello` | `protocol`, `game_dir`, `pid` | session started |
 | `startup` | `phase`, ... | startup readiness marker; `startup_kickoff_done` (or `startup_kickoff_skipped` with `result: "already_done"`) means the game is live |
 | `narration` | `channel` (`main`/`combat`/`levelup`/`system`), `content`, `source` (`sink` or `stdout_scrape`) | DM output for the player. `source: "sink"` is the structured path all engine narration uses; `stdout_scrape` marks a fallback recovery from raw stdout and normally never appears |
-| `status` | `message`, `is_processing` | engine busy/idle heartbeat |
-| `prompt` | `kind` (`main`/`combat`/`levelup`/`wizard`/`unknown`), `raw_prompt`, `stats` (`hp`, `max_hp`, `xp`, `next_level_xp`, `time`, `time_context` when available) | **the engine is waiting for input; the turn boundary** |
+| `status` | `message`, `is_processing`, `recovery_required` | engine busy/idle heartbeat. While `recovery_required` is true, an idle status reads "Gameplay is paused. Choose a save to Load, Reset, or Quit." and only list-saves, Load, Reset or Quit are accepted |
+| `welcome_progress` | `message`, `kind?` (`opening_scene`/`resume`) | background progress of a new game's opening scene (`opening_scene`, e.g. "The DM is setting the opening scene...") or a resumed game's welcome (`resume`, "The DM is recalling your journey..."). Presentational only: it is not a `status` event and never locks input. An empty `message` clears it |
+| `prompt` | `kind` (`main`/`combat`/`levelup`/`roll`/`wizard`/`unknown`), `raw_prompt`, `stats` (`hp`, `max_hp`, `xp`, `next_level_xp`, `time`, `time_context` when available) | **the engine is waiting for input; the turn boundary** |
 | `state` | see below | snapshot taken right after `prompt` |
 | `system` | `content` | structured system messages (module transitions, safe-action failures, bootstrap notes) |
 | `debug` | `content`, `is_error` | raw engine chatter; only emitted with `--debug`, except engine-crash tracebacks, which are always emitted |
 | `compression` | `event`, ... | history-compression progress |
 | `module_progress` | build progress fields | in-game module creation progress |
+| `operation` | `name`, `status`, `id?`, `operation_id?`, `message?`, `waiting_for_current_operation?` | a transport receipt or deferral for a command or input, e.g. `status: "accepted_deferred"` with "Your action is queued for after travel recovery.". Never proof of execution; wait for the correlated `result` |
 | `result` | `id`, `ok`, `data`/`error` | reply to a `command` |
 | `exit` | `reason` (`player_exit`/`engine_stop`/`restart`/`error`), `detail?` | session over |
 
@@ -106,9 +108,10 @@ and `ts` (unix seconds).
 {"type": "command", "id": "c4", "name": "restore", "args": {"save_folder": "..."}}
 {"type": "command", "id": "c5", "name": "delete_save", "args": {"save_folder": "..."}}
 {"type": "command", "id": "c6", "name": "quit"}
+{"type": "command", "id": "c7", "name": "reset", "args": {"confirmed": true}}
 ```
 
-Rules (safety-worktree implementation; live acceptance still pending):
+Rules (live-accepted on 2026-10-24 by the L12 headless save, load and resume runs):
 
 - Send one `input` per `prompt` event; do not batch future gameplay turns.
 - Save can queue at a live/welcome safe boundary. Load and confirmed Reset
@@ -129,9 +132,24 @@ Rules (safety-worktree implementation; live acceptance still pending):
 - Restart ends this process's ephemeral queue. A command known to be undispatched
   must be resubmitted; a missing result alone is not proof it never executed.
   Never blindly resend gameplay input merely because it had no command result.
+- A `prompt {kind: "roll"}` asks for a die result (its prompt carries
+  `[ROLL]`): send the face as `input`, or an empty line to let the game roll.
+- Reset requires `args.confirmed: true` (otherwise the result is
+  `reset requires args.confirmed=true`). Like a clean restore, it ends with
+  `exit {reason: "restart"}`; relaunch to play the reset campaign.
+- A new game's opening scene (`welcome_progress {kind: "opening_scene"}`) is
+  never discarded by early input. An `input` sent before the scene's
+  `narration` arrives is held and answered after the scene: expect the
+  scene's `narration`, then the answer's.
 - Wizard turns work over the same channel: if no character is seeded, the
   startup wizard's questions surface as `prompt {kind: "wizard"}` events and
-  free-text answers drive the AI character-creation interview.
+  free-text answers drive the AI character-creation interview. The wizard
+  also sends fixed `narration` lines: a welcome line before the adventure
+  menu, a start line before the interview, and the model's finalize
+  narration after approval. Its `status` heartbeat names the purpose:
+  "Still preparing your adventure choices (N seconds elapsed)..." while the
+  menu is written, "Still working on character setup (N seconds
+  elapsed)..." during the interview.
 - NPC-initiative combat turns can produce narration with no intervening
   `prompt` -- do not assume strict prompt/narration alternation.
 
@@ -193,7 +211,9 @@ child has actually reported, e.g. "Attempt 1, 12 s: request delivered to
 OpenAI; waiting for it to acknowledge (11 s)... Your turn is safe." or
 "OpenAI is working on it (last activity 3 s ago)...". The phases are
 connecting, connected, secured, sent, acknowledged, working, receiving, done,
-failed; every provider row in `debug/api_captures/api_calls_master.jsonl`
+failed (shown as "connecting to", "connected to ...; sending your request",
+"request delivered to ...", "... is working on it", "answer arriving from",
+"answer received from ...; finishing", "... connection failed; reconnecting"); every provider row in `debug/api_captures/api_calls_master.jsonl`
 carries them under `metadata.phases` with `lastPhase`, so a stalled call can
 be attributed to its stage after the fact. Silence alone does not identify the
 cause: inspect the same live process/children and protocol before diagnosing
