@@ -599,13 +599,15 @@ def bystanders_attacked(encounter, event):
     return result
 
 
-def join_as_hostile(encounter, combatant_id):
+def join_as_hostile(encounter, combatant_id, by=None):
     """#1415 (D-2026-10-24-BYSTANDER): an observer the player attacked joins
     the fight as a hostile participant. Its participant row becomes active and
     initiative-eligible, its faction hostile; it is inserted into the
     initiative order at its initiative and counted as having acted this
-    round, so it first acts next round. Idempotent: a creature already
-    eligible is left as it is. Returns whether anything changed."""
+    round, so it first acts next round. The row keeps ``joinedHostile``
+    ({by, round}): the fight's end reads it, the turn record does not last.
+    Idempotent: a creature already eligible is left as it is. Returns
+    whether anything changed."""
     if combat_provenance(encounter) != "typed":
         return False
     creature = combatant_by_id(encounter, combatant_id)
@@ -625,6 +627,7 @@ def join_as_hostile(encounter, combatant_id):
     row["initiativeEligible"] = True
     creature["faction"] = "hostile"
     state = encounter.setdefault("combatState", {})
+    row["joinedHostile"] = {"by": by, "round": state.get("round")}
 
     def _key(entry):
         return (

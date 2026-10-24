@@ -812,7 +812,7 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 resolution["event"].setdefault("normalizations", []).append(
                     {"kind": "bystanderJoinedHostile", "combatantId": joined_id, "by": actor_id}
                 )
-                join_as_hostile(next_encounter, joined_id)
+                join_as_hostile(next_encounter, joined_id, by=actor_id)
         events.append(resolution["event"])
 
     if intent_index != len(intents):
