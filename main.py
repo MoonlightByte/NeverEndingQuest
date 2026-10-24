@@ -387,6 +387,9 @@ class _WelcomeLifecycle:
 _welcome_lifecycle = None
 
 
+# The background welcome's status lines (#214), one source for the opening-scene
+# swap below (#1422 F4).
+_RECALLING_STATUS = "The DM is recalling your journey..."
 _OPENING_SCENE_STATUS = "The DM is setting the opening scene..."
 
 
@@ -394,7 +397,7 @@ def _welcome_status(message):
     """Non-input-locking presentational status (D-214-4=A)."""
     lifecycle = _welcome_lifecycle
     kind = lifecycle.kind if lifecycle is not None else None
-    if kind == "opening_scene" and message == "The DM is recalling your journey...":
+    if kind == "opening_scene" and message == _RECALLING_STATUS:
         message = _OPENING_SCENE_STATUS
     try:
         status_manager.emit_welcome_event(message, kind=kind)
@@ -409,7 +412,7 @@ def _welcome_worker_main(lifecycle):
         LiveProviderSuperseded,
     )
     try:
-        _welcome_status("The DM is recalling your journey...")
+        _welcome_status(_RECALLING_STATUS)
         welcome_history = _welcome_history(lifecycle.frozen_history)
         content = _get_ai_response_impl(
             welcome_history,
@@ -7392,7 +7395,7 @@ def _get_ai_response_impl(
     if detached_context:
         detached_status = detached_context.get("status")
         if detached_status is not None:
-            detached_status("The DM is recalling your journey...")
+            detached_status(_RECALLING_STATUS)
     else:
         status_processing_ai()
     
