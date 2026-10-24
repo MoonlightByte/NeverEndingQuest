@@ -783,8 +783,14 @@ OPENING_ACTION_LIMIT = 300
 def copy_opening_action(encounter_data, encounter):
     """#882: keep the player's own declared first action on the encounter, to
     offer it at their first combat turn. The text is passed through, never
-    read; anything but a non-empty string is dropped."""
+    read; anything but a non-empty string is dropped. #1334: one the DM marks
+    as from an earlier turn (openingActionSource) is dropped too, so a restored
+    or stale declaration is never offered; an absent source keeps it."""
     opening_action = encounter_data.get("openingAction")
+    if encounter_data.get("openingActionSource") == "earlier_turn":
+        if opening_action is not None:
+            logging.debug("openingAction dropped: openingActionSource is earlier_turn")
+        return
     if isinstance(opening_action, str) and opening_action.strip():
         encounter["openingAction"] = opening_action.strip()[:OPENING_ACTION_LIMIT]
         encounter["openingActionOffered"] = False

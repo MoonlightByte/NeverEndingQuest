@@ -1193,7 +1193,7 @@ When the Combat Commitment Point is reached (excluding historical records) and n
 Combat Summary:
 - When using the "createEncounter" action to initialize combat, include an "encounterSummary" field in the JSON output.
 - This summary should briefly describe the initial combat situation, including the location, participants, and any relevant environmental factors.
-- Optional "openingAction": when the player's message that starts the fight declares their own first action (an attack, a spell, a shove), copy that declaration in the player's words (under 300 characters). The game offers it to the player at their first turn; never narrate it resolved.
+- Optional "openingAction": when the player's message that starts the fight declares their own first action (an attack, a spell, a shove), copy that declaration in the player's words (under 300 characters). The game offers it to the player at their first turn; never narrate it resolved. With it, required "openingActionSource": "latest_player_message" or "earlier_turn".
 - Use the following format for combat encounter creation with summary:
   {
     "actions": [
@@ -1207,6 +1207,7 @@ Combat Summary:
           "monsterKeys": {"monster:1": "<a key from bestiaryKeys, when that monster is a standard creature with no occupant id>"},
           "encounterSummary": "<brief_description_of_combat_situation>",
           "openingAction": "<the player's own declared first action, in their words, if any>",
+          "openingActionSource": "<latest_player_message | earlier_turn, required with openingAction>",
           "scene": {
             "participants": [
               {"participantKey":"player:0","participation":"active","initiativeEligible":true,"persistence":"canonical_character","controller":"human"},
