@@ -2943,7 +2943,8 @@ def parse_json_safely(text):
 
 
 # T065's typed category: which of the validator's rules it applied. Counted
-# in diagnostics only; no code branches on it and it never reaches the DM.
+# in diagnostics, except ungrounded_destination (#1357): the review loop ends
+# the turn with a code-built destination question. It never reaches the DM.
 VALIDATION_CATEGORIES = ("none", "reference", "missing_action", "unrequested_action", "action_order",
                          "travel", "combat", "resources", "inventory", "party", "module", "other",
                          "ungrounded_destination")
