@@ -36,6 +36,9 @@ from utils.path_transaction_lock import path_transaction_lock
 
 TRACKER_PATH = os.path.join("modules", "effects_tracker.json")
 MIGRATION_GUARD_PATH = os.path.join("modules", "effects_migration")
+# #1376: the typed save_metadata kind of the pre-conversion save; the Load
+# list labels it from this field, never from its description.
+EFFECTS_BACKUP_KIND = "effects_v2_preconversion"
 
 
 class EffectsMigrationError(RuntimeError):
@@ -545,7 +548,8 @@ def _create_backup():
     manager = SaveGameManager()
     before = {item.get("save_folder") for item in manager.list_save_games()}
     success, message = manager.create_save_game(
-        "Automatic backup before Effects V2 conversion", "essential"
+        "Automatic backup before Effects V2 conversion", "essential",
+        auto_backup=EFFECTS_BACKUP_KIND,
     )
     if not success:
         raise EffectsMigrationError("pre-migration save failed: %s" % message)

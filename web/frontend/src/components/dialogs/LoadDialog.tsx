@@ -18,7 +18,12 @@ interface SaveEntry {
   module: string
   location: string
   description: string
+  autoBackup: string
 }
+
+// #1376: the typed save_metadata kind of the save the game takes before the
+// Effects V2 conversion. Only this field labels it; the description is never read.
+const EFFECTS_BACKUP_KIND = 'effects_v2_preconversion'
 
 function asString(value: unknown): string {
   if (typeof value === 'string') return value
@@ -38,6 +43,7 @@ function toSaveEntry(raw: Record<string, unknown>): SaveEntry {
     module: asString(raw['module']) || 'Unknown Module',
     location: asString(gameState['current_location']) || 'Unknown Location',
     description: asString(raw['description']),
+    autoBackup: asString(raw['auto_backup']),
   }
 }
 
@@ -156,11 +162,17 @@ function LoadDialogBody() {
                         {entry.mode}
                       </span>
                     )}
+                    {entry.autoBackup === EFFECTS_BACKUP_KIND && (
+                      <span className="neq-save-mode-badge-parity auto-backup">Auto backup</span>
+                    )}
                   </div>
                   <div>
                     <div className="neq-save-detail-row-parity"><span className="neq-save-detail-label-parity">Date:</span><span className="neq-save-detail-value-parity date">{entry.date}</span></div>
                     <div className="neq-save-detail-row-parity"><span className="neq-save-detail-label-parity">Module:</span><span className="neq-save-detail-value-parity module">{entry.module}</span></div>
                     <div className="neq-save-detail-row-parity"><span className="neq-save-detail-label-parity">Location:</span><span className="neq-save-detail-value-parity location">{entry.location}</span></div>
+                    {entry.autoBackup === EFFECTS_BACKUP_KIND && (
+                      <div className="neq-save-detail-row-parity"><span className="neq-save-detail-label-parity">Backup:</span><span className="neq-save-detail-value-parity auto-backup">Taken before the effects upgrade. Loading it returns to before that upgrade and its module setup.</span></div>
+                    )}
                     {entry.description && (
                       <div className="neq-save-detail-row-parity"><span className="neq-save-detail-label-parity">Notes:</span><span className="neq-save-detail-value-parity description">{entry.description}</span></div>
                     )}
