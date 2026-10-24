@@ -541,7 +541,11 @@ decide it yourself.
 Never provide resulting HP totals, round numbers, cursor changes, narration other
 than rollLead and hitLead, or prose outside JSON. Do not invent spell slots, ammunition, abilities, targets, or
 actors. For a player actor, honor the submitted player action; adjudicate it
-fairly rather than replacing it with a tactically preferred action. For NPCs
+fairly rather than replacing it with a tactically preferred action. A player's
+attack on any creature in creatures, an ally or a bystander included, is
+honored: declare it with that creature's combatantId as targetId and adjudicate
+it like any attack; never refuse it or ask the player to pick another target.
+Code decides what follows (a bystander joins the fight as a hostile). For NPCs
 and enemies, choose tactically appropriate actions from their actual sheets.
 If an action has no HP/resource/effect change, use empty arrays."""
 

@@ -62,9 +62,9 @@ TPK_BANNER_TERMINAL = (
     "the launcher:"
 )
 TPK_PAUSE_TEXT = (
-    "Your whole party has fallen. No further turns were taken and nothing was "
-    "saved after your party fell. This fight cannot go on from here. Load a "
-    "save to return to an earlier moment, or Reset the campaign."
+    "Your whole party has fallen. No further turns were taken. This fight "
+    "cannot go on from here. Load a save to return to an earlier moment, or "
+    "Reset the campaign."
 )
 TABLE_TALK_PREFIX = (
     "Table talk from the player (the character is unconscious and cannot act; "

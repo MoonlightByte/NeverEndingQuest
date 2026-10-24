@@ -2209,6 +2209,11 @@ def apply_current_transition_action(operation_id, action_index):
                 "arrival",
             ),
         )
+        # #1420: the clock at this commit, before any later sibling moves
+        # it; the travel narration states the minutes from `before` to here.
+        arrived = game_clock.clock_tick()
+        if arrived is not None:
+            receipt["arrivedTick"] = arrived
         record["status"] = "committed"
         deferred["cursor"] = action_index + 1
         deferred["receipts"].append(
