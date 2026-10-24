@@ -565,7 +565,7 @@ def _roster_candidates(place_occupants, party_tracker):
             continue
         if isinstance(occupant.get("name"), str) and occupant["name"].strip():
             out.append({"name": occupant["name"], "occupantId": occupant_id,
-                        "attitude": occupant.get("attitude")})
+                        "attitude": occupant.get("attitude"), "atPlace": True})
             ids.add(occupant_id)
     for entry in (party_tracker or {}).get("partyNPCs") or []:
         if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
@@ -573,10 +573,38 @@ def _roster_candidates(place_occupants, party_tracker):
         occupant_id = entry.get("occupantId")
         if occupant_id in ids:
             continue
-        out.append({"name": entry["name"], "occupantId": occupant_id, "attitude": None})
+        out.append({"name": entry["name"], "occupantId": occupant_id, "attitude": None, "atPlace": False})
         if occupant_id:
             ids.add(occupant_id)
     return out
+
+
+PENDING_SOURCE = "occupant"
+
+
+def _pending_observer(candidate, present_names):
+    """#1447: the observer creature for a person present at the fight's place
+    whose sheet does not exist yet, from the occupant record alone: name,
+    occupantId and side, with ``statsPending`` and no hit points, armor class
+    or initiative (none are invented). The first intent that targets it
+    builds the sheet (combat_orchestrator._ensure_targeted_sheets). None for
+    a companion (a party member always has a sheet) or a name already in
+    the fight."""
+    if not candidate.get("atPlace") or not candidate.get("occupantId"):
+        return None
+    if candidate["name"] in present_names:
+        return None
+    return {
+        "name": candidate["name"],
+        "type": "npc",
+        "npcType": format_type_name(candidate["name"]),
+        "status": "alive",
+        "conditions": [],
+        "actions": {"actionType": "", "target": ""},
+        "faction": "hostile" if candidate["attitude"] == "hostile" else "party",
+        "occupantId": candidate["occupantId"],
+        "statsPending": True,
+    }
 
 
 def _roster_observers(encounter, scene_sources, place_occupants, party_tracker,
@@ -595,8 +623,23 @@ def _roster_observers(encounter, scene_sources, place_occupants, party_tracker,
             continue
         loaded = _load_npc_sheet(candidate["name"], path_manager)
         if not loaded:
-            warning(f"ROSTER: no sheet for {candidate['occupantId'] or candidate['name']}, not added",
-                    category="combat_builder")
+            pending = _pending_observer(candidate, present_names)
+            if pending is None:
+                warning(f"ROSTER: no sheet for {candidate['occupantId'] or candidate['name']}, not added",
+                        category="combat_builder")
+                continue
+            present_ids.add(candidate["occupantId"])
+            present_names.add(candidate["name"])
+            encounter["creatures"].append(pending)
+            added.append(
+                {
+                    "participantKey": f"roster:{len(added)}",
+                    "creature": pending,
+                    "sourceKind": PENDING_SOURCE,
+                    "sourceRef": candidate["occupantId"],
+                    "displayName": candidate["name"],
+                }
+            )
             continue
         npc_data, npc_file = loaded
         if os.path.realpath(npc_file) in present_paths or npc_data["name"] in present_names:

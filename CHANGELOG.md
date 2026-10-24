@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- People standing around when a fight starts now appear in it as onlookers even before they have a character sheet, so you can attack, heal or help them; their sheet is made the first time anyone acts on them, and the DM's encounter updates in such fights no longer fail (#1447).
 - A person the DM names directly in a fight is now matched to the person standing at that place, so if they turn on the party, how the fight left them is recorded there as well (#1415).
 - A Mage Armor cast before the rules engine knew its typed rule, in a saved game, now counts again: at load the effect takes its typed rule (13 + Dexterity) once, and the sheet shows the armor class the engine derives; an effect already over is left for the clock to end (#1442).
 - The session cost line now counts an AI answer that finished but was not used, for example the welcome back scene when you type before it arrives, and counts a request stopped part-way as possibly billed (#1435).
