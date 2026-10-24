@@ -494,6 +494,31 @@ def _place_occupants(location_id):
 ROSTER_ADDED = "rosterAddedObserver"
 
 
+def _listed_npc_occupant(place_occupants, npc_file, npc_name, taken):
+    """The occupant id of the person a listed NPC is (#1415 follow-up; ruling
+    on #1403): among the person occupants at the fight's place, the one
+    whose id ends in the loaded sheet's file stem, else the one whose name
+    or alias slugs to the sheet's name. Exactly one match, or None; a gone
+    occupant (count 0) or an id already taken in this encounter is never
+    used. Code-owned identifiers and names only, never a near name."""
+    from core.nql.occupants import _person_matches
+    from utils.roster_conversion import slug
+
+    people = [
+        o for o in place_occupants.values()
+        if o.get("kind") == "person" and o.get("count") != 0 and o.get("id") not in taken
+    ]
+    stem = os.path.splitext(os.path.basename(str(npc_file)))[0]
+    by_stem = [o for o in people if str(o.get("id")).rsplit("/", 1)[-1] == stem]
+    if len(by_stem) == 1:
+        return by_stem[0]["id"]
+    if by_stem:
+        return None
+    want = slug(npc_name)
+    by_name = [o for o in people if _person_matches(o, want)]
+    return by_name[0]["id"] if len(by_name) == 1 else None
+
+
 def _load_npc_sheet(npc_name, path_manager):
     """(sheet, path) for a name, load only (#1425): the exact stem, else the
     one sheet whose own name is this name. Never the compendium, never
@@ -768,6 +793,11 @@ def generate_encounter(encounter_data):
             "maxHitPoints": npc_data.get("maxHitPoints", 10),
             "armorClass": npc_data.get("armorClass", 10)
         }
+        taken = {v for v in (encounter_data.get("occupantIds") or {}).values() if isinstance(v, str)}
+        taken |= {c["occupantId"] for c in encounter["creatures"] if c.get("occupantId")}
+        occupant_id = _listed_npc_occupant(place_occupants, canonical_npc_file, npc_data["name"], taken)
+        if occupant_id:
+            npc["occupantId"] = occupant_id
         # Add the NPC to the encounter's creatures array
         encounter["creatures"].append(npc)
         scene_sources.append(
