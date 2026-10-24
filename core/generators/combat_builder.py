@@ -494,6 +494,15 @@ def _place_occupants(location_id):
 ROSTER_ADDED = "rosterAddedObserver"
 
 
+def _proposed_side(encounter_data, participant_key):
+    """The ``side`` the DM's scene proposal gives this participant key, or None."""
+    scene = encounter_data.get("scene") if isinstance(encounter_data, dict) else None
+    for item in (scene or {}).get("participants") or []:
+        if isinstance(item, dict) and item.get("participantKey") == participant_key:
+            return item.get("side")
+    return None
+
+
 def _listed_npc_occupant(place_occupants, npc_file, npc_name, taken, declared=None):
     """The occupant id of the person a listed NPC is (#1415 follow-up; ruling
     on #1403): among the person occupants at the fight's place, the one the
@@ -807,6 +816,12 @@ def generate_encounter(encounter_data):
         )
         if occupant_id:
             npc["occupantId"] = occupant_id
+        # #1449: the DM's typed side for this slot sets the fight's faction;
+        # without one, ensure_combatant_ids keeps today's party default. The
+        # value is validated with the rest of the scene (reconcile_scene_manifest).
+        side = _proposed_side(encounter_data, f"npc:{npc_index}")
+        if side in ("hostile", "party"):
+            npc["faction"] = side
         # Add the NPC to the encounter's creatures array
         encounter["creatures"].append(npc)
         scene_sources.append(
