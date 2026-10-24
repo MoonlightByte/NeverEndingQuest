@@ -73,9 +73,9 @@ def _ac_entries(explanation: Dict[str, Any], names_by_id: Dict[str, str]) -> Lis
         })
     # #1322: the engine chose a live set effect's recipe (Mage Armor). Named
     # like worn armor: its base, with the ability its term reads.
-    chosen = recipe.get("name")
-    effect_name = (names_by_id.get(genesis.effect_instance_id({"effectId": chosen[len(genesis.AC_SET_RECIPE_PREFIX):]}))
-                   if isinstance(chosen, str) and chosen.startswith(genesis.AC_SET_RECIPE_PREFIX) else None)
+    # #1408: the instance is the holder's own (scoped for a repeat holder of a shared effectId).
+    instance = genesis.ac_set_instance_id(recipe.get("name"))
+    effect_name = names_by_id.get(instance) if instance else None
     if effect_name:
         base = recipe.get("base")
         abilities = [str((t.get("term") or {}).get("stat") or "").capitalize() for t in recipe.get("terms") or []
