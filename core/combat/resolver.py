@@ -722,6 +722,13 @@ def validate_intent(encounter, characters, intent, strict=None):
                 reason="target %s is already down" % target_id,
                 legalTargets=_living_opponent_ids(encounter, actor), retryable=True,
                 targetDown=True)
+        if strict and target is not None and target_id not in initiative_eligible_ids(encounter):
+            # #1401: an observer (initiativeEligible false) is not fighting; a known
+            # attack on it is refused. Legacy encounters list every row.
+            return False, Rejection(
+                reason="target %s is not in the fight" % target_id,
+                legalTargets=_living_opponent_ids(encounter, actor), retryable=True,
+                targetNotInFight=True)
         if strict and target is not None and target.get("faction") == actor.get("faction"):
             return False, Rejection(
                 reason="%s cannot attack ally %s" % (actor_id, target_id),

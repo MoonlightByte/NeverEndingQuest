@@ -3,7 +3,7 @@
 # License: See LICENSE file in the repository root
 """One-time conversion of a game's location rosters into engine occupants.
 
-The rules engine (bin/nql-apply) keeps every location's monster groups and
+The rules engine (bin/firelight-apply) keeps every location's monster groups and
 people as "occupants": where they are, how many are left and how each one
 left (defeated, fled, surrendered, departed with a reason, joined, died).
 Its record lives in live_state.json at the game root. A game that already

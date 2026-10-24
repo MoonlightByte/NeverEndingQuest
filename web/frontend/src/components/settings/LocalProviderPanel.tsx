@@ -2,6 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { useDialogs, useLog } from '../../stores'
 import { spendDisclaimer } from '../layout/spendText'
+import {
+  GUIDE_FOOTER, GUIDE_HEADING, GUIDE_INTRO, GUIDE_STEPS, KEY_HELP, KEY_NO_KEYCHAIN, KEY_RESTART,
+  START_ADVENTURE, canStartAfter, keyCheckText, needsOpenaiKey,
+} from './keySetupText'
+import { resumeGatedAction } from './keyGate'
 import type { ClientEvents } from '../../contract/events'
 
 type ProviderValue = ClientEvents['set_model_provider']['provider']
@@ -125,7 +130,18 @@ function LocalProviderPanelBody() {
   const pricedAt = useLog((s) => s.tokens.spend?.priced_at)
   const [geminiKey, setGeminiKey] = useState('')
 
+  const keyGate = useDialogs((s) => s.keyGate)
+  const keyCheck = settings.keyCheck
+  const checking = keyCheck?.result === 'checking'
+  const keySection = useRef<HTMLDivElement>(null)
+  // A line from an earlier visit is stale; the gate scrolls to the key field.
+  useEffect(() => { useDialogs.getState().setOpenaiKeyCheck(null) }, [])
+  useEffect(() => {
+    if (keyGate) keySection.current?.scrollIntoView?.({ block: 'start' })
+  }, [keyGate])
+
   const saveOpenaiKey = () => {
+    if (checking) return
     emitC('set_openai_key', { api_key: openaiKey })
     setOpenaiKey('')
   }
@@ -235,10 +251,20 @@ function LocalProviderPanelBody() {
         </div>
       )}
 
-      <div className={sectionClass}>
+      <div className={sectionClass} ref={keySection}>
+        {needsOpenaiKey(settings) && (
+          <div className="neq-key-guide" role="note">
+            <div className={sectionTitleClass}>{GUIDE_HEADING}</div>
+            <p className="neq-settings-help-parity">{GUIDE_INTRO}</p>
+            <ol className="neq-settings-help-parity">
+              {GUIDE_STEPS.map((step) => <li key={step}>{step}</li>)}
+            </ol>
+            <p className="neq-settings-help-parity">{GUIDE_FOOTER}</p>
+          </div>
+        )}
         <div className={sectionTitleClass}>OpenAI API Key</div>
         <p className="neq-settings-help-parity">
-          Needed for the Legacy and OpenAI providers. Stored locally on this machine.
+          {KEY_HELP}
           <span>{keyStatusText(settings.openaiHasKey)}</span>
         </p>
         {pricedAt && <p className="neq-settings-help-parity neq-spend-disclaimer">{spendDisclaimer(pricedAt)}</p>}
@@ -251,9 +277,23 @@ function LocalProviderPanelBody() {
           placeholder="sk-..."
           autoComplete="off"
         />
-        <button type="button" className={smallButtonClass} onClick={saveOpenaiKey}>
+        <button type="button" className={smallButtonClass} onClick={saveOpenaiKey} disabled={checking}>
           Save Key
         </button></div>
+        {keyCheck && keyCheckText(keyCheck) && (
+          <p className="neq-settings-status-parity neq-key-check" data-result={keyCheck.result} role="status">
+            {keyCheckText(keyCheck)}
+            {keyCheck.restart_needed && <> {KEY_RESTART}</>}
+          </p>
+        )}
+        {settings.openaiKeychain === false && settings.openaiHasKey && (
+          <p className="neq-settings-help-parity neq-key-no-keychain">{KEY_NO_KEYCHAIN}</p>
+        )}
+        {keyGate && canStartAfter(keyCheck) && (
+          <button type="button" className={smallButtonClass} onClick={resumeGatedAction}>
+            {START_ADVENTURE}
+          </button>
+        )}
       </div>
 
       {provider === 'gemini' && (

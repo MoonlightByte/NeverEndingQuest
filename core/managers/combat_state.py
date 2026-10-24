@@ -219,6 +219,25 @@ def has_left_fight(creature):
     return not isinstance(hit_points, (int, float)) or hit_points > 0
 
 
+LEFT_FIGHT_DISPLAY = "left the fight"
+
+
+def display_status(creature, status=None):
+    """The status a model is shown for ``creature`` (#1404).
+
+    A party member who left the fight on their feet (flee or yield) is
+    stored ``defeated``, the marker has_left_fight reads; shown verbatim, a
+    model reads it as a defeat. Such a member is shown "left the fight".
+    ``status`` is the value the caller chose (a sheet's status, an event's
+    statusAfter); it is replaced only when it is that same ``defeated``
+    marker. The stored status never changes.
+    """
+    value = creature.get("status") if status is None and isinstance(creature, dict) else status
+    if normalize_status(value) == "defeated" and has_left_fight(creature):
+        return LEFT_FIGHT_DISPLAY
+    return value
+
+
 def is_down(creature):
     """Return whether an encounter creature is down (D-242 house rule).
 

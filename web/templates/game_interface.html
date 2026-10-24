@@ -4506,9 +4506,19 @@
                     </div>
 
                     <div class="settings-section" id="openai-key-settings">
+                        <div class="settings-help" id="openai-key-guide" role="note" style="display:none;">
+                            <div class="settings-section-title">One step before your adventure: your OpenAI API key</div>
+                            <p>NeverEndingQuest runs on your own OpenAI account, so you only pay OpenAI for what you play -- usually a few cents an hour.</p>
+                            <ol>
+                                <li>Get a key: sign in at https://platform.openai.com/api-keys and choose "Create new secret key". Your account needs a little credit at https://platform.openai.com/settings/organization/billing.</li>
+                                <li>Copy the key. It starts with "sk-".</li>
+                                <li>Paste it in the box below and press Save.</li>
+                            </ol>
+                            <p>Your key is saved on this machine and is only ever sent to OpenAI.</p>
+                        </div>
                         <div class="settings-section-title">OpenAI API Key</div>
                         <div class="settings-help">
-                            Needed for the Legacy and OpenAI providers. Stored locally on this machine.
+                            Needed for the Legacy and OpenAI providers. Saved on this machine and sent only to OpenAI. Environment variables such as OPENAI_API_KEY are not used here -- paste the key in this box. If a game is already running, restart the game to use a new key.
                             <span id="openai-key-status-text"></span>
                         </div>
                         <div class="settings-help" id="spend-disclaimer" style="display:none;"></div>
@@ -4517,6 +4527,9 @@
                                    style="width:100%;" placeholder="sk-...">
                             <button class="settings-btn" id="openai-key-save-btn">Save Key</button>
                         </div>
+                        <div class="settings-help" id="openai-key-check" role="status" style="display:none;"></div>
+                        <div class="settings-help" id="openai-key-no-keychain" style="display:none;">No system keychain was found, so your key is saved in the file user_settings.json in the game folder. Anyone who can open that folder can read it. Do not share or upload that file.</div>
+                        <button class="settings-btn" id="openai-key-start-btn" style="display:none;">Start my adventure</button>
                     </div>
 
                     <div class="settings-section" id="gemini-key-settings" style="display:none;">
@@ -6019,7 +6032,64 @@
         });
         
         // User interaction functions
+        // #1399: the OpenAI key setup state and its lines (same text as the React panel).
+        var legacyKey = { provider: null, hasKey: null, keychain: null, check: null, gate: null };
+        function legacyNeedsKey() {
+            var provider = legacyKey.provider || 'openai';
+            return (provider === 'openai' || provider === 'legacy') && legacyKey.hasKey === false;
+        }
+        function legacyWaitText(seconds) {
+            if (typeof seconds !== 'number' || seconds <= 0) return 'about a minute';
+            if (seconds < 60) return 'about ' + seconds + (seconds === 1 ? ' second' : ' seconds');
+            var minutes = Math.round(seconds / 60);
+            return minutes <= 1 ? 'about a minute' : 'about ' + minutes + ' minutes';
+        }
+        function legacyKeyCheckText(c) {
+            switch (c.result) {
+                case 'checking': return 'Checking your key with OpenAI...';
+                case 'accepted': return 'Key accepted. Your key is saved on this machine and is only ever sent to OpenAI.';
+                case 'rejected': return 'OpenAI did not accept this key. Check that you copied the whole key (it starts with "sk-") and that it has not been revoked, then save it again.';
+                case 'rate_limited': return 'Your key is saved. OpenAI is limiting how often this account can make requests right now; new accounts start with lower limits that rise as you use them. Wait ' + legacyWaitText(c.wait_seconds) + ', then carry on.';
+                case 'denied': return 'Your key is saved, but OpenAI refused access for this account. Check your OpenAI project settings at https://platform.openai.com/settings, or use a key from another project.';
+                case 'no_quota': return 'OpenAI accepted this key, but the account has no credit left. Add credit to your OpenAI account; the game will use this key once it can.';
+                case 'unreachable': return 'Could not reach OpenAI to check this key. It has been saved anyway; if it is wrong, the game will say so on your first turn.';
+                case 'no_new_key': return c.has_key ? 'No new key entered. Your saved key was kept.' : null;
+            }
+            return null;
+        }
+        function renderLegacyKeyPanel() {
+            var guide = document.getElementById('openai-key-guide');
+            if (guide) guide.style.display = legacyNeedsKey() ? '' : 'none';
+            var line = document.getElementById('openai-key-check');
+            var text = legacyKey.check ? legacyKeyCheckText(legacyKey.check) : null;
+            if (line) {
+                line.textContent = text ? text + (legacyKey.check.restart_needed ? ' Restart the game to start using the new key.' : '') : '';
+                line.style.display = text ? '' : 'none';
+            }
+            var save = document.getElementById('openai-key-save-btn');
+            if (save) save.disabled = !!(legacyKey.check && legacyKey.check.result === 'checking');
+            var notice = document.getElementById('openai-key-no-keychain');
+            if (notice) notice.style.display = (legacyKey.keychain === false && legacyKey.hasKey) ? '' : 'none';
+            var start = document.getElementById('openai-key-start-btn');
+            var ok = legacyKey.check && ['accepted', 'rate_limited', 'unreachable'].indexOf(legacyKey.check.result) !== -1;
+            if (start) start.style.display = (legacyKey.gate && ok) ? '' : 'none';
+        }
+        function legacyKeyGate(action) {
+            if (!legacyNeedsKey()) return false;
+            legacyKey.gate = action;
+            legacyKey.check = null;
+            renderLegacyKeyPanel();
+            // After this click finishes, so the outside-click handler does not close it again.
+            setTimeout(function () {
+                document.getElementById('settings-dropdown').classList.add('show');
+                var section = document.getElementById('openai-key-settings');
+                if (section && section.scrollIntoView) section.scrollIntoView({ block: 'start' });
+            }, 0);
+            return true;
+        }
+
         function startGame() {
+            if (legacyKeyGate('start')) return;
             if (connected && !gameStarted && !restoreRecoveryRequired && !restorePending) {
                 socket.emit('start_game');
             }
@@ -7390,18 +7460,34 @@
                 });
             })();
 
-            // OpenAI key save + status
+            // OpenAI key save + status (#1399: check on save, guided panel, keychain notice)
             socket.emit('get_openai_key');
             socket.on('openai_key_status', function (d) {
                 var el = document.getElementById('openai-key-status-text');
                 if (el) { el.textContent = (d && d.has_key) ? ' (a key is set)' : ' (no key set)'; }
+                legacyKey.hasKey = !!(d && d.has_key);
+                if (d && typeof d.keychain === 'boolean') legacyKey.keychain = d.keychain;
+                renderLegacyKeyPanel();
+            });
+            socket.on('openai_key_check', function (d) {
+                legacyKey.check = d || null;
+                renderLegacyKeyPanel();
             });
             (function () {
                 var b = document.getElementById('openai-key-save-btn');
                 if (b) b.addEventListener('click', function () {
+                    if (legacyKey.check && legacyKey.check.result === 'checking') return;
                     var inp = document.getElementById('openai-key-input');
                     socket.emit('set_openai_key', { api_key: inp ? inp.value : '' });
                     if (inp) inp.value = '';  // do not keep the secret in the field
+                });
+                var start = document.getElementById('openai-key-start-btn');
+                if (start) start.addEventListener('click', function () {
+                    var action = legacyKey.gate;
+                    legacyKey.gate = null;
+                    renderLegacyKeyPanel();
+                    document.getElementById('settings-dropdown').classList.remove('show');
+                    if (action === 'load') openLoadDialog(); else if (action === 'start') startGame();
                 });
             })();
 
@@ -7439,6 +7525,8 @@
             // Listen for provider change confirmation from server
             socket.on('provider_changed', function(data) {
                 console.log('Provider change confirmed:', data);
+                legacyKey.provider = data.provider;
+                renderLegacyKeyPanel();
                 providerSelect.value = data.provider;
                 updateProviderHint(data.provider);
                 toggleLocalFields(data.provider);
@@ -7652,6 +7740,7 @@
             
             if (!button && !dropdownContent && dropdown.classList.contains('show')) {
                 dropdown.classList.remove('show');
+                legacyKey.gate = null;  // #1399: closing Settings drops a pending New game / Load
             }
         });
         
@@ -8307,7 +8396,7 @@
                 fullDetails.style.display = 'block';
             }
         }
-        function openLoadDialog() { document.getElementById('load-dialog-overlay').style.display = 'flex'; loadSaveGameList(); }
+        function openLoadDialog() { if (legacyKeyGate('load')) return; document.getElementById('load-dialog-overlay').style.display = 'flex'; loadSaveGameList(); }
         function closeLoadDialog() { document.getElementById('load-dialog-overlay').style.display = 'none'; selectedSaveFolder = null; updateLoadButtons(); }
         function loadSaveGameList() { const saveList = document.getElementById('save-list'); saveList.innerHTML = 'Loading...'; socket.emit('action', { action: 'listSaves', parameters: {} }); }
         function selectSaveGame(saveFolder, element) { document.querySelectorAll('.save-item').forEach(item => { item.classList.remove('selected'); }); element.classList.add('selected'); selectedSaveFolder = saveFolder; updateLoadButtons(); }

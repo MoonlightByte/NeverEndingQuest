@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { ConfirmDialog } from '../dialogs/ConfirmDialog'
 import { useEmberViewport } from './useEmberViewport'
@@ -6,6 +6,7 @@ import { useSession, useWorld, useDialogs } from '../../stores'
 import { SettingsMenu } from '../settings/SettingsMenu'
 import { useUiMode } from '../../modes/useUiMode'
 import { SpendLine } from './SpendLine'
+import { needsOpenaiKey } from '../settings/keySetupText'
 
 const injectedVersion = document
   .querySelector<HTMLMetaElement>('meta[name="neq-version"]')
@@ -48,13 +49,34 @@ export function HeaderBar() {
   const resetPending = useDialogs((s) => s.actionResult?.kind === 'reset')
   const isLocalEdition = (import.meta.env.VITE_EDITION ?? 'local') === 'local'
 
+  // #1399 G2: New game and Load need the provider and key status before
+  // Settings is ever opened; they can change while disconnected.
+  useEffect(() => {
+    if (!connected || !isLocalEdition) return
+    emitC('get_model_provider', undefined)
+    emitC('get_openai_key', undefined)
+  }, [connected, isLocalEdition])
+  // #1399 G2: with no OpenAI key, New game and Load open Settings on the
+  // guided key panel instead of starting; the panel resumes the action.
+  const keyGate = (action: 'start' | 'load') => {
+    const dialogs = useDialogs.getState()
+    if (!isLocalEdition || !needsOpenaiKey(dialogs.settings)) return false
+    dialogs.setKeyGate(action)
+    dialogs.setOpenaiKeyCheck(null)
+    dialogs.openDialog('settings')
+    return true
+  }
   const handleStart = () => {
     if (!connected || recoveryRequired || restorePending) return
+    if (keyGate('start')) return
     useSession.getState().startRequested()
     emitC('start_game', undefined)
   }
   const handleSave = () => useDialogs.getState().openDialog('save')
-  const handleLoad = () => useDialogs.getState().openDialog('load')
+  const handleLoad = () => {
+    if (keyGate('load')) return
+    useDialogs.getState().openDialog('load')
+  }
   const handleReset = () => useDialogs.getState().openDialog('reset')
   const handleVersion = () => useDialogs.getState().openDialog('update')
   const handleToolkit = () => {
