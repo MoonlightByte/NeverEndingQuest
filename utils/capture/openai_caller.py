@@ -8,8 +8,6 @@ and other supported request options are copied from the real request.
 import time
 from core.ai import history_markers as hm
 
-from openai import OpenAI
-
 
 _client = None
 
@@ -19,7 +17,9 @@ def _get_client():
     if _client is None:
         import config
 
-        _client = OpenAI(api_key=config.OPENAI_API_KEY)
+        from utils.openai_client import openai_api_client
+
+        _client = openai_api_client(api_key=config.OPENAI_API_KEY)
     return _client
 
 

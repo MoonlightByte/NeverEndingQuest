@@ -86,10 +86,32 @@ def get_openai_client(provider=None, *, local_endpoint=None):
     else:
         # Connect to OpenAI API (default)
         # Requires valid API key in config.py
-        return OpenAI(
-            api_key=config.OPENAI_API_KEY,
-            http_client=_provider_http_client(),
-        )
+        return openai_api_client()
+
+
+# The OpenAI API host, pinned (#1399). Without an explicit base_url the SDK
+# reads OPENAI_BASE_URL from the environment, which would send the player's
+# OpenAI key to whatever host that names.
+OPENAI_API_BASE_URL = "https://api.openai.com/v1"
+
+
+def openai_api_client(api_key=None, **kwargs):
+    """The one way to build a client that carries the OpenAI key (#1399).
+
+    base_url is always OPENAI_API_BASE_URL; a caller cannot pass another.
+    ``api_key`` defaults to config.OPENAI_API_KEY, read at call time. The
+    Local/Custom branch above is the only client built elsewhere: it uses
+    the player's own endpoint and never the OpenAI key.
+    """
+    if "base_url" in kwargs:
+        raise TypeError("openai_api_client pins base_url to the OpenAI API")
+    http_client = kwargs.pop("http_client", None) or _provider_http_client()
+    return OpenAI(
+        api_key=api_key or config.OPENAI_API_KEY,
+        base_url=OPENAI_API_BASE_URL,
+        http_client=http_client,
+        **kwargs,
+    )
 
 
 def is_using_lm_studio():

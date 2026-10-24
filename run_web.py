@@ -292,21 +292,17 @@ def main(ui="react", toolkit=False):
         print("\nFirst-time setup detected...")
         
         try:
-            # Copy config_template.py to config.py
+            # Copy config_template.py to config.py and keep running (#1399 G5):
+            # the browser's Settings panel takes the key from here. The
+            # template's placeholder key is kept; no environment value is
+            # written into the file.
             shutil.copy('config_template.py', 'config.py')
+            try:
+                os.chmod('config.py', 0o600)
+            except OSError:
+                pass
             print("\n[OK] Created config.py from template")
-            print("\n" + "="*60)
-            print("AI Provider Setup")
-            print("="*60)
-            print("\nYour local config.py has been created.")
-            print("Run the game again, then use Settings -> AI Provider to choose:")
-            print("  - Legacy/OpenAI (OpenAI API key)")
-            print("  - Gemini (Gemini API key)")
-            print("  - Local (LM Studio or another compatible endpoint; no cloud key)")
-            print("\nYou may also edit config.py directly before restarting.")
-            print("\n" + "="*60)
-            input("\nPress Enter to exit...")
-            return
+            print("First start: open the game in your browser and add your OpenAI API key in Settings (the gear icon).")
         except Exception as e:
             print(f"[ERROR] Failed to create config.py: {e}")
             print("Please manually copy config_template.py to config.py")

@@ -11526,16 +11526,8 @@ def main():
             # Copy config_template.py to config.py
             shutil.copy('config_template.py', 'config.py')
             print("\n[OK] Created config.py from template")
-            print("\n" + "="*60)
-            print("IMPORTANT: OpenAI API Key Required")
-            print("="*60)
-            print("\n1. Open config.py in a text editor")
-            print("2. Find the line: OPENAI_API_KEY = \"your_openai_api_key_here\"")
-            print("3. Replace \"your_openai_api_key_here\" with your actual OpenAI API key")
-            print("4. Save the file and run the game again")
-            print("\nGet your API key at: https://platform.openai.com/api-keys")
-            print("\nOr run fully local (no API key): install LM Studio/Ollama, then in Settings -> AI Provider pick Local and set your endpoint URL.")
-            print("\n" + "="*60)
+            # #1399 G5: the console game has no Settings screen, so it still exits.
+            print("First start: config.py was created for you. Start the web game (run_web.py) and add your OpenAI API key in Settings, or put it in config.py as OPENAI_API_KEY.")
             input("\nPress Enter to exit...")
             return
         except Exception as e:

@@ -38,7 +38,8 @@ class MonsterGenerator:
         # Use provided key or fall back to config
         self.api_key = api_key or OPENAI_API_KEY
         if self.api_key and OPENAI_AVAILABLE:
-            self.client = OpenAI(api_key=self.api_key)
+            from utils.openai_client import openai_api_client  # #1399: base_url pinned
+            self.client = openai_api_client(api_key=self.api_key)
         else:
             self.client = None
         

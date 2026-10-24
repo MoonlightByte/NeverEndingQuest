@@ -1,9 +1,9 @@
 """Best-effort OS-backed secret storage for local operator credentials.
 
-Provider keys must never be written to the game's JSON settings file.  When an
-OS keyring is available (Windows Credential Manager, macOS Keychain, etc.) it
-is used.  On headless systems without one, secrets remain only in memory for
-the lifetime of the process.
+When an OS keyring is available (Windows Credential Manager, macOS Keychain,
+etc.) provider keys are kept there and never in the game's JSON settings file.
+On systems without one, secrets are written to user_settings.json (owner-only
+where the file system supports it) so they survive a restart (#1399).
 """
 
 from __future__ import annotations
@@ -33,6 +33,12 @@ def _keyring():
             )
             _warned_about_keyring = True
         return None
+
+
+def durable_store_available():
+    """True when an OS credential store is usable (#1399 G3). False means a
+    saved key is kept in user_settings.json, which Settings tells the player."""
+    return _keyring() is not None
 
 
 def get_secret(name):
