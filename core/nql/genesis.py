@@ -110,6 +110,9 @@ class Genesis:
     container_ids: Dict[str, str] = field(default_factory=dict)           # storage id -> container item id
     content_ids: Dict[str, Dict[int, str]] = field(default_factory=dict)   # storage id -> contents index -> item id
     effect_names: Dict[str, str] = field(default_factory=dict)            # condition instance id -> effect name
+    # #1408: (char id, effectId) -> (condition type id, instance id) of each declared effect; a repeat
+    # holder of a shared effectId has its own scoped ids.
+    effect_ids: Dict[Tuple[str, str], Tuple[str, str]] = field(default_factory=dict)
     gaps: List[str] = field(default_factory=list)
     # NUM-H3a: item id -> character id for an equipped catalog weapon the hand
     # rule declared carried. Its sheet row stays equipped: a write that reads
@@ -855,16 +858,39 @@ def effect_engine_dice(effect: Dict[str, Any]) -> List[Tuple[str, int, int]]:
     return out
 
 
-def effect_type_id(effect: Dict[str, Any]) -> str:
-    return "effect:" + str(effect.get("effectId"))
+def effect_type_id(effect: Dict[str, Any], scope: Optional[str] = None) -> str:
+    return "effect:" + str(effect.get("effectId")) + (":" + scope if scope else "")
 
 
-def effect_instance_id(effect: Dict[str, Any]) -> str:
-    return "fx:" + str(effect.get("effectId"))
+def effect_instance_id(effect: Dict[str, Any], scope: Optional[str] = None) -> str:
+    return "fx:" + str(effect.get("effectId")) + (":" + scope if scope else "")
+
+
+def world_effect_ids(world: "Genesis", cid: str, effect: Dict[str, Any]) -> Tuple[str, str]:
+    """(type id, instance id) the world declared for this holder's effect (#1408); main's ids for an
+    effect the world did not declare (an in-sheet repeat, which is skipped)."""
+    return world.effect_ids.get((cid, str(effect.get("effectId"))),
+                                (effect_type_id(effect), effect_instance_id(effect)))
+
+
+def effect_first_holders(sheets: List[Dict[str, Any]]) -> Dict[str, str]:
+    """#1408: effectId -> the first holder among the world's sheets, by sorted character id (never the
+    caller's order), so the same sheets give every holder the same ids in any order. Sheets with a
+    repeated character id count once, as build_world declares them."""
+    holders: Dict[str, set] = {}
+    cids: set = set()
+    for sheet in sheets:
+        cid = character_id(sheet)
+        if cid in cids:
+            continue
+        cids.add(cid)
+        for effect in live_effects(sheet):
+            holders.setdefault(effect["effectId"], set()).add(cid)
+    return {eid: min(found) for eid, found in holders.items()}
 
 
 def effect_type_line(effect: Dict[str, Any], modifiers: List[Tuple[str, int]],
-                     dice: Tuple[Tuple[str, int, int], ...] = ()) -> str:
+                     dice: Tuple[Tuple[str, int, int], ...] = (), type_id: Optional[str] = None) -> str:
     parts = []
     for index, (kind, amount) in enumerate(modifiers):
         if kind == "defense":
@@ -877,11 +903,14 @@ def effect_type_line(effect: Dict[str, Any], modifiers: List[Tuple[str, int]],
             parts.append(f'modifier "m{index}" resource "hp" maximum add {amount};')
     for index, (stat, count, sides) in enumerate(dice):
         parts.append(f'modifier "d{index}" stat {_q(stat)} die {count} {sides};')
-    return f"condition type {_q(effect_type_id(effect))} {{ instances unique; {' '.join(parts)} }}"
+    return f"condition type {_q(type_id or effect_type_id(effect))} {{ instances unique; {' '.join(parts)} }}"
 
 
 def _effect_lines(sheet: Dict[str, Any], cid: str, gaps: List[str],
-                  names: Dict[str, str], clock_tick: Optional[int] = None) -> Tuple[List[str], List[str]]:
+                  names: Dict[str, str], clock_tick: Optional[int] = None,
+                  first_holders: Optional[Dict[str, str]] = None,
+                  ids: Optional[Dict[Tuple[str, str], Tuple[str, str]]] = None,
+                  notes: Optional[List[str]] = None) -> Tuple[List[str], List[str]]:
     """(condition type lines, instance lines) for the sheet's effects.
 
     A type is declared for every live effect the engine can hold, so a later
@@ -890,6 +919,11 @@ def _effect_lines(sheet: Dict[str, Any], cid: str, gaps: List[str],
     a ``clock_tick`` (the world's clock), an owned effect with an expiresTick
     is timed: ``ticks expiresTick - clock_tick`` (at least 1, so an effect
     already due ends on the first advance).
+
+    #1408: an effectId another sheet in the world also holds keeps main's ids for its first holder
+    (``first_holders``, by sorted character id); every other holder declares its own scoped type and
+    instance, ``effect:<id>:<scope>`` and ``fx:<id>:<scope>``, so the world boots and each holder keeps
+    its own numbers. The ids go into ``ids``.
     """
     types: List[str] = []
     instances: List[str] = []
@@ -904,11 +938,21 @@ def _effect_lines(sheet: Dict[str, Any], cid: str, gaps: List[str],
         # An effect with no engine numbers (a potion's temp hit points, a
         # condition, a speed bonus) is still an instance: the engine clock
         # owns its expiry and a rest or removal ends it like any other.
-        tid = effect_type_id(effect)
-        if tid in seen:
-            gaps.append(f"{cid}: effect {effect.get('name')!r} repeats effectId {effect.get('effectId')!r}; second declaration skipped")
+        eid = effect["effectId"]
+        if ":" in eid:
+            # A scoped id is "<effectId>:<scope>"; an effectId with a colon could collide with one.
+            gaps.append(f"{cid}: effect {effect.get('name')!r} has effectId {eid!r} with a colon; not declared")
             continue
-        seen.add(tid)
+        if eid in seen:
+            gaps.append(f"{cid}: effect {effect.get('name')!r} repeats effectId {eid!r}; second declaration skipped")
+            continue
+        seen.add(eid)
+        first = (first_holders or {}).get(eid, cid)
+        scope = cid.split(":", 1)[1] if first != cid else None
+        if scope and notes is not None:
+            notes.append(f"{cid}: effect {effect.get('name')!r} shares effectId {eid!r} with {first}; "
+                         f"declared under its own scoped ids")
+        tid = effect_type_id(effect, scope)
         # #889: an engineOwned effect's added dice; the same spell's effects
         # do not combine, so among one name only the first carries them
         # (owner D-889b-neq-1, as core.effects.effective.modifier_dice).
@@ -926,8 +970,10 @@ def _effect_lines(sheet: Dict[str, Any], cid: str, gaps: List[str],
                     dice = ()
                 else:
                     dice_names.add(key)
-        types.append(effect_type_line(effect, modifiers, dice))
-        iid = effect_instance_id(effect)
+        types.append(effect_type_line(effect, modifiers, dice, tid))
+        iid = effect_instance_id(effect, scope)
+        if ids is not None:
+            ids[(cid, eid)] = (tid, iid)
         names[iid] = str(effect.get("name") or effect.get("effectId"))
         if effect.get(EFFECT_ENGINE_OWNED) is True:
             expires = effect.get(EFFECT_EXPIRES_TICK)
@@ -1360,6 +1406,8 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     effects: List[str] = []
     effect_types: List[str] = []
     effect_names: Dict[str, str] = {}
+    effect_ids: Dict[Tuple[str, str], Tuple[str, str]] = {}
+    first_holders = effect_first_holders(sheets)
     all_ids: set = set()
     carried: Dict[str, str] = {}
     # Item charges (H1): one item type per charged sheet row, declared after the pack.
@@ -1426,7 +1474,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
             if kind.startswith("prof:weapon:") and kind not in condition_types:
                 continue  # no catalog weapon declares this type in this world
             conditions.append(f"condition {_q(kind + ':' + cid.split(':', 1)[1])} of {_q(kind)} to {_q(cid)};")
-        types, instances = _effect_lines(sheet, cid, gaps, effect_names, clock_tick)
+        types, instances = _effect_lines(sheet, cid, gaps, effect_names, clock_tick, first_holders, effect_ids, notes)
         effect_types.extend(types)
         conditions.extend(instances)
         ids: Dict[int, str] = {}
@@ -1583,7 +1631,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     lines.extend(charged[0])
     return Genesis(source="\n".join(lines) + "\n", location=loc, character_ids=character_ids, item_ids=item_ids,
                    container_ids=container_ids, content_ids=content_ids, effect_names=effect_names, gaps=gaps,
-                   carried=carried, notes=notes)
+                   carried=carried, notes=notes, effect_ids=effect_ids)
 
 
 def expected_armor_class(sheet: Dict[str, Any]) -> Tuple[Optional[int], List[str]]:
