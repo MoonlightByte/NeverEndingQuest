@@ -299,7 +299,11 @@ def party_scene_time(path="party_tracker.json"):
     from utils.encoding_utils import safe_json_load
     from utils.time_context import get_time_context
 
-    tracker = safe_json_load(path)
+    try:
+        tracker = safe_json_load(path)
+    except Exception:
+        # A corrupt tracker never blocks the narration; it goes without the hour.
+        return None
     world = tracker.get("worldConditions") if isinstance(tracker, dict) else None
     time_str = world.get("time") if isinstance(world, dict) else None
     if not isinstance(time_str, str):
