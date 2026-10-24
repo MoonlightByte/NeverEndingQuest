@@ -20,13 +20,24 @@ class EngineUnavailable(RuntimeError):
     """The engine binary is missing or did not produce a response."""
 
 
+# #1382: the engine is being renamed; firelight-apply is looked for first and
+# nql-apply stays the fallback until both names have shipped.
+ENGINE_NAMES = ("firelight-apply", "nql-apply")
+
+
+def _override() -> Optional[str]:
+    return os.environ.get("FIRELIGHT_APPLY_BINARY") or os.environ.get("NQL_APPLY_BINARY") or None
+
+
 def binary_path(repo_root: Optional[str] = None) -> str:
-    override = os.environ.get("NQL_APPLY_BINARY")
+    override = _override()
     if override:
         return override
     root = repo_root or os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    name = "nql-apply.exe" if platform.system() == "Windows" else "nql-apply"
-    return os.path.join(root, "bin", name)
+    suffix = ".exe" if platform.system() == "Windows" else ""
+    paths = [os.path.join(root, "bin", name + suffix) for name in ENGINE_NAMES]
+    # Neither present: the nql-apply path, as before the rename.
+    return next((path for path in paths if os.path.isfile(path)), paths[-1])
 
 
 def call(document: Dict[str, Any], *, binary: Optional[str] = None, timeout: float = DEFAULT_TIMEOUT_SECONDS) -> Dict[str, Any]:
@@ -38,6 +49,9 @@ def call(document: Dict[str, Any], *, binary: Optional[str] = None, timeout: flo
     """
     exe = binary or binary_path()
     if not os.path.isfile(exe):
+        if binary is None and _override() is None:
+            raise EngineUnavailable("engine binary not found: bin/firelight-apply or bin/nql-apply "
+                                    f"(looked in {os.path.dirname(exe)})")
         raise EngineUnavailable(f"engine binary not found: {exe}")
     try:
         proc = subprocess.run(
