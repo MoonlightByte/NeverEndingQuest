@@ -3,7 +3,7 @@
 # License: See LICENSE file in the repository root
 """Quests in the rules engine: the module plot's status record.
 
-The engine (bin/nql-apply, NQL docs/QUESTS.md) keeps each quest's status and
+The engine (bin/firelight-apply, Firelight docs/QUESTS.md) keeps each quest's status and
 a log of what happened to it, inside the same live_state document that holds
 the occupants (core/nql/occupants.py). The host declares every plot point and
 side quest of every installed module on every call, from the authored plot
@@ -14,7 +14,7 @@ after the switch: play never writes it again.
 Four parts:
 
 - the declarations and the one-time conversion of a played plot, a port of
-  NQL's reference tool (private/conversion/neq_quests.py, rules in
+  the engine repository's private reference tool (private/conversion/neq_quests.py, rules in
   QUEST_CONVERSION.md): same function names, same decisions, so the
   reference evidence compares line for line;
 - the DM action: ``update_line`` maps updatePlot to one engine line, and

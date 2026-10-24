@@ -1,9 +1,9 @@
-"""SRD 5.2.1 character-stat rules for the engine, copied verbatim from the NQL repository
+"""SRD 5.2.1 character-stat rules for the engine, copied verbatim from the Firelight repository
 (examples/srd-stats/world.nql, conditions block at 27e3089, with roll modes, guide docs/CHARACTER_STATS.md). Three blocks: the
 proficiency Condition types a world declares once, the SRD condition states (state:<name>, C1), and the
 derived-stat rules that go inside its equipment block.
-Do not edit by hand; regenerate from the NQL example when the engine changes."""
-NQL_COMMIT = "084cb0c"
+Do not edit by hand; regenerate from the Firelight example when the engine changes."""
+NQL_COMMIT = "084cb0c"  # Firelight engine commit (constant name kept while core/nql stays, N1)
 STATES_COMMIT = "70352b9"  # srd-conditions block (includes incapacitated) and the concentration block
 ABILITIES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
 # skill id -> ability, SRD 5.2.1

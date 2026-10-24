@@ -51,7 +51,7 @@ after first publication. NeverEndingQuest ships it in `bin/` as `firelight-apply
 [README](https://github.com/MoonlightByte/firelight#readme) and its
 [protocol](https://github.com/MoonlightByte/firelight/blob/main/docs/PROTOCOL.md).
 
-**NEW: The NQL Rules Engine** - Dice, totals, inventories, conditions and the clock are
+**NEW: The Firelight Engine** - Dice, totals, inventories, conditions and the clock are
 now decided by a separate compiled rules engine, not by the language model. The AI
 Dungeon Master tells the story and declares what happens; the engine applies the SRD
 rules, keeps the books and journals every change. See
@@ -252,7 +252,7 @@ be entered again after a restart. Existing keys in the local, gitignored
 - **Automatic Routing** - Intelligent model selection for optimal cost/quality balance
 
 ### Core Game Systems
-- **NQL Rules Engine** - SRD 5.2.1 mechanics decided by a compiled rules engine, not the language model (see [The Rules Engine](#the-rules-engine))
+- **Firelight Engine** - SRD 5.2.1 mechanics decided by a compiled rules engine, not the language model (see [The Rules Engine](#the-rules-engine))
 - **AI Dungeon Master** - GPT-powered storytelling that adapts to your actions
 - **Turn-Based Combat** - Tactical combat with initiative tracking and AI validation
 - **Character Progression** - Full leveling system from 1-20 with all class features
@@ -441,16 +441,18 @@ construction.
 
 NeverEndingQuest now separates the two jobs. The AI Dungeon Master narrates and
 declares typed actions ("Eirik fires the wand at the blight", "the party rests until
-morning"). A compiled rules engine, NQL, applies the SRD 5.2.1 rules to those
+morning"). A compiled rules engine, Firelight, applies the SRD 5.2.1 rules to those
 declarations, refuses what the rules do not allow, and returns the resulting facts.
 Code reconciles the engine's answer onto the character sheets. Nothing is matched by
 keyword in the prose and nothing is guessed.
 
 ### How it works
-- **Shipped binary**: the engine is a compiled command in `bin/` (`nql-apply` for
-  Linux, `nql-apply.exe` for Windows). `bin/NQL_ENGINE_VERSION.txt` records the
-  engine revision the shipped pair was built from, and the code on `main` never runs
-  ahead of its engine. The engine's source is maintained in its own repository.
+- **Shipped binary**: the engine is a compiled command in `bin/` (`firelight-apply`
+  for Linux, `firelight-apply.exe` for Windows; `nql-apply` is the same build under
+  its old name until it is retired). `bin/FIRELIGHT_ENGINE_VERSION.txt` records the
+  engine release the shipped pair was built from, and the code on `main` never runs
+  ahead of its engine. The engine's source is public in its own repository,
+  [Firelight](https://github.com/MoonlightByte/firelight).
 - **One call, one process**: each request is one JSON document each way. The engine
   holds no state between calls; the game keeps the returned checkpoint and hands it
   back on the next call.
@@ -871,11 +873,11 @@ The codebase follows a clean Manager Pattern for all major subsystems:
 - **CompanionMemoryManager** - Tracks NPC relationships and interactions
 
 ### Rules Engine Integration
-- **`bin/nql-apply`** - The compiled engine; `core/nql/apply.py` runs it as a subprocess, one JSON document each way, with a timeout
+- **`bin/firelight-apply`** - The compiled Firelight engine; `core/nql/apply.py` runs it as a subprocess, one JSON document each way, with a timeout
 - **`core/nql/`** - One host module per rules domain: genesis, storage, currency, transfer, equipment, armor_class, checks, effects, resources, ammunition, concentration, experience, leveling, occupants, travel, acquisition, item_catalog, stats
 - **Typed declarations** - The Dungeon Master's structured actions are the only input; prose is never parsed for rules
 - **Checkpoint and journal** - The host keeps the engine's checkpoint and journals every applied change with its request id; replay is deterministic and a retried request applies once
-- **Version pinning** - `bin/NQL_ENGINE_VERSION.txt` names the engine revision; code and binary move together
+- **Version pinning** - `bin/FIRELIGHT_ENGINE_VERSION.txt` names the engine release; code and binary move together
 
 
 ### Module-Centric Architecture
@@ -1400,7 +1402,7 @@ This is unofficial Fan Content and is not affiliated with, endorsed, sponsored, 
 
 ## Recent Updates
 
-### Current Main - The NQL Rules Engine
+### Current Main - The Firelight Engine
 The mechanical side of the game has moved, one small merged change at a time, from the
 language model to a compiled rules engine. Highlights in merge order:
 - **Storage, giving, coins, armor typing, the validator** (#472-#477) - the first seams: containers, hand-offs and purses as engine transactions.
