@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- A bystander you attack in a fight now joins it as a hostile: they take turns from the next round, the fight is not won while they stand, and they are not paid XP at its end (#1415).
+- A bystander you attack in a fight now joins it as a hostile: they take turns from the next round, the fight is not won while they stand, and they are not paid XP at its end; the turn ruling no longer refuses an attack on an ally or bystander (#1415).
 - A known enemy attack that names a bystander who is only watching the fight is now refused with "not in the fight" and the fighting targets, instead of hitting the bystander (#1401).
 - A character who flees or yields is shown to the narrator and the round summary as having left the fight, not as defeated, so a withdrawal is no longer told as a defeat or a death (#1404). A bystander watching the fight no longer loses, or is reported as spending, ammunition from an earlier fight when the fight ends (#1405).
 - An enemy is no longer re-aimed at a bystander who is only watching the fight: an observer is not counted as an opponent, so after the player flees with no one else fighting the enemy defends without a model call (#1397).
