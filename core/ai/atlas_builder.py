@@ -347,24 +347,9 @@ def build_atlas_text(module_name: str, current_location_id: Optional[str] = None
         cached_atlas_for_module(module_name, modules_root), current_location_id)
 
 
-def _current_location_id() -> Optional[str]:
-    """The party's current location id from party_tracker.json, or None."""
-    try:
-        from utils.encoding_utils import safe_json_load
-        tracker = safe_json_load("party_tracker.json") or {}
-        value = (tracker.get("worldConditions") or {}).get("currentLocationId")
-        return value if isinstance(value, str) and value else None
-    except Exception:
-        return None
-
-
 def format_atlas_for_conversation(atlas: Dict[str, Any], current_location_id: Optional[str] = None) -> str:
-    # C3: the place the party stands in is told by the Current Location block,
-    # so its traps and hostiles keep their markers for other places only, and
-    # the atlas carries no marker for it (#559 R3: one mention, and the atlas
-    # line no longer changes with the party's position).
-    if current_location_id is None:
-        current_location_id = _current_location_id()
+    # #1359: no line carries a per-place trap, hostile or treasure marker, so
+    # the text no longer depends on current_location_id (kept for callers).
     """Format atlas into a complete world map for conversation context"""
     lines = []
     lines.append("=== COMPLETE MODULE WORLD ATLAS ===")
@@ -392,15 +377,11 @@ def format_atlas_for_conversation(atlas: Dict[str, Any], current_location_id: Op
                 
                 # Add special markers
                 markers = []
-                here = loc_id == current_location_id
                 if loc_data.get("npcs"):
                     markers.append(f"NPCs: {', '.join(loc_data['npcs'])}")
-                if loc_data.get("hasTraps") and not here:
-                    markers.append("TRAPPED")
-                if loc_data.get("hasMonsters") and not here:
-                    markers.append("MONSTERS")
-                if loc_data.get("hasTreasure"):
-                    markers.append("TREASURE")
+                # #1359: traps, monsters and treasure at other places are
+                # DM-only records (the destination projection excludes them);
+                # the engine owns halts, Current Location owns who is here.
                 
                 if markers:
                     loc_line += f" <{', '.join(markers)}>"
