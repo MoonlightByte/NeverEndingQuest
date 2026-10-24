@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A bystander you attack in a fight now joins it as a hostile: they take turns from the next round, the fight is not won while they stand, and they are not paid XP at its end; the turn ruling no longer refuses an attack on an ally or bystander (#1415).
 - The travel narration now says how long the journey took by the game clock, so a trip the clock counts as 65 minutes is no longer told as 49 (#1420).
 - When the whole party falls, the pause no longer says nothing was saved after the fall, which was untrue once you saved at the pause (#1423).
 - The rules engine is now the public Firelight Engine v0.1.0 (github.com/MoonlightByte/firelight), shipped as `bin/firelight-apply`; `bin/nql-apply` is the same build under its old name (#1409).

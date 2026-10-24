@@ -526,6 +526,92 @@ def canonical_initiative_order(encounter):
     return [creature["combatantId"] for creature in ordered]
 
 
+def bystanders_attacked(encounter, event):
+    """#1415: the present observers a human actor's event attacks, in order.
+
+    An observer is a typed participant with participation "observer" and
+    initiativeEligible false. Attacked means the event's intent is an
+    ``attack`` naming it as targetId, or an outcome target row lowers its HP.
+    Only typed fields are read; a non-typed encounter has no observers.
+    """
+    if combat_provenance(encounter) != "typed" or not isinstance(event, dict):
+        return []
+    scene = encounter.get("sceneFacts") or {}
+    observers = {
+        participant.get("combatantId")
+        for participant in scene.get("participants", []) or []
+        if isinstance(participant, dict)
+        and participant.get("participation") == "observer"
+        and participant.get("initiativeEligible") is not True
+        and combatant_by_id(encounter, participant.get("combatantId")) is not None
+    }
+    named = []
+    intent = event.get("intent") if isinstance(event.get("intent"), dict) else {}
+    if intent.get("action") == "attack" and intent.get("targetId"):
+        named.append(intent.get("targetId"))
+    for target in (event.get("outcome") or {}).get("targets", []) or []:
+        if not isinstance(target, dict):
+            continue
+        before, after = target.get("hpBefore"), target.get("hpAfter")
+        if type(before) is int and type(after) is int and after < before:
+            named.append(target.get("combatantId"))
+    result = []
+    for combatant_id in named:
+        if combatant_id in observers and combatant_id not in result:
+            result.append(combatant_id)
+    return result
+
+
+def join_as_hostile(encounter, combatant_id):
+    """#1415 (D-2026-10-24-BYSTANDER): an observer the player attacked joins
+    the fight as a hostile participant. Its participant row becomes active and
+    initiative-eligible, its faction hostile; it is inserted into the
+    initiative order at its initiative and counted as having acted this
+    round, so it first acts next round. Idempotent: a creature already
+    eligible is left as it is. Returns whether anything changed."""
+    if combat_provenance(encounter) != "typed":
+        return False
+    creature = combatant_by_id(encounter, combatant_id)
+    scene = encounter.get("sceneFacts") or {}
+    row = next(
+        (
+            participant
+            for participant in scene.get("participants", []) or []
+            if isinstance(participant, dict)
+            and participant.get("combatantId") == combatant_id
+        ),
+        None,
+    )
+    if creature is None or row is None or row.get("initiativeEligible") is True:
+        return False
+    row["participation"] = "active"
+    row["initiativeEligible"] = True
+    creature["faction"] = "hostile"
+    state = encounter.setdefault("combatState", {})
+
+    def _key(entry):
+        return (
+            -int(entry.get("initiative", 0) or 0),
+            -int(entry.get("initiativeTieBreaker", 0) or 0),
+            entry.get("combatantId") or "",
+        )
+
+    order = [cid for cid in state.get("initiativeOrder") or [] if cid != combatant_id]
+    position = len(order)
+    for index, other_id in enumerate(order):
+        other = combatant_by_id(encounter, other_id) or {}
+        if _key(creature) < _key(other):
+            position = index
+            break
+    order.insert(position, combatant_id)
+    state["initiativeOrder"] = order
+    acted = list(state.get("actedThisRound") or [])
+    if combatant_id not in acted:
+        acted.append(combatant_id)
+    state["actedThisRound"] = acted
+    return True
+
+
 def initiative_eligible_ids(encounter):
     """Return the committed initiative membership for this provenance route."""
     creature_ids = {
