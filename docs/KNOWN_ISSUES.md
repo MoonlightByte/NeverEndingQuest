@@ -24,6 +24,8 @@ good-play replays. Master evidence:
    every criterion but carried two 600 s provider drops, #409), 7b/7c/7d and the
    compression-off parity run PASS. Typed Load during an automatic window still applies
    immediately instead of after the window commits: that is #243, not this seam.
+   Closed: #242 by PR #437. Follow-ups fixed 2026-10-24: #1335 (PR #1355), #1354,
+   #1404.
 2. Liveness / continuation stalls (7 rows: TW-F08, PK-019/027/035/037/039/040).
 3. State-vs-narration divergence (10 rows: TW-F22/F27/F31/F36/F37/F39/F43 + PK-012/014).
    NOTE: the replay showed several of these are live-correctable via the player screen
@@ -41,9 +43,15 @@ good-play replays. Master evidence:
 11. Combat closure (1 row: PK-034 - accepted retreat narration never closes combat).
 12. Repeat-induced / restore residue (5 rows: TW-F16/F23/F24/F42 + PK-009; see also C2).
 
+Re-triage note (2026-10-24): clusters 2-12 above and section C items 1-3 predate the
+engine takeover (2026-09 to 10: Firelight engine, typed effects, engine travel and
+clock, P4 presence). Re-triage them against current main before use.
+
 ## B. Items with GitHub issues ALREADY OPEN (no action needed here)
-#237 #238 #239 #240 #241 #242 #243 #244 #245 #247 #248 #249 #250 #253 all map to
-surviving defect rows and stay open. Closed by owner ruling 2026-08-30: #246
+Still open (2026-10-24): #237 #239 #241 #243 #244 #245 (and #409, section C.4).
+Fixed since 2026-08-30: #238 and #248 (commit d61f20d3); #240 (PR #274); #242
+(PR #437); #247 and #249 (moot, PR #529 retired T091); #250 (commit fd531d8f); #253
+(PR #457). Closed by owner ruling 2026-08-30: #246
 (survivability framing - deaths are intended challenge), #251 (advancement authority -
 level-up is intentionally player-initiated; mechanic proven working live), #252
 (monster special-mechanics execution - design-bearing, deferred to the owner's
@@ -71,8 +79,12 @@ post-voices refactor).
    keepalive surfaces a dead path in seconds, OpenAI calls stream through the Responses
    endpoint (acknowledged in under a second, progress during reasoning), the backstop
    measures inactivity after acknowledgment instead of total time, and the #428 writer
-   is joined per generation. Owner-run rows (network cut mid-turn, native Windows) stay
-   open on #409.
+   is joined per generation. #348, #398 and #428 are closed by PR #438. Owner-run rows
+   (network cut mid-turn, native Windows) stay open on #409.
+
+Defects found since 2026-08-30 are filed as GitHub issues; for the current open list
+see https://github.com/MoonlightByte/NeverEndingQuest/issues?q=is%3Aissue+is%3Aopen
+(not copied here, so this file cannot drift from it).
 
 ## D. Deferred by owner ruling (post-voices refactor; do not work)
 - Progression/level-up UX (auto-fire vs ask-driven is SETTLED for now: ask-driven is

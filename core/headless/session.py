@@ -425,8 +425,17 @@ class HeadlessSession:
                 ),
             )
             return
+        # #1436: the web's notice for input held behind a new game's opening
+        # scene, read before the queue as the web reads it.
+        try:
+            opening_scene = bool(self._dm_main and self._dm_main.opening_scene_pending())
+        except Exception:
+            opening_scene = False
         self.prompt_pending.clear()
         self.input_queue.put(content)
+        if opening_scene:
+            self.writer.emit("operation", name="input", status="accepted_deferred",
+                             message="Your action is queued for after the opening scene.")
         from utils.capture.live_provider_call import get_live_turn_scope
         scope = get_live_turn_scope()
         if scope is not None and scope.purpose == "travel_recovery":
