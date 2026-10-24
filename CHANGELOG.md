@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Saves now keep the story-compression cache, so loading a save on a new install or after a reset no longer re-summarises every past location before the welcome back; a Load adds the save's entries without replacing newer ones, and older saves load as before (#1452).
+- The DM can update a fight again when a bystander is watching, has joined against the party, or was caught by surprise; those fights' encounter updates were being rejected.
+- Casting a spell again while it is still active now renews it: the new casting replaces the active one with its full effect and a fresh duration, instead of spending the slot and changing nothing (#1442).
 - A trip inside a module is now told with the time it really took and the hour you really arrive: the travel narration reads both from the one arrival the game clock commits when the journey ends, so a 77 minute walk is no longer told as 58 and a noon arrival no longer as late morning (#1420).
 - Barkskin keeps a character's armor class from falling below 17, decided by the rules engine after armor, shields and bonuses; it never lowers a higher armor class, and the sheet shows "Barkskin - AC Floor" when it applies (#1434).
 - A person the DM names directly in a fight is now matched to the person standing at that place, so if they turn on the party, how the fight left them is recorded there as well (#1415).
