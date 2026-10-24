@@ -491,6 +491,120 @@ def _place_occupants(location_id):
         return {}
 
 
+ROSTER_ADDED = "rosterAddedObserver"
+
+
+def _load_npc_sheet(npc_name, path_manager):
+    """(sheet, path) for a name, load only (#1425): the exact stem, else the
+    one sheet whose own name is this name. Never the compendium, never
+    npc_builder, so no model call. None when there is no such sheet."""
+    from updates.update_character_info import find_character_file_fuzzy
+
+    npc_file = path_manager.get_character_path(format_type_name(npc_name))
+    if not os.path.exists(npc_file):
+        matched = find_character_file_fuzzy(npc_name)
+        if not matched:
+            return None
+        npc_file = path_manager.get_character_path(matched)
+        if not os.path.exists(npc_file):
+            return None
+    npc_data = load_json(npc_file)
+    return (npc_data, npc_file) if isinstance(npc_data, dict) and npc_data.get("name") else None
+
+
+def _sheet_dead(npc_data):
+    """A sheet that records death: status dead, or 0 HP with no unconscious
+    status and no stable or unconscious condition entry. Typed fields only."""
+    status = str(npc_data.get("status") or "alive").strip().lower()
+    if status == "dead":
+        return True
+    hit_points = npc_data.get("hitPoints")
+    if not isinstance(hit_points, (int, float)) or hit_points > 0 or status == "unconscious":
+        return False
+    conditions = npc_data.get("condition_affected") or []
+    held = {str(c).strip().lower() for c in conditions if isinstance(c, str)}
+    return not held & {"stable", "unconscious"}
+
+
+def _roster_candidates(place_occupants, party_tracker):
+    """The named single persons present by record (#1425): person occupants
+    at the fight's place with count 1, then the party's companions. Groups
+    are never candidates. One entry per occupant id."""
+    out, ids = [], set()
+    for occupant_id, occupant in place_occupants.items():
+        if occupant.get("kind") != "person" or occupant.get("count", 1) != 1 or occupant.get("range"):
+            continue
+        if isinstance(occupant.get("name"), str) and occupant["name"].strip():
+            out.append({"name": occupant["name"], "occupantId": occupant_id,
+                        "attitude": occupant.get("attitude")})
+            ids.add(occupant_id)
+    for entry in (party_tracker or {}).get("partyNPCs") or []:
+        if not isinstance(entry, dict) or not isinstance(entry.get("name"), str):
+            continue
+        occupant_id = entry.get("occupantId")
+        if occupant_id in ids:
+            continue
+        out.append({"name": entry["name"], "occupantId": occupant_id, "attitude": None})
+        if occupant_id:
+            ids.add(occupant_id)
+    return out
+
+
+def _roster_observers(encounter, scene_sources, place_occupants, party_tracker,
+                      encounter_data, path_manager):
+    """Add each present named person the DM left out of the fight as an
+    observer creature (#1425). Returns the added scene sources; they are
+    kept out of the reconciled snapshot, since the DM proposed no key for
+    them. The model still decides who fights."""
+    present_ids = {v for v in (encounter_data.get("occupantIds") or {}).values() if isinstance(v, str)}
+    present_ids |= {c.get("occupantId") for c in encounter["creatures"] if c.get("occupantId")}
+    present_paths = {os.path.realpath(s["sourceRef"]) for s in scene_sources}
+    present_names = {s["displayName"] for s in scene_sources}
+    added = []
+    for candidate in _roster_candidates(place_occupants, party_tracker):
+        if candidate["occupantId"] and candidate["occupantId"] in present_ids:
+            continue
+        loaded = _load_npc_sheet(candidate["name"], path_manager)
+        if not loaded:
+            warning(f"ROSTER: no sheet for {candidate['occupantId'] or candidate['name']}, not added",
+                    category="combat_builder")
+            continue
+        npc_data, npc_file = loaded
+        if os.path.realpath(npc_file) in present_paths or npc_data["name"] in present_names:
+            continue
+        if _sheet_dead(npc_data):
+            continue
+        npc = {
+            "name": npc_data["name"],
+            "type": "npc",
+            "npcType": format_type_name(npc_data["name"]),
+            "initiative": _roll_initiative(npc_data, sheet_backed=True),
+            "status": npc_data.get("status", "alive"),
+            "conditions": npc_data.get("condition_affected", []),
+            "actions": {"actionType": "", "target": ""},
+            "currentHitPoints": npc_data.get("hitPoints", 10),
+            "maxHitPoints": npc_data.get("maxHitPoints", 10),
+            "armorClass": npc_data.get("armorClass", 10),
+            "faction": "hostile" if candidate["attitude"] == "hostile" else "party",
+        }
+        if candidate["occupantId"]:
+            npc["occupantId"] = candidate["occupantId"]
+            present_ids.add(candidate["occupantId"])
+        present_paths.add(os.path.realpath(npc_file))
+        present_names.add(npc_data["name"])
+        encounter["creatures"].append(npc)
+        added.append(
+            {
+                "participantKey": f"roster:{len(added)}",
+                "creature": npc,
+                "sourceKind": "character",
+                "sourceRef": str(npc_file),
+                "displayName": npc_data["name"],
+            }
+        )
+    return added
+
+
 def generate_encounter(encounter_data):
     print(f"[COMBAT_BUILDER] Starting encounter generation with data: player={encounter_data.get('player')}, npcs={encounter_data.get('npcs', [])}, monsters={encounter_data.get('monsters', [])}")
     location = get_current_location()
@@ -666,6 +780,10 @@ def generate_encounter(encounter_data):
             }
         )
 
+    roster_sources = _roster_observers(
+        encounter, scene_sources, place_occupants, party_tracker, encounter_data, path_manager
+    )
+
     # Every genuinely new encounter is typed-agentic. Persisted provenance,
     # never a hidden runtime selector, keeps old encounters on their existing
     # compatibility route.
@@ -685,6 +803,28 @@ def generate_encounter(encounter_data):
     ]
     reconciled = reconcile_scene_manifest(encounter_data, canonical_snapshot)
     encounter["sceneFacts"] = reconciled["sceneFacts"]
+    for item in roster_sources:
+        row = {
+            "combatantId": item["creature"]["combatantId"],
+            "sourceKind": item["sourceKind"],
+            "sourceRef": item["sourceRef"],
+            "displayName": item["displayName"],
+            "participation": "observer",
+            "initiativeEligible": False,
+            "persistence": "canonical_character",
+            "provenance": ROSTER_ADDED,
+        }
+        if item["creature"].get("occupantId"):
+            row["occupantId"] = item["creature"]["occupantId"]
+        encounter["sceneFacts"]["participants"].append(row)
+        reconciled["controllers"][item["creature"]["combatantId"]] = {
+            "controller": "actor_agent",
+            "revision": 0,
+            "cause": ROSTER_ADDED,
+            "scope": "encounter",
+            "expiresAtRevision": None,
+            "consentEventId": None,
+        }
     _apply_surprise(encounter, reconciled["sceneFacts"]["participants"])
     ensure_combat_state(
         encounter,

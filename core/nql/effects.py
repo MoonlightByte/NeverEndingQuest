@@ -165,10 +165,11 @@ def reconcile(sheet: Dict[str, Any], removed: Optional[List[Dict[str, Any]]] = N
     gaps = list(world.gaps) + world_gaps_extra
     ops: List[str] = []
     for effect in ending:
-        ops.append(f'remove condition {_q(genesis.effect_instance_id(effect))} from {_q(cid)};')
+        ops.append(f'remove condition {_q(genesis.world_effect_ids(world, cid, effect)[1])} from {_q(cid)};')
         ops.extend(_hp_lines(cid, effect.get("onRemove"), sheet))
     for effect in applying:
-        ops.append(f'apply condition {_q(genesis.effect_instance_id(effect))} of {_q(genesis.effect_type_id(effect))} to {_q(cid)};')
+        tid, iid = genesis.world_effect_ids(world, cid, effect)
+        ops.append(f'apply condition {_q(iid)} of {_q(tid)} to {_q(cid)};')
         ops.extend(_hp_lines(cid, effect.get("onApply"), sheet))
     try:
         response = apply.call({"world": world.source, "world_name": "effects-genesis.nql",
@@ -322,7 +323,9 @@ def advance(sheets: Dict[str, Dict[str, Any]], now_tick: int, *, location: str =
             return AdvanceOutcome(False, reason=f"engine returned no status or defense explanation for {owner}", gaps=gaps)
         remaining = []
         for effect in sheet.get("temporaryEffects") or []:
-            record = ended_by_instance.get(genesis.effect_instance_id(effect)) if isinstance(effect, dict) else None
+            # #1408: a repeat holder's instance is scoped; the world names each holder's own id.
+            record = (ended_by_instance.get(genesis.world_effect_ids(world, cid, effect)[1])
+                      if isinstance(effect, dict) else None)
             if record is None:
                 remaining.append(effect)
                 continue
