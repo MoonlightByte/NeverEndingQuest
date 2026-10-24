@@ -381,7 +381,17 @@
               "displayName": {"type": "string", "minLength": 1},
               "participation": {"enum": ["active", "observer", "hidden", "unaware", "departed"]},
               "initiativeEligible": {"type": "boolean"},
-              "persistence": {"enum": ["encounter", "canonical_character", "owner_gated_companion"]}
+              "persistence": {"enum": ["encounter", "canonical_character", "owner_gated_companion"]},
+              "surprised": {"type": "boolean"},
+              "occupantId": {"type": "string", "minLength": 1},
+              "provenance": {"type": "string", "minLength": 1},
+              "joinedHostile": {
+                "type": "object",
+                "properties": {
+                  "by": {"type": ["string", "null"]},
+                  "round": {"type": ["integer", "null"]}
+                }
+              }
             },
             "required": ["combatantId", "sourceKind", "sourceRef", "displayName", "participation", "initiativeEligible", "persistence"],
             "additionalProperties": false
