@@ -136,6 +136,10 @@ APPLICATION_OWNED_REFERENCE_FILES = frozenset(
     )
 )
 
+# The story-compression cache is saved, but a Load merges it into the live
+# cache by content key instead of restoring it as a file (#1452).
+COMPRESSION_CACHE_PATH = "modules/conversation_history/compression_cache.json"
+
 
 # Automatic checkpoints before combat (#263). The typed metadata marker
 # (#845) alone selects them for pruning, and only the newest few are kept;
@@ -367,6 +371,26 @@ class SaveGameManager:
                 if not os.listdir(child):
                     os.rmdir(child)
 
+    @staticmethod
+    def _merge_saved_compression_cache(save_path):
+        """Add the save's compression results to the live cache (#1452).
+
+        Best-effort: an old save has none, and a cache can never fail a Load
+        that has already been verified. The live entry wins on a shared key.
+        """
+        saved = os.path.join(save_path, COMPRESSION_CACHE_PATH)
+        if not os.path.isfile(saved):
+            return
+        try:
+            from utils.compression.conversation_compressor_parallel import (
+                ParallelConversationCompressor,
+            )
+
+            added = ParallelConversationCompressor.merge_saved_cache(saved)
+            info(f"Merged {added} saved compression entries", category="save_game")
+        except Exception as exc:
+            warning(f"Saved compression cache not merged: {exc}", category="save_game")
+
     def _freeze_restore_inventory(self, save_path):
         """Freeze original membership/values before cleanup can change its inputs.
 
@@ -430,6 +454,8 @@ class SaveGameManager:
                     or normalized.startswith("modules/.campaign.json.completion/")
                     or normalized == "modules/conversation_history/pending_location_transition.json"
                     or normalized == "modules/conversation_history/pending_departure_summary.json"
+                    # #1452: merged after verification, never copied over the live cache.
+                    or normalized == COMPRESSION_CACHE_PATH
                     # #832: the installed module content wins over the save's copy.
                     or (self._module_owned_path(relative) and os.path.isfile(relative))
                 ):
@@ -583,6 +609,9 @@ class SaveGameManager:
             "modules/conversation_history/chat_history.json",
             "modules/conversation_history/startup_conversation.json",
             "modules/conversation_history/game_interface_cache.json",
+            # Story-compression results, keyed by content; restore merges
+            # them into the live cache instead of copying (#1452).
+            "modules/conversation_history/compression_cache.json",
             
             # Character data
             "characters/",
@@ -1665,6 +1694,7 @@ class SaveGameManager:
                     'modules/.campaign.json.completion',
                 ],
             )
+            self._merge_saved_compression_cache(save_path)
             
             success_msg = f"Save game restored successfully from: {save_folder}"
             success_msg += f"\nRestored {len(source_files)} files"
