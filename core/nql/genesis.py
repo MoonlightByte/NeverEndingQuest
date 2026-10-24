@@ -819,25 +819,32 @@ def effect_engine_modifiers(effect: Dict[str, Any]) -> Optional[List[Tuple[str, 
 AC_SET_RECIPE_PREFIX = "ac-set:"
 
 
-def effect_defense_recipes(sheets: List[Dict[str, Any]]) -> str:
+def effect_defense_recipes(sheets: List[Dict[str, Any]], gaps: Optional[List[str]] = None) -> str:
     """#1322: the defense derive's gated alternative recipe for each live set effect (Mage Armor:
     base AC 13 + Dexterity while no body armor is worn), eligible while its holder has the effect's
     own condition. The engine picks the highest total and adds modifiers once, so Mage Armor never
     stacks with Unarmored Defense or armor (D-KW-8). Empty when no set effect is live, so every
-    other world is unchanged."""
+    other world is unchanged. A live set rule that is not {base 0-30, plusAbility ability or null}
+    declares no recipe and is reported in ``gaps``, never dropped silently."""
     out: List[str] = []
     seen: set = set()
     for sheet in sheets:
         for effect in live_effects(sheet):
             if effect_engine_modifiers(effect) is None:
                 continue  # _effect_lines declares no type for it
-            rule = next((m["set"] for m in effect["modifiers"]
-                         if isinstance(m, dict) and isinstance(m.get("set"), dict)), None)
-            if rule is None or type(rule.get("base")) is not int or effect["effectId"] in seen:
+            rule = next((m["set"] for m in effect["modifiers"] if isinstance(m, dict) and "set" in m), None)
+            if rule is None or effect["effectId"] in seen:
+                continue
+            ability = rule.get("plusAbility") if isinstance(rule, dict) else None
+            if not (isinstance(rule, dict) and not set(rule) - {"base", "plusAbility"}
+                    and type(rule.get("base")) is int and 0 <= rule["base"] <= 30
+                    and (ability is None or ability in ABILITY_NAMES)):
+                if gaps is not None:
+                    gaps.append(f"{character_id(sheet)}: effect {effect.get('name')!r} has a malformed armorClass "
+                                f"set rule {rule!r}; no recipe declared")
                 continue
             seen.add(effect["effectId"])
-            ability = rule.get("plusAbility")
-            term = f' term stat {_q(ability)} offset -10 divide 2;' if ability in ABILITY_NAMES else ""
+            term = f' term stat {_q(ability)} offset -10 divide 2;' if ability else ""
             out.append(f' recipe {_q(AC_SET_RECIPE_PREFIX + effect["effectId"])} base {rule["base"]}'
                        f' requires {_q(effect_type_id(effect))} unless slot "body" {{{term} }}')
     return "".join(out)
@@ -1585,7 +1592,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     # on the class Condition and on the slots the formula excludes.
     # #1322: a live set effect (Mage Armor) adds its gated alternative recipe.
     lines.append(' derive stat "defense" { term stat "dexterity" offset -10 divide 2;'
-                 + class_conditions.defense_terms() + effect_defense_recipes(sheets) + ' }')
+                 + class_conditions.defense_terms() + effect_defense_recipes(sheets, gaps) + ' }')
     lines.append(srd_stats.DERIVE_RULES.rstrip("\n"))
     lines.append(srd_stats.XP_RULES.rstrip("\n"))
     lines.extend(d.rstrip("\n") for d in definitions)
