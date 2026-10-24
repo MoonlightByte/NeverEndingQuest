@@ -2198,7 +2198,9 @@ def _transition_previous_visit(checkpoint, party):
         visit["lastArrivedAt"] = _transition_clock_text(arrived[-1]["tick"])
     if left:
         visit["lastLeftAt"] = _transition_clock_text(left[-1]["tick"])
-        now = tracker_seconds(party)
+        now = _transition_trip_arrival_tick(checkpoint)
+        if now is None:
+            now = tracker_seconds(party)
         if now is not None and now >= left[-1]["tick"]:
             visit["minutesSinceLeaving"] = (now - left[-1]["tick"]) // 60
     return {key: value for key, value in visit.items() if value is not None} or None
@@ -2216,13 +2218,9 @@ def _transition_arrival_time(party):
     return {"clock": time_str[:5], "timeOfDay": get_time_context(time_str)}
 
 
-def _transition_trip_arrival_time(checkpoint):
-    """#1420: the clock and time of day at the trip's committed arrival (the
-    travel updateTime's `arrivedTick`, recorded when the engine trip
-    commits), or None when no arrival is recorded."""
-    from core.effects import clock as calendar
-    from utils.time_context import get_time_context
-
+def _transition_trip_arrival_tick(checkpoint):
+    """#1420: the trip's committed arrival (the travel updateTime's
+    `arrivedTick`, recorded when the engine trip commits), or None."""
     deferred = checkpoint.get("deferred_actions")
     records = deferred.get("actions") if isinstance(deferred, dict) else None
     for record in records if isinstance(records, list) else []:
@@ -2230,14 +2228,24 @@ def _transition_trip_arrival_time(checkpoint):
             continue
         receipt = record.get("receipt") if isinstance(record.get("receipt"), dict) else {}
         arrived = receipt.get("arrivedTick")
-        if type(arrived) is not int:
-            return None
-        try:
-            time_str = str(calendar.calendar_from_scalar(arrived)["time"])
-        except calendar.GameTimeError:
-            return None
-        return {"clock": time_str[:5], "timeOfDay": get_time_context(time_str)}
+        return arrived if type(arrived) is int else None
     return None
+
+
+def _transition_trip_arrival_time(checkpoint):
+    """#1420: the clock and time of day at the trip's committed arrival, or
+    None when no arrival is recorded."""
+    from core.effects import clock as calendar
+    from utils.time_context import get_time_context
+
+    arrived = _transition_trip_arrival_tick(checkpoint)
+    if arrived is None:
+        return None
+    try:
+        time_str = str(calendar.calendar_from_scalar(arrived)["time"])
+    except calendar.GameTimeError:
+        return None
+    return {"clock": time_str[:5], "timeOfDay": get_time_context(time_str)}
 
 
 def _transition_companions(party):
