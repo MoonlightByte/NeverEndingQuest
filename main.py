@@ -114,7 +114,8 @@ except:
 
 # Import other necessary modules (config is now patched)
 from core.managers.combat_manager import (
-    combat_record_exit_kind, combat_record_xp_receipt, run_combat_simulation,
+    combat_record_exit_kind, combat_record_joined_against_party,
+    combat_record_xp_receipt, run_combat_simulation,
     render_combat_record_marker, _lifecycle_owns_supersession,
 )
 from core.combat.down_scene import (
@@ -9002,6 +9003,7 @@ def _main_game_loop(startup_authority, turn_authority):
                 "Combat Summary: " + dialogue_summary,
                 combat_record_exit_kind(active_encounter_id),
                 combat_record_xp_receipt(active_encounter_id),
+                combat_record_joined_against_party(active_encounter_id),
             )
             conversation_history.append({"role": "user", "content": combat_summary_message})
             debug("STATE_CHANGE: Appended combat summary to main history after resumed session.", category="session_management")
