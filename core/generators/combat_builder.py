@@ -494,13 +494,15 @@ def _place_occupants(location_id):
 ROSTER_ADDED = "rosterAddedObserver"
 
 
-def _listed_npc_occupant(place_occupants, npc_file, npc_name, taken):
+def _listed_npc_occupant(place_occupants, npc_file, npc_name, taken, declared=None):
     """The occupant id of the person a listed NPC is (#1415 follow-up; ruling
-    on #1403): among the person occupants at the fight's place, the one
-    whose id ends in the loaded sheet's file stem, else the one whose name
-    or alias slugs to the sheet's name. Exactly one match, or None; a gone
-    occupant (count 0) or an id already taken in this encounter is never
-    used. Code-owned identifiers and names only, never a near name."""
+    on #1403): among the person occupants at the fight's place, the one the
+    DM declared for this NPC's own slot (``occupantIds["npc:N"]``), else the
+    one whose id ends in the loaded sheet's file stem, else the one whose
+    name or alias slugs to the sheet's name. Exactly one match, or None; a
+    gone occupant (count 0) or an id already taken in this encounter is
+    never used. Typed ids, code-owned identifiers and names only, never a
+    near name."""
     from core.nql.occupants import _person_matches
     from utils.roster_conversion import slug
 
@@ -508,6 +510,8 @@ def _listed_npc_occupant(place_occupants, npc_file, npc_name, taken):
         o for o in place_occupants.values()
         if o.get("kind") == "person" and o.get("count") != 0 and o.get("id") not in taken
     ]
+    if declared and any(o.get("id") == declared for o in people):
+        return declared
     stem = os.path.splitext(os.path.basename(str(npc_file)))[0]
     by_stem = [o for o in people if str(o.get("id")).rsplit("/", 1)[-1] == stem]
     if len(by_stem) == 1:
@@ -793,9 +797,14 @@ def generate_encounter(encounter_data):
             "maxHitPoints": npc_data.get("maxHitPoints", 10),
             "armorClass": npc_data.get("armorClass", 10)
         }
-        taken = {v for v in (encounter_data.get("occupantIds") or {}).values() if isinstance(v, str)}
+        declared_ids = encounter_data.get("occupantIds") or {}
+        own_slot = f"npc:{npc_index}"
+        taken = {v for k, v in declared_ids.items() if isinstance(v, str) and k != own_slot}
         taken |= {c["occupantId"] for c in encounter["creatures"] if c.get("occupantId")}
-        occupant_id = _listed_npc_occupant(place_occupants, canonical_npc_file, npc_data["name"], taken)
+        occupant_id = _listed_npc_occupant(
+            place_occupants, canonical_npc_file, npc_data["name"], taken,
+            declared=declared_ids.get(own_slot) if isinstance(declared_ids.get(own_slot), str) else None,
+        )
         if occupant_id:
             npc["occupantId"] = occupant_id
         # Add the NPC to the encounter's creatures array
