@@ -234,7 +234,8 @@ def run_startup_sequence():
     """Resume the shared setup, publishing success only from verified files."""
     from utils.capture.live_provider_call import LiveProviderSuperseded
 
-    print("\nDungeon Master: Welcome! Choose your adventure, then build your character.")
+    # flush=True publishes this line as its own card before the next one (#1422 F1).
+    print("\nDungeon Master: Welcome! Choose your adventure, then build your character.", flush=True)
     initialize_game_files_from_bu()
     try:
         conversation = initialize_startup_conversation()
@@ -1596,7 +1597,7 @@ def ai_character_interview(conversation, module):
             _append_scope([conversation], menu, None)
         else:
             warning("Startup creation scope unavailable; the interview continues without it", category="startup")
-    print("\nDungeon Master: Let's build your character together.")
+    print("\nDungeon Master: Let's build your character together.", flush=True)  # #1422 F1
     while True:
         scope = open_live_turn_scope()
         try:
@@ -1720,7 +1721,7 @@ def ai_character_interview(conversation, module):
                     notice = _starting_gear_notice(proposal["character"], provenance)
                     if notice:
                         # Shown once, before the approved checkpoint: a restart after it loses nothing.
-                        print(f"\nDungeon Master: {notice}")
+                        print(f"\nDungeon Master: {notice}", flush=True)  # #1422 F1
                     _set_startup_progress(conversation, live_scope=scope, phase="approved",
                                           candidate=proposal["character"], character_path=None)
                     try:
@@ -1734,6 +1735,10 @@ def ai_character_interview(conversation, module):
                             "name, retaining the rest of the build. Nothing was overwritten."
                         )})
                         continue
+                    # #1422 F5: the reply to the player's approval, shown only once
+                    # the build is saved (a name conflict above continues instead).
+                    if isinstance(proposal.get("narration"), str) and proposal["narration"].strip():
+                        print(f"\nDungeon Master: {proposal['narration']}", flush=True)
                     return proposal["character"]
                 _set_startup_progress(conversation, live_scope=scope, phase="interview")
                 print(f"\nDungeon Master: {proposal['narration']}")
