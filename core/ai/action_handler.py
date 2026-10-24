@@ -2195,25 +2195,11 @@ def apply_current_transition_action(operation_id, action_index):
         )
 
     with _party_module_transition_lock():
-        # D4: the clock reaches the approved arrival through the engine (its
-        # trip ticks count toward it); the id makes a resume historical. The
-        # tracker follows the document and never moves backwards.
-        from core.nql import game_clock
-
-        game_clock.apply_staged(
-            receipt,
-            "travel:%s:time" % record["operation_id"],
-            arrival=journal_entry_id(
-                str(checkpoint.get("module_name") or ""),
-                str(checkpoint.get("operation_id") or ""),
-                "arrival",
-            ),
-        )
-        # #1420: the clock at this commit, before any later sibling moves
-        # it; the travel narration states the minutes from `before` to here.
-        arrived = game_clock.clock_tick()
-        if arrived is not None:
-            receipt["arrivedTick"] = arrived
+        # #1420: the trip's arrival was committed when the engine trip
+        # committed (commit_current_transition_arrival); the staged time is
+        # reconciled to it and nothing is sent again.
+        if type(receipt.get("arrivedTick")) is not int:
+            _apply_staged_travel_time(checkpoint, record, receipt)
         record["status"] = "committed"
         deferred["cursor"] = action_index + 1
         deferred["receipts"].append(
@@ -2227,6 +2213,64 @@ def apply_current_transition_action(operation_id, action_index):
             deferred["status"] = "committed"
         _write_location_transition_checkpoint(checkpoint)
     return "committed"
+
+
+def _apply_staged_travel_time(checkpoint, record, receipt):
+    """D4: the clock reaches the approved arrival through the engine (its
+    trip ticks count toward it); the id makes a resume historical. The
+    tracker follows the document and never moves backwards. #1420: the
+    receipt keeps the clock at this commit, before any later sibling moves
+    it; the travel narration states the trip from `before` to here."""
+    from core.nql import game_clock
+
+    game_clock.apply_staged(
+        receipt,
+        "travel:%s:time" % record["operation_id"],
+        arrival=journal_entry_id(
+            str(checkpoint.get("module_name") or ""),
+            str(checkpoint.get("operation_id") or ""),
+            "arrival",
+        ),
+    )
+    arrived = game_clock.clock_tick()
+    if arrived is not None:
+        receipt["arrivedTick"] = arrived
+    return arrived
+
+
+def commit_current_transition_arrival(operation_id):
+    """#1420: one committed arrival per trip, right after the engine trip
+    commits and before any narration. The turn's first updateTime (the
+    travel-owned one) is applied by its own request id and the clock then
+    recorded on its receipt as `arrivedTick`, written once; the deferred
+    loop later marks it committed without sending it again. Reloads the
+    checkpoint under the transition lock (realign runs outside it). Returns
+    the arrival tick, or None when the trip has no travel updateTime."""
+    from core.managers.campaign_manager import _party_module_transition_lock
+
+    with _party_module_transition_lock():
+        checkpoint = load_current_transition_checkpoint(operation_id)
+        if checkpoint is None:
+            return None
+        deferred = checkpoint.get("deferred_actions")
+        records = deferred.get("actions") if isinstance(deferred, dict) else None
+        record = next(
+            (
+                item
+                for item in (records if isinstance(records, list) else [])
+                if isinstance(item, dict) and item.get("family") == "updateTime"
+            ),
+            None,
+        )
+        receipt = record.get("receipt") if record is not None else None
+        if not isinstance(receipt, dict):
+            return None
+        if type(receipt.get("arrivedTick")) is int or record.get("status") == "committed":
+            arrived = receipt.get("arrivedTick")
+            return arrived if type(arrived) is int else None
+        arrived = _apply_staged_travel_time(checkpoint, record, receipt)
+        _write_location_transition_checkpoint(checkpoint)
+        return arrived
 
 
 def recover_pending_location_transition(party_tracker_data, conversation_history):
@@ -5374,6 +5418,7 @@ def process_action(
             # resume walks it again, answered from the record).
             from core.nql import travel
             travel.realign(current_checkpoint)
+            commit_current_transition_arrival(transition_id)
 
             reconciliation_status = resolve_current_transition_reconciliation(
                 transition_id, transition_context

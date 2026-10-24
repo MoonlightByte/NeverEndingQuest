@@ -135,10 +135,10 @@ def _die_stat(stat):
             or stat.startswith(("savingThrow.", "abilityCheck.")))
 
 
-def _normalize_set(stat, rule, value, die):
+def _normalize_set(stat, rule, value, die, at_least=None):
     """The typed set rule of a modifier: {"base": 0-30, "plusAbility": ability or None}."""
-    if value is not None or die is not None:
-        raise ValueError("effect modifier needs exactly one of value, die or set")
+    if value is not None or die is not None or at_least is not None:
+        raise ValueError("effect modifier needs exactly one of value, die, set or atLeast")
     if stat != "armorClass":
         raise ValueError("effect modifier set applies only to armorClass")
     if not isinstance(rule, dict) or set(rule) - {"base", "plusAbility"}:
@@ -150,6 +150,17 @@ def _normalize_set(stat, rule, value, die):
     if ability is not None and ability not in ABILITY_NAMES:
         raise ValueError("effect modifier set plusAbility must be an ability name or null")
     return {"base": base, "plusAbility": ability}
+
+
+def _normalize_at_least(stat, amount, value, die):
+    """#1434: the typed armor class floor of a modifier (Barkskin: 17), a whole number 1-30."""
+    if value is not None or die is not None:
+        raise ValueError("effect modifier needs exactly one of value, die, set or atLeast")
+    if stat != "armorClass":
+        raise ValueError("effect modifier atLeast applies only to armorClass")
+    if type(amount) is not int or not 1 <= amount <= 30:
+        raise ValueError("effect modifier atLeast must be a whole number from 1 to 30")
+    return amount
 
 
 def normalize_modifier(modifier):
@@ -166,7 +177,11 @@ def normalize_modifier(modifier):
         # #1322: armor class becomes a base plus an ability modifier (Mage
         # Armor: 13 + Dexterity). The engine derives it as a gated recipe;
         # no number is computed here.
-        return {"stat": stat, "set": _normalize_set(stat, modifier["set"], value, die)}
+        return {"stat": stat, "set": _normalize_set(stat, modifier["set"], value, die, modifier.get("atLeast"))}
+    if "atLeast" in modifier:
+        # #1434: armor class can't fall below a number (Barkskin: 17). The
+        # engine applies it as an `at least` bound after every other term.
+        return {"stat": stat, "atLeast": _normalize_at_least(stat, modifier["atLeast"], value, die)}
     if die is not None or value is None:
         # Exactly one of value (a whole number) or die (#889).
         if value is not None or not isinstance(die, str) or not _MODIFIER_DIE.fullmatch(die):
