@@ -7,11 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- After a fight, experience goes only to you and your companions, not to someone who fought beside you for one fight; a newly met archer no longer seems to have fired arrows they never shot; and a fight's round summary lists someone knocked out as unconscious, not dead (#1458).
 - Saves now keep the story-compression cache, so loading a save on a new install or after a reset no longer re-summarises every past location before the welcome back; a Load adds the save's entries without replacing newer ones, and older saves load as before (#1452).
 - When you pick a fight with someone, the DM now marks them as fighting against you, so they count as your opponent: beating them ends the fight, they earn no share of the rewards, and how the fight left them is recorded at that place. Their attitude and whether they travel with you are still the DM's call (#1449).
 - People standing around when a fight starts now appear in it as onlookers even before they have a character sheet, so you can attack, heal or help them; their sheet is made the first time anyone acts on them, and the DM's encounter updates in such fights no longer fail (#1447).
 - A Barkskin saved before the rules engine knew its typed rule, in a saved game from an earlier version, now takes its armor class floor of 17 when the game loads, the same way an old Mage Armor already does (#1442).
-- The DM can update a fight again when a bystander is watching, has joined against the party, or was caught by surprise; those fights' encounter updates were being rejected.
+- The DM can update a fight again when a bystander is watching, has joined against the party, or was caught by surprise; those fights' encounter updates were being rejected (#1456).
 - Casting a spell again while it is still active now renews it: the new casting replaces the active one with its full effect and a fresh duration, instead of spending the slot and changing nothing (#1442).
 - A trip inside a module is now told with the time it really took and the hour you really arrive: the travel narration reads both from the one arrival the game clock commits when the journey ends, so a 77 minute walk is no longer told as 58 and a noon arrival no longer as late morning (#1420).
 - Barkskin keeps a character's armor class from falling below 17, decided by the rules engine after armor, shields and bonuses; it never lowers a higher armor class, and the sheet shows "Barkskin - AC Floor" when it applies (#1434).
