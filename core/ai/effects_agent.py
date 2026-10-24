@@ -97,6 +97,9 @@ An effect that sets armor class to a base plus an ability modifier (Mage
 Armor: 13 + Dexterity) uses {"stat":"armorClass", "set":{"base":13,
 "plusAbility":"dexterity"}} in place of value (plusAbility null for a flat
 base); the engine computes the armor class.
+An effect that keeps armor class from falling below a number (Barkskin: at
+least 17) uses {"stat":"armorClass", "atLeast":17} in place of value, never
+set; the engine applies it.
 
 Current hit points are a resource, not a derived modifier. For Aid-like effects
 that raise maximum and current HP, use a maxHitPoints modifier plus matching
