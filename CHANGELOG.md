@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The combat narrator now knows the hour outside, so a daytime fight in the open is no longer told "in the dark"; a cave or other dark place keeps its dark (#1423).
 - The travel narration now says how long the journey took by the game clock, so a trip the clock counts as 65 minutes is no longer told as 49 (#1420).
 - When the whole party falls, the pause no longer says nothing was saved after the fall, which was untrue once you saved at the pause (#1423).
 - The rules engine is now the public Firelight Engine v0.1.0 (github.com/MoonlightByte/firelight), shipped as `bin/firelight-apply`; `bin/nql-apply` is the same build under its old name (#1409).
