@@ -321,11 +321,14 @@ class HeadlessSession:
             payload = {"data": str(data)}
         self.writer.emit("compression", event=event_type, **payload)
 
-    def _on_welcome(self, message):
+    def _on_welcome(self, message, kind=None):
         # #214 D-214-4=A: background startup-welcome liveness. A separate
         # additive NDJSON event type - deliberately NOT a "status" event, so
         # harnesses never read it as input-locking processing state.
-        self.writer.emit("welcome_progress", message=str(message))
+        if kind is None:
+            self.writer.emit("welcome_progress", message=str(message))
+        else:
+            self.writer.emit("welcome_progress", message=str(message), kind=str(kind))
 
     def _on_player_output(self, payload, *, commit_guard=None):
         # Structured sink messages (all DM narration since P2, plus module

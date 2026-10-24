@@ -817,11 +817,14 @@ def emit_compression_event(event_type, data):
 
 set_compression_callback(emit_compression_event)
 
-def emit_welcome_progress(message):
+def emit_welcome_progress(message, kind=None):
     """#214 D-214-4=A: background startup-welcome liveness. A SEPARATE
     presentational channel - never status_update{is_processing}, so it can
-    never lock the command input."""
-    socketio.emit('welcome_progress', {'message': message})
+    never lock the command input. ``kind`` (#1422 F4) is additive."""
+    payload = {'message': message}
+    if kind is not None:
+        payload['kind'] = kind
+    socketio.emit('welcome_progress', payload)
 
 try:
     from core.managers.status_manager import status_manager as _status_manager_instance
@@ -3044,10 +3047,17 @@ def handle_user_input(data):
     # #214 CR-1: supersede a pending background welcome AT THE ENQUEUE
     # BOUNDARY, before the game thread can pop this text - the game thread
     # then completes the discard handback before processing the input.
+    # #1422 F4: a new game's opening scene is never discarded; the text waits
+    # for it (the game thread holds it until the scene is settled).
+    opening_scene = False
+    try:
+        opening_scene = bool(dm_main.opening_scene_pending())
+    except Exception:
+        opening_scene = False
     try:
         from utils.capture.live_provider_call import get_active_welcome_scope
         welcome_scope = get_active_welcome_scope()
-        if welcome_scope is not None:
+        if welcome_scope is not None and not opening_scene:
             welcome_scope.request_supersession("player_acted")
     except Exception:
         pass
@@ -3060,6 +3070,8 @@ def handle_user_input(data):
     add_to_message_cache(message)
     emit('game_output', message)
     user_input_queue.put(user_input)
+    if opening_scene:
+        emit('system_message', {'content': 'Your action is queued for after the opening scene.'})
     from utils.capture.live_provider_call import get_live_turn_scope
     scope = get_live_turn_scope()
     if scope is not None and scope.purpose == "travel_recovery":

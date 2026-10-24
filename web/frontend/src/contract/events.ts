@@ -255,7 +255,7 @@ export interface ServerEvents {
     };
   };
   /** #214 D-214-4=A: background startup-welcome liveness (never input-locking). */
-  welcome_progress: { message: string };
+  welcome_progress: { message: string; kind?: 'opening_scene' | 'resume' };
   compression_start: { total_sections: number };
   compression_progress: { completed: number; total: number; from_cache: boolean };
   compression_complete: { reduction_percentage: number; original_size: number; compressed_size: number };

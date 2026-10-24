@@ -224,11 +224,15 @@ class StatusManager:
     def set_welcome_callback(self, callback: Callable[[str], None]):
         self._welcome_callback = callback
 
-    def emit_welcome_event(self, message: str):
+    def emit_welcome_event(self, message: str, kind: Optional[str] = None):
+        """``kind`` (#1422 F4) is "opening_scene" or "resume" when known."""
         callback = getattr(self, "_welcome_callback", None)
         if callback:
             try:
-                callback(message)
+                if kind is None:
+                    callback(message)
+                else:
+                    callback(message, kind=kind)
             except Exception:
                 pass  # presentational only; never affects gameplay
 

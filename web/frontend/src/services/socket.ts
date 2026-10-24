@@ -160,7 +160,7 @@ on('startup_status', (s) => {
 })
 // #214 D-214-4=A: background welcome liveness - presentational only, never
 // touches isProcessing, so it can never lock the input.
-on('welcome_progress', (p) => useSession.getState().setWelcome((p && p.message) || ''))
+on('welcome_progress', (p) => useSession.getState().setWelcome((p && p.message) || '', p?.kind))
 on('game_started', (p) => {
   localStorage.setItem('neq_hasPlayed', 'true')
   useSession.getState().gameStarted(p.message)

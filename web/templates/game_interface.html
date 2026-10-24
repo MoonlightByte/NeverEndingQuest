@@ -6026,7 +6026,10 @@
             const input = document.getElementById('user-input');
             if (!input || input.disabled) return; // never fight a real turn's lock
             if (data && data.message) {
-                input.placeholder = data.message + " (you can act anytime)";
+                // #1422 F4: during a new game's opening scene, typing waits for it.
+                input.placeholder = data.message + (data.kind === 'opening_scene'
+                    ? " (anything you type now happens right after it)"
+                    : " (you can act anytime)");
             } else {
                 input.placeholder = "Enter your command...";
             }

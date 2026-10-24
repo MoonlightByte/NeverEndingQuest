@@ -80,6 +80,7 @@ export function useTurnStatus(): string | null {
   const message = useSession((s) => s.statusMessage)
   const recovery = useSession((s) => s.restoreRecoveryRequired)
   const welcome = useSession((s) => s.welcomeMessage)
+  const openingScene = useSession((s) => s.welcomeOpeningScene)
   const wait = useSession((s) => s.wait)
   const receivedAt = useSession((s) => s.waitReceivedAt)
   const [now, setNow] = useState(() => performance.now())
@@ -93,6 +94,8 @@ export function useTurnStatus(): string | null {
   if (recovery) return message || 'Gameplay is paused. Use the recovery controls to continue.'
   if (busy && wait) return waitStatusText(wait, Math.max(0, now - receivedAt))
   if (busy) return message || 'Working…'
-  if (welcome) return `${welcome} You can act anytime.`
+  if (welcome) return openingScene
+    ? `${welcome} Anything you type now happens right after it.`
+    : `${welcome} You can act anytime.`
   return null
 }

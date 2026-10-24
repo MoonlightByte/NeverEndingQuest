@@ -30,13 +30,19 @@ def _location_text(party_tracker):
     return text
 
 
+def is_opening_scene(messages):
+    """True while a history holds no player or narrator turn: the fresh
+    adventure whose first narration is the opening scene (#1422 F4)."""
+    return not any(isinstance(m, dict) and m.get("role") in _STORY_ROLES for m in messages or ())
+
+
 def with_opening_scene(messages, party_tracker=None):
     """A fresh adventure (no player or narrator turn yet) asks for an opening
     scene. Request-local like the delivery overlay: never persisted, so the
     history stays empty until the opening is accepted and a fresh start is
     never mistaken for a game in progress."""
     result = list(messages)
-    if any(isinstance(m, dict) and m.get("role") in _STORY_ROLES for m in result):
+    if not is_opening_scene(result):
         return result
     try:
         note = opening_scene_prompt().replace("{location}", _location_text(party_tracker))

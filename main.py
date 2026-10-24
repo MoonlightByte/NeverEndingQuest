@@ -374,6 +374,10 @@ class _WelcomeLifecycle:
         self.recovery_used = False
         self.pending_receipt = None  # mutation attempted; only a terminal receipt CAS remains
         self._next_lease_renew = time.monotonic() + _WELCOME_LEASE_RENEW_SECONDS
+        # #1422 F4: "opening_scene" for a new game's first narration, else "resume".
+        self.kind = "resume"
+        # #1422 F4: the game thread holds player text behind this opening scene.
+        self.player_waiting = False
 
     def is_terminal(self):
         with self.lock:
@@ -383,10 +387,17 @@ class _WelcomeLifecycle:
 _welcome_lifecycle = None
 
 
+_OPENING_SCENE_STATUS = "The DM is setting the opening scene..."
+
+
 def _welcome_status(message):
     """Non-input-locking presentational status (D-214-4=A)."""
+    lifecycle = _welcome_lifecycle
+    kind = lifecycle.kind if lifecycle is not None else None
+    if kind == "opening_scene" and message == "The DM is recalling your journey...":
+        message = _OPENING_SCENE_STATUS
     try:
-        status_manager.emit_welcome_event(message)
+        status_manager.emit_welcome_event(message, kind=kind)
     except Exception:
         pass
 
@@ -652,6 +663,9 @@ def _apply_welcome(lifecycle):
         current = load_startup_state()
         if (
             not lifecycle.recovery_used
+            # #1422 F4 (fail-forward): with player text waiting behind the
+            # opening scene, its turn runs now instead of a recovery welcome.
+            and not lifecycle.player_waiting
             and current.get("status") == "kickoff_failed"
             and try_consume_forced_recovery(
                 current.get("startup_attempt_id", "")
@@ -1050,9 +1064,51 @@ def service_welcome_lifecycle():
             raise _RestoreControlTransfer(restore_request)
 
 
+def opening_scene_pending():
+    """True while a new game's opening scene is still being written (#1422 F4)."""
+    lifecycle = _welcome_lifecycle
+    return (
+        lifecycle is not None
+        and lifecycle.kind == "opening_scene"
+        and not lifecycle.is_terminal()
+    )
+
+
+def _wait_for_opening_scene():
+    """#1422 F4: hold the player's text until the opening scene is settled.
+
+    Never supersedes and never locks input (D-214-4=A). Each pass re-reads the
+    CURRENT lifecycle, so a recovery welcome installed by the FAILED path is
+    waited on too, and pumps the welcome on the input poll's own 0.5 s cadence,
+    so the kickoff lease keeps being renewed. The wait is bounded by the
+    worker's own generation kill; a Load unwinds out of the pump as at the
+    input poll.
+    """
+    while True:
+        lifecycle = _welcome_lifecycle
+        if (
+            lifecycle is None
+            or lifecycle.kind != "opening_scene"
+            or lifecycle.is_terminal()
+        ):
+            return
+        lifecycle.player_waiting = True
+        service_welcome_lifecycle()
+        if lifecycle.is_terminal():
+            continue
+        if lifecycle.provider_complete.is_set():
+            time.sleep(0.5)  # a handback retry (lock contention), at the poll's cadence
+        else:
+            lifecycle.provider_complete.wait(0.5)
+
+
 def finalize_welcome_before_player_turn():
     """Player acted: supersede a pending welcome and complete its handback
-    BEFORE the player's text is processed (CR-1 discard-before-process)."""
+    BEFORE the player's text is processed (CR-1 discard-before-process).
+    A new game's opening scene is waited for instead (#1422 F4)."""
+    if opening_scene_pending():
+        _wait_for_opening_scene()
+        return
     lifecycle = _welcome_lifecycle
     if lifecycle is None:
         return
@@ -1141,6 +1197,8 @@ def _spawn_welcome_worker(conversation_history, note_message,
     )
     lifecycle.recovery_used = recovery
     lifecycle.live_history = conversation_history
+    from utils.narration_prompt import is_opening_scene
+    lifecycle.kind = "opening_scene" if is_opening_scene(conversation_history) else "resume"
     global _welcome_lifecycle
     _welcome_lifecycle = lifecycle
     with lifecycle.lock:
