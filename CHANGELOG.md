@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Casting a spell again while it is still active now renews it: the new casting replaces the active one with its full effect and a fresh duration, instead of spending the slot and changing nothing (#1442).
 - Barkskin keeps a character's armor class from falling below 17, decided by the rules engine after armor, shields and bonuses; it never lowers a higher armor class, and the sheet shows "Barkskin - AC Floor" when it applies (#1434).
 - When someone who joined a fight against the party is beaten, killed, flees or surrenders, the place's record now says so, and the DM is told after the fight who turned on the party and how it ended; what that means for them afterwards is left to the story (#1415).
 - Mage Armor sets a character's base armor class to 13 + Dexterity while they wear no body armor, decided by the rules engine (a shield and other bonuses still add); it never stacks with Unarmored Defense or armor, and two characters with the same Mage Armor each keep their own (#1322).
