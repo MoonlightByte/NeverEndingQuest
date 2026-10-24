@@ -4413,7 +4413,8 @@ def handle_get_provider():
         emit('provider_changed', {'provider': provider})
     except Exception as e:
         error(f"Error getting provider: {e}", exception=e, category="web_interface")
-        emit('provider_changed', {'provider': 'legacy'})  # Safe fallback
+        # #1422 F3: never report a provider the server is not using.
+        emit('error', {'message': 'Could not read the AI provider setting. Reload the page to try again.'})
 
 
 _provider_selection_lock = threading.Lock()
