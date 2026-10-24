@@ -140,6 +140,11 @@ in intent. Never leave one open at finalize. A package or option the player has
 already named is chosen: record it and do not ask it again.
 Offer only a choice's option_keys from the scope; a skill the background grants
 is never offered.
+Set choice_turn on every response: asks lists each choice id your narration asks
+the player about this turn, and refused each option your narration says the
+player cannot pick. Refuse only an option the scope does not offer, and ask only
+about open choice ids. To let the player change a choice already made, clear its
+picks in intent, then ask it.
 When the player says they are new or overwhelmed, ask one choice per turn and
 say how many remain.
 Record package and slot picks in starting_equipment as soon as the player gives

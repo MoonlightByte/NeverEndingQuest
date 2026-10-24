@@ -666,6 +666,9 @@ def test_raise_never_lowers_and_leaves_ability_pools_to_level_up(wizard, authore
     assert "spellSlots level1 max 0 -> 2 (SRD Sorcerer level 1)" in effects.corrections_made
 
 
+_NO_CLAIMS = {"asks": [], "refused": []}
+
+
 def _engine_finalize(authored):
     """A captured whole-path finalize as the engine path sends it (D-CREATE-COST-5): typed intent, creative and
     starting_equipment, no sheet. Each pick is the option the captured sheet names, never one granted twice;
@@ -720,7 +723,8 @@ def _engine_finalize(authored):
     return {"version": 1, "decision": "finalize_character", "narration": authored["narration"],
             "confirmation": dict(authored["confirmation"], player_message_index=0), "intent": intent,
             "starting_equipment": copy.deepcopy(authored["starting_equipment"]),
-            "creative": dict(creative, backstory=None, appearance=None, feature_descriptions=None)}
+            "creative": dict(creative, backstory=None, appearance=None, feature_descriptions=None),
+            "choice_turn": _NO_CLAIMS}
 
 
 def run_interview(wizard, authored, monkeypatch, *, review, stop_after_rejection=False):
@@ -946,11 +950,12 @@ def scoped(wizard, monkeypatch):
     return wizard
 
 
-def _scoped_turn(intent, narration="Which divine order calls to her?"):
+def _scoped_turn(intent, narration="Which divine order calls to her?", claims=None):
     intent = dict({"ability_scores": None}, **intent) if isinstance(intent, dict) else intent
     return json.dumps({"version": 1, "decision": "continue_interview", "narration": narration,
                        "confirmation": {"player_message_index": None, "whole_build_approved": False},
-                       "starting_equipment": None, "intent": intent, "creative": None})
+                       "starting_equipment": None, "intent": intent, "creative": None,
+                       "choice_turn": claims or _NO_CLAIMS})
 
 
 def _run_scoped(wizard, monkeypatch, answers, lines, conversation=None):
@@ -1188,7 +1193,7 @@ def _bard_interview_turn(equipment):
     package = "bard.core-bard-traits.starting-equipment"
     return {"version": 1, "decision": "continue_interview", "narration": "Which two cantrips would Pip like?",
             "confirmation": {"player_message_index": 0, "whole_build_approved": False}, "creative": None,
-            "starting_equipment": equipment,
+            "starting_equipment": equipment, "choice_turn": _NO_CLAIMS,
             "intent": {"class_key": "bard", "species_key": "halfling", "background_key": "acolyte",
                        "choices": {package: ["A"]},
                        "considering": {"class_keys": [], "species_keys": [], "background_keys": []},
@@ -1255,7 +1260,7 @@ def test_the_engine_author_offers_only_the_scope_options():
     assert ("Offer only a choice's option_keys from the scope; a skill the background grants is never "
             "offered.") in " ".join(prompt.split())
     assert "a skill the background grants" not in build_character_creation_system_prompt()
-    assert hashlib.sha256(prompt.encode()).hexdigest()[:12] == "2df6e32ad30f"
+    assert hashlib.sha256(prompt.encode()).hexdigest()[:12] == "51284587b794"
 
 
 def test_the_engine_author_asks_one_choice_per_turn_for_a_new_player():
@@ -1438,7 +1443,7 @@ def test_the_preview_summary_shows_hit_points_and_the_saved_line_shows_armor_cla
 ])
 def test_the_open_choices_record_carries_each_open_choice_with_its_options(wizard, intent, cid, key, expected):
     conversation = [{"role": "system", "content": json.dumps(creation_scope_item(intent))}]
-    proposal = {"decision": "continue_interview", "intent": intent}
+    proposal = {"decision": "continue_interview", "intent": intent, "choice_turn": _NO_CLAIMS}
     assert wizard._scoped_intent([conversation], proposal, rescoped=True) is False
     record = json.loads(conversation[-1]["content"])
     assert record["task_purpose"] == "startup_open_choices"
@@ -1464,8 +1469,8 @@ def test_a_wizard_open_choices_record_names_spells_and_points_prepared_at_the_sp
     intent = {"class_key": "wizard", "species_key": "elf", "background_key": "sage",
               "choices": {"wizard.spellcasting.spellbook": ["alarm", "shield"]}}
     conversation = [{"role": "system", "content": json.dumps(creation_scope_item(intent))}]
-    assert wizard._scoped_intent([conversation], {"decision": "continue_interview", "intent": intent},
-                                 rescoped=True) is False
+    assert wizard._scoped_intent([conversation], {"decision": "continue_interview", "intent": intent,
+                                                  "choice_turn": _NO_CLAIMS}, rescoped=True) is False
     record = {e["id"]: e for e in json.loads(conversation[-1]["content"])["open_choices"]}
     prepared = record["wizard.spellcasting.prepared-spells"]
     assert prepared["from_choice"] == "wizard.spellcasting.spellbook" and prepared["options"] == ["Alarm", "Shield"]
@@ -1692,3 +1697,91 @@ def test_the_merged_t079_prompt_carries_t078s_rules_verbatim(wizard, authored, m
     assert hashlib.sha256(separate_system.encode()).hexdigest()[:12] == "79e671ba7ed1"
     assert hashlib.sha256(merged_system.encode()).hexdigest()[:12] == "273f736565d3"
 
+
+
+# #1325 (desktop L7): Mira, a High Elf wizard sage, as captured at turn 17 with her prepared spells.
+_MIRA = {"class_key": "wizard", "species_key": "elf", "background_key": "sage", "choices": {
+    "background.sage.ability-scores": ["+2 Intelligence, +1 Constitution"], "species.elf.elven-lineage": ["High Elf"],
+    "species.elf.elven-lineage.spellcasting-ability": ["Intelligence"], "species.elf.keen-senses": ["Perception"],
+    "wizard.core-wizard-traits.skill-proficiencies": ["Investigation", "Insight"],
+    "wizard.core-wizard-traits.starting-equipment": ["A"],
+    "wizard.spellcasting.cantrips": ["fire_bolt", "mage_hand", "ray_of_frost"],
+    "feat.magic-initiate.wizard.cantrips": ["light", "minor_illusion"],
+    "feat.magic-initiate.wizard.spellcasting-ability": ["Intelligence"],
+    "feat.magic-initiate.wizard.level-1-spell": ["longstrider"], "languages.standard": ["Elvish", "Draconic"],
+    "wizard.spellcasting.spellbook": ["mage_armor", "magic_missile", "shield", "sleep", "detect_magic", "feather_fall"],
+    "wizard.spellcasting.prepared-spells": ["mage_armor", "magic_missile", "shield", "sleep"]},
+    "considering": {"class_keys": [], "species_keys": [], "background_keys": []},
+    "ability_scores": {"method": "standard_array", "assignment": {
+        "strength": 8, "dexterity": 14, "constitution": 13, "intelligence": 15, "wisdom": 12, "charisma": 10}}}
+
+
+def _mira(**choices):
+    intent = copy.deepcopy(_MIRA)
+    for cid, picks in choices.items():
+        cid = cid.replace("__", ".").replace("_", "-")
+        if picks is None:
+            intent["choices"].pop(cid)
+        else:
+            intent["choices"][cid] = picks
+    return intent
+
+
+def test_an_elf_is_offered_elvish_and_keeps_it_on_the_sheet():
+    # The data and scope were right: SRD 5.2 species grant no language; Common plus two standard ones.
+    from core.nql import creation_build, creation_scope
+    point = creation_scope.issued_points(_MIRA)["languages.standard"]
+    assert "Elvish" in point["option_keys"] and "Common" not in point["option_keys"]
+    assert creation_scope.choice_problems(_MIRA) == []
+    sheet, _ = creation_build.build_level_one_sheet(_MIRA, None, preview=True)
+    assert sheet["languages"] == ["Common", "Elvish", "Draconic"]
+
+
+def test_a_refused_offered_option_and_an_ask_of_a_closed_choice_are_typed_problems():
+    from core.nql import creation_scope
+    turn14 = _mira(languages__standard=["Draconic"], wizard__spellcasting__spellbook=None,
+                   wizard__spellcasting__prepared_spells=None)
+    refused = {"asks": ["languages.standard"], "refused": [{"choice_id": "languages.standard", "value": "Elvish"}]}
+    assert creation_scope.turn_problems(turn14, refused) == [
+        {"choice_id": "languages.standard", "problem": "refused_offered", "value": "Elvish"}]
+    assert creation_scope.turn_problems(turn14, {"asks": [], "refused": [
+        {"choice_id": "languages.standard", "value": "Abyssal"}]}) == []
+    assert creation_scope.turn_problems(turn14, {"asks": [], "refused": [
+        {"choice_id": "languages.rare", "value": "Abyssal"}]}) == [
+        {"choice_id": "languages.rare", "problem": "refused_not_issued"}]
+    turn17 = _mira(languages__standard=["Draconic", "Dwarvish"], wizard__spellcasting__prepared_spells=None)
+    assert creation_scope.turn_problems(turn17, {"asks": ["languages.standard"], "refused": []}) == [
+        {"choice_id": "languages.standard", "problem": "asked_not_open"}]
+    assert creation_scope.turn_problems(
+        turn17, {"asks": ["wizard.spellcasting.prepared-spells"], "refused": []}) == []
+    # nql-55 N1: a player who changes a made choice gets it cleared in intent, then asked; that is open.
+    changed = _mira(languages__standard=None, wizard__spellcasting__prepared_spells=None)
+    assert creation_scope.turn_problems(changed, {"asks": ["languages.standard"], "refused": []}) == []
+
+
+def test_a_contradicting_turn_is_corrected_inside_the_cap_and_a_clean_turn_costs_no_call(scoped, monkeypatch):
+    refuse = {"asks": [], "refused": [{"choice_id": "cleric.divine-order.divine-order", "value": "Protector"}]}
+    answers = [_scoped_turn(SCOPED_BLANK), _scoped_turn(SCOPED_CLERIC),
+               _scoped_turn(SCOPED_CLERIC, claims=refuse), _scoped_turn(SCOPED_CLERIC)]
+    conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte."])
+    refusals = [json.loads(m["content"]) for _, msgs in calls for m, p in zip(msgs, _purposes(msgs))
+                if p == "startup_choice_refusal"]
+    assert refusals and {r["problems"][0]["problem"] for r in refusals} == {"refused_offered"}
+    assert "Refuse only an option the scope does not offer" in refusals[0]["instruction"]
+    assert len(calls) == 4  # menu, re-scope, refused, redraft: one redraft for the contradiction; the clean turns cost nothing extra
+    assert scoped.STARTUP_TURN_REJECTION_LIMIT == 4
+
+
+def test_the_scoped_response_requires_choice_turn_and_the_rule_is_in_the_prompt():
+    from utils.startup_contract import parse_startup_response, startup_response_schema
+    from utils.startup_prompt_builder import build_character_creation_system_prompt
+    assert "choice_turn" in startup_response_schema(scoped=True)["required"]
+    assert "choice_turn" not in startup_response_schema()["properties"]
+    turn = json.loads(_scoped_turn(SCOPED_CLERIC))
+    del turn["choice_turn"]
+    with pytest.raises(ValueError):
+        parse_startup_response(json.dumps(turn), latest_user_index=0, scoped=True)
+    prompt = " ".join(build_character_creation_system_prompt(scoped=True).split())
+    assert ("Refuse only an option the scope does not offer, and ask only about open choice ids. To let the "
+            "player change a choice already made, clear its picks in intent, then ask it.") in prompt
+    assert "choice_turn" not in build_character_creation_system_prompt()
