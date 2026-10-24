@@ -30,6 +30,27 @@ build or the legacy player. See [Quick Start](#quick-start) for installation.
 
 An AI-powered Dungeon Master for running SRD 5.2.1 compatible tabletop RPG campaigns with infinite adventure potential. Experience the world's most popular roleplaying game with an intelligent AI that remembers every decision, adapts to your playstyle, and creates endless adventures tailored to your party.
 
+## Rules first: the Firelight Engine
+
+At its heart NeverEndingQuest is a rules-based game, not just a continuing
+narration. Attacks, damage, hit points, inventory, conditions and the clock are typed
+game mechanics. A compiled rules engine decides most of them by the SRD 5.2.1
+rules ([what it covers today](#the-rules-engine)), and the AI Dungeon Master
+narrates what the engine decided.
+
+A language model cannot keep those books by itself: over a long game it forgets
+numbers and drifts from the rules. Holding the rules steady needed an engine of
+its own, so we created one.
+
+We are now sharing that engine with anyone who wants to build on it:
+**Firelight Engine v0.1.0, by Eternal Tavern**, public at
+[github.com/MoonlightByte/firelight](https://github.com/MoonlightByte/firelight)
+under the Fair Source License 1.0, which becomes the Apache License 2.0 five years
+after first publication. NeverEndingQuest ships it in `bin/` as `firelight-apply`
+(`firelight-apply.exe` on Windows). To build on it, start with the engine's
+[README](https://github.com/MoonlightByte/firelight#readme) and its
+[protocol](https://github.com/MoonlightByte/firelight/blob/main/docs/PROTOCOL.md).
+
 **NEW: The NQL Rules Engine** - Dice, totals, inventories, conditions and the clock are
 now decided by a separate compiled rules engine, not by the language model. The AI
 Dungeon Master tells the story and declares what happens; the engine applies the SRD
