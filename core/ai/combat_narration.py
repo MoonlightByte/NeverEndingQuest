@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from core.managers.combat_state import combatant_presentation_name
+from core.managers.combat_state import combatant_presentation_name, display_status
 
 
 _SHEET_FIELDS = (
@@ -216,7 +216,9 @@ def _fact_event(event, creatures, presentation=None):
             "declaredHpDelta": declared_deltas.get(target.get("combatantId")),
             "tempHpBefore": target.get("tempHpBefore"),
             "tempHpAfter": target.get("tempHpAfter"),
-            "statusAfter": target.get("statusAfter"),
+            "statusAfter": display_status(
+                creatures.get(target.get("combatantId")) or {}, target.get("statusAfter")
+            ),
             # CC: the engine's concentration save lines and what ended on a failure
             "engineChecks": target.get("engineChecks"),
             "concentrationEnded": target.get("concentrationEnded"),
@@ -335,10 +337,12 @@ def build_scene_dossier(encounter, events, characters=None):
                 "armorClass": effective.get(
                     "armorClass", creature.get("armorClass")
                 ),
-                "status": (
+                # #1404: shown after the sheet-authority choice; stored unchanged.
+                "status": display_status(
+                    creature,
                     sheet.get("status", creature.get("status"))
                     if sheet_is_state_authority
-                    else creature.get("status")
+                    else creature.get("status"),
                 ),
                 "condition": (
                     sheet.get("condition", creature.get("condition"))
@@ -359,7 +363,7 @@ def build_scene_dossier(encounter, events, characters=None):
                     creatures, actor_id, presentation=presentation
                 ),
                 "initiative": creature.get("initiative"),
-                "status": creature.get("status"),
+                "status": display_status(creature),
                 "actedThisRound": actor_id in (state.get("actedThisRound") or []),
             }
         )

@@ -399,8 +399,9 @@ def _welcome_worker_main(lifecycle):
     )
     try:
         _welcome_status("The DM is recalling your journey...")
+        welcome_history = _welcome_history(lifecycle.frozen_history)
         content = _get_ai_response_impl(
-            lifecycle.frozen_history,
+            welcome_history,
             prepare_history=False,
             live_selected=True,
             detached_context={
@@ -409,7 +410,7 @@ def _welcome_worker_main(lifecycle):
             },
         )
         reviewed = _review_fresh_membership_candidate(
-            content, lifecycle.party_tracker_data, lifecycle.frozen_history,
+            content, lifecycle.party_tracker_data, welcome_history,
             player_input=None,
             detached_context={"scope": lifecycle.scope, "status": _welcome_status},
         )
@@ -1462,7 +1463,50 @@ def exit_game():
     print("Fond farewell until we meet again!")
     exit()
 
-def _resume_guidance():
+def _unresolved_player_turn(conversation_history):
+    """Index of a player turn that never got an accepted reply, or None (#1402).
+
+    The last message carrying the player's words is unresolved when everything
+    after it is a return note or the recap reply right after one: since the
+    player spoke, only load recaps have happened. Read from typed history
+    fields (history_markers) only; any other message after the turn (a DM
+    reply, a validation-error marker, a combat-resume line) means None.
+    """
+    turn = None
+    for index in range(len(conversation_history) - 1, -1, -1):
+        if hm.player_input(conversation_history[index]) is not None:
+            turn = index
+            break
+    if turn is None:
+        return None
+    for index in range(turn + 1, len(conversation_history)):
+        message = conversation_history[index]
+        if hm.is_marker(message, hm.RETURN_NOTE):
+            continue
+        previous = conversation_history[index - 1]
+        if isinstance(message, dict) and message.get("role") == "assistant" and hm.is_marker(previous, hm.RETURN_NOTE):
+            continue
+        return None
+    return turn
+
+
+def _welcome_history(frozen_history):
+    """The welcome's context: an unresolved player turn and the recaps after it are left out (#1402).
+
+    Only the latest return note is kept, so the recap cannot narrate the
+    interrupted action, nor an earlier recap that already did. Stored history
+    is not changed. Anything unexpected sends the history as it was.
+    """
+    try:
+        turn = _unresolved_player_turn(frozen_history)
+        if turn is None or not hm.is_marker(frozen_history[-1], hm.RETURN_NOTE):
+            return frozen_history
+        return list(frozen_history[:turn]) + [frozen_history[-1]]
+    except Exception:
+        return frozen_history
+
+
+def _resume_guidance(unresolved=False):
     """How the returning-player narration should read; restates a check that still awaits the player's dice."""
     guidance = (
         "As the narrator, welcome the player back to the table in a sentence. In the fiction no time has passed: "
@@ -1484,6 +1528,11 @@ def _resume_guidance():
             "that the roll is theirs to make; do not ask for a new action and do not narrate the outcome. "
         )
     else:
+        if unresolved:
+            guidance += (
+                "The player's last action before the break was never resolved, so none of it happened: do not "
+                "narrate it as begun, in flight or about to land. Recap only what had happened before it. "
+            )
         guidance += "End on an open moment for the player's next action. "
     return guidance + (
         "IMPORTANT: Do NOT use transitionLocation action - the party is already at their current location. "
@@ -1554,7 +1603,8 @@ def check_and_inject_return_message(conversation_history, is_combat_active=False
     # its place after the opening; empty keeps the text byte-identical.
     return_message = hm.marker(
         "user",
-        "Dungeon Master Note: Resume the game, the player has returned. " + location_note + _resume_guidance(),
+        "Dungeon Master Note: Resume the game, the player has returned. " + location_note
+        + _resume_guidance(unresolved=_unresolved_player_turn(conversation_history) is not None),
         hm.RETURN_NOTE,
     )
     conversation_history.append(return_message)

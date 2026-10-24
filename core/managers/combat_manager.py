@@ -153,6 +153,7 @@ from core.managers.combat_state import (
     combat_resolved,
     combatant_by_id,
     combatant_presentation_name,
+    display_status,
     ensure_combat_state,
     expected_automatic_actor_ids,
     expected_player_window_ids,
@@ -2419,7 +2420,12 @@ def _complete_agentic_combat(
             for creature in (encounter_data.get("creatures") or [])
             if isinstance(creature, dict)
         )
-        recovery = recover_ammunition(encounter_path, character_paths, fled)
+        # #1405: only the committed initiative members (#1339): an observer
+        # fired nothing here, and its pending count from an earlier fight is
+        # not forfeit by this one.
+        recovery = recover_ammunition(
+            encounter_path, _reward_paths(encounter_data, character_paths), fled
+        )
         parts = []
         for name, lines in sorted((recovery or {}).items()):
             for line in lines:
@@ -3123,7 +3129,10 @@ def _round_facts_text(encounter, round_num):
                 "target %s HP %s -> %s (%s)" % (
                     _name(target.get("combatantId")),
                     target.get("hpBefore"), target.get("hpAfter"),
-                    target.get("statusAfter") or "unknown",
+                    display_status(
+                        roster.get(str(target.get("combatantId"))) or {},
+                        target.get("statusAfter"),
+                    ) or "unknown",
                 )
             )
         rolls = []
@@ -3179,7 +3188,7 @@ def _round_facts_text(encounter, round_num):
             "- %s: HP %s/%s, %s%s" % (
                 _name(creature.get("combatantId")),
                 creature.get("currentHitPoints"), creature.get("maxHitPoints"),
-                creature.get("status") or "unknown",
+                display_status(creature) or "unknown",
                 (", conditions " + ", ".join(conditions)) if conditions else "",
             )
         )
