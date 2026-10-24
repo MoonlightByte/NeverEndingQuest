@@ -283,6 +283,7 @@ on('module_creation_progress', (p) => useDialogs.getState().moduleProgress(p))
 on('provider_changed', (p) => useDialogs.getState().setProvider(p))
 on('local_endpoint_changed', (p) => useDialogs.getState().setLocalEndpoint(p))
 on('openai_key_status', (p) => useDialogs.getState().setOpenaiKeyStatus(p))
+on('openai_key_check', (p) => useDialogs.getState().setOpenaiKeyCheck(p))
 on('gemini_key_status', (p) => useDialogs.getState().setGeminiKeyStatus(p))
 on('local_endpoint_test_result', (p) => useDialogs.getState().setEndpointTestResult(p))
 

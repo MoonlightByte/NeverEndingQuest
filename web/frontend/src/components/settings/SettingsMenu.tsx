@@ -181,7 +181,7 @@ export function SettingsMenu() {
   const open = menuOpen || dialogOpen === 'settings'
   const rootRef = useRef<HTMLDivElement>(null)
   const [mobileTop, setMobileTop] = useState(64)
-  const close = () => { setMenuOpen(false); if (useDialogs.getState().open === 'settings') useDialogs.getState().closeDialog() }
+  const close = () => { setMenuOpen(false); useDialogs.getState().setKeyGate(null); if (useDialogs.getState().open === 'settings') useDialogs.getState().closeDialog() }
   useEffect(() => {
     if (!open || desktop) return
     const position = () => { const bottom = rootRef.current?.getBoundingClientRect().bottom ?? 59; setMobileTop(Math.max(8, Math.min(bottom + 5, window.innerHeight - 200))) }

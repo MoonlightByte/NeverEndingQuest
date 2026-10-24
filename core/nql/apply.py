@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2024 MoonlightByte
 # SPDX-License-Identifier: Fair-Source-1.0
 # License: See LICENSE file in the repository root
-"""Subprocess bridge to the ``nql-apply`` engine command.
+"""Subprocess bridge to the Firelight engine command (``bin/firelight-apply``).
 
 One call, one process, one JSON document each way. The engine holds no state
 between calls; the caller keeps the returned ``checkpoint`` and hands it back on
-the next call. See the engine's ``cmd/nql-apply`` for the contract.
+the next call. See Firelight's docs/PROTOCOL.md for the contract.
 """
 import json
 import os

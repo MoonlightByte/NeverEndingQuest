@@ -233,7 +233,13 @@ export interface ServerEvents {
   exit_acknowledged: { message: string };
   provider_changed: { provider: string };
   local_endpoint_changed: { base_url: string; model: string; has_key: boolean };
-  openai_key_status: { has_key: boolean };
+  /** keychain=false: a saved key lives in user_settings.json (#1399 G3). */
+  openai_key_status: { has_key: boolean; keychain?: boolean };
+  /** #1399 G1: the typed result of checking a saved key; never the key or provider text. */
+  openai_key_check: {
+    result: 'checking' | 'no_new_key' | 'accepted' | 'rejected' | 'rate_limited' | 'denied' | 'no_quota' | 'unreachable';
+    has_key?: boolean; wait_seconds?: number | null; restart_needed?: boolean;
+  };
   gemini_key_status: { has_key: boolean };
   local_endpoint_test_result: { ok: boolean; detail: string };
   image_generated: { image_url: string; prompt: string; request_id?: string; source_message_id?: string };
