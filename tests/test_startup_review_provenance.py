@@ -666,6 +666,9 @@ def test_raise_never_lowers_and_leaves_ability_pools_to_level_up(wizard, authore
     assert "spellSlots level1 max 0 -> 2 (SRD Sorcerer level 1)" in effects.corrections_made
 
 
+_NO_CLAIMS = {"asks": [], "refused": []}
+
+
 def _engine_finalize(authored):
     """A captured whole-path finalize as the engine path sends it (D-CREATE-COST-5): typed intent, creative and
     starting_equipment, no sheet. Each pick is the option the captured sheet names, never one granted twice;
@@ -720,7 +723,8 @@ def _engine_finalize(authored):
     return {"version": 1, "decision": "finalize_character", "narration": authored["narration"],
             "confirmation": dict(authored["confirmation"], player_message_index=0), "intent": intent,
             "starting_equipment": copy.deepcopy(authored["starting_equipment"]),
-            "creative": dict(creative, backstory=None, appearance=None, feature_descriptions=None)}
+            "creative": dict(creative, backstory=None, appearance=None, feature_descriptions=None),
+            "choice_turn": _NO_CLAIMS}
 
 
 def run_interview(wizard, authored, monkeypatch, *, review, stop_after_rejection=False):
@@ -946,11 +950,12 @@ def scoped(wizard, monkeypatch):
     return wizard
 
 
-def _scoped_turn(intent, narration="Which divine order calls to her?"):
+def _scoped_turn(intent, narration="Which divine order calls to her?", claims=None):
     intent = dict({"ability_scores": None}, **intent) if isinstance(intent, dict) else intent
     return json.dumps({"version": 1, "decision": "continue_interview", "narration": narration,
                        "confirmation": {"player_message_index": None, "whole_build_approved": False},
-                       "starting_equipment": None, "intent": intent, "creative": None})
+                       "starting_equipment": None, "intent": intent, "creative": None,
+                       "choice_turn": claims or _NO_CLAIMS})
 
 
 def _run_scoped(wizard, monkeypatch, answers, lines, conversation=None):
@@ -1188,7 +1193,7 @@ def _bard_interview_turn(equipment):
     package = "bard.core-bard-traits.starting-equipment"
     return {"version": 1, "decision": "continue_interview", "narration": "Which two cantrips would Pip like?",
             "confirmation": {"player_message_index": 0, "whole_build_approved": False}, "creative": None,
-            "starting_equipment": equipment,
+            "starting_equipment": equipment, "choice_turn": _NO_CLAIMS,
             "intent": {"class_key": "bard", "species_key": "halfling", "background_key": "acolyte",
                        "choices": {package: ["A"]},
                        "considering": {"class_keys": [], "species_keys": [], "background_keys": []},
@@ -1255,7 +1260,7 @@ def test_the_engine_author_offers_only_the_scope_options():
     assert ("Offer only a choice's option_keys from the scope; a skill the background grants is never "
             "offered.") in " ".join(prompt.split())
     assert "a skill the background grants" not in build_character_creation_system_prompt()
-    assert hashlib.sha256(prompt.encode()).hexdigest()[:12] == "2df6e32ad30f"
+    assert hashlib.sha256(prompt.encode()).hexdigest()[:12] == "51284587b794"
 
 
 def test_the_engine_author_asks_one_choice_per_turn_for_a_new_player():
@@ -1438,7 +1443,7 @@ def test_the_preview_summary_shows_hit_points_and_the_saved_line_shows_armor_cla
 ])
 def test_the_open_choices_record_carries_each_open_choice_with_its_options(wizard, intent, cid, key, expected):
     conversation = [{"role": "system", "content": json.dumps(creation_scope_item(intent))}]
-    proposal = {"decision": "continue_interview", "intent": intent}
+    proposal = {"decision": "continue_interview", "intent": intent, "choice_turn": _NO_CLAIMS}
     assert wizard._scoped_intent([conversation], proposal, rescoped=True) is False
     record = json.loads(conversation[-1]["content"])
     assert record["task_purpose"] == "startup_open_choices"
@@ -1464,8 +1469,8 @@ def test_a_wizard_open_choices_record_names_spells_and_points_prepared_at_the_sp
     intent = {"class_key": "wizard", "species_key": "elf", "background_key": "sage",
               "choices": {"wizard.spellcasting.spellbook": ["alarm", "shield"]}}
     conversation = [{"role": "system", "content": json.dumps(creation_scope_item(intent))}]
-    assert wizard._scoped_intent([conversation], {"decision": "continue_interview", "intent": intent},
-                                 rescoped=True) is False
+    assert wizard._scoped_intent([conversation], {"decision": "continue_interview", "intent": intent,
+                                                  "choice_turn": _NO_CLAIMS}, rescoped=True) is False
     record = {e["id"]: e for e in json.loads(conversation[-1]["content"])["open_choices"]}
     prepared = record["wizard.spellcasting.prepared-spells"]
     assert prepared["from_choice"] == "wizard.spellcasting.spellbook" and prepared["options"] == ["Alarm", "Shield"]
@@ -1691,4 +1696,5 @@ def test_the_merged_t079_prompt_carries_t078s_rules_verbatim(wizard, authored, m
     # The T079 prompt pins: separate (the rollback) is main's prompt byte for byte; merged adds the block.
     assert hashlib.sha256(separate_system.encode()).hexdigest()[:12] == "79e671ba7ed1"
     assert hashlib.sha256(merged_system.encode()).hexdigest()[:12] == "273f736565d3"
+
 
