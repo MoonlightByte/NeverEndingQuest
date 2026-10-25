@@ -214,6 +214,17 @@ class LiveTurnScope:
             self.provider_generations += 1
             return True
 
+    def renew_generation_budget(self, reason):
+        """Start a fresh ceiling inside this scope (#1468): combat spends one
+        budget per player combat input and one for the after-fight scene.
+        Nothing else about the scope changes."""
+        with self.lock:
+            _LOGGER.debug(
+                "LIVE_PROVIDER_BUDGET_RENEWED reason=%s spent=%d operation=%s",
+                reason, self.provider_generations, self.operation_id,
+            )
+            self.provider_generations = 0
+
     def request_supersession(self, kind, operation_id=None):
         with self.lock:
             if not self.controls_open:
