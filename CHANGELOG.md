@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - When you attack someone with others standing around, the DM no longer drafts the onlookers as enemies or lists the person you attacked as a monster, so the fight starts on the first try more often instead of falling back after several attempts (#1477).
+- A module you build now starts where its story begins, in the weather and mood the builder wrote for that opening, so its first game no longer waits for the AI to choose a starting place; a module built without them still asks, as before (#1478).
 - When your whole party falls in a fight, the game pauses at once without first spending an AI call summarising an earlier round; that round is summarised later if the fight goes on (#1471).
 - Beating someone who fought against you, a person rather than a monster, now earns experience from their challenge rating, as a monster does; one who yields or flees earns the same as one defeated (#1470).
 - People who are not in your party can now be tended after a fight: the DM can heal or wake someone standing with you at 0 HP on their own character sheet, and onlookers the DM names at the start of a fight no longer need a character sheet made for them before anyone acts on them (#1469).
