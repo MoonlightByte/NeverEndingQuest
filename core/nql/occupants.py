@@ -736,10 +736,6 @@ def present_roster(place_view: Dict[str, Any]) -> List[Dict[str, Any]]:
     return out
 
 
-def _name_key(text: Any) -> str:
-    return " ".join(str(text or "").replace("_", " ").lower().split())
-
-
 def present_people(tracker: Dict[str, Any], *, root: str = ".") -> List[Dict[str, Any]]:
     """The person occupants present now (count above 0) at the party's current
     place, from the engine view (#1469). Empty when the engine or the
@@ -758,16 +754,21 @@ def present_people(tracker: Dict[str, Any], *, root: str = ".") -> List[Dict[str
     ]
 
 
+def id_stem(occupant: Dict[str, Any]) -> str:
+    """The last segment of an occupant id: the sheet stem it is linked to (#1450)."""
+    return str(occupant.get("id") or "").rsplit("/", 1)[-1]
+
+
 def is_present_person(name: Any, people: List[Dict[str, Any]]) -> bool:
-    """Whether a sheet name names one of these people: the occupant's name, or
-    its id's last segment (the sheet stem, #1450). Case and "_" ignored."""
-    key = _name_key(name)
-    if not key:
+    """Whether a sheet name names one of these people by the #1450 typed
+    link: the name's slug is the occupant id's last segment. A display name
+    is never matched."""
+    if not isinstance(name, str) or not name.strip():
         return False
-    return any(
-        key in (_name_key(o.get("name")), _name_key(str(o.get("id") or "").rsplit("/", 1)[-1]))
-        for o in people
-    )
+    from utils.roster_conversion import slug
+
+    stem = slug(name)
+    return any(id_stem(o) == stem for o in people)
 
 
 def _tally_text(occupant: Dict[str, Any]) -> str:

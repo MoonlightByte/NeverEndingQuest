@@ -144,7 +144,7 @@ def present_down_text(party_tracker_data, path_manager):
     import json
     import os
 
-    from core.nql.occupants import present_people
+    from core.nql.occupants import id_stem, present_people
     from utils.npc_name_normalizer import normalize_npc_name_for_action
 
     sheets = []
@@ -154,18 +154,17 @@ def present_down_text(party_tracker_data, path_manager):
             continue
         if normalize_npc_name_for_action(name, party_tracker_data)[0] is not None:
             continue
-        stem = str(person.get("id") or "").rsplit("/", 1)[-1]
-        for candidate in dict.fromkeys(p for p in (name, stem) if p):
-            path = path_manager.get_character_path(candidate)
-            if os.path.exists(path):
-                try:
-                    with open(path, encoding="utf-8") as handle:
-                        sheet = json.load(handle)
-                except (OSError, ValueError):
-                    sheet = None
-                if isinstance(sheet, dict):
-                    sheets.append(sheet)
-                break
+        # The id stem is the typed link to the sheet (#1450); the display
+        # name finds a file only for an occupant without one.
+        path = path_manager.get_character_path(id_stem(person) or name)
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as handle:
+                    sheet = json.load(handle)
+            except (OSError, ValueError):
+                sheet = None
+            if isinstance(sheet, dict):
+                sheets.append(sheet)
     return present_from_sheets(sheets)
 
 

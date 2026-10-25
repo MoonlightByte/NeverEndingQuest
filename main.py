@@ -3377,7 +3377,8 @@ CRITICAL: If validation fails due to wrong NPC for location, provide specific co
 
 def _present_non_party(name, party_tracker_data):
     """#1469: a sheet outside the party names someone here now: a person
-    occupant at the party's place, or a creature of the active encounter."""
+    occupant at the party's place whose id stem is the name's slug (#1450),
+    or a creature of the active encounter (its exact name or occupant id)."""
     from core.nql.occupants import is_present_person, present_people
 
     if is_present_person(name, present_people(party_tracker_data)):
@@ -3389,7 +3390,10 @@ def _present_non_party(name, party_tracker_data):
         encounter = safe_json_load(os.path.join("modules", "encounters", f"encounter_{encounter_id}.json")) or {}
     except Exception:
         return False
-    return is_present_person(name, [{"name": c.get("name")} for c in encounter.get("creatures") or [] if isinstance(c, dict)])
+    creatures = [c for c in encounter.get("creatures") or [] if isinstance(c, dict)]
+    return any(c.get("name") == name for c in creatures) or is_present_person(
+        name, [{"id": c.get("occupantId")} for c in creatures if c.get("occupantId")]
+    )
 
 # Actions that must name their character; any one of the fields will do.
 _REQUIRED_CHARACTER_FIELDS = {
