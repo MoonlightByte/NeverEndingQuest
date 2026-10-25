@@ -73,6 +73,15 @@ def _refusal(name: str, reason: str, hit_points: int, maximum: int, dice: int, c
         "dice": dice, "diceThatCanHeal": can_heal})
 
 
+def dice_that_can_heal(sheet: Dict[str, Any]) -> Optional[int]:
+    """At most how many hit dice can heal ``sheet`` (#1239): each heals at least 1, so the hit points it is
+    missing; None without whole hit points and a maximum of at least 1."""
+    hit_points, maximum = sheet.get("hitPoints"), sheet.get("maxHitPoints")
+    if type(hit_points) is not int or type(maximum) is not int or maximum < 1:
+        return None
+    return max(0, maximum - hit_points)
+
+
 def hit_dice_spends(sheets: List[Dict[str, Any]],
                     hit_dice: Any) -> Tuple[Optional[Dict[str, int]], Dict[str, str], str]:
     """The hit dice a short rest spends, keyed by sheet name: ({name: count}, refused, "") or (None, {}, why).
@@ -113,8 +122,8 @@ def hit_dice_spends(sheets: List[Dict[str, Any]],
         if sheet["hitPoints"] < 1:
             return None, {}, f"{name} is at 0 hit points and cannot spend hit dice until they have at least 1"
         maximum = sheet.get("maxHitPoints")
-        if type(maximum) is int and maximum >= 1:
-            can_heal = max(0, maximum - sheet["hitPoints"])
+        can_heal = dice_that_can_heal(sheet)
+        if can_heal is not None:
             if count > can_heal:
                 refused[name] = _refusal(name, "full_hit_points" if can_heal == 0 else "more_dice_than_missing",
                                          sheet["hitPoints"], maximum, count, can_heal)
@@ -188,11 +197,63 @@ def ask_hit_die_faces(name: str, die: int, count: int, read: Callable[[str], str
     return answers
 
 
+def open_offer(party: Dict[str, Any], rest_id: Any, operation: Any = None) -> Optional[Dict[str, Any]]:
+    """The open Hit Die offer ``rest_id`` names, settled at the clock now (#1472); None when it is not open.
+    An offer not yet stamped (no DM Note built since its rest) counts only inside its rest's own operation:
+    anywhere else its rest turn's end cannot be shown, so it closes."""
+    from core.managers import checks_state
+
+    offer = next((o for o in checks_state.settle_rest_offers(game_clock.clock_tick(), stamp=False)
+                  if o.get("restId") == rest_id), None)
+    if offer is not None and offer.get("tick") is None and not (operation and offer.get("operation") == operation):
+        checks_state.close_rest_offers(rest_id=rest_id)
+        return None
+    return offer
+
+
+def _offer_after_rest(party: Dict[str, Any], hit_dice: Any, grace_seconds: int, operation: Any) -> None:
+    """After a short rest: open the player's Hit Die offer when they are hurt, have 1 or more hit points and
+    hit dice left, and spent none in the rest (#1472, the owner's rule: the DM is told and decides). Any
+    older offer of theirs is replaced or closed. Its tick is stamped later, at the end of the rest turn."""
+    from core.managers import checks_state
+    from core.managers.effects_runtime import _party_sheets
+    from core.nql import genesis
+
+    sheets, _paths = _party_sheets(party)
+    player = _party_root(list(sheets.values()), party)
+    if player is None:
+        return
+    cid = genesis.character_id(player)
+    checks_state.close_rest_offers(character_id=cid)
+    if isinstance(hit_dice, dict) and any(_sheets_with_id([player], key) for key in hit_dice):
+        return
+    die = genesis.hit_die(player)
+    left = {rid: cur for rid, cur, _ in genesis.pool_resources(player, [])}.get(genesis.hit_dice_resource_id(die)) \
+        if die else None
+    can_heal = dice_that_can_heal(player)
+    if type(left) is not int or left < 1 or not can_heal or player.get("hitPoints", 0) < 1:
+        return
+    rest_tick = game_clock.clock_tick()
+    if type(rest_tick) is not int:
+        return
+    checks_state.open_rest_offer({
+        "kind": "hitDiceUnspent", "characterId": cid, "name": str(player.get("name")), "die": die, "left": left,
+        "diceThatCanHeal": can_heal, "offer": min(left, can_heal), "hp": player.get("hitPoints"),
+        "maxHp": player.get("maxHitPoints"), "restTick": rest_tick, "graceSeconds": max(0, int(grace_seconds)),
+        "operation": operation or None, "tick": None})
+
+
 def execute_rest(rest_type: Any, party_tracker: Optional[Dict[str, Any]] = None,
                  conversation_history: Optional[list] = None, hit_dice: Any = None,
-                 faces: Optional[Dict[str, List[Any]]] = None) -> Dict[str, Any]:
+                 faces: Optional[Dict[str, List[Any]]] = None, after_rest: Any = None,
+                 grace_seconds: int = 0, operation: Any = None) -> Dict[str, Any]:
     """``faces``: the player's hit dice by full name, one entry per die: the face the player rolled, or
-    "engine" to let the engine roll it. Without it the engine rolls every die."""
+    "engine" to let the engine roll it. Without it the engine rolls every die. ``after_rest``: the restId of
+    an open Hit Die offer (#1472); only the player's hit dice are spent, nothing is refilled, the clock is
+    not moved. ``grace_seconds``: the time the rest turn's actions after this rest declare. ``operation``: the
+    accepted turn's logical invocation id, which ties an offer to its rest's own operation."""
+    from core.managers import checks_state
+
     kind = str(rest_type or "").strip().lower()
     if kind not in nql_resources.REST_KINDS:
         return {"success": False, "error": f"rest needs restType short or long, not {rest_type!r}"}
@@ -200,6 +261,18 @@ def execute_rest(rest_type: Any, party_tracker: Optional[Dict[str, Any]] = None,
         return {"success": False, "error": "hit dice are spent on a short rest; a long rest already restores "
                                            "every hit point, so leave hitDice out"}
     party = party_tracker or safe_json_load("party_tracker.json") or {}
+    offer = None
+    if after_rest is not None:
+        if kind != "short" or not hit_dice:
+            return {"success": False, "error": "afterRest spends the hit dice of an open REST offer: restType "
+                                               "short with hitDice"}
+        offer = open_offer(party, after_rest, operation)
+        if offer is None:
+            return {"success": False, "error": f"no open REST offer {after_rest!r}: the rest has ended or its "
+                                               "hit die was already spent; the Hit Die is kept"}
+        if not isinstance(hit_dice, dict) or set(hit_dice) != {offer["characterId"]}:
+            return {"success": False, "error": f"afterRest spends only {offer['name']}'s hit dice: key hitDice "
+                                               f"by {offer['characterId']}"}
     paths = _party_paths(party)
     if not paths:
         return {"success": False, "error": "no party character sheet could be found"}
@@ -209,13 +282,15 @@ def execute_rest(rest_type: Any, party_tracker: Optional[Dict[str, Any]] = None,
         spends, refused, why = hit_dice_spends(sheets, hit_dice)
         if spends is None:
             return nql_resources.RestOutcome(False, reason=why)
+        if offer is not None and not spends:
+            return nql_resources.RestOutcome(False, reason=" ".join(refused.values()) or "no hit die can heal")
         spent["refused"] = refused
         root = _party_root(sheets, party)
         root_name = str(root.get("name")) if root else None
         spent["before"] = {str(s.get("name")): s.get("hitPoints") for s in sheets}
         return nql_resources.rest(sheets, kind, location=location, hit_dice=spends, root=root_name,
                                   faces=(faces or {}).get(root_name) if root_name in spends else None,
-                                  clock_tick=game_clock.declared_tick(party))
+                                  clock_tick=game_clock.declared_tick(party), refill=offer is None)
 
     result = _run(paths, build, party)
     if not result.get("success"):
@@ -224,7 +299,9 @@ def execute_rest(rest_type: Any, party_tracker: Optional[Dict[str, Any]] = None,
     parts = []
     for name, labels in outcome.restored.items():
         parts.append(f"{name}: {', '.join(labels) if labels else 'nothing to recover'}")
-    message = f"{kind} rest applied by the rules engine. " + "; ".join(parts) + "."
+    message = (f"{kind} rest applied by the rules engine. " if offer is None else
+               "hit dice spent at the end of the short rest already applied (no new rest, clock unmoved). ")
+    message += "; ".join(parts) + "."
     receipts = []
     after = {str(s.get("name")): s for s in outcome.sheets}
     for name in dict.fromkeys(roll["name"] for roll in outcome.rolls):
@@ -242,6 +319,15 @@ def execute_rest(rest_type: Any, party_tracker: Optional[Dict[str, Any]] = None,
         # #1239: the dice beyond those that can heal; the rest went ahead without them.
         message += f" {name}'s hit dice beyond those that can heal were not spent ({record})."
         refused[name] = f"{refused[name]}; {record}" if name in refused else record
+    if offer is not None:
+        checks_state.close_rest_offers(rest_id=offer["restId"])
+        info(f"REST: {message}", category="character_updates")
+        return {"success": True, "message": message, "effects_note": None, "restored": outcome.restored,
+                "hit_dice_receipts": receipts, "hit_dice_refused": refused}
+    if kind == "long":
+        checks_state.close_rest_offers()
+    else:
+        _offer_after_rest(party, hit_dice, grace_seconds, operation)
     from core.managers.effects_runtime import process_effect_lifecycle
 
     note = process_effect_lifecycle(conversation_history, rest_kind=f"{kind}_rest")

@@ -556,7 +556,8 @@ def _spend_hit_dice(sheets: List[Dict[str, Any]], ids: List[str], spenders: List
 
 def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", request_id: Optional[str] = None,
          binary: Optional[str] = None, hit_dice: Optional[Dict[str, int]] = None,
-         faces: Optional[List[Any]] = None, root: Optional[str] = None, clock_tick: int = 0) -> RestOutcome:
+         faces: Optional[List[Any]] = None, root: Optional[str] = None, clock_tick: int = 0,
+         refill: bool = True) -> RestOutcome:
     """Refill every pool the rest recovers on every sheet, one engine request.
 
     The engine's ``restore`` sets a pool to its maximum; a pool already full is
@@ -569,7 +570,9 @@ def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", re
     the first of them, so the engine rolls theirs. The player's request refused
     refuses the rest; a refused second request leaves those characters'
     hit points and hit dice as they were and names them in ``refused`` (D-KWA-7e).
-    All sheets are rebuilt from the engine's values together.
+    All sheets are rebuilt from the engine's values together. ``refill`` False
+    spends the hit dice only, with no pool refilled: the spend at the end of a
+    short rest already applied (#1472).
     """
     if kind not in REST_KINDS:
         return RestOutcome(False, reason=f"unknown rest kind {kind!r}; use short or long")
@@ -626,6 +629,12 @@ def rest(sheets: List[Dict[str, Any]], kind: str, *, location: str = "party", re
                 refused.update({names[index]: why for index in others})
             else:
                 rolls.extend(got)
+    if not refill:
+        if not hit_dice:
+            return RestOutcome(False, reason="a spend after the rest names the hit dice it spends")
+        return RestOutcome(True, sheets=sheets, restored={str(s.get("name")): (["hit points (hit dice)"] if any(
+            roll["name"] == str(s.get("name")) for roll in rolls) else []) for s in sheets}, rolls=rolls,
+            refused=refused)
     world = genesis.build_world(sheets, location)
     gaps = list(world.gaps)
     actions: List[str] = []

@@ -4446,6 +4446,24 @@ def get_travel_narration(target_module: str) -> str:
     except:
         return f"The party travels to the {target_module} region, where new adventures await."
 
+def _later_update_time_seconds(action_context):
+    """#1472: the time the actions after this one in the response declare (updateTime minutes, read as the
+    clock reads them), so a Hit Die offer knows where its rest turn ends."""
+    context = action_context if isinstance(action_context, dict) else {}
+    actions, index = context.get("actions"), context.get("current_index")
+    if not isinstance(actions, list) or type(index) is not int:
+        return 0
+    seconds = 0
+    for later in actions[index + 1:]:
+        if isinstance(later, dict) and later.get("action") == ACTION_UPDATE_TIME:
+            try:
+                minutes = int((later.get("parameters") or {}).get("timeEstimate"))
+            except (TypeError, ValueError):
+                continue
+            seconds += max(0, minutes) * 60
+    return seconds
+
+
 def _engine_request_id(invocation_claim, action_context, suffix):
     """A deterministic engine request id for one typed occupant action of
     one accepted turn: dm:<turn id>:<action index>:<suffix>, so a retried
@@ -6469,7 +6487,11 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 if ask:
                     faces = {ask[0]: ask_hit_die_faces(*ask, read=input)}
             result = execute_rest(parameters.get("restType"), party_tracker_data, conversation_history,
-                                  hit_dice=parameters.get("hitDice"), faces=faces)
+                                  hit_dice=parameters.get("hitDice"), faces=faces,
+                                  after_rest=parameters.get("afterRest"),
+                                  grace_seconds=_later_update_time_seconds(action_context),
+                                  operation=str(getattr(invocation_claim, "logical_invocation_id", "") or "").strip()
+                                  or None)
             if result.get("success"):
                 info(f"SUCCESS: {result.get('message')}", category="character_updates")
                 conversation_history.append({"role": "user", "content": f"Rest: {result.get('message')}"})
