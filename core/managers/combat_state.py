@@ -563,6 +563,25 @@ def canonical_initiative_order(encounter):
     return [creature["combatantId"] for creature in ordered]
 
 
+# #1483: the participation values the T096/T097 prompts explain.
+PACKET_PARTICIPATION = ("active", "observer")
+
+
+def participation_of(encounter, combatant_id):
+    """#1483: the typed sceneFacts participation of ``combatant_id`` for the
+    model packets, "active" or "observer", else None. A pure reader; only a
+    typed encounter has participants. ``join_as_hostile`` sets the row to
+    "active", so a bystander who joins reads "active" from then on.
+    """
+    if combat_provenance(encounter) != "typed" or not combatant_id:
+        return None
+    for row in ((encounter.get("sceneFacts") or {}).get("participants") or []):
+        if isinstance(row, dict) and row.get("combatantId") == combatant_id:
+            value = row.get("participation")
+            return value if value in PACKET_PARTICIPATION else None
+    return None
+
+
 def bystanders_attacked(encounter, event):
     """#1415: the present observers a human actor's event attacks, in order.
 

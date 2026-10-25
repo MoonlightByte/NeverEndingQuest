@@ -14,7 +14,11 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from core.managers.combat_state import combatant_presentation_name, display_status
+from core.managers.combat_state import (
+    combatant_presentation_name,
+    display_status,
+    participation_of,
+)
 
 
 _SHEET_FIELDS = (
@@ -377,6 +381,10 @@ def build_scene_dossier(encounter, events, characters=None, scene_time=None):
                 "sheet": _combat_sheet(effective),
             }
         )
+        # #1483: the typed participation, when known (active or observer).
+        participation = participation_of(encounter, creature.get("combatantId"))
+        if participation:
+            combatants[-1]["participation"] = participation
     order = []
     for actor_id in state.get("initiativeOrder", []) or []:
         creature = creatures.get(actor_id) or {}
