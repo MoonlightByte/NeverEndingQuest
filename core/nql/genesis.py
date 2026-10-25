@@ -788,7 +788,8 @@ def live_effects(sheet: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 
 def effect_engine_modifiers(effect: Dict[str, Any]) -> Optional[List[Tuple[str, int]]]:
-    """The engine-representable modifiers of one effect: [("defense" | "hp-max" | "saves" | "save:<ability>", amount)].
+    """The engine-representable modifiers of one effect: [("defense" | "defense-floor" | "hp-max" | "saves" |
+    "save:<ability>", amount)]. A "defense-floor" is an armor class floor (#1434), never an addend.
 
     Stored modifiers are normalized (``armorClass``, ``maxHitPoints``, or
     ``hitPoints`` with ``affectsMax``); other stats are not the engine's here.
@@ -800,6 +801,9 @@ def effect_engine_modifiers(effect: Dict[str, Any]) -> Optional[List[Tuple[str, 
     out: List[Tuple[str, int]] = []
     hp_max_total = 0
     for modifier in effect.get("modifiers") or []:
+        if isinstance(modifier, dict) and modifier.get("stat") == "armorClass" and type(modifier.get("atLeast")) is int:
+            out.append(("defense-floor", modifier["atLeast"]))  # #1434: Barkskin's `at least` bound
+            continue
         if not isinstance(modifier, dict) or type(modifier.get("value")) is not int or modifier["value"] == 0:
             continue
         stat = modifier.get("stat")
@@ -973,6 +977,8 @@ def effect_type_line(effect: Dict[str, Any], modifiers: List[Tuple[str, int]],
     for index, (kind, amount) in enumerate(modifiers):
         if kind == "defense":
             parts.append(f'modifier "m{index}" stat "defense" add {amount};')
+        elif kind == "defense-floor":
+            parts.append(f'modifier "m{index}" stat "defense" at least {amount};')
         elif kind == "saves":
             parts.append(f'modifier "m{index}" stat "bonus:saves" add {amount};')
         elif kind.startswith("save:"):

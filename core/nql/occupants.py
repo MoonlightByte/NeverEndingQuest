@@ -523,9 +523,10 @@ def joined_person_actions(live: Dict[str, Any], place: str, encounter: Dict[str,
     """The typed actions that record the fight's end on each person occupant
     who joined it against the party (#1415 follow-up; ruling on #1403).
 
-    A creature counts when its sceneFacts row carries ``joinedHostile`` and
-    it has an ``occupantId`` naming a person occupant at the place (by id,
-    never a name). The outcome is ``died`` for a dead creature, else
+    A creature counts when its sceneFacts row carries ``joinedHostile`` or
+    the DM's typed ``side`` "hostile" (#1449: a person who fights the party
+    from the start), and it has an ``occupantId`` naming a person occupant
+    at the place (by id, never a name). The outcome is ``died`` for a dead creature, else
     ``creature_outcome``; one still standing gives no line. An uncounted
     person is counted as 1 first. An occupant that is gone (absent, moved,
     count 0, or already tallied) is skipped, since the engine refuses a
@@ -534,7 +535,8 @@ def joined_person_actions(live: Dict[str, Any], place: str, encounter: Dict[str,
 
     rows = ((encounter or {}).get("sceneFacts") or {}).get("participants") or []
     joined = {row.get("combatantId") for row in rows
-              if isinstance(row, dict) and isinstance(row.get("joinedHostile"), dict)}
+              if isinstance(row, dict)
+              and (isinstance(row.get("joinedHostile"), dict) or row.get("side") == "hostile")}
     people = {o.get("id"): o for o in live.get("occupants") or []
               if isinstance(o, dict) and o.get("kind") == "person"}
     lines: List[str] = []

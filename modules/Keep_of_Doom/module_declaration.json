@@ -39,7 +39,11 @@
       "identity": "same_mobile_person"
     }
   ],
-  "start": null,
+  "start": {
+    "areaId": "HH001",
+    "locationId": "A01",
+    "source": "entry"
+  },
   "gateways": [],
   "dispositions": [
     {

@@ -71,8 +71,11 @@ Use operation=none with effect={} and remove={} for instant damage/healing,
 permanent changes, inventory/currency/resource changes, and ordinary narration.
 A change that only spends a spell slot or a resource to cast something is
 none; the effect itself arrives as its own change. If currentEffectiveSheet
-already lists an active effect of the same name and the change does not end
-it, return none: the same spell on the same target does not stack.
+already lists an active effect of the same name: a change that casts it again
+on the same target (a recast or a renewal) is operation=add with the complete
+new effect, which replaces the active one and starts its duration over (the
+same spell does not stack); a change that only mentions it, or only spends the
+slot for an effect that arrives as its own change, is none.
 Use operation=remove when the change explicitly ends, dispels, or breaks
 concentration on an existing temporary effect and adds nothing. Copy its exact
 effectId and name from currentEffectiveSheet. Do not guess a removal target.
@@ -97,6 +100,9 @@ An effect that sets armor class to a base plus an ability modifier (Mage
 Armor: 13 + Dexterity) uses {"stat":"armorClass", "set":{"base":13,
 "plusAbility":"dexterity"}} in place of value (plusAbility null for a flat
 base); the engine computes the armor class.
+An effect that keeps armor class from falling below a number (Barkskin: at
+least 17) uses {"stat":"armorClass", "atLeast":17} in place of value, never
+set; the engine applies it.
 
 Current hit points are a resource, not a derived modifier. For Aid-like effects
 that raise maximum and current HP, use a maxHitPoints modifier plus matching

@@ -1167,6 +1167,11 @@ When the Combat Commitment Point is reached (excluding historical records) and n
   who stays out of the fight is `participation: observer` with
   `initiativeEligible: false`. Presence, relationship, controller, and initiative
   eligibility are separate facts; never infer one from another.
+- For each npc you list, add `side` to its participant: `"side": "hostile"` when
+  it fights against the party in this fight, `"side": "party"` when it fights
+  beside the party. Whether it takes part at all stays `participation` and
+  `initiativeEligible`; `side` sets only whom it fights for in this fight, never
+  its attitude or party membership.
 - Surprise: add `"surprised": true` to a monster participant only when that
   monster had not noticed the party when the fight began: the party's Stealth
   approach succeeded against it, or it walked into a lure or ambush unaware.

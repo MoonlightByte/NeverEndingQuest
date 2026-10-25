@@ -110,6 +110,22 @@ def _ac_entries(explanation: Dict[str, Any], names_by_id: Dict[str, str]) -> Lis
             "description": f"{'+' if amount >= 0 else ''}{amount} AC from Unarmored Defense ({ability})",
             "source": "Unarmored Defense",
         })
+    # #1434: a floor (Barkskin) that set the total; one that did not apply is not named.
+    for bound in explanation.get("bounds") or []:
+        if not (isinstance(bound, dict) and bound.get("bound") == "at_least" and bound.get("applied") is True
+                and type(bound.get("amount")) is int):
+            continue
+        name = names_by_id.get(bound.get("instance"))
+        if not name:
+            continue
+        entries.append({
+            "name": f"{name} - AC Floor",
+            "type": "other",
+            "target": AC_TARGET,
+            "value": bound["amount"],
+            "description": f"AC {bound['amount']} from {name} (it can't be lower)",
+            "source": name,
+        })
     for contribution in explanation.get("contributions") or []:
         source = (contribution.get("source") or {}).get("id")
         amount = contribution.get("amount")

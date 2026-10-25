@@ -166,6 +166,51 @@ class ParallelConversationCompressor:
             self.cache = {**merged, **self._pending_cache}
         return True
     
+    @classmethod
+    def merge_saved_cache(
+        cls,
+        saved_path: str,
+        cache_file: str = "modules/conversation_history/compression_cache.json",
+    ) -> int:
+        """Add a saved game's compression results to the live cache (#1452).
+
+        The saved file is only read, never renamed or rewritten: it belongs
+        to the save folder; one that is unreadable or not a JSON object
+        raises, for the caller to report. Only valid entries under a current prompt are
+        kept, and the live entry wins on any shared key, so a Load never
+        replaces a result the running install already has. Returns the
+        number of entries added.
+        """
+        try:
+            with open(saved_path, "r", encoding="utf-8") as saved_handle:
+                saved = json.load(saved_handle)
+        except FileNotFoundError:
+            return 0
+        if not isinstance(saved, dict):
+            raise ValueError("the saved compression cache is not a JSON object")
+        live_prompts = cls._live_prompt_hashes()
+        kept = {
+            key: value
+            for key, value in saved.items()
+            if isinstance(key, str)
+            and key.startswith("v2:")
+            and isinstance(value, dict)
+            and isinstance(value.get("original"), str)
+            and value.get("prompt_sha256") in live_prompts
+            and cls._valid_compressed_text(value.get("compressed"), value["original"])
+        }
+        if not kept:
+            return 0
+
+        merger = cls.__new__(cls)
+        merger.cache_file = os.path.abspath(os.fspath(cache_file))
+        with merger._locked_cache_file():
+            live = merger._read_cache_unlocked()
+            added = [key for key in kept if key not in live]
+            if added:
+                merger._write_cache_unlocked({**kept, **live})
+        return len(added)
+
     @staticmethod
     def _live_prompt_hashes() -> set:
         """Prompt identities that a current cache key can still carry."""

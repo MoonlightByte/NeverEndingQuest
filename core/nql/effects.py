@@ -216,7 +216,8 @@ def fallback_unbake(sheet: Dict[str, Any], removed: List[Dict[str, Any]]) -> Lis
     for effect in removed or []:
         if not (isinstance(effect, dict) and effect.get(genesis.EFFECT_ENGINE_OWNED) is True):
             continue
-        modifiers = genesis.effect_engine_modifiers(effect)
+        # #1434: a floor (Barkskin) is never an addend, so nothing here takes it off (set_effects_left).
+        modifiers = [(k, v) for k, v in genesis.effect_engine_modifiers(effect) or [] if k != "defense-floor"]
         if not modifiers:
             continue
         for kind, amount in modifiers:
@@ -235,12 +236,14 @@ def fallback_unbake(sheet: Dict[str, Any], removed: List[Dict[str, Any]]) -> Lis
 
 
 def set_effects_left(removed: List[Dict[str, Any]]) -> List[str]:
-    """#1322: ended engineOwned effects whose armor class is a set rule (Mage Armor). Without the
+    """#1322: ended engineOwned effects whose armor class is a set rule (Mage Armor) or, #1434, a
+    floor (Barkskin). Without the
     engine nothing can take them off the stored number (no host arithmetic, D-KW-8): the stored
     armorClass stays until the next projection re-derives it. Returns their names, for the gap."""
     return [str(e.get("name")) for e in removed or []
             if isinstance(e, dict) and e.get(genesis.EFFECT_ENGINE_OWNED) is True
-            and any(isinstance(m, dict) and isinstance(m.get("set"), dict) for m in e.get("modifiers") or [])]
+            and any(isinstance(m, dict) and (isinstance(m.get("set"), dict) or type(m.get("atLeast")) is int)
+                    for m in e.get("modifiers") or [])]
 
 
 # ---------------------------------------------------------------------------
