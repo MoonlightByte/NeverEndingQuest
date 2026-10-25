@@ -28,6 +28,9 @@ __all__ = [
     "TPK_PAUSE_TEXT",
     "TABLE_TALK_PREFIX",
     "DOWN_RULES_MARKER",
+    "PRESENT_DOWN_MARKER",
+    "present_down_text",
+    "present_from_sheets",
     "from_encounter",
     "from_sheets",
     "sheet_is_down",
@@ -106,6 +109,63 @@ def _members_text(down_members, round_number):
     if round_number is not None:
         text += " - combat round %s now" % round_number
     return text
+
+
+# #1469: people present at the party's place, outside the party, who are at
+# 0 HP. A DM-note element for the DM (and the T065 validator), never shown
+# to the player; the party's rescue rules above are not theirs.
+PRESENT_DOWN_MARKER = "Present persons at 0 HP:"
+_PRESENT_TEMPLATE = (
+    "{marker} {members}. They are unconscious and stable and cannot act, speak, "
+    "or answer. Waking one is a real action on their own sheet (an "
+    "updateCharacterInfo heal with hpDelta, a potion administered, or rest when "
+    "the scene allows), never a narrated claim. They are not party members: the "
+    "party's down-scene rules do not apply to them."
+)
+
+
+def present_from_sheets(sheets):
+    """The present-persons element for the down sheets among these (a dead
+    one is not down: nobody can wake them), or None."""
+    down = [
+        (str(sheet.get("name") or "Unknown"), sheet.get("hitPoints"), _status_text(sheet.get("status")))
+        for sheet in sheets or [] if isinstance(sheet, dict) and sheet_is_down(sheet)
+        and _status_text(sheet.get("status")) != "dead"
+    ]
+    if not down:
+        return None
+    return _PRESENT_TEMPLATE.format(marker=PRESENT_DOWN_MARKER, members=_members_text(down, None))
+
+
+def present_down_text(party_tracker_data, path_manager):
+    """The element for the person occupants present now at the party's place
+    who are outside the party and have a sheet at 0 HP, or None. A person
+    with no sheet is skipped; no sheet is ever created here."""
+    import json
+    import os
+
+    from core.nql.occupants import id_stem, present_people
+    from utils.npc_name_normalizer import normalize_npc_name_for_action
+
+    sheets = []
+    for person in present_people(party_tracker_data or {}):
+        name = person.get("name")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        if normalize_npc_name_for_action(name, party_tracker_data)[0] is not None:
+            continue
+        # The id stem is the typed link to the sheet (#1450); the display
+        # name finds a file only for an occupant without one.
+        path = path_manager.get_character_path(id_stem(person) or name)
+        if os.path.exists(path):
+            try:
+                with open(path, encoding="utf-8") as handle:
+                    sheet = json.load(handle)
+            except (OSError, ValueError):
+                sheet = None
+            if isinstance(sheet, dict):
+                sheets.append(sheet)
+    return present_from_sheets(sheets)
 
 
 def _render(down_members, round_number=None):

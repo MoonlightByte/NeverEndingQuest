@@ -616,6 +616,58 @@ def _pending_observer(candidate, present_names):
     }
 
 
+def _proposed_participant(encounter_data, participant_key):
+    """The DM's scene proposal row for this participant key, or None."""
+    scene = encounter_data.get("scene") if isinstance(encounter_data, dict) else None
+    for item in (scene or {}).get("participants") or []:
+        if isinstance(item, dict) and item.get("participantKey") == participant_key:
+            return item
+    return None
+
+
+def _listed_pending_observer(encounter_data, npc_index, npc_name, place_occupants, encounter,
+                             scene_sources, path_manager):
+    """#1469: a listed npc the DM proposes as an observer (not initiative
+    eligible) who has no sheet and is a present person at the place becomes
+    the #1447 pending row under its own ``npc:N`` key: no T035 at the
+    opening; the first intent that targets it builds the sheet. None keeps
+    today's build (an active npc, a sheet, or no occupant to build from)."""
+    own_slot = f"npc:{npc_index}"
+    proposed = _proposed_participant(encounter_data, own_slot) or {}
+    if proposed.get("participation") != "observer" or proposed.get("initiativeEligible") is not False:
+        return None
+    if _load_npc_sheet(npc_name, path_manager):
+        return None
+    declared_ids = encounter_data.get("occupantIds") or {}
+    taken = {v for k, v in declared_ids.items() if isinstance(v, str) and k != own_slot}
+    taken |= {c["occupantId"] for c in encounter["creatures"] if c.get("occupantId")}
+    expected_file = path_manager.get_character_path(format_type_name(npc_name))
+    occupant_id = _listed_npc_occupant(
+        place_occupants, expected_file, npc_name, taken,
+        declared=declared_ids.get(own_slot) if isinstance(declared_ids.get(own_slot), str) else None,
+    )
+    occupant = place_occupants.get(occupant_id) if occupant_id else None
+    if not occupant:
+        return None
+    candidate = {"name": occupant.get("name") or npc_name, "occupantId": occupant_id,
+                 "attitude": occupant.get("attitude"), "atPlace": True}
+    pending = _pending_observer(candidate, {s["displayName"] for s in scene_sources})
+    if pending is None:
+        return None
+    side = proposed.get("side")
+    if side in ("hostile", "party"):
+        pending["faction"] = side
+    info(f"ROSTER: listed observer {candidate['name']} has no sheet; pending until targeted",
+         category="combat_builder")
+    return {
+        "participantKey": own_slot,
+        "creature": pending,
+        "sourceKind": PENDING_SOURCE,
+        "sourceRef": occupant_id,
+        "displayName": candidate["name"],
+    }
+
+
 def _roster_observers(encounter, scene_sources, place_occupants, party_tracker,
                       encounter_data, path_manager):
     """Add each present named person the DM left out of the fight as an
@@ -825,6 +877,13 @@ def generate_encounter(encounter_data):
     npc_counts = {}
     for npc_index, npc_name in enumerate(encounter_data.get("npcs", [])):
         formatted_npc_type = format_type_name(npc_name)
+        pending_source = _listed_pending_observer(
+            encounter_data, npc_index, npc_name, place_occupants, encounter, scene_sources, path_manager
+        )
+        if pending_source:
+            encounter["creatures"].append(pending_source["creature"])
+            scene_sources.append(pending_source)
+            continue
         loaded_npc = load_or_create_npc(npc_name)
         if not loaded_npc:
             return None

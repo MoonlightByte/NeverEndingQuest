@@ -3375,6 +3375,26 @@ CRITICAL: If validation fails due to wrong NPC for location, provide specific co
         # print(f"DEBUG: Traceback: {traceback.format_exc()}")
         return f"MODULE VALIDATION DATA: Error loading module data - {str(e)}"
 
+def _present_non_party(name, party_tracker_data):
+    """#1469: a sheet outside the party names someone here now: a person
+    occupant at the party's place whose id stem is the name's slug (#1450),
+    or a creature of the active encounter (its exact name or occupant id)."""
+    from core.nql.occupants import is_present_person, present_people
+
+    if is_present_person(name, present_people(party_tracker_data)):
+        return True
+    encounter_id = (party_tracker_data.get("worldConditions") or {}).get("activeCombatEncounter")
+    if not encounter_id:
+        return False
+    try:
+        encounter = safe_json_load(os.path.join("modules", "encounters", f"encounter_{encounter_id}.json")) or {}
+    except Exception:
+        return False
+    creatures = [c for c in encounter.get("creatures") or [] if isinstance(c, dict)]
+    return any(c.get("name") == name for c in creatures) or is_present_person(
+        name, [{"id": c.get("occupantId")} for c in creatures if c.get("occupantId")]
+    )
+
 # Actions that must name their character; any one of the fields will do.
 _REQUIRED_CHARACTER_FIELDS = {
     'updateCharacterInfo': ('characterName', 'npcName'),
@@ -3424,7 +3444,8 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
         # The fields that name a character; True when an existing sheet
         # outside the party is also a valid target.
         if action_type == 'updateCharacterInfo':
-            fields = (('characterName', False),)
+            # #1469: an existing sheet outside the party too, when that person is here now.
+            fields = (('characterName', True),)
         elif action_type == 'levelUp':
             fields = (('entityName', False),)
         elif action_type in ('transferItem', 'transferCurrency'):
@@ -3455,6 +3476,15 @@ def normalize_character_names_in_response(response_text, party_tracker_data):
 
                 if sheet_allowed:
                     normalized_name = exact_character_reference(original_name, party_tracker_data)
+                    if (
+                        normalized_name is not None
+                        and action_type == 'updateCharacterInfo'
+                        and normalize_npc_name_for_action(normalized_name, party_tracker_data)[0] is None
+                        and not _present_non_party(normalized_name, party_tracker_data)
+                    ):
+                        rejections.append(f"Action {i+1} ({action_type} {field}): '{original_name}' is not present here")
+                        print(f"[NPC_NORM] REJECT: '{original_name}' is a sheet outside the party and not present")
+                        continue
                 else:
                     normalized_name, _match_type = normalize_npc_name_for_action(
                         original_name, party_tracker_data, debug_print=True
@@ -4115,6 +4145,15 @@ def validate_ai_response(
         party_tracker_data, path_manager, module_snapshot=module_snapshot,
     )
     module_data_context += "\n" + installed_module_references
+    # #1469: the validator sees the same present-persons element the DM does.
+    from core.combat.down_scene import present_down_text
+
+    try:
+        present_down = present_down_text(party_tracker_data, path_manager)
+    except Exception:
+        present_down = None
+    if present_down:
+        module_data_context += "\nPRESENT PERSONS AT 0 HP (engine):\n" + present_down + "\n"
     
     # Add structure validation status to context
     structure_validation_note = ""
