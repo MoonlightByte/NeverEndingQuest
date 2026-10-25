@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When your whole party falls in a fight, the game pauses at once without first spending an AI call summarising an earlier round; that round is summarised later if the fight goes on (#1471).
 - Beating someone who fought against you, a person rather than a monster, now earns experience from their challenge rating, as a monster does; one who yields or flees earns the same as one defeated (#1470).
 - People who are not in your party can now be tended after a fight: the DM can heal or wake someone standing with you at 0 HP on their own character sheet, and onlookers the DM names at the start of a fight no longer need a character sheet made for them before anyone acts on them (#1469).
 - After a short rest that left you hurt with a Hit Die unspent, the DM now knows you could still spend it and can mention it in the story; if you choose to, you roll it as usual and heal without resting again or losing more time (#1472).
