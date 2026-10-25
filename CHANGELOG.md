@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Onlookers at a fight are no longer narrated as if they were on your side: the combat narrator and the turn planner are now told they are only watching (#1483).
 - When you attack someone with others standing around, the DM no longer drafts the onlookers as enemies or lists the person you attacked as a monster, so the fight starts on the first try more often instead of falling back after several attempts (#1477).
 - A module you build now starts where its story begins, in the weather and mood the builder wrote for that opening, so its first game no longer waits for the AI to choose a starting place; a module built without them still asks, as before (#1478).
 - When your whole party falls in a fight, the game pauses at once without first spending an AI call summarising an earlier round; that round is summarised later if the fight goes on (#1471).

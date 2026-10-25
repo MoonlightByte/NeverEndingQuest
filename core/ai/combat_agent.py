@@ -23,7 +23,11 @@ from core.ai.srd_reference import (
     normalize_rule_name,
 )
 from core.combat.down_scene import from_encounter as down_scene_rules_from_encounter
-from core.managers.combat_state import combatant_by_id, resolve_creature_controller
+from core.managers.combat_state import (
+    combatant_by_id,
+    participation_of,
+    resolve_creature_controller,
+)
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.capture.live_provider_call import LiveProviderSuperseded
 from utils.character_sheet_contract import extract_json_object
@@ -545,9 +549,28 @@ fairly rather than replacing it with a tactically preferred action. A player's
 attack on any creature in creatures, an ally or a bystander included, is
 honored: declare it with that creature's combatantId as targetId and adjudicate
 it like any attack; never refuse it or ask the player to pick another target.
-Code decides what follows (a bystander joins the fight as a hostile). For NPCs
+Code decides what follows (a bystander joins the fight as a hostile). A creature
+with participation observer is present but not fighting: it takes no turn, it is
+not an ally or an enemy in this fight whatever its faction, and you never choose
+actions for it. A player's attack on it is still honored as above. For NPCs
 and enemies, choose tactically appropriate actions from their actual sheets.
 If an action has no HP/resource/effect change, use empty arrays."""
+
+
+def _packet_creatures(encounter):
+    """#1483: the encounter's creature rows for T096, each a copy with its
+    typed ``participation`` when known; the stored rows are not changed."""
+    rows = []
+    for creature in encounter.get("creatures", []) or []:
+        if not isinstance(creature, dict):
+            rows.append(creature)
+            continue
+        row = dict(creature)
+        participation = participation_of(encounter, creature.get("combatantId"))
+        if participation:
+            row["participation"] = participation
+        rows.append(row)
+    return rows
 
 
 def request_intent_batch(
@@ -573,7 +596,8 @@ def request_intent_batch(
         "round": (encounter.get("combatState") or {}).get("round"),
         "requiredActorIds": pending_turn.get("actorIds", []),
         "playerInput": player_input,
-        "creatures": encounter.get("creatures", []),
+        # #1483: copies carrying each creature's typed participation.
+        "creatures": _packet_creatures(encounter),
         # K1: each listed row carries its rowRef (on copies; P-2), which the
         # reply returns as abilityRow.
         "sheets": with_row_refs({
@@ -741,7 +765,10 @@ T097_SCENE_CONTRACT_SENTENCE = (
     "its exhausted.outcome is destroyed the item is gone (narrate it crumbling, "
     "cracking or burning out), when it is regained the item flared back to life. "
     "A bonusAction with itemName is an item the actor used this turn before the "
-    "Action; narrate the use and its applied hp change."
+    "Action; narrate the use and its applied hp change. A combatant with "
+    "participation observer is present and watching, not fighting: never narrate "
+    "it acting for or against anyone, unless the authoritative facts show it "
+    "joining."
 )
 
 
