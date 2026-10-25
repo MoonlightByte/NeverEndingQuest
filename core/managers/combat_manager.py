@@ -2492,6 +2492,12 @@ def _complete_agentic_combat(
 ):
     """Finish agentic combat as independently resumable, idempotent steps."""
     import copy
+    from utils.capture.live_provider_call import get_live_turn_scope
+
+    # #1468: the after-fight calls (T041, T108, the DM's turn) get their own ceiling.
+    completion_scope = get_live_turn_scope()
+    if completion_scope is not None:
+        completion_scope.renew_generation_budget("combat_completion")
 
     try:
         from core.effects.clock import scalar_from_calendar
@@ -4978,6 +4984,8 @@ This is narration only. Do not advance the round or apply any combat action."""
                # A3-C6: startup resume bypasses main.py's outer-scope opener.
                active_round_scope = open_live_turn_scope()
                owned_round_scope["scope"] = active_round_scope
+           # #1468: each player combat input spends its own ceiling.
+           active_round_scope.renew_generation_budget("combat_input")
 
        # The player's submission as typed (D-KW-5: never annotated).
        raw_combat_input_text = user_input_text
