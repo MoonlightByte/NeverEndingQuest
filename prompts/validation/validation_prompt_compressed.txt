@@ -135,9 +135,10 @@ NARRATIVE ELABORATION: Location descriptions and NPC sketches are starting seeds
 }
 
 @LOCATION_NPC_REFS={
+  scope: Presence only, one check among the others: it says who may appear at the origin, never that a response is valid. A present occupant's words and deeds still face every other rule, continuity first (@ROLE corrector: who did, sold or said what stays as established)
   valid: Locations from module data; a person or group in the origin record's occupants (by name or alias) is present there, as are party members and party NPCs
   invalid: Invented places/people absent from the origin record's occupants, party, and module character lists ("sage by millhouse" when no millhouse)
-  never: Reject a present occupant as unlisted; check the origin record's occupants before any presence rejection
+  never: Reject a present occupant as unlisted; presence is never a reason to accept a response
   fail_response: "References [X], who is not in the origin record's occupants or the module data"
 }
 
