@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- After a short rest that left you hurt with a Hit Die unspent, the DM now knows you could still spend it and can mention it in the story; if you choose to, you roll it as usual and heal without resting again or losing more time.
 - A new game in The Thornwood Watch or Keep of Doom now starts where the adventure begins, with its opening weather and mood, without waiting for the AI to choose a starting place: one AI call less while your adventure is set up.
 - A Bless saved before the rules engine typed its die, in a saved game from an earlier version, now adds its 1d4 to attack rolls and saving throws again when the game loads; an old Guidance, whose chosen skill was never saved, is reported once instead of silently doing nothing, and an old effect saved with no duration is reported once and never becomes permanent (#1446).
 - After a fight, experience goes only to you and your companions, not to someone who fought beside you for one fight; a newly met archer no longer seems to have fired arrows they never shot; and a fight's round summary lists someone knocked out as unconscious, not dead (#1458).

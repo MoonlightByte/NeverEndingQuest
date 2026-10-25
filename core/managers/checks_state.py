@@ -124,3 +124,73 @@ def delivered_for_turn(turn_marker: Any) -> List[str]:
     if turn_marker is None or not isinstance(delivered, dict) or delivered.get("turn") != turn_marker:
         return []
     return [line for line in delivered.get("lines") or [] if isinstance(line, str)]
+
+
+# #1472: the Hit Die offer after a short rest. One open offer per character
+# under its own key; it lives until it is spent, a newer rest replaces or
+# ends it, or the clock moves past the end of its rest turn. Delivery (the
+# REST line in each DM Note) never closes it.
+
+def rest_offers() -> List[Dict[str, Any]]:
+    offers = load_checks_state().get("restOffers")
+    return [dict(o) for o in offers if isinstance(o, dict)] if isinstance(offers, list) else []
+
+
+def _write_offers(state: Dict[str, Any], offers: List[Dict[str, Any]]) -> None:
+    state["restOffers"] = offers
+    write_checks_state(state)
+
+
+@_locked
+def open_rest_offer(offer: Dict[str, Any]) -> Dict[str, Any]:
+    """Open ``offer`` for its character, replacing an older one; give it the next restId."""
+    state = load_checks_state()
+    serial = state.get("restSerial") if type(state.get("restSerial")) is int else 0
+    state["restSerial"] = serial + 1
+    offer = dict(offer, restId=f"rest:{serial + 1}:{offer['characterId']}")
+    others = [o for o in rest_offers() if o.get("characterId") != offer["characterId"]]
+    _write_offers(state, others + [offer])
+    return offer
+
+
+@_locked
+def close_rest_offers(character_id: Any = None, rest_id: Any = None) -> None:
+    """Close the offers of ``character_id`` (or the one ``rest_id``); with neither, every offer."""
+    state = load_checks_state()
+    offers = rest_offers()
+    kept = [o for o in offers
+            if (character_id is not None and o.get("characterId") != character_id)
+            or (rest_id is not None and o.get("restId") != rest_id)]
+    if len(kept) != len(offers):
+        _write_offers(state, kept)
+
+
+@_locked
+def settle_rest_offers(tick: Any, stamp: bool = True) -> List[Dict[str, Any]]:
+    """The open offers at ``tick`` (the clock now), after stamping and closing.
+
+    An unstamped offer is stamped with ``tick`` when the clock is still within
+    its rest turn (``restTick`` plus the time the rest turn's later actions
+    declared); an offer whose clock has moved past that, stamped or not, closes.
+    An unreadable clock closes every offer: the rest's end cannot be shown.
+    ``stamp`` False (inside a turn, whose later actions may still move the
+    clock) closes but never stamps.
+    """
+    state = load_checks_state()
+    offers = rest_offers()
+    kept = []
+    for offer in offers:
+        limit = offer.get("tick") if type(offer.get("tick")) is int else _rest_turn_end(offer)
+        if type(tick) is not int or limit is None or tick > limit:
+            continue
+        kept.append(dict(offer, tick=tick) if offer.get("tick") is None and stamp else offer)
+    if kept != offers:
+        _write_offers(state, kept)
+    return kept
+
+
+def _rest_turn_end(offer: Dict[str, Any]) -> Any:
+    rest_tick, grace = offer.get("restTick"), offer.get("graceSeconds")
+    if type(rest_tick) is not int or type(grace) is not int or grace < 0:
+        return None
+    return rest_tick + grace

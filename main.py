@@ -9865,6 +9865,10 @@ def _main_game_loop(startup_authority, turn_authority):
         from core.managers.checks_runtime import check_results_note
 
         dm_note += check_results_note(sum(1 for m in conversation_history if isinstance(m, dict) and m.get("role") == "assistant"))
+        # #1472: an open Hit Die offer after a short rest, every turn while it is open; the DM decides.
+        from core.managers.checks_runtime import rest_offers_note
+
+        dm_note += rest_offers_note()
 
         # The player's own words, never annotated with guessed items or a
         # word-matched SRD block (D-KW-5): the DM already sees every item and

@@ -198,10 +198,43 @@ def check_results_note(turn_marker=None) -> str:
     return LAST_NOTE
 
 
+LAST_REST_OFFERS: List[Dict[str, Any]] = []  # the open Hit Die offers in the current turn's DM note (#1472)
+
+
+def rest_offers_note() -> str:
+    """The open Hit Die offers after a short rest (#1472), rebuilt for every DM turn while they are open.
+
+    Building the note ends the previous turn: an offer still unstamped takes the
+    clock now (after all of its rest turn's actions), and one whose clock moved
+    on closes. DM-only text; the DM decides whether and when to raise it."""
+    global LAST_REST_OFFERS
+    from core.nql import game_clock
+
+    LAST_REST_OFFERS = checks_state.settle_rest_offers(game_clock.clock_tick())
+    return "".join(
+        f"\nREST (open offer): {o['name']} (id {o['characterId']}) ended a short rest at HP {o['hp']}/{o['maxHp']} "
+        f"with {o['left']} Hit Dice (d{o['die']}) unspent; at most {o['offer']} can heal. The player decides whether "
+        "to spend them; you decide whether and when to raise it, in story terms, without these field names. If the "
+        f'player chooses to spend, record rest {{"restType": "short", "afterRest": "{o["restId"]}", "hitDice": '
+        f'{{"{o["characterId"]}": n}}}} with no updateTime. The offer ends when time moves on.'
+        for o in LAST_REST_OFFERS)
+
+
+def _rest_offers_validation() -> str:
+    if not LAST_REST_OFFERS:
+        return ""
+    return ("\nOpen REST offers this turn (engine-issued; the DM may raise them or not, and is never required to): "
+            + "; ".join(f"{o['restId']} for {o['name']} ({o['characterId']}), at most {o['offer']} hit dice"
+                        for o in LAST_REST_OFFERS)
+            + ". A rest with afterRest naming one of these, restType short and hitDice for that character only, "
+              "with no updateTime, is the spend at the end of that rest: valid, not a new rest, and needs no "
+              "updateTime. An afterRest naming any other id is invalid.")
+
+
 def validation_context() -> str:
     """What the validator must know: the engine already scored these checks and the DM was told to narrate them."""
     if not LAST_NOTE:
-        return ""
+        return _rest_offers_validation().lstrip("\n")
     return ("The Dungeon Master Note for this turn carried the rules engine's scored check results below. The candidate "
             "is REQUIRED to narrate each outcome (success or failure and what it means in the scene) as a settled fact; "
             "a candidate that calls such a check pending or unresolved, contradicts its success or failure, or asks for "
@@ -209,4 +242,4 @@ def validation_context() -> str:
             "sees them on the dice receipt: do NOT require the narration to state any of these numbers, and do not reject "
             "a candidate for leaving them out. Numbers the player typed in chat are not dice; only these lines are. A READ "
             "line governs how its read is narrated: a candidate in which an NPC confesses, explains or names what they are "
-            "hiding in answer to that read is invalid." + LAST_NOTE)
+            "hiding in answer to that read is invalid." + LAST_NOTE + _rest_offers_validation())
