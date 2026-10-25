@@ -5450,7 +5450,14 @@ This is narration only. Do not advance the round or apply any combat action."""
                # In agentic mode the committed state machine owns round
                # advancement. Keep the existing history compression lifecycle,
                # but trigger it from that durable round instead of model prose.
-               if committed_round > current_round and committed_round >= 2:
+               # #1471: not when the whole party has fallen; the next pass
+               # pauses the fight, and a resumed fight compresses at its next
+               # rollover instead.
+               if (
+                   committed_round > current_round
+                   and committed_round >= 2
+                   and not (agentic_mode and all_party_resolved(encounter_data))
+               ):
                    compressed_history = compress_old_combat_rounds(
                        conversation_history,
                        committed_round,
