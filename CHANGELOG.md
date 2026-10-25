@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Beating someone who fought against you, a person rather than a monster, now earns experience from their challenge rating, as a monster does; one who yields or flees earns the same as one defeated (#1470).
 - After a short rest that left you hurt with a Hit Die unspent, the DM now knows you could still spend it and can mention it in the story; if you choose to, you roll it as usual and heal without resting again or losing more time.
 - Longer fights no longer run out of AI calls: each of your combat turns, and the scene after the fight, now gets its own allowance, so a fight that lasts five rounds still ends with its after-fight narration (#1468).
 - A new game in The Thornwood Watch or Keep of Doom now starts where the adventure begins, with its opening weather and mood, without waiting for the AI to choose a starting place: one AI call less while your adventure is set up.

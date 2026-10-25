@@ -32,6 +32,28 @@ def get_xp_for_cr(cr):
 def is_defeated(status):
     return status.lower() in ['dead', 'defeated', 'unconscious']
 
+def _left_by_resolution(creature):
+    """A typed flee or yield (resolver, #466). The sheet keeps its own status,
+    so a sync can put the encounter status back; the resolution stays."""
+    return creature.get('resolution') in ('fled', 'yielded')
+
+def _hostile_person_sheet(creature, encounter, path_manager):
+    """The sheet of a person on the hostile side (#1470): the scene row's
+    sourceRef when it names a sheet, else the character path for the name.
+    None for a pending observer (no sheet) or a missing file."""
+    if creature.get('statsPending'):
+        return None
+    paths = []
+    for row in (encounter.get('sceneFacts') or {}).get('participants') or []:
+        if (isinstance(row, dict) and row.get('combatantId') == creature.get('combatantId')
+                and row.get('sourceKind') == 'character' and isinstance(row.get('sourceRef'), str)):
+            paths.append(row['sourceRef'])
+    paths.append(path_manager.get_character_path(creature['name']))
+    for path in paths:
+        if os.path.exists(path):
+            return load_json_file(path)
+    return None
+
 def calculate_xp(encounter, party_tracker):
     total_xp = 0
     defeated_count = 0
@@ -59,6 +81,25 @@ def calculate_xp(encounter, party_tracker):
             xp = get_xp_for_cr(cr)
             total_xp += xp
             xp_breakdown.append((monster['name'], cr, xp))
+        elif (creature['type'] == 'npc' and creature.get('faction') == 'hostile'
+              and (is_defeated(str(creature.get('status') or '')) or _left_by_resolution(creature))):
+            # #1470: a person on the hostile side pays like a monster (owner
+            # ruling on #1403), a yield or flight as a defeat (#466), from
+            # the challengeRating on their own sheet; never guessed.
+            sheet = _hostile_person_sheet(creature, encounter, path_manager)
+            if sheet is None:
+                continue
+            cr = sheet.get('challengeRating')
+            try:
+                xp = get_xp_for_cr(cr) if cr is not None else 0
+            except (TypeError, ValueError, ZeroDivisionError):
+                xp = 0
+            if not xp:
+                print(f"XP: {creature['name']} has no usable challengeRating ({cr!r}); no XP")
+                continue
+            defeated_count += 1
+            total_xp += xp
+            xp_breakdown.append((sheet.get('name') or creature['name'], cr, xp))
 
     # Count player characters and party NPCs
     num_players = len(party_tracker['partyMembers'])
