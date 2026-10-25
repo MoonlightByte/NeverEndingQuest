@@ -1544,13 +1544,15 @@ def _copy_engine_pools(engine_sheet, target):
 _NON_PARTY_KEYS = frozenset({"hpDelta", "tempHpGrant", "status", "condition", "condition_affected"})
 
 
-def drop_non_party_keys(character_name, updates):
+def drop_non_party_keys(character_name, updates, character_role=None):
     """Keep hit points and status in a T079 delta for a sheet outside the
     party, never ``status`` dead (the occupant's death is the fight's, #1452);
-    return the dropped keys. A party member, or an unreadable tracker, keeps
-    the whole delta."""
+    return the dropped keys. The player's sheet, a party member, or an
+    unreadable tracker keeps the whole delta."""
     from utils.npc_name_normalizer import normalize_npc_name_for_action
 
+    if character_role == "player":
+        return []
     try:
         tracker = safe_json_load("party_tracker.json")
     except Exception:
@@ -3034,7 +3036,7 @@ Character Role: {character_role}
             if 'hitPoints' in updates:
                 debug(f"HP_DEBUG: {character_name} - Before merge HP: {character_data.get('hitPoints')}/{character_data.get('maxHitPoints')}, Update wants HP: {updates.get('hitPoints')}", category="character_updates")
             
-            dropped_non_party = drop_non_party_keys(character_name, updates)
+            dropped_non_party = drop_non_party_keys(character_name, updates, character_role)
             if dropped_non_party:
                 info(f"NONPARTY: {character_name}: dropped {dropped_non_party}; a sheet outside the party takes hit points and status only",
                      category="character_updates")
