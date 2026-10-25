@@ -736,6 +736,41 @@ def present_roster(place_view: Dict[str, Any]) -> List[Dict[str, Any]]:
     return out
 
 
+def present_people(tracker: Dict[str, Any], *, root: str = ".") -> List[Dict[str, Any]]:
+    """The person occupants present now (count above 0) at the party's current
+    place, from the engine view (#1469). Empty when the engine or the
+    document is unavailable."""
+    location_id = (tracker.get("worldConditions") or {}).get("currentLocationId") or ""
+    if not location_id:
+        return []
+    place = place_id(tracker.get("module") or "", location_id)
+    response = request(view=(place,), root=root, create=False)
+    if not response or not response.get("ok"):
+        return []
+    return [
+        o for o in (response.get("live_state") or {}).get("occupants") or []
+        if isinstance(o, dict) and o.get("location") == place and o.get("kind") == "person"
+        and isinstance(o.get("count", 1), int) and o.get("count", 1) > 0
+    ]
+
+
+def id_stem(occupant: Dict[str, Any]) -> str:
+    """The last segment of an occupant id: the sheet stem it is linked to (#1450)."""
+    return str(occupant.get("id") or "").rsplit("/", 1)[-1]
+
+
+def is_present_person(name: Any, people: List[Dict[str, Any]]) -> bool:
+    """Whether a sheet name names one of these people by the #1450 typed
+    link: the name's slug is the occupant id's last segment. A display name
+    is never matched."""
+    if not isinstance(name, str) or not name.strip():
+        return False
+    from utils.roster_conversion import slug
+
+    stem = slug(name)
+    return any(id_stem(o) == stem for o in people)
+
+
 def _tally_text(occupant: Dict[str, Any]) -> str:
     parts = []
     for entry in occupant.get("tally") or []:
