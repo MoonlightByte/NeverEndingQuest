@@ -125,10 +125,12 @@ _PRESENT_TEMPLATE = (
 
 
 def present_from_sheets(sheets):
-    """The present-persons element for the down sheets among these, or None."""
+    """The present-persons element for the down sheets among these (a dead
+    one is not down: nobody can wake them), or None."""
     down = [
         (str(sheet.get("name") or "Unknown"), sheet.get("hitPoints"), _status_text(sheet.get("status")))
         for sheet in sheets or [] if isinstance(sheet, dict) and sheet_is_down(sheet)
+        and _status_text(sheet.get("status")) != "dead"
     ]
     if not down:
         return None
