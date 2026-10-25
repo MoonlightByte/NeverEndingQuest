@@ -2766,7 +2766,9 @@ def _declared_starting_location(module_name):
     built = safe_json_load(os.path.join(path_manager.module_dir, "party_tracker_BU.json")) or {}
     built = built.get("worldConditions") if isinstance(built, dict) else None
     built = built if isinstance(built, dict) else {}
-    if not all(isinstance(built.get(key), str) for key in ("weather", "politicalClimate")):
+    # Empty conditions mean not built: T093 supplies them (#1478).
+    if not all(isinstance(built.get(key), str) and built.get(key).strip()
+               for key in ("weather", "politicalClimate")):
         return None
     return dict(location, weather=built["weather"], politicalClimate=built["politicalClimate"])
 

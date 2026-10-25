@@ -344,10 +344,13 @@ def _useful_string(value, field):
 
 # D-COST-5 F2: the one definition of T028's fields. The validator and the
 # strict request schema both read these, so they cannot drift.
+# #1478: the opening conditions ride on T028 but never fail its contract; a
+# missing or empty value is read as absent (_opening_conditions).
+_T028_OPENING_FIELDS = ("openingWeather", "openingPoliticalClimate")
 _T028_ROOT_FIELDS = (
     "plotTitle", "mainObjective", "plotPoints", "activeQuests",
     "completedQuests", "failedQuests", "worldEvents", "dmNotes",
-)
+) + _T028_OPENING_FIELDS
 _T028_PLOT_POINT_FIELDS = (
     "id", "title", "description", "location", "nextPoints", "status",
     "plotImpact", "sideQuests",
@@ -384,6 +387,7 @@ def _t028_schema(area_ids: List[str]) -> Dict[str, Any]:
         "activeQuests": string_list, "completedQuests": string_list,
         "failedQuests": string_list, "worldEvents": string_list,
         "dmNotes": string_list,
+        "openingWeather": text, "openingPoliticalClimate": text,
     })
 
 
@@ -394,8 +398,10 @@ def _validate_unified_plot_contract(
     expected_side_quests: int,
 ) -> Dict[str, Any]:
     """Validate T028 identities/references before the unified plot is saved."""
-    root_fields = set(_T028_ROOT_FIELDS)
-    if not isinstance(value, dict) or set(value) != root_fields:
+    root_fields = set(_T028_ROOT_FIELDS) - set(_T028_OPENING_FIELDS)
+    if not isinstance(value, dict) or not (
+        root_fields <= set(value) <= set(_T028_ROOT_FIELDS)
+    ):
         raise ValueError("T028 requires the exact unified-plot root fields")
     _useful_string(value["plotTitle"], "plotTitle")
     _useful_string(value["mainObjective"], "mainObjective")
@@ -453,6 +459,18 @@ def _validate_unified_plot_contract(
     if side_quest_ids != expected_sq_ids:
         raise ValueError("T028 side-quest IDs/cardinality must be globally sequential")
     return value
+
+
+def _opening_conditions(value: Any) -> Optional[Dict[str, str]]:
+    """T028's opening weather and political climate when both are useful text;
+    otherwise None (never raises), and the first run asks T093 (#1478)."""
+    if not isinstance(value, dict):
+        return None
+    weather = value.get("openingWeather")
+    climate = value.get("openingPoliticalClimate")
+    if not all(isinstance(item, str) and item.strip() for item in (weather, climate)):
+        return None
+    return {"weather": weather.strip(), "politicalClimate": climate.strip()}
 
 
 def _validate_plot_hook_updates(value, area_data, valid_plot_ids):
@@ -522,6 +540,9 @@ class ModuleBuilder:
         # finalization reads its plot-ordered area sequence so the physical
         # route matches the story, instead of alphabetical area-ID order.
         self.unified_plot = None
+        # T028's opening weather and political climate (#1478), set only when
+        # both are useful text; the party tracker falls back to "Clear" / "".
+        self.opening_conditions = None
         self.context = ModuleContext()
         self.progress_callback = None  # For progress reporting
         self.per_area_locations = None  # For custom locations per area
@@ -862,9 +883,10 @@ MODULE INDEPENDENCE RULES:
         self.log("Step 4.7: Mandating antagonist placement...")
         self._inject_antagonist_into_climactic_location()
         
-        # Step 5: Generate initial party tracker
+        # Step 5: Generate initial party tracker, starting at the story's
+        # typed opening place when it resolves (#1478)
         self.log("Step 5: Creating party tracker...")
-        self.create_party_tracker()
+        self.create_party_tracker(*self._typed_plot_entry())
         
         # Step 6: Create module summary
         self.log("Step 6: Creating module summary...")
@@ -1645,10 +1667,13 @@ Return a JSON object with this exact structure:
     "completedQuests": [],
     "failedQuests": [],
     "worldEvents": [],
-    "dmNotes": []
+    "dmNotes": [],
+    "openingWeather": "The weather where PP001 opens, in one short phrase",
+    "openingPoliticalClimate": "The political mood where PP001 opens, in one short phrase"
 }}
 
-IMPORTANT: 
+IMPORTANT:
+- openingWeather and openingPoliticalClimate describe the moment the story opens, at PP001's place
 - Use area IDs (like HG001) for location fields, not room IDs (like R01)
 - Renumber plot points sequentially starting from PP001
 - Renumber side quests GLOBALLY and sequentially starting from SQ001 (SQ001, SQ002, SQ003, etc. across ALL plot points)
@@ -1719,6 +1744,12 @@ IMPORTANT:
                     )
             if unified_plot is None:
                 raise ValueError(f"T028 validation exhausted: {last_error}")
+
+            # The opening conditions belong to the party tracker, not the
+            # plot: take them out so module_plot.json keeps its shape (#1478).
+            self.opening_conditions = _opening_conditions(unified_plot)
+            for field in _T028_OPENING_FIELDS:
+                unified_plot.pop(field, None)
 
             # Save the unified plot
             output_path = os.path.join(self.config.output_directory, "module_plot.json")
@@ -2082,6 +2113,31 @@ IMPORTANT:
         except Exception as e:
             self.log(f"Warning: Could not cleanup old backups: {e}")
     
+    def _typed_plot_entry(self):
+        """The story's opening place from typed plot data (#1478): T028's PP001
+        area and that area's first plot location. (None, None) unless both
+        resolve to exactly one area and location, which keeps first-location."""
+        plot_points = (self.unified_plot or {}).get("plotPoints")
+        if not isinstance(plot_points, list) or not plot_points:
+            return None, None
+        first = plot_points[0]
+        area_id = first.get("location") if isinstance(first, dict) else None
+        if not isinstance(area_id, str) or area_id not in self.areas_data:
+            return None, None
+        area_points = (self.plots_data.get(area_id) or {}).get("plotPoints")
+        if not isinstance(area_points, list) or not area_points:
+            return None, None
+        opening = area_points[0]
+        location_id = opening.get("location") if isinstance(opening, dict) else None
+        locations = (self.locations_data.get(area_id) or {}).get("locations") or []
+        matches = [
+            location for location in locations
+            if isinstance(location, dict) and location.get("locationId") == location_id
+        ]
+        if not isinstance(location_id, str) or len(matches) != 1:
+            return None, None
+        return area_id, location_id
+
     def create_party_tracker(self, start_area_id=None, start_location_id=None):
         """Create the initial party tracker file"""
         explicit_start = start_area_id is not None or start_location_id is not None
@@ -2130,6 +2186,7 @@ IMPORTANT:
             else:
                 first_location = locations_list[0]
 
+        opening = self.opening_conditions or {"weather": "Clear", "politicalClimate": ""}
         party_tracker = {
             "module": self.config.module_name.replace("_", " "),
             "partyMembers": [],  # Will be populated when players join
@@ -2139,7 +2196,7 @@ IMPORTANT:
                 "month": "Firstmonth",  # Generic fantasy January equivalent
                 "day": 1,
                 "time": "08:00:00",
-                "weather": "Clear",
+                "weather": opening["weather"],
                 "season": "Winter",
                 "dayNightCycle": "Day",
                 "moonPhase": "New Moon",
@@ -2148,7 +2205,7 @@ IMPORTANT:
                 "currentArea": first_area["areaName"],
                 "currentAreaId": first_area["areaId"],
                 "majorEventsUnderway": [],
-                "politicalClimate": "",
+                "politicalClimate": opening["politicalClimate"],
                 "activeEncounter": "",
                 "activeCombatEncounter": "",
                 "weatherConditions": "",
