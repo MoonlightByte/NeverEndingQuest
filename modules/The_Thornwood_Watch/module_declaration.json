@@ -3,7 +3,11 @@
   "version": 1,
   "module": "The_Thornwood_Watch",
   "beings": [],
-  "start": null,
+  "start": {
+    "areaId": "RO001",
+    "locationId": "RO01",
+    "source": "entry"
+  },
   "gateways": [],
   "dispositions": [
     {
