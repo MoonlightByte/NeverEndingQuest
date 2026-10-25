@@ -736,6 +736,40 @@ def present_roster(place_view: Dict[str, Any]) -> List[Dict[str, Any]]:
     return out
 
 
+def _name_key(text: Any) -> str:
+    return " ".join(str(text or "").replace("_", " ").lower().split())
+
+
+def present_people(tracker: Dict[str, Any], *, root: str = ".") -> List[Dict[str, Any]]:
+    """The person occupants present now (count above 0) at the party's current
+    place, from the engine view (#1469). Empty when the engine or the
+    document is unavailable."""
+    location_id = (tracker.get("worldConditions") or {}).get("currentLocationId") or ""
+    if not location_id:
+        return []
+    place = place_id(tracker.get("module") or "", location_id)
+    response = request(view=(place,), root=root, create=False)
+    if not response or not response.get("ok"):
+        return []
+    return [
+        o for o in (response.get("live_state") or {}).get("occupants") or []
+        if isinstance(o, dict) and o.get("location") == place and o.get("kind") == "person"
+        and isinstance(o.get("count", 1), int) and o.get("count", 1) > 0
+    ]
+
+
+def is_present_person(name: Any, people: List[Dict[str, Any]]) -> bool:
+    """Whether a sheet name names one of these people: the occupant's name, or
+    its id's last segment (the sheet stem, #1450). Case and "_" ignored."""
+    key = _name_key(name)
+    if not key:
+        return False
+    return any(
+        key in (_name_key(o.get("name")), _name_key(str(o.get("id") or "").rsplit("/", 1)[-1]))
+        for o in people
+    )
+
+
 def _tally_text(occupant: Dict[str, Any]) -> str:
     parts = []
     for entry in occupant.get("tally") or []:

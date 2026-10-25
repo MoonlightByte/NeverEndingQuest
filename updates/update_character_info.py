@@ -1540,6 +1540,32 @@ def _copy_engine_pools(engine_sheet, target):
                 feature['usage']['current'] = engine_uses[feature['name']]
 
 
+# #1469: what T079 may change on an existing sheet outside the party.
+_NON_PARTY_KEYS = frozenset({"hpDelta", "tempHpGrant", "status", "condition", "condition_affected"})
+
+
+def drop_non_party_keys(character_name, updates):
+    """Keep hit points and status in a T079 delta for a sheet outside the
+    party, never ``status`` dead (the occupant's death is the fight's, #1452);
+    return the dropped keys. A party member, or an unreadable tracker, keeps
+    the whole delta."""
+    from utils.npc_name_normalizer import normalize_npc_name_for_action
+
+    try:
+        tracker = safe_json_load("party_tracker.json")
+    except Exception:
+        return []
+    if not isinstance(tracker, dict) or normalize_npc_name_for_action(character_name, tracker)[0] is not None:
+        return []
+    dropped = sorted(key for key in updates if key not in _NON_PARTY_KEYS)
+    for key in dropped:
+        updates.pop(key)
+    if str(updates.get("status") or "").strip().lower() == "dead":
+        updates.pop("status")
+        dropped.append("status dead")
+    return dropped
+
+
 def prepare_character_delta(character_data, updates, character_role, schema,
                             character_name, managed_effect_operation=None,
                             model_authored=False):
@@ -3008,6 +3034,10 @@ Character Role: {character_role}
             if 'hitPoints' in updates:
                 debug(f"HP_DEBUG: {character_name} - Before merge HP: {character_data.get('hitPoints')}/{character_data.get('maxHitPoints')}, Update wants HP: {updates.get('hitPoints')}", category="character_updates")
             
+            dropped_non_party = drop_non_party_keys(character_name, updates)
+            if dropped_non_party:
+                info(f"NONPARTY: {character_name}: dropped {dropped_non_party}; a sheet outside the party takes hit points and status only",
+                     category="character_updates")
             updates, updated_data, preparation_checks = prepare_character_delta(
                 character_data, updates, character_role, schema, character_name,
                 managed_effect_operation if declarative_effects else None,
