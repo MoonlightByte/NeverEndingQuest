@@ -168,7 +168,7 @@ from utils.reconcile_campaign_state import reconcile_campaign_state
 
 # Import training data collection
 # from simple_training_collector import log_complete_interaction  # DISABLED
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
 from utils.character_sheet_contract import repair_and_persist_character
 from utils.startup_handoff_state import (
     load_state as load_startup_state,
@@ -3156,6 +3156,12 @@ def _dm_fail_forward_line():
     return random.choice(lines) if lines else _DM_FAIL_FORWARD_FALLBACK
 
 
+def _verdict_log_reason(reason, limit=200):
+    """A rejected verdict's reason for the debug log (#1241): one line, at most ``limit`` characters."""
+    text = re.sub(r"\s+", " ", str(reason or "")).strip()
+    return text if len(text) <= limit else text[:limit] + "..."
+
+
 def _parse_dm_validation_verdict(response_text):
     """Parse T065's exact semantic-validation response contract.
 
@@ -4756,6 +4762,10 @@ def validate_ai_response(
         try:
             is_valid, reason, verdict_category = _parse_dm_validation_verdict(validation_response)
             debug(f"VALIDATION: category {verdict_category}", category="ai_validation")
+            if not is_valid:
+                # #1241: the reason, in the log files only (the console is the player's stream in web mode)
+                file_only(f"VALIDATION: draft rejected (category {verdict_category}): {_verdict_log_reason(reason)}",
+                          category="ai_validation")
             
             # Track validation pairs for quality control
             try:

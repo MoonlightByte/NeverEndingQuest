@@ -1134,7 +1134,7 @@ When the Combat Commitment Point is reached (excluding historical records) and n
 - Buffing spells while undetected (Aid, Bless, etc.)
 - Positioning and stealth movements
 - Setting up ambushes or traps
-- First attack that will alert enemies (resolve damage, THEN transition)
+- Not an attack: a spell or weapon aimed at a creature or NPC starts combat, with that attack as the opening action (see Combat Commitment below)
 
 **Combat Phase (Formal Combat Required, after any earlier player-input prerequisite):**
 - Any action after enemies are aware and hostile
