@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- After a fight (or when the DM is asked to answer again after a refused action), the DM's request now carries the party's current hit points, XP and other stats, instead of only the note written before the fight, so the DM no longer works from pre-fight numbers (#223).
 - A module's reset copies (`_BU.json`) are now written safely and checked after copying; if one cannot be saved, the module build (or the joining of a module whose ids collide) fails instead of finishing with a broken reset (#143).
 - When the game had told you the AI provider failed and it was retrying, the answer that finally arrives is now announced with "Connection to <provider> restored. Continuing." instead of the story simply reappearing, both in the "welcome back" scene and during a turn. It is said once, and never when nothing had failed (#221).
 - When a module's completion was left waiting with no journey in progress, starting the game ran it before any input, with no way to Load, Reset or Quit while it waited on the AI; it now runs under the interrupted-journey recovery, where those stay available (#217).

@@ -7754,8 +7754,13 @@ def _get_ai_response_impl(
         opening_tracker = load_json_file("party_tracker.json") or {}
         messages_to_send = with_opening_scene(messages_to_send, opening_tracker)
         messages_for_diagnostics = with_opening_scene(messages_for_diagnostics, opening_tracker)
-    messages_to_send = with_narration_delivery(messages_to_send)
-    messages_for_diagnostics = with_narration_delivery(messages_for_diagnostics)
+    # #223: a rebuilt request gets the current party state, on this request only.
+    current_note = (_current_state_note()
+                    if _current_state_target(messages_to_send) is not None
+                    or _current_state_target(messages_for_diagnostics) is not None else None)
+    messages_to_send = with_narration_delivery(_with_current_state_note(messages_to_send, current_note))
+    messages_for_diagnostics = with_narration_delivery(
+        _with_current_state_note(messages_for_diagnostics, current_note))
 
     # Suppress the fixed-path diagnostics export for the detached welcome; it
     # would race a concurrent player turn. T105 private guidance is redacted
@@ -8126,6 +8131,125 @@ def order_conversation_messages(conversation_history, main_system_prompt_text):
     return ordered_history
 
 
+def _party_members_stats(party_tracker_data, path_manager):
+    """The party's stats rows for the DM note, read from the sheets: every
+    member, then every party NPC. A party NPC's roster level is copied from its
+    sheet in party_tracker_data; the caller writes it when the flag is set
+    (#223: a rebuilt request reads the same rows and writes nothing)."""
+    party_members_stats = []
+    for member_name_iter in party_tracker_data["partyMembers"]:
+        member_file_path = path_manager.get_character_path(member_name_iter)
+        member_data_iter = load_json_file(member_file_path)
+        if member_data_iter:
+            member_data_iter = _effects_runtime_view(member_data_iter)
+            stats = {
+                "name": member_name_iter,  # Keep original case to match file names
+                "display_name": member_name_iter.capitalize(),  # For display purposes
+                "level": member_data_iter.get("level", "N/A"),
+                "xp": member_data_iter.get("experience_points", "N/A"),
+                "hp": member_data_iter.get("hitPoints", "N/A"),
+                "max_hp": member_data_iter.get("maxHitPoints", "N/A")
+            }
+            party_members_stats.append(stats)
+
+    roster_level_synced = False
+    try:
+        for npc_info_iter in party_tracker_data["partyNPCs"]:
+            debug(f"STATE_CHANGE: Processing NPC: {npc_info_iter['name']}", category="npc_management")
+            npc_name_iter = npc_info_iter["name"]
+            npc_data_file = path_manager.get_character_path(npc_name_iter)
+            debug(f"FILE_OP: NPC file path: {npc_data_file}", category="npc_management")
+            npc_data_iter = load_json_file(npc_data_file)
+            debug(f"FILE_OP: NPC data loaded: {npc_data_iter is not None}", category="npc_management")
+            if npc_data_iter:
+                # The character sheet owns the level; the roster entry is a
+                # record-keeping copy. A level-up writes the sheet only, so
+                # copy the value across on every pass (no model involved).
+                sheet_level = npc_data_iter.get("level")
+                if isinstance(sheet_level, int) and npc_info_iter.get("level") != sheet_level:
+                    npc_info_iter["level"] = sheet_level
+                    roster_level_synced = True
+                npc_data_iter = _effects_runtime_view(npc_data_iter)
+                stats = {
+                    "name": npc_info_iter["name"],
+                    "display_name": npc_info_iter["name"].capitalize(),  # For display purposes
+                    "level": npc_data_iter.get("level", npc_info_iter.get("level", "N/A")),
+                    "xp": npc_data_iter.get("experience_points", "N/A"),
+                    "hp": npc_data_iter.get("hitPoints", "N/A"),
+                    "max_hp": npc_data_iter.get("maxHitPoints", "N/A")
+                }
+                party_members_stats.append(stats)
+                debug(f"STATE_CHANGE: Added NPC stats: {stats}", category="npc_management")
+    except Exception as e:
+        error(f"FAILURE: Error processing NPCs", exception=e, category="npc_management")
+        import traceback
+        traceback.print_exc()
+    return party_members_stats, roster_level_synced
+
+
+def _party_stats_text(party_tracker_data, path_manager, party_members_stats):
+    """The DM note's "Party stats" text for the stats rows (#223: the turn note
+    and a rebuilt request's current note share it)."""
+    world_conditions = party_tracker_data["worldConditions"]
+    party_stats_formatted = []
+    for stats_item in party_members_stats:
+        # Check if this is a player or an NPC
+        if stats_item['name'] in party_tracker_data["partyMembers"]:
+            member_data_for_note = load_json_file(path_manager.get_character_path(stats_item['name']))
+        else:
+            member_data_for_note = load_json_file(path_manager.get_character_path(stats_item['name']))
+        if member_data_for_note:
+            member_data_for_note = _effects_runtime_view(member_data_for_note)
+            abilities = member_data_for_note.get("abilities", {})
+            ability_str = f"STR:{abilities.get('strength', 'N/A')} DEX:{abilities.get('dexterity', 'N/A')} CON:{abilities.get('constitution', 'N/A')} INT:{abilities.get('intelligence', 'N/A')} WIS:{abilities.get('wisdom', 'N/A')} CHA:{abilities.get('charisma', 'N/A')}"
+            next_level_xp_note = member_data_for_note.get("exp_required_for_next_level", "N/A")
+            pending_level_ups = member_data_for_note.get("levelUpsPending")
+            if type(pending_level_ups) is int and pending_level_ups > 0:
+                # Engine-written (core/nql/stats): the XP has crossed the threshold; offer levelUp, never recompute.
+                next_level_xp_note = f"{next_level_xp_note} LEVEL-UP EARNED ({pending_level_ups}; offer levelUp)"
+            display_name = stats_item.get('display_name', stats_item['name'].capitalize())
+
+            # Extract spell slot information if character has spellcasting
+            spell_slots_str = ""
+            spellcasting = member_data_for_note.get("spellcasting", {})
+            if spellcasting and "spellSlots" in spellcasting:
+                spell_slots = spellcasting["spellSlots"]
+                slot_parts = []
+                for level in range(1, 10):  # Spell levels 1-9
+                    level_key = f"level{level}"
+                    if level_key in spell_slots:
+                        slot_data = spell_slots[level_key]
+                        current = slot_data.get("current", 0)
+                        maximum = slot_data.get("max", 0)
+                        if maximum > 0:  # Only show levels with available slots
+                            slot_parts.append(f"L{level}:{current}/{maximum}")
+                if slot_parts:
+                    spell_slots_str = f", Spell Slots: {' '.join(slot_parts)}"
+
+            # Extract currency
+            currency = member_data_for_note.get("currency", {})
+            gp = currency.get("gold", 0)
+            sp = currency.get("silver", 0)
+            cp = currency.get("copper", 0)
+            currency_parts = []
+            if gp: currency_parts.append(f"{gp}GP")
+            if sp: currency_parts.append(f"{sp}SP")
+            if cp: currency_parts.append(f"{cp}CP")
+            currency_str = f", Currency: {' '.join(currency_parts)}" if currency_parts else ", Currency: 0GP"
+
+            effects_str = _format_temporary_effects(member_data_for_note)
+            focus = member_data_for_note.get("concentration")
+            if isinstance(focus, dict) and focus.get("name"):
+                effects_str = f"{effects_str}, concentrating on {focus['name']} (engine-held)"
+            # D-KW-12: the engine id the DM keys a typed reference by (rest hitDice).
+            from core.nql.genesis import character_id as _engine_character_id
+            member_id = _engine_character_id(member_data_for_note)
+            party_stats_formatted.append(f"{display_name} (id {member_id}): Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}, {ability_str}{spell_slots_str}{currency_str}, Effects: {effects_str}")
+
+    party_stats_str = "; ".join(party_stats_formatted)
+    return party_stats_str
+
+
 def _prepare_rebuilt_history_for_t067(
     conversation_history, main_system_prompt_text=None
 ):
@@ -8159,9 +8283,65 @@ def _prepare_rebuilt_history_for_t067(
     detached_history = ensure_main_system_prompt(
         detached_history, main_system_prompt_text
     )
+    # #223: the newest note in this history was built before the change that
+    # led here; requests from it get the current state (never saved as text).
+    for message in reversed(detached_history):
+        if isinstance(message, dict) and message.get("role") == "user":
+            message[hm.CURRENT_STATE_FIELD] = True
+            break
     return order_conversation_messages(
         detached_history, main_system_prompt_text
     )
+
+
+def _current_state_target(messages):
+    """#223: the index of the flagged rebuilt message a request should carry
+    the current state on, or None. A player turn after it means the history
+    has moved on and its own note is current."""
+    for index in range(len(messages or []) - 1, -1, -1):
+        message = messages[index]
+        if not isinstance(message, dict):
+            continue
+        if message.get(hm.CURRENT_STATE_FIELD) is True:
+            return index
+        if message.get("role") == "user" and hm.player_input(message) is not None:
+            return None
+    return None
+
+
+def _current_state_note():
+    """#223: the current time, place and party stats, from the tracker and the
+    sheets on disk, in the turn note's own wording; None without a party."""
+    party_tracker_data = load_json_file("party_tracker.json") or {}
+    world_conditions = party_tracker_data.get("worldConditions")
+    members = party_tracker_data.get("partyMembers")
+    if not isinstance(world_conditions, dict) or not isinstance(members, list) or not members:
+        return None
+    path_manager = ModulePathManager((party_tracker_data.get("module", "") or "").replace(" ", "_"))
+    party_members_stats, _roster_level_synced = _party_members_stats(party_tracker_data, path_manager)
+    if not party_members_stats:
+        return None
+    from utils.time_context import format_time_with_context
+
+    return (
+        "Dungeon Master Note (current state, after the last committed change): "
+        f"Current date and time: {format_time_with_context(world_conditions)}, "
+        f"{world_conditions.get('season', 'Unknown')} season. "
+        f"Current location: {world_conditions.get('currentLocation')} ({world_conditions.get('currentLocationId')}). "
+        f"Party stats: {_party_stats_text(party_tracker_data, path_manager, party_members_stats)}. "
+        "These values supersede the party stats in earlier Dungeon Master Notes."
+    )
+
+
+def _with_current_state_note(messages, note):
+    """#223: the request's messages with ``note`` appended to the flagged
+    rebuilt message (a copy); the same list when there is none."""
+    index = _current_state_target(messages) if note else None
+    if index is None or not isinstance(messages[index].get("content"), str):
+        return messages
+    messages = list(messages)
+    messages[index] = dict(messages[index], content=messages[index]["content"] + "\n\n" + note)
+    return messages
 
 def _requires_note(point):
     """The DM Note's open-requirement suffix: '; requires PP001'."""
@@ -9791,54 +9971,7 @@ def _main_game_loop(startup_authority, turn_authority):
             safe_write_json("party_tracker.json", party_tracker_data)
             debug("FILE_OP: Updated party_tracker.json with duplicate NPCs removed", category="npc_management")
 
-        party_members_stats = []
-        for member_name_iter in party_tracker_data["partyMembers"]:
-            member_file_path = path_manager.get_character_path(member_name_iter)
-            member_data_iter = load_json_file(member_file_path)
-            if member_data_iter:
-                member_data_iter = _effects_runtime_view(member_data_iter)
-                stats = {
-                    "name": member_name_iter,  # Keep original case to match file names
-                    "display_name": member_name_iter.capitalize(),  # For display purposes
-                    "level": member_data_iter.get("level", "N/A"),
-                    "xp": member_data_iter.get("experience_points", "N/A"),
-                    "hp": member_data_iter.get("hitPoints", "N/A"),
-                    "max_hp": member_data_iter.get("maxHitPoints", "N/A")
-                }
-                party_members_stats.append(stats)
-
-        roster_level_synced = False
-        try:
-            for npc_info_iter in party_tracker_data["partyNPCs"]:
-                debug(f"STATE_CHANGE: Processing NPC: {npc_info_iter['name']}", category="npc_management")
-                npc_name_iter = npc_info_iter["name"]
-                npc_data_file = path_manager.get_character_path(npc_name_iter)
-                debug(f"FILE_OP: NPC file path: {npc_data_file}", category="npc_management")
-                npc_data_iter = load_json_file(npc_data_file)
-                debug(f"FILE_OP: NPC data loaded: {npc_data_iter is not None}", category="npc_management")
-                if npc_data_iter:
-                    # The character sheet owns the level; the roster entry is a
-                    # record-keeping copy. A level-up writes the sheet only, so
-                    # copy the value across on every pass (no model involved).
-                    sheet_level = npc_data_iter.get("level")
-                    if isinstance(sheet_level, int) and npc_info_iter.get("level") != sheet_level:
-                        npc_info_iter["level"] = sheet_level
-                        roster_level_synced = True
-                    npc_data_iter = _effects_runtime_view(npc_data_iter)
-                    stats = {
-                        "name": npc_info_iter["name"],
-                        "display_name": npc_info_iter["name"].capitalize(),  # For display purposes
-                        "level": npc_data_iter.get("level", npc_info_iter.get("level", "N/A")),
-                        "xp": npc_data_iter.get("experience_points", "N/A"),
-                        "hp": npc_data_iter.get("hitPoints", "N/A"),
-                        "max_hp": npc_data_iter.get("maxHitPoints", "N/A")
-                    }
-                    party_members_stats.append(stats)
-                    debug(f"STATE_CHANGE: Added NPC stats: {stats}", category="npc_management")
-        except Exception as e:
-            error(f"FAILURE: Error processing NPCs", exception=e, category="npc_management")
-            import traceback
-            traceback.print_exc()
+        party_members_stats, roster_level_synced = _party_members_stats(party_tracker_data, path_manager)
         if roster_level_synced:
             safe_write_json("party_tracker.json", party_tracker_data)
             debug("FILE_OP: Updated party_tracker.json partyNPCs levels from character sheets", category="npc_management")
@@ -9856,62 +9989,7 @@ def _main_game_loop(startup_authority, turn_authority):
             # Use enhanced time formatting with context
             from utils.time_context import format_time_with_context
             date_time_str = format_time_with_context(world_conditions)
-            party_stats_formatted = []
-            for stats_item in party_members_stats:
-                # Check if this is a player or an NPC
-                if stats_item['name'] in party_tracker_data["partyMembers"]:
-                    member_data_for_note = load_json_file(path_manager.get_character_path(stats_item['name']))
-                else:
-                    member_data_for_note = load_json_file(path_manager.get_character_path(stats_item['name']))
-                if member_data_for_note:
-                    member_data_for_note = _effects_runtime_view(member_data_for_note)
-                    abilities = member_data_for_note.get("abilities", {})
-                    ability_str = f"STR:{abilities.get('strength', 'N/A')} DEX:{abilities.get('dexterity', 'N/A')} CON:{abilities.get('constitution', 'N/A')} INT:{abilities.get('intelligence', 'N/A')} WIS:{abilities.get('wisdom', 'N/A')} CHA:{abilities.get('charisma', 'N/A')}"
-                    next_level_xp_note = member_data_for_note.get("exp_required_for_next_level", "N/A")
-                    pending_level_ups = member_data_for_note.get("levelUpsPending")
-                    if type(pending_level_ups) is int and pending_level_ups > 0:
-                        # Engine-written (core/nql/stats): the XP has crossed the threshold; offer levelUp, never recompute.
-                        next_level_xp_note = f"{next_level_xp_note} LEVEL-UP EARNED ({pending_level_ups}; offer levelUp)"
-                    display_name = stats_item.get('display_name', stats_item['name'].capitalize())
-                
-                    # Extract spell slot information if character has spellcasting
-                    spell_slots_str = ""
-                    spellcasting = member_data_for_note.get("spellcasting", {})
-                    if spellcasting and "spellSlots" in spellcasting:
-                        spell_slots = spellcasting["spellSlots"]
-                        slot_parts = []
-                        for level in range(1, 10):  # Spell levels 1-9
-                            level_key = f"level{level}"
-                            if level_key in spell_slots:
-                                slot_data = spell_slots[level_key]
-                                current = slot_data.get("current", 0)
-                                maximum = slot_data.get("max", 0)
-                                if maximum > 0:  # Only show levels with available slots
-                                    slot_parts.append(f"L{level}:{current}/{maximum}")
-                        if slot_parts:
-                            spell_slots_str = f", Spell Slots: {' '.join(slot_parts)}"
-                
-                    # Extract currency
-                    currency = member_data_for_note.get("currency", {})
-                    gp = currency.get("gold", 0)
-                    sp = currency.get("silver", 0)
-                    cp = currency.get("copper", 0)
-                    currency_parts = []
-                    if gp: currency_parts.append(f"{gp}GP")
-                    if sp: currency_parts.append(f"{sp}SP")
-                    if cp: currency_parts.append(f"{cp}CP")
-                    currency_str = f", Currency: {' '.join(currency_parts)}" if currency_parts else ", Currency: 0GP"
-
-                    effects_str = _format_temporary_effects(member_data_for_note)
-                    focus = member_data_for_note.get("concentration")
-                    if isinstance(focus, dict) and focus.get("name"):
-                        effects_str = f"{effects_str}, concentrating on {focus['name']} (engine-held)"
-                    # D-KW-12: the engine id the DM keys a typed reference by (rest hitDice).
-                    from core.nql.genesis import character_id as _engine_character_id
-                    member_id = _engine_character_id(member_data_for_note)
-                    party_stats_formatted.append(f"{display_name} (id {member_id}): Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}, {ability_str}{spell_slots_str}{currency_str}, Effects: {effects_str}")
-
-            party_stats_str = "; ".join(party_stats_formatted)
+            party_stats_str = _party_stats_text(party_tracker_data, path_manager, party_members_stats)
             party_stats_str += ". (These values reflect the state before the player's current action.)"
             current_location_name_note = world_conditions["currentLocation"]
             current_location_id_note = world_conditions["currentLocationId"]
