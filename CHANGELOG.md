@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The storyteller is now told each turn which character is the player, so it speaks to them as "you" instead of narrating them like a stranger (#189).
 - A new module no longer misses its start when the module list is briefly locked right after it is written: the check that reads it back retries (#141).
 - Updating an encounter during combat now saves the file safely, so a crash mid-save can no longer leave it cut off (#207).
 - Reset retries a briefly locked module file instead of stopping partway and never leaves a restored file half-written (#226).
