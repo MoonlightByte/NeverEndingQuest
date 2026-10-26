@@ -1504,6 +1504,39 @@ def run_startup_kickoff_with_recovery(
     return {"status": "failed", "reason": retry_result, "player_message": _kickoff_refusal_line}
 
 
+def _run_terminal_kickoff(conversation_history, party_tracker_data, location_data):
+    """#1538: the synchronous kickoff (terminal limited-mode) runs under a live
+    turn scope like a player turn, so its calls get heartbeat, reissue and the
+    account refusal line. A scope a resumed fight left open is borrowed."""
+    from utils.capture.live_provider_call import (
+        LiveProviderSuperseded, abort_live_turn_scope, finish_live_turn_scope,
+        get_live_turn_scope, open_live_turn_scope,
+    )
+
+    scope = get_live_turn_scope()
+    owned = scope is None
+    if owned:
+        scope = open_live_turn_scope()
+    engine_fault = False
+    try:
+        return run_startup_kickoff_with_recovery(
+            conversation_history,
+            party_tracker_data,
+            location_data,
+        )
+    except LiveProviderSuperseded:
+        raise
+    except BaseException:
+        engine_fault = True
+        raise
+    finally:
+        if owned:
+            if engine_fault:
+                abort_live_turn_scope(scope=scope)
+            else:
+                finish_live_turn_scope(scope)
+
+
 def _kickoff_failure_line(kickoff_result):
     """#1233: the one line a failed synchronous kickoff ends on: its account
     line, else the D-COST-4 line. "pending" and "done" show nothing."""
@@ -9735,7 +9768,7 @@ def _main_game_loop(startup_authority, turn_authority):
             )
         else:
             # Exactly-once synchronous kickoff (terminal limited-mode).
-            kickoff_result = run_startup_kickoff_with_recovery(
+            kickoff_result = _run_terminal_kickoff(
                 conversation_history,
                 party_tracker_data,
                 location_data,
