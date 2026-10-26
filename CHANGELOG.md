@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Model replies logged for diagnosis go to the log files only, so they can no longer leak into narration (#1548).
 - Storage log lines name the attempt that actually ran (#383).
 - The full referee prompt no longer lists updatePlayerInfo/updateNPCInfo as accepted actions (#376).
 - When the story frees a character from a condition such as restrained or poisoned, or puts them in one, the game now makes sure their character sheet is updated too, so a condition no longer lingers after the story says it ended (#261).
