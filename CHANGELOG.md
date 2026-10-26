@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Resetting during character setup in the headless game no longer says your choices are kept just before they are cleared (#341).
 - The full referee prompt no longer lists updatePlayerInfo/updateNPCInfo as accepted actions (#376).
 - When the story frees a character from a condition such as restrained or poisoned, or puts them in one, the game now makes sure their character sheet is updated too, so a condition no longer lingers after the story says it ended (#261).
 - Removed the unused NPC auto-level-up module (T086) and its model setting; companions level through the same level-up session (#362).
