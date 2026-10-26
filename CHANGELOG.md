@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Travel storage actions now follow earlier changes in the same trip instead of blocking it, and a new item id in one never repeats an id another holds (#1567).
 - Two staged travel changes to the same character sheet now both apply instead of the second blocking the transition (#1549).
 - Resetting during character setup in the headless game no longer says your choices are kept just before they are cleared (#341).
 - Model replies logged for diagnosis go to the log files only, so they can no longer leak into narration (#1548).
