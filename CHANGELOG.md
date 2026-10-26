@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Shortening the conversation history no longer stops the game for up to 45 seconds without a word: it now shows that it is still working, a Load, Reset or Quit stops it at once, the turn's conversation is saved before it starts, and when no turn is under way it waits for the next one (#290).
+- Two staged travel changes to the same character sheet now both apply instead of the second blocking the transition (#1549).
 - Resetting during character setup in the headless game no longer says your choices are kept just before they are cleared (#341).
 - Model replies logged for diagnosis go to the log files only, so they can no longer leak into narration (#1548).
 - A named NPC who joins a fight must now be put on a side (against the party or beside it) when the fight is set up; when the DM leaves it out, the DM is asked to say which, so a hostile NPC no longer quietly fights on the party's side. Party companions still fight beside the party without being asked (#1551).

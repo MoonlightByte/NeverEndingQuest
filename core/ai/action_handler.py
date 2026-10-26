@@ -907,14 +907,70 @@ def load_current_transition_checkpoint(operation_id=None):
     return _drop_stored_party_npcs(checkpoint)
 
 
+def _sheet_chain_key(path):
+    return os.path.normcase(os.path.abspath(path))
+
+
+def _extend_sheet_chain(sheet_chain, receipt):
+    """Record the frozen sheet a staged sibling leaves behind (#1549)."""
+    if not isinstance(receipt, dict):
+        return
+    if receipt.get("kind") in ("updateCharacterInfo", "removeEffect"):
+        target = receipt if receipt.get("path") and "after" in receipt else None
+    elif receipt.get("kind") == "storageInteraction":
+        target = receipt.get("character")
+    else:
+        target = None
+    if isinstance(target, dict) and target.get("path") and isinstance(target.get("after"), dict):
+        sheet_chain[_sheet_chain_key(target["path"])] = target["after"]
+
+
+def _chain_planned_remove_effect(operation_id, index, record, sheet_chain):
+    """Re-freeze a removeEffect planned from disk on an earlier same-character
+    sibling's sheet (#1549). An effect that sibling already ended leaves a no-op."""
+    from core.managers.effects_runtime import NoActiveEffect, prepare_remove_effect
+
+    receipt = record.get("receipt")
+    if not isinstance(receipt, dict) or not receipt.get("path"):
+        return record
+    base = sheet_chain.get(_sheet_chain_key(receipt["path"]))
+    if base is None:
+        return record
+    parameters = record["action"].get("parameters", {})
+    try:
+        chained = prepare_remove_effect(
+            parameters.get("characterName"),
+            effect_id=parameters.get("effectId"),
+            name=parameters.get("effectName"),
+            reason=parameters.get("reason") or "removed",
+            base_sheet=base,
+        )
+    except NoActiveEffect:
+        chained = dict(receipt, before=copy.deepcopy(base), after=copy.deepcopy(base), concentration_groups=[])
+    checkpoint = load_current_transition_checkpoint(operation_id)
+    checkpoint["deferred_actions"]["actions"][index]["receipt"] = chained
+    _write_location_transition_checkpoint(checkpoint)
+    return checkpoint["deferred_actions"]["actions"][index]
+
+
 def prepare_current_transition_actions(operation_id):
     """Freeze required semantic sibling proposals before movement."""
     checkpoint = load_current_transition_checkpoint(operation_id)
     if checkpoint is None:
         raise RuntimeError("current transition checkpoint is unavailable")
     records = checkpoint["deferred_actions"]["actions"]
+    # #1549: same-character sheet siblings are frozen in sequence. Each one's
+    # before is the previous same-sheet sibling's after, so applying them in
+    # index order keeps the exact before/after check. Only pending records are
+    # (re)frozen.
+    sheet_chain = {}
     for index, record in enumerate(records):
         family = record.get("family")
+        if family == "removeEffect" and record.get("status") == "pending":
+            record = _chain_planned_remove_effect(operation_id, index, record, sheet_chain)
+        if record.get("status") != "pending":
+            _extend_sheet_chain(sheet_chain, record.get("receipt"))
+            continue
         if family not in {
             "updatePlot",
             "moveBackgroundNPC",
@@ -929,6 +985,7 @@ def prepare_current_transition_actions(operation_id):
         } or record.get(
             "receipt"
         ) is not None:
+            _extend_sheet_chain(sheet_chain, record.get("receipt"))
             continue
         parameters = record["action"].get("parameters", {})
         if family in (
@@ -979,6 +1036,7 @@ def prepare_current_transition_actions(operation_id):
         elif family == "updateCharacterInfo":
             from core.managers.effects_runtime import (
                 CharacterProposalDropped,
+                _resolve_character,
                 prepare_character_update,
             )
             from updates.update_character_info import EngineRefusedChange
@@ -996,10 +1054,12 @@ def prepare_current_transition_actions(operation_id):
                     # #914: no named character; dropped like an unworkable
                     # update, never written to a default character.
                     raise CharacterProposalDropped("A party member")
+                sheet_path = _resolve_character(character_name)[2]
                 receipt = prepare_character_update(
                     character_name, changes, party,
                     affects=parameters.get("affects"),
                     casting_resource=parameters.get("castingResource"),
+                    base_sheet=sheet_chain.get(_sheet_chain_key(sheet_path)),
                 )
             except CharacterProposalDropped as dropped:
                 # #855: no usable proposal within the bounded tries. The
@@ -1145,6 +1205,7 @@ def prepare_current_transition_actions(operation_id):
                 "status": "staged",
             }
         )
+        _extend_sheet_chain(sheet_chain, receipt)
         checkpoint = load_current_transition_checkpoint(operation_id)
         checkpoint["deferred_actions"]["actions"][index]["receipt"] = receipt
         if family == "updatePartyTracker":
