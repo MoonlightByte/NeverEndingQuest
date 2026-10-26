@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import shutil
 import uuid
 from datetime import datetime, timezone
@@ -63,50 +62,6 @@ def _list_tracked_module_json_files() -> List[str]:
     return files
 
 
-def _sanitize_manifest_pre_files(pre_files: object) -> List[str]:
-    """Constrain legacy manifest entries before delete/restore decisions."""
-    if not isinstance(pre_files, list):
-        raise OSError("Invalid refresh commit pre_files manifest")
-    sanitized = set()
-    for candidate in pre_files:
-        if not isinstance(candidate, str):
-            raise OSError("Invalid refresh commit path entry")
-        rel = candidate.replace("\\", "/")
-        if (
-            not rel
-            or rel.startswith("/")
-            or re.match(r"^[A-Za-z]:", rel)
-        ):
-            raise OSError("Refresh commit path must be relative")
-        parts = rel.split("/")
-        if any(part in {"", ".", ".."} for part in parts):
-            raise OSError("Refresh commit path contains traversal")
-        normalized = "/".join(parts)
-        # Reapply current ownership rules to manifests written by older code;
-        # this is what prevents legacy backups from restoring campaign WAL,
-        # receipts, lifecycle epochs, or campaign.json itself.
-        if _should_track_json(normalized):
-            sanitized.add(normalized)
-    return sorted(sanitized)
-
-
-def _constrained_backup_dir(backup_dir: object) -> str:
-    if not isinstance(backup_dir, str) or not backup_dir:
-        raise OSError("Invalid refresh commit backup directory")
-    canonical_root = os.path.realpath(BACKUP_ROOT)
-    canonical_backup = os.path.realpath(backup_dir)
-    try:
-        within_root = (
-            os.path.commonpath((canonical_root, canonical_backup))
-            == canonical_root
-        )
-    except ValueError as exc:
-        raise OSError("Refresh backup is outside backup root") from exc
-    if not within_root or canonical_backup == canonical_root:
-        raise OSError("Refresh backup is outside backup root")
-    return canonical_backup
-
-
 def begin_refresh_commit() -> Dict[str, object]:
     os.makedirs(BACKUP_ROOT, exist_ok=True)
     commit_id = str(uuid.uuid4())
@@ -152,32 +107,14 @@ def complete_refresh_commit() -> None:
     safe_json_dump(state, COMMIT_STATE_FILE)
 
 
-def _restore_from_backup(backup_dir: str, pre_files: List[str]) -> List[str]:
-    restored: List[str] = []
-    pre_files = _sanitize_manifest_pre_files(pre_files)
-    current_files = set(_list_tracked_module_json_files())
-    previous_files = set(pre_files)
-
-    # Remove newly-created tracked files that didn't exist pre-refresh.
-    for extra in sorted(current_files - previous_files):
-        try:
-            os.remove(os.path.join(MODULES_DIR, extra.replace("/", os.sep)))
-            restored.append(f"deleted:modules/{extra}")
-        except FileNotFoundError:
-            pass
-
-    # Restore each tracked pre-refresh file from backup.
-    for rel_path in pre_files:
-        src = os.path.join(backup_dir, rel_path.replace("/", os.sep))
-        dst = os.path.join(MODULES_DIR, rel_path.replace("/", os.sep))
-        if os.path.exists(src):
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-            shutil.copy2(src, dst)
-            restored.append(f"restored:modules/{rel_path}")
-    return restored
-
-
 def recover_incomplete_refresh_commit() -> Tuple[bool, Dict[str, object]]:
+    """Retire a manifest an unfinished refresh left behind, touching no module file.
+
+    Nothing on main writes a manifest (begin_refresh_commit and its phase
+    writers have no caller), so one in any other phase is an older build's
+    leftover; restoring its backup would delete module files written since and
+    rewind the rest (#1107). Re-wiring a writer needs a new, reviewed recovery.
+    """
     state = safe_json_load(COMMIT_STATE_FILE)
     if not isinstance(state, dict):
         return False, {"status": "no_manifest"}
@@ -186,18 +123,8 @@ def recover_incomplete_refresh_commit() -> Tuple[bool, Dict[str, object]]:
     if phase in {"complete", "rolled_back"}:
         return False, {"status": "already_complete"}
 
-    backup_dir = _constrained_backup_dir(state.get("backup_dir"))
-    pre_files = _sanitize_manifest_pre_files(state.get("pre_files", []))
-    if not os.path.isdir(backup_dir):
-        state["phase"] = "rolled_back"
-        state["rolled_back_at"] = _utc_now()
-        state["rollback_warning"] = "backup_missing"
-        safe_json_dump(state, COMMIT_STATE_FILE)
-        return True, {"status": "rolled_back_without_backup"}
-
-    restored = _restore_from_backup(backup_dir, pre_files)
     state["phase"] = "rolled_back"
     state["rolled_back_at"] = _utc_now()
-    state["restored_files"] = restored
+    state["rollback_warning"] = "stale_manifest_no_writer"
     safe_json_dump(state, COMMIT_STATE_FILE)
-    return True, {"status": "rolled_back", "restored_files": restored}
+    return True, {"status": "retired_stale_manifest"}
