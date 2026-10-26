@@ -227,6 +227,18 @@ class GameLogger:
             record.category = category
         self.logger.handle(record)
     
+    def file_only(self, message, category=None):
+        """Log an info message to the log files only, never the console (#1241): in web mode the
+        console is the player's narration stream, so model or engine prose must not reach it."""
+        record = self.logger.makeRecord(
+            self.logger.name, logging.INFO, "", 0, self._format_message(message), [], None
+        )
+        if category:
+            record.category = category
+        for handler in self.logger.handlers:
+            if isinstance(handler, RotatingFileHandler):
+                handler.handle(record)
+
     def warning(self, message, category=None):
         """Log warning message"""
         formatted_message = self._format_message(message)
@@ -281,6 +293,9 @@ def debug(message, category=None):
 
 def info(message, category=None):
     game_logger.info(message, category)
+
+def file_only(message, category=None):
+    game_logger.file_only(message, category)
 
 def warning(message, category=None):
     game_logger.warning(message, category)

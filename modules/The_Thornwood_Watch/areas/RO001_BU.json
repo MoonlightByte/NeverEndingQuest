@@ -61,7 +61,7 @@
           "RO03"
         ],
         "coordinates": "X1Y1",
-        "name": "Forgotten Waystation"
+        "name": "Forgotten Waystation at the West Tower"
       },
       {
         "id": "RO06",
@@ -300,7 +300,7 @@
       "plotHooks": [
         "Evidence of Malarok's magical corruption affecting the trading post",
         "Sila speaks of her stolen iron-banded chest taken by bandits to a nearby cache",
-        "Fresh trail leads toward the Forgotten Waystation where Malarok's agents may have been active",
+        "Fresh trail leads toward the Forgotten Waystation at the West Tower where Malarok's agents may have been active",
         "Magical thorny vines and other supernatural elements threaten merchant safety"
       ],
       "dmInstructions": "ACTIVATION TRIGGER: Only introduce Sila's quest (SQ002) when the party shows interest in supplies/preparation for wilderness expedition, OR after they've assessed the bell network situation. Sila should approach the party naturally when they're gathering resources, not as part of the initial crisis briefing. This represents the 'supply chain' phase of expedition planning, not an immediate crisis. The magically enhanced thorny vines on the East Tower at Scout's Watch are evidence of Malarok's corruption and should be mentioned when discussing the bell network restoration.",
@@ -395,9 +395,9 @@
     },
     {
       "locationId": "RO05",
-      "name": "Forgotten Waystation",
+      "name": "Forgotten Waystation at the West Tower",
       "type": "ruins",
-      "description": "Overgrown stone foundations mark where an old ranger messaging station once facilitated communication between outposts. Moss-covered relay towers and a partially collapsed signal platform hint at its former purpose. Recent activity has disturbed the undergrowth - fresh footprints, scattered equipment, and drag marks leading to a concealed cache suggest this abandoned site has found new, sinister purpose.",
+      "description": "Overgrown stone foundations mark where an old ranger messaging station once facilitated communication between outposts. Beyond the foundations stands the West Tower, one of the outpost's three silver bell towers, its bell silent since its harmonic crystal was shattered. Moss-covered relay towers and a partially collapsed signal platform hint at its former purpose. Recent activity has disturbed the undergrowth - fresh footprints, scattered equipment, and drag marks leading to a concealed cache suggest this abandoned site has found new, sinister purpose.",
       "coordinates": "X1Y1",
       "connectivity": [
         "RO03"
