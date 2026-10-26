@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In a fight, a roll you already made this turn is no longer asked for again when the DM retries its ruling: the game keeps the die you rolled (or the one it rolled for you) and rules from it, and that roll now shows in the round's record.
 - In a fight, when you yield or flee (or an enemy does), that now holds: before, the next round put you back in the fight as if nothing had happened. The game also now keeps the record of who fled or surrendered, so the place remembers an enemy who gave up as surrendered rather than defeated. (#1110)
 - A game folder left behind by an older version in the middle of an adventure update no longer has newer adventure files deleted or rolled back when the game starts; the leftover update record is just marked as finished (#1107).
 - The rules check no longer sends back a DM turn just because a simple change, such as putting on armor you fetched, left out the optional list of sheet parts it touches; a change that touches several parts, such as drinking a healing potion, still needs that list (#1106).

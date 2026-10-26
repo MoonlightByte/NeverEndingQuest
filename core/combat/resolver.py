@@ -3563,6 +3563,19 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
     }
     resolution = Resolution(event=event, charDeltas={}, creatureDeltas={},
                             effectOps=[], violations=[])
+    # #1111: the player's dice answered this turn are recorded with the ruling;
+    # the outcome still comes from its targets.
+    for answered in proposal.get("answeredRolls") or []:
+        if not isinstance(answered, dict):
+            continue
+        for term, group in zip(answered.get("terms") or [], answered.get("faces") or []):
+            if not isinstance(term, list) or len(term) != 2 or not isinstance(group, list):
+                continue
+            for face in group:
+                if type(face) is int:
+                    event["rolls"].append({"die": "d%d" % term[1], "value": face,
+                                           "purpose": answered.get("purpose"),
+                                           "source": answered.get("source")})
 
     resources = proposal.get("resources", []) or []
     effects = proposal.get("effects", []) or []
