@@ -377,7 +377,12 @@ def _structured_call(task_id, schema_name, schema, prompt):
     # Connect is bounded per resolved address, as in
     # live_provider_call._CONNECT_SECONDS: a bare 110 also bounds each connect,
     # so silent first addresses outlast the backstop before any request (#667).
-    if provider in ("openai", "legacy", "lmstudio"):
+    # #1523: inside the in-play build the live transport bounds the
+    # generation; this deadline is kept for the toolkit build only.
+    from utils.capture.live_provider_call import live_provider_policy
+
+    live = bool(live_provider_policy(task_id))
+    if not live and provider in ("openai", "legacy", "lmstudio"):
         import httpx
 
         extra["timeout"] = httpx.Timeout(110, connect=5.0)
@@ -396,11 +401,14 @@ def _structured_call(task_id, schema_name, schema, prompt):
             response_format=response_format,
             **extra)
 
-    ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    try:
-        response = ex.submit(call).result(timeout=120)
-    finally:
-        ex.shutdown(wait=False)
+    if live:
+        response = call()
+    else:
+        ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
+            response = ex.submit(call).result(timeout=120)
+        finally:
+            ex.shutdown(wait=False)
     content = response.choices[0].message.content.strip()
     if content.startswith("```"):
         content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()

@@ -74,8 +74,23 @@ _ADVISORY_TASK_IDS = frozenset(
         "T113",
         "T105",
         "T112",
+        # #1523: a cross-module move's starting-location fallback. Live only on
+        # the thread that opened the turn scope (live_provider_policy).
+        "T012",
     }
 )
+# #1523: the in-play module build (createNewModule) runs these on the game
+# thread inside the turn. They are live only inside in_play_module_build():
+# the scope is process-global, and a toolkit or web-UI build runs on its own
+# thread, where they keep the in-process path.
+_BUILD_TASK_IDS = frozenset(
+    {
+        "T022", "T023", "T025", "T026", "T028", "T029", "T030", "T031",
+        "T032", "T033", "T036", "T037", "T088", "T098", "T099", "T100",
+        "T101", "T102", "T103", "T104", "T122", "T123",
+    }
+)
+_REQUIRED_TASK_IDS = _REQUIRED_TASK_IDS | _BUILD_TASK_IDS
 _LIVE_TASK_IDS = _REQUIRED_TASK_IDS | _ADVISORY_TASK_IDS
 _HEARTBEAT_SECONDS = 10.0
 _WATCHDOG_SECONDS = 600.0
@@ -114,6 +129,11 @@ _BILLED_PHASES = frozenset({"acknowledged", "working", "receiving", "done"})
 # #1342: provider generations one live turn scope may spend, reissues
 # included. Every scope (play turn, combat round, wizard) has the same bound.
 _TURN_GENERATION_CEILING = 24
+# #1523: one in-play module build's own ceiling. A game build measured 28
+# generations at 2 areas and 35 at 3 when every reply is valid, and 83 at 3
+# areas with every contract retry (dplay/rows/1523); 96 leaves room for
+# reissues. Owner ruling pending (D-1523-1).
+_BUILD_GENERATION_CEILING = 96
 # Transport phases the child reports, in the order a healthy generation
 # passes through them (#409 plan section 4). Evidence only: never authority.
 _PHASE_NAMES = (
@@ -200,6 +220,10 @@ class LiveTurnScope:
     advisory_scopes: list = field(default_factory=list)
     purpose: str = "turn"
     provider_generations: int = 0
+    # #1523: the thread that opened the scope, and a ceiling other than the
+    # turn's while a module build spends its own budget.
+    owner_thread: int = None
+    ceiling: int = None
 
     def next_generation(self):
         with self.lock:
@@ -209,21 +233,24 @@ class LiveTurnScope:
     def claim_provider_generation(self):
         """Count one provider generation; False once the turn ceiling is spent (#1342)."""
         with self.lock:
-            if self.provider_generations >= _TURN_GENERATION_CEILING:
+            if self.provider_generations >= (self.ceiling or _TURN_GENERATION_CEILING):
                 return False
             self.provider_generations += 1
             return True
 
-    def renew_generation_budget(self, reason):
+    def renew_generation_budget(self, reason, ceiling=None):
         """Start a fresh ceiling inside this scope (#1468): combat spends one
         budget per player combat input and one for the after-fight scene.
-        Nothing else about the scope changes."""
+        ``ceiling`` replaces the turn's for this budget (#1523: a module
+        build); None always restores the turn's own. Nothing else about the
+        scope changes."""
         with self.lock:
             _LOGGER.debug(
                 "LIVE_PROVIDER_BUDGET_RENEWED reason=%s spent=%d operation=%s",
                 reason, self.provider_generations, self.operation_id,
             )
             self.provider_generations = 0
+            self.ceiling = ceiling
 
     def request_supersession(self, kind, operation_id=None):
         with self.lock:
@@ -354,7 +381,7 @@ def open_live_turn_scope():
     with _scope_guard:
         if _active_scope is not None:
             raise RuntimeError("a live player-turn scope is already active")
-        _active_scope = LiveTurnScope()
+        _active_scope = LiveTurnScope(owner_thread=threading.get_ident())
         return _active_scope
 
 
@@ -426,9 +453,46 @@ def get_lifecycle_turn_scopes():
         return tuple(scopes)
 
 
+@dataclass
+class ModuleBuildRecord:
+    """#1523: what an in-play module build's live calls reported to it."""
+
+    refused: str = None
+
+
+_in_play_build = ContextVar("in_play_module_build", default=None)
+
+
+@contextmanager
+def in_play_module_build(scope=None):
+    """Mark this thread's module build as the turn's own (#1523).
+
+    The build tasks are live only inside this context. With a turn ``scope``
+    the build spends its own ceiling, and the turn gets a fresh budget back
+    however the build ends.
+    """
+    record = ModuleBuildRecord()
+    token = _in_play_build.set(record)
+    if scope is not None:
+        scope.renew_generation_budget(
+            "module_build", ceiling=_BUILD_GENERATION_CEILING
+        )
+    try:
+        yield record
+    finally:
+        _in_play_build.reset(token)
+        if scope is not None:
+            scope.renew_generation_budget("module_build_done")
+
+
 def live_provider_policy(task_id):
     """Return the reviewed policy only while a live player-turn scope exists."""
-    if get_live_provider_scope() is None:
+    scope = get_live_provider_scope()
+    if scope is None:
+        return False
+    if task_id in _BUILD_TASK_IDS and _in_play_build.get() is None:
+        return False
+    if task_id == "T012" and getattr(scope, "owner_thread", None) != threading.get_ident():
         return False
     if task_id in _REQUIRED_TASK_IDS:
         return "required"
@@ -1075,6 +1139,7 @@ class _GenerationReader(threading.Thread):
 
 WAIT_PURPOSES = frozenset({
     "character_setup", "adventure_choice", "starting_location", "level_up", "combat", "turn",
+    "module_build",
 })
 
 
@@ -1091,6 +1156,8 @@ def wait_purpose(task_id, override=None):
         return "level_up"
     if task_id in _COMBAT_TASK_IDS:
         return "combat"
+    if task_id in _BUILD_TASK_IDS:
+        return "module_build"
     return "turn"
 
 
@@ -1641,8 +1708,13 @@ def call_live_provider(
             # the caller's completed-refusal path ends the turn with one line.
             _LOGGER.warning(
                 "LIVE_PROVIDER_TURN_CEILING task=%s generations=%d operation=%s",
-                task_id, _TURN_GENERATION_CEILING, operation_id,
+                task_id, getattr(scope, "ceiling", None) or _TURN_GENERATION_CEILING,
+                operation_id,
             )
+            # #1523: the builders swallow this; the build refuses to publish.
+            build = _in_play_build.get()
+            if build is not None and task_id in _BUILD_TASK_IDS:
+                build.refused = "turn_call_ceiling"
             raise LiveProviderCompletedError(
                 task_id,
                 _limit_envelope("turn_call_ceiling", task_id, frozen_kwargs),

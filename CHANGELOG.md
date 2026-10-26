@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the DM creates a new module during play, or picks where a move into another module starts, the AI calls now go through the same guarded connection as the rest of the turn: a provider that stops answering is noticed and retried instead of freezing the game, Load and Reset now take effect instead of waiting for the build to finish, and a build cut short (or one that runs past its own call budget) never publishes a half-made module. Module builds started from the toolkit are unchanged. (#1523)
 - A module's reset copies (`_BU.json`) are now written safely and checked after copying; if one cannot be saved, the module build (or the joining of a module whose ids collide) fails instead of finishing with a broken reset (#143).
 - When the game had told you the AI provider failed and it was retrying, the answer that finally arrives is now announced with "Connection to <provider> restored. Continuing." instead of the story simply reappearing, both in the "welcome back" scene and during a turn. It is said once, and never when nothing had failed (#221).
 - When a module's completion was left waiting with no journey in progress, starting the game ran it before any input, with no way to Load, Reset or Quit while it waited on the AI; it now runs under the interrupted-journey recovery, where those stay available (#217).

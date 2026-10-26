@@ -247,6 +247,13 @@ def production_completion_gateway(request: StructuredRequest) -> CompletionPaylo
     except (KeyboardInterrupt, SystemExit):
         raise
     except BaseException as exc:
+        # #1523: a Load/Reset during the in-play build is not a provider
+        # failure, and must not fall back to the compatible generator.
+        from core.combat.invocation import InvocationSupersededError
+        from utils.capture.live_provider_call import LiveProviderSuperseded
+
+        if isinstance(exc, (LiveProviderSuperseded, InvocationSupersededError)):
+            raise
         raise GatewayFailure(_provider_failure_class(exc)) from None
     try:
         choice = response.choices[0]

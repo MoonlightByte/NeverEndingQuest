@@ -4185,6 +4185,9 @@ def get_module_starting_location(module_name: str, snapshot=None) -> tuple:
 
         return starting_location
 
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        # #1523: T012 rides the live turn; a Load/Reset is not a fallback.
+        raise
     except ReadOnlySaveStop:
         raise
     except Exception as e:
@@ -4376,6 +4379,9 @@ Determine the most logical starting location based on adventure flow, area types
         print("WARNING: AI analysis failed, falling back to first available location")
         return _get_fallback_starting_location(module_data), "fallback"
         
+    except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+        # #1523: T012 rides the live turn; a Load/Reset is not a fallback.
+        raise
     except Exception as e:
         print(f"ERROR: AI starting location analysis failed: {e}")
         return _get_fallback_starting_location(module_data), "fallback"
@@ -6073,21 +6079,56 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 # or corrupted game. No prior in-flight state ever BLOCKS a
                 # new build.
                 stitcher = get_module_stitcher()
+                # #1523: the build's model calls ride the turn's live
+                # transport (bounded, ended by Load/Reset) only on the thread
+                # that owns the turn scope, inside in_play_module_build().
+                from contextlib import nullcontext
+                from utils.capture.live_provider_call import (
+                    get_live_turn_scope,
+                    in_play_module_build,
+                )
+
+                turn_scope = get_live_turn_scope()
+                if turn_scope is not None and turn_scope.owner_thread != threading.get_ident():
+                    turn_scope = None
+                build_record = None
+
+                def build_check():
+                    if turn_scope is not None and turn_scope.is_superseded():
+                        return "superseded"
+                    if build_record is not None and build_record.refused:
+                        return "refused"
+                    return None
+
+                def raise_if_superseded():
+                    # A Load/Reset is main's to apply, not a failed build.
+                    if turn_scope is not None and turn_scope.is_superseded():
+                        raise LiveProviderSuperseded("module build superseded")
+
                 try:
                     # Builds into a hidden temp workspace and atomically swaps
                     # the module into modules/<name> in one rename, updating
                     # the advisory registry via the store-free helper. A
                     # failure here NEVER touches live state -- the build simply
                     # did not happen and the player keeps playing.
-                    success, module_name = ai_driven_module_creation(
-                        parameters,
-                        progress_callback=module_progress_callback,
-                        policy="game",
-                        prepare_candidate=(
-                            stitcher.build_publication_registry_bytes
-                        ),
-                    )
+                    with (
+                        in_play_module_build(turn_scope)
+                        if turn_scope is not None
+                        else nullcontext()
+                    ) as build_record:
+                        success, module_name = ai_driven_module_creation(
+                            parameters,
+                            progress_callback=module_progress_callback,
+                            policy="game",
+                            prepare_candidate=(
+                                stitcher.build_publication_registry_bytes
+                            ),
+                            cancel_check=build_check,
+                        )
+                except (LiveProviderSuperseded, InvocationSupersededError):
+                    raise
                 except ModuleCreationCancelledError:
+                    raise_if_superseded()
                     mark_module_build_outcome("not_generated")
                     failure = module_failure()
                     terminal_progress(
@@ -6108,6 +6149,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     )
                     return failure
                 except ModuleCreationFailedError as build_error:
+                    raise_if_superseded()
                     # The build reports its reason instead of returning a bare
                     # failure (issue #130). Log the detail, but keep the
                     # player-facing message sanitized: provider output must
@@ -6125,6 +6167,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     return failure
 
                 if not success or not module_name:
+                    raise_if_superseded()
                     mark_module_build_outcome("not_generated")
                     failure = module_failure()
                     terminal_progress(
@@ -6144,6 +6187,8 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 )
                 needs_conversation_history_update = True
                 return published_result(module_name)
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            raise
         except Exception as module_error:
             error(
                 "FAILURE: Unexpected module creation pipeline error",
@@ -6673,6 +6718,9 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     response_data={"pending_archive": pending_archive}
                 )
             
+        except (LiveProviderSuperseded, InvocationSupersededError):
+            # #1523: T012 (via the destination projection) rides the live turn.
+            raise
         except Exception as e:
             print(f"ERROR: Exception while updating party tracker: {str(e)}")
             import traceback

@@ -13,6 +13,8 @@ const PURPOSE: Record<string, string> = {
   starting_location: 'Choosing your starting location',
   level_up: 'Working on your level-up',
   combat: 'Resolving the fight',
+  // #1523: words pending the owner's ruling (D-1523-3).
+  module_build: 'Building your new module',
   turn: 'The Dungeon Master is answering',
 }
 

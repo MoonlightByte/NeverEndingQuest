@@ -137,6 +137,7 @@ def _run_managed_module_build(
     prepare_registry_fn,
     use_story_first,
     progress_callback,
+    cancel_check=None,
 ):
     """Build a module into a hidden temp workspace and atomically publish it.
 
@@ -176,6 +177,15 @@ def _run_managed_module_build(
         try:
             # Generate without the lock, into the private workspace.
             candidate(reservation.candidate_path, reservation.module_name)
+            # #1523: the builders swallow a superseded or refused live call
+            # and fill in fallbacks; such a build must never publish.
+            outcome = cancel_check() if cancel_check is not None else None
+            if outcome == "superseded":
+                raise ModuleCreationCancelledError("Module generation superseded")
+            if outcome == "refused":
+                raise ModuleCreationFailedError(
+                    "module build generation ceiling reached"
+                )
             # Publish: the registry preparation, the occupancy guard, the
             # rename and the registry write stay serialized. The build is
             # already paid for, so a busy lock is waited for, never refused.
@@ -2503,7 +2513,13 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             # resolved address, as in live_provider_call._CONNECT_SECONDS: a
             # bare 110 also bounds each connect, so silent first addresses
             # outlast the backstop before any request (#667).
-            if provider in ("openai", "legacy", "lmstudio"):
+            # #1523: inside the in-play build T104 rides the live transport,
+            # which bounds the generation itself; the deadline below is kept
+            # for the toolkit build only.
+            from utils.capture.live_provider_call import live_provider_policy
+
+            t104_live = bool(live_provider_policy("T104"))
+            if not t104_live and provider in ("openai", "legacy", "lmstudio"):
                 import httpx
 
                 extra["timeout"] = httpx.Timeout(110, connect=5.0)
@@ -2522,11 +2538,14 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                     response_format=response_format,
                     **extra)
 
-            _ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            try:
-                response = _ex.submit(_t104_call).result(timeout=120)
-            finally:
-                _ex.shutdown(wait=False)
+            if t104_live:
+                response = _t104_call()
+            else:
+                _ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                try:
+                    response = _ex.submit(_t104_call).result(timeout=120)
+                finally:
+                    _ex.shutdown(wait=False)
 
             content = response.choices[0].message.content.strip()
             if content.startswith("```"):
@@ -3237,6 +3256,7 @@ def _ai_driven_module_creation_impl(
     *,
     policy: Any = "game",
     prepare_candidate: Optional[Callable[[Path, str], Any]] = None,
+    cancel_check: Optional[Callable[[], Optional[str]]] = None,
 ) -> tuple[bool, Optional[str]]:
     """Build and atomically publish one validated module from hidden workspace.
 
@@ -3509,6 +3529,7 @@ def _ai_driven_module_creation_impl(
             prepare_registry_fn=_publication_step(prepare_candidate, builder_holder),
             use_story_first=use_story_first,
             progress_callback=progress_callback,
+            cancel_check=cancel_check,
         )
         module_name = result.module_name
         info(
@@ -3564,6 +3585,7 @@ def ai_driven_module_creation(
     *,
     policy: Any = "game",
     prepare_candidate: Optional[Callable[[Path, str], Any]] = None,
+    cancel_check: Optional[Callable[[], Optional[str]]] = None,
 ) -> tuple[bool, Optional[str]]:
     """Run a module build inside exactly one nested-safe usage scope.
 
@@ -3571,6 +3593,8 @@ def ai_driven_module_creation(
     so this wrapper must not record a premature terminal event when a context is
     already active.  Direct toolkit callers receive their own build-only scope
     and a sanitized ``generated`` or ``failed`` terminal outcome.
+    ``cancel_check`` (#1523) is asked just before publishing: "superseded"
+    cancels the build, "refused" fails it, None publishes.
     """
 
     from utils.openai_usage_tracker import (
@@ -3587,6 +3611,7 @@ def ai_driven_module_creation(
                 progress_callback=progress_callback,
                 policy=policy,
                 prepare_candidate=prepare_candidate,
+                cancel_check=cancel_check,
             )
         except Exception:
             if owns_usage_scope:
