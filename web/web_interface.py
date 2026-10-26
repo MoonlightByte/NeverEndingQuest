@@ -606,10 +606,12 @@ def _keep_unpersisted(message, base, commit_guard):
     """#1373: a line already shown live whose write failed stays in the ring
     (authoritative for a reconnect) and is retried by the next write."""
     message_id = message.get("message_id")
-    _unpersisted_messages[:] = ([m for m in _unpersisted_messages
-                                 if m.get("message_id") != message_id]
-                                + [dict(message)])[-MESSAGE_CACHE_SIZE:]
+    # Inside the guard: a superseded invocation never showed the line, so
+    # neither the ring nor the pending list may keep it.
     with commit_guard() if commit_guard is not None else nullcontext():
+        _unpersisted_messages[:] = ([m for m in _unpersisted_messages
+                                     if m.get("message_id") != message_id]
+                                    + [dict(message)])[-MESSAGE_CACHE_SIZE:]
         message_cache.clear()
         message_cache.extend((list(base) + [dict(message)])[-MESSAGE_CACHE_SIZE:])
     warning(f"MESSAGE_CACHE: write failed; {message_id} kept in memory for "
