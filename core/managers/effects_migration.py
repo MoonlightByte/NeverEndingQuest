@@ -493,7 +493,7 @@ def preflight_effects_migration():
         return {"status": "already_migrated"}
     combat_gate = _combat_migration_gate(party)
     if combat_gate:
-        return {"status": "deferred", "reason": combat_gate}
+        return {"status": "deferred", "reasonCode": "combat_boundary", "reason": combat_gate}
 
     tracker = _load_tracker()
     files, duplicates, unreadable = _discover_character_files(
@@ -503,7 +503,7 @@ def preflight_effects_migration():
     party_paths = _party_sheet_paths(party)
     held = sorted(path for path in unreadable if os.path.normcase(os.path.normpath(path)) in party_paths)
     if held:
-        return {"status": "deferred", "reason": "party sheet unreadable: %s" % held}
+        return {"status": "deferred", "reasonCode": "party_sheet_unreadable", "reason": "party sheet unreadable: %s" % held}
     reports = ["unreadable file skipped: %s" % path for path in unreadable]
     duplicates = _settle_duplicates(party, files, duplicates, reports)
     if duplicates:
@@ -637,7 +637,7 @@ def run_effects_migration(create_backup=True):
         timeout_seconds=30.0,
     ) as acquired:
         if acquired is None:
-            return {"status": "deferred", "reason": "another migration is active"}
+            return {"status": "deferred", "reasonCode": "migration_active", "reason": "another migration is active"}
         if campaign_effects_migrated():
             return {"status": "already_migrated"}
         existing_state = load_effects_state()
