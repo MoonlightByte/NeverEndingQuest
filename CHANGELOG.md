@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - In a terminal game, the opening scene now shows its progress, retries a silent provider and says when the account is out of credit, as every later turn does (#1538).
+- In a fight, a companion now remembers what it was privately thinking, wondering and feeling in the previous round; before, each new round wiped it, so every round started from nothing (#1568).
 - Shortening the conversation history no longer stops the game for up to 45 seconds without a word: it now shows that it is still working, a Load, Reset or Quit stops it at once, the turn's conversation is saved before it starts, and when no turn is under way it waits for the next one (#290).
 - A travel sheet update no longer gives a new item an id an earlier change in the same trip already holds (#1569).
 - When a fight pauses for the player's dice roll, what the companions privately thought and felt at the start of that round is now kept; before, it was lost whenever the round paused for a roll, and a restart keeps any feeling the round brings up from being counted twice (#269).
