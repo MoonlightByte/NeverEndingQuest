@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Shortening the conversation history no longer stops the game for up to 45 seconds without a word: it now shows that it is still working, a Load, Reset or Quit stops it at once, the turn's conversation is saved before it starts, and when no turn is under way it waits for the next one (#290).
+- A named NPC who joins a fight must now be put on a side (against the party or beside it) when the fight is set up; when the DM leaves it out, the DM is asked to say which, so a hostile NPC no longer quietly fights on the party's side. Party companions still fight beside the party without being asked (#1551).
+- Storage log lines name the attempt that actually ran (#383).
+- The full referee prompt no longer lists updatePlayerInfo/updateNPCInfo as accepted actions (#376).
 - When the story frees a character from a condition such as restrained or poisoned, or puts them in one, the game now makes sure their character sheet is updated too, so a condition no longer lingers after the story says it ended (#261).
 - Removed the unused NPC auto-level-up module (T086) and its model setting; companions level through the same level-up session (#362).
 - A companion keeps their established personality when a profile refresh fails after their sheet changes (#350).
