@@ -392,15 +392,6 @@ _declare(
          "same Luna low binding as the T047 interview it replaces.",
 )
 _declare(
-    "T086",
-    _profiles(
-        "OPENAI_GPT56_LUNA_NONE",
-        "LEVELUP_CONV_GEMINI_FLASH_LOW",
-        "LEVELUP_CONV_LEGACY",
-        "LEVELUP_CONV_LMSTUDIO",
-    ),
-)
-_declare(
     "T049",
     _profiles(
         "OPENAI_GPT56_LUNA_NONE",
@@ -791,7 +782,7 @@ def openai_output_ceiling(task_id):
     """The output ceiling for one callsite on the openai provider, or None."""
     value = OPENAI_OUTPUT_CEILING_CHARS.get(task_id)
     return value if isinstance(value, int) and value > 0 else None
-# Reviewed source inventory: 78 registered callsite IDs (T014 and T091 retired in P4-e/P4-f, T024 in keyword GEN-11, T066 in keyword H5, T053 in keyword validation DS-3, T050 in keyword validation V5, T017 in keyword KW-6, T128 in D-ALLCLASS-4, the retired level-up interview, validator and domain layer in D-COST-2; T125 added in keyword validation V4, T126 in #1118, T127 in #1260, T128 in D-CREATE-COST-5) plus enabled T104, plus the
+# Reviewed source inventory: 77 registered callsite IDs (T014 and T091 retired in P4-e/P4-f, T086 in #362, T024 in keyword GEN-11, T066 in keyword H5, T053 in keyword validation DS-3, T050 in keyword validation V5, T017 in keyword KW-6, T128 in D-ALLCLASS-4, the retired level-up interview, validator and domain layer in D-COST-2; T125 added in keyword validation V4, T126 in #1118, T127 in #1260, T128 in D-CREATE-COST-5) plus enabled T104, plus the
 # NPC-voice family T105 (voice+affinity) and T107 (profile seed). Keep this
 # independent from _DECLARATIONS so deleting/adding a binding cannot make the
 # expected set silently redefine itself.
@@ -800,7 +791,7 @@ REGISTERED_TASK_IDS = tuple(
     "T026 T027 T028 T029 T030 T031 T032 T033 T034 T035 T036 T037 T038 T039 "
     "T040 T041 T042 T043 T044 T045 T046 T049 T051 T052 "
     "T054 T059 T063 T064 T065 T067 T078 T079 T081 T082 T083 T084 "
-    "T085 T086 T087 T088 T089 T090 T092 T093 T094 T095 T096 T097 T098 "
+    "T085 T087 T088 T089 T090 T092 T093 T094 T095 T096 T097 T098 "
     "T099 T100 T101 T102 T103 T105 T107 T108 T112 T113 T114 "
     "T121 T122 T123 T124 T125 T126 T127".split()
 )
