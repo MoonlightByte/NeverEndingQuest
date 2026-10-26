@@ -4027,6 +4027,7 @@ def _cache_module_starting_location(
         return False
     with module_refresh_lock() as acquired:
         if not acquired:
+            # Keep the skip: this is a cache entry only (#1108).
             return False
         world_registry = safe_json_load(registry_path)
         if not isinstance(world_registry, dict):

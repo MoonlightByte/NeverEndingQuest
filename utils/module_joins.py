@@ -105,6 +105,7 @@ def record(join: Dict[str, Any], root: str = ".") -> bool:
     path = os.path.join(root, REGISTRY)
     with module_refresh_lock() as acquired:
         if not acquired:
+            # Busy refresh: keep the skip, the next crossing records the join (#1108).
             warning("JOIN: the registry is busy; the join %s is not recorded (the next crossing records it)"
                     % (modules_of(join),), category="location_transitions")
             return False
