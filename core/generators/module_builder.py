@@ -2625,8 +2625,8 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
     def create_bu_backups(self):
         """Create _BU.json backup files for all generated module files"""
-        import shutil
         import glob
+        from utils.module_lifecycle import copy_file_verified
         
         # Get all JSON files in the module directory (excluding subdirectories first)
         module_files = []
@@ -2657,12 +2657,10 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             # Create backup filename
             backup_file = json_file.replace(".json", "_BU.json")
             
-            try:
-                shutil.copy2(json_file, backup_file)
-                backup_count += 1
-                self.log(f"  Created backup: {os.path.relpath(backup_file, self.config.output_directory)}")
-            except Exception as e:
-                self.log(f"  WARNING: Failed to create backup for {json_file}: {e}")
+            # #143: a reset baseline that did not land fails the build.
+            copy_file_verified(json_file, backup_file)
+            backup_count += 1
+            self.log(f"  Created backup: {os.path.relpath(backup_file, self.config.output_directory)}")
         
         self.log(f"Created {backup_count} _BU.json backup files for reset functionality")
     
