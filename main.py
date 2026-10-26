@@ -8634,6 +8634,45 @@ _MEMORY_JOURNAL_UNREADABLE_LINE = (
 )
 
 
+# Effects-upgrade results already shown this session, so a per-turn retry
+# does not repeat them (#1128); the load-time call clears it.
+_effects_migration_shown = set()
+
+
+def _report_effects_migration(result):
+    """Tell the player, once per session, why the effects upgrade did not happen, or that it now has (#1128).
+
+    Reads only the typed result: ``refusals`` when blocked, ``reasonCode`` and
+    ``reason`` when deferred. A combat boundary or another running upgrade is
+    routine and clears on its own, so it is not shown.
+    """
+    status = result.get("status") if isinstance(result, dict) else None
+    if status == "migrated":
+        print(
+            "[SYSTEM] Temporary effects were upgraded safely. "
+            "A pre-conversion save was created automatically."
+        )
+        debug(f"EFFECTS: Effects V2 migration completed: {result}", category="effects_tracking")
+        return
+    if status == "blocked":
+        # A conversion error's text has no bound; the console line keeps each reason readable.
+        reasons = tuple(" ".join(str(item).split())[:200] for item in result.get("refusals") or [])
+        key = ("blocked", reasons)
+        lines = [
+            "[SYSTEM] Temporary effects could not be upgraded, so this campaign stays on its older "
+            "effect handling (effects may not expire on their own). Reasons:"
+        ] + ["  - " + reason for reason in reasons]
+    elif status == "deferred" and result.get("reasonCode") == "party_sheet_unreadable":
+        key = ("deferred", result.get("reasonCode"), result.get("reason"))
+        lines = ["[SYSTEM] Temporary-effect upgrade is waiting: %s. It retries each turn." % result.get("reason")]
+    else:
+        return
+    if key in _effects_migration_shown:
+        return
+    _effects_migration_shown.add(key)
+    print("\n".join(lines))
+
+
 def _main_game_loop(startup_authority, turn_authority):
     global needs_conversation_history_update, should_inject_creation_prompt
     from core.combat.invocation import InvocationSupersededError, require_current_invocation
@@ -8894,24 +8933,14 @@ def _main_game_loop(startup_authority, turn_authority):
             from core.managers.effects_migration import run_effects_migration
 
             effects_migration = run_effects_migration(create_backup=True)
-            if effects_migration.get("status") == "migrated":
-                print(
-                    "[SYSTEM] Temporary effects were upgraded safely. "
-                    "A pre-conversion save was created automatically."
-                )
-                debug(
-                    f"EFFECTS: Effects V2 migration completed: {effects_migration}",
-                    category="effects_tracking",
-                )
-            elif effects_migration.get("status") == "blocked":
+            # Each Load or Reset starts a new session: the same refusal shows again.
+            _effects_migration_shown.clear()
+            if effects_migration.get("status") == "blocked":
                 warning(
                     f"EFFECTS: Automatic conversion was refused safely: {effects_migration}",
                     category="effects_tracking",
                 )
-                print(
-                    "[SYSTEM] Temporary-effect conversion needs review. "
-                    "The campaign remains on its legacy effect handling for this session."
-                )
+            _report_effects_migration(effects_migration)
         except (LiveProviderSuperseded, InvocationSupersededError):
             raise
         except Exception as effects_migration_exc:
@@ -9536,7 +9565,7 @@ def _main_game_loop(startup_authority, turn_authority):
 
             debug("EFFECTS: Checking for expired effects", category="effects_tracking")
             if not campaign_effects_migrated():
-                run_effects_migration(create_backup=True)
+                _report_effects_migration(run_effects_migration(create_backup=True))
             if campaign_effects_migrated():
                 acknowledge_effect_notifications(conversation_history)
                 effect_notice = process_effect_lifecycle(conversation_history)

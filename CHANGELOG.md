@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When a campaign's temporary effects cannot be upgraded to the new rules handling, the game now says why (for example two character sheets with the same name) once per session, and says so when a later turn's retry succeeds (#1128).
 - The Thornwood Watch: asking to go to the West Tower now leads to the Forgotten Waystation, renamed "Forgotten Waystation at the West Tower", whose description now names the tower. Saved games keep the place names they were saved with (#1241).
 - The DM's full instructions no longer tell it to resolve the damage of a first attack before a fight starts, which contradicted the rule it is checked against (an attack on a creature or NPC starts the fight, with that attack as the opening move). The everyday shortened instructions already said only the second. (#1384)
 - In a fight, when you yield or flee (or an enemy does), that now holds: before, the next round put you back in the fight as if nothing had happened. The game also now keeps the record of who fled or surrendered, so the place remembers an enemy who gave up as surrendered rather than defeated. (#1110)
