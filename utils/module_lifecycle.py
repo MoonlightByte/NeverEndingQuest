@@ -484,6 +484,11 @@ class ModuleLifecycleStore:
             return None
 
     @classmethod
+    def _entry_exists(cls, path: Union[str, Path]) -> bool:
+        """#140 FP-07: only FileNotFoundError means absent; any other error raises."""
+        return cls._entry_stat(Path(path)) is not None
+
+    @classmethod
     def _require_plain_directory(
         cls,
         path: Path,
@@ -1615,7 +1620,7 @@ class ModuleLifecycleStore:
             message_digest,
             idempotency_key,
         )
-        if not os.path.lexists(active.candidate_path) or os.path.lexists(
+        if not self._entry_exists(active.candidate_path) or self._entry_exists(
             active.final_path
         ):
             raise LifecycleIndeterminateError(
@@ -1633,7 +1638,7 @@ class ModuleLifecycleStore:
             "message_digest": message_digest,
             "idempotency_key": idempotency_key,
         }
-        if os.path.lexists(path):
+        if self._entry_exists(path):
             existing = self._load_publication_receipt_metadata(
                 active.transaction_path,
                 intent,
@@ -1840,7 +1845,7 @@ class ModuleLifecycleStore:
         current = self.create_manifest(active.candidate_path)
         if self.manifest_digest(current) != active.manifest_digest:
             raise LifecycleIndeterminateError("Candidate changed after activation")
-        if os.path.lexists(active.final_path):
+        if self._entry_exists(active.final_path):
             raise LifecycleIndeterminateError("Final module path is occupied")
         if any(
             entry.name.casefold() == active.final_name.casefold()
@@ -1908,7 +1913,7 @@ class ModuleLifecycleStore:
         self.read_publication_receipt(active)
         if self.create_manifest(active.candidate_path) != dict(active.manifest):
             raise LifecycleIndeterminateError("Publication candidate manifest differs")
-        if os.path.lexists(active.final_path) or any(
+        if self._entry_exists(active.final_path) or any(
             entry.name.casefold() == active.final_name.casefold()
             for entry in os.scandir(self.modules_dir)
         ):
@@ -1947,7 +1952,7 @@ class ModuleLifecycleStore:
             raise LifecycleIndeterminateError(
                 "Published receipt differs from pre-promotion metadata"
             )
-        if os.path.lexists(active.candidate_path):
+        if self._entry_exists(active.candidate_path):
             raise LifecycleIndeterminateError("Publication candidate is not promoted")
         final_manifest = self.create_manifest(active.final_path)
         if final_manifest != dict(active.manifest):
@@ -2273,8 +2278,8 @@ class ModuleLifecycleStore:
             raise LifecycleIndeterminateError("Active manifest digest differs")
         candidate = transaction / "candidate" / intent["final_name"]
         final = self.modules_dir / intent["final_name"]
-        candidate_exists = os.path.lexists(candidate)
-        final_exists = os.path.lexists(final)
+        candidate_exists = self._entry_exists(candidate)
+        final_exists = self._entry_exists(final)
         if candidate_exists and final_exists:
             raise LifecycleIndeterminateError("Both hidden and public candidates exist")
         if not candidate_exists and not final_exists:
@@ -2331,7 +2336,7 @@ class ModuleLifecycleStore:
                 # NOT_PUBLISHED.  No path-derived recursive deletion occurs.
                 candidate_parent = candidate.parent
                 self._require_plain_directory(candidate_parent)
-                if os.path.lexists(candidate):
+                if self._entry_exists(candidate):
                     raise LifecycleIndeterminateError(
                         "Publication rollback target is occupied"
                     )
@@ -2339,7 +2344,7 @@ class ModuleLifecycleStore:
                 self._sync_directory(self.modules_dir)
                 self._sync_directory(candidate_parent)
                 if (
-                    os.path.lexists(final)
+                    self._entry_exists(final)
                     or self.create_manifest(candidate) != manifest
                 ):
                     raise LifecycleIndeterminateError(
