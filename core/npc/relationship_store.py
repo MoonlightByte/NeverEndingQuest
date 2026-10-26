@@ -38,6 +38,9 @@ SCHEMA_VERSION = 2
 MIGRATION_VERSION = "companion-memory-v1"
 DEFAULT_STATE_PATH = Path("data/companion_memories/npc_agent_state.json")
 DEFAULT_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "npc_agent_state_schema.json"
+# Unresolved legacy memory files already recorded, beside the store (#1346). The name
+# stays outside the "*_memories.json" pattern the memory readers glob.
+UNRESOLVED_LEGACY_FILE = ".unresolved_legacy.json"
 PROJECT_IDENTITY_NAMESPACE = uuid.UUID("9b0f3d4d-bf49-5c2c-a8bb-4056bdc31fc1")
 UNRESOLVED_TYPES = frozenset({"abandon", "betray", "rescue"})
 
@@ -286,6 +289,8 @@ class RelationshipStore:
         schema = json.loads(self.schema_path.read_text(encoding="ascii"))
         self._validator = Draft202012Validator(schema)
         self._read_only_reason: Optional[str] = None
+        # Unresolved legacy files reported by this instance: the backstop when the sidecar cannot be written.
+        self._unresolved_reported: set = set()
         if self.path.exists():
             document = self._read_existing()
             if document is None:
@@ -933,6 +938,40 @@ class RelationshipStore:
             for record in sorted(edge["evidence"], key=rank)[: max(0, min(limit, 3))]
         ]
 
+    def _first_unresolved_record(self, source: Path, source_canonical: str, matched: int) -> bool:
+        """True when this unresolved legacy file's content has not been recorded yet, and records it (#1346).
+
+        The record lives in a sidecar next to the store, so the store document and
+        its schema are untouched (an older build reading the store is unaffected).
+        It is keyed on the file's canonical JSON: an edited file is judged again
+        once. A missing or unreadable sidecar records again (fail open), but an
+        instance never records the same content twice; nothing here raises.
+        """
+        key = (source.name, source_canonical)
+        if key in self._unresolved_reported:
+            return False
+        self._unresolved_reported.add(key)
+        sidecar = self.path.parent / UNRESOLVED_LEGACY_FILE
+        try:
+            with path_transaction_lock(sidecar, suffix=".lock", timeout_seconds=5.0) as acquired:
+                if acquired is None:
+                    return True
+                try:
+                    with sidecar.open("r", encoding="utf-8") as handle:
+                        recorded = json.load(handle)
+                except (OSError, ValueError, TypeError):
+                    recorded = {}
+                if not isinstance(recorded, dict):
+                    recorded = {}
+                entry = recorded.get(source.name)
+                if isinstance(entry, dict) and entry.get("sourceCanonical") == source_canonical:
+                    return False
+                recorded[source.name] = {"sourceCanonical": source_canonical, "matched": matched}
+                safe_json_dump(recorded, str(sidecar), ensure_ascii=True)
+        except Exception:
+            pass
+        return True
+
     def migrate_legacy_identity(
         self,
         npc_id: str,
@@ -974,14 +1013,8 @@ class RelationshipStore:
             if matching_ids == [npc_id]:
                 matches.append((candidate, raw, value))
             elif len(matching_ids) != 1:
-                # Loud health record, deduped per store instance so per-turn
-                # migration sweeps do not spam the log.
-                warned = getattr(self, "_migration_match_warned", None)
-                if warned is None:
-                    warned = set()
-                    self._migration_match_warned = warned
-                if candidate.name not in warned:
-                    warned.add(candidate.name)
+                # Loud health record, once per file content across loads (#1346).
+                if self._first_unresolved_record(candidate, _canonical_json(value), len(matching_ids)):
                     record_store_health(
                         "legacy_import_unresolved_identity",
                         path=str(candidate),
