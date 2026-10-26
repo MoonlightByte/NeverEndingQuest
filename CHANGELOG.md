@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - A companion remembering an event now recalls everything they did in it, not only the first thing, so a later promise is no longer forgotten (#283).
+- The AI's raw starting-location reply (its JSON and reasoning) no longer shows up in the story text in the web or headless game; setup and travel notices now arrive as regular Dungeon Master messages, with the setup menus right after them (#257).
 - Technical notes about AI connection retries and limits now go only to the debug log, so they can no longer appear in the game text (#1545).
 - A story-first build's one retry is spent before it is claimed, so an interrupted claim can neither grant a second retry nor block the module name, and a briefly locked file no longer discards a finished build during cleanup (#143).
 - A fight left running after a mid-session break is picked up again on your next input, just as it is when the game starts, instead of the turn going to the Dungeon Master; if the fight still cannot continue, the game pauses on Load, Reset or Quit (#230).
