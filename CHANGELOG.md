@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - In a fight, a companion now remembers what it was privately thinking, wondering and feeling in the previous round; before, each new round wiped it, so every round started from nothing (#1568).
+- A travel sheet update no longer gives a new item an id an earlier change in the same trip already holds (#1569).
 - When a fight pauses for the player's dice roll, what the companions privately thought and felt at the start of that round is now kept; before, it was lost whenever the round paused for a roll, and a restart keeps any feeling the round brings up from being counted twice (#269).
 - Travel storage actions now follow earlier changes in the same trip instead of blocking it, and a new item id in one never repeats an id another holds (#1567).
 - Two staged travel changes to the same character sheet now both apply instead of the second blocking the transition (#1549).

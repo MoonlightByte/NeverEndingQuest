@@ -1076,6 +1076,7 @@ def prepare_current_transition_actions(operation_id):
                     affects=parameters.get("affects"),
                     casting_resource=parameters.get("castingResource"),
                     base_sheet=sheet_chain.get(_sheet_chain_key(sheet_path)),
+                    reserved_ids=_chain_reserved_ids(sheet_chain),
                 )
             except CharacterProposalDropped as dropped:
                 # #855: no usable proposal within the bounded tries. The
