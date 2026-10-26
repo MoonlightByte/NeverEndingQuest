@@ -4521,39 +4521,45 @@ def handle_set_provider(data):
         turn_scopes = get_lifecycle_turn_scopes()
         scope = turn_scopes[0] if turn_scopes else get_active_welcome_scope()
         if scope is None:
-            from core.managers.status_manager import status_manager
-
-            # The same gate as Save: busy with no scope to queue against.
-            if status_manager.is_processing() and not _web_gameplay_paused():
-                emit('error', {
-                    'message': (
-                        'The game is finishing the current action. '
-                        'Please retry when it is ready for input.'
-                    )
-                })
-                return
+            # No turn or welcome is running: apply now, as before #113. The
+            # startup wizard's configuration wait runs inside a turn scope, so
+            # its Settings save is queued there and drained by that wait.
             apply_provider()
             emit('provider_changed', {'provider': provider}, broadcast=True)
             return
 
+        from uuid import uuid4
+        from flask import current_app, has_request_context, request
         from utils.capture.live_provider_call import queue_live_save
 
-        session_id = getattr(request, 'sid', None) or 'unknown-session'
+        # The record completes on the game thread, outside this request:
+        # capture the server and the requester now. Imports stay local so the
+        # handler runs on its own (the provider handler contract tests).
+        server = current_app.extensions['socketio'] if has_request_context() else None
+        session_id = (getattr(request, 'sid', None) if has_request_context() else None) or 'unknown-session'
         boundary = 'the current turn' if turn_scopes else 'the welcome-back narration'
+
+        def notify(event, payload, to_requester):
+            if server is None:
+                emit(event, payload)
+            elif to_requester:
+                server.emit(event, payload, to=session_id)
+            else:
+                server.emit(event, payload)
 
         def complete_provider(outcome):
             success, message = outcome
             if success:
-                socketio.emit('provider_changed', {'provider': provider})
+                notify('provider_changed', {'provider': provider}, False)
             else:
-                socketio.emit('error', {'message': f"Failed to set provider: {message}"}, to=session_id)
+                notify('error', {'message': f"Failed to set provider: {message}"}, True)
 
         def cancel_provider(operation_id, cause):
-            socketio.emit('system_message', {
+            notify('system_message', {
                 'content': 'Waiting provider change cancelled by %s.' % cause['kind'],
                 'status': 'cancelled', 'operation_id': operation_id,
                 'superseding_operation_id': cause['operation_id'],
-            }, to=session_id)
+            }, True)
 
         # One id per request: queue_live_save drops a pending record with the
         # same id, and choosing A, B, then A again must end on A.
