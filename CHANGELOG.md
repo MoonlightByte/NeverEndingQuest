@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A fight left running after a mid-session break is picked up again on your next input, just as it is when the game starts, instead of the turn going to the Dungeon Master; if the fight still cannot continue, the game pauses on Load, Reset or Quit (#230).
 - Reset retries a briefly locked module file instead of stopping partway and never leaves a restored file half-written (#226).
 - Loading a save or resetting while a fight was being built ("Prepare for battle - building encounter...") no longer waits for every new monster and NPC to be generated: the build stops within a few seconds, and a stopped build writes no encounter and no half-written monster or NPC file (#1529).
 - A campaign Reset's backup now also keeps companion memories (NPC relationships and episodes) before clearing them, so they can be restored from it (#201).

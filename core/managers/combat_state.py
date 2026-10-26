@@ -495,6 +495,20 @@ def all_party_resolved(encounter):
     )
 
 
+def active_encounter_is_live(encounter):
+    """Return whether a tracker's active encounter is still a fight (#230).
+
+    An agentic fight is live until its completion closes; a legacy fight is
+    live while neither side is resolved. Unreadable data is not live.
+    """
+    if not isinstance(encounter, dict):
+        return False
+    state = encounter.get("combatState") or {}
+    if state.get("pipelineMode") == "agentic":
+        return (state.get("completion") or {}).get("status") != "closed"
+    return not (all_hostiles_resolved(encounter) or all_party_resolved(encounter))
+
+
 def ensure_combatant_ids(encounter):
     """Upgrade a roster with persisted unique IDs and deterministic tie breaks."""
     if not isinstance(encounter, dict):
