@@ -1414,6 +1414,29 @@ class ModuleLifecycleStore:
             raise LifecycleIndeterminateError(
                 "Story-first resume staging identity is occupied"
             )
+        resumed_workspace = BuildWorkspace(
+            intent["build_id"],
+            intent["token"],
+            kind,
+            intent["requested_name"],
+            intent["final_name"],
+            staging,
+            staging / "candidate" / intent["final_name"],
+        )
+        # #143 FP-19: the retry is spent before the candidate is claimed, so a
+        # failure from here on can lose it but never restore it or leave a
+        # marker that still matches.
+        self._atomic_write_json(
+            transaction / _STORY_FIRST_RESUME_FILE,
+            self._story_first_resume_value(
+                resumed_workspace,
+                stage=evidence["stage"],
+                failure_class=evidence["failure_class"],
+                issues=evidence["issues"],
+                retries_remaining=0,
+            ),
+        )
+        self._sync_directory(transaction)
         self._replace_entry(transaction, staging)
         self._sync_directory(self.resolved_root)
         self._sync_directory(self.staging_root)
@@ -1424,26 +1447,7 @@ class ModuleLifecycleStore:
             phase=LifecyclePhase.BUILDING,
             manifest_digest=None,
         )
-        (staging / "outcome.json").unlink()
-        resumed_workspace = BuildWorkspace(
-            intent["build_id"],
-            intent["token"],
-            kind,
-            intent["requested_name"],
-            intent["final_name"],
-            staging,
-            staging / "candidate" / intent["final_name"],
-        )
-        self._atomic_write_json(
-            staging / _STORY_FIRST_RESUME_FILE,
-            self._story_first_resume_value(
-                resumed_workspace,
-                stage=evidence["stage"],
-                failure_class=evidence["failure_class"],
-                issues=evidence["issues"],
-                retries_remaining=0,
-            ),
-        )
+        retry_transient_filesystem((staging / "outcome.json").unlink)
         self._sync_directory(staging)
         return resumed_workspace
 
@@ -1453,7 +1457,7 @@ class ModuleLifecycleStore:
         self._validate_workspace(workspace)
         marker = workspace.transaction_path / _STORY_FIRST_RESUME_FILE
         if marker.exists():
-            marker.unlink()
+            retry_transient_filesystem(marker.unlink)  # #143 FP-20
             self._sync_directory(workspace.transaction_path)
 
     @staticmethod

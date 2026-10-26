@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Technical notes about AI connection retries and limits now go only to the debug log, so they can no longer appear in the game text (#1545).
+- A story-first build's one retry is spent before it is claimed, so an interrupted claim can neither grant a second retry nor block the module name, and a briefly locked file no longer discards a finished build during cleanup (#143).
 - A fight left running after a mid-session break is picked up again on your next input, just as it is when the game starts, instead of the turn going to the Dungeon Master; if the fight still cannot continue, the game pauses on Load, Reset or Quit (#230).
 - A won fight no longer stays active when its wrap-up has to wait for the fight's save file: the wrap-up waits ("Wrapping up the battle...") instead of giving up after 5 seconds, and a Load, Reset or quit during that wait ends it without writing anything (#202).
 - The storyteller is now told each turn which character is the player, so it speaks to them as "you" instead of narrating them like a stranger (#189).
