@@ -4850,13 +4850,26 @@ def process_action(
             result_dir = tempfile.mkdtemp(prefix="combat_builder_")
             try:
                 from utils.encoding_utils import utf8_child_env
-                result = subprocess.run(
+                from utils.child_process import run_fenced
+                from utils.capture.live_provider_call import _check_live_authority, get_live_provider_scope
+                from utils.transient_filesystem import raise_if_save_stopped
+
+                def stop_check():
+                    # #1529: a Load/Reset (or a read-only save stop) ends the
+                    # build's wait; the builder and its child are reaped first.
+                    try:
+                        _check_live_authority(get_live_provider_scope())
+                    except OSError:
+                        pass  # unreadable authority is never a supersession
+                    raise_if_save_stopped()
+
+                returncode, stdout, stderr = run_fenced(
                     [sys.executable, combat_builder_path, "--result-file",
                      os.path.join(result_dir, "result.json")],
-                    input=json.dumps(action),
-                    capture_output=True, encoding="utf-8", errors="replace",
-                    env=utf8_child_env()
+                    input_text=json.dumps(action), stop_check=stop_check,
+                    stop_file=os.path.join(result_dir, "stop"), env=utf8_child_env(),
                 )
+                result = subprocess.CompletedProcess([], returncode, stdout, stderr)
                 encounter_id, build_failure = _built_encounter(
                     os.path.join(result_dir, "result.json"), result.returncode
                 )
