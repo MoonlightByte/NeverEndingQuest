@@ -287,7 +287,7 @@
         "Investigation DC 16: Find the submerged boots of water walking."
       ],
       "accessibility": "Extremely difficult terrain with deep water, unstable ground, and few solid paths.",
-      "dangerLevel": "Extreme",
+      "dangerLevel": "Very High",
       "features": [
         {
           "name": "Stepping Stone Paths",
@@ -502,7 +502,7 @@
         "Arcana DC 16: Understand and disable the perimeter wards without insider knowledge."
       ],
       "accessibility": "Relatively flat terrain with intentional pathways; most areas accessible but heavily guarded.",
-      "dangerLevel": "Extreme",
+      "dangerLevel": "Very High",
       "features": [
         {
           "name": "Central Pavilion",
@@ -675,7 +675,7 @@
         "Perception DC 15: Find the hidden amulet of the Barrow Guardians."
       ],
       "accessibility": "Narrow passages and chambers; challenging to navigate, especially for larger creatures.",
-      "dangerLevel": "Extreme",
+      "dangerLevel": "Very High",
       "features": [
         {
           "name": "Binding Sarcophagus",
