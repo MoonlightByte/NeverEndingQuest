@@ -1958,6 +1958,7 @@ class CampaignManager:
         """
         with module_refresh_lock() as acquired:
             if not acquired:
+                # Keep the reported skip: the next scan joins these modules (#1108).
                 return {
                     "success": False,
                     "newly_integrated": [],
