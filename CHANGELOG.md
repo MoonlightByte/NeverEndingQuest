@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the opening scene or the "welcome back" scene could not be finished because the AI provider failed, the game now ends it with one short in-character DM line, the same kind shown when a turn cannot be settled, instead of saying nothing or showing "None" (the terminal game also no longer shows "None" twice). When the web's manual startup recovery is refused because the provider account is out of funds or the key is rejected, it now names that problem instead of "Startup recovery failed (error)." (#1233).
 - An old companion-memory file whose name doesn't match the companion exactly ("Kira" for "Scout Kira") is still skipped, but the error about it is now logged once instead of on every load (#1346).
 - When other adventure work is busy just as the quest log is being saved, the game now waits for it instead of throwing away the freshly written quest log (#1108).
 - If the game could not save one of your messages or the DM's replies to its on-screen history, that line no longer disappears when the page reconnects (for example after switching tabs on a phone); the server keeps it and writes it with the next line it saves, and the failed save is now logged (#1373).
