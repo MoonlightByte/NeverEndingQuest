@@ -401,7 +401,7 @@ For "What's in our storage here?":
                     is_valid, validation_error = self._validate_operation(operation)
                 
                 if not is_valid:
-                    warning(f"VALIDATION: Failed on attempt {attempt + 1}: {validation_error}", category="storage_operations")
+                    warning(f"VALIDATION: Failed on attempt {attempt}: {validation_error}", category="storage_operations")
                     
                     if attempt >= max_attempts:
                         return {
@@ -425,7 +425,7 @@ For "What's in our storage here?":
                     continue  # Retry with feedback
                     
                 # Success!
-                info(f"SUCCESS: Storage processing succeeded on attempt {attempt + 1}", category="storage_operations")
+                info(f"SUCCESS: Storage processing succeeded on attempt {attempt}", category="storage_operations")
                 return {
                     "success": True,
                     "operation": operation,
@@ -436,7 +436,7 @@ For "What's in our storage here?":
             except ReadOnlySaveStop:
                 raise
             except Exception as e:
-                error(f"FAILURE: Storage processing exception on attempt {attempt + 1}", exception=e, category="storage_operations")
+                error(f"FAILURE: Storage processing exception on attempt {attempt}", exception=e, category="storage_operations")
                 if attempt >= max_attempts:
                     return {
                         "success": False,

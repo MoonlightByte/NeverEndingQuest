@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Storage log lines name the attempt that actually ran (#383).
 - When the story frees a character from a condition such as restrained or poisoned, or puts them in one, the game now makes sure their character sheet is updated too, so a condition no longer lingers after the story says it ended (#261).
 - Removed the unused NPC auto-level-up module (T086) and its model setting; companions level through the same level-up session (#362).
 - A companion keeps their established personality when a profile refresh fails after their sheet changes (#350).
