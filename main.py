@@ -713,8 +713,9 @@ def _apply_welcome(lifecycle):
                     lifecycle.refusal_provider,
                     "welcome",
                 )
-                if refusal_text is not None:
-                    display_dm_narration(refusal_text)
+                # #1233: a non-account refusal ends on the D-COST-4 line, not silence.
+                display_dm_narration(refusal_text if refusal_text is not None
+                                     else _dm_fail_forward_line())
         _finish_welcome(lifecycle, "FAILED")
         return
 
@@ -906,8 +907,10 @@ def _apply_welcome(lifecycle):
             if not is_kickoff_claim_still_active(lifecycle.startup_attempt_id, lifecycle.lease_owner):
                 _finish_welcome(lifecycle, "STALE_DISCARDED")
                 return
-            display_dm_narration(process_result["player_message"])
-            raise RuntimeError(process_result["player_message"])
+            # #1233: an unclassified refusal has no text; never show "None".
+            line = process_result["player_message"] or _dm_fail_forward_line()
+            display_dm_narration(line)
+            raise RuntimeError(line)
         if (
             isinstance(process_result, dict)
             and (
@@ -1355,7 +1358,10 @@ def _run_startup_kickoff_once(
         }:
             if not is_kickoff_claim_still_active(startup_attempt_id, lease_owner):
                 return "stale_discarded"
-            display_dm_narration(process_result["player_message"])
+            # #1233: with no text, raise without a line; the kickoff's caller
+            # shows one line after the forced retry (#442: told once).
+            if process_result["player_message"]:
+                display_dm_narration(process_result["player_message"])
             raise RuntimeError(process_result["player_message"])
         if (
             isinstance(process_result, dict)
@@ -1478,6 +1484,14 @@ def run_startup_kickoff_with_recovery(
     return {"status": "failed", "reason": retry_result, "player_message": _kickoff_refusal_line}
 
 
+def _kickoff_failure_line(kickoff_result):
+    """#1233: the one line a failed synchronous kickoff ends on: its account
+    line, else the D-COST-4 line. "pending" and "done" show nothing."""
+    if not isinstance(kickoff_result, dict) or kickoff_result.get("status") != "failed":
+        return None
+    return kickoff_result.get("player_message") or _dm_fail_forward_line()
+
+
 def recover_startup_handoff():
     """Manual recovery path for web action endpoint."""
     prep = prepare_manual_recovery_state()
@@ -1514,7 +1528,9 @@ def recover_startup_handoff():
         return {"status": "recovered"}
     if result.get("status") == "pending":
         return {"status": "in_progress"}
-    return {"status": "failed", "error": result.get("reason", "unknown")}
+    # #1233: the account line, when the opening was refused, reaches the web.
+    return {"status": "failed", "error": result.get("reason", "unknown"),
+            "player_message": result.get("player_message")}
 
 
 # Add this new function near the top of the file
@@ -5373,6 +5389,11 @@ def display_dm_narration(content, channel="main", color="blue", message_id=None,
     """
     from web.shared_state import emit_player_output
 
+    if not isinstance(content, str) or not content.strip():
+        # #1233: no text is never shown, neither as "None" nor as an empty line.
+        warning(f"NARRATION: skipped a DM narration with no text ({content!r})",
+                category="narration")
+        return
     delivered = False
     if content and content.strip():
         delivered = emit_player_output(
@@ -9426,8 +9447,9 @@ def _main_game_loop(startup_authority, turn_authority):
                     f"INITIALIZATION: Startup kickoff did not complete cleanly: {kickoff_result}",
                     category="startup",
                 )
-                if kickoff_result.get("player_message"):
-                    display_dm_narration(kickoff_result["player_message"])
+                failure_line = _kickoff_failure_line(kickoff_result)
+                if failure_line:
+                    display_dm_narration(failure_line)
 
     # Add safeguard against infinite loops in non-interactive environments
     empty_input_count = 0
