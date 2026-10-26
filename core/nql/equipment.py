@@ -134,6 +134,9 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
     # Removed or reduced stock: consume. Increased stock: add (refill, loot, purchase).
     for iid, e in old.items():
         if iid not in new:
+            # A row that held nothing is consumed by nothing (#1197): the engine refuses a zero amount.
+            if _stock(e) <= 0:
+                continue
             ops.append(f"consume {_q(iid)} from {_q(cid)} by {_stock(e)};")
             continue
         delta = _stock(new[iid]) - _stock(e)

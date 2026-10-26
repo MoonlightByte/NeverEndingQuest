@@ -79,7 +79,7 @@ from core.managers.combat_transaction import (
     write_weapon_attack,
 )
 from utils.encoding_utils import normalize_typography_deep, safe_json_load
-from utils.capture.live_provider_call import LiveProviderCompletedError
+from utils.capture.live_provider_call import LiveProviderCompletedError, _limit_envelope
 from utils.transient_filesystem import ReadOnlySaveStop
 
 
@@ -2952,6 +2952,9 @@ def execute_agentic_turn(
     capability_count, rule_count = _diagnostic_context_counts(spell_references)
     attempt_number = 0
     game_roll_rerule = False
+    # #1251: the provider's own batches rejected in this window, compared by
+    # typed value; one returned again ends the window as the ceiling does.
+    rejected_batches = []
     while events is None:
         if game_roll_rerule:
             # #1118: T096 rules again with the game's roll; that pass is not
@@ -2963,6 +2966,7 @@ def execute_agentic_turn(
                 _set_combat_retry_status()
         started = time.monotonic()
         batch = None
+        provider_batch = None
         try:
             _require_current_invocation(invocation_claim)
             intent_kwargs = {
@@ -2985,6 +2989,7 @@ def execute_agentic_turn(
                 provider_player_input,
                 **intent_kwargs,
             )
+            provider_batch = deepcopy(batch) if isinstance(batch, dict) else None
             _require_current_invocation(invocation_claim)
             batch = _apply_trusted_spell_durations(
                 batch,
@@ -3084,6 +3089,8 @@ def execute_agentic_turn(
                 provider_player_input = _composed_player_input(pending, player_input)
                 correction = None
                 game_roll_rerule = True
+                # The re-rule answers a new input (the game's roll).
+                rejected_batches = []
                 continue
             # Item 10 (r2): the answered save keeps the DC it was asked at.
             _check_asked_save_dc(batch, asked_dc_corrected)
@@ -3357,6 +3364,30 @@ def execute_agentic_turn(
                 rules_contract_key=rules_drift.get("contractKey"),
                 rules_contract_version=rules_drift.get("version"),
             )
+            if provider_batch is not None:
+                if provider_batch in rejected_batches:
+                    # #1251: T096 returned a batch it was already refused for.
+                    # No further call: the window ends on the ceiling's path,
+                    # with the ceiling's line (#1342), and the turn is kept.
+                    record_combat_diagnostic(
+                        record_type="window_outcome",
+                        callsite="T096",
+                        outcome="repeated_rejection",
+                        encounter_id=encounter.get("encounterId"),
+                        turn_id=pending.get("turnId"),
+                        revision=(encounter.get("combatState") or {}).get("revision"),
+                        round_number=(encounter.get("combatState") or {}).get("round"),
+                        attempt=attempt_number,
+                    )
+                    raise LiveProviderCompletedError(
+                        "T096",
+                        _limit_envelope(
+                            "turn_call_ceiling",
+                            "T096",
+                            {"_request_provider": intent_provider_name, "model": intent_model_name},
+                        ),
+                    ) from exc
+                rejected_batches.append(provider_batch)
             try:
                 from core.ai.srd_reference import corrective_rule_references
 
