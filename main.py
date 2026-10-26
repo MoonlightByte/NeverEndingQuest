@@ -6225,7 +6225,8 @@ def process_ai_response(
         json_content, party_tracker_data=party_tracker_data,
     )
     if not structure_ok:
-        return retryable_result("invalid_transition_actions", error=structure_error)
+        return retryable_result("invalid_transition_actions", error=structure_error,
+                                candidate=response)
     response = normalized_content
     json_content = normalized_content
     parsed_response = json.loads(json_content)
@@ -6245,7 +6246,8 @@ def process_ai_response(
     ]
     if cross_module_indexes and cross_module_indexes != [0]:
         return retryable_result("invalid_transition_actions",
-                                error="Cross-module movement must appear once and first.")
+                                error="Cross-module movement must appear once and first.",
+                                candidate=response)
     requested_module = str(first_parameters.get("module", ""))
     is_travel_workflow = any(
         isinstance(action, dict) and action.get("action") == "transitionLocation"
@@ -6405,6 +6407,7 @@ def process_ai_response(
                     "A response containing transitionLocation must contain "
                     "exactly one transition and it must be the first action"
                 ),
+                candidate=response,
             )
 
         first_action = actions[0] if actions and isinstance(actions[0], dict) else {}
@@ -6425,6 +6428,7 @@ def process_ai_response(
                         "Cross-module travel must be updatePartyTracker followed "
                         "by exactly one updateTime action"
                     ),
+                    candidate=response,
                 )
             accepted_history = list(conversation_history)
             accepted_history.append({"role": "assistant", "content": response})
@@ -6513,6 +6517,7 @@ def process_ai_response(
                     return retryable_result(
                         "invalid_transition_actions",
                         error="Only one transitionLocation may be processed per response",
+                        candidate=response,
                     )
                 is_transition = True
                 transition_action_index = action_index
@@ -6526,6 +6531,7 @@ def process_ai_response(
                         "response; state changes may only follow a committed "
                         "movement"
                     ),
+                    candidate=response,
                 )
         
         # If it's a transition, handle it with the special two-step process
@@ -7238,12 +7244,12 @@ def resolve_retryable_ai_result(
         return authority_check(context) if authority_check is not None else True
 
     retry_statuses = {
-        "invalid_transition_actions",
         "stale_response_context",
         "transition_state_changed",
     }
     retries = 0
     review_retries = 0
+    shape_corrected = False
     while (
         isinstance(final_result, dict)
         and final_result.get("retryable") is True
@@ -7338,6 +7344,68 @@ def resolve_retryable_ai_result(
                 player_input=review_context["player_input"],
                 approved_transition_plan=reviewed["approved_transition_plan"],
                 review_context=next_context,
+                detached_context=detached_context,
+            )
+            continue
+        if final_result.get("status") == "invalid_transition_actions":
+            # #433: the draft's own shape is wrong, and a blind regenerate
+            # from the same history tends to repeat it. It goes back to the
+            # model once with the reason, through the review owner; a second
+            # one fails safely with nothing from it applied.
+            if shape_corrected or not isinstance(final_result.get("candidate"), str):
+                warning(
+                    f"DM draft shape still rejected after a correction: {final_result.get('error')}",
+                    category="ai_validation",
+                )
+                final_result = {
+                    "status": "error", "error": final_result.get("error"), "retryable": False,
+                }
+                break
+            shape_corrected = True
+            authority_context = None
+            turn_input = player_input
+            if detached_context is not None:
+                authority_context = final_result.get("authority_context")
+                if not isinstance(authority_context, dict) or not review_authority_current(authority_context):
+                    final_result = {"status": "stale_discarded", "retryable": False}
+                    break
+                conversation_history = copy.deepcopy(authority_context["accepted_history"])
+                party_tracker_data = copy.deepcopy(authority_context["party_snapshot"])
+                location_data = get_location_data_from_party_tracker(party_tracker_data)
+                turn_input = authority_context["player_input"]
+            reviewed = _review_dm_candidate(
+                final_result["candidate"],
+                accepted_history=copy.deepcopy(conversation_history),
+                player_input=turn_input, party=party_tracker_data,
+                validation_prompt=load_validation_prompt(),
+                npc_voice_batch=None, invocation_claim=invocation_claim,
+                live_turn_scope=get_live_provider_scope(),
+                path_manager=ModulePathManager(
+                    str(party_tracker_data.get("module") or "").replace(" ", "_")
+                ),
+                location_graph=location_graph, detached_context=detached_context,
+                correction_reason=(
+                    "The previous structured response was rejected: "
+                    + str(final_result.get("error") or "").rstrip(".")
+                    + ". Return the complete corrected JSON."
+                ),
+                campaign_end=False,
+            )
+            if authority_context is not None and not review_authority_current(authority_context):
+                final_result = {"status": "stale_discarded", "retryable": False}
+                break
+            if reviewed["status"] != "accepted":
+                final_result = reviewed
+                break
+            final_result = process_ai_response(
+                reviewed["candidate"], party_tracker_data, location_data,
+                conversation_history, invocation_claim=invocation_claim,
+                player_input=turn_input,
+                approved_transition_plan=reviewed["approved_transition_plan"],
+                review_context=_dm_review_context(
+                    reviewed, conversation_history, turn_input,
+                    party_snapshot=party_tracker_data, campaign_end=False,
+                ),
                 detached_context=detached_context,
             )
             continue
@@ -7804,19 +7872,9 @@ def _finalize_main_response_validation(
     conversation_history,
     validation_prefix_length,
     candidate_response,
-    candidate_valid,
 ):
-    """Remove retry-only messages and block rejected T067 state actions."""
-    cleaned_history = conversation_history[:validation_prefix_length]
-    if candidate_valid and candidate_response:
-        return cleaned_history, candidate_response
-
-    fallback_message = (
-        "I could not safely resolve that action after several attempts. "
-        "No game state was changed; please rephrase or try a simpler action."
-    )
-    cleaned_history.append({"role": "assistant", "content": fallback_message})
-    return cleaned_history, None
+    """Remove retry-only messages; only an accepted candidate reaches here."""
+    return conversation_history[:validation_prefix_length], candidate_response
 
 
 def get_ai_response(
@@ -10111,7 +10169,6 @@ def _main_game_loop(startup_authority, turn_authority):
                     conversation_history,
                     validation_prefix_length,
                     ai_response_content,
-                    candidate_valid=True,
                 )
             if not travel_candidate and not persist_t067_history_if_current(conversation_history):
                 invocation_superseded = True
