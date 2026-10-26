@@ -107,10 +107,19 @@ class HeadlessInput:
     isatty attribute, by design (see module docstring).
     """
 
-    def __init__(self, input_queue, on_prompt=None, is_quitting=None):
+    def __init__(self, input_queue, on_prompt=None, is_quitting=None,
+                 lifecycle_control=None):
         self.queue = input_queue
         self.on_prompt = on_prompt
         self.is_quitting = is_quitting
+        self.lifecycle_control = lifecycle_control
+
+    def lifecycle_control_kind(self):
+        """The control ("quit" or "reset") that ended input, or None (#341)."""
+        try:
+            return self.lifecycle_control() if self.lifecycle_control is not None else None
+        except Exception:
+            return None
 
     def _quit_requested(self):
         try:

@@ -1504,6 +1504,40 @@ def run_startup_kickoff_with_recovery(
     return {"status": "failed", "reason": retry_result, "player_message": _kickoff_refusal_line}
 
 
+def _run_terminal_kickoff(conversation_history, party_tracker_data, location_data):
+    """#1538: the synchronous kickoff (terminal limited-mode) runs under a live
+    turn scope like a player turn, so its calls get heartbeat, reissue and the
+    account refusal line. A scope a resumed fight left open is borrowed."""
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import (
+        LiveProviderSuperseded, abort_live_turn_scope, finish_live_turn_scope,
+        get_live_turn_scope, open_live_turn_scope,
+    )
+
+    scope = get_live_turn_scope()
+    owned = scope is None
+    if owned:
+        scope = open_live_turn_scope()
+    engine_fault = False
+    try:
+        return run_startup_kickoff_with_recovery(
+            conversation_history,
+            party_tracker_data,
+            location_data,
+        )
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        raise
+    except BaseException:
+        engine_fault = True
+        raise
+    finally:
+        if owned:
+            if engine_fault:
+                abort_live_turn_scope(scope=scope)
+            else:
+                finish_live_turn_scope(scope)
+
+
 def _kickoff_failure_line(kickoff_result):
     """#1233: the one line a failed synchronous kickoff ends on: its account
     line, else the D-COST-4 line. "pending" and "done" show nothing."""
@@ -7533,8 +7567,12 @@ def save_conversation_history(
     commit_guard=None,
 ):
     from utils.capture.live_provider_call import LiveProviderSuperseded
-    history_to_save = history
+    from utils.transient_filesystem import ReadOnlySaveStop
     try:
+        # #290: the authoritative conversation is persisted before T020 runs,
+        # so a lifecycle supersession or a failure during compression never
+        # loses it.
+        safe_json_dump(history, json_file, commit_guard=commit_guard)
         # Compression is an optional optimization.  Its constructor, local
         # context lookup, or provider call must never prevent the authoritative
         # conversation from being persisted.
@@ -7549,20 +7587,18 @@ def save_conversation_history(
                     # Apply compression (returns new list if successful)
                     compressed_history = compressor.apply_compression_to_list(history)
                     if compressed_history:
-                        history_to_save = compressed_history
+                        safe_json_dump(compressed_history, json_file, commit_guard=commit_guard)
                         info("Conversation history compressed successfully", category="compression")
                     else:
                         debug("Compression not applied - conditions not fully met", category="compression")
-        except LiveProviderSuperseded:
+        except (LiveProviderSuperseded, ReadOnlySaveStop):
             raise
         except Exception as compression_error:
             warning(
-                "Conversation compression failed; saving uncompressed history: "
+                "Conversation compression failed; the uncompressed history is saved: "
                 f"{compression_error}",
                 category="compression",
             )
-
-        safe_json_dump(history_to_save, json_file, commit_guard=commit_guard)
         return True
     except LiveProviderSuperseded:
         raise
@@ -9733,7 +9769,7 @@ def _main_game_loop(startup_authority, turn_authority):
             )
         else:
             # Exactly-once synchronous kickoff (terminal limited-mode).
-            kickoff_result = run_startup_kickoff_with_recovery(
+            kickoff_result = _run_terminal_kickoff(
                 conversation_history,
                 party_tracker_data,
                 location_data,

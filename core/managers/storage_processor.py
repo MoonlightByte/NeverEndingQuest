@@ -29,6 +29,7 @@
 # - Error recovery and suggestion generation
 # ============================================================================
 
+import copy
 import json
 import os
 from datetime import datetime
@@ -70,8 +71,9 @@ class StorageProcessor:
             return safe_json_load(self.schema_file)
         return {}
         
-    def _get_game_context(self, character_name: str) -> Dict[str, Any]:
-        """Get current game context for processing"""
+    def _get_game_context(self, character_name: str, base_sheets=None) -> Dict[str, Any]:
+        """Get current game context for processing. ``base_sheets`` maps a path to
+        an earlier travel sibling's frozen value, read instead of the disk (#1567)."""
         context = {
             "character": None,
             "party": None,
@@ -82,7 +84,10 @@ class StorageProcessor:
         try:
             # Get character data
             character_file = self.path_manager.get_character_path(character_name)
-            if os.path.exists(character_file):
+            base_character = base_sheets(character_file) if base_sheets else None
+            if base_character is not None:
+                context["character"] = copy.deepcopy(base_character)
+            elif os.path.exists(character_file):
                 context["character"] = safe_json_load(character_file)
                 
             # Get party data
@@ -100,8 +105,9 @@ class StorageProcessor:
                 }
                 
             # Get existing storage at current location
-            if os.path.exists("player_storage.json"):
-                storage_data = safe_json_load("player_storage.json")
+            base_storage = base_sheets("player_storage.json") if base_sheets else None
+            if base_storage is not None or os.path.exists("player_storage.json"):
+                storage_data = base_storage if base_storage is not None else safe_json_load("player_storage.json")
                 current_location_id = context["location"]["id"] if context["location"] else "UNKNOWN"
                 context["existing_storage"] = [
                     storage for storage in storage_data.get("playerStorage", [])
@@ -315,6 +321,7 @@ For "What's in our storage here?":
         character_name: str,
         *,
         structural_reissue: bool = False,
+        base_sheets=None,
     ) -> Dict[str, Any]:
         """Process natural language storage description into validated operation with retry logic"""
         
@@ -330,7 +337,7 @@ For "What's in our storage here?":
                 debug(f"AI_CALL: Storage processing attempt {attempt} of {max_attempts}", category="storage_operations")
                 
                 # Get game context
-                context = self._get_game_context(character_name)
+                context = self._get_game_context(character_name, base_sheets=base_sheets)
                 
                 # Create AI prompt
                 messages = self._create_processing_prompt(description, context)
@@ -458,6 +465,7 @@ def process_storage_request(
     character_name: str,
     *,
     structural_reissue: bool = False,
+    base_sheets=None,
 ) -> Dict[str, Any]:
     """Process a storage request from natural language description"""
     processor = StorageProcessor()
@@ -465,4 +473,5 @@ def process_storage_request(
         description,
         character_name,
         structural_reissue=structural_reissue,
+        base_sheets=base_sheets,
     )

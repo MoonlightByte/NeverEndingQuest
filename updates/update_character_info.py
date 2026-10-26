@@ -1570,7 +1570,7 @@ def drop_non_party_keys(character_name, updates, character_role=None):
 
 def prepare_character_delta(character_data, updates, character_role, schema,
                             character_name, managed_effect_operation=None,
-                            model_authored=False):
+                            model_authored=False, reserved_ids=None):
     """Shared provider-free stored-value preparation (#323 D-323-10).
 
     Ordinary T079 input joins after effective-to-base normalization. Typed
@@ -1769,7 +1769,9 @@ def prepare_character_delta(character_data, updates, character_role, schema,
         # is reported like a schema failure so the model can correct its delta.
         from core.nql import equipment as nql_equipment
 
-        outcome = nql_equipment.reconcile(character_data, updated_data, reserved=nql_equipment.genesis.held_ids_on_disk())
+        # #1569: a travel sibling also steps past the ids its earlier siblings froze.
+        reserved = nql_equipment.genesis.held_ids_on_disk() | set(reserved_ids or ())
+        outcome = nql_equipment.reconcile(character_data, updated_data, reserved=reserved)
         if not outcome.ok:
             checks.update(error_message=(
                 "the equipment change was refused by the rules engine: "
@@ -2247,6 +2249,8 @@ def _update_character_info_unlocked(
     commit_guard=None,
     affects=None,
     casting_resource=None,
+    base_sheet=None,
+    reserved_ids=None,
 ):
     """
     Unified function to update character information for both players and NPCs
@@ -2260,6 +2264,8 @@ def _update_character_info_unlocked(
         bool: True if successful, False otherwise
     """
     
+    if base_sheet is not None and not prepare_only:
+        raise ValueError("base_sheet is only for a prepared update (#1549)")
     if commit_guard is not None:
         with commit_guard():
             pass
@@ -2281,7 +2287,9 @@ def _update_character_info_unlocked(
     character_path = get_character_path(character_name, character_role)
     
     try:
-        character_data = safe_read_json(character_path)
+        # #1549: a later same-character travel sibling is prepared on the
+        # earlier sibling's frozen sheet, not the one on disk.
+        character_data = copy.deepcopy(base_sheet) if base_sheet is not None else safe_read_json(character_path)
         if not character_data:
             error(f"FAILURE: Could not load character data for {character_name}", category="file_operations")
             return False
@@ -3044,6 +3052,7 @@ Character Role: {character_role}
                 character_data, updates, character_role, schema, character_name,
                 managed_effect_operation if declarative_effects else None,
                 model_authored=True,
+                reserved_ids=reserved_ids,
             )
             
             # Debug HP changes AFTER merge

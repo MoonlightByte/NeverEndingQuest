@@ -64,6 +64,9 @@ class HeadlessSession:
         self.input_queue = queue.Queue()
         self.prompt_pending = threading.Event()
         self._quitting = False
+        # #341: the control that set the quit latch through request_quit
+        # ("quit" or "reset"); the startup wizard reads it at its input boundary.
+        self._quit_kind = None
         self._exit_lock = threading.Lock()
         self._exit_emitted = False
         self._restart_in_progress = threading.Event()
@@ -135,7 +138,8 @@ class HeadlessSession:
             self._on_stream_event, self._raw_log, is_error=True)
         stdin_shim = HeadlessInput(
             self.input_queue, on_prompt=self._on_prompt,
-            is_quitting=lambda: self._quitting)
+            is_quitting=lambda: self._quitting,
+            lifecycle_control=lambda: self._quit_kind if self._quitting else None)
         sys.stdout = self._stdout_shim
         sys.stderr = stderr_shim
         sys.stdin = stdin_shim
@@ -545,6 +549,7 @@ class HeadlessSession:
         # quiesce first. The engine thread may finish its superseded turn while
         # this control thread is waiting; setting the intent afterward races
         # that completion and misreports a player quit as ``engine_stop``.
+        self._quit_kind = kind
         self._quitting = True
         self.prompt_pending.clear()
         if turn_scopes:

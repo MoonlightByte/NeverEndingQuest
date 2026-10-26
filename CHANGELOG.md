@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - A Save sent while the headless game is still starting now waits and completes instead of failing with "engine is busy" (#346).
+- In a terminal game, the opening scene now shows its progress, retries a silent provider and says when the account is out of credit, as every later turn does (#1538).
+- In a fight, a companion now remembers what it was privately thinking, wondering and feeling in the previous round; before, each new round wiped it, so every round started from nothing (#1568).
+- Shortening the conversation history no longer stops the game for up to 45 seconds without a word: it now shows that it is still working, a Load, Reset or Quit stops it at once, the turn's conversation is saved before it starts, and when no turn is under way it waits for the next one (#290).
+- A travel sheet update no longer gives a new item an id an earlier change in the same trip already holds (#1569).
+- When a fight pauses for the player's dice roll, what the companions privately thought and felt at the start of that round is now kept; before, it was lost whenever the round paused for a roll, and a restart keeps any feeling the round brings up from being counted twice (#269).
+- Travel storage actions now follow earlier changes in the same trip instead of blocking it, and a new item id in one never repeats an id another holds (#1567).
+- Two staged travel changes to the same character sheet now both apply instead of the second blocking the transition (#1549).
+- Resetting during character setup in the headless game no longer says your choices are kept just before they are cleared (#341).
 - Model replies logged for diagnosis go to the log files only, so they can no longer leak into narration (#1548).
 - A named NPC who joins a fight must now be put on a side (against the party or beside it) when the fight is set up; when the DM leaves it out, the DM is asked to say which, so a hostile NPC no longer quietly fights on the party's side. Party companions still fight beside the party without being asked (#1551).
 - Storage log lines name the attempt that actually ran (#383).
