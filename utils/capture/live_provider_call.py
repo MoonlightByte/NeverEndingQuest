@@ -1471,6 +1471,55 @@ def call_live_provider(
     ``purpose`` names what the player is waiting for when the task id alone
     cannot (#1422 F2); an unknown value falls back to the task id's purpose.
     """
+    shown = {}
+    try:
+        return _call_live_provider(
+            task_id, messages, request_kwargs, policy=policy, scope=scope,
+            status_emit=status_emit, authority_check=authority_check,
+            purpose=purpose, shown=shown,
+        )
+    finally:
+        _restore_covered_status(shown)
+
+
+def _restore_covered_status(shown):
+    """#1088: when the call's own publication still shows, put back the line
+    its progress covered, with no wait record. A newer status, a line another
+    call owned, or a superseded scope is left alone."""
+    record = shown.get("record")
+    scope = shown.get("scope")
+    if record is None or shown.get("prior_wait") is not None:
+        return
+    if scope is not None and scope.is_superseded():
+        return
+    try:
+        from core.managers.status_manager import status_manager
+
+        if status_manager.get_status_detail()[2] is not record:
+            return
+        before = shown.get("before")
+        if before is None:
+            # No line was shown: drop only this call's record from the caller's line.
+            status_manager.publish_wait(None)
+        elif before[2] is None or before[2] is shown.get("initial"):
+            status_manager.update_status(before[0], before[1])
+    except Exception:
+        pass
+
+
+def _call_live_provider(
+    task_id,
+    messages,
+    request_kwargs,
+    *,
+    policy,
+    scope,
+    status_emit,
+    authority_check,
+    purpose,
+    shown,
+):
+    """call_live_provider's body; ``shown`` records the status it published (#1088)."""
     if task_id not in _LIVE_TASK_IDS:
         raise ValueError("task is outside the reviewed live provider allowlist")
     if policy not in {"required", "advisory"}:
@@ -1481,6 +1530,7 @@ def call_live_provider(
             "%s is classified %s, not %s" % (task_id, expected_policy, policy)
         )
     scope = scope if scope is not None else get_live_provider_scope()
+    shown["scope"] = scope
     emit = status_emit if status_emit is not None else _emit_working
     completion_required = bool(
         isinstance(scope, AdvisoryProviderScope)
@@ -1619,6 +1669,9 @@ def call_live_provider(
         from core.managers.status_manager import status_manager
 
         record = wait_record(retry_until)
+        if "before" not in shown:
+            shown["before"] = status_manager.get_status_detail()
+        shown["record"] = record
         _safe_emit(lambda text: status_manager.update_status(text, True, wait=record), message)
 
     def retry_wait(seconds, message):
@@ -1633,7 +1686,11 @@ def call_live_provider(
         try:
             from core.managers.status_manager import status_manager
 
-            status_manager.publish_wait(wait_record())
+            # #1088: a record already showing belongs to another call's wait.
+            shown["prior_wait"] = status_manager.get_status_detail()[2]
+            record = wait_record()
+            if status_manager.publish_wait(record):
+                shown["initial"] = shown["record"] = record
         except Exception:
             pass
 
