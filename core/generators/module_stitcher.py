@@ -123,6 +123,7 @@ from utils.transient_filesystem import (
     is_transient_filesystem_error,
     read_bytes_preserving_errors,
     replace_target_is_read_only,
+    retry_transient_filesystem,
 )
 from utils.module_path_manager import ModulePathManager
 
@@ -757,9 +758,13 @@ class ModuleStitcher:
 
     def _read_registry_snapshot(self) -> Tuple[Optional[Dict[str, Any]], str]:
         """Fresh-read and shape-check the on-disk world registry."""
-        try:
+        def _load():
             with open(self.world_registry_file, "r", encoding="utf-8") as handle:
-                registry = json.load(handle)
+                return json.load(handle)
+
+        try:
+            # #141 FP-10: a sharing denial right after a write is retried.
+            registry = retry_transient_filesystem(_load)
         except Exception as exc:
             return None, f"World registry could not be read: {exc}"
 
