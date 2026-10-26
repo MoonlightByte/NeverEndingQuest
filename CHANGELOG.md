@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - When a fight pauses for the player's dice roll, what the companions privately thought and felt at the start of that round is now kept; before, it was lost whenever the round paused for a roll, and a restart keeps any feeling the round brings up from being counted twice (#269).
+- Two staged travel changes to the same character sheet now both apply instead of the second blocking the transition (#1549).
+- Resetting during character setup in the headless game no longer says your choices are kept just before they are cleared (#341).
+- Model replies logged for diagnosis go to the log files only, so they can no longer leak into narration (#1548).
 - A named NPC who joins a fight must now be put on a side (against the party or beside it) when the fight is set up; when the DM leaves it out, the DM is asked to say which, so a hostile NPC no longer quietly fights on the party's side. Party companions still fight beside the party without being asked (#1551).
 - Storage log lines name the attempt that actually ran (#383).
 - The full referee prompt no longer lists updatePlayerInfo/updateNPCInfo as accepted actions (#376).
