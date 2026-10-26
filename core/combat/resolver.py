@@ -4702,6 +4702,7 @@ def _apply_encounter_effect_operation(creature, operation):
             "armorClass": int(creature.get("armorClass", 10) or 10),
             "maxHitPoints": int(creature.get("maxHitPoints", 0) or 0),
         }
+    hp_before = creature.get("currentHitPoints")
     raw = _raw_combatant_sheet(None, None, creature)
     # An encounter creature record is not a character sheet: no engine world.
     updated = apply_effect_ops(raw, [operation], engine=False)
@@ -4720,6 +4721,16 @@ def _apply_encounter_effect_operation(creature, operation):
         value = rendered.get(sheet_field)
         if isinstance(value, (int, float)):
             creature[encounter_field] = int(value)
+    if (
+        type(hp_before) is int
+        and hp_before > 0
+        and creature.get("currentHitPoints") == 0
+        and normalize_status(creature.get("status")) == "alive"
+    ):
+        # #1550: the same status a hit that reaches 0 records (D-242-1).
+        creature["status"] = (
+            PLAYER_UNCONSCIOUS if is_party_member(creature) else NONPLAYER_DEAD
+        )
     if not creature["activeEffects"]:
         creature.pop("effectBaseStats", None)
     return creature
@@ -4783,7 +4794,36 @@ def _refresh_effect_control_flags(encounter, characters):
         )
 
 
-def _refresh_character_effect_projections(encounter, characters):
+def settle_effect_zero_status(encounter, before, characters):
+    """#1550: give a sheet that an effect took to 0 the status a hit records.
+
+    The lifecycle marks such a sheet unconscious without context; here the
+    encounter row decides by D-242-1: a party member stays unconscious, any
+    other combatant is dead. The row then shows the sheet's down status.
+    Only a sheet that had hit points in ``before`` changes, and a row or
+    sheet already dead or defeated is never overwritten.
+    """
+    for creature in (encounter or {}).get("creatures", []) or []:
+        if not isinstance(creature, dict) or creature.get("type") not in ("player", "npc"):
+            continue
+        sheet = (characters or {}).get(creature.get("name"))
+        if not isinstance(sheet, dict) or sheet.get("hitPoints") != 0:
+            continue
+        old = (before or {}).get(creature.get("name"))
+        old_hp = old.get("hitPoints") if isinstance(old, dict) else None
+        if (
+            type(old_hp) is int
+            and old_hp > 0
+            and normalize_status(sheet.get("status")) == PLAYER_UNCONSCIOUS
+            and not is_party_member(creature)
+        ):
+            sheet["status"] = NONPLAYER_DEAD
+        down = normalize_status(sheet.get("status"))
+        if down in (PLAYER_UNCONSCIOUS, NONPLAYER_DEAD) and normalize_status(creature.get("status")) == "alive":
+            creature["status"] = down
+
+
+def _refresh_character_effect_projections(encounter, characters, before=None):
     """Keep encounter display/cache fields aligned with canonical sheets.
 
     Character sheets own current HP and declarative effects.  Encounter
@@ -4791,6 +4831,7 @@ def _refresh_character_effect_projections(encounter, characters):
     refreshing them after every effect operation prevents an Aid-like maximum
     HP change from producing contradictory values such as 15/10 HP.
     """
+    settle_effect_zero_status(encounter, before, characters)
     for creature in (encounter or {}).get("creatures", []) or []:
         if not isinstance(creature, dict) or creature.get("type") not in (
             "player",
@@ -5131,7 +5172,7 @@ def apply_resolution(encounter, characters, resolution):
             sheet["temporaryHitPoints"] = max(0, snapshot["temporaryHitPoints"])
         if "status" in snapshot:
             sheet["status"] = snapshot["status"]
-    _refresh_character_effect_projections(new_encounter, new_characters)
+    _refresh_character_effect_projections(new_encounter, new_characters, before=characters)
     _refresh_effect_control_flags(new_encounter, new_characters)
     return new_encounter, new_characters
 

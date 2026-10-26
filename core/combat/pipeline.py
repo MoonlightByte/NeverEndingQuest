@@ -28,6 +28,7 @@ from core.combat.resolver import (
     json_ref,
     apply_encounter_effect_ticks,
     apply_effect_ticks,
+    settle_effect_zero_status,
     apply_resolution,
     end_dodge,
     plan_effect_ticks,
@@ -850,6 +851,7 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 next_encounter,
                 effect_ticks,
             )
+            settle_effect_zero_status(next_encounter, before_ticks, next_characters)
             _record_character_state_after(
                 events[-1],
                 before_ticks,

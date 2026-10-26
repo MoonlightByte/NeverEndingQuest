@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - When the story frees a character from a condition such as restrained or poisoned, or puts them in one, the game now makes sure their character sheet is updated too, so a condition no longer lingers after the story says it ended (#261).
+- Removed the unused NPC auto-level-up module (T086) and its model setting; companions level through the same level-up session (#362).
+- A companion keeps their established personality when a profile refresh fails after their sheet changes (#350).
+- A spell or effect that takes a character's last hit points when it ends (or when it starts) now leaves them down the same way a blow does: a party member unconscious, a foe dead, on both the character sheet and the fight's roster, instead of listed as alive at 0 hit points (#1550).
 - A combatant's action on themselves (such as Second Wind) is no longer dropped from the fight's running record of what each combatant did, which the companion voice lines read: the healing or damage it dealt and its entry are kept (#244).
 - A companion remembering an event now recalls everything they did in it, not only the first thing, so a later promise is no longer forgotten (#283).
 - The AI's raw starting-location reply (its JSON and reasoning) no longer shows up in the story text in the web or headless game; setup and travel notices now arrive as regular Dungeon Master messages, with the setup menus right after them (#257).
