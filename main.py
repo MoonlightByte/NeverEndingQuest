@@ -7533,8 +7533,12 @@ def save_conversation_history(
     commit_guard=None,
 ):
     from utils.capture.live_provider_call import LiveProviderSuperseded
-    history_to_save = history
+    from utils.transient_filesystem import ReadOnlySaveStop
     try:
+        # #290: the authoritative conversation is persisted before T020 runs,
+        # so a lifecycle supersession or a failure during compression never
+        # loses it.
+        safe_json_dump(history, json_file, commit_guard=commit_guard)
         # Compression is an optional optimization.  Its constructor, local
         # context lookup, or provider call must never prevent the authoritative
         # conversation from being persisted.
@@ -7549,20 +7553,18 @@ def save_conversation_history(
                     # Apply compression (returns new list if successful)
                     compressed_history = compressor.apply_compression_to_list(history)
                     if compressed_history:
-                        history_to_save = compressed_history
+                        safe_json_dump(compressed_history, json_file, commit_guard=commit_guard)
                         info("Conversation history compressed successfully", category="compression")
                     else:
                         debug("Compression not applied - conditions not fully met", category="compression")
-        except LiveProviderSuperseded:
+        except (LiveProviderSuperseded, ReadOnlySaveStop):
             raise
         except Exception as compression_error:
             warning(
-                "Conversation compression failed; saving uncompressed history: "
+                "Conversation compression failed; the uncompressed history is saved: "
                 f"{compression_error}",
                 category="compression",
             )
-
-        safe_json_dump(history_to_save, json_file, commit_guard=commit_guard)
         return True
     except LiveProviderSuperseded:
         raise
