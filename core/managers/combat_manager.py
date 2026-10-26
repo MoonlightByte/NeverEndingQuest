@@ -5305,6 +5305,24 @@ This is narration only. Do not advance the round or apply any combat action."""
                            for actor_id, row in voice_stage.intents.items()
                        },
                    }
+               # #269: the batch is committed when it is accepted, before the
+               # round runs, so a roll pause (which never re-voices) or a
+               # restart cannot lose it; the store dedups a repeated beat.
+               try:
+                   from core.npc.voice_context import (
+                       commit_accepted_combat_voice_batch,
+                   )
+
+                   commit_accepted_combat_voice_batch(
+                       voice_stage.batch,
+                       party_tracker_data,
+                   )
+               except Exception as exc:
+                   debug(
+                       "T105 accepted combat event skipped: %s"
+                       % type(exc).__name__,
+                       category="combat_events",
+                   )
 
            try:
                try:
@@ -5349,22 +5367,6 @@ This is narration only. Do not advance the round or apply any combat action."""
                        raise
                    _warn_unowned_supersession(exc, json_file_path)
                    raise CombatTurnPaused("unowned supersession") from exc
-               if voice_stage is not None:
-                   try:
-                       from core.npc.voice_context import (
-                           commit_accepted_combat_voice_batch,
-                       )
-
-                       commit_accepted_combat_voice_batch(
-                           voice_stage.batch,
-                           party_tracker_data,
-                       )
-                   except Exception as exc:
-                       debug(
-                           "T105 accepted combat event skipped: %s"
-                           % type(exc).__name__,
-                           category="combat_events",
-                       )
            except (CombatTurnPaused, CombatTransactionError) as exc:
                # Technical exception text may contain internal state terms,
                # paths, or provider details. Only explicitly approved player
