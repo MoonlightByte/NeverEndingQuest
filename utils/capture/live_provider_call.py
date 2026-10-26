@@ -1435,6 +1435,17 @@ def _reconstruct_response(envelope):
     return response
 
 
+def _reissue_debug(message):
+    """Reissue diagnostics stay in the debug log: a console warning can land
+    in the headless player stream (#233, #1545)."""
+    try:
+        from utils.enhanced_logger import debug
+
+        debug(message, category="ai_routing")
+    except Exception:
+        pass
+
+
 def call_live_provider(
     task_id,
     messages,
@@ -1947,10 +1958,10 @@ def call_live_provider(
                 free_reissues += 1
                 exhausted = free_reissues > _FREE_REISSUE_LIMIT
             if exhausted:
-                _LOGGER.warning(
-                    "LIVE_PROVIDER_REISSUE_LIMIT task=%s billed=%d free=%d last=%s",
-                    task_id, billed_reissues, free_reissues,
-                    envelope.get("error_class"),
+                _reissue_debug(
+                    "LIVE_PROVIDER_REISSUE_LIMIT task=%s billed=%d free=%d last=%s"
+                    % (task_id, billed_reissues, free_reissues,
+                       envelope.get("error_class"))
                 )
                 limit = _limit_envelope("reissue_limit", task_id, frozen_kwargs)
                 limit["http_status"] = envelope.get("http_status")
@@ -1965,11 +1976,11 @@ def call_live_provider(
                 "retryable_transport",
             }
         ):
-            _LOGGER.warning(
-                "LIVE_PROVIDER_REISSUE task=%s class=%s status=%s",
-                task_id,
-                envelope.get("error_class", "transport_unavailable"),
-                envelope.get("http_status"),
+            _reissue_debug(
+                "LIVE_PROVIDER_REISSUE task=%s class=%s status=%s"
+                % (task_id,
+                   envelope.get("error_class", "transport_unavailable"),
+                   envelope.get("http_status"))
             )
             retry_wait(_delay_for_error(envelope, failure_count), "")
             continue
