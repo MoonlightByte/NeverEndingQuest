@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - The module toolkit no longer logs a false error for each NPC without a description; it skips such an NPC, as it always did in effect (the AI fallback it tried to use never existed) (#218).
+- During a level up, the command bar now shows the game is busy while it works on each answer, including updating your sheet after you approve (#76).
 - In a fight, a roll you already made this turn is no longer asked for again when the DM retries its ruling: the game keeps the die you rolled (or the one it rolled for you) and rules from it, and that roll now shows in the round's record.
 - When the game shows two Dungeon Master messages in a row, the first is no longer lost: both now reach the screen, in order (#1167).
 - When the opening scene or the "welcome back" scene could not be finished because the AI provider failed, the game now ends it with one short in-character DM line, the same kind shown when a turn cannot be settled, instead of saying nothing or showing "None" (the terminal game also no longer shows "None" twice). When the web's manual startup recovery is refused because the provider account is out of funds or the key is rejected, it now names that problem instead of "Startup recovery failed (error)." (#1233).
