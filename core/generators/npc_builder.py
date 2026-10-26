@@ -521,6 +521,7 @@ def build_npc_file_with_path(
     npc_background=None,
     path_manager=None,
     npc_identity=None,
+    stop_check=None,
 ):
     """Generate and save one NPC; return (sheet, path it was loaded or saved at), or None.
     npc_identity is the NPC's authored record, given to the model (#534).
@@ -573,6 +574,10 @@ def build_npc_file_with_path(
             transaction.remember_target(actual_target)
             return existing, actual_target
         _drop_model_recoverable(generated)
+        if stop_check is not None and stop_check():
+            # #1529: the game stopped the build; nothing is recorded or saved.
+            from utils.child_process import ChildStopped
+            raise ChildStopped("NPC build stopped by the game")
         # Record the intended path before the atomic save. This closes the
         # post-replace/pre-marker crash window for cleaned NPC filenames.
         transaction.remember_target(actual_target)

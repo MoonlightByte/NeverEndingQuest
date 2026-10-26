@@ -159,6 +159,19 @@ def create_backup():
             ignore=lambda d, files: [n for n in files if n.endswith('.lock')],
         )
 
+    # Companion memories (NPC relationships, episodes, per-NPC memory files)
+    # are cleared in Phase 4 too, so the whole store is copied first; this
+    # backup is the only copy of it once Reset runs (#201). Kept at its
+    # relative path so a manual restore is a plain copy back.
+    for memory_dir in ("data/companion_memories", "data/companion_memories_compressed"):
+        if os.path.exists(memory_dir):
+            print(f"Backing up {memory_dir} directory...")
+            shutil.copytree(
+                memory_dir,
+                os.path.join(backup_dir, memory_dir),
+                ignore=lambda d, files: [n for n in files if n.endswith(('.lock', '.tmp'))],
+            )
+
     print(f"{GREEN}[OK] Backup complete: {backup_dir}{RESET}")
     return backup_dir
 
