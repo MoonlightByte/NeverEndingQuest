@@ -4490,24 +4490,92 @@ _provider_selection_lock = threading.Lock()
 
 @socketio.on('set_model_provider')
 def handle_set_provider(data):
-    """Handle provider selection from web UI settings dropdown."""
+    """Handle provider selection from web UI settings dropdown.
+
+    #113: during a live turn or the welcome-back scene the change is queued
+    like a Save and applied on the game thread at that scope's safe boundary,
+    so one turn never runs on two providers.
+    """
     try:
         import model_config
         provider = data.get('provider', 'legacy')
         # Validate before persistence, but do not switch live model bindings
         # until the durable write succeeds. A rejected save must not silently
         # change the provider used by the running game.
-        with _provider_selection_lock:
-            if provider not in model_config.PROVIDER_MODELS:
-                raise ValueError(f"Unknown provider: {provider}. Valid: {list(model_config.PROVIDER_MODELS.keys())}")
-            model_config.persist_provider(provider)
-            model_config.set_provider(provider)
-            from utils.startup_provider_recovery import notify_configuration_saved
-            notify_configuration_saved()
+        if provider not in model_config.PROVIDER_MODELS:
+            raise ValueError(f"Unknown provider: {provider}. Valid: {list(model_config.PROVIDER_MODELS.keys())}")
 
+        def apply_provider():
+            with _provider_selection_lock:
+                model_config.persist_provider(provider)
+                model_config.set_provider(provider)
+                from utils.startup_provider_recovery import notify_configuration_saved
+                notify_configuration_saved()
             debug(f"Model provider set to: {provider}", category="web_interface")
+            return True, provider
 
+        from utils.capture.live_provider_call import (
+            get_active_welcome_scope,
+            get_lifecycle_turn_scopes,
+        )
+        turn_scopes = get_lifecycle_turn_scopes()
+        scope = turn_scopes[0] if turn_scopes else get_active_welcome_scope()
+        if scope is None:
+            # No turn or welcome is running: apply now, as before #113. The
+            # startup wizard's configuration wait runs inside a turn scope, so
+            # its Settings save is queued there and drained by that wait.
+            apply_provider()
             emit('provider_changed', {'provider': provider}, broadcast=True)
+            return
+
+        from uuid import uuid4
+        from flask import current_app, has_request_context, request
+        from utils.capture.live_provider_call import queue_live_save
+
+        # The record completes on the game thread, outside this request:
+        # capture the server and the requester now. Imports stay local so the
+        # handler runs on its own (the provider handler contract tests).
+        server = current_app.extensions['socketio'] if has_request_context() else None
+        session_id = (getattr(request, 'sid', None) if has_request_context() else None) or 'unknown-session'
+        boundary = 'the current turn' if turn_scopes else 'the welcome-back narration'
+
+        def notify(event, payload, to_requester):
+            if server is None:
+                emit(event, payload)
+            elif to_requester:
+                server.emit(event, payload, to=session_id)
+            else:
+                server.emit(event, payload)
+
+        def complete_provider(outcome):
+            success, message = outcome
+            if success:
+                notify('provider_changed', {'provider': provider}, False)
+            else:
+                notify('error', {'message': f"Failed to set provider: {message}"}, True)
+
+        def cancel_provider(operation_id, cause):
+            notify('system_message', {
+                'content': 'Waiting provider change cancelled by %s.' % cause['kind'],
+                'status': 'cancelled', 'operation_id': operation_id,
+                'superseding_operation_id': cause['operation_id'],
+            }, True)
+
+        # One id per request: queue_live_save drops a pending record with the
+        # same id, and choosing A, B, then A again must end on A.
+        queued_id = queue_live_save(
+            apply_provider, complete_provider,
+            "provider:%s:%s" % (session_id, uuid4()),
+            scope=scope, cancel=cancel_provider,
+        )
+        if queued_id is None:
+            # The scope sealed before the enqueue: wait for ITS quiescence,
+            # then re-dispatch against freshly read scopes, as Save does.
+            scope.quiescent.wait()
+            return handle_set_provider(data)
+        emit('system_message', {
+            'content': f'Provider change accepted and queued until {boundary} reaches a safe boundary.'
+        })
 
     except ValueError as e:
         error(f"Invalid provider: {e}", category="web_interface")
