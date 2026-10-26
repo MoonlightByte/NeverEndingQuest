@@ -161,6 +161,7 @@ from core.managers.combat_state import (
     is_down,
     is_party_member,
     normalize_status,
+    participation_of,
     recovery_action,
     resolve_creature_controller,
     round_events,
@@ -1422,13 +1423,26 @@ def _build_initial_combat_prompt(
     opening_rules = opening_action_rules(encounter_data)
     if opening_rules:
         down_block += f"\n\n{opening_rules}"
+    # #1483: Encounter Details carries participation for a typed encounter.
+    participation_line = ""
+    if any(
+        participation_of(encounter_data, creature.get("combatantId"))
+        for creature in (encounter_data or {}).get("creatures", []) or []
+        if isinstance(creature, dict)
+    ):
+        participation_line = (
+            "\n- 'participation' field (Encounter Details): 'active' is in the "
+            "fight; 'observer' is present and only watching, on no side unless "
+            "it joins later: describe it as an onlooker, never as standing with "
+            "either side."
+        )
     return f"""Dungeon Master Note: Respond with valid JSON containing a 'narration' field, 'combat_round' field, and an 'actions' array. This is the start of combat, so please describe the scene and set initiative order, but don't take any actions yet. Start off by hooking the player and engaging them for the start of combat the way any world class dungeon master would.{down_block}
 
 Important Character Field Definitions:
 - 'status' field: Overall life/death state - ONLY use 'alive', 'dead', 'unconscious', or 'defeated' (lowercase)
 - 'condition' field: 5e status conditions - use 'none' when no conditions, or valid 5e conditions like 'blinded', 'charmed', 'poisoned', etc.
 - NEVER set condition to 'alive' - that goes in the status field
-- NEVER set status to 'none' - use 'alive' for conscious characters
+- NEVER set status to 'none' - use 'alive' for conscious characters{participation_line}
 
 Combat Round Tracking:
 - MANDATORY: Include "combat_round": 1 in your response (this is round 1)
@@ -3176,6 +3190,9 @@ def filter_encounter_for_system_prompt(encounter_data):
         }
         if combat_provenance(encounter_data) == "typed":
             minimal_creature["combatantId"] = creature.get("combatantId")
+            participation = participation_of(encounter_data, creature.get("combatantId"))
+            if participation:
+                minimal_creature["participation"] = participation
         
         # Add type information
         if creature.get("type"):
