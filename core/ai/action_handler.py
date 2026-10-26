@@ -4752,23 +4752,9 @@ def process_action(
                 "modules", "encounters", f"encounter_{active_encounter}.json"
             )
             active_data = safe_json_load(active_path)
-            stale_active = not isinstance(active_data, dict)
-            if isinstance(active_data, dict):
-                from core.managers.combat_state import (
-                    all_hostiles_resolved,
-                    all_party_resolved,
-                )
-                active_state = active_data.get("combatState") or {}
-                if active_state.get("pipelineMode") == "agentic":
-                    stale_active = (
-                        (active_state.get("completion") or {}).get("status")
-                        == "closed"
-                    )
-                else:
-                    stale_active = (
-                        all_hostiles_resolved(active_data)
-                        or all_party_resolved(active_data)
-                    )
+            from core.managers.combat_state import active_encounter_is_live
+
+            stale_active = not active_encounter_is_live(active_data)
             if stale_active:
                 warning(
                     "Clearing stale active encounter %s before creating a new one"

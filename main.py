@@ -241,6 +241,25 @@ def _active_combat_recovery(party_tracker):
     }
 
 
+
+def _live_active_encounter(party_tracker):
+    """Return the tracker's active encounter id while that fight is live (#230)."""
+    if not isinstance(party_tracker, dict):
+        return None
+    encounter_id = (
+        (party_tracker.get("worldConditions") or {})
+        .get("activeCombatEncounter", "")
+    )
+    if not encounter_id:
+        return None
+    from core.managers.combat_state import active_encounter_is_live
+
+    encounter = safe_json_load(
+        os.path.join("modules", "encounters", f"encounter_{encounter_id}.json")
+    )
+    return encounter_id if active_encounter_is_live(encounter) else None
+
+
 def _post_combat_world(party_tracker):
     """The tracker's worldConditions when it names where the party is, else None (#444)."""
     world = (
@@ -8898,6 +8917,246 @@ def _report_effects_migration(result):
     print("\n".join(lines))
 
 
+def _resume_active_combat(
+    party_tracker_data, active_encounter_id, claim, main_system_prompt_text, *, source
+):
+    """Resume the tracker's active fight, at startup or on a player's input (#230).
+
+    Returns (outcome, party_tracker_data, conversation_history); outcome is
+    None when the game loop goes on, else the loop returns it.
+    """
+    from core.combat.invocation import InvocationSupersededError, require_current_invocation
+    from utils.capture.live_provider_call import LiveProviderCompletedError
+
+    print(colored(f"[SYSTEM] Active combat encounter '{active_encounter_id}' detected. Resuming combat...", "yellow"))
+    
+    # Load conversation history and inject combat resume markers BEFORE starting combat
+    conversation_history = load_json_file(json_file) or []
+    
+    # Inject combat recovery tracking messages
+    tracking_message = {
+        "role": "user",
+        "content": "[SYSTEM: Combat was interrupted and is being resumed from crash]"
+    }
+    conversation_history.append(tracking_message)
+    
+    recovery_marker = {
+        "role": "assistant",
+        "content": "[SYSTEM: Combat recovery initiated - continuing from last known state]"
+    }
+    conversation_history.append(recovery_marker)
+    
+    # Save the updated conversation history
+    save_conversation_history(conversation_history)
+    debug("STATE_CHANGE: Added combat resume tracking messages before combat restart", category="session_management")
+    
+    # Directly get location info for the combat manager
+    location_data_resume = get_location_data_from_party_tracker(party_tracker_data)
+
+    # Call run_combat_simulation directly to get the return values
+    from core.managers.combat_manager import run_combat_simulation
+    # A quit at a combat prompt returns None; the fight stays active (#444).
+    combat_refusal_line = None
+    try:
+        combat_result = run_combat_simulation(
+            active_encounter_id, party_tracker_data, location_data_resume,
+            invocation_claim=claim,
+        )
+    except LiveProviderCompletedError as refused:
+        # #1087: a refused combat call leaves the fight saved and active.
+        combat_result = None
+        refusal = classify_provider_error(refused)
+        combat_refusal_line = account_refusal_message(
+            refusal["category"], refusal["provider"], "combat"
+        )
+    dialogue_summary = (
+        combat_result[0]
+        if isinstance(combat_result, tuple) and combat_result
+        else None
+    )
+    require_current_invocation(claim)
+
+    # After combat, reload everything to ensure state is fresh
+    party_tracker_data = load_json_file("party_tracker.json")
+    conversation_history = load_json_file(json_file) or []
+    combat_still_active = (
+        isinstance(party_tracker_data, dict)
+        and (party_tracker_data.get("worldConditions") or {}).get(
+            "activeCombatEncounter"
+        ) == active_encounter_id
+    )
+    if combat_still_active:
+        recovery = _active_combat_recovery(party_tracker_data)
+        if recovery:
+            display_dm_narration(
+                recovery.get("message")
+                or (
+                    "Combat remains paused. Load or restore a save before "
+                    "resuming encounter %s; no post-combat narration was "
+                    "requested." % active_encounter_id
+                ),
+                channel="combat",
+                color="yellow",
+            )
+            # A recovered combat bypasses the ordinary startup-kickoff
+            # path.  Reuse its established already-done marker so web
+            # clients enter the playable state and keep Load/Reset
+            # operable while the encounter remains safely paused.
+            if source == "startup":
+                startup_state = load_startup_state() or {}
+                emit_startup_marker(
+                    "startup_kickoff_skipped",
+                    source="combat_recovery",
+                    result="already_done",
+                    startup_attempt_id=startup_state.get(
+                        "startup_attempt_id"
+                    ),
+                    state_version=startup_state.get("state_version"),
+                    lease_owner=startup_state.get("lease_owner"),
+                    attempt_count=startup_state.get("attempt_count"),
+                )
+        else:
+            unresumed_line = (
+                combat_refusal_line
+                or "Combat did not reach a confirmed completion state. "
+                "The active encounter was preserved for recovery and "
+                "no post-combat narration was requested."
+            )
+            if source == "input":
+                # #230: a fight re-entered from an input that still cannot
+                # resume pauses on the controls; it is never re-sent.
+                display_dm_narration(unresumed_line + " Gameplay is paused.", channel="system")
+                if hasattr(sys.stdin, "queue"):
+                    # The web pause adds its own "Gameplay is paused." sentence.
+                    return WebRecoveryPause(unresumed_line), party_tracker_data, conversation_history
+                from updates.save_game_manager import SaveGameManager
+                return _terminal_recovery_menu(SaveGameManager()), party_tracker_data, conversation_history
+            display_dm_narration(
+                unresumed_line,
+                channel="combat",
+                color="yellow",
+            )
+    else:
+        print(colored(
+            "[SYSTEM] Combat resolved. Integrating summary and "
+            "continuing adventure...",
+            "yellow",
+        ))
+
+    # ** CRITICAL FIX: Integrate the combat summary into the main conversation history **
+    if dialogue_summary and not combat_still_active:
+        # We create a clear, systemic message indicating combat is over.
+        # The same record text as the handoff from action_handler (#253).
+        combat_summary_message = render_combat_record_marker(
+            "Combat Summary: " + dialogue_summary,
+            combat_record_exit_kind(active_encounter_id),
+            combat_record_xp_receipt(active_encounter_id),
+            combat_record_joined_against_party(active_encounter_id),
+        )
+        conversation_history.append({"role": "user", "content": combat_summary_message})
+        debug("STATE_CHANGE: Appended combat summary to main history after resumed session.", category="session_management")
+        save_conversation_history(conversation_history)
+        # The engine's location record for the resumed fight (P4-c).
+        from core.nql import occupants as _occupants
+        _occupants.resolve_combat(active_encounter_id)
+
+    if not combat_still_active and _post_combat_world(party_tracker_data) is None:
+        # The fight's record is kept above. Without the party's location
+        # the story cannot go on, so no narration is asked for (#444).
+        # The #448 shape; the travel-recovery scope has already closed.
+        error(
+            "FAILURE: party_tracker.json has no readable location after "
+            "the resumed fight",
+            category="session_management",
+        )
+        cause = (
+            "The party's location could not be read after the fight, so "
+            "the story cannot continue from here."
+        )
+        display_dm_narration(cause + " Gameplay is paused.", channel="system")
+        if hasattr(sys.stdin, "queue"):
+            # The web pause adds its own "Gameplay is paused." sentence.
+            return WebRecoveryPause(cause), party_tracker_data, conversation_history
+        from updates.save_game_manager import SaveGameManager
+        return _terminal_recovery_menu(SaveGameManager()), party_tracker_data, conversation_history
+
+    # ** CRITICAL FIX: Get a new AI response for post-combat narration **
+    # This makes the resumed flow behave exactly like the normal flow.
+    if not combat_still_active:
+        conversation_history = _prepare_rebuilt_history_for_t067(
+            conversation_history, main_system_prompt_text
+        )
+    ai_response_after_combat = None
+    if not combat_still_active:
+        try:
+            ai_response_after_combat = get_ai_response(conversation_history)
+        except LiveProviderCompletedError as refused:
+            # #442: the fight's result is kept; the turn loop starts.
+            display_dm_narration(_provider_refusal_followup(refused)["player_message"])
+    if ai_response_after_combat:
+        require_current_invocation(claim)
+        # Process the AI's post-combat response to get the game moving again.
+        # We need to load the fresh location data for this call.
+        location_data_post_combat = get_location_data_from_party_tracker(party_tracker_data)
+        # Match the uninterrupted-combat handoff: the committed combat
+        # state owns HP/XP, so the immediate narration pass must not
+        # reapply a model-authored echo after reconnect recovery.
+        process_ai_response._just_finished_combat = True
+        post_combat_result = _process_fresh_dm_response(
+            ai_response_after_combat,
+            party_tracker_data,
+            location_data_post_combat,
+            conversation_history,
+            invocation_claim=claim,
+        )
+        if _is_restore_request(post_combat_result):
+            return post_combat_result, party_tracker_data, conversation_history
+        (
+            post_combat_result,
+            party_tracker_data,
+            location_data_post_combat,
+            conversation_history,
+        ) = resolve_retryable_ai_result(
+            post_combat_result,
+            party_tracker_data,
+            location_data_post_combat,
+            conversation_history,
+            invocation_claim=claim,
+        )
+        if _is_restore_request(post_combat_result):
+            return post_combat_result, party_tracker_data, conversation_history
+        if isinstance(post_combat_result, dict) and post_combat_result.get("status") == "superseded_invocation":
+            raise InvocationSupersededError("Post-combat handoff was superseded")
+        require_current_invocation(claim)
+        if isinstance(post_combat_result, dict) and post_combat_result.get("status") in {
+            "provider_error", "travel_content_unavailable", "review_exhausted",
+        }:
+            display_dm_narration(_followup_failure_message(post_combat_result))
+        if isinstance(post_combat_result, dict) and post_combat_result.get("status") == "error":
+            # #442: the same line the turn loop prints for a failed action.
+            print(f"[SYSTEM] {_action_failure_line(post_combat_result)}")
+            warning("Post-combat response processing failed safely", category="module_management")
+        elif (
+            isinstance(post_combat_result, dict)
+            and post_combat_result.get("retryable") is True
+        ):
+            retry_status = post_combat_result.get(
+                "status", "state_recovery_pending"
+            )
+            print(
+                "[SYSTEM] Post-combat narration is paused while game "
+                f"state recovers ({retry_status})."
+            )
+            warning(
+                f"Post-combat response processing paused: {retry_status}",
+                category="module_management",
+            )
+    
+    print("[DEBUG] Combat resumption complete - should enter main game loop now")
+    debug("CRITICAL: Combat resumption complete - attempting to enter main loop", category="session_management")
+    return None, party_tracker_data, conversation_history
+
+
 def _main_game_loop(startup_authority, turn_authority):
     global needs_conversation_history_update, should_inject_creation_prompt
     from core.combat.invocation import InvocationSupersededError, require_current_invocation
@@ -9296,221 +9555,17 @@ def _main_game_loop(startup_authority, turn_authority):
 
         startup_claim = startup_authority.enter_context(combat_execution_authority())
         active_encounter_id = party_tracker_data["worldConditions"]["activeCombatEncounter"]
-        print(colored(f"[SYSTEM] Active combat encounter '{active_encounter_id}' detected. Resuming combat...", "yellow"))
         combat_was_resumed = True  # Mark that we're resuming from combat
-        
-        # Load conversation history and inject combat resume markers BEFORE starting combat
-        conversation_history = load_json_file(json_file) or []
-        
-        # Inject combat recovery tracking messages
-        tracking_message = {
-            "role": "user",
-            "content": "[SYSTEM: Combat was interrupted and is being resumed from crash]"
-        }
-        conversation_history.append(tracking_message)
-        
-        recovery_marker = {
-            "role": "assistant",
-            "content": "[SYSTEM: Combat recovery initiated - continuing from last known state]"
-        }
-        conversation_history.append(recovery_marker)
-        
-        # Save the updated conversation history
-        save_conversation_history(conversation_history)
-        debug("STATE_CHANGE: Added combat resume tracking messages before combat restart", category="session_management")
-        
-        # Directly get location info for the combat manager
-        location_data_resume = get_location_data_from_party_tracker(party_tracker_data)
-
-        # Call run_combat_simulation directly to get the return values
-        from core.managers.combat_manager import run_combat_simulation
-        # A quit at a combat prompt returns None; the fight stays active (#444).
-        combat_refusal_line = None
-        try:
-            combat_result = run_combat_simulation(
-                active_encounter_id, party_tracker_data, location_data_resume,
-                invocation_claim=startup_claim,
-            )
-        except LiveProviderCompletedError as refused:
-            # #1087: a refused combat call leaves the fight saved and active.
-            combat_result = None
-            refusal = classify_provider_error(refused)
-            combat_refusal_line = account_refusal_message(
-                refusal["category"], refusal["provider"], "combat"
-            )
-        dialogue_summary = (
-            combat_result[0]
-            if isinstance(combat_result, tuple) and combat_result
-            else None
+        outcome, party_tracker_data, conversation_history = _resume_active_combat(
+            party_tracker_data,
+            active_encounter_id,
+            startup_claim,
+            main_system_prompt_text,
+            source="startup",
         )
-        require_current_invocation(startup_claim)
+        if outcome is not None:
+            return outcome
 
-        # After combat, reload everything to ensure state is fresh
-        party_tracker_data = load_json_file("party_tracker.json")
-        conversation_history = load_json_file(json_file) or []
-        combat_still_active = (
-            isinstance(party_tracker_data, dict)
-            and (party_tracker_data.get("worldConditions") or {}).get(
-                "activeCombatEncounter"
-            ) == active_encounter_id
-        )
-        if combat_still_active:
-            recovery = _active_combat_recovery(party_tracker_data)
-            if recovery:
-                display_dm_narration(
-                    recovery.get("message")
-                    or (
-                        "Combat remains paused. Load or restore a save before "
-                        "resuming encounter %s; no post-combat narration was "
-                        "requested." % active_encounter_id
-                    ),
-                    channel="combat",
-                    color="yellow",
-                )
-                # A recovered combat bypasses the ordinary startup-kickoff
-                # path.  Reuse its established already-done marker so web
-                # clients enter the playable state and keep Load/Reset
-                # operable while the encounter remains safely paused.
-                startup_state = load_startup_state() or {}
-                emit_startup_marker(
-                    "startup_kickoff_skipped",
-                    source="combat_recovery",
-                    result="already_done",
-                    startup_attempt_id=startup_state.get(
-                        "startup_attempt_id"
-                    ),
-                    state_version=startup_state.get("state_version"),
-                    lease_owner=startup_state.get("lease_owner"),
-                    attempt_count=startup_state.get("attempt_count"),
-                )
-            else:
-                display_dm_narration(
-                    combat_refusal_line
-                    or "Combat did not reach a confirmed completion state. "
-                    "The active encounter was preserved for recovery and "
-                    "no post-combat narration was requested.",
-                    channel="combat",
-                    color="yellow",
-                )
-        else:
-            print(colored(
-                "[SYSTEM] Combat resolved. Integrating summary and "
-                "continuing adventure...",
-                "yellow",
-            ))
-
-        # ** CRITICAL FIX: Integrate the combat summary into the main conversation history **
-        if dialogue_summary and not combat_still_active:
-            # We create a clear, systemic message indicating combat is over.
-            # The same record text as the handoff from action_handler (#253).
-            combat_summary_message = render_combat_record_marker(
-                "Combat Summary: " + dialogue_summary,
-                combat_record_exit_kind(active_encounter_id),
-                combat_record_xp_receipt(active_encounter_id),
-                combat_record_joined_against_party(active_encounter_id),
-            )
-            conversation_history.append({"role": "user", "content": combat_summary_message})
-            debug("STATE_CHANGE: Appended combat summary to main history after resumed session.", category="session_management")
-            save_conversation_history(conversation_history)
-            # The engine's location record for the resumed fight (P4-c).
-            from core.nql import occupants as _occupants
-            _occupants.resolve_combat(active_encounter_id)
-
-        if not combat_still_active and _post_combat_world(party_tracker_data) is None:
-            # The fight's record is kept above. Without the party's location
-            # the story cannot go on, so no narration is asked for (#444).
-            # The #448 shape; the travel-recovery scope has already closed.
-            error(
-                "FAILURE: party_tracker.json has no readable location after "
-                "the resumed fight",
-                category="session_management",
-            )
-            cause = (
-                "The party's location could not be read after the fight, so "
-                "the story cannot continue from here."
-            )
-            display_dm_narration(cause + " Gameplay is paused.", channel="system")
-            if hasattr(sys.stdin, "queue"):
-                # The web pause adds its own "Gameplay is paused." sentence.
-                return WebRecoveryPause(cause)
-            from updates.save_game_manager import SaveGameManager
-            return _terminal_recovery_menu(SaveGameManager())
-
-        # ** CRITICAL FIX: Get a new AI response for post-combat narration **
-        # This makes the resumed flow behave exactly like the normal flow.
-        if not combat_still_active:
-            conversation_history = _prepare_rebuilt_history_for_t067(
-                conversation_history, main_system_prompt_text
-            )
-        ai_response_after_combat = None
-        if not combat_still_active:
-            try:
-                ai_response_after_combat = get_ai_response(conversation_history)
-            except LiveProviderCompletedError as refused:
-                # #442: the fight's result is kept; the turn loop starts.
-                display_dm_narration(_provider_refusal_followup(refused)["player_message"])
-        if ai_response_after_combat:
-            require_current_invocation(startup_claim)
-            # Process the AI's post-combat response to get the game moving again.
-            # We need to load the fresh location data for this call.
-            location_data_post_combat = get_location_data_from_party_tracker(party_tracker_data)
-            # Match the uninterrupted-combat handoff: the committed combat
-            # state owns HP/XP, so the immediate narration pass must not
-            # reapply a model-authored echo after reconnect recovery.
-            process_ai_response._just_finished_combat = True
-            post_combat_result = _process_fresh_dm_response(
-                ai_response_after_combat,
-                party_tracker_data,
-                location_data_post_combat,
-                conversation_history,
-                invocation_claim=startup_claim,
-            )
-            if _is_restore_request(post_combat_result):
-                return post_combat_result
-            (
-                post_combat_result,
-                party_tracker_data,
-                location_data_post_combat,
-                conversation_history,
-            ) = resolve_retryable_ai_result(
-                post_combat_result,
-                party_tracker_data,
-                location_data_post_combat,
-                conversation_history,
-                invocation_claim=startup_claim,
-            )
-            if _is_restore_request(post_combat_result):
-                return post_combat_result
-            if isinstance(post_combat_result, dict) and post_combat_result.get("status") == "superseded_invocation":
-                raise InvocationSupersededError("Post-combat handoff was superseded")
-            require_current_invocation(startup_claim)
-            if isinstance(post_combat_result, dict) and post_combat_result.get("status") in {
-                "provider_error", "travel_content_unavailable", "review_exhausted",
-            }:
-                display_dm_narration(_followup_failure_message(post_combat_result))
-            if isinstance(post_combat_result, dict) and post_combat_result.get("status") == "error":
-                # #442: the same line the turn loop prints for a failed action.
-                print(f"[SYSTEM] {_action_failure_line(post_combat_result)}")
-                warning("Post-combat response processing failed safely", category="module_management")
-            elif (
-                isinstance(post_combat_result, dict)
-                and post_combat_result.get("retryable") is True
-            ):
-                retry_status = post_combat_result.get(
-                    "status", "state_recovery_pending"
-                )
-                print(
-                    "[SYSTEM] Post-combat narration is paused while game "
-                    f"state recovers ({retry_status})."
-                )
-                warning(
-                    f"Post-combat response processing paused: {retry_status}",
-                    category="module_management",
-                )
-        
-        print("[DEBUG] Combat resumption complete - should enter main game loop now")
-        debug("CRITICAL: Combat resumption complete - attempting to enter main loop", category="session_management")
-        
     # --- END: COMBAT RESUMPTION LOGIC ---
     else:
         # print("[DEBUG] Normal startup path - will enter main game loop")
@@ -9962,6 +10017,24 @@ def _main_game_loop(startup_authority, turn_authority):
                     channel="combat",
                     color="yellow",
                 )
+            continue
+
+        # #230 (D-230-1/2): a fight still live after a mid-session break is
+        # re-entered on this input, as at startup; the typed line is not sent.
+        live_encounter_id = _live_active_encounter(party_tracker_data)
+        if live_encounter_id:
+            from utils.capture.live_provider_call import combat_execution_authority
+
+            with combat_execution_authority() as resume_claim:
+                outcome, party_tracker_data, conversation_history = _resume_active_combat(
+                    party_tracker_data,
+                    live_encounter_id,
+                    resume_claim,
+                    main_system_prompt_text,
+                    source="input",
+                )
+            if outcome is not None:
+                return outcome
             continue
 
         # Remove duplicate NPCs if any exist
