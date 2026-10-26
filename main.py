@@ -156,7 +156,8 @@ from core.managers.status_manager import (
     status_manager, status_ready, status_processing_ai, status_validating,
     status_retrying, status_transitioning_location, status_generating_summary,
     status_updating_journal, status_compressing_history, status_updating_character,
-    status_updating_party, status_updating_plot, status_advancing_time, status_saving
+    status_updating_party, status_updating_plot, status_advancing_time, status_saving,
+    status_processing_levelup,
 )
 
 # Import atomic file operations
@@ -10400,6 +10401,9 @@ def _main_game_loop(startup_authority, turn_authority):
                         break
                     if not level_up_input or not level_up_input.strip():
                         continue
+                    # Busy for the whole step, the sheet commit after approval included; the
+                    # next input() reopens the command bar at its readline boundary (#76).
+                    status_processing_levelup()
                     turn = level_up_session.handle_input(level_up_input)
                     display_dm_narration(
                         turn.narration, channel="levelup", commit_guard=level_up_publication_guard
