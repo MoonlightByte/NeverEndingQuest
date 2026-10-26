@@ -168,7 +168,7 @@ from utils.reconcile_campaign_state import reconcile_campaign_state
 
 # Import training data collection
 # from simple_training_collector import log_complete_interaction  # DISABLED
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
 from utils.character_sheet_contract import repair_and_persist_character
 from utils.startup_handoff_state import (
     load_state as load_startup_state,
@@ -3156,6 +3156,12 @@ def _dm_fail_forward_line():
     return random.choice(lines) if lines else _DM_FAIL_FORWARD_FALLBACK
 
 
+def _verdict_log_reason(reason, limit=200):
+    """A rejected verdict's reason for the debug log (#1241): one line, at most ``limit`` characters."""
+    text = re.sub(r"\s+", " ", str(reason or "")).strip()
+    return text if len(text) <= limit else text[:limit] + "..."
+
+
 def _parse_dm_validation_verdict(response_text):
     """Parse T065's exact semantic-validation response contract.
 
@@ -4756,6 +4762,10 @@ def validate_ai_response(
         try:
             is_valid, reason, verdict_category = _parse_dm_validation_verdict(validation_response)
             debug(f"VALIDATION: category {verdict_category}", category="ai_validation")
+            if not is_valid:
+                # #1241: the reason, in the log files only (the console is the player's stream in web mode)
+                file_only(f"VALIDATION: draft rejected (category {verdict_category}): {_verdict_log_reason(reason)}",
+                          category="ai_validation")
             
             # Track validation pairs for quality control
             try:
@@ -6225,7 +6235,8 @@ def process_ai_response(
         json_content, party_tracker_data=party_tracker_data,
     )
     if not structure_ok:
-        return retryable_result("invalid_transition_actions", error=structure_error)
+        return retryable_result("invalid_transition_actions", error=structure_error,
+                                candidate=response)
     response = normalized_content
     json_content = normalized_content
     parsed_response = json.loads(json_content)
@@ -6245,7 +6256,8 @@ def process_ai_response(
     ]
     if cross_module_indexes and cross_module_indexes != [0]:
         return retryable_result("invalid_transition_actions",
-                                error="Cross-module movement must appear once and first.")
+                                error="Cross-module movement must appear once and first.",
+                                candidate=response)
     requested_module = str(first_parameters.get("module", ""))
     is_travel_workflow = any(
         isinstance(action, dict) and action.get("action") == "transitionLocation"
@@ -6405,6 +6417,7 @@ def process_ai_response(
                     "A response containing transitionLocation must contain "
                     "exactly one transition and it must be the first action"
                 ),
+                candidate=response,
             )
 
         first_action = actions[0] if actions and isinstance(actions[0], dict) else {}
@@ -6425,6 +6438,7 @@ def process_ai_response(
                         "Cross-module travel must be updatePartyTracker followed "
                         "by exactly one updateTime action"
                     ),
+                    candidate=response,
                 )
             accepted_history = list(conversation_history)
             accepted_history.append({"role": "assistant", "content": response})
@@ -6513,6 +6527,7 @@ def process_ai_response(
                     return retryable_result(
                         "invalid_transition_actions",
                         error="Only one transitionLocation may be processed per response",
+                        candidate=response,
                     )
                 is_transition = True
                 transition_action_index = action_index
@@ -6526,6 +6541,7 @@ def process_ai_response(
                         "response; state changes may only follow a committed "
                         "movement"
                     ),
+                    candidate=response,
                 )
         
         # If it's a transition, handle it with the special two-step process
@@ -7238,12 +7254,12 @@ def resolve_retryable_ai_result(
         return authority_check(context) if authority_check is not None else True
 
     retry_statuses = {
-        "invalid_transition_actions",
         "stale_response_context",
         "transition_state_changed",
     }
     retries = 0
     review_retries = 0
+    shape_corrected = False
     while (
         isinstance(final_result, dict)
         and final_result.get("retryable") is True
@@ -7338,6 +7354,68 @@ def resolve_retryable_ai_result(
                 player_input=review_context["player_input"],
                 approved_transition_plan=reviewed["approved_transition_plan"],
                 review_context=next_context,
+                detached_context=detached_context,
+            )
+            continue
+        if final_result.get("status") == "invalid_transition_actions":
+            # #433: the draft's own shape is wrong, and a blind regenerate
+            # from the same history tends to repeat it. It goes back to the
+            # model once with the reason, through the review owner; a second
+            # one fails safely with nothing from it applied.
+            if shape_corrected or not isinstance(final_result.get("candidate"), str):
+                warning(
+                    f"DM draft shape still rejected after a correction: {final_result.get('error')}",
+                    category="ai_validation",
+                )
+                final_result = {
+                    "status": "error", "error": final_result.get("error"), "retryable": False,
+                }
+                break
+            shape_corrected = True
+            authority_context = None
+            turn_input = player_input
+            if detached_context is not None:
+                authority_context = final_result.get("authority_context")
+                if not isinstance(authority_context, dict) or not review_authority_current(authority_context):
+                    final_result = {"status": "stale_discarded", "retryable": False}
+                    break
+                conversation_history = copy.deepcopy(authority_context["accepted_history"])
+                party_tracker_data = copy.deepcopy(authority_context["party_snapshot"])
+                location_data = get_location_data_from_party_tracker(party_tracker_data)
+                turn_input = authority_context["player_input"]
+            reviewed = _review_dm_candidate(
+                final_result["candidate"],
+                accepted_history=copy.deepcopy(conversation_history),
+                player_input=turn_input, party=party_tracker_data,
+                validation_prompt=load_validation_prompt(),
+                npc_voice_batch=None, invocation_claim=invocation_claim,
+                live_turn_scope=get_live_provider_scope(),
+                path_manager=ModulePathManager(
+                    str(party_tracker_data.get("module") or "").replace(" ", "_")
+                ),
+                location_graph=location_graph, detached_context=detached_context,
+                correction_reason=(
+                    "The previous structured response was rejected: "
+                    + str(final_result.get("error") or "").rstrip(".")
+                    + ". Return the complete corrected JSON."
+                ),
+                campaign_end=False,
+            )
+            if authority_context is not None and not review_authority_current(authority_context):
+                final_result = {"status": "stale_discarded", "retryable": False}
+                break
+            if reviewed["status"] != "accepted":
+                final_result = reviewed
+                break
+            final_result = process_ai_response(
+                reviewed["candidate"], party_tracker_data, location_data,
+                conversation_history, invocation_claim=invocation_claim,
+                player_input=turn_input,
+                approved_transition_plan=reviewed["approved_transition_plan"],
+                review_context=_dm_review_context(
+                    reviewed, conversation_history, turn_input,
+                    party_snapshot=party_tracker_data, campaign_end=False,
+                ),
                 detached_context=detached_context,
             )
             continue
@@ -7804,19 +7882,9 @@ def _finalize_main_response_validation(
     conversation_history,
     validation_prefix_length,
     candidate_response,
-    candidate_valid,
 ):
-    """Remove retry-only messages and block rejected T067 state actions."""
-    cleaned_history = conversation_history[:validation_prefix_length]
-    if candidate_valid and candidate_response:
-        return cleaned_history, candidate_response
-
-    fallback_message = (
-        "I could not safely resolve that action after several attempts. "
-        "No game state was changed; please rephrase or try a simpler action."
-    )
-    cleaned_history.append({"role": "assistant", "content": fallback_message})
-    return cleaned_history, None
+    """Remove retry-only messages; only an accepted candidate reaches here."""
+    return conversation_history[:validation_prefix_length], candidate_response
 
 
 def get_ai_response(
@@ -8566,6 +8634,45 @@ _MEMORY_JOURNAL_UNREADABLE_LINE = (
 )
 
 
+# Effects-upgrade results already shown this session, so a per-turn retry
+# does not repeat them (#1128); the load-time call clears it.
+_effects_migration_shown = set()
+
+
+def _report_effects_migration(result):
+    """Tell the player, once per session, why the effects upgrade did not happen, or that it now has (#1128).
+
+    Reads only the typed result: ``refusals`` when blocked, ``reasonCode`` and
+    ``reason`` when deferred. A combat boundary or another running upgrade is
+    routine and clears on its own, so it is not shown.
+    """
+    status = result.get("status") if isinstance(result, dict) else None
+    if status == "migrated":
+        print(
+            "[SYSTEM] Temporary effects were upgraded safely. "
+            "A pre-conversion save was created automatically."
+        )
+        debug(f"EFFECTS: Effects V2 migration completed: {result}", category="effects_tracking")
+        return
+    if status == "blocked":
+        # A conversion error's text has no bound; the console line keeps each reason readable.
+        reasons = tuple(" ".join(str(item).split())[:200] for item in result.get("refusals") or [])
+        key = ("blocked", reasons)
+        lines = [
+            "[SYSTEM] Temporary effects could not be upgraded, so this campaign stays on its older "
+            "effect handling (effects may not expire on their own). Reasons:"
+        ] + ["  - " + reason for reason in reasons]
+    elif status == "deferred" and result.get("reasonCode") == "party_sheet_unreadable":
+        key = ("deferred", result.get("reasonCode"), result.get("reason"))
+        lines = ["[SYSTEM] Temporary-effect upgrade is waiting: %s. It retries each turn." % result.get("reason")]
+    else:
+        return
+    if key in _effects_migration_shown:
+        return
+    _effects_migration_shown.add(key)
+    print("\n".join(lines))
+
+
 def _main_game_loop(startup_authority, turn_authority):
     global needs_conversation_history_update, should_inject_creation_prompt
     from core.combat.invocation import InvocationSupersededError, require_current_invocation
@@ -8826,24 +8933,14 @@ def _main_game_loop(startup_authority, turn_authority):
             from core.managers.effects_migration import run_effects_migration
 
             effects_migration = run_effects_migration(create_backup=True)
-            if effects_migration.get("status") == "migrated":
-                print(
-                    "[SYSTEM] Temporary effects were upgraded safely. "
-                    "A pre-conversion save was created automatically."
-                )
-                debug(
-                    f"EFFECTS: Effects V2 migration completed: {effects_migration}",
-                    category="effects_tracking",
-                )
-            elif effects_migration.get("status") == "blocked":
+            # Each Load or Reset starts a new session: the same refusal shows again.
+            _effects_migration_shown.clear()
+            if effects_migration.get("status") == "blocked":
                 warning(
                     f"EFFECTS: Automatic conversion was refused safely: {effects_migration}",
                     category="effects_tracking",
                 )
-                print(
-                    "[SYSTEM] Temporary-effect conversion needs review. "
-                    "The campaign remains on its legacy effect handling for this session."
-                )
+            _report_effects_migration(effects_migration)
         except (LiveProviderSuperseded, InvocationSupersededError):
             raise
         except Exception as effects_migration_exc:
@@ -9468,7 +9565,7 @@ def _main_game_loop(startup_authority, turn_authority):
 
             debug("EFFECTS: Checking for expired effects", category="effects_tracking")
             if not campaign_effects_migrated():
-                run_effects_migration(create_backup=True)
+                _report_effects_migration(run_effects_migration(create_backup=True))
             if campaign_effects_migrated():
                 acknowledge_effect_notifications(conversation_history)
                 effect_notice = process_effect_lifecycle(conversation_history)
@@ -10115,7 +10212,6 @@ def _main_game_loop(startup_authority, turn_authority):
                     conversation_history,
                     validation_prefix_length,
                     ai_response_content,
-                    candidate_valid=True,
                 )
             if not travel_candidate and not persist_t067_history_if_current(conversation_history):
                 invocation_superseded = True

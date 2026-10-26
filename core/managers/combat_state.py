@@ -220,6 +220,16 @@ def has_left_fight(creature):
 
 
 LEFT_FIGHT_DISPLAY = "left the fight"
+LEFT_FIGHT_RESOLUTIONS = ("fled", "yielded")
+
+
+def left_by_resolution(creature):
+    """Return whether the resolver recorded a typed flee or yield (#466).
+
+    The encounter row owns that outcome while the sheet keeps its own
+    status, so the per-loop sheet sync never copies a status over it (#1110).
+    """
+    return isinstance(creature, dict) and creature.get("resolution") in LEFT_FIGHT_RESOLUTIONS
 
 
 _UNSET = object()
