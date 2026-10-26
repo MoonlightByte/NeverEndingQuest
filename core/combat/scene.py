@@ -252,6 +252,22 @@ def validate_scene_proposal_shape(parameters):
     reconcile_scene_manifest(params, placeholder)
 
 
+ROSTER_LISTS = ("npcs", "monsters")
+
+
+def with_empty_rosters(parameters):
+    """#1487: a copy of createEncounter parameters in which an absent or null
+    npcs/monsters list reads as []. Any other non-list value is left for
+    _require_list to reject. A non-object is returned as it is."""
+    if not isinstance(parameters, dict):
+        return parameters
+    filled = dict(parameters)
+    for key in ROSTER_LISTS:
+        if filled.get(key) is None:
+            filled[key] = []
+    return filled
+
+
 def _listed_key_gaps(parameters):
     """#1377: the scene's npc:N / monster:N keys whose position its own list
     does not reach, in scene order. A key read as anything but a plain
@@ -281,10 +297,10 @@ def validate_typed_encounter_actions(response):
     for index, raw_action in enumerate(actions):
         if not isinstance(raw_action, dict) or raw_action.get("action") != "createEncounter":
             continue
-        parameters = _require_object(
+        parameters = with_empty_rosters(_require_object(
             raw_action.get("parameters"),
             f"createEncounter action {index} parameters",
-        )
+        ))
         expected_keys = ["player:0"]
         expected_keys.extend(
             f"npc:{position}"
