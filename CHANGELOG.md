@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The Thornwood Watch: asking to go to the West Tower now leads to the Forgotten Waystation, renamed "Forgotten Waystation at the West Tower", whose description now names the tower. Saved games keep the place names they were saved with (#1241).
 - The rules check no longer sends back a DM turn just because a simple change, such as putting on armor you fetched, left out the optional list of sheet parts it touches; a change that touches several parts, such as drinking a healing potion, still needs that list (#1106).
 - The Thornwood Watch: the finale now pays a set reward, fifty gold pieces for each member of the party from Ranger Marcus, and Ranger Elen's sudden departure for Harrow's Hollow happens when you report at the Rangers' Command Post, where she is recorded as gone. Saved games keep the plot text they were saved with (#1114).
 - When the DM's reply orders its moves wrongly (for example, travel that is not the first step), the DM is now told what was wrong and asked once for a corrected reply, instead of being asked again blindly twice and then telling you the game state had changed when it had not; if the corrected reply is still wrong, the action fails safely with nothing from it applied. An unused "please rephrase" fallback was also removed. (#433)
