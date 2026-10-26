@@ -109,7 +109,7 @@ from typing import Dict, List, Any, Optional, Tuple
 from uuid import uuid4
 from core.ai import api_client
 import config
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T032", "core/generators/module_stitcher.py", 1450)
 register_callsite("T033", "core/generators/module_stitcher.py", 4016)
@@ -1612,7 +1612,8 @@ Create atmospheric travel narration that leads into this adventure."""
                     "generatedDate": datetime.now().isoformat()
                 }
             except (json.JSONDecodeError, TypeError, ValueError):
-                print(f"Warning: Could not parse AI travel narration: {ai_response[:200]}...")
+                warning("Could not parse AI travel narration; the reply is in the log file")
+                file_only(f"T032 unparsed travel narration: {ai_response}", category="module_stitcher")
                 return {
                     "travelNarration": f"The party travels to the {first_area_name} region, where new adventures await.",
                     "dmGuidance": "Present this as a clean transition to the new module.",

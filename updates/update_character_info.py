@@ -132,7 +132,7 @@ from utils.encoding_utils import safe_json_load
 from utils.status_words import status_word_refusal
 from core.validation.character_validator import AICharacterValidator, armor_contract_errors
 from core.validation.character_effects_validator import AICharacterEffectsValidator
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
 
 # Set script name for logging
 set_script_name(__name__)
@@ -2849,7 +2849,7 @@ Character Role: {character_role}
 
             # Log the raw LLM response for debugging ammunition issues
             if "ammunition" in changes.lower() or "bolt" in changes.lower() or "arrow" in changes.lower():
-                debug(f"LLM_RESPONSE for ammunition update: {raw_response[:500]}...", category="character_updates")
+                file_only(f"LLM_RESPONSE for ammunition update: {raw_response[:500]}...", category="character_updates")
             
             # Enhanced debug logging for NPCs
             if character_role == 'npc':
@@ -3331,7 +3331,7 @@ Character Role: {character_role}
                 return True
             error(f"FAILURE: JSON decode error (attempt {attempt})", exception=e, category="ai_processing")
             bounded_failure_count += 1
-            debug(f"AI_CALL: Raw response: {raw_response}", category="ai_processing")
+            file_only(f"AI_CALL: Raw response: {raw_response}", category="ai_processing")
             # print(f"\n[DEBUG ERROR] JSON decode error for {character_name}")
             # print(f"Raw response that failed to parse: {raw_response}")
             # print(f"Error: {str(e)}\n")

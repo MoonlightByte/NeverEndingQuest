@@ -54,6 +54,7 @@ register_callsite("T059", "core/validation/npc_codex_generator.py", 306)
 import config
 from utils.module_path_manager import ModulePathManager
 from utils.encoding_utils import safe_json_load, safe_json_dump, sanitize_text
+from utils.enhanced_logger import file_only
 from utils.file_operations import safe_write_json, safe_read_json
 
 
@@ -348,7 +349,7 @@ Extract all legitimate NPC names now:"""
                 
         except json.JSONDecodeError as e:
             print(f"Warning: Could not parse AI response as JSON: {e}")
-            print(f"Raw response: {response_text[:500]}...")
+            file_only(f"Raw response: {response_text[:500]}...", category="npc_codex")
             return None
         
     except Exception as e:

@@ -25,7 +25,7 @@ from utils.module_refresh_lock import (
     module_refresh_lock,
     wait_for_module_refresh,
 )
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
 from utils.encoding_utils import sanitize_text
 
 # Set script name for logging
@@ -327,7 +327,7 @@ def format_quest_batch(quests_to_format):
             
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             error(f"FAILURE: AI response failed validation: {e}", category="quest_formatting")
-            debug(f"AI_RESPONSE: {ai_response}", category="quest_formatting")
+            file_only(f"AI_RESPONSE: {ai_response}", category="quest_formatting")
             return None
             
     except Exception as e:
