@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When an OpenAI account is out of credit and OpenAI reports `credit_balance_exhausted`, a turn now says so and how to fix it after the first failed call, instead of retrying five times and showing a generic error; this also applies when the error arrives with a 429, which the game no longer retries. When the scene check is refused for an account reason (out of credit, a rejected key, no model access), the turn now names that problem after one call instead of three calls and the "say that again" line; other scene-check failures keep that line (#1169, #1227).
 - At the start of a fight, the DM's opening scene is now told who is only watching, so onlookers are described as standing by rather than as taking a side (#1486).
 - A fight-opening draft from the DM that leaves out its list of monsters or of people is no longer turned back by the game's own format check; a missing list now counts as nobody of that kind, and the draft still goes to the usual review, which may still ask for a redraft (#1487).
 - Onlookers at a fight are no longer narrated as if they were on your side: the combat narrator and the turn planner are now told they are only watching (#1483).
