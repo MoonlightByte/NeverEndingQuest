@@ -524,12 +524,6 @@ def perform_reset_logic():
     invocation_barrier = begin_invocation_supersession("reset")
     try:
         with _reset_reconciled_boundary():
-            # #226: Reset starts a fresh campaign, as a new session does, so a
-            # read-only stop from the ended session is forgotten; a file that is
-            # still read-only fails at its own write.
-            from utils.transient_filesystem import clear_save_stop
-
-            clear_save_stop()
             return _perform_reset_logic_locked()
     finally:
         # The reset roster numbers its own [slot] rows; the old turn's pair
