@@ -10163,6 +10163,12 @@ def _main_game_loop(startup_authority, turn_authority):
             # Format party members and NPCs for DM note
             party_members_list = party_tracker_data.get('partyMembers', [])
             party_members_str = ", ".join(party_members_list) if party_members_list else "None"
+            # The player is partyMembers[0] (#189): name them so narration
+            # speaks to them, not about them.
+            player_character_str = (
+                f"Player character: {party_members_list[0]} (narrate to them as \"you\"; "
+                f"narrate everyone else in third person). "
+            ) if party_members_list else ""
         
             # Each companion with its occupant id, or the [slot n] of a row
             # saved before ids; joined people no row carries are listed after
@@ -10192,6 +10198,7 @@ def _main_game_loop(startup_authority, turn_authority):
             dm_note = (f"Dungeon Master Note: Current date and time: {date_time_str}, {current_season} season. "
                 f"Current location: {current_location_name_note} ({current_location_id_note}) in the {current_area_name} area. "
                 f"Party members: {party_members_str}. "
+                f"{player_character_str}"
                 f"{party_npcs_span} "
                 f"Party stats: {party_stats_str}.{party_orphan_sentence}")
             if not should_inject_creation_prompt:
