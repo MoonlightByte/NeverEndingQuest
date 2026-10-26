@@ -5238,6 +5238,16 @@ This is narration only. Do not advance the round or apply any combat action."""
                agentic_recovery["action"] == "continue"
                and not automatic_initiative_step
            ):
+               # #351: acknowledge the accepted input before the synchronous
+               # companion packet and profile work below.
+               try:
+                   from core.managers.status_manager import (
+                       status_processing_combat,
+                   )
+
+                   status_processing_combat()
+               except Exception:
+                   pass
                try:
                    from core.npc.voice_context import (
                        dispatch_combat_voice_stage,
@@ -5563,6 +5573,16 @@ This is narration only. Do not advance the round or apply any combat action."""
                return final_result
            continue
        
+       if not automatic_initiative_step:
+           # #351: acknowledge the accepted input before the legacy tracker
+           # call and the voice stage below.
+           try:
+               from core.managers.status_manager import status_processing_combat
+
+               status_processing_combat()
+           except Exception:
+               pass
+
        # Generate initiative order for validation context
        # Try to use AI-powered live initiative tracker
        # Get recent conversation for analysis (last 6 messages - enough for current round context)
