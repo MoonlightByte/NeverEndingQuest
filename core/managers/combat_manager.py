@@ -271,7 +271,7 @@ from utils.file_operations import safe_write_json
 from utils.transient_filesystem import ReadOnlySaveStop, raise_if_save_stopped
 from utils.module_refresh_lock import wait_for_module_refresh
 import core.ai.cumulative_summary as cumulative_summary
-from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name, file_only
 from core.ai import history_markers as hm
 
 # Set script name for logging
@@ -1173,7 +1173,7 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
                     
             except (json.JSONDecodeError, TypeError, ValueError):
                 debug(f"VALIDATION: Invalid JSON from validation model (Attempt {attempt + 1})", category="combat_validation")
-                debug(f"VALIDATION: Problematic response: {validation_response}", category="combat_validation")
+                file_only(f"VALIDATION: Problematic response: {validation_response}", category="combat_validation")
                 continue
 
         except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop, LiveProviderCompletedError):
@@ -6171,8 +6171,7 @@ Rules:
                
        except json.JSONDecodeError as e:
            debug(f"VALIDATION: JSON parsing error - {str(e)}", category="combat_events")
-           debug("VALIDATION: Raw AI response:", category="combat_events")
-           debug(ai_response, category="combat_events")
+           file_only(f"VALIDATION: Raw AI response: {ai_response}", category="combat_events")
            continue
        
        # --- ACTION PROCESSING: CONSOLIDATE AND EXECUTE ---

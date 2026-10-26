@@ -48,7 +48,7 @@ except ImportError:
     from core.generators.area_generator import AreaGenerator, AreaConfig
 
 from utils.module_context import ModuleContext
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
 from utils.npc_reconciler import NpcReconciler
 from utils.file_operations import safe_write_json
 from utils.path_transaction_lock import path_transaction_lock
@@ -3137,7 +3137,7 @@ Return ONLY the JSON object, no explanations or additional text.""" % (
 
             parsed = _validate_parsed_module_params(json.loads(result), resolved_policy)
 
-            debug(
+            file_only(
                 f"AI_PROCESSING: AI parsed narrative into: {json.dumps(parsed, indent=2)}",
                 category="module_creation",
             )

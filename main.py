@@ -4062,7 +4062,7 @@ def _normalize_dm_candidate(primary_response, party_tracker_data):
     try:
         from core.combat.scene import validate_typed_encounter_actions
 
-        validate_typed_encounter_actions(json.loads(response_to_validate))
+        validate_typed_encounter_actions(json.loads(response_to_validate), party_tracker_data)
     except (json.JSONDecodeError, ValueError, TypeError) as exc:
         return (False, f"Typed combat scene error: {exc}")
 
@@ -4865,7 +4865,7 @@ def validate_ai_response(
 
         except (json.JSONDecodeError, ValueError, TypeError):
             debug(f"VALIDATION: Invalid JSON from validation model (attempt {attempt}); reissuing the same validation packet", category="ai_validation")
-            debug(f"VALIDATION: Problematic response: {validation_response}", category="ai_validation")
+            file_only(f"VALIDATION: Problematic response: {validation_response}", category="ai_validation")
             continue  # Retry the validation
 
 def load_validation_prompt():
