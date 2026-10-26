@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Reset retries a briefly locked module file instead of stopping partway and never leaves a restored file half-written (#226).
 - Loading a save or resetting while a fight was being built ("Prepare for battle - building encounter...") no longer waits for every new monster and NPC to be generated: the build stops within a few seconds, and a stopped build writes no encounter and no half-written monster or NPC file (#1529).
 - A campaign Reset's backup now also keeps companion memories (NPC relationships and episodes) before clearing them, so they can be restored from it (#201).
 - Combat no longer scans the wording of character changes for words like "arrow" or "ammo"; those checks only wrote debug log lines, and nothing in play changes (#208).
