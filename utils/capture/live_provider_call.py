@@ -1526,6 +1526,9 @@ def call_live_provider(
     free_reissues = 0
     logical_started = time.monotonic()
     notices_shown = set()
+    # #221: the player was told a provider failure is being retried; the
+    # attempt that answers says so once.
+    failure_announced = False
     player_turn = scope is not None and scope is get_live_turn_scope()
 
     from utils.provider_errors import provider_display_name
@@ -1900,6 +1903,19 @@ def call_live_provider(
                     "Still working; checking the current adventure...",
                 )
                 continue
+            if failure_announced:
+                restored = "Connection to %s restored. Continuing." % provider_name
+                notify_player_once("restored", restored)
+                if publish_wait:
+                    # The call has finished: no live wait record under this line.
+                    from core.managers.status_manager import status_manager
+
+                    _safe_emit(
+                        lambda text: status_manager.update_status(text, True),
+                        restored,
+                    )
+                else:
+                    _safe_emit(emit, restored)
             return response
 
         failure_count += 1
@@ -2005,6 +2021,7 @@ def call_live_provider(
                 "class:%s" % envelope.get("disposition"), reason
             )
             emit_status("%s %s" % (turn_heartbeat(generation), reason))
+            failure_announced = True
         retry_wait(
             _delay_for_error(envelope, failure_count),
             wizard_heartbeat if wizard_task else (
