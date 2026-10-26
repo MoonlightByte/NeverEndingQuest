@@ -8314,7 +8314,8 @@ def _current_state_note():
     sheets on disk, in the turn note's own wording; None without a party."""
     party_tracker_data = load_json_file("party_tracker.json") or {}
     world_conditions = party_tracker_data.get("worldConditions")
-    if not isinstance(world_conditions, dict):
+    members = party_tracker_data.get("partyMembers")
+    if not isinstance(world_conditions, dict) or not isinstance(members, list) or not members:
         return None
     path_manager = ModulePathManager((party_tracker_data.get("module", "") or "").replace(" ", "_"))
     party_members_stats, _roster_level_synced = _party_members_stats(party_tracker_data, path_manager)
