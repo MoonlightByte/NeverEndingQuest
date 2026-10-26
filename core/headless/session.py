@@ -664,10 +664,11 @@ class HeadlessSession:
         # (Reset needs no welcome branch: it quits+joins the engine first,
         # and request_quit already supersedes/quiesces a pending welcome.)
         welcome_scope = get_active_welcome_scope()
-        if name == "restore" and live_scope is None and welcome_scope is None:
+        if name in ("restore", "save") and live_scope is None and welcome_scope is None:
             # A scope can disappear before its engine publishes the next prompt
             # (or exits). Keep this same command until one of those authoritative
             # boundaries exists, rather than losing it to the old busy refusal.
+            # Save waits here too, e.g. during startup before any prompt (#346).
             wait_started = time.monotonic()
             while (
                 not self._recovery_required
@@ -681,13 +682,26 @@ class HeadlessSession:
                 if live_scope is not None or welcome_scope is not None:
                     break
                 self._on_status(
-                    "Load is waiting for the current game boundary (%ds)"
-                    % int(time.monotonic() - wait_started), True,
+                    "%s is waiting for the current game boundary (%ds)"
+                    % ("Save" if name == "save" else "Load",
+                       int(time.monotonic() - wait_started)), True,
                 )
                 self._engine_thread.join(timeout=0.5)
+        if (
+            name == "save"
+            and live_scope is None
+            and welcome_scope is None
+            and not self.prompt_pending.is_set()
+            and not self._recovery_required
+            and (self._engine_thread is None or not self._engine_thread.is_alive())
+        ):
+            result(False, error="The game stopped before Save could run; nothing was saved.")
+            return
         busy_persistence = (
             name == "delete_save"
-            or (name == "save" and live_scope is None)
+            # #346: a startup welcome can begin before the first prompt; Save
+            # queues against it below (#214 F8) instead of refusing busy.
+            or (name == "save" and live_scope is None and welcome_scope is None)
         )
         if busy_persistence and not self.prompt_pending.is_set() and not self._recovery_required:
             result(False, error="engine is busy; wait for the next prompt "
