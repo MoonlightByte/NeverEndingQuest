@@ -52,7 +52,7 @@
           "RO02"
         ],
         "coordinates": "X3Y2",
-        "name": "Scout's Watch"
+        "name": "Scout's Watch at the East Tower"
       },
       {
         "id": "RO05",
@@ -259,7 +259,7 @@
       "locationId": "RO03",
       "name": "Trader's Rest",
       "type": "ruins",
-      "description": "A frost-dusted clearing marked by dilapidated benches, a sagging sign, and empty, weathered trade stalls. The usual throng of merchants is absent, and an eerie silence hangs heavily over the quiet market. Signs of recent violence are evident, such as damage to the East Tower's silver bell and faint footprints, hinting at recent sabotage by hostile forces. Despite the tension, Trader Sila remains watchful by a locked chest, working to maintain order and warn the merchants of lurking threats.",
+      "description": "A frost-dusted clearing marked by dilapidated benches, a sagging sign, and empty, weathered trade stalls. The usual throng of merchants is absent, and an eerie silence hangs heavily over the quiet market. Signs of recent violence are evident, such as faint footprints and word of thorns choking the East Tower's silver bell at Scout's Watch, hinting at recent sabotage by hostile forces. Despite the tension, Trader Sila remains watchful by a locked chest, working to maintain order and warn the merchants of lurking threats.",
       "coordinates": "X1Y2",
       "connectivity": [
         "RO01",
@@ -303,7 +303,7 @@
         "Fresh trail leads toward the Forgotten Waystation where Malarok's agents may have been active",
         "Magical thorny vines and other supernatural elements threaten merchant safety"
       ],
-      "dmInstructions": "ACTIVATION TRIGGER: Only introduce Sila's quest (SQ002) when the party shows interest in supplies/preparation for wilderness expedition, OR after they've assessed the bell network situation. Sila should approach the party naturally when they're gathering resources, not as part of the initial crisis briefing. This represents the 'supply chain' phase of expedition planning, not an immediate crisis. The magically enhanced thorny vines on the East Tower are evidence of Malarok's corruption and should be mentioned when discussing the bell network restoration.",
+      "dmInstructions": "ACTIVATION TRIGGER: Only introduce Sila's quest (SQ002) when the party shows interest in supplies/preparation for wilderness expedition, OR after they've assessed the bell network situation. Sila should approach the party naturally when they're gathering resources, not as part of the initial crisis briefing. This represents the 'supply chain' phase of expedition planning, not an immediate crisis. The magically enhanced thorny vines on the East Tower at Scout's Watch are evidence of Malarok's corruption and should be mentioned when discussing the bell network restoration.",
       "doors": [],
       "traps": [],
       "dcChecks": [
@@ -314,10 +314,6 @@
       "accessibility": "Open market clearing with weathered stalls and benches, accessible via main trade routes",
       "dangerLevel": "Medium",
       "features": [
-        {
-          "name": "Magically Enhanced Thorny Vines",
-          "description": "Thick, unnatural vines with razor-sharp thorns that have grown over the East Tower's bell, clearly enhanced by Malarok's magic."
-        },
         {
           "name": "Weathered Trade Stalls",
           "description": "Empty and battered stalls showing signs of recent disturbance and hurried departure."
@@ -332,7 +328,7 @@
     },
     {
       "locationId": "RO04",
-      "name": "Scout's Watch",
+      "name": "Scout's Watch at the East Tower",
       "type": "riverside",
       "description": "A raised wooden platform overlooks the river crossing, providing clear sight lines across the water and into the forest beyond. Scout Neris maintains vigilant watch from this vantage point, her spyglass scanning for threats while signal mirrors catch the light for long-distance communication. The sound of flowing water masks quiet conversations about patrol routes and suspicious movement. Scattered around the base of the platform are what appear to be dead branches and twisted wood debris, but careful observation might reveal something more sinister lurking among the detritus.",
       "coordinates": "X3Y2",
@@ -391,7 +387,7 @@
         },
         {
           "name": "East Tower Bell",
-          "description": "One of three silver bell towers in the communication network. This tower was overgrown with magically enhanced thorny vines that have now been cleared by the party, but the bell mechanism still needs restoration to function properly."
+          "description": "One of three silver bell towers in the communication network. Thick, unnatural vines with razor-sharp thorns have grown over its bell, clearly enhanced by Malarok's magic; the bell mechanism will need restoration once they are cleared."
         }
       ],
       "encounters": [],
@@ -433,7 +429,7 @@
         "Equipment suggests the sorcerer has been scrying on ranger operations",
         "Evidence points to Malarok's systematic corruption of the entire region"
       ],
-      "dmInstructions": "This location serves as evidence of the Crow's Hand's organized campaign against the outpost. The cache reveals their systematic approach and provides clues about their next target (Scout's Watch). Use investigation checks to uncover layers of evidence showing this isn't random banditry but coordinated sabotage.",
+      "dmInstructions": "This location serves as evidence of the Crow's Hand's organized campaign against the outpost. The cache reveals their systematic approach and provides clues about their next target (Scout's Watch at the East Tower). Use investigation checks to uncover layers of evidence showing this isn't random banditry but coordinated sabotage.",
       "doors": [],
       "traps": [],
       "dcChecks": [
