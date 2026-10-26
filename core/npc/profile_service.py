@@ -410,7 +410,15 @@ def seed_profile_best_effort(
         "profileProvenance": "fallback",
         **fallback,
     }
-    store.store_profile(npc_id, persisted_fallback)
+    # #350: a current model-written profile stays until its replacement
+    # succeeds; its old sourceCanonical keeps the next beat retrying T107.
+    kept_model = (
+        isinstance(existing, dict)
+        and existing.get("profileVersion") == PROFILE_VERSION
+        and existing.get("profileProvenance") == "model"
+    )
+    if not kept_model:
+        store.store_profile(npc_id, persisted_fallback)
     try:
         source = build_profile_source(
             npc_id=npc_id,
@@ -433,11 +441,12 @@ def seed_profile_best_effort(
         return store.get_profile(npc_id) or persisted_fallback
     except Exception as exc:
         _LOGGER.error(
-            "T107 retained grounded fallback for this beat npc_id=%s error=%s",
+            "T107 retained %s profile for this beat npc_id=%s error=%s",
+            "model" if kept_model else "grounded fallback",
             npc_id,
             type(exc).__name__,
         )
-        return store.get_profile(npc_id) or persisted_fallback
+        return store.get_profile(npc_id) or (existing if kept_model else persisted_fallback)
 
 
 def profile_for_packet_best_effort(
