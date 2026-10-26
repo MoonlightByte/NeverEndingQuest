@@ -6187,7 +6187,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 )
                 needs_conversation_history_update = True
                 return published_result(module_name)
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as module_error:
             error(
