@@ -28,6 +28,7 @@ from uuid import UUID, uuid4
 from utils.transient_filesystem import (
     TRANSIENT_FILESYSTEM_ATTEMPTS,
     TRANSIENT_FILESYSTEM_BACKOFF_SECONDS,
+    ReadOnlySaveStop,
     is_transient_filesystem_error,
     raise_if_save_stopped,
     retry_transient_filesystem,
@@ -2742,6 +2743,8 @@ def copy_file_verified(source: Union[str, Path], destination: Union[str, Path]) 
         payload = retry_transient_filesystem(source_path.read_bytes)
         ModuleLifecycleStore._atomic_write_bytes(destination_path, payload)
         landed = retry_transient_filesystem(destination_path.read_bytes)
+    except ReadOnlySaveStop:
+        raise
     except OSError as exc:
         raise OSError(
             "A module reset file could not be saved: %s" % destination_path.name
