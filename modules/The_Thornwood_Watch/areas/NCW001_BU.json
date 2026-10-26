@@ -527,7 +527,7 @@
         "Investigation DC 14: Find weak points in the Voidstone's crystalline structure"
       ],
       "accessibility": "Hilltop accessible from the grove below, but approach is hindered by reality distortions and void energy",
-      "dangerLevel": "Extreme",
+      "dangerLevel": "Very High",
       "features": [
         {
           "name": "Voidstone Altar",
