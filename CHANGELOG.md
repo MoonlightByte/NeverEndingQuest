@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A won fight no longer stays active when its wrap-up has to wait for the fight's save file: the wrap-up waits ("Wrapping up the battle...") instead of giving up after 5 seconds, and a Load, Reset or quit during that wait ends it without writing anything (#202).
 - The storyteller is now told each turn which character is the player, so it speaks to them as "you" instead of narrating them like a stranger (#189).
 - A new module no longer misses its start when the module list is briefly locked right after it is written: the check that reads it back retries (#141).
 - Updating an encounter during combat now saves the file safely, so a crash mid-save can no longer leave it cut off (#207).
