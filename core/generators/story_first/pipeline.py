@@ -406,10 +406,11 @@ class StoryFirstPipeline:
 
         # State remains authoritative until every content artifact is gone. If
         # interruption occurs, the managed candidate is still not publishable.
+        # A transient lock is retried rather than discarding the build (#143).
         for name in sorted(allowed - {"pipeline_state.json"}):
-            (self.workspace / name).unlink()
-        self.state_path.unlink()
-        self.workspace.rmdir()
+            retry_transient_filesystem((self.workspace / name).unlink)
+        retry_transient_filesystem(self.state_path.unlink)
+        retry_transient_filesystem(self.workspace.rmdir)
 
     def _blank_state(self) -> Dict[str, Any]:
         return {"version": PIPELINE_VERSION, "stages": {}}
