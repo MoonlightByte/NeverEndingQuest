@@ -1149,8 +1149,11 @@ def main(argv=None):
         # Parse the JSON input
         input_data = json.loads(storyteller_input)
 
-        # Extract the encounter data directly from the input
-        encounter_data = input_data["parameters"]
+        # Extract the encounter data directly from the input; an absent or
+        # null npcs/monsters list reads as empty (#1487).
+        from core.combat.scene import with_empty_rosters
+
+        encounter_data = with_empty_rosters(input_data["parameters"])
 
         if "player" not in encounter_data or "monsters" not in encounter_data:
             print(colored("Error: Invalid encounter data format. 'player' and 'monsters' are required.", "red"))

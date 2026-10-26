@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - At the start of a fight, the DM's opening scene is now told who is only watching, so onlookers are described as standing by rather than as taking a side (#1486).
+- A fight-opening draft from the DM that leaves out its list of monsters or of people is no longer turned back by the game's own format check; a missing list now counts as nobody of that kind, and the draft still goes to the usual review, which may still ask for a redraft (#1487).
 - Onlookers at a fight are no longer narrated as if they were on your side: the combat narrator and the turn planner are now told they are only watching (#1483).
 - When you attack someone with others standing around, the DM no longer drafts the onlookers as enemies or lists the person you attacked as a monster, so the fight starts on the first try more often instead of falling back after several attempts (#1477).
 - A module you build now starts where its story begins, in the weather and mood the builder wrote for that opening, so its first game no longer waits for the AI to choose a starting place; a module built without them still asks, as before (#1478).
