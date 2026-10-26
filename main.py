@@ -8376,11 +8376,12 @@ def _staged_completion_pending():
     listing is never clean absence.
     """
     from core.managers.campaign_manager import (
-        CampaignManager, _COMPLETION_INTENT_TEMP_PATTERN, _campaign_completion_metadata_dir,
+        _COMPLETION_INTENT_TEMP_PATTERN, _campaign_completion_metadata_dir,
     )
 
+    # The path only: CampaignManager() would load (and recover) the campaign.
     intents_dir = os.path.join(
-        _campaign_completion_metadata_dir(CampaignManager().campaign_file), "intents",
+        _campaign_completion_metadata_dir("modules/campaign.json"), "intents",
     )
     if not os.path.isdir(intents_dir):
         return False
