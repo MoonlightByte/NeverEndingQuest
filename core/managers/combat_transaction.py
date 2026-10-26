@@ -32,6 +32,7 @@ from core.combat import (
     recharge_at_turn_start,
     resolution_from_event,
 )
+from core.combat.resolver import settle_effect_zero_status
 from core.effects.lifecycle import apply_effect_ops, enter_combat_effect, exit_combat_effect
 from core.effects.effective import effective_sheet
 from core.managers.combat_state import (
@@ -1525,7 +1526,11 @@ def exit_effect_clock(
                 if isinstance(effect, dict) and exit_combat_effect(effect, now_scalar) is None
             ]
             if ended:
+                before = character
                 character = apply_effect_ops(character, ended)
+                # #1550: an onRemove that took the last hit points records
+                # the status a hit would (D-242-1 by the encounter row).
+                settle_effect_zero_status(encounter, {name: before}, {name: character})
             surviving = []
             for effect in character.get("temporaryEffects", []) or []:
                 converted = (
