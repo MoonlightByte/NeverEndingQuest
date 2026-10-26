@@ -66,7 +66,7 @@ from jsonschema import validate, ValidationError
 from core.combat.attacks import typed_multiattack_issue
 import config
 from utils.module_path_manager import ModulePathManager
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
 from utils.file_operations import safe_write_json
 from utils.single_target_generation import (
     load_valid_generated_target,
@@ -257,7 +257,7 @@ Schema: {json.dumps(schema)}"""
                 **_extra)
 
             ai_response = response.choices[0].message.content.strip()
-            print(f"{YELLOW}AI Response:{RESET}\n{ai_response}")
+            file_only(f"AI Response: {ai_response}", category="monster_builder")
 
             # Remove markdown code block if present
             ai_response = re.sub(r'^```json\s*|\s*```$', '', ai_response, flags=re.MULTILINE)
@@ -310,10 +310,11 @@ Schema: {json.dumps(schema)}"""
     # messages so log scrapers and operators see the familiar output.
     if last_json_err is not None:
         print(f"{RED}Error: Invalid JSON in AI response. {str(last_json_err)}{RESET}")
-        print(f"{YELLOW}Processed AI response:{RESET}\n{last_ai_response}")
+        file_only(f"Processed AI response: {last_ai_response}", category="monster_builder")
     elif last_validation_err is not None:
-        print(f"{RED}Error: Generated monster data does not match schema. {str(last_validation_err)}{RESET}")
-        print(f"{YELLOW}Processed monster data:{RESET}\n{json.dumps(last_parsed_data, indent=2)}")
+        print(f"{RED}Error: Generated monster data does not match schema; details are in the log file{RESET}")
+        file_only(f"Monster schema error: {str(last_validation_err)}", category="monster_builder")
+        file_only(f"Processed monster data: {json.dumps(last_parsed_data, indent=2)}", category="monster_builder")
 
     return None
 

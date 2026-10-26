@@ -270,7 +270,10 @@ def run_startup_sequence():
     except LiveProviderSuperseded:
         raise
     except (StartupCancelled, KeyboardInterrupt, EOFError):
-        _say("Dungeon Master: Setup paused. Your choices are retained.")
+        # #341: a headless Reset ends input the same way as Quit, then removes
+        # the unfinished interview; it must not be told its choices are kept.
+        if _input_control_kind() != "reset":
+            _say("Dungeon Master: Setup paused. Your choices are retained.")
         raise StartupCancelled() from None
 
 
@@ -481,6 +484,18 @@ def _present_startup_menu(conversation, prompt, *, phase="startup_interview"):
 def _menu_key(text):
     """One whole menu answer or option name, spacing and case folded (D-KW-6)."""
     return " ".join(str(text).split()).casefold()
+
+
+def _input_control_kind():
+    """The lifecycle control that ended input ("quit", "reset"), read from the
+    headless stdin when it carries one (#341); None for a terminal or the web."""
+    import sys
+
+    kind = getattr(sys.stdin, "lifecycle_control_kind", None)
+    try:
+        return kind() if callable(kind) else None
+    except Exception:
+        return None
 
 
 def _say(text, flush=False):
