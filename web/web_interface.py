@@ -1078,6 +1078,8 @@ class WebOutputCapture:
                 # Check if this starts a Dungeon Master section
                 elif "Dungeon Master:" in clean_line:
                     try:
+                        # #1167: a DM line already open is published, never replaced
+                        self._flush_dm_buffer()
                         # Start capturing DM content
                         self.in_dm_section = True
                         self.dm_buffer = [clean_line]

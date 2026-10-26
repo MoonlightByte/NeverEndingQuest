@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the game shows two Dungeon Master messages in a row, the first is no longer lost: both now reach the screen, in order (#1167).
 - When other adventure work is busy just as the quest log is being saved, the game now waits for it instead of throwing away the freshly written quest log (#1108).
 - If the game could not save one of your messages or the DM's replies to its on-screen history, that line no longer disappears when the page reconnects (for example after switching tabs on a phone); the server keeps it and writes it with the next line it saves, and the failed save is now logged (#1373).
 - When a campaign's temporary effects cannot be upgraded to the new rules handling, the game now says why (for example two character sheets with the same name) once per session, and says so when a later turn's retry succeeds (#1128).
