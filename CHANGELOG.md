@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Loading a save or resetting while a fight was being built ("Prepare for battle - building encounter...") no longer waits for every new monster and NPC to be generated: the build stops within a few seconds, and a stopped build writes no encounter and no half-written monster or NPC file (#1529).
+- A campaign Reset's backup now also keeps companion memories (NPC relationships and episodes) before clearing them, so they can be restored from it (#201).
+- Combat no longer scans the wording of character changes for words like "arrow" or "ammo"; those checks only wrote debug log lines, and nothing in play changes (#208).
+- Module building, publishing and recovery no longer read a briefly locked folder as missing: only "not found" counts as absent, so recovery retries a busy folder instead of giving up, and a locked destination is never treated as free (#140).
 - After a fight (or when the DM is asked to answer again after a refused action), the DM's request now carries the party's current hit points, XP and other stats, instead of only the note written before the fight, so the DM no longer works from pre-fight numbers (#223).
 - A module's reset copies (`_BU.json`) are now written safely and checked after copying; if one cannot be saved, the module build (or the joining of a module whose ids collide) fails instead of finishing with a broken reset (#143).
 - When the game had told you the AI provider failed and it was retrying, the answer that finally arrives is now announced with "Connection to <provider> restored. Continuing." instead of the story simply reappearing, both in the "welcome back" scene and during a turn. It is said once, and never when nothing had failed (#221).
