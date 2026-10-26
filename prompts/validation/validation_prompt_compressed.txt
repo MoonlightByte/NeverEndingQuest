@@ -202,7 +202,7 @@ NARRATIVE ELABORATION: Location descriptions and NPC sketches are starting seeds
   true_correct_action_format: {"valid":true,"reason":"Actions correctly formatted with 'action' and 'parameters' keys inside actions array"}
   false_missing: {"valid":false,"reason":"Describes pickup but no updateCharacterInfo. Try again with action"}
   false_hallucination: {"valid":false,"reason":"References 'Tomas' not in module. Use only: Elen, Mirna, Fenwick"}
-  false_combat: {"valid":false,"reason":"Narrated combat after alert without createEncounter and no earlier player-input prerequisite remained. Add action after first attack"}
+  false_combat: {"valid":false,"reason":"Resolved an attack on a creature in narration without createEncounter and no earlier player-input prerequisite remained. Call createEncounter with that attack as openingAction"}
   false_createmodule: {"valid":false,"reason":"Used createNewModule for 'What next?' question. Only use when player commits to specific hook"}
   false_wrong_travel: {"valid":false,"reason":"Used transitionLocation for module travel. Use updatePartyTracker with module parameter"}
   false_comma_names: {"valid":false,"reason":"Used 'Bob, Jane' in single updateCharacterInfo. Use separate actions for each character"}
