@@ -893,7 +893,8 @@ modules/[module_name]/
 ├── module_plot.json   # Quest progression
 ├── module_items.json  # Typed loot items (optional)
 ├── party_tracker.json # Party state
-└── [name]_module.json # Module metadata
+├── module_context.json     # Index of areas, NPCs and references
+└── module_declaration.json # Start, gateways and routes
 ```
 
 ### Atomic Operations
