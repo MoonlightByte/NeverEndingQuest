@@ -1508,6 +1508,7 @@ def _run_terminal_kickoff(conversation_history, party_tracker_data, location_dat
     """#1538: the synchronous kickoff (terminal limited-mode) runs under a live
     turn scope like a player turn, so its calls get heartbeat, reissue and the
     account refusal line. A scope a resumed fight left open is borrowed."""
+    from core.combat.invocation import InvocationSupersededError
     from utils.capture.live_provider_call import (
         LiveProviderSuperseded, abort_live_turn_scope, finish_live_turn_scope,
         get_live_turn_scope, open_live_turn_scope,
@@ -1524,7 +1525,7 @@ def _run_terminal_kickoff(conversation_history, party_tracker_data, location_dat
             party_tracker_data,
             location_data,
         )
-    except LiveProviderSuperseded:
+    except (LiveProviderSuperseded, InvocationSupersededError):
         raise
     except BaseException:
         engine_fault = True
