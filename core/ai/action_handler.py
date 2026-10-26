@@ -945,7 +945,9 @@ def _chain_planned_remove_effect(operation_id, index, record, sheet_chain):
             reason=parameters.get("reason") or "removed",
             base_sheet=base,
         )
-    except EffectsRuntimeError:
+    except EffectsRuntimeError as exc:
+        if "found no active effect" not in str(exc):
+            raise
         chained = dict(receipt, before=copy.deepcopy(base), after=copy.deepcopy(base), concentration_groups=[])
     checkpoint = load_current_transition_checkpoint(operation_id)
     checkpoint["deferred_actions"]["actions"][index]["receipt"] = chained
