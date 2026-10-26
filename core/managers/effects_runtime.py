@@ -317,13 +317,16 @@ def remove_effect(character_name, *, effect_id=None, name=None, reason="removed"
     }
 
 
-def prepare_remove_effect(character_name, *, effect_id=None, name=None, reason="removed"):
-    """Freeze the exact sheet mutation for one v2 travel sibling."""
+def prepare_remove_effect(character_name, *, effect_id=None, name=None, reason="removed", base_sheet=None):
+    """Freeze the exact sheet mutation for one v2 travel sibling. `base_sheet`
+    is an earlier same-character sibling's frozen after (#1549)."""
     if not campaign_effects_migrated():
         raise EffectsRuntimeError(
             "removeEffect is unavailable until the campaign effects conversion completes"
         )
     resolved, role, path, sheet = _resolve_character(character_name)
+    if base_sheet is not None:
+        sheet = deepcopy(base_sheet)
     matches = _resolve_effect_reference(
         sheet.get("temporaryEffects", []) or [], effect_id=effect_id, name=name
     )
@@ -361,9 +364,13 @@ def _end_concentration_group(matches, reason):
         end_group(group, f"ended by the DM: {reason}", except_effect_id=removed[0] if len(removed) == 1 else None)
 
 
-def prepare_character_update(character_name, changes, party_tracker_data=None, affects=None, casting_resource=None):
-    """Freeze required T078/T079 output and advisory sheet corrections."""
+def prepare_character_update(character_name, changes, party_tracker_data=None, affects=None, casting_resource=None,
+                             base_sheet=None):
+    """Freeze required T078/T079 output and advisory sheet corrections. `base_sheet`
+    is an earlier same-character sibling's frozen after (#1549)."""
     resolved, role, _path, sheet = _resolve_character(character_name)
+    if base_sheet is not None:
+        sheet = deepcopy(base_sheet)
     classifier = _lazy_classifier(resolved, changes, sheet, _world_scalar(party_tracker_data))
     receipt = _update_character_info_unlocked(
         resolved,
@@ -374,6 +381,7 @@ def prepare_character_update(character_name, changes, party_tracker_data=None, a
         structural_reissue=True,
         affects=affects,
         casting_resource=casting_resource,
+        base_sheet=base_sheet,
     )
     if not isinstance(receipt, dict):
         raise CharacterProposalDropped(resolved)
