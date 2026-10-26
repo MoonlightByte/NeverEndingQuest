@@ -28,6 +28,7 @@ from uuid import UUID, uuid4
 from utils.transient_filesystem import (
     TRANSIENT_FILESYSTEM_ATTEMPTS,
     TRANSIENT_FILESYSTEM_BACKOFF_SECONDS,
+    ReadOnlySaveStop,
     is_transient_filesystem_error,
     raise_if_save_stopped,
     retry_transient_filesystem,
@@ -2726,3 +2727,29 @@ class ModuleLifecycleStore:
         if len(matches) > 1:
             raise LifecycleIndeterminateError("Pending receipt lookup is ambiguous")
         return matches[0] if matches else None
+
+
+def copy_file_verified(source: Union[str, Path], destination: Union[str, Path]) -> None:
+    """Copy one file durably and prove the destination holds its exact bytes (#143).
+
+    A module's _BU.json reset baseline is written through the lifecycle's own
+    atomic writer (unique temp, fsync, bounded replace retry), then read back.
+    The error names only the file, never its absolute path, because a build
+    failure reason can reach the player.
+    """
+    source_path = Path(source)
+    destination_path = Path(destination)
+    try:
+        payload = retry_transient_filesystem(source_path.read_bytes)
+        ModuleLifecycleStore._atomic_write_bytes(destination_path, payload)
+        landed = retry_transient_filesystem(destination_path.read_bytes)
+    except ReadOnlySaveStop:
+        raise
+    except OSError as exc:
+        raise OSError(
+            "A module reset file could not be saved: %s" % destination_path.name
+        ) from exc
+    if landed != payload:
+        raise OSError(
+            "A module reset file did not verify after copying: %s" % destination_path.name
+        )

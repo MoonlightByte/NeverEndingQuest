@@ -4870,34 +4870,29 @@ Respond with JSON:
         """
         Update BU (backup) files with corrected location IDs after conflict resolution.
         This ensures BU files match the corrected files for all JSON files that have BU versions.
+        A BU file that does not land raises (#143): publication must not go on
+        with a stale reset baseline.
         """
-        try:
-            updated_count = 0
-            
-            # Walk through all directories in the module
-            for root, dirs, files in os.walk(module_path):
-                for filename in files:
-                    if filename.endswith('.json') and not filename.endswith('_BU.json'):
-                        json_file = os.path.join(root, filename)
-                        bu_file = os.path.join(root, filename.replace('.json', '_BU.json'))
-                        
-                        # Check if a BU version exists
-                        if os.path.exists(bu_file):
-                            # Copy the corrected file to its BU version
-                            try:
-                                import shutil
-                                shutil.copy2(json_file, bu_file)
-                                updated_count += 1
-                                rel_path = os.path.relpath(bu_file, module_path)
-                                print(f"DEBUG: [Module Stitcher] Updated BU file: {rel_path}")
-                            except Exception as e:
-                                print(f"DEBUG: [Module Stitcher] ERROR: Failed to update BU file {bu_file}: {e}")
-            
-            return updated_count
-            
-        except Exception as e:
-            print(f"DEBUG: [Module Stitcher] ERROR: Failed to update BU files: {e}")
-            return 0
+        from utils.module_lifecycle import copy_file_verified
+
+        updated_count = 0
+        
+        # Walk through all directories in the module
+        for root, dirs, files in os.walk(module_path):
+            for filename in files:
+                if filename.endswith('.json') and not filename.endswith('_BU.json'):
+                    json_file = os.path.join(root, filename)
+                    bu_file = os.path.join(root, filename.replace('.json', '_BU.json'))
+                    
+                    # Check if a BU version exists
+                    if os.path.exists(bu_file):
+                        # Copy the corrected file to its BU version
+                        copy_file_verified(json_file, bu_file)
+                        updated_count += 1
+                        rel_path = os.path.relpath(bu_file, module_path)
+                        print(f"DEBUG: [Module Stitcher] Updated BU file: {rel_path}")
+        
+        return updated_count
 
 
 # Utility functions for integration

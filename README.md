@@ -721,7 +721,9 @@ without a special launcher:
 1. Start the server and load a model.
 2. Launch either web player.
 3. Open **Settings → AI Provider** and choose **Local / Custom Server**.
-4. Enter the base URL, normally `http://localhost:1234/v1` for LM Studio.
+4. Enter the base URL, normally `http://localhost:1234/v1` for LM Studio or
+   `http://localhost:11434/v1` for Ollama (pull the model first with
+   `ollama pull <model>` and enter that name as the model identifier).
 5. Optionally enter a model identifier and API key. Local servers commonly need
    neither; hosted compatible services commonly require both.
 6. Select **Save**, then **Test Connection**.
