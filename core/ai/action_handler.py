@@ -928,7 +928,7 @@ def _extend_sheet_chain(sheet_chain, receipt):
 def _chain_planned_remove_effect(operation_id, index, record, sheet_chain):
     """Re-freeze a removeEffect planned from disk on an earlier same-character
     sibling's sheet (#1549). An effect that sibling already ended leaves a no-op."""
-    from core.managers.effects_runtime import EffectsRuntimeError, prepare_remove_effect
+    from core.managers.effects_runtime import NoActiveEffect, prepare_remove_effect
 
     receipt = record.get("receipt")
     if not isinstance(receipt, dict) or not receipt.get("path"):
@@ -945,9 +945,7 @@ def _chain_planned_remove_effect(operation_id, index, record, sheet_chain):
             reason=parameters.get("reason") or "removed",
             base_sheet=base,
         )
-    except EffectsRuntimeError as exc:
-        if "found no active effect" not in str(exc):
-            raise
+    except NoActiveEffect:
         chained = dict(receipt, before=copy.deepcopy(base), after=copy.deepcopy(base), concentration_groups=[])
     checkpoint = load_current_transition_checkpoint(operation_id)
     checkpoint["deferred_actions"]["actions"][index]["receipt"] = chained

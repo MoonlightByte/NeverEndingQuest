@@ -42,6 +42,10 @@ class EffectsRuntimeError(RuntimeError):
     """A declarative effect operation could not be completed safely."""
 
 
+class NoActiveEffect(EffectsRuntimeError):
+    """removeEffect named no effect or condition active on the sheet (#1549)."""
+
+
 class CharacterProposalDropped(EffectsRuntimeError):
     """T079 gave no usable required proposal within its bounded tries (#855)."""
 
@@ -290,7 +294,7 @@ def remove_effect(character_name, *, effect_id=None, name=None, reason="removed"
     )
     condition = None if matches else _condition_reference(sheet, effect_id=effect_id, name=name)
     if not matches and condition is None:
-        raise EffectsRuntimeError("removeEffect found no active effect to end")
+        raise NoActiveEffect("removeEffect found no active effect to end")
     operations = [
         {"op": "remove", "effectId": item.get("effectId"), "name": item.get("name")}
         for item in matches
@@ -332,7 +336,7 @@ def prepare_remove_effect(character_name, *, effect_id=None, name=None, reason="
     )
     condition = None if matches else _condition_reference(sheet, effect_id=effect_id, name=name)
     if not matches and condition is None:
-        raise EffectsRuntimeError("removeEffect found no active effect to end")
+        raise NoActiveEffect("removeEffect found no active effect to end")
     operations = [
         {"op": "remove", "effectId": item.get("effectId"), "name": item.get("name")}
         for item in matches
