@@ -23,6 +23,7 @@ from utils.file_operations import safe_read_json, safe_write_json
 from utils.path_transaction_lock import path_transaction_lock
 from utils.module_refresh_lock import (
     module_refresh_lock,
+    wait_for_module_refresh,
 )
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.encoding_utils import sanitize_text
@@ -344,6 +345,10 @@ def format_quests_for_player(module_name):
     Returns:
         bool: Success or failure
     """
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.transient_filesystem import ReadOnlySaveStop
+
     try:
         path_manager = ModulePathManager(module_name)
         plot_path = path_manager.get_plot_path()
@@ -357,6 +362,7 @@ def format_quests_for_player(module_name):
         # the provider call. A standalone caller owns no lower-ranked lock, so
         # exiting this first scope releases refresh during the network wait.
         for source_attempt in range(SOURCE_RETRY_LIMIT):
+            # Busy refresh before any call is spent: skip; the next committed change runs T090 again (#1108).
             with module_refresh_lock() as snapshot_acquired:
                 if not snapshot_acquired:
                     warning(
@@ -384,13 +390,14 @@ def format_quests_for_player(module_name):
             if candidate is None:
                 return False
 
-            with module_refresh_lock() as commit_acquired:
-                if not commit_acquired:
-                    warning(
-                        "T090 commit skipped because module refresh is busy",
-                        category="quest_formatting",
-                    )
-                    return False
+            # The T090 call is spent: busy means wait, never a dropped result (#1108, #193 B2-ii).
+            # Load, Reset or Quit still end the wait.
+            with wait_for_module_refresh(
+                lambda seconds: (
+                    "Waiting for module work to finish before saving the quest log "
+                    "(%d seconds)." % seconds
+                )
+            ):
                 with _quest_file_lock(player_quests_path):
                     if not _plot_source_matches(source):
                         warning(
@@ -415,6 +422,8 @@ def format_quests_for_player(module_name):
             category="quest_formatting",
         )
         return False
+    except (InvocationSupersededError, LiveProviderSuperseded, ReadOnlySaveStop):
+        raise
     except Exception as e:
         error("FAILURE: Unexpected error in format_quests_for_player", exception=e, category="quest_formatting")
         return False
