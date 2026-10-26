@@ -1576,6 +1576,10 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
             if not isinstance(entry, dict) or not entry.get("item_name"):
                 gaps.append(f"{cid}: equipment[{index}] has no item_name; skipped")
                 continue
+            if _int(entry.get("quantity")) is not None and entry["quantity"] < 0:
+                # #1490: the engine holds no negative stock; one such row would refuse the whole world.
+                gaps.append(f"{cid}: {entry['item_name']!r} has a negative quantity; skipped")
+                continue
             iid = _entry_id(entry, scope, index)
             if iid in all_ids:
                 gaps.append(f"{cid}: duplicate item id {iid} at equipment[{index}]; skipped")
@@ -1642,6 +1646,10 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
         for index, entry in enumerate(contents):
             if not isinstance(entry, dict) or not entry.get("item_name"):
                 gaps.append(f"{sid}: contents[{index}] has no item_name; skipped")
+                continue
+            if _int(entry.get("quantity")) is not None and entry["quantity"] < 0:
+                # #1490: the engine holds no negative stock; one such row would refuse the whole world.
+                gaps.append(f"{sid}: {entry['item_name']!r} has a negative quantity; skipped")
                 continue
             iid = _entry_id(entry, slug(sid), index)
             spare = index

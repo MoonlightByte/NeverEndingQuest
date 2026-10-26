@@ -4055,7 +4055,8 @@ def validate_ai_response(
         require_current_invocation,
     )
     from utils.capture.live_provider_call import (
-        LiveProviderSuperseded, _interruptible_wait, get_live_provider_scope,
+        LiveProviderCompletedError, LiveProviderSuperseded, _interruptible_wait,
+        get_live_provider_scope,
     )
     from utils.transient_filesystem import (
         ReadOnlySaveStop, is_transient_filesystem_error, read_bytes_preserving_errors,
@@ -4705,6 +4706,13 @@ def validate_ai_response(
         except (InvocationSupersededError, LiveProviderSuperseded, ReadOnlySaveStop):
             raise
         except Exception as provider_error:
+            # #1227: a refusal no attempt can heal (out of funds, a rejected
+            # key, no model access, a 400) goes to the review's provider
+            # policy, which names it at once. Everything else keeps the
+            # D-COST-4 attempt cap and its fail-forward line.
+            if (isinstance(provider_error, LiveProviderCompletedError)
+                    and not classify_provider_error(provider_error)["retryable"]):
+                raise
             warning(
                 f"VALIDATION: T065 provider attempt {attempt} failed: "
                 f"{provider_error}",
