@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the DM's quest update is refused during a journey, the DM is now told once on the next turn, with what the quest still needs, so a story can move on instead of stalling with the quest silently unrecorded (#1122).
 - An item saved with a negative count no longer makes every later change to your equipment fail; the game sets that item aside and the rest of your gear works as normal (#1490).
 - The Thornwood Watch: asking to go to the East Tower now leads to Scout's Watch, renamed "Scout's Watch at the East Tower"; Trader's Rest only mentions the tower, and its overgrown bell is described at Scout's Watch as it is at the start of the adventure. Saved games keep the place names they were saved with (#1371).
 - In a fight, when the AI sends back a turn plan the game has already refused once, the game now stops asking at once instead of re-asking until the turn's call limit: you see the same line as when a turn runs out of AI calls, nothing in your game is changed, and the turn is kept (#1251).

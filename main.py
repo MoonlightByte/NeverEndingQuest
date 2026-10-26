@@ -9908,6 +9908,10 @@ def _main_game_loop(startup_authority, turn_authority):
         from core.managers.checks_runtime import rest_offers_note
 
         dm_note += rest_offers_note()
+        # #1122: a quest update the engine refused during the last travel, once; the DM decides.
+        from core.managers.checks_runtime import quest_notes_note
+
+        dm_note += quest_notes_note(sum(1 for m in conversation_history if isinstance(m, dict) and m.get("role") == "assistant"))
 
         # The player's own words, never annotated with guessed items or a
         # word-matched SRD block (D-KW-5): the DM already sees every item and

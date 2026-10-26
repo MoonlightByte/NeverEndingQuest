@@ -220,6 +220,25 @@ def rest_offers_note() -> str:
         for o in LAST_REST_OFFERS)
 
 
+LAST_QUEST_NOTES: List[str] = []  # the travel quest refusals in the current turn's DM note (#1122)
+
+
+def quest_notes_note(turn_marker=None) -> str:
+    """#1122: each updatePlot the engine refused during the last travel, once (handed again
+    if that turn never landed). DM-only text; the DM decides whether to record it later."""
+    global LAST_QUEST_NOTES
+    LAST_QUEST_NOTES = checks_state.consume_quest_notes(turn_marker)
+    return "".join("\n" + text for text in LAST_QUEST_NOTES)
+
+
+def _quest_notes_validation() -> str:
+    if not LAST_QUEST_NOTES:
+        return ""
+    return ("\nThe DM Note carried engine notices of quest updates refused during the last travel: "
+            + " | ".join(LAST_QUEST_NOTES)
+            + " The DM may record them now if the story supports it, or not; neither is invalid on that account.")
+
+
 def _rest_offers_validation() -> str:
     if not LAST_REST_OFFERS:
         return ""
@@ -234,7 +253,7 @@ def _rest_offers_validation() -> str:
 def validation_context() -> str:
     """What the validator must know: the engine already scored these checks and the DM was told to narrate them."""
     if not LAST_NOTE:
-        return _rest_offers_validation().lstrip("\n")
+        return (_rest_offers_validation() + _quest_notes_validation()).lstrip("\n")
     return ("The Dungeon Master Note for this turn carried the rules engine's scored check results below. The candidate "
             "is REQUIRED to narrate each outcome (success or failure and what it means in the scene) as a settled fact; "
             "a candidate that calls such a check pending or unresolved, contradicts its success or failure, or asks for "
@@ -242,4 +261,5 @@ def validation_context() -> str:
             "sees them on the dice receipt: do NOT require the narration to state any of these numbers, and do not reject "
             "a candidate for leaving them out. Numbers the player typed in chat are not dice; only these lines are. A READ "
             "line governs how its read is narrated: a candidate in which an NPC confesses, explains or names what they are "
-            "hiding in answer to that read is invalid." + LAST_NOTE + _rest_offers_validation())
+            "hiding in answer to that read is invalid." + LAST_NOTE + _rest_offers_validation()
+            + _quest_notes_validation())
