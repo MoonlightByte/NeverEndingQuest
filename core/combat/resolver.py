@@ -4605,6 +4605,13 @@ def resolution_from_event(encounter, characters, event):
             "currentHitPoints": int(record["hpAfter"]),
             "status": record["statusAfter"],
         }
+        kind = (event.get("outcome") or {}).get("kind")
+        if from_action and kind in ("flee", "yield"):
+            # The live path's typed manner of leaving; the commit replays
+            # this event, so without it the row loses it (#1110).
+            resolution["creatureDeltas"][combatant_id]["resolution"] = (
+                "fled" if kind == "flee" else "yielded"
+            )
         creature = combatant_by_id(encounter, combatant_id)
         if (creature is not None and creature.get("type") in ("player", "npc")
                 and creature.get("name") in (characters or {})):

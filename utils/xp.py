@@ -6,6 +6,7 @@
 import json
 import os
 from .module_path_manager import ModulePathManager
+from core.managers.combat_state import left_by_resolution
 
 # CR to XP mapping (updated to include fractional CRs)
 cr_to_xp = {
@@ -31,11 +32,6 @@ def get_xp_for_cr(cr):
 
 def is_defeated(status):
     return status.lower() in ['dead', 'defeated', 'unconscious']
-
-def _left_by_resolution(creature):
-    """A typed flee or yield (resolver, #466). The sheet keeps its own status,
-    so a sync can put the encounter status back; the resolution stays."""
-    return creature.get('resolution') in ('fled', 'yielded')
 
 def _hostile_person_sheet(creature, encounter, path_manager):
     """The sheet of a person on the hostile side (#1470): the scene row's
@@ -82,7 +78,7 @@ def calculate_xp(encounter, party_tracker):
             total_xp += xp
             xp_breakdown.append((monster['name'], cr, xp))
         elif (creature['type'] == 'npc' and creature.get('faction') == 'hostile'
-              and (is_defeated(str(creature.get('status') or '')) or _left_by_resolution(creature))):
+              and (is_defeated(str(creature.get('status') or '')) or left_by_resolution(creature))):
             # #1470: a person on the hostile side pays like a monster (owner
             # ruling on #1403), a yield or flight as a defeat (#466), from
             # the challengeRating on their own sheet; never guessed.
