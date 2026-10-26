@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the DM's reply orders its moves wrongly (for example, travel that is not the first step), the DM is now told what was wrong and asked once for a corrected reply, instead of being asked again blindly twice and then telling you the game state had changed when it had not; if the corrected reply is still wrong, the action fails safely with nothing from it applied. An unused "please rephrase" fallback was also removed. (#433)
 - In a fight, when the AI sends back a turn plan the game has already refused once, the game now stops asking at once instead of re-asking until the turn's call limit: you see the same line as when a turn runs out of AI calls, nothing in your game is changed, and the turn is kept (#1251).
 - An item you had used up, such as a drunk potion, no longer makes every later change to your equipment fail; equipping a dagger or dropping an item now works on that sheet, and the empty item is cleared away (#1197).
 - At the start of a fight, the DM's opening scene is now told who is only watching, so onlookers are described as standing by rather than as taking a side (#1486).
