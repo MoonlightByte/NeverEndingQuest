@@ -30,48 +30,6 @@ from utils.capture.live_provider_call import (
 )
 
 
-def _run_t020_with_timeout(call, timeout_seconds):
-    """Run the optional compression call without letting it gate gameplay.
-
-    Provider SDK cancellation behavior is not consistent across OpenAI,
-    Gemini, and OpenAI-compatible local servers.  A daemon worker gives this
-    callsite one provider-neutral deadline.  A response that arrives after the
-    deadline has no state-writing callback, so it is safely discarded.
-    """
-    if not _T020_SINGLE_FLIGHT.acquire(blocking=False):
-        raise IncrementalCompressionTimeout(
-            "a prior T020 call is still finishing"
-        )
-
-    outcome = queue.Queue(maxsize=1)
-
-    def invoke():
-        try:
-            outcome.put((True, call()))
-        except Exception as exc:  # Re-raised on the gameplay thread.
-            outcome.put((False, exc))
-        finally:
-            _T020_SINGLE_FLIGHT.release()
-
-    worker = threading.Thread(
-        target=invoke,
-        name="neq-t020-compression",
-        daemon=True,
-    )
-    worker.start()
-    try:
-        succeeded, value = outcome.get(
-            timeout=max(float(timeout_seconds), 0.001)
-        )
-    except queue.Empty as exc:
-        raise IncrementalCompressionTimeout(
-            f"T020 exceeded {timeout_seconds:g}s"
-        ) from exc
-    if not succeeded:
-        raise value
-    return value
-
-
 class IncrementalLocationCompressor:
     """Handles incremental compression of messages at current location."""
     
