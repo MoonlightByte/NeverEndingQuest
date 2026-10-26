@@ -7533,6 +7533,7 @@ def save_conversation_history(
     commit_guard=None,
 ):
     from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.transient_filesystem import ReadOnlySaveStop
     try:
         # #290: the authoritative conversation is persisted before T020 runs,
         # so a lifecycle supersession or a failure during compression never
@@ -7556,7 +7557,7 @@ def save_conversation_history(
                         info("Conversation history compressed successfully", category="compression")
                     else:
                         debug("Compression not applied - conditions not fully met", category="compression")
-        except LiveProviderSuperseded:
+        except (LiveProviderSuperseded, ReadOnlySaveStop):
             raise
         except Exception as compression_error:
             warning(
