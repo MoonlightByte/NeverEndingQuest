@@ -2204,6 +2204,14 @@ def summarize_dialogue(
         else:  # legacy
             summary_config = config.COMBAT_SUMMARY_LEGACY
 
+        # #454: the round's status was cleared; show progress while T041
+        # writes the summary (its wait record attaches to this line).
+        try:
+            from core.managers.status_manager import status_wrapping_up_combat
+            status_wrapping_up_combat()
+        except Exception as e:
+            debug(f"Could not update status: {e}", category="status")
+
         response = capture_and_fanout("T041", api_client.create_completion,
             _request_provider=MODEL_PROVIDER,
             messages=dialogue_summary_prompt,
