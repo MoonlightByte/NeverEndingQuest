@@ -146,13 +146,13 @@ category names the rule you applied when valid is false, and is none when valid 
 // Example Response 14: False - Combat not initiated at commitment point; no earlier player-input prerequisite
 {
   "valid": false,
-  "reason": "The assistant narrated a sneak attack that killed a bandit and alerted other enemies, then continued to narrate additional combat actions without using createEncounter. Once enemies are aware after a hostile action (the Combat Commitment Point) and no earlier player-input prerequisite remains, formal combat MUST begin immediately. Revise to include createEncounter action after the first attack alerts the enemies."
+  "reason": "The assistant narrated a sneak attack that killed a bandit, then continued to narrate additional combat actions, without using createEncounter. A weapon or spell aimed at a creature is the Combat Commitment Point and is not resolved in narration: no attack roll, hit, damage or kill before entry. When no earlier player-input prerequisite remains, formal combat MUST begin immediately. Revise to call createEncounter with the sneak attack as openingAction, narrating only up to the attempt."
 }
 
 // Example Response 15: True - Correct combat initiation  
 {
   "valid": true,
-  "reason": "The assistant correctly identified the Combat Commitment Point when the first sneak attack alerted the remaining bandits, and immediately used createEncounter to initiate formal combat before any further actions were resolved."
+  "reason": "The assistant correctly identified the player's sneak attack on the bandits as the Combat Commitment Point and immediately used createEncounter with that attack as openingAction, narrating only up to the attempt; no attack roll, hit or damage was resolved before entry."
 }
 
 // Example Response 16: True - Valid cross-module NPC reference
@@ -287,13 +287,13 @@ PLAYER COIN INSTRUCTIONS STAND: when the player plainly gives or splits their ow
 // Example Response 13: False - Combat Not Initiated at Commitment Point
 {
   "valid": false,
-  "reason": "The assistant narrated multiple combat actions (sneak attack, sacred flame, crossbow attack) after enemies became aware from the first attack. Once the first hostile action alerts enemies and no earlier player-input prerequisite remains, the assistant MUST immediately use createEncounter. No further combat actions should be resolved narratively. Rewrite the response to call createEncounter after the first attack alerts the other bandits."
+  "reason": "The assistant narrated multiple combat actions (sneak attack, sacred flame, crossbow attack) and their results without createEncounter. The first attack aimed at a creature is the Combat Commitment Point; when no earlier player-input prerequisite remains, the assistant MUST immediately use createEncounter with that attack as openingAction. No attack should be resolved narratively. Rewrite the response to call createEncounter with the rogue's sneak attack as openingAction."
 }
 
 // Example Response 14: True - Correct Combat Initiation
 {
   "valid": true,
-  "reason": "The assistant correctly identified the combat commitment point when the rogue's first attack alerted other enemies, and immediately used createEncounter to transition to formal combat. Pre-combat buffs (Aid, Guidance) were appropriately handled narratively before the commitment point."
+  "reason": "The assistant correctly treated the rogue's attack as the combat commitment point and immediately used createEncounter with that attack as openingAction, resolving no attack before entry. Pre-combat buffs (Aid, Guidance) were appropriately handled narratively before the commitment point."
 }
 
 ## REST MANAGEMENT VALIDATION RULES

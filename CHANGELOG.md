@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The DM's reply checker's worked examples now match its own rule for starting a fight: an attack on a creature starts combat as the opening move, rather than being played out first, so the checker no longer sees conflicting guidance (#1506).
 - When a fight ends, the status bar now shows "Wrapping up the battle..." while the battle summary is written, instead of nothing (#454).
 - The module toolkit no longer logs a false error for each NPC without a description; it skips such an NPC, as it always did in effect (the AI fallback it tried to use never existed) (#218).
 - During a level up, the command bar now shows the game is busy while it works on each answer, including updating your sheet after you approve (#76).
