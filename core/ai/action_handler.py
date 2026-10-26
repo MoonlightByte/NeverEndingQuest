@@ -83,7 +83,7 @@ from core.managers.status_manager import (
     status_updating_plot, status_advancing_time, status_processing_levelup
 )
 from utils.location_path_finder import LocationGraph
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, file_only, set_script_name
 from core.nql.journal import entry_id as journal_entry_id
 
 
@@ -4330,7 +4330,9 @@ Determine the most logical starting location based on adventure flow, area types
                 pass
         
         ai_response = response.choices[0].message.content.strip()
-        debug(f"AI_CALL: Starting location analysis response: {ai_response}", category="ai_operations")
+        # #257: the model's reply goes to the log files only, never the console
+        # (in web and headless mode the console can become player narration).
+        file_only(f"AI_CALL: Starting location analysis response: {ai_response}", category="ai_operations")
         
         # Parse AI response - handle markdown code blocks
         json_content = ai_response
@@ -4348,7 +4350,7 @@ Determine the most logical starting location based on adventure flow, area types
                 elif in_json_block:
                     json_lines.append(line)
             json_content = '\n'.join(json_lines)
-            debug(f"AI_CALL: Extracted JSON from code block: {json_content}", category="ai_operations")
+            file_only(f"AI_CALL: Extracted JSON from code block: {json_content}", category="ai_operations")
         
         try:
             result = json.loads(json_content)
@@ -4357,7 +4359,7 @@ Determine the most logical starting location based on adventure flow, area types
             required_fields = ['locationId', 'locationName', 'areaId', 'areaName']
             if all(field in result for field in required_fields):
                 info(f"AI_CALL: AI determined starting location: {result['areaId']}/{result['locationId']} - {result['locationName']}", category="module_loading")
-                debug(f"AI_CALL: AI reasoning: {result.get('reasoning', 'No reasoning provided')}", category="ai_operations")
+                file_only(f"AI_CALL: AI reasoning: {result.get('reasoning', 'No reasoning provided')}", category="ai_operations")
                 
                 return (
                     result['locationId'],
@@ -4366,11 +4368,12 @@ Determine the most logical starting location based on adventure flow, area types
                     result['areaName']
                 ), "model"
             else:
-                print(f"ERROR: AI response missing required fields: {result}")
+                print("ERROR: AI response missing required fields")
+                file_only(f"AI_CALL: AI response missing required fields: {result}", category="ai_operations")
                 
         except json.JSONDecodeError as e:
             print(f"ERROR: Could not parse AI response as JSON: {e}")
-            print(f"AI response was: {ai_response}")
+            file_only(f"AI_CALL: AI response was: {ai_response}", category="ai_operations")
         
         # Fallback to first area/location if AI analysis fails
         print("WARNING: AI analysis failed, falling back to first available location")

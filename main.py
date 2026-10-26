@@ -9497,19 +9497,19 @@ def _main_game_loop(startup_authority, turn_authority):
                     % pending_transition_recovery.get("reason"),
                     category="location_transitions",
                 )
-                # Player-visible in web + headless + terminal: the DM narration
-                # section is the only cross-mode player output surface (a bare
-                # "[SYSTEM]" line would route to the debug stream). Register is an
-                # owner decision (D-210-2); the out-of-fiction channel is issue #212.
-                print(
-                    "Dungeon Master: A prior travel action didn't finish cleanly, "
+                # Player-visible in web + headless + terminal: delivered as DM
+                # narration through the frontend sink, else printed (#257: a
+                # direct print opened a scraped section that later debug lines
+                # joined). Register is an owner decision (D-210-2); the
+                # out-of-fiction channel is issue #212.
+                display_dm_narration(
+                    "A prior travel action didn't finish cleanly, "
                     "so you remain where the party actually stands - %s. You can "
                     "continue from here, or load an earlier save to redo that "
                     "journey." % here
                 )
-                # [travel #210] Flush so the DM-narration section is emitted and
-                # CLOSED before the next startup diagnostic line, which would
-                # otherwise be absorbed into this notice's narration block. Guarded
+                # [travel #210] Terminal fallback: flush so the printed notice is
+                # out before the next startup diagnostic line. Guarded
                 # like emit_startup_marker's flush so a broken/closed terminal pipe
                 # cannot raise into the boot except-branch and abort startup.
                 try:
