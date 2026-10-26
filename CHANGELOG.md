@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The storyteller is now told each turn which character is the player, so it speaks to them as "you" instead of narrating them like a stranger (#189).
 - Reset retries a briefly locked module file instead of stopping partway and never leaves a restored file half-written (#226).
 - Loading a save or resetting while a fight was being built ("Prepare for battle - building encounter...") no longer waits for every new monster and NPC to be generated: the build stops within a few seconds, and a stopped build writes no encounter and no half-written monster or NPC file (#1529).
 - A campaign Reset's backup now also keeps companion memories (NPC relationships and episodes) before clearing them, so they can be restored from it (#201).
