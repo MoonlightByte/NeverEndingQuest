@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The Thornwood Watch: the finale now pays a set reward, fifty gold pieces for each member of the party from Ranger Marcus, and Ranger Elen's sudden departure for Harrow's Hollow happens when you report at the Rangers' Command Post, where she is recorded as gone. Saved games keep the plot text they were saved with (#1114).
 - An item saved with a negative count no longer makes every later change to your equipment fail; the game sets that item aside and the rest of your gear works as normal (#1490).
 - The Thornwood Watch: asking to go to the East Tower now leads to Scout's Watch, renamed "Scout's Watch at the East Tower"; Trader's Rest only mentions the tower, and its overgrown bell is described at Scout's Watch as it is at the start of the adventure. Saved games keep the place names they were saved with (#1371).
 - In a fight, when the AI sends back a turn plan the game has already refused once, the game now stops asking at once instead of re-asking until the turn's call limit: you see the same line as when a turn runs out of AI calls, nothing in your game is changed, and the turn is kept (#1251).
