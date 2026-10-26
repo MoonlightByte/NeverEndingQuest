@@ -470,8 +470,13 @@ def narration_coverage_violations(covered_event_ids, dossier):
 def update_narration_activity(activity, events):
     """Accumulate a per-combatant summary from committed typed facts."""
     result = deepcopy(activity) if isinstance(activity, dict) else {}
+    # #244: a row is normalized once per call; later lookups (a self-target
+    # event's actor and target) share it, so no handed-out row is detached.
+    normalized_ids = set()
 
     def row_for(combatant_id):
+        if combatant_id in normalized_ids:
+            return result[combatant_id]
         row = result.get(combatant_id)
         if not isinstance(row, dict):
             row = {}
@@ -484,6 +489,7 @@ def update_narration_activity(activity, events):
             "recentFacts": list(row.get("recentFacts") or []),
         }
         result[combatant_id] = normalized
+        normalized_ids.add(combatant_id)
         return normalized
 
     for event in events or []:
