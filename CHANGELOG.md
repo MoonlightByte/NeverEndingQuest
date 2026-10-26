@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - The chronicle written when you leave an adventure now keeps the nicknames, promises and personal details that came up in play, and no longer makes up ones that never did (#318).
+- After a model call ends, refused or answered, the progress line goes back to what the game was doing instead of keeping the call's "Your turn is safe" heartbeat (#1088).
+- A new adventure's most dangerous regions no longer give their places a danger level the game does not recognise; they are now marked Very High, the highest level a place can have (#1528).
 - In a fight, the game now shows "Processing combat round..." as soon as your action is accepted, instead of showing nothing for several seconds while it prepares the companions' voices (#351).
 - In a terminal game, the opening scene now shows its progress, retries a silent provider and says when the account is out of credit, as every later turn does (#1538).
 - In a fight, a companion now remembers what it was privately thinking, wondering and feeling in the previous round; before, each new round wiped it, so every round started from nothing (#1568).
