@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - A named NPC who joins a fight must now be put on a side (against the party or beside it) when the fight is set up; when the DM leaves it out, the DM is asked to say which, so a hostile NPC no longer quietly fights on the party's side. Party companions still fight beside the party without being asked (#1551).
+- Storage log lines name the attempt that actually ran (#383).
+- The full referee prompt no longer lists updatePlayerInfo/updateNPCInfo as accepted actions (#376).
+- When the story frees a character from a condition such as restrained or poisoned, or puts them in one, the game now makes sure their character sheet is updated too, so a condition no longer lingers after the story says it ended (#261).
+- Removed the unused NPC auto-level-up module (T086) and its model setting; companions level through the same level-up session (#362).
 - A companion keeps their established personality when a profile refresh fails after their sheet changes (#350).
 - A spell or effect that takes a character's last hit points when it ends (or when it starts) now leaves them down the same way a blow does: a party member unconscious, a foe dead, on both the character sheet and the fight's roster, instead of listed as alive at 0 hit points (#1550).
 - A combatant's action on themselves (such as Second Wind) is no longer dropped from the fight's running record of what each combatant did, which the companion voice lines read: the healing or damage it dealt and its entry are kept (#244).

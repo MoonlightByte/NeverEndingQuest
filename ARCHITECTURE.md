@@ -127,7 +127,6 @@ The codebase follows a clean, organized structure with logical separation of con
 │   ├── encoding_utils.py          # Text encoding and JSON safety
 │   ├── enhanced_logger.py         # Comprehensive logging system
 │   ├── file_operations.py         # Atomic file operations
-│   ├── level_up.py                # Legacy level up system
 │   ├── location_path_finder.py    # Location pathfinding utilities
 │   ├── module_context.py          # Module context management
 │   ├── module_path_manager.py     # Module-centric path management
