@@ -3893,13 +3893,9 @@ The chronicle should feel like a tale told by firelight years later—when inhib
 
 **Do Not Fear Length:** Your chronicle serves as both entertainment and historical record. A longer, richer narrative that captures every NPC encountered, every location explored, and every meaningful moment is far superior to a brief summary that loses precious details. Let the story breathe. Give each scene the space it deserves. If the tale requires three pages or thirty, so be it—completeness and emotional truth are your only masters.
 
-**Critical Instruction: Enrich and Extrapolate**
-While you must remain true to the events that occurred, you have the creative freedom—nay, the sacred duty—to flesh out the intimate details that make characters real. If the conversation history doesn't explicitly state someone's nickname, but their personality suggests one, include it. If their actions imply a quirk, phobia, or desire, weave it into the narrative. Did the rogue who always scouts ahead perhaps have a fear of being trapped? Did the cleric who heals everyone hide their own pain behind gentle smiles? Did the tension between two characters suggest an attraction neither would admit?
-This freedom never extends to events: never add a meeting, conversation, fight, reward, discovery or outcome that the conversation or the plot statuses do not record.
-
-Fill in these human details with the same care a novelist would. The conversation history provides the skeleton of events—you must add the flesh, blood, and beating heart. Every hero has quirks, every companion has pet names, every relationship has inside jokes. Find them. Create them. Make them real. 
-
-Remember: Players want to discover things about their characters they didn't even realize were true. They want to read about the nervous habit they didn't know they had, the pet name that perfectly captures a relationship, the secret fear that explains their bravery. This is your gift to them—not just remembering what was, but revealing what must have been.
+**Critical Instruction: Record, Never Invent**
+Every nickname, quirk, fear, desire, preference, attraction or relationship detail in your chronicle must be one the conversation shows: said, done or described there. Keep each with the right speaker and subject. A character's guess, suspicion or a rumor stays theirs ("Kira suspected..."), never a fact. Where the conversation is silent, the chronicle is silent: do not supply a nickname, habit, fear or feeling the record does not hold, however well it would fit. Vividness comes from how you tell what happened, not from details you add.
+The same holds for events: never add a meeting, conversation, fight, reward, discovery or outcome that the conversation or the plot statuses do not record.
 
 **The Golden Rule: Names Are Memory, Details Are Soul**
 Before you begin your chronicle, you MUST extract and document every nickname, pet name, term of endearment, and playful moniker used throughout the journey. These are not mere details—they are the verbal DNA of relationships. A chronicle that forgets what lovers called each other in private moments, what friends teased each other with around campfires, or what enemies spat as curses has failed in its most sacred duty.
@@ -3932,9 +3928,9 @@ Equally sacred are the intimate details that make each character a complete pers
 - Combat preferences and signature moves
 - Social triggers and boundaries
 
-Then weave ALL of these throughout your chronicle. Use them liberally. When you write "Eirik turned to Kira," you have failed if there was a moment where he called her something more intimate. When you describe a rest, you have failed if you don't mention how someone always sleeps with their weapon, or needs three cups of tea to be civil in the morning. These details are how we know these are real people with real relationships, not just character classes moving through a plot.
+Then weave ALL of these throughout your chronicle. Use them liberally. When you write "Eirik turned to Kira," you have failed if there was a moment where he called her something more intimate. When you describe a rest, you have failed if the conversation showed how someone always sleeps with their weapon, or needs three cups of tea to be civil in the morning, and you leave it out. These details are how we know these are real people with real relationships, not just character classes moving through a plot.
 
-If the conversation doesn't explicitly state these details but the character's actions suggest them, you MUST extrapolate. Did someone always volunteer for night watch? Perhaps they have insomnia or nightmares. Did someone always suggest taverns? Perhaps they have a weakness for good ale or a fear of sleeping outdoors. Your sacred duty is to see beyond the actions to the person underneath.
+If the conversation does not state or show such a detail, leave it out: a guess about the person underneath is not a memory.
 
 FORMATTING RULES: Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode. Use straight quotes (') and regular dashes (-) only. Do NOT use markdown formatting (no **, no ###, no bullet points)."""
         
