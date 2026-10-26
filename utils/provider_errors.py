@@ -24,6 +24,7 @@ QUOTA_ERROR_CODES = frozenset({
     "insufficient_quota",
     "insufficient_credit",
     "billing_hard_limit_reached",
+    "credit_balance_exhausted",
 })
 
 _PROVIDER_NAMES = {
@@ -293,9 +294,7 @@ def classify_provider_error(exc):
     # of retries will pay the bill -- the error code separates them, not the
     # status.
     if matches(
-        "insufficient_quota",
-        "insufficient_credit",
-        "billing_hard_limit_reached",
+        *sorted(QUOTA_ERROR_CODES),
         "exceeded your current quota",
         "check your plan and billing",
     ):
