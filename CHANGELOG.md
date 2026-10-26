@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When you pick up an ordinary piece of gear the scene only describes, such as a torch left burning, the DM is now told to add it as the standard item, so it gets its real description and type instead of a plain note (#1274).
 - The Thornwood Watch: asking to go to the East Tower now leads to Scout's Watch, renamed "Scout's Watch at the East Tower"; Trader's Rest only mentions the tower, and its overgrown bell is described at Scout's Watch as it is at the start of the adventure. Saved games keep the place names they were saved with (#1371).
 - In a fight, when the AI sends back a turn plan the game has already refused once, the game now stops asking at once instead of re-asking until the turn's call limit: you see the same line as when a turn runs out of AI calls, nothing in your game is changed, and the turn is kept (#1251).
 - An item you had used up, such as a drunk potion, no longer makes every later change to your equipment fail; equipping a dagger or dropping an item now works on that sheet, and the empty item is cleared away (#1197).
