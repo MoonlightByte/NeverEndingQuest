@@ -363,16 +363,19 @@ class PreparedOocVoiceHandle:
 
 
 def _voice_recall_row(npc_id: str, episode: Mapping[str, Any]) -> Dict[str, Any]:
-    personal_line = ""
+    # Every fact about this companion, in the episode's order: a later vow must
+    # not be dropped for an earlier discovery (#283).
+    personal_lines = []
     for fact in episode.get("salientFacts", []) or []:
         subject = fact.get("subject") if isinstance(fact, Mapping) else None
         if isinstance(subject, Mapping) and subject.get("id") == npc_id:
-            personal_line = _string(fact.get("oneLine"))
-            break
+            line = _string(fact.get("oneLine"))
+            if line and line not in personal_lines:
+                personal_lines.append(line)
     return {
         "episodeId": _string(episode.get("episodeId")),
         "headline": _string(episode.get("headline")),
-        "personalLine": personal_line,
+        "personalLines": personal_lines,
     }
 
 
