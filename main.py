@@ -8369,6 +8369,29 @@ def _travel_recovery_pending():
     return True
 
 
+def _staged_completion_pending():
+    """#217: a staged module completion also needs the recovery authority.
+
+    Reads the drain's own intent listing, so the two always agree; an unreadable
+    listing is never clean absence.
+    """
+    from core.managers.campaign_manager import (
+        _COMPLETION_INTENT_TEMP_PATTERN, _campaign_completion_metadata_dir,
+    )
+
+    # The path only: CampaignManager() would load (and recover) the campaign.
+    intents_dir = os.path.join(
+        _campaign_completion_metadata_dir("modules/campaign.json"), "intents",
+    )
+    if not os.path.isdir(intents_dir):
+        return False
+    try:
+        names = os.listdir(intents_dir)
+    except OSError:
+        return True
+    return any(not _COMPLETION_INTENT_TEMP_PATTERN.fullmatch(name) for name in names)
+
+
 def _startup_travel_followup_failed(recovery_scope, exc):
     """Startup finished an interrupted journey but could not reload after it (#211).
 
@@ -8435,7 +8458,7 @@ def _travel_recovery_authority():
         _emit_working, _safe_emit,
     )
 
-    if not _travel_recovery_pending():
+    if not _travel_recovery_pending() and not _staged_completion_pending():
         yield None
         return
     scope = get_live_turn_scope()
