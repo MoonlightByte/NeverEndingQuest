@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Shortening the conversation history no longer stops the game for up to 45 seconds without a word: it now shows that it is still working, a Load, Reset or Quit stops it at once, the turn's conversation is saved before it starts, and when no turn is under way it waits for the next one (#290).
+- A travel sheet update no longer gives a new item an id an earlier change in the same trip already holds (#1569).
+- When a fight pauses for the player's dice roll, what the companions privately thought and felt at the start of that round is now kept; before, it was lost whenever the round paused for a roll, and a restart keeps any feeling the round brings up from being counted twice (#269).
+- Travel storage actions now follow earlier changes in the same trip instead of blocking it, and a new item id in one never repeats an id another holds (#1567).
 - Two staged travel changes to the same character sheet now both apply instead of the second blocking the transition (#1549).
 - Resetting during character setup in the headless game no longer says your choices are kept just before they are cleared (#341).
 - Model replies logged for diagnosis go to the log files only, so they can no longer leak into narration (#1548).

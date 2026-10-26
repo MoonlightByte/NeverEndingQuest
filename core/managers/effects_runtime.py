@@ -369,7 +369,7 @@ def _end_concentration_group(matches, reason):
 
 
 def prepare_character_update(character_name, changes, party_tracker_data=None, affects=None, casting_resource=None,
-                             base_sheet=None):
+                             base_sheet=None, reserved_ids=None):
     """Freeze required T078/T079 output and advisory sheet corrections. `base_sheet`
     is an earlier same-character sibling's frozen after (#1549)."""
     resolved, role, _path, sheet = _resolve_character(character_name)
@@ -386,6 +386,7 @@ def prepare_character_update(character_name, changes, party_tracker_data=None, a
         affects=affects,
         casting_resource=casting_resource,
         base_sheet=base_sheet,
+        reserved_ids=reserved_ids,
     )
     if not isinstance(receipt, dict):
         raise CharacterProposalDropped(resolved)

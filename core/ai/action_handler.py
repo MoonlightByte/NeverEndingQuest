@@ -912,17 +912,33 @@ def _sheet_chain_key(path):
 
 
 def _extend_sheet_chain(sheet_chain, receipt):
-    """Record the frozen sheet a staged sibling leaves behind (#1549)."""
+    """Record the frozen sheets a staged sibling leaves behind (#1549); a
+    storage sibling leaves the storage file too (#1567)."""
     if not isinstance(receipt, dict):
         return
     if receipt.get("kind") in ("updateCharacterInfo", "removeEffect"):
-        target = receipt if receipt.get("path") and "after" in receipt else None
+        targets = [receipt] if receipt.get("path") and "after" in receipt else []
     elif receipt.get("kind") == "storageInteraction":
-        target = receipt.get("character")
+        targets = [receipt.get("character"), receipt.get("storage")]
     else:
-        target = None
-    if isinstance(target, dict) and target.get("path") and isinstance(target.get("after"), dict):
-        sheet_chain[_sheet_chain_key(target["path"])] = target["after"]
+        targets = []
+    for target in targets:
+        if isinstance(target, dict) and target.get("path") and isinstance(target.get("after"), dict):
+            sheet_chain[_sheet_chain_key(target["path"])] = target["after"]
+
+
+def _chain_reserved_ids(sheet_chain):
+    """Every item id the trip's frozen siblings hold (#1567): a new id minted
+    by a later sibling steps past these as it does past the disk."""
+    from core.nql import genesis
+
+    sheets, containers = [], []
+    for frozen in sheet_chain.values():
+        if isinstance(frozen.get("playerStorage"), list):
+            containers.extend(frozen["playerStorage"])
+        else:
+            sheets.append(frozen)
+    return genesis.held_ids(sheets, containers)
 
 
 def _chain_planned_remove_effect(operation_id, index, record, sheet_chain):
@@ -1060,6 +1076,7 @@ def prepare_current_transition_actions(operation_id):
                     affects=parameters.get("affects"),
                     casting_resource=parameters.get("castingResource"),
                     base_sheet=sheet_chain.get(_sheet_chain_key(sheet_path)),
+                    reserved_ids=_chain_reserved_ids(sheet_chain),
                 )
             except CharacterProposalDropped as dropped:
                 # #855: no usable proposal within the bounded tries. The
@@ -1105,17 +1122,24 @@ def prepare_current_transition_actions(operation_id):
                 description = parameters.get("description")
                 if not isinstance(description, str) or not description.strip():
                     raise ValueError("storageInteraction requires a description")
+                # #1567: frozen on the earlier siblings' sheets and storage.
+                def chained(path):
+                    return sheet_chain.get(_sheet_chain_key(path))
+
                 proposal = process_storage_request(
                     description,
                     character_name,
                     structural_reissue=True,
+                    base_sheets=chained,
                 )
                 if not proposal.get("success"):
                     raise RuntimeError("required storage proposal was not accepted")
                 receipt = StorageManager(
                     ensure_storage=False
                 ).prepare_staged_operation(
-                    proposal["operation"], record["operation_id"]
+                    proposal["operation"], record["operation_id"],
+                    base_sheets=chained,
+                    reserved_ids=_chain_reserved_ids(sheet_chain),
                 )
                 receipt["message_id"] = str(uuid4())
             except _TRAVEL_PREPARE_PASSTHROUGH:
