@@ -832,8 +832,15 @@ def apply_travel_receipt(receipt, *, root=".") -> str:
 
 def journal_after_change(module):
     """T090 keeps the player's journal (D4): run after each committed change."""
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.transient_filesystem import ReadOnlySaveStop
+
     try:
         from utils.quest_player_formatter import format_quests_for_player
         format_quests_for_player((module or "").replace(" ", "_"))
+    except (InvocationSupersededError, LiveProviderSuperseded, ReadOnlySaveStop):
+        # A superseded turn or a save stop ends the turn, not just the journal (#1108).
+        raise
     except Exception as exc:  # fail forward
         warning("QUESTS: player journal not refreshed (%s)" % exc, category="plot_updates")

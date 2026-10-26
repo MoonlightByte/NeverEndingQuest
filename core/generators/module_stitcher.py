@@ -4535,6 +4535,7 @@ Respond with JSON:
 
         with module_refresh_lock() as acquired:
             if not acquired:
+                # Keep the skip: the next scan joins these modules (#1108).
                 warning(
                     "Module integration skipped: refresh lock timeout",
                     category="module_integration",

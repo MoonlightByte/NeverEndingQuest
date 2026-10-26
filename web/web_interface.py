@@ -3629,6 +3629,10 @@ def handle_action(data, _operation_id=None):
                     or recovery_result.get('reason')
                     or 'unknown'
                 )
+                # #1233: the account line from a refused opening, when there is one.
+                player_message = recovery_result.get('player_message')
+                if isinstance(player_message, str) and player_message.strip():
+                    payload['playerMessage'] = player_message
 
             log_web_audit(
                 'recover_startup_handoff',
