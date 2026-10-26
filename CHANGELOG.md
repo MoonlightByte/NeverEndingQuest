@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Changing the AI provider in the web settings while a turn or the "welcome back" scene is still running no longer switches providers halfway through it: the change is accepted, you are told it is queued, and it takes effect as soon as that turn reaches a safe point, the same way a Save made during a turn waits. When no turn is running the change still applies at once, including the Settings save the startup setup asks for when the provider rejects the key (#113).
 - The DM's reply checker's worked examples now match its own rule for starting a fight: an attack on a creature starts combat as the opening move, rather than being played out first, so the checker no longer sees conflicting guidance (#1506).
 - When a fight ends, the status bar now shows "Wrapping up the battle..." while the battle summary is written, instead of nothing (#454).
 - The module toolkit no longer logs a false error for each NPC without a description; it skips such an NPC, as it always did in effect (the AI fallback it tried to use never existed) (#218).
