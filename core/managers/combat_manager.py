@@ -160,6 +160,7 @@ from core.managers.combat_state import (
     initiative_eligible_ids,
     is_down,
     is_party_member,
+    left_by_resolution,
     normalize_status,
     participation_of,
     recovery_action,
@@ -2834,7 +2835,8 @@ def sync_active_encounter():
                     if creature.get("maxHitPoints") != player_data.get("maxHitPoints"):
                         creature["maxHitPoints"] = player_data.get("maxHitPoints")
                         changes_made = True
-                    if creature.get("status") != player_data.get("status"):
+                    # #1110: a typed flee or yield stays on the row; the sheet keeps its own status.
+                    if creature.get("status") != player_data.get("status") and not left_by_resolution(creature):
                         creature["status"] = player_data.get("status")
                         changes_made = True
                     if creature.get("conditions") != player_data.get("condition_affected"):
@@ -2868,7 +2870,7 @@ def sync_active_encounter():
                         if creature.get("maxHitPoints") != npc_data.get("maxHitPoints"):
                             creature["maxHitPoints"] = npc_data.get("maxHitPoints")
                             changes_made = True
-                        if creature.get("status") != npc_data.get("status"):
+                        if creature.get("status") != npc_data.get("status") and not left_by_resolution(creature):
                             creature["status"] = npc_data.get("status")
                             changes_made = True
                         if creature.get("conditions") != npc_data.get("condition_affected"):
