@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A new adventure's most dangerous regions no longer give their places a danger level the game does not recognise; they are now marked Very High, the highest level a place can have (#1528).
 - In a terminal game, the opening scene now shows its progress, retries a silent provider and says when the account is out of credit, as every later turn does (#1538).
 - In a fight, a companion now remembers what it was privately thinking, wondering and feeling in the previous round; before, each new round wiped it, so every round started from nothing (#1568).
 - Shortening the conversation history no longer stops the game for up to 45 seconds without a word: it now shows that it is still working, a Load, Reset or Quit stops it at once, the turn's conversation is saved before it starts, and when no turn is under way it waits for the next one (#290).
