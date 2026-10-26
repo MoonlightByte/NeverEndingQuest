@@ -4062,7 +4062,7 @@ def _normalize_dm_candidate(primary_response, party_tracker_data):
     try:
         from core.combat.scene import validate_typed_encounter_actions
 
-        validate_typed_encounter_actions(json.loads(response_to_validate))
+        validate_typed_encounter_actions(json.loads(response_to_validate), party_tracker_data)
     except (json.JSONDecodeError, ValueError, TypeError) as exc:
         return (False, f"Typed combat scene error: {exc}")
 

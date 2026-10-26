@@ -792,6 +792,9 @@ def generate_encounter(encounter_data):
         path_manager = ModulePathManager(current_module)
     except:
         path_manager = ModulePathManager()  # Fallback to reading from file
+    # #1551: the npc slots that are roster companions, by value.
+    from core.combat.scene import companion_participant_keys
+    companion_keys = companion_participant_keys(encounter_data, party_tracker)
     player_file = player_sheet_path(path_manager, party_tracker, encounter_data['player'])
     logging.debug(f"Attempting to load player data from {player_file}")
     
@@ -943,12 +946,15 @@ def generate_encounter(encounter_data):
         )
         if occupant_id:
             npc["occupantId"] = occupant_id
-        # #1449: the DM's typed side for this slot sets the fight's faction;
-        # without one, ensure_combatant_ids keeps today's party default. The
-        # value is validated with the rest of the scene (reconcile_scene_manifest).
+        # #1449: the DM's typed side for this slot sets the fight's faction.
+        # #1551: a fighting npc must state one unless it is a roster companion
+        # (reconcile_scene_manifest refuses it otherwise); a companion with no
+        # side fights beside the party.
         side = _proposed_side(encounter_data, f"npc:{npc_index}")
         if side in ("hostile", "party"):
             npc["faction"] = side
+        elif f"npc:{npc_index}" in companion_keys:
+            npc["faction"] = "party"
         # Add the NPC to the encounter's creatures array
         encounter["creatures"].append(npc)
         scene_sources.append(
@@ -982,7 +988,7 @@ def generate_encounter(encounter_data):
         }
         for item in scene_sources
     ]
-    reconciled = reconcile_scene_manifest(encounter_data, canonical_snapshot)
+    reconciled = reconcile_scene_manifest(encounter_data, canonical_snapshot, companion_keys)
     encounter["sceneFacts"] = reconciled["sceneFacts"]
     for item in roster_sources:
         row = {

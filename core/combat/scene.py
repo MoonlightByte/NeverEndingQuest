@@ -70,8 +70,61 @@ def _participant_id(key, canonical, label):
     return canonical[key]["combatantId"]
 
 
-def reconcile_scene_manifest(parameters, canonical_snapshot):
-    """Reconcile one T067 scene proposal against exact canonical participants."""
+def _folded(value):
+    return value.strip().casefold() if isinstance(value, str) and value.strip() else None
+
+
+def companion_participant_keys(parameters, party_tracker, roster_changes=()):
+    """#1551: the ``npc:N`` keys of this proposal that are roster companions.
+
+    A slot is a companion when its ``npcs`` name equals a ``partyNPCs`` name
+    (case and surrounding spaces aside) or its ``occupantIds`` entry equals a
+    companion's ``occupantId``; values only. ``roster_changes`` are the
+    updatePartyNPCs parameters of the same response: a slot one of them names
+    is not exempt (the roster is changing), and a change addressed only by
+    rosterSlot exempts no slot at all, since the gate cannot tell whom it means.
+    """
+    params = parameters if isinstance(parameters, dict) else {}
+    tracker = party_tracker if isinstance(party_tracker, dict) else {}
+    names, ids = set(), set()
+    for entry in tracker.get("partyNPCs") or []:
+        if isinstance(entry, dict):
+            if _folded(entry.get("name")):
+                names.add(_folded(entry.get("name")))
+            if isinstance(entry.get("occupantId"), str) and entry["occupantId"]:
+                ids.add(entry["occupantId"])
+    changed_names, changed_ids = set(), set()
+    for change in roster_changes or ():
+        if not isinstance(change, dict):
+            continue
+        npc = change.get("npc") if isinstance(change.get("npc"), dict) else {}
+        named = _folded(npc.get("name"))
+        occupant = change.get("occupantId") if isinstance(change.get("occupantId"), str) else None
+        if named:
+            changed_names.add(named)
+        if occupant and occupant != "new":
+            changed_ids.add(occupant)
+        if not named and not (occupant and occupant != "new"):
+            return frozenset()
+    declared = params.get("occupantIds") if isinstance(params.get("occupantIds"), dict) else {}
+    keys = set()
+    for index, name in enumerate(params.get("npcs") or []):
+        key = f"npc:{index}"
+        occupant = declared.get(key) if isinstance(declared.get(key), str) else None
+        if _folded(name) in changed_names or (occupant and occupant in changed_ids):
+            continue
+        if _folded(name) in names or (occupant and occupant in ids):
+            keys.add(key)
+    return frozenset(keys)
+
+
+def reconcile_scene_manifest(parameters, canonical_snapshot, companion_keys=frozenset()):
+    """Reconcile one T067 scene proposal against exact canonical participants.
+
+    ``companion_keys`` (#1551) are the npc slots that are roster companions:
+    they fight on the party side without a stated side. Any other npc whose
+    participation is active must state its side.
+    """
     params = _require_object(parameters, "createEncounter parameters")
     scene = _require_object(params.get("scene"), "scene")
     canonical = _canonical_index(canonical_snapshot)
@@ -115,6 +168,11 @@ def reconcile_scene_manifest(parameters, canonical_snapshot):
                 f"surprised applies only to monster participants, not {key}"
             )
         side = proposal.get("side")
+        if side is None and key.startswith("npc:") and participation == "active" and key not in companion_keys:
+            raise SceneReconciliationError(
+                f"{key} fights (participation active) and needs side: hostile (against the party) "
+                "or party (beside it)"
+            )
         if side is not None:
             if not key.startswith("npc:"):
                 raise SceneReconciliationError(f"side applies only to npc participants, not {key}")
@@ -206,7 +264,7 @@ def reconcile_scene_manifest(parameters, canonical_snapshot):
     }
 
 
-def validate_scene_proposal_shape(parameters):
+def validate_scene_proposal_shape(parameters, companion_keys=frozenset()):
     """Validate the typed proposal before canonical files are loaded.
 
     This validates only exact structure and positional references. The builder
@@ -249,7 +307,7 @@ def validate_scene_proposal_shape(parameters):
         }
         for index, name in enumerate(monsters)
     )
-    reconcile_scene_manifest(params, placeholder)
+    reconcile_scene_manifest(params, placeholder, companion_keys)
 
 
 ROSTER_LISTS = ("npcs", "monsters")
@@ -290,10 +348,19 @@ def _listed_key_gaps(parameters):
     return gaps
 
 
-def validate_typed_encounter_actions(response):
-    """Reject incomplete typed encounter actions before any stateful handler runs."""
+def validate_typed_encounter_actions(response, party_tracker=None):
+    """Reject incomplete typed encounter actions before any stateful handler runs.
+
+    ``party_tracker`` (#1551) is the roster this response was written against;
+    without it no npc slot counts as a companion.
+    """
     payload = _require_object(response, "DM response")
     actions = _require_list(payload.get("actions"), "DM response actions")
+    roster_changes = [
+        raw.get("parameters")
+        for raw in actions
+        if isinstance(raw, dict) and raw.get("action") == "updatePartyNPCs"
+    ]
     for index, raw_action in enumerate(actions):
         if not isinstance(raw_action, dict) or raw_action.get("action") != "createEncounter":
             continue
@@ -311,7 +378,10 @@ def validate_typed_encounter_actions(response):
             for position, _ in enumerate(parameters.get("monsters", []))
         )
         try:
-            validate_scene_proposal_shape(parameters)
+            validate_scene_proposal_shape(
+                parameters,
+                companion_participant_keys(parameters, party_tracker, roster_changes),
+            )
         except SceneReconciliationError as exc:
             keys = ", ".join(expected_keys)
             gaps = _listed_key_gaps(parameters)
@@ -331,7 +401,8 @@ def validate_typed_encounter_actions(response):
                 "Every participant requires participantKey, participation, "
                 "initiativeEligible boolean, and controller. "
                 "A monster participant may add surprised: true (boolean). "
-                "An npc participant may add side: hostile or party (whom it fights for in this fight). "
+                "An npc participant whose participation is active must have side: hostile or party "
+                "(whom it fights for in this fight), unless it is a party companion; any other npc omits it. "
                 "participation is one of active, observer, hidden, unaware, departed; "
                 "controller is human or actor_agent; the engine sets persistence. "
                 "Each relation is {subjectKey, objectKey, disposition}. Each objective "
