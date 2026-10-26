@@ -6189,13 +6189,6 @@ Rules:
                        final_character_updates[character_name] = []
                    final_character_updates[character_name].append(changes)
                    info(f"CONSOLIDATING: Queued change for {character_name}: '{changes}'", category="combat_events")
-                   
-                   # AMMUNITION DEBUG LOGGING
-                   if any(word in changes.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
-                       debug(f"AMMO_DEBUG: Detected ammunition change for {character_name}", category="ammunition")
-                       debug(f"AMMO_DEBUG: Action type: {action_type}", category="ammunition")
-                       debug(f"AMMO_DEBUG: Changes text: '{changes}'", category="ammunition")
-                       debug(f"AMMO_DEBUG: Added to final_character_updates queue", category="ammunition")
 
            elif action_type == "updateencounter":
                # Encounter updates are separate and can be processed immediately.
@@ -6253,25 +6246,13 @@ Rules:
                # Join all changes into one comprehensive request string.
                final_change_string = "Following the turn's events: " + ", and ".join(changes_list) + "."
                info(f"FINAL_CHANGE_STRING for {character_name}: {final_change_string}", category="character_updates")
-               
-               # AMMUNITION DEBUG
-               if any(word in final_change_string.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
-                   debug(f"AMMO_DEBUG: About to update ammunition for {character_name}", category="ammunition")
-                   debug(f"AMMO_DEBUG: Final change string: '{final_change_string}'", category="ammunition")
 
                try:
                    update_success = update_character_info(character_name, final_change_string)
                    if not update_success:
                        error(f"FAILURE: Final consolidated update failed for {character_name}.", category="character_updates")
-                   else:
-                       # AMMUNITION DEBUG
-                       if any(word in final_change_string.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
-                           debug(f"AMMO_DEBUG: Successfully processed ammunition update for {character_name}", category="ammunition")
                except Exception as e:
                    error(f"FAILURE: Critical error during consolidated update for {character_name}", exception=e, category="character_updates")
-                   # AMMUNITION DEBUG
-                   if any(word in final_change_string.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
-                       debug(f"AMMO_DEBUG: Exception during ammunition update: {str(e)}", category="ammunition")
 
        # STEP 3: If combat ended, perform final cleanup and exit the simulation.
        if is_combat_ending:

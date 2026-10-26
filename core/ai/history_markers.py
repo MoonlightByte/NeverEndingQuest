@@ -33,8 +33,11 @@ PLAYER_INPUT_FIELD = "nql_player_input"
 ROUND_FIELD = "nql_round"
 # True on the turn whose DM note carries the module creation prompt, written by the game.
 MODULE_CREATION_FIELD = "nql_module_creation_prompt"
+# True on the newest message of a history the game rebuilt for a DM request
+# (#223): each request from it gets the current party state appended.
+CURRENT_STATE_FIELD = "nql_current_state_note"
 # The game's own fields on a history message; providers never receive them.
-GAME_FIELDS = (MARKER_FIELD, PLAYER_INPUT_FIELD, ROUND_FIELD, MODULE_CREATION_FIELD)
+GAME_FIELDS = (MARKER_FIELD, PLAYER_INPUT_FIELD, ROUND_FIELD, MODULE_CREATION_FIELD, CURRENT_STATE_FIELD)
 
 LOCATION_TRANSITION = "location_transition"
 MODULE_TRANSITION = "module_transition"
