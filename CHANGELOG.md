@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- If the game could not save one of your messages or the DM's replies to its on-screen history, that line no longer disappears when the page reconnects (for example after switching tabs on a phone); the server keeps it and writes it with the next line it saves, and the failed save is now logged (#1373).
 - When an OpenAI account is out of credit and OpenAI reports `credit_balance_exhausted`, a turn now says so and how to fix it after the first failed call, instead of retrying five times and showing a generic error; this also applies when the error arrives with a 429, which the game no longer retries. When the scene check is refused for an account reason (out of credit, a rejected key, no model access), the turn now names that problem after one call instead of three calls and the "say that again" line; other scene-check failures keep that line (#1169, #1227).
 - When you pick up an ordinary piece of gear the scene only describes, such as a torch left burning, the DM is now told to add it as the standard item, so it gets its real description and type instead of a plain note (#1274).
 - An item saved with a negative count no longer makes every later change to your equipment fail; the game sets that item aside and the rest of your gear works as normal (#1490).
