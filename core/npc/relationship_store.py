@@ -38,8 +38,9 @@ SCHEMA_VERSION = 2
 MIGRATION_VERSION = "companion-memory-v1"
 DEFAULT_STATE_PATH = Path("data/companion_memories/npc_agent_state.json")
 DEFAULT_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "npc_agent_state_schema.json"
-# Unresolved legacy memory files already recorded, beside the store (#1346).
-UNRESOLVED_LEGACY_FILE = ".unresolved_legacy_memories.json"
+# Unresolved legacy memory files already recorded, beside the store (#1346). The name
+# stays outside the "*_memories.json" pattern the memory readers glob.
+UNRESOLVED_LEGACY_FILE = ".unresolved_legacy.json"
 PROJECT_IDENTITY_NAMESPACE = uuid.UUID("9b0f3d4d-bf49-5c2c-a8bb-4056bdc31fc1")
 UNRESOLVED_TYPES = frozenset({"abandon", "betray", "rescue"})
 
@@ -288,6 +289,8 @@ class RelationshipStore:
         schema = json.loads(self.schema_path.read_text(encoding="ascii"))
         self._validator = Draft202012Validator(schema)
         self._read_only_reason: Optional[str] = None
+        # Unresolved legacy files reported by this instance: the backstop when the sidecar cannot be written.
+        self._unresolved_reported: set = set()
         if self.path.exists():
             document = self._read_existing()
             if document is None:
@@ -941,9 +944,13 @@ class RelationshipStore:
         The record lives in a sidecar next to the store, so the store document and
         its schema are untouched (an older build reading the store is unaffected).
         It is keyed on the file's canonical JSON: an edited file is judged again
-        once. A missing or unreadable sidecar records again (fail open); nothing
-        here raises.
+        once. A missing or unreadable sidecar records again (fail open), but an
+        instance never records the same content twice; nothing here raises.
         """
+        key = (source.name, source_canonical)
+        if key in self._unresolved_reported:
+            return False
+        self._unresolved_reported.add(key)
         sidecar = self.path.parent / UNRESOLVED_LEGACY_FILE
         try:
             with path_transaction_lock(sidecar, suffix=".lock", timeout_seconds=5.0) as acquired:
