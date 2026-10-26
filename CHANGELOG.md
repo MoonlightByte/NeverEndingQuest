@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The module toolkit no longer logs a false error for each NPC without a description; it skips such an NPC, as it always did in effect (the AI fallback it tried to use never existed) (#218).
 - During a level up, the command bar now shows the game is busy while it works on each answer, including updating your sheet after you approve (#76).
 - In a fight, a roll you already made this turn is no longer asked for again when the DM retries its ruling: the game keeps the die you rolled (or the one it rolled for you) and rules from it, and that roll now shows in the round's record.
 - When the game shows two Dungeon Master messages in a row, the first is no longer lost: both now reach the screen, in order (#1167).

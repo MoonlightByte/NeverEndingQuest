@@ -6661,21 +6661,12 @@ def handle_generate_unified_assets(data):
                                             if description_found:
                                                 break
 
-                                # If still no description, generate new one with AI
+                                # #218: there is no AI fallback; an NPC with no compendium or
+                                # area description is skipped and counted, as before.
                                 if not description_found:
-                                    # Use the NPC builder to generate a description
-                                    from core.generators.npc_builder import NPCBuilder
-                                    npc_builder = NPCBuilder()
-
-                                    # Generate description based on module context
-                                    npc_data = await asyncio.to_thread(
-                                        npc_builder.generate_npc_description,
-                                        asset['name'],
-                                        module_context
-                                    )
-                                    if npc_data:
-                                        description_text = npc_data.get('description', '')
-                                        info(f"Generated new AI description for {asset['name']}")
+                                    info(f"No description found for {asset['name']}; skipped")
+                                    completed += 1
+                                    continue
 
                                 # Save to NPC compendium
                                 if description_text:
