@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A companion keeps their established personality when a profile refresh fails after their sheet changes (#350).
 - A combatant's action on themselves (such as Second Wind) is no longer dropped from the fight's running record of what each combatant did, which the companion voice lines read: the healing or damage it dealt and its entry are kept (#244).
 - A companion remembering an event now recalls everything they did in it, not only the first thing, so a later promise is no longer forgotten (#283).
 - The AI's raw starting-location reply (its JSON and reasoning) no longer shows up in the story text in the web or headless game; setup and travel notices now arrive as regular Dungeon Master messages, with the setup menus right after them (#257).
