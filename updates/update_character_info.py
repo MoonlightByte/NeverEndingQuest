@@ -2247,6 +2247,7 @@ def _update_character_info_unlocked(
     commit_guard=None,
     affects=None,
     casting_resource=None,
+    base_sheet=None,
 ):
     """
     Unified function to update character information for both players and NPCs
@@ -2260,6 +2261,8 @@ def _update_character_info_unlocked(
         bool: True if successful, False otherwise
     """
     
+    if base_sheet is not None and not prepare_only:
+        raise ValueError("base_sheet is only for a prepared update (#1549)")
     if commit_guard is not None:
         with commit_guard():
             pass
@@ -2281,7 +2284,9 @@ def _update_character_info_unlocked(
     character_path = get_character_path(character_name, character_role)
     
     try:
-        character_data = safe_read_json(character_path)
+        # #1549: a later same-character travel sibling is prepared on the
+        # earlier sibling's frozen sheet, not the one on disk.
+        character_data = copy.deepcopy(base_sheet) if base_sheet is not None else safe_read_json(character_path)
         if not character_data:
             error(f"FAILURE: Could not load character data for {character_name}", category="file_operations")
             return False
