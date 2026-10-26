@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A campaign Reset's backup now also keeps companion memories (NPC relationships and episodes) before clearing them, so they can be restored from it (#201).
 - Combat no longer scans the wording of character changes for words like "arrow" or "ammo"; those checks only wrote debug log lines, and nothing in play changes (#208).
 - Module building, publishing and recovery no longer read a briefly locked folder as missing: only "not found" counts as absent, so recovery retries a busy folder instead of giving up, and a locked destination is never treated as free (#140).
 - After a fight (or when the DM is asked to answer again after a refused action), the DM's request now carries the party's current hit points, XP and other stats, instead of only the note written before the fight, so the DM no longer works from pre-fight numbers (#223).
