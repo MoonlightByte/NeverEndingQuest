@@ -1028,7 +1028,7 @@ class _GenerationReader(threading.Thread):
         except (ValueError, TypeError, AttributeError):
             # Evidence loss only (a malformed frame); the envelope protocol
             # and the provider call are unaffected. Logged, not swallowed.
-            _LOGGER.warning("LIVE_PROVIDER_PHASE_FRAME_UNREADABLE %r", line)
+            _provider_debug("LIVE_PROVIDER_PHASE_FRAME_UNREADABLE %r" % (line,))
             return
         with self._lock:
             if name == "endpoint":
@@ -1435,9 +1435,9 @@ def _reconstruct_response(envelope):
     return response
 
 
-def _reissue_debug(message):
-    """Reissue diagnostics stay in the debug log: a console warning can land
-    in the headless player stream (#233, #1545)."""
+def _provider_debug(message):
+    """Provider-call diagnostics stay in the debug log: a console warning can
+    land in the headless player stream (#233, #1545)."""
     try:
         from utils.enhanced_logger import debug
 
@@ -1650,9 +1650,9 @@ def call_live_provider(
         if claim is not None and not claim():
             # #1342: the turn spent its provider generations. Nothing is sent;
             # the caller's completed-refusal path ends the turn with one line.
-            _LOGGER.warning(
-                "LIVE_PROVIDER_TURN_CEILING task=%s generations=%d operation=%s",
-                task_id, _TURN_GENERATION_CEILING, operation_id,
+            _provider_debug(
+                "LIVE_PROVIDER_TURN_CEILING task=%s generations=%d operation=%s"
+                % (task_id, _TURN_GENERATION_CEILING, operation_id)
             )
             raise LiveProviderCompletedError(
                 task_id,
@@ -1940,9 +1940,9 @@ def call_live_provider(
             # whitespace guard is unconditional and stays.
             runaway_trips += 1
             if runaway_trips >= 2 and "_output_ceiling_chars" in frozen_kwargs:
-                _LOGGER.warning(
-                    "LIVE_PROVIDER_CEILING_LIFTED task=%s ceiling=%s trips=%d",
-                    task_id, frozen_kwargs.get("_output_ceiling_chars"), runaway_trips,
+                _provider_debug(
+                    "LIVE_PROVIDER_CEILING_LIFTED task=%s ceiling=%s trips=%d"
+                    % (task_id, frozen_kwargs.get("_output_ceiling_chars"), runaway_trips)
                 )
                 frozen_kwargs.pop("_output_ceiling_chars", None)
         if envelope.get("disposition") in {"retryable_http", "retryable_transport", "empty"}:
@@ -1958,7 +1958,7 @@ def call_live_provider(
                 free_reissues += 1
                 exhausted = free_reissues > _FREE_REISSUE_LIMIT
             if exhausted:
-                _reissue_debug(
+                _provider_debug(
                     "LIVE_PROVIDER_REISSUE_LIMIT task=%s billed=%d free=%d last=%s"
                     % (task_id, billed_reissues, free_reissues,
                        envelope.get("error_class"))
@@ -1976,7 +1976,7 @@ def call_live_provider(
                 "retryable_transport",
             }
         ):
-            _reissue_debug(
+            _provider_debug(
                 "LIVE_PROVIDER_REISSUE task=%s class=%s status=%s"
                 % (task_id,
                    envelope.get("error_class", "transport_unavailable"),
