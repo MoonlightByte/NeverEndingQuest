@@ -585,6 +585,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
         
         # Generate locations from map rooms
         locations = []
+        location_band = location_danger_level(config.danger_level)
         for room in map_data.get("rooms", []):
             room_id = room.get("id")
             name = room.get("name")
@@ -609,7 +610,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 "traps": [],
                 "dcChecks": [],
                 "accessibility": "Normal access",
-                "dangerLevel": config.danger_level.capitalize(),
+                "dangerLevel": location_band,
                 "features": self.generate_location_features(room_type),
                 "encounters": [],
                 "adventureSummary": "",
@@ -761,6 +762,28 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
 
         print(f"DEBUG: [Area Generator] Area saved to {filename}")
         print(f"DEBUG: [Area Generator] Map saved to {map_filename}")
+
+
+# issue #1528: a region's band (module_schema/map_schema: low..extreme) and a
+# location's dangerLevel (loca_schema: Low..Very High) are different enums.
+_LOCATION_DANGER_LEVELS = {
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "extreme": "Very High",
+    "very high": "Very High",
+}
+
+
+def location_danger_level(band: Any) -> str:
+    """The loca_schema dangerLevel for a region band. An unknown band is the
+    band a region without one gets ("medium")."""
+    key = band.strip().casefold() if isinstance(band, str) else ""
+    if key not in _LOCATION_DANGER_LEVELS:
+        print(f"WARNING: [Area Generator] unknown danger band {band!r}; locations use Medium")
+        return "Medium"
+    return _LOCATION_DANGER_LEVELS[key]
+
 
 def main():
     """Interactive area generator"""
