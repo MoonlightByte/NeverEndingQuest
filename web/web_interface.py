@@ -268,6 +268,10 @@ startup_phase = ""
 MESSAGE_CACHE_FILE = "modules/conversation_history/game_interface_cache.json"
 MESSAGE_CACHE_SIZE = 15  # Keep last 15 messages
 message_cache = deque(maxlen=MESSAGE_CACHE_SIZE)
+# #1373: lines shown live whose cache write failed, oldest first. Guarded by
+# message_cache_lock; merged into every read of the file, so a reconnect
+# serves what the player saw, until a write succeeds or a Load/Reset.
+_unpersisted_messages = []
 
 def _ui_response(request_data, payload):
     """Add optional correlation and a monotonic response revision.
@@ -316,6 +320,10 @@ def _begin_web_restore(manager, message, previous_clean=True):
     # A Load or a Reset starts the session cost line over (#1388).
     from utils.session_spend import reset_session
     reset_session()
+    # #1373: a failed line from the replaced timeline must not come back.
+    # Taken before _ui_operation_lock: writers hold message_cache_lock first.
+    with message_cache_lock:
+        _unpersisted_messages.clear()
     with _ui_operation_lock:
         _restore_manager = manager
         _ui_operations['restore'] = {
@@ -559,6 +567,7 @@ def load_message_cache(on_recovery=None):
                         wait_label='History recovery',
                     )
                     cached_messages = candidate
+                cached_messages = _with_unpersisted(cached_messages)[-MESSAGE_CACHE_SIZE:]
                 message_cache = deque(cached_messages, maxlen=MESSAGE_CACHE_SIZE)
             finally:
                 atomic_writer.release_lock(MESSAGE_CACHE_FILE)
@@ -571,6 +580,8 @@ def load_message_cache(on_recovery=None):
 
 def save_message_cache():
     """Save message cache to file"""
+    with message_cache_lock:
+        _unpersisted_messages.clear()
     try:
         from utils.file_operations import safe_write_json
 
@@ -582,6 +593,29 @@ def save_message_cache():
     except Exception as e:
         print(f"[MESSAGE_CACHE] Failed to save cache: {e}")
         return False
+
+
+def _with_unpersisted(durable):
+    """#1373: the durable lines, then each failed-write line not among them."""
+    stored = {m.get("message_id") for m in durable if isinstance(m, dict)}
+    return list(durable) + [
+        dict(m) for m in _unpersisted_messages if m.get("message_id") not in stored]
+
+
+def _keep_unpersisted(message, base, commit_guard):
+    """#1373: a line already shown live whose write failed stays in the ring
+    (authoritative for a reconnect) and is retried by the next write."""
+    message_id = message.get("message_id")
+    # Inside the guard: a superseded invocation never showed the line, so
+    # neither the ring nor the pending list may keep it.
+    with commit_guard() if commit_guard is not None else nullcontext():
+        _unpersisted_messages[:] = ([m for m in _unpersisted_messages
+                                     if m.get("message_id") != message_id]
+                                    + [dict(message)])[-MESSAGE_CACHE_SIZE:]
+        message_cache.clear()
+        message_cache.extend((list(base) + [dict(message)])[-MESSAGE_CACHE_SIZE:])
+    warning(f"MESSAGE_CACHE: write failed; {message_id} kept in memory for "
+            "reconnect, not yet on disk", category='web_interface')
 
 
 def _message_cache_matches(message):
@@ -601,14 +635,16 @@ def _message_cache_matches(message):
         try:
             atomic_writer.acquire_lock(MESSAGE_CACHE_FILE)
             acquired = True
-            if not os.path.exists(MESSAGE_CACHE_FILE):
-                return False
-            with open(MESSAGE_CACHE_FILE, 'r', encoding='utf-8') as handle:
-                durable = json.load(handle)
-            if not isinstance(durable, list):
-                return False
-            message_cache.clear()
-            message_cache.extend(durable[-MESSAGE_CACHE_SIZE:])
+            if os.path.exists(MESSAGE_CACHE_FILE):
+                with open(MESSAGE_CACHE_FILE, 'r', encoding='utf-8') as handle:
+                    durable = json.load(handle)
+                if not isinstance(durable, list):
+                    return False
+                durable = _with_unpersisted(durable)
+                message_cache.clear()
+                message_cache.extend(durable[-MESSAGE_CACHE_SIZE:])
+            else:
+                durable = _with_unpersisted([])
             for cached in durable:
                 if not isinstance(cached, dict):
                     continue
@@ -646,20 +682,28 @@ def _cache_message(message, *, commit_guard=None):
             return "paused"
 
         acquired = False
+        base = None
         try:
             # The file lock makes read/merge/write one cross-process operation.
             # Atomic replacement alone prevents torn JSON but cannot prevent
             # two server processes from overwriting each other's stable IDs.
             atomic_writer.acquire_lock(MESSAGE_CACHE_FILE, commit_guard=commit_guard)
             acquired = True
-            if os.path.exists(MESSAGE_CACHE_FILE):
-                with open(MESSAGE_CACHE_FILE, 'r', encoding='utf-8') as handle:
-                    durable = json.load(handle)
-                if not isinstance(durable, list):
-                    return "failed"
-                base = durable[-MESSAGE_CACHE_SIZE:]
-            else:
-                base = []
+            try:
+                if os.path.exists(MESSAGE_CACHE_FILE):
+                    with open(MESSAGE_CACHE_FILE, 'r', encoding='utf-8') as handle:
+                        durable = json.load(handle)
+                    if not isinstance(durable, list):
+                        raise ValueError("Display history must be a list")
+                    base = durable[-MESSAGE_CACHE_SIZE:]
+                else:
+                    base = []
+            except (OSError, ValueError):
+                # #1373: an unreadable file must not rewind the ring; the line
+                # is kept in memory and the file is left for the next write.
+                _keep_unpersisted(message, _with_unpersisted(list(message_cache)), commit_guard)
+                return "failed"
+            base = _with_unpersisted(base)[-MESSAGE_CACHE_SIZE:]
             if message_id is not None and any(
                 cached.get("message_id") == message_id
                 for cached in base
@@ -681,13 +725,19 @@ def _cache_message(message, *, commit_guard=None):
                 commit_guard=commit_guard,
                 on_read_only="fail",
             ):
+                _keep_unpersisted(message, base, commit_guard)
                 return "failed"
+            _unpersisted_messages.clear()
             with commit_guard() if commit_guard is not None else nullcontext():
                 message_cache.clear()
                 message_cache.extend(candidate)
         except LiveProviderSuperseded:
             raise
         except Exception:
+            _keep_unpersisted(
+                message,
+                base if base is not None else _with_unpersisted(list(message_cache)),
+                commit_guard)
             return "failed"
         finally:
             if acquired:
