@@ -7,9 +7,7 @@ Filters validation errors and preserves recent valid context.
 import json
 from core.ai import history_markers as hm
 import os
-import queue
 import sys
-import threading
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from core.ai import api_client
@@ -24,13 +22,12 @@ if __name__ == "__main__":
 import config
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.enhanced_logger import info, debug, warning, error
-
-T020_COMPRESSION_TIMEOUT_SECONDS = 45.0
-_T020_SINGLE_FLIGHT = threading.Lock()
-
-
-class IncrementalCompressionTimeout(TimeoutError):
-    """The optional T020 provider call exceeded its gameplay-safe budget."""
+from utils.capture.live_provider_call import (
+    LiveProviderCompletedError,
+    LiveProviderSuperseded,
+    LiveProviderUnavailable,
+    get_live_provider_scope,
+)
 
 
 def _run_t020_with_timeout(call, timeout_seconds):
@@ -181,7 +178,13 @@ class IncrementalLocationCompressor:
     
     def compress_messages(self, messages: List[Dict], location_info: Dict) -> Optional[Dict]:
         """Compress a segment of messages into a summary."""
-        
+        # #290: T020 runs only as an advisory call of a live provider scope
+        # (cancellable, heartbeat, reaped). With no scope it is deferred to the
+        # next save inside a turn; the history is saved uncompressed.
+        if get_live_provider_scope() is None:
+            debug("Compression deferred: no live provider scope", category="compression")
+            return None
+
         # Build context for compression
         context_parts = []
         for msg in messages:
@@ -243,17 +246,15 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
             else:  # legacy
                 compress_config = config.NARR_COMPRESS_LEGACY
 
-            api_response = _run_t020_with_timeout(
-                lambda: capture_and_fanout(
-                    "T020",
-                    api_client.create_completion,
-                    _request_provider=MODEL_PROVIDER,
-                    messages=[{"role": "user", "content": compression_prompt}],
-                    model=compress_config["model"],
-                    temperature=self.COMPRESSION_TEMP,
-                    **{k: v for k, v in compress_config.items() if k != "model"},
-                ),
-                T020_COMPRESSION_TIMEOUT_SECONDS,
+            api_response = capture_and_fanout(
+                "T020",
+                api_client.create_completion,
+                _live_selected="advisory",
+                _request_provider=MODEL_PROVIDER,
+                messages=[{"role": "user", "content": compression_prompt}],
+                model=compress_config["model"],
+                temperature=self.COMPRESSION_TEMP,
+                **{k: v for k, v in compress_config.items() if k != "model"},
             )
             response = api_response.choices[0].message.content
             
@@ -268,11 +269,23 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
                 )
                 
                 return hm.marker("assistant", summary_content, hm.ROLLING_SUMMARY)
-        except IncrementalCompressionTimeout as exc:
+        except LiveProviderSuperseded:
+            raise
+        except LiveProviderUnavailable as exc:
             warning(
-                "Incremental conversation compression timed out; "
+                "Incremental conversation compression was unavailable; "
                 f"continuing with uncompressed history ({exc})"
             )
+        except LiveProviderCompletedError as exc:
+            if exc.envelope.get("error_class") == "turn_call_ceiling":
+                # The turn spent its provider generations: compression waits
+                # for a later turn.
+                warning(
+                    "Incremental conversation compression deferred: "
+                    "the turn's provider calls are spent"
+                )
+            else:
+                error(f"Compression failed: {exc}")
         except Exception as e:
             error(f"Compression failed: {e}")
         
