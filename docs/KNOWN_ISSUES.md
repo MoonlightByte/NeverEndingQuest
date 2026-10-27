@@ -23,8 +23,10 @@ good-play replays. Master evidence:
    with a table-talk boundary once per round; only whole-party defeat pauses (Load / Reset).
    Acceptance on real play: 7a stamped fixed by the owner on trials 3 and 4 (trial 4 met
    every criterion but carried two 600 s provider drops, #409), 7b/7c/7d and the
-   compression-off parity run PASS. Typed Load during an automatic window still applies
-   immediately instead of after the window commits: that is #243, not this seam.
+   compression-off parity run PASS. Typed Load during an automatic window applying
+   immediately instead of after the window commits was #243, not this seam (#243 closed
+   2026-10-26 as superseded: combat registers a live-turn scope, and Load and Quit go
+   through lifecycle supersession).
    Closed: #242 by PR #437. Follow-ups fixed 2026-10-24: #1335 (PR #1355), #1354,
    #1404.
 2. Liveness / continuation stalls (7 rows: TW-F08, PK-019/027/035/037/039/040).
@@ -48,8 +50,11 @@ Re-triage note (2026-10-24): clusters 2-12 above and section C items 1-3 predate
 engine takeover (2026-09 to 10: Firelight engine, typed effects, engine travel and
 clock, P4 presence). Re-triage them against current main before use.
 
-## B. Items with GitHub issues ALREADY OPEN (no action needed here)
-Still open (2026-10-24): #237 #239 #241 #243 #244 #245 (and #409, section C.4).
+## B. Items tracked as GitHub issues (no action needed here)
+The 2026-10-24 still-open list closed on 2026-10-26: #237 (commit 07eaa5e6), #239 (commit
+2399b9d2; T035 is a required live task), #241 (commits ecdfe053 and 4147ae5b), #243
+(superseded: combat registers a live-turn scope), #244 (PR #1554), #245 (superseded by the
+#246 ruling) and #409 (PR #438; section C.4).
 Fixed since 2026-08-30: #238 and #248 (commit d61f20d3); #240 (PR #274); #242
 (PR #437); #247 and #249 (moot, PR #529 retired T091); #250 (commit fd531d8f); #253
 (PR #457). Closed by owner ruling 2026-08-30: #246
@@ -80,8 +85,9 @@ post-voices refactor).
    keepalive surfaces a dead path in seconds, OpenAI calls stream through the Responses
    endpoint (acknowledged in under a second, progress during reasoning), the backstop
    measures inactivity after acknowledgment instead of total time, and the #428 writer
-   is joined per generation. #348, #398 and #428 are closed by PR #438. Owner-run rows
-   (network cut mid-turn, native Windows) stay open on #409.
+   is joined per generation. #348, #398 and #428 are closed by PR #438, and #409 closed on
+   2026-10-26 as fixed by it. The owner-run rows (network cut mid-turn, native Windows) have
+   no open issue now.
 
 Defects found since 2026-08-30 are filed as GitHub issues; for the current open list
 see https://github.com/MoonlightByte/NeverEndingQuest/issues?q=is%3Aissue+is%3Aopen
