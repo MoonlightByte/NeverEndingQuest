@@ -183,7 +183,7 @@ class NPCGenerator:
             if model == "dall-e-3":
                 response = self.client.images.generate(
                     model="dall-e-3",
-                    prompt=prompt[:4000],  # DALL-E has character limit
+                    prompt=prompt,
                     size=model_settings.get("size", "1024x1024"),
                     quality=model_settings.get("quality", "standard"),
                     style=model_settings.get("style", "vivid"),
@@ -192,7 +192,7 @@ class NPCGenerator:
             else:  # gpt-image-1
                 response = self.client.images.generate(
                     model="gpt-image-1",
-                    prompt=prompt[:4000],
+                    prompt=prompt,
                     size=model_settings.get("size", "1024x1024"),
                     quality=model_settings.get("quality", "auto"),
                     n=1
