@@ -38,16 +38,23 @@ register_callsite("T097", "core/ai/combat_agent.py", 220)
 
 
 class CombatAgentContractError(ValueError):
-    """A provider response did not satisfy the combat role contract."""
+    """A provider response did not satisfy the combat role contract.
+
+    ``failure_class`` (#1515) is the typed diagnostic class, set where the
+    error is raised; the orchestrator never reads it from the message.
+    """
+
+    def __init__(self, message, failure_class="response_contract_error"):
+        super().__init__(message)
+        self.failure_class = str(failure_class or "response_contract_error")
 
 
 class CombatNarrationAttemptError(CombatAgentContractError):
     """One T097 call failed before producing lintable narration."""
 
     def __init__(self, message, candidate="", failure_class="response_contract_error"):
-        super().__init__(message)
+        super().__init__(message, failure_class=failure_class)
         self.candidate = str(candidate or "")
-        self.failure_class = str(failure_class or "response_contract_error")
 
 
 def _provider_config(role, attempt=1):
@@ -69,13 +76,16 @@ def combat_role_identity(role):
 def _parse_object(content, label):
     blob = extract_json_object(content)
     if not blob:
-        raise CombatAgentContractError("%s returned no JSON object" % label)
+        raise CombatAgentContractError("%s returned no JSON object" % label,
+                                       failure_class="response_parse_error")
     try:
         value = json.loads(blob)
     except json.JSONDecodeError as exc:
-        raise CombatAgentContractError("%s returned malformed JSON" % label) from exc
+        raise CombatAgentContractError("%s returned malformed JSON" % label,
+                                       failure_class="response_parse_error") from exc
     if not isinstance(value, dict):
-        raise CombatAgentContractError("%s response must be an object" % label)
+        raise CombatAgentContractError("%s response must be an object" % label,
+                                       failure_class="response_parse_error")
     return value
 
 
@@ -723,7 +733,8 @@ def request_intent_batch(
     if type(returned_version) is not int or returned_version != payload["stateVersion"]:
         raise CombatAgentContractError(
             "T096 returned stale stateVersion %r; expected exact value %r"
-            % (returned_version, payload["stateVersion"])
+            % (returned_version, payload["stateVersion"]),
+            failure_class="stale_state_or_actor_order",
         )
     intents = result.get("intents")
     if not isinstance(intents, list):
@@ -733,7 +744,8 @@ def request_intent_batch(
     ]
     if returned_ids != payload["requiredActorIds"]:
         raise CombatAgentContractError(
-            "T096 actor order does not match the claimed turn"
+            "T096 actor order does not match the claimed turn",
+            failure_class="stale_state_or_actor_order",
         )
     return result
 
