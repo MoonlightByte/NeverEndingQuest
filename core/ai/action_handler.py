@@ -1129,7 +1129,6 @@ def prepare_current_transition_actions(operation_id):
                 proposal = process_storage_request(
                     description,
                     character_name,
-                    structural_reissue=True,
                     base_sheets=chained,
                 )
                 if not proposal.get("success"):
@@ -6367,8 +6366,18 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     response_data={"error_code": "equipment_prerequisite"} if equipment_prerequisite else None,
                 )
                 
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
+        except LiveProviderCompletedError as e:
+            # A provider refusal (#240) ends the turn with its account text
+            # (#432), as on the updateCharacterInfo path (#375).
+            error("FAILURE: Storage request refused by the provider", exception=e, category="storage_operations")
+            refusal = classify_provider_error(e)
+            return create_return(status="error", response_data={
+                "error_message": "Storage request could not be processed safely.",
+                "provider_refusal": refusal["category"],
+                "provider_refusal_provider": refusal["provider"],
+            })
         except Exception as e:
             print(f"ERROR: Exception while processing storage interaction: {str(e)}")
             import traceback
