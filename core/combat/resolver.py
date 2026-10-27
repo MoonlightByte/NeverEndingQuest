@@ -30,6 +30,7 @@ from core.combat.attacks import (
     FLAT_DAMAGE_DICE,
     is_executable_attack,
 )
+from core.combat.handover import apply_hand_over
 from core.effects.effective import effective_sheet, modifier_dice, modifier_total
 from core.effects.lifecycle import (
     INCAPACITATING_CONDITIONS,
@@ -3764,6 +3765,14 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
             resolution["violations"].append(
                 "non-integer resource delta for %r dropped" % owner)
             continue
+        if kind == "item" and delta > 0:
+            # #145 (D-145-2): no item appears from a proposed record; a give
+            # between party members is the giver's handOver, which the engine
+            # moves. Every record here is the model's (code rebuilds it).
+            resolution["violations"].append(
+                "item gain refused: %s %s %+d. Items are never added through resources; one party member "
+                "giving an item to another is the giver's handOver {item, toId, quantity}" % (owner, name, delta))
+            continue
         if kind == "item" and isinstance(sheet, dict) and _charged_row(sheet, name) is not None:
             # H3: a wand, staff or rod is one unit whose charges are spent;
             # lowering its quantity would destroy it.
@@ -4887,6 +4896,70 @@ def _apply_charges_after(sheet, item, resource, after_state):
         sheet["chargeUses"] = receipts[-20:]  # item_charges.RECEIPTS_KEPT
 
 
+def _apply_resource(new_characters, resource):
+    """Set one journaled resource record on its owner's sheet."""
+    sheet = new_characters.get(resource.get("owner"))
+    if not isinstance(sheet, dict):
+        return
+    # Absolute 'after' values make replay idempotent: re-applying the
+    # same staged event to an already-updated sheet is a no-op. The
+    # delta fallback exists only for events staged before this format.
+    if "after" in resource:
+        value = max(0, int(resource["after"]))
+        setter = lambda current: value
+    else:
+        setter = lambda current: max(0, current + int(resource["delta"]))
+    if resource["kind"] == "ammunition":
+        for item in sheet.get("ammunition", []):
+            if isinstance(item, dict) and item.get("name") == resource.get("name"):
+                item["quantity"] = setter(int(item.get("quantity", 0) or 0))
+                # AM: the engine's pending count rides on the journal; an
+                # older record without it leaves the row's count alone.
+                if type(resource.get("recoverableAfter")) is int:
+                    if resource["recoverableAfter"] > 0:
+                        item["recoverable"] = resource["recoverableAfter"]
+                    else:
+                        item.pop("recoverable", None)
+                break
+    elif resource["kind"] == "spellSlot":
+        level = ((sheet.get("spellcasting") or {}).get("spellSlots") or {}).get(
+            resource.get("name"))
+        if isinstance(level, dict):
+            cap = int(level.get("max", 0) or 0)
+            level["current"] = min(cap, setter(int(level.get("current", 0) or 0)))
+    elif resource["kind"] == "featureUse":
+        for feature in list(sheet.get("classFeatures", []) or []) + list(sheet.get("feats", []) or []):
+            if isinstance(feature, dict) and feature.get("name") == resource.get("name"):
+                usage = feature.get("usage")
+                if isinstance(usage, dict):
+                    cap = int(usage.get("max", 0) or 0)
+                    usage["current"] = min(cap, setter(int(usage.get("current", 0) or 0)))
+                break
+    elif resource["kind"] == "item":
+        if isinstance(resource.get("item"), dict):
+            from core.nql.item_use import resolve_row
+            found = resolve_row(sheet, resource["item"])
+            if found is not None:
+                index, item = found
+                # Keep zero-stock rows, as the existing item path does (#1121/#1197).
+                item["quantity"] = setter(item["quantity"])
+            return
+        for item in sheet.get("equipment", []):
+            if isinstance(item, dict) and item.get("item_name") == resource.get("name"):
+                item["quantity"] = setter(int(item.get("quantity", 0) or 0))
+                break
+    elif resource["kind"] == "charges":
+        # H3: the journaled engine state is written whole (a field the
+        # record omits is removed, the H2 store_view rule); a record
+        # without it applies nothing, there is no delta fallback.
+        after_state = resource.get("chargesAfter")
+        if isinstance(after_state, dict) and type(after_state.get("current")) is int:
+            for item in sheet.get("equipment", []):
+                if isinstance(item, dict) and item.get("item_name") == resource.get("name"):
+                    _apply_charges_after(sheet, item, resource, after_state)
+                    break
+
+
 def apply_resolution(encounter, characters, resolution):
     """Copy-on-write application with hard bounds. Returns (enc, chars).
 
@@ -4948,6 +5021,20 @@ def apply_resolution(encounter, characters, resolution):
         if "status" in delta:
             sheet["status"] = delta["status"]
 
+    bonus = event.get("bonusAction") if isinstance(event.get("bonusAction"), dict) else {}
+    hand_over = event.get("handOver") if isinstance(event.get("handOver"), dict) else None
+    # R2: the bonus action's spends come first (its absolute 'after' values
+    # are already on the sheet when the live path applied it). #145: with a
+    # hand-over, the staging order: a Bonus Action taken before the Action,
+    # then the hand-over's whole lists (never the engine), then the draw and
+    # the Action's spends; an Off-hand Attack (R3) stays after the Action.
+    early = ([] if hand_over is None or bonus.get("order") == "afterAction"
+             else list(bonus.get("resources") or []))
+    for resource in early:
+        _apply_resource(new_characters, resource)
+    if hand_over is not None:
+        apply_hand_over(new_characters, hand_over)
+
     # NUM-B: a weapon drawn after a swing (BQ1); the record holds the absolute value.
     hands = event.get("hands")
     draw = hands.get("draw") if isinstance(hands, dict) else None
@@ -4959,70 +5046,9 @@ def apply_resolution(encounter, characters, resolution):
                 and isinstance(rows[index], dict) and rows[index].get("item_name") == draw.get("item_name")):
             rows[index]["equipped"] = draw.get("equippedAfter") is True
 
-    bonus = event.get("bonusAction") if isinstance(event.get("bonusAction"), dict) else {}
-    for resource in list(bonus.get("resources") or []) + list(event.get("resources", []) or []):
-        # R2: the bonus action's spends come first (its absolute 'after' values
-        # are already on the sheet when the live path applied it).
-        sheet = new_characters.get(resource.get("owner"))
-        if not isinstance(sheet, dict):
-            continue
-        # Absolute 'after' values make replay idempotent: re-applying the
-        # same staged event to an already-updated sheet is a no-op. The
-        # delta fallback exists only for events staged before this format.
-        if "after" in resource:
-            value = max(0, int(resource["after"]))
-            setter = lambda current: value
-        else:
-            setter = lambda current: max(0, current + int(resource["delta"]))
-        if resource["kind"] == "ammunition":
-            for item in sheet.get("ammunition", []):
-                if isinstance(item, dict) and item.get("name") == resource.get("name"):
-                    item["quantity"] = setter(int(item.get("quantity", 0) or 0))
-                    # AM: the engine's pending count rides on the journal; an
-                    # older record without it leaves the row's count alone.
-                    if type(resource.get("recoverableAfter")) is int:
-                        if resource["recoverableAfter"] > 0:
-                            item["recoverable"] = resource["recoverableAfter"]
-                        else:
-                            item.pop("recoverable", None)
-                    break
-        elif resource["kind"] == "spellSlot":
-            level = ((sheet.get("spellcasting") or {}).get("spellSlots") or {}).get(
-                resource.get("name"))
-            if isinstance(level, dict):
-                cap = int(level.get("max", 0) or 0)
-                level["current"] = min(cap, setter(int(level.get("current", 0) or 0)))
-        elif resource["kind"] == "featureUse":
-            for feature in list(sheet.get("classFeatures", []) or []) + list(sheet.get("feats", []) or []):
-                if isinstance(feature, dict) and feature.get("name") == resource.get("name"):
-                    usage = feature.get("usage")
-                    if isinstance(usage, dict):
-                        cap = int(usage.get("max", 0) or 0)
-                        usage["current"] = min(cap, setter(int(usage.get("current", 0) or 0)))
-                    break
-        elif resource["kind"] == "item":
-            if isinstance(resource.get("item"), dict):
-                from core.nql.item_use import resolve_row
-                found = resolve_row(sheet, resource["item"])
-                if found is not None:
-                    index, item = found
-                    # Keep zero-stock rows, as the existing item path does (#1121/#1197).
-                    item["quantity"] = setter(item["quantity"])
-                continue
-            for item in sheet.get("equipment", []):
-                if isinstance(item, dict) and item.get("item_name") == resource.get("name"):
-                    item["quantity"] = setter(int(item.get("quantity", 0) or 0))
-                    break
-        elif resource["kind"] == "charges":
-            # H3: the journaled engine state is written whole (a field the
-            # record omits is removed, the H2 store_view rule); a record
-            # without it applies nothing, there is no delta fallback.
-            after_state = resource.get("chargesAfter")
-            if isinstance(after_state, dict) and type(after_state.get("current")) is int:
-                for item in sheet.get("equipment", []):
-                    if isinstance(item, dict) and item.get("item_name") == resource.get("name"):
-                        _apply_charges_after(sheet, item, resource, after_state)
-                        break
+    late = [] if early else list(bonus.get("resources") or [])
+    for resource in late + list(event.get("resources", []) or []):
+        _apply_resource(new_characters, resource)
 
     for op in (resolution.get("effectOps") or event.get("effects") or []):
         if op.get("op") == "add" and isinstance(op.get("effect"), dict):
