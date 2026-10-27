@@ -291,7 +291,9 @@ _REST_SYSTEM_ERROR = (
 
 def _apply_held_rest(entry: Dict[str, Any], faces: List[Any], conversation_history: Any) -> None:
     """Apply the held rest with the player's faces (or "engine" per die) and report it under CHECK RESULTS."""
+    from core.combat.invocation import InvocationSupersededError
     from core.managers.rest_manager import execute_rest, rest_outcome_lines
+    from utils.capture.live_provider_call import LiveProviderSuperseded
     from utils.encoding_utils import safe_json_load
     from utils.transient_filesystem import ReadOnlySaveStop
 
@@ -300,7 +302,8 @@ def _apply_held_rest(entry: Dict[str, Any], faces: List[Any], conversation_histo
                               conversation_history, hit_dice=entry.get("hitDice"),
                               faces={entry.get("characterName"): faces}, after_rest=entry.get("afterRest"),
                               operation=entry.get("operation"))
-    except ReadOnlySaveStop:
+    except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+        # #202 C2: a Load, Reset or Quit during a busy-sheet wait ends the turn, as a save stop does.
         raise
     except Exception as exc:
         warning(f"REST: held rest raised {type(exc).__name__}: {exc}", category="character_updates")
