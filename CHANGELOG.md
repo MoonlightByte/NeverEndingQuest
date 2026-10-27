@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the story starts or ends a condition such as restrained or poisoned, the character-sheet update must now record it, and the rules check no longer contradicts itself about this (#1585).
 - Shortening a long conversation at a place you have not left yet no longer strips the game's own background notes from the saved conversation; a game saved right after now keeps them (#317).
 - Typing a die outside 1-20 on a requested check now says why Use rolls is off (#1117).
 - A Save sent while the headless game is still starting now waits and completes instead of failing with "engine is busy" (#346).
