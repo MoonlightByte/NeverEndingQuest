@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The toolkit's AI-written bestiary and NPC portrait descriptions are no longer held to a word count. The requests no longer ask for 100-150, 150-200 or 150-250 words, a complete short description is kept instead of being rejected as too short, a bestiary entry may carry more than 12 tags, and a long portrait description is no longer cut at 4000 characters before it reaches the image model (#262).
 - In a fight, a party member can now hand an item to another party member: the rules engine moves it between the two character sheets, so it can no longer vanish or be duplicated, and the narrator is told who handed what to whom (#145).
 - Recovery, upgrade, restart and character-sheet notices that only the terminal used to show (for example "An older travel record is safely paused") now appear in the game window on the web and in headless play, and a turn that fails after a rejected DM draft now says so there too (#212).
 - On a short rest the DM now asks for your hit dice in the story instead of stopping on a "type the result or press Enter" prompt. Say what you rolled, ask it to roll for you, ask a question first or change your mind, and the DM tells you how the rest went after the rules engine applies it; the rules receipt is a system note, not the DM's voice (#1242, #1118).
