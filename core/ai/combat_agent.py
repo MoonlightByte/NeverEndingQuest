@@ -298,6 +298,8 @@ An adjudicated intent may contain:
   never a reason to choose another action for them: set requiresPlayerInput
   {kind:'choice', prompt} saying it cannot be used (no slot of that level or
   no use left) and asking what they do instead.
+  A kind 'item' record only spends (delta below 0): an item gained through
+  resources is refused; an item one party member gives another is handOver.
   Every shot from a bow, crossbow, or sling in an adjudicated intent declares
   the ammunition it fires: kind 'ammunition', the ammunition name exactly as
   the shooter's sheet lists it, delta -1 per shot. Every player shot is
@@ -440,6 +442,18 @@ it; code rolls it (the player's dice are asked by code) and scores it. The
 Action's own attack count never includes it.
 
 A healing potion listed in bonusActionItems is a Bonus Action: emit bonusAction {item:{nqlId:the listed equipment id}, targetId:the drinker}, or item:{catalog_id:the listed catalog id} when no nqlId exists. Use only these typed ids, never an item name. It may accompany a leveled spell Action; the engine consumes one potion, rolls its catalog healing and caps HP before resolving the Action. The target must be a present living participant; you rule whether another participant is within reach and omit the potion use with an explanation if not. Represent every part of the turn as its Action or single bonusAction, or ask a choice when incompatible; never narrate a potion as already drunk while a roll is pending. Recorded spell attacks, including Ray of Frost, are scored by code: supply the cast and target, without deciding hit/miss or requesting damage yourself. Narrate only typed operations that resolved.
+
+A party member may also hand ONE item to another party member in the same
+turn, beside its Action and any bonusAction; it costs neither. Put it in the
+intent's handOver {item:{nqlId: the nql_id of the giver's equipment row},
+toId: the receiver's combatantId, quantity}, or item:{catalog_id: the row's
+catalog_id} when it has no nql_id; a row with neither cannot be handed over,
+and a give is never staged as the giver's item spend alone. The actor is
+always the giver and gives from its own sheet; the receiver is another
+present party member (the player or a party NPC). Use only these typed ids,
+never an item name. The rules engine moves the item before the Action
+resolves, so never also list it in resources; worn armor or a shield is
+never handed over in a fight. You rule whether the receiver is within reach.
 
 A player's plain swing with one listed melee weapon at one hostile creature
 is asked for and scored by code: declare action='attack', the weapon row's
