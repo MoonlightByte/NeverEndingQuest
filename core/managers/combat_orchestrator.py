@@ -265,14 +265,12 @@ def _diagnostic_context_counts(spell_references):
 
 
 def _provider_failure_class(exc):
-    message = str(exc).lower()
-    class_name = exc.__class__.__name__
-    if class_name == "CombatAgentContractError":
-        if "stale" in message or "actor order" in message:
-            return "stale_state_or_actor_order"
-        if "json" in message or "object" in message:
-            return "response_parse_error"
-        return "response_contract_error"
+    """#1515: the typed class a contract error carries from where it was
+    raised; any other failure is a provider error. Never the message's words."""
+    from core.ai.combat_agent import CombatAgentContractError
+
+    if isinstance(exc, CombatAgentContractError):
+        return exc.failure_class
     return "provider_error"
 
 
@@ -2073,7 +2071,7 @@ def _open_off_hand_phase(encounter_path, encounter, characters, pending, batch, 
     return record
 
 
-def _resolve_ready_phase(encounter_path, encounter, characters, pending):
+def _resolve_ready_phase(encounter_path, encounter, characters, pending, character_paths=None):
     """Item 3: resolve the window from a completed code-issued roll phase,
     with the batch the model gave when the phase opened (no second T096
     pass). Returns (pending, events, roll_consumption, preview_characters);
@@ -2087,6 +2085,7 @@ def _resolve_ready_phase(encounter_path, encounter, characters, pending):
             pending,
             deepcopy(ready_attack.get("batch")),
             rolls,
+            durable_owners=frozenset(character_paths or ()),
         )
         roll_consumption = rolls.consumption()
         record_combat_diagnostic(
@@ -3033,7 +3032,7 @@ def execute_agentic_turn(
         # Item 3: the swing's dice are in; resolve the window with the batch
         # the model gave when the roll phase opened (no second T096 pass).
         pending, events, roll_consumption, _preview_characters = _resolve_ready_phase(
-            encounter_path, encounter, characters, pending,
+            encounter_path, encounter, characters, pending, character_paths,
         )
     provider_player_input = _composed_player_input(pending, player_input)
     if events is None and not _all_non_player(encounter, pending.get("actorIds", [])):
@@ -3254,7 +3253,7 @@ def execute_agentic_turn(
                 # on a save, so no roll is asked: the window resolves now. A
                 # fallback sends this batch down today's path below.
                 pending, events, roll_consumption, _preview_characters = _resolve_ready_phase(
-                    encounter_path, encounter, characters, written,
+                    encounter_path, encounter, characters, written, character_paths,
                 )
                 if events is not None:
                     continue
@@ -3345,6 +3344,8 @@ def execute_agentic_turn(
                 clamp_feature_heals=feature_heal_limits is not None,
                 # #725: an actor whose remove op was refused once has it dropped.
                 drop_removals_for=frozenset(removal_refused_actors),
+                # #145: a hand-over moves only between sheets the commit writes.
+                durable_owners=frozenset(character_paths or ()),
             )
             roll_consumption = rolls.consumption()
             record_combat_diagnostic(

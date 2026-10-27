@@ -2547,7 +2547,7 @@ def promote_to_bestiary():
 
         monster_name = monster_id.replace('_', ' ').title()
         prompt = f"""Generate a compelling 5th edition of the world's most popular roleplaying game style bestiary description for a monster named "{monster_name}".
-        The description should be concise (around 100-150 words) and focus on its appearance, typical behavior, and combat tactics.
+        The description should focus on its appearance, typical behavior, and combat tactics.
         Make it sound like an entry from an official monster manual. Do not include stat blocks.
         Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."""
         
@@ -2587,7 +2587,6 @@ def promote_to_bestiary():
         
         description = validate_generated_prose(
             sanitize_text(response.choices[0].message.content),
-            minimum_words=20,
         )
 
         new_entry = {
@@ -5601,7 +5600,7 @@ def _run_npc_description_job(
 NPC Name: {npc_name}
 Module Context: {module_context}
 
-The output should be a single paragraph (150-200 words) that is itself a high-quality image prompt. It must include:
+The output should be a single paragraph that is itself a high-quality image prompt. It must include:
 1.  **Physical Appearance:** Race, build, key features.
 2.  **Clothing & Gear:** Detailed description of their armor, clothes, and weapons (sheathed or at rest).
 3.  **Background/Setting:** A description of the environment (e.g., 'standing in a sun-dappled ancient forest', 'leaning against a table in a rustic tavern', 'in a dimly lit dungeon corridor').
@@ -5647,7 +5646,6 @@ Return only the image prompt as prose, without JSON, headings, or commentary.
 
                 description = validate_generated_prose(
                     sanitize_text(response.choices[0].message.content),
-                    minimum_words=30,
                 )
                 generated_at = datetime.now().isoformat()
                 entry = {

@@ -74,13 +74,12 @@ def _validate_monster_response(
     tags = result["tags"]
     if (
         not isinstance(tags, list)
-        or len(tags) > 12
         or any(not isinstance(tag, str) or not tag.strip() for tag in tags)
     ):
         raise ValueError("Monster tags must be a list of non-empty strings")
 
     description = validate_generated_prose(
-        sanitize_text(result["description"]), minimum_words=20
+        sanitize_text(result["description"])
     )
     return {
         "name": sanitize_text(generated_name).strip(),
@@ -230,7 +229,6 @@ class BestiaryUpdater:
         - Include physical appearance, behavior, and atmospheric elements
         - Be suitable for use in image generation prompts
         - Maintain consistency with 5th edition of the world's most popular roleplaying game lore while adding creative details
-        - Be approximately 150-250 words
         - Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols
 
         Return your response as a JSON object with these fields:
