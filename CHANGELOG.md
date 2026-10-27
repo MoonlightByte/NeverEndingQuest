@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Combat diagnostics now name why a combat decision request failed from the error's own type, never from the words of its message (#1515).
 - The toolkit's AI-written bestiary and NPC portrait descriptions are no longer held to a word count. The requests no longer ask for 100-150, 150-200 or 150-250 words, a complete short description is kept instead of being rejected as too short, a bestiary entry may carry more than 12 tags, and a long portrait description is no longer cut at 4000 characters before it reaches the image model (#262).
 - A storage request (putting items into or taking them out of a container) is no longer sent to the AI up to three times after you chose Load, Reset or Quit, or after the AI provider refused it. The turn stops at the first answer, a refusal shows the provider's reason instead of "Storage Error", and a read-only save stops the game there as it does elsewhere (#375).
 - In a fight, a party member can now hand an item to another party member: the rules engine moves it between the two character sheets, so it can no longer vanish or be duplicated, and the narrator is told who handed what to whom (#145).
