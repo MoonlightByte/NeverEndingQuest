@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A game error whose message happens to mention a timeout, a connection or a rate limit is no longer retried as if the AI provider had failed, and Gemini errors outside a turn are now recognised the same way as inside one (#1224).
 - A blank AI reply for a companion's memory or an NPC's voice is now retried (at most twice) instead of being dropped, and an NPC voice no longer retries a call the game already retried (#372).
 - Shortening a long conversation at a place you have not left yet no longer strips the game's own background notes from the saved conversation; a game saved right after now keeps them (#317).
 - Typing a die outside 1-20 on a requested check now says why Use rolls is off (#1117).
