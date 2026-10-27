@@ -2032,6 +2032,9 @@ def _call_live_provider(
             and envelope.get("disposition") in {
                 "retryable_http",
                 "retryable_transport",
+                # #372: an empty answer reissues here as for required tasks,
+                # within the #1342 billed bound counted above.
+                "empty",
             }
         ):
             _provider_debug(

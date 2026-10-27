@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - On a short rest the DM now asks for your hit dice in the story instead of stopping on a "type the result or press Enter" prompt. Say what you rolled, ask it to roll for you, ask a question first or change your mind, and the DM tells you how the rest went after the rules engine applies it; the rules receipt is a system note, not the DM's voice (#1242, #1118).
+- A game error whose message happens to mention a timeout, a connection or a rate limit is no longer retried as if the AI provider had failed, and Gemini errors outside a turn are now recognised the same way as inside one (#1224).
+- A blank AI reply for a companion's memory or an NPC's voice is now retried (at most twice) instead of being dropped, and an NPC voice no longer retries a call the game already retried (#372).
 - Shortening a long conversation at a place you have not left yet no longer strips the game's own background notes from the saved conversation; a game saved right after now keeps them (#317).
 - Typing a die outside 1-20 on a requested check now says why Use rolls is off (#1117).
 - A Save sent while the headless game is still starting now waits and completes instead of failing with "engine is busy" (#346).
