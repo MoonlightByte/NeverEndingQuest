@@ -55,6 +55,21 @@ _WIZARD_PROMPT_MARKERS = (
 RAW_LOG_PATH = os.path.join("modules", "logs", "headless_raw.log")
 
 
+
+def _pending_roll():
+    """The roll the game is holding for the player (D-1118-5 A, #1118 item 3), typed, from checks_state:
+    {kind: "hitDie", label, dice}; None when nothing is held. A harness never reads DM prose to find it."""
+    try:
+        from core.managers import checks_state
+
+        entry = checks_state.pending_rest()
+    except Exception:
+        return None
+    if not entry:
+        return None
+    return {"kind": "hitDie", "label": f"Hit die for {entry.get('characterName')}",
+            "dice": [{"count": entry.get("count"), "sides": entry.get("die")}]}
+
 class HeadlessSession:
     def __init__(self, repo_root, game_dir=None, debug=False, writer=None):
         self.repo_root = os.path.abspath(repo_root)
@@ -409,11 +424,16 @@ class HeadlessSession:
         # would leave the flag stuck set for the whole following turn,
         # defeating the save/restore busy-guard.
         self.prompt_pending.set()
+        extra = {}
+        pending_roll = _pending_roll()
+        if pending_roll is not None:
+            extra["pendingRoll"] = pending_roll
         self.writer.emit(
             "prompt",
             kind=kind,
             raw_prompt=clean_prompt,
-            stats=self._parse_prompt_stats(clean_prompt))
+            stats=self._parse_prompt_stats(clean_prompt),
+            **extra)
         self.writer.emit("state", **snapshot)
 
     # -- runner-side API ---------------------------------------------------

@@ -1649,9 +1649,18 @@ def _resume_guidance(unresolved=False):
         from core.managers import checks_state
         from core.nql import checks
         pending = checks_state.pending_checks()
+        held_rest = checks_state.pending_rest()
     except Exception:
-        pending = []
-    if pending:
+        pending, held_rest = [], None
+    if held_rest and not pending:
+        # #1118 item 3: a short rest is held for the player's hit dice.
+        guidance += (
+            "A short rest is waiting for the player's hit dice (" + str(held_rest.get("characterName")) + ": "
+            + str(held_rest.get("count")) + "d" + str(held_rest.get("die")) + "). Remind them, in your own words, "
+            "that they can roll it or ask you to roll it; do not ask for a new action and do not narrate the "
+            "healing or the rest's end. "
+        )
+    elif pending:
         entry = pending[0]
         attempt = entry.get("reason") or checks.label(entry.get("stat"))
         guidance += (
@@ -9983,7 +9992,7 @@ def _main_game_loop(startup_authority, turn_authority):
         # check_continuation marker and runs no companion recall.
         check_continuation = bool(completed_checks)
         if completed_checks:
-            user_input_text = "Continue with the outcome of my submitted check."
+            user_input_text = "Continue with the outcome of my submitted roll."
         elif player_data_current:
             current_hp = player_data_current.get("hitPoints", "N/A")
             max_hp = player_data_current.get("maxHitPoints", "N/A")
@@ -10038,9 +10047,14 @@ def _main_game_loop(startup_authority, turn_authority):
             print("[DEBUG] About to show basic input prompt")
             user_input_text = input("User: ")
 
-        # Skip processing if input is empty or only whitespace
+        # Skip processing if input is empty or only whitespace, unless a held
+        # rest waits: then a blank line lets the game roll (#1118 item 3).
+        from core.managers.checks_state import pending_rest
+
         if not user_input_text or not user_input_text.strip():
-            continue
+            if check_continuation or pending_rest() is None:
+                continue
+            user_input_text = ""
         else:
             # Reset counter on valid input
             empty_input_count = 0
@@ -10095,6 +10109,87 @@ def _main_game_loop(startup_authority, turn_authority):
             if outcome is not None:
                 return outcome
             continue
+
+        from utils.capture.live_provider_call import open_live_turn_scope
+
+        live_turn_scope = open_live_turn_scope()
+        level_up_publication_guard = None
+
+
+        # Old-format repairs are advisory and may invoke T018/T019/T087/T027.
+        # They run only after the real prompt/control surface exists and inside
+        # the cancellable live scope; current v2 markers are already preceded
+        # by their accepted T016 summary and therefore take this path zero times.
+        transitions_were_processed = False
+        while True:
+            original_history = copy.deepcopy(conversation_history)
+            repaired_history = check_and_process_location_transitions(
+                conversation_history,
+                party_tracker_data,
+                path_manager,
+            )
+            if repaired_history == original_history:
+                break
+            conversation_history = repaired_history
+            transitions_were_processed = True
+        if transitions_were_processed:
+            save_conversation_history(conversation_history)
+            try:
+                from core.ai.chunked_compression_integration import (
+                    check_and_perform_chunked_compression,
+                )
+
+                check_and_perform_chunked_compression()
+                conversation_history = load_json_file(json_file) or conversation_history
+            except Exception as legacy_compression_error:
+                warning(
+                    "Legacy chronicle enrichment remained unavailable: %s"
+                    % type(legacy_compression_error).__name__,
+                    category="conversation_management",
+                )
+        pending_legacy = safe_json_load(
+            action_handler.PENDING_LOCATION_TRANSITION_FILE
+        )
+        if (
+            isinstance(pending_legacy, dict)
+            and pending_legacy.get("version") == 2
+            and pending_legacy.get("kind") == "legacy_repair"
+        ):
+            from utils.capture.live_provider_call import finish_live_turn_scope
+
+            finish_live_turn_scope(live_turn_scope)
+            action_handler.TurnRoster.record(None)
+            print(
+                "[SYSTEM] An older travel record is safely paused for exact "
+                "recovery; no new action was applied."
+            )
+            continue
+        # #1118 item 3: a short rest held for the player's hit dice is settled by
+        # this line, inside the turn's one live scope and before the party stats
+        # and the DM note are built, so the note shows the sheets after the rest.
+        rest_settle = {}
+        if not check_continuation:
+            from core.managers.checks_runtime import settle_pending_rest
+
+            rest_settle = settle_pending_rest(user_input_text, conversation_history)
+            if rest_settle.get("providerError") is not None:
+                decision = provider_failure_policy(
+                    classify_provider_error(rest_settle["providerError"]), 1, False)
+                if decision["stop"]:
+                    from utils.capture.live_provider_call import finish_live_turn_scope
+
+                    display_dm_narration(decision["player_message"], channel="system")
+                    finish_live_turn_scope(live_turn_scope)
+                    continue
+            if not user_input_text.strip() and not rest_settle.get("settled"):
+                # A blank line that settles nothing is skipped, never an empty turn.
+                from utils.capture.live_provider_call import finish_live_turn_scope
+
+                finish_live_turn_scope(live_turn_scope)
+                continue
+            if rest_settle.get("settled") and not user_input_text.strip():
+                check_continuation = True
+                user_input_text = "Continue with the outcome of my submitted roll."
 
         # Remove duplicate NPCs if any exist
         party_tracker_data, npcs_were_cleaned = remove_duplicate_npcs(party_tracker_data)
@@ -10276,66 +10371,16 @@ def _main_game_loop(startup_authority, turn_authority):
         from core.managers.checks_runtime import rest_offers_note
 
         dm_note += rest_offers_note()
+        # #1118 item 3: a held rest still waiting, with this turn's settle note.
+        from core.managers.checks_runtime import pending_roll_note
+
+        dm_note += pending_roll_note(rest_settle)
 
         # The player's own words, never annotated with guessed items or a
         # word-matched SRD block (D-KW-5): the DM already sees every item and
         # spell on the party sheets.
         user_input_with_note = build_enhanced_dm_note(dm_note, user_input_text)
         
-        from utils.capture.live_provider_call import open_live_turn_scope
-
-        live_turn_scope = open_live_turn_scope()
-        level_up_publication_guard = None
-
-
-        # Old-format repairs are advisory and may invoke T018/T019/T087/T027.
-        # They run only after the real prompt/control surface exists and inside
-        # the cancellable live scope; current v2 markers are already preceded
-        # by their accepted T016 summary and therefore take this path zero times.
-        transitions_were_processed = False
-        while True:
-            original_history = copy.deepcopy(conversation_history)
-            repaired_history = check_and_process_location_transitions(
-                conversation_history,
-                party_tracker_data,
-                path_manager,
-            )
-            if repaired_history == original_history:
-                break
-            conversation_history = repaired_history
-            transitions_were_processed = True
-        if transitions_were_processed:
-            save_conversation_history(conversation_history)
-            try:
-                from core.ai.chunked_compression_integration import (
-                    check_and_perform_chunked_compression,
-                )
-
-                check_and_perform_chunked_compression()
-                conversation_history = load_json_file(json_file) or conversation_history
-            except Exception as legacy_compression_error:
-                warning(
-                    "Legacy chronicle enrichment remained unavailable: %s"
-                    % type(legacy_compression_error).__name__,
-                    category="conversation_management",
-                )
-        pending_legacy = safe_json_load(
-            action_handler.PENDING_LOCATION_TRANSITION_FILE
-        )
-        if (
-            isinstance(pending_legacy, dict)
-            and pending_legacy.get("version") == 2
-            and pending_legacy.get("kind") == "legacy_repair"
-        ):
-            from utils.capture.live_provider_call import finish_live_turn_scope
-
-            finish_live_turn_scope(live_turn_scope)
-            action_handler.TurnRoster.record(None)
-            print(
-                "[SYSTEM] An older travel record is safely paused for exact "
-                "recovery; no new action was applied."
-            )
-            continue
         pre_turn_accepted_history = copy.deepcopy(conversation_history)
 
         from core.combat.invocation import (

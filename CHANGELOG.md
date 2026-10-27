@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- On a short rest the DM now asks for your hit dice in the story instead of stopping on a "type the result or press Enter" prompt. Say what you rolled, ask it to roll for you, ask a question first or change your mind, and the DM tells you how the rest went after the rules engine applies it; the rules receipt is a system note, not the DM's voice (#1242, #1118).
 - When the story starts or ends a condition such as restrained or poisoned, the character-sheet update must now record it, and the rules check no longer contradicts itself about this (#1585).
 - When a character sheet is briefly busy, buying, spending, giving and levelling up now wait for it, with a status line, instead of refusing; Load, Reset or Quit still end the wait. A read-only save now stops the turn at these steps too, as it does elsewhere (#1253).
 - A game error whose message happens to mention a timeout, a connection or a rate limit is no longer retried as if the AI provider had failed, and Gemini errors outside a turn are now recognised the same way as inside one (#1224).
