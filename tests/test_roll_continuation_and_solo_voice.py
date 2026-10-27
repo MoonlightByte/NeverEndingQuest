@@ -49,7 +49,7 @@ def test_actual_main_roll_branch_does_not_read_another_command():
     read = Mock(side_effect=AssertionError("Roll must continue without another input"))
     env = {"completed_checks": ["Hero rolled 6 +4 = 10"], "display_dm_narration": output, "input": read}
     exec(compile(ast.Module(body=[node], type_ignores=[]), "main-roll-boundary", "exec"), env)
-    assert "submitted check" in env["user_input_text"]
+    assert "submitted roll" in env["user_input_text"]
     output.assert_not_called()
     read.assert_not_called()
 

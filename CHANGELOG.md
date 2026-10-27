@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- On a short rest the DM now asks for your hit dice in the story instead of stopping on a "type the result or press Enter" prompt. Say what you rolled, ask it to roll for you, ask a question first or change your mind, and the DM tells you how the rest went after the rules engine applies it; the rules receipt is a system note, not the DM's voice (#1242, #1118).
 - The chronicle written when you leave an adventure now keeps the nicknames, promises and personal details that came up in play, and no longer makes up ones that never did (#318).
 - After a model call ends, refused or answered, the progress line goes back to what the game was doing instead of keeping the call's "Your turn is safe" heartbeat (#1088).
 - A new adventure's most dangerous regions no longer give their places a danger level the game does not recognise; they are now marked Very High, the highest level a place can have (#1528).

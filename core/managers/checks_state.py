@@ -194,3 +194,41 @@ def _rest_turn_end(offer: Dict[str, Any]) -> Any:
     if type(rest_tick) is not int or type(grace) is not int or grace < 0:
         return None
     return rest_tick + grace
+
+
+# #1118 item 3: a short rest held for the player's hit-die answer. At most one,
+# under its own top-level key: older builds keep an unknown key untouched and
+# never read it as a pending check.
+
+def pending_rest() -> Dict[str, Any] | None:
+    entry = load_checks_state().get("pendingRest")
+    return dict(entry) if isinstance(entry, dict) else None
+
+
+@_locked
+def hold_rest(entry: Dict[str, Any]) -> None:
+    state = load_checks_state()
+    state["pendingRest"] = entry
+    write_checks_state(state)
+
+
+@_locked
+def take_pending_rest(entry: Dict[str, Any]) -> bool:
+    """Remove ``entry`` before its rest is applied; False when the held rest changed (nothing is applied)."""
+    state = load_checks_state()
+    if state.get("pendingRest") != entry:
+        return False
+    del state["pendingRest"]
+    write_checks_state(state)
+    return True
+
+
+@_locked
+def close_pending_rest() -> Dict[str, Any] | None:
+    """Close the held rest, if any, with no die spent; returns it."""
+    state = load_checks_state()
+    entry = state.pop("pendingRest", None)
+    if entry is None:
+        return None
+    write_checks_state(state)
+    return entry if isinstance(entry, dict) else None
