@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Shortening a long conversation at a place you have not left yet no longer strips the game's own background notes from the saved conversation; a game saved right after now keeps them (#317).
+- Typing a die outside 1-20 on a requested check now says why Use rolls is off (#1117).
 - A Save sent while the headless game is still starting now waits and completes instead of failing with "engine is busy" (#346).
 - The chronicle written when you leave an adventure now keeps the nicknames, promises and personal details that came up in play, and no longer makes up ones that never did (#318).
 - After a model call ends, refused or answered, the progress line goes back to what the game was doing instead of keeping the call's "Your turn is safe" heartbeat (#1088).
