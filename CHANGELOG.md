@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Module building no longer leaves a stuck AI request running in the background when the NPC-consistency, module-typing or route-timing step is slow. Those steps now stop cleanly, and loading or quitting during an in-game build stops them too (#204).
 - Recovery, upgrade, restart and character-sheet notices that only the terminal used to show (for example "An older travel record is safely paused") now appear in the game window on the web and in headless play, and a turn that fails after a rejected DM draft now says so there too (#212).
 - On a short rest the DM now asks for your hit dice in the story instead of stopping on a "type the result or press Enter" prompt. Say what you rolled, ask it to roll for you, ask a question first or change your mind, and the DM tells you how the rest went after the rules engine applies it; the rules receipt is a system note, not the DM's voice (#1242, #1118).
 - When the story starts or ends a condition such as restrained or poisoned, the character-sheet update must now record it, and the rules check no longer contradicts itself about this (#1585).
