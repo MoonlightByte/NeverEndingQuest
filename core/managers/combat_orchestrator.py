@@ -265,14 +265,12 @@ def _diagnostic_context_counts(spell_references):
 
 
 def _provider_failure_class(exc):
-    message = str(exc).lower()
-    class_name = exc.__class__.__name__
-    if class_name == "CombatAgentContractError":
-        if "stale" in message or "actor order" in message:
-            return "stale_state_or_actor_order"
-        if "json" in message or "object" in message:
-            return "response_parse_error"
-        return "response_contract_error"
+    """#1515: the typed class a contract error carries from where it was
+    raised; any other failure is a provider error. Never the message's words."""
+    from core.ai.combat_agent import CombatAgentContractError
+
+    if isinstance(exc, CombatAgentContractError):
+        return exc.failure_class
     return "provider_error"
 
 
