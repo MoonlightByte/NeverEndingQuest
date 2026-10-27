@@ -40,6 +40,11 @@ import config
 from core.ai import api_client
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.transient_filesystem import ReadOnlySaveStop
+from utils.capture.live_provider_call import (
+    LiveProviderCompletedError,
+    LiveProviderSuperseded,
+)
+from core.combat.invocation import InvocationSupersededError
 from utils.module_path_manager import ModulePathManager
 import jsonschema
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -320,13 +325,10 @@ For "What's in our storage here?":
         description: str,
         character_name: str,
         *,
-        structural_reissue: bool = False,
         base_sheets=None,
     ) -> Dict[str, Any]:
         """Process natural language storage description into validated operation with retry logic"""
         
-        # A required travel proposal (structural_reissue) gets the same 3
-        # tries; its caller then drops it and the travel goes on (#855).
         max_attempts = 3
         original_description = description
 
@@ -440,7 +442,15 @@ For "What's in our storage here?":
                     "processed_at": datetime.now().isoformat()
                 }
                 
-            except ReadOnlySaveStop:
+            except (
+                ReadOnlySaveStop,
+                LiveProviderSuperseded,
+                InvocationSupersededError,
+                LiveProviderCompletedError,
+            ):
+                # A player's Load/Reset/Quit, or a provider result the
+                # transport has already bounded (#1342), ends T049 here.
+                # Only unusable output and other faults are retried (#375).
                 raise
             except Exception as e:
                 error(f"FAILURE: Storage processing exception on attempt {attempt}", exception=e, category="storage_operations")
@@ -464,7 +474,6 @@ def process_storage_request(
     description: str,
     character_name: str,
     *,
-    structural_reissue: bool = False,
     base_sheets=None,
 ) -> Dict[str, Any]:
     """Process a storage request from natural language description"""
@@ -472,6 +481,5 @@ def process_storage_request(
     return processor.process_storage_description(
         description,
         character_name,
-        structural_reissue=structural_reissue,
         base_sheets=base_sheets,
     )

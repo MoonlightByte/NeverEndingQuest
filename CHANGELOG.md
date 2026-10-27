@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Combat diagnostics now name why a combat decision request failed from the error's own type, never from the words of its message (#1515).
+- A storage request (putting items into or taking them out of a container) is no longer sent to the AI up to three times after you chose Load, Reset or Quit, or after the AI provider refused it. The turn stops at the first answer, a refusal shows the provider's reason instead of "Storage Error", and a read-only save stops the game there as it does elsewhere (#375).
 - In a fight, a party member can now hand an item to another party member: the rules engine moves it between the two character sheets, so it can no longer vanish or be duplicated, and the narrator is told who handed what to whom (#145).
 - Recovery, upgrade, restart and character-sheet notices that only the terminal used to show (for example "An older travel record is safely paused") now appear in the game window on the web and in headless play, and a turn that fails after a rejected DM draft now says so there too (#212).
 - On a short rest the DM now asks for your hit dice in the story instead of stopping on a "type the result or press Enter" prompt. Say what you rolled, ask it to roll for you, ask a question first or change your mind, and the DM tells you how the rest went after the rules engine applies it; the rules receipt is a system note, not the DM's voice (#1242, #1118).
