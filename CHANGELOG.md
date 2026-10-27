@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the story starts or ends a condition such as restrained or poisoned, the character-sheet update must now record it, and the rules check no longer contradicts itself about this (#1585).
 - When a character sheet is briefly busy, buying, spending, giving and levelling up now wait for it, with a status line, instead of refusing; Load, Reset or Quit still end the wait. A read-only save now stops the turn at these steps too, as it does elsewhere (#1253).
 - A game error whose message happens to mention a timeout, a connection or a rate limit is no longer retried as if the AI provider had failed, and Gemini errors outside a turn are now recognised the same way as inside one (#1224).
 - A blank AI reply for a companion's memory or an NPC's voice is now retried (at most twice) instead of being dropped, and an NPC voice no longer retries a call the game already retried (#372).
