@@ -5679,6 +5679,9 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                             "error_message": "Character update failed safely; no partial effect was applied."
                         },
                     )
+            except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+                # #1253: a Load, Reset, Quit or read-only save stop ends the turn (#654).
+                raise
             except EngineRefusedChange as refusal:
                 # The rules engine refused the change (coins, hit points, spell
                 # slots or feature uses). Nothing was written; the model hears
@@ -6406,7 +6409,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 conversation_history.append({"role": "user", "content": error_message})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as e:
             print(f"ERROR: Exception while processing transferItem: {str(e)}")
@@ -6449,7 +6452,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 conversation_history.append({"role": "user", "content": error_message})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as e:
             print(f"ERROR: Exception while processing expendCharges: {str(e)}")
@@ -6547,7 +6550,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 conversation_history.append({"role": "user", "content": error_message})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as e:
             print(f"ERROR: Exception while processing {action_type}: {str(e)}")
@@ -6611,7 +6614,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     "rest.")})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as e:
             print(f"ERROR: Exception while processing rest: {str(e)}")
