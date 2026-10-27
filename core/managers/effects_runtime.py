@@ -37,7 +37,6 @@ from updates.update_character_info import (
 from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import info, warning
 from utils.file_operations import safe_write_json
-from utils.path_transaction_lock import path_transaction_lock
 
 
 class EffectsRuntimeError(RuntimeError):
@@ -297,10 +296,9 @@ def remove_effect(character_name, *, effect_id=None, name=None, reason="removed"
         for item in matches
     ]
     with _get_character_update_lock(resolved):
-        with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=5.0) as locked:
-            if locked is None:
-                raise EffectsRuntimeError("timed out removing effect")
-            current = safe_json_load(path)
+        # #202 A2: a busy sheet or read waits (with a status line); it never refuses.
+        with wait_for_sheet_lease(path, resolved):
+            current = read_sheet_waiting(path, resolved, load=safe_json_load)
             if not isinstance(current, dict):
                 raise EffectsRuntimeError("character sheet became unavailable")
             updated = _end_condition(current, condition) if condition else apply_effect_ops(current, operations)
@@ -411,12 +409,9 @@ def prepare_character_update(character_name, changes, party_tracker_data=None, a
 def apply_staged_character_update(receipt):
     """Apply or recognize one exact prepared character sheet."""
     with _get_character_update_lock(receipt["owner"], receipt.get("role")):
-        with path_transaction_lock(
-            receipt["path"], suffix=".effects.lock", timeout_seconds=30.0
-        ) as locked:
-            if locked is None:
-                raise EffectsRuntimeError("character file is busy")
-            current = safe_json_load(receipt["path"])
+        # #202 A3: a busy sheet or read waits (with a status line); it never refuses.
+        with wait_for_sheet_lease(receipt["path"], receipt["owner"]):
+            current = read_sheet_waiting(receipt["path"], receipt["owner"], load=safe_json_load)
             if current == receipt["after"]:
                 return "already_committed"
             if current != receipt["before"]:
@@ -433,12 +428,9 @@ def apply_staged_character_update(receipt):
 def apply_staged_remove_effect(receipt):
     """Apply or recognize a frozen exact removeEffect sheet value."""
     with _get_character_update_lock(receipt["owner"], receipt.get("role")):
-        with path_transaction_lock(
-            receipt["path"], suffix=".effects.lock", timeout_seconds=30.0
-        ) as locked:
-            if locked is None:
-                raise EffectsRuntimeError("character effect file is busy")
-            current = safe_json_load(receipt["path"])
+        # #202 A4: a busy sheet or read waits (with a status line); it never refuses.
+        with wait_for_sheet_lease(receipt["path"], receipt["owner"]):
+            current = read_sheet_waiting(receipt["path"], receipt["owner"], load=safe_json_load)
             if not isinstance(current, dict):
                 raise EffectsRuntimeError("character sheet became unavailable")
             if current == receipt["after"]:
@@ -521,10 +513,9 @@ def _apply_outbox_records(paths):
                 path = None
         if not path:
             continue
-        with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=5.0) as locked:
-            if locked is None:
-                raise EffectsRuntimeError("timed out applying expiration")
-            sheet = safe_json_load(path)
+        # #202 A5: a busy sheet or read waits (with a status line); it never refuses.
+        with wait_for_sheet_lease(path, owner):
+            sheet = read_sheet_waiting(path, owner, load=safe_json_load)
             if not isinstance(sheet, dict):
                 raise EffectsRuntimeError("effect owner sheet became unavailable")
             updated = apply_effect_ops(sheet, [record.get("operation")])
