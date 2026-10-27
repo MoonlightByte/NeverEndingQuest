@@ -8739,6 +8739,25 @@ def _travel_recovery_authority():
             _check_live_authority(scope)
 
 
+@contextmanager
+def _charge_refresh_authority():
+    """#1253: the between-turns charge refresh can wait for a busy sheet, so it
+    runs under a scope that Load, Reset or Quit can end (#248's borrow-or-own)."""
+    from utils.capture.live_provider_call import (
+        finish_live_turn_scope, get_live_turn_scope, open_live_turn_scope,
+    )
+
+    scope = get_live_turn_scope()
+    owned = scope is None
+    if owned:
+        scope = open_live_turn_scope()
+    try:
+        yield scope
+    finally:
+        if owned:
+            finish_live_turn_scope(scope)
+
+
 def _finish_pending_travel_before_input(scope):
     """Use the existing inspector and continuation, never a replacement trip."""
     from core.combat.invocation import InvocationSupersededError
@@ -9204,7 +9223,7 @@ def _main_game_loop(startup_authority, turn_authority):
     # A new session saves again; a file still read-only stops it again at its
     # first save (issue #654).
     from utils.transient_filesystem import (
-        clear_save_stop, raise_if_save_stopped, save_stop_path,
+        ReadOnlySaveStop, clear_save_stop, raise_if_save_stopped, save_stop_path,
     )
     clear_save_stop()
 
@@ -9856,7 +9875,9 @@ def _main_game_loop(startup_authority, turn_authority):
         try:
             from core.managers.item_charges import refresh_party
 
-            recharged = refresh_party(party_tracker_data)
+            # #1253: a busy sheet waits under a scope that Load, Reset or Quit can end.
+            with _charge_refresh_authority() as charges_scope:
+                recharged = refresh_party(party_tracker_data, scope=charges_scope)
             if recharged:
                 # The DM learns counts from the sheet summary and from the
                 # "Charges:" lines the spend action leaves, so a recharge gets
@@ -9868,6 +9889,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 conversation_history = update_character_data(conversation_history, party_tracker_data)
                 conversation_history = ensure_main_system_prompt(conversation_history, main_system_prompt_text)
                 conversation_history = order_conversation_messages(conversation_history, main_system_prompt_text)
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            raise
         except Exception as charges_exc:
             debug(f"CHARGES: refresh skipped this turn: {charges_exc}", category="storage_operations")
 
