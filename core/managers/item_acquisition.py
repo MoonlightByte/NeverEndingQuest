@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Optional
 from core.nql import acquisition, apply, armor_class, genesis, item_catalog, stats
 from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import debug, info, warning
-from utils.file_operations import safe_read_json, safe_write_json
+from utils.file_operations import safe_write_json
 
 RECEIPTS_KEPT = 50
 # P3a: the refusal texts' fixed route for an item that is not listed.
@@ -334,8 +334,9 @@ def execute_acquisition(character_name: str, item_name: str, quantity: Any, pric
 
 def _acquire(character_name, item_name, quantity, price, request_id, party_tracker, kind, catalog_id,
              loot) -> Dict[str, Any]:
-    from updates.update_character_info import _get_character_update_lock
-    from utils.path_transaction_lock import path_transaction_lock
+    from updates.update_character_info import (
+        _get_character_update_lock, read_sheet_waiting, wait_for_sheet_lease,
+    )
 
     if catalog_id is not None:
         # P3a: the party read and the sheet-free check come first, so every
@@ -372,10 +373,9 @@ def _acquire(character_name, item_name, quantity, price, request_id, party_track
     dice = _entropy() if rule is not None and rule.uses_dice else None
 
     with _get_character_update_lock(os.path.basename(path)[:-5]):
-        with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=30.0) as lease:
-            if lease is None:
-                return {"success": False, "error": "the character sheet is busy; nothing was bought"}
-            sheet = safe_read_json(path)
+        # #1253: a busy sheet or read waits (with a status line); it never refuses.
+        with wait_for_sheet_lease(path, character_name):
+            sheet = read_sheet_waiting(path, character_name)
             if not sheet:
                 return {"success": False, "error": "could not load the character sheet"}
 
@@ -508,6 +508,11 @@ def _acquire(character_name, item_name, quantity, price, request_id, party_track
             try:
                 if not safe_write_json(path, out):
                     raise RuntimeError("failed to write the character sheet")
+            except _stops():
+                # #1253 MI-8: a read-only save stop or a supersession ends the turn (#654).
+                _restore(path, backup)
+                _discard(backup)
+                raise
             except Exception as error:
                 _restore(path, backup)
                 _discard(backup)

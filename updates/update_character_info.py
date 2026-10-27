@@ -102,6 +102,7 @@ import copy
 import shutil
 import os
 import threading
+from contextlib import contextmanager
 from datetime import datetime
 from jsonschema import validate, ValidationError
 import config
@@ -2054,6 +2055,65 @@ def _get_character_update_lock(character_name, character_role=None):
             lock = threading.RLock()
             _CHARACTER_UPDATE_LOCKS[key] = lock
         return lock
+
+
+def _sheet_wait_line(path, name=None):
+    """#1253: the status line while a character sheet is busy."""
+    if not name:
+        name = os.path.splitext(os.path.basename(path))[0].replace("_", " ").title()
+    return f"Waiting for {name}'s character sheet..."
+
+
+@contextmanager
+def wait_for_sheet_lease(path, name=None, scope=None):
+    """#1253 (B2, D-VS-5): hold a sheet's ``.effects.lock`` with no give-up
+    deadline. The lock's own wait cannot be ended by a callback, so the lock is
+    tried in short attempts; between them a Load, Reset, Quit or read-only save
+    stop ends the wait, and the player sees a status line. Callers keep the
+    character update lock outside this lease, so the lock order is unchanged."""
+    from utils.capture.live_provider_call import _interruptible_wait, get_live_provider_scope
+    from utils.path_transaction_lock import path_transaction_lock
+
+    while True:
+        with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=0.25) as lease:
+            if lease is not None:
+                yield lease
+                return
+        _interruptible_wait(0.25, scope if scope is not None else get_live_provider_scope(),
+                            _sheet_wait_line(path, name))
+
+
+def read_sheet_waiting(path, name=None, scope=None, load=None):
+    """#1253 MI-9 (B1): read a sheet under its lease, waiting while another
+    program briefly holds the file. With no ``load`` a missing or corrupt sheet
+    gives None, as safe_read_json does; a ``load`` (effects_runtime's
+    safe_json_load) keeps its own results and errors and only waits while busy."""
+    from utils.capture.live_provider_call import _interruptible_wait, get_live_provider_scope
+    from utils.transient_filesystem import (
+        is_transient_filesystem_error, read_bytes_preserving_errors, retry_transient_filesystem,
+    )
+
+    while True:
+        try:
+            if load is not None:
+                return load(path)
+            raw = retry_transient_filesystem(lambda: read_bytes_preserving_errors(path))
+            return json.loads(raw.decode("utf-8"))
+        except ReadOnlySaveStop:
+            raise
+        except OSError as exc:
+            if not is_transient_filesystem_error(exc):
+                if load is not None:
+                    raise
+                warning(f"SHEET: {path} could not be read: {exc}", category="character_updates")
+                return None
+        except ValueError as exc:
+            if load is not None:
+                raise
+            warning(f"SHEET: {path} could not be read: {exc}", category="character_updates")
+            return None
+        _interruptible_wait(0.25, scope if scope is not None else get_live_provider_scope(),
+                            _sheet_wait_line(path, name))
 
 
 def _effect_operations(operation):

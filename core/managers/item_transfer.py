@@ -18,7 +18,7 @@ from core.nql import storage as nql_storage
 from core.nql import transfer as nql_transfer
 from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import debug, info, warning
-from utils.file_operations import safe_read_json, safe_write_json
+from utils.file_operations import safe_write_json
 
 
 def _resolve(character_name: str) -> Optional[str]:
@@ -65,6 +65,19 @@ def _discard(backup: Optional[str]) -> None:
             pass
 
 
+def _restore_for_stop(pairs) -> None:
+    """#1253: the restore before a stop is re-raised. A restore that fails keeps
+    its backup and never hides the stop (a read-only target cannot be restored)."""
+    for path, backup in pairs:
+        try:
+            _restore(path, backup)
+        except OSError as error:
+            warning(f"TRANSFER: {path} could not be restored before the stop ({error}); its backup is kept at {backup}",
+                    category="storage_operations")
+            continue
+        _discard(backup)
+
+
 def _projected(sheet: Dict[str, Any]) -> Dict[str, Any]:
     projection = armor_class.project(sheet)
     if projection.applied:
@@ -77,8 +90,10 @@ def _projected(sheet: Dict[str, Any]) -> Dict[str, Any]:
 def execute_transfer(from_character: str, to_character: str, item_name: str, quantity: Any,
                      party_tracker: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Run one give. Returns {"success": bool, "message": str} or {"success": False, "error": str}."""
-    from updates.update_character_info import _get_character_update_lock
-    from utils.path_transaction_lock import path_transaction_lock
+    from core.managers.item_acquisition import _stops
+    from updates.update_character_info import (
+        _get_character_update_lock, read_sheet_waiting, wait_for_sheet_lease,
+    )
 
     giver_path = _resolve(from_character)
     receiver_path = _resolve(to_character)
@@ -98,12 +113,11 @@ def execute_transfer(from_character: str, to_character: str, item_name: str, qua
     first, second = sorted((giver_path, receiver_path))
     with _get_character_update_lock(os.path.basename(first)[:-5]), \
             _get_character_update_lock(os.path.basename(second)[:-5]):
-        with path_transaction_lock(first, suffix=".effects.lock", timeout_seconds=30.0) as lease_a, \
-                path_transaction_lock(second, suffix=".effects.lock", timeout_seconds=30.0) as lease_b:
-            if lease_a is None or lease_b is None:
-                return {"success": False, "error": "a character sheet is busy; nothing was moved"}
-            giver = safe_read_json(giver_path)
-            receiver = safe_read_json(receiver_path)
+        # #1253: a busy sheet or read waits (with a status line), in the same order; it never refuses.
+        names = {giver_path: from_character, receiver_path: to_character}
+        with wait_for_sheet_lease(first, names[first]), wait_for_sheet_lease(second, names[second]):
+            giver = read_sheet_waiting(giver_path, from_character)
+            receiver = read_sheet_waiting(receiver_path, to_character)
             if not giver or not receiver:
                 return {"success": False, "error": "could not load both character sheets"}
 
@@ -123,6 +137,10 @@ def execute_transfer(from_character: str, to_character: str, item_name: str, qua
                     raise RuntimeError("failed to write the giver's sheet")
                 if not safe_write_json(receiver_path, receiver_out):
                     raise RuntimeError("failed to write the receiver's sheet")
+            except _stops():
+                # #1253: a read-only save stop or a supersession ends the turn (#654).
+                _restore_for_stop(((giver_path, giver_backup), (receiver_path, receiver_backup)))
+                raise
             except Exception as error:
                 _restore(giver_path, giver_backup)
                 _restore(receiver_path, receiver_backup)
