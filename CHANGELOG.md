@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - In a fight, a party member can now hand an item to another party member: the rules engine moves it between the two character sheets, so it can no longer vanish or be duplicated, and the narrator is told who handed what to whom (#145).
+- On a short rest the DM now asks for your hit dice in the story instead of stopping on a "type the result or press Enter" prompt. Say what you rolled, ask it to roll for you, ask a question first or change your mind, and the DM tells you how the rest went after the rules engine applies it; the rules receipt is a system note, not the DM's voice (#1242, #1118).
+- When the story starts or ends a condition such as restrained or poisoned, the character-sheet update must now record it, and the rules check no longer contradicts itself about this (#1585).
+- When a character sheet is briefly busy, buying, spending, giving and levelling up now wait for it, with a status line, instead of refusing; Load, Reset or Quit still end the wait. A read-only save now stops the turn at these steps too, as it does elsewhere (#1253).
 - A game error whose message happens to mention a timeout, a connection or a rate limit is no longer retried as if the AI provider had failed, and Gemini errors outside a turn are now recognised the same way as inside one (#1224).
 - A blank AI reply for a companion's memory or an NPC's voice is now retried (at most twice) instead of being dropped, and an NPC voice no longer retries a call the game already retried (#372).
 - Shortening a long conversation at a place you have not left yet no longer strips the game's own background notes from the saved conversation; a game saved right after now keeps them (#317).

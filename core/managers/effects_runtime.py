@@ -30,7 +30,9 @@ from updates.update_character_info import (
     fuzzy_match_character_name,
     get_character_path,
     normalize_character_name,
+    read_sheet_waiting,
     update_character_info,
+    wait_for_sheet_lease,
 )
 from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import info, warning
@@ -125,14 +127,9 @@ def update_character_with_effects(
 
     resolved, role, path, _sheet = _resolve_character(character_name)
     with _get_character_update_lock(resolved, role):
-        with path_transaction_lock(
-            path,
-            suffix=".effects.lock",
-            timeout_seconds=30.0,
-        ) as locked:
-            if locked is None:
-                raise EffectsRuntimeError("timed out acquiring the character effect lease")
-            sheet = safe_json_load(path)
+        # #1253 (#202 A1): a busy sheet or read waits (with a status line); it never refuses.
+        with wait_for_sheet_lease(path, resolved):
+            sheet = read_sheet_waiting(path, resolved, load=safe_json_load)
             if not isinstance(sheet, dict):
                 raise EffectsRuntimeError("character sheet became unavailable")
             classifier = _lazy_classifier(resolved, changes, sheet, _world_scalar(party_tracker_data))

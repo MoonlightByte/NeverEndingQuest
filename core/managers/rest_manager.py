@@ -23,7 +23,7 @@ temporary effects are cleared by the effects lifecycle after the sheets are
 written. All sheets are written together or none is.
 """
 import json
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from core.leveling import tables as leveling_tables
 from core.managers.currency_transfer import _run
@@ -155,8 +155,8 @@ def hit_dice_receipt(name: str, rolls: List[Dict[str, Any]], before: Any, after:
 
 def player_hit_dice(party: Dict[str, Any], hit_dice: Any) -> Optional[Tuple[str, int, int]]:
     """(player's full name, die, count) when the rest spends the player's hit dice and their pool can pay,
-    so the player rolls them; None otherwise (no prompt: the engine rolls or refuses the rest). The count
-    is the dice that can heal (#1239): none at full hit points, so no prompt."""
+    so the rest is held for the player's answer (#1118 item 3); None otherwise (the engine rolls or refuses
+    the rest now). The count is the dice that can heal (#1239): none at full hit points, so no hold."""
     from core.managers.effects_runtime import _party_sheets
     from core.nql import genesis
 
@@ -175,26 +175,15 @@ def player_hit_dice(party: Dict[str, Any], hit_dice: Any) -> Optional[Tuple[str,
     return str(player.get("name")), die, count
 
 
-def ask_hit_die_faces(name: str, die: int, count: int, read: Callable[[str], str]) -> List[Any]:
-    """Ask the player for each hit die: the face they rolled, or Enter to let the engine roll it ("engine")."""
-    from core.managers.checks_runtime import ROLL_TAG
-
-    answers: List[Any] = []
-    while len(answers) < count:
-        which = f" ({len(answers) + 1} of {count})" if count > 1 else ""
-        try:
-            text = read(f"{ROLL_TAG} Hit die for {name}{which}: roll 1d{die} and type the result (e.g. {min(4, die)}), "
-                        "or press Enter and the game rolls: ")
-        except EOFError:
-            text = ""
-        text = (text or "").strip()
-        if not text:
-            answers.append("engine")
-        elif text.isdigit() and 1 <= int(text) <= die:
-            answers.append(int(text))
-        else:
-            print(f"Type one whole number between 1 and {die}, or press Enter to let the game roll.")
-    return answers
+def rest_outcome_lines(result: Dict[str, Any]) -> Dict[str, Any]:
+    """What a rest result gives its two callers (the rest action and a settled hit-die answer, #1118 item 3):
+    the DM's ``line`` (Rest: or Rest Error:), the ``receipt`` the player is shown (None when no hit die was
+    rolled) and whether some hit dice were ``refused`` (#1239). Each caller adds its own tail."""
+    if result.get("success"):
+        receipts = result.get("hit_dice_receipts") or []
+        return {"line": f"Rest: {result.get('message')}", "receipt": " ".join(receipts) or None,
+                "refused": bool(result.get("hit_dice_refused"))}
+    return {"line": f"Rest Error: {result.get('error') or 'the rest was refused'}", "receipt": None, "refused": False}
 
 
 def open_offer(party: Dict[str, Any], rest_id: Any, operation: Any = None) -> Optional[Dict[str, Any]]:

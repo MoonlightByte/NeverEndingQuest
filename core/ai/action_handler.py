@@ -4565,14 +4565,6 @@ def _engine_request_id(invocation_claim, action_context, suffix):
     return "dm:%s:%d:%s" % (turn_id, index, suffix)
 
 
-def _show_rest_receipt(content):
-    """Show the player the hit dice the engine rolled on a short rest (#840)."""
-    from web.shared_state import emit_player_output
-
-    if emit_player_output({"type": "narration", "channel": "system", "content": content}) is not True:
-        print(content)
-
-
 # Shown to the player when a travel turn drops a change it could not work out
 # (#855, the #841 voice).
 _DROPPED_SHEET_NOTICE = (
@@ -4999,6 +4991,15 @@ def process_action(
                     return _combat_start_failed(
                         "location_unreadable", conversation_history, invocation_claim
                     )
+
+                # #1118 item 3: combat interrupts a short rest still held for the player's hit die.
+                from core.managers import checks_state
+
+                interrupted = checks_state.close_pending_rest()
+                if interrupted:
+                    conversation_history.append({"role": "user", "content": (
+                        f"{interrupted.get('characterName')}'s pending short rest was interrupted by combat; "
+                        "not applied, no hit die spent.")})
 
                 print(f"[DEBUG ACTION_HANDLER] About to call run_combat_simulation with encounter: {encounter_id}")
                 print("[DEBUG ACTION_HANDLER] This should start INTERACTIVE turn-based combat...")
@@ -5679,6 +5680,9 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                             "error_message": "Character update failed safely; no partial effect was applied."
                         },
                     )
+            except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+                # #1253: a Load, Reset, Quit or read-only save stop ends the turn (#654).
+                raise
             except EngineRefusedChange as refusal:
                 # The rules engine refused the change (coins, hit points, spell
                 # slots or feature uses). Nothing was written; the model hears
@@ -6406,7 +6410,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 conversation_history.append({"role": "user", "content": error_message})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as e:
             print(f"ERROR: Exception while processing transferItem: {str(e)}")
@@ -6449,7 +6453,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 conversation_history.append({"role": "user", "content": error_message})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as e:
             print(f"ERROR: Exception while processing expendCharges: {str(e)}")
@@ -6547,7 +6551,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 conversation_history.append({"role": "user", "content": error_message})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as e:
             print(f"ERROR: Exception while processing {action_type}: {str(e)}")
@@ -6565,33 +6569,51 @@ Please use a valid location that exists in the current area ({current_area_id}) 
         debug("STATE_CHANGE: Processing rest action", category="character_updates")
         status_updating_character()
         try:
-            from core.managers.rest_manager import ask_hit_die_faces, execute_rest, player_hit_dice
+            from core.managers import checks_state
+            from core.managers.rest_manager import execute_rest, open_offer, player_hit_dice, rest_outcome_lines
 
-            # 7b-host: the player rolls their own hit dice (or presses Enter
-            # and the engine rolls); every other character's are the engine's.
-            faces = None
+            operation = str(getattr(invocation_claim, "logical_invocation_id", "") or "").strip() or None
+            # #1118 item 3: a later rest replaces a short rest still held for the player's hit die.
+            replaced = checks_state.close_pending_rest()
+            if replaced:
+                conversation_history.append({"role": "user", "content": (
+                    f"{replaced.get('characterName')}'s pending short rest was replaced by a later rest; "
+                    "no hit die spent.")})
+                needs_conversation_history_update = True
+            # #1118 item 3: the player's own hit dice are held for their answer, which the DM asks for in
+            # the story; the player's next line settles it (checks_runtime.settle_pending_rest). Every other
+            # character's are the engine's. An afterRest spend is held only while its offer is open.
+            ask = None
             if str(parameters.get("restType") or "").strip().lower() == "short":
                 ask = player_hit_dice(party_tracker_data or {}, parameters.get("hitDice"))
-                if ask:
-                    faces = {ask[0]: ask_hit_die_faces(*ask, read=input)}
+                if ask and parameters.get("afterRest") is not None and open_offer(
+                        party_tracker_data or {}, parameters.get("afterRest"), operation) is None:
+                    ask = None
+            if ask:
+                name, die, count = ask
+                checks_state.hold_rest({"characterName": name, "die": die, "count": count, "restType": "short",
+                                        "hitDice": parameters.get("hitDice"), "afterRest": parameters.get("afterRest"),
+                                        "operation": operation})
+                info(f"REST: held for {name}'s {count}d{die} hit dice", category="character_updates")
+                return create_return(needs_update=needs_conversation_history_update)
             result = execute_rest(parameters.get("restType"), party_tracker_data, conversation_history,
-                                  hit_dice=parameters.get("hitDice"), faces=faces,
-                                  after_rest=parameters.get("afterRest"),
-                                  grace_seconds=_later_update_time_seconds(action_context),
-                                  operation=str(getattr(invocation_claim, "logical_invocation_id", "") or "").strip()
-                                  or None)
+                                  hit_dice=parameters.get("hitDice"), after_rest=parameters.get("afterRest"),
+                                  grace_seconds=_later_update_time_seconds(action_context), operation=operation)
+            outcome = rest_outcome_lines(result)
             if result.get("success"):
                 info(f"SUCCESS: {result.get('message')}", category="character_updates")
-                conversation_history.append({"role": "user", "content": f"Rest: {result.get('message')}"})
-                if result.get("hit_dice_receipts"):
+                conversation_history.append({"role": "user", "content": outcome["line"]})
+                if outcome["receipt"]:
                     # #840: the engine rolled the hit dice; the player sees the roll.
-                    _show_rest_receipt(" ".join(result["hit_dice_receipts"]))
+                    from core.managers.checks_runtime import _show_check_receipt
+
+                    _show_check_receipt(outcome["receipt"])
                 if result.get("effects_note"):
                     # process_effect_lifecycle returns a complete message
                     # ({"role": "system", "content": ...}); append it as is.
                     conversation_history.append(result["effects_note"])
                 needs_conversation_history_update = True
-                if result.get("hit_dice_refused"):
+                if outcome["refused"]:
                     # #1239 (D-1239-2 B, D-1239-4): the rest went ahead without some hit dice (refused
                     # before rolling as certain to heal nothing, or refused by the engine, D-KWA-7e); the
                     # DM tells the player now, in its own words.
@@ -6605,13 +6627,13 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             else:
                 print(f"ERROR: rest failed: {result.get('error')}")
                 conversation_history.append({"role": "user", "content": (
-                    f"Rest Error: {result.get('error', 'the rest was refused')}. No sheet changed. Later actions from "
+                    f"{outcome['line']}. No sheet changed. Later actions from "
                     "this response have not executed. Do not repeat earlier completed actions; state the rest again "
                     "with restType short or long (hitDice only on a short rest), or narrate why the party cannot "
                     "rest.")})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as e:
             print(f"ERROR: Exception while processing rest: {str(e)}")

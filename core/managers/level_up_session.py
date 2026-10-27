@@ -371,8 +371,8 @@ class LevelUpSession:
     # ---- commit ------------------------------------------------------------------
     def _commit(self, narration: str) -> LevelUpTurn:
         from updates.update_character_info import (
-            _get_character_update_lock, commit_character_sheet, prepare_character_delta, repair_character_data)
-        from utils.path_transaction_lock import path_transaction_lock
+            _get_character_update_lock, commit_character_sheet, prepare_character_delta, repair_character_data,
+            wait_for_sheet_lease)
 
         s, sheet = self._settled, self._sheet
         cls = s.cls
@@ -579,10 +579,9 @@ class LevelUpSession:
         if not refreshed.get("refreshed"):
             warning(f"LEVEL-UP: {self.character_name} attack rows not refreshed ({refreshed.get('reason')})",
                     category="level_up")
+        # #1253: a busy sheet waits under the level-up's scope (with a status line); it never refuses.
         with _get_character_update_lock(os.path.basename(self._path)[:-5]), \
-                path_transaction_lock(self._path, suffix=".effects.lock", timeout_seconds=30.0) as lease:
-            if lease is None:
-                return self._interview("Your sheet is busy; say 'retry' in a moment.")
+                wait_for_sheet_lease(self._path, self.character_name, scope=self._scope):
             from updates.update_character_info import create_character_backup
             create_character_backup(self._path)
             commit_character_sheet(self._path, after, commit_guard=self.commit_guard, expected_before=self._loaded if self._loaded is not None else sheet)
