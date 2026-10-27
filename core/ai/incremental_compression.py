@@ -30,6 +30,13 @@ from utils.capture.live_provider_call import (
 )
 
 
+def _uncompressed_system_messages(window: List[Dict]) -> List[Dict]:
+    """The system messages of a compression window, in order (#317). T020
+    never summarises them (compress_messages skips them), so a compressed list
+    keeps them; dropping them left the saved history without its context."""
+    return [message for message in window if message.get("role") == "system"]
+
+
 class IncrementalLocationCompressor:
     """Handles incremental compression of messages at current location."""
     
@@ -310,7 +317,9 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
         # Add location transition if exists
         if last_transition_idx > 0:
             new_messages.append(messages[last_transition_idx])
-        
+
+        new_messages.extend(_uncompressed_system_messages(current_segment[:end]))
+
         # Add compressed summary
         new_messages.append(compressed)
         
@@ -405,7 +414,9 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
         # Add location transition if it exists
         if current_location_msg and last_transition_idx > 0:
             new_messages.append(current_location_msg)
-        
+
+        new_messages.extend(_uncompressed_system_messages(current_segment[:end]))
+
         # Add compressed summary
         new_messages.append(compressed)
         
