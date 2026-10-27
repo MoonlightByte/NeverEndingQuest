@@ -170,6 +170,7 @@ from utils.reconcile_campaign_state import reconcile_campaign_state
 # Import training data collection
 # from simple_training_collector import log_complete_interaction  # DISABLED
 from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
+from utils.player_notice import show_player_notice, show_player_wait, show_reset_failed
 from utils.character_sheet_contract import repair_and_persist_character
 from utils.startup_handoff_state import (
     load_state as load_startup_state,
@@ -8580,7 +8581,7 @@ def _terminal_recovery_menu(manager):
         try:
             saves = manager.list_save_games()
         except Exception as exc:
-            print('[SYSTEM] Could not list saves: ' + str(exc))
+            show_player_notice('Could not list saves: ' + str(exc))
             saves = []
         choices = {
             str(index): save['save_folder']
@@ -8826,7 +8827,7 @@ def _run_terminal_restore(request):
             outcome = manager.restore_save_game_outcome(folder, previous_clean=previous_clean)
         except Exception as exc:
             outcome = RestoreOutcome('recovery_required', str(exc))
-        print('[SYSTEM] ' + outcome.message)
+        show_player_notice(outcome.message)
         if outcome.can_resume:
             return True
         previous_clean = False
@@ -8841,7 +8842,7 @@ def _run_terminal_restore(request):
             try:
                 perform_reset_logic()
             except Exception as exc:
-                print('[SYSTEM] Reset did not finish: ' + str(exc))
+                show_reset_failed(exc)
                 continue
             return True
 
@@ -8956,8 +8957,8 @@ def _report_effects_migration(result):
     """
     status = result.get("status") if isinstance(result, dict) else None
     if status == "migrated":
-        print(
-            "[SYSTEM] Temporary effects were upgraded safely. "
+        show_player_notice(
+            "Temporary effects were upgraded safely. "
             "A pre-conversion save was created automatically."
         )
         debug(f"EFFECTS: Effects V2 migration completed: {result}", category="effects_tracking")
@@ -8967,18 +8968,18 @@ def _report_effects_migration(result):
         reasons = tuple(" ".join(str(item).split())[:200] for item in result.get("refusals") or [])
         key = ("blocked", reasons)
         lines = [
-            "[SYSTEM] Temporary effects could not be upgraded, so this campaign stays on its older "
+            "Temporary effects could not be upgraded, so this campaign stays on its older "
             "effect handling (effects may not expire on their own). Reasons:"
         ] + ["  - " + reason for reason in reasons]
     elif status == "deferred" and result.get("reasonCode") == "party_sheet_unreadable":
         key = ("deferred", result.get("reasonCode"), result.get("reason"))
-        lines = ["[SYSTEM] Temporary-effect upgrade is waiting: %s. It retries each turn." % result.get("reason")]
+        lines = ["Temporary-effect upgrade is waiting: %s. It retries each turn." % result.get("reason")]
     else:
         return
     if key in _effects_migration_shown:
         return
     _effects_migration_shown.add(key)
-    print("\n".join(lines))
+    show_player_notice("\n".join(lines))
 
 
 def _resume_active_combat(
@@ -8992,7 +8993,7 @@ def _resume_active_combat(
     from core.combat.invocation import InvocationSupersededError, require_current_invocation
     from utils.capture.live_provider_call import LiveProviderCompletedError
 
-    print(colored(f"[SYSTEM] Active combat encounter '{active_encounter_id}' detected. Resuming combat...", "yellow"))
+    show_player_notice(f"Active combat encounter '{active_encounter_id}' detected. Resuming combat...", color="yellow")
     
     # Load conversation history and inject combat resume markers BEFORE starting combat
     conversation_history = load_json_file(json_file) or []
@@ -9101,11 +9102,11 @@ def _resume_active_combat(
                 color="yellow",
             )
     else:
-        print(colored(
-            "[SYSTEM] Combat resolved. Integrating summary and "
+        show_player_notice(
+            "Combat resolved. Integrating summary and "
             "continuing adventure...",
-            "yellow",
-        ))
+            color="yellow",
+        )
 
     # ** CRITICAL FIX: Integrate the combat summary into the main conversation history **
     if dialogue_summary and not combat_still_active:
@@ -9198,7 +9199,7 @@ def _resume_active_combat(
             display_dm_narration(_followup_failure_message(post_combat_result))
         if isinstance(post_combat_result, dict) and post_combat_result.get("status") == "error":
             # #442: the same line the turn loop prints for a failed action.
-            print(f"[SYSTEM] {_action_failure_line(post_combat_result)}")
+            _show_action_failure(post_combat_result)
             warning("Post-combat response processing failed safely", category="module_management")
         elif (
             isinstance(post_combat_result, dict)
@@ -9207,8 +9208,8 @@ def _resume_active_combat(
             retry_status = post_combat_result.get(
                 "status", "state_recovery_pending"
             )
-            print(
-                "[SYSTEM] Post-combat narration is paused while game "
+            show_player_notice(
+                "Post-combat narration is paused while game "
                 f"state recovers ({retry_status})."
             )
             warning(
@@ -9449,8 +9450,8 @@ def _main_game_loop(startup_authority, turn_authority):
 
             name_migration = run_name_migration(create_backup=True)
             if name_migration.get("status") == "renamed":
-                print(
-                    "[SYSTEM] Characters' names were updated to their proper names. "
+                show_player_notice(
+                    "Characters' names were updated to their proper names. "
                     "A save from before the update was created automatically."
                 )
                 info(f"NAME_MIGRATION: completed: {name_migration}", category="startup")
@@ -9511,8 +9512,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 if backup_folder
                 else " Retry startup; if it repeats, restore the automatic pre-conversion save."
             )
-            print(
-                "[SYSTEM] Startup stopped because temporary-effect conversion "
+            show_player_notice(
+                "Startup stopped because temporary-effect conversion "
                 "could not be recovered safely." + recovery
             )
             return
@@ -10159,8 +10160,8 @@ def _main_game_loop(startup_authority, turn_authority):
 
             finish_live_turn_scope(live_turn_scope)
             action_handler.TurnRoster.record(None)
-            print(
-                "[SYSTEM] An older travel record is safely paused for exact "
+            show_player_notice(
+                "An older travel record is safely paused for exact "
                 "recovery; no new action was applied."
             )
             continue
@@ -10393,8 +10394,8 @@ def _main_game_loop(startup_authority, turn_authority):
 
         t067_claim = begin_invocation(
             "T067",
-            wait_observer=lambda _claim: print(
-                "[SYSTEM] The current game operation is still finishing; waiting safely."
+            wait_observer=lambda _claim: show_player_wait(
+                "The current game operation is still finishing; waiting safely."
             ),
         )
         # This turn's [slot] numbers count from the roster its note showed.
@@ -10611,8 +10612,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 retry_status = final_result.get(
                     "status", "state_recovery_pending"
                 )
-                print(
-                    "[SYSTEM] The game state changed while that turn was "
+                show_player_notice(
+                    "The game state changed while that turn was "
                     f"processing ({retry_status}). Your state is safe; "
                     "please retry after recovery completes."
                 )
@@ -10624,7 +10625,7 @@ def _main_game_loop(startup_authority, turn_authority):
                 isinstance(final_result, dict)
                 and final_result.get("status") == "error"
             ):
-                print(f"[SYSTEM] {_action_failure_line(final_result)}")
+                _show_action_failure(final_result)
                 warning(
                     "Response processing failed safely",
                     category="module_management",
@@ -10646,7 +10647,7 @@ def _main_game_loop(startup_authority, turn_authority):
             elif final_result == "restart":
                 from utils.capture.live_provider_call import finish_live_turn_scope
                 finish_live_turn_scope(live_turn_scope)
-                print("\n[SYSTEM] Restarting game with restored save...\n")
+                show_player_notice("Restarting game with restored save...", padded=True)
                 return main_game_loop()
             elif isinstance(final_result, dict) and final_result.get("status") == "enter_levelup_mode":
                 level_up_session = final_result["session"]
@@ -11043,6 +11044,19 @@ def _action_failure_line(result):
     ) and result.get("player_message"):
         return result["player_message"]
     return SAFE_ACTION_FAILURE_MESSAGE
+
+
+def _show_action_failure(result):
+    """Tell the player a failed action result, once (#442, #212).
+
+    `_handle_ordinary_action_failure` already showed an `action-failure:`
+    result as its error card, so that one stays a console line. Any other
+    error (the #433 draft-shape refusal) was shown nowhere, so it is a notice.
+    """
+    if str(result.get("message_id", "")).startswith("action-failure:"):
+        print(f"[SYSTEM] {_action_failure_line(result)}")
+    else:
+        show_player_notice(_action_failure_line(result))
 
 
 def _provider_refusal_followup(exc):
@@ -12214,7 +12228,7 @@ def main():
                 try:
                     perform_reset_logic()
                 except Exception as exc:
-                    print('[SYSTEM] Reset did not finish: ' + str(exc))
+                    show_reset_failed(exc)
                     result = _terminal_recovery_menu(result.manager)
                 else:
                     break

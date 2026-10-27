@@ -212,7 +212,9 @@ def reset_foreign_save(module_name):
     try:
         backup_dir = perform_reset_logic()
     except Exception as exc:
-        print("[SYSTEM] Reset did not finish: " + str(exc))
+        from utils.player_notice import show_reset_failed
+
+        show_reset_failed(exc)
         return False
     from web.shared_state import message_log_reset
     message_log_reset()
