@@ -5793,6 +5793,9 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 reason=parameters.get("reason") or "removed",
             )
             return create_return(needs_update=True)
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            # #202: a Load, Reset, Quit or read-only save stop ends the turn (#654).
+            raise
         except Exception as exc:
             error("FAILURE: removeEffect failed safely", exception=exc, category="effects_tracking")
             return create_return(

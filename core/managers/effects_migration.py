@@ -28,6 +28,7 @@ from core.managers.effects_state import (
     load_effects_state,
 )
 from updates.save_game_manager import SaveGameManager
+from updates.update_character_info import read_sheet_waiting, wait_for_sheet_lease
 from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import warning
 from utils.file_operations import safe_write_json
@@ -588,10 +589,11 @@ def _resume_applying_migration(state):
         converted = record.get("converted")
         if not path or not isinstance(converted, dict):
             raise EffectsMigrationError("migration journal lacks converted sheet data")
-        with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=5.0) as locked:
-            if locked is None:
-                raise EffectsMigrationError("timed out resuming %s" % record.get("owner"))
-            current = safe_json_load(path)
+        # #202 A9: a busy sheet or read waits (with a status line) under the caller's scope.
+        # The plan's owner is the file stem; the status line names the character.
+        name = converted.get("name")
+        with wait_for_sheet_lease(path, name):
+            current = read_sheet_waiting(path, name, load=safe_json_load)
             current_hash = _canonical_hash(current)
             if current_hash == record.get("beforeHash"):
                 if not safe_write_json(path, converted):
@@ -680,10 +682,10 @@ def run_effects_migration(create_backup=True):
 
         for record in preflight["conversions"]:
             path = record["path"]
-            with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=5.0) as locked:
-                if locked is None:
-                    raise EffectsMigrationError("timed out converting %s" % record["owner"])
-                current = safe_json_load(path)
+            # #202 A9: a busy sheet or read waits (with a status line) under the caller's scope.
+            name = (record.get("converted") or {}).get("name")
+            with wait_for_sheet_lease(path, name):
+                current = read_sheet_waiting(path, name, load=safe_json_load)
                 current_hash = _canonical_hash(current)
                 if current_hash == record["beforeHash"]:
                     if not safe_write_json(path, record["converted"]):
