@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The armor repair step no longer writes armor class or suggests a Defense bonus; the engine sets armor class (#1651).
 - The old party-tracker quest sync tool is removed: it had done nothing since quests moved to their own record, yet reported success (#335).
 - When the rules engine is slow to answer or its process dies, the game now says it is trying again and asks it again instead of refusing the action; Load, Reset or Quit still end the wait, and a cancelled module build ends it too (#1253).
 - The quest journal is now told who your character is, so a journal entry no longer describes a character playing alone in the third person, as if they were someone else (#1625).
