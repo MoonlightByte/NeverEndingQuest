@@ -75,6 +75,9 @@ _ADVISORY_TASK_IDS = frozenset(
         "T113",
         "T105",
         "T112",
+        "T104",
+        "T122",
+        "T123",
     }
 )
 _LIVE_TASK_IDS = _REQUIRED_TASK_IDS | _ADVISORY_TASK_IDS
@@ -115,6 +118,11 @@ _BILLED_PHASES = frozenset({"acknowledged", "working", "receiving", "done"})
 # #1342: provider generations one live turn scope may spend, reissues
 # included. Every scope (play turn, combat round, wizard) has the same bound.
 _TURN_GENERATION_CEILING = 24
+# #204: module-build advisories (NPC coherence, module typing, route timing)
+# leave the turn's last generations to its required follow-up (the module
+# creation narration): a first try plus the billed reissues it may spend.
+_BUILD_ADVISORY_TASK_IDS = frozenset({"T104", "T122", "T123"})
+_BUILD_ADVISORY_RESERVE = 1 + _BILLED_REISSUE_LIMIT
 # Transport phases the child reports, in the order a healthy generation
 # passes through them (#409 plan section 4). Evidence only: never authority.
 _PHASE_NAMES = (
@@ -207,10 +215,11 @@ class LiveTurnScope:
             self.generation += 1
             return self.generation
 
-    def claim_provider_generation(self):
-        """Count one provider generation; False once the turn ceiling is spent (#1342)."""
+    def claim_provider_generation(self, reserve=0):
+        """Count one provider generation; False once the turn ceiling is spent (#1342),
+        or once it would leave fewer than ``reserve`` generations (#204)."""
         with self.lock:
-            if self.provider_generations >= _TURN_GENERATION_CEILING:
+            if self.provider_generations + reserve >= _TURN_GENERATION_CEILING:
                 return False
             self.provider_generations += 1
             return True
@@ -318,8 +327,8 @@ class AdvisoryProviderScope:
             self.generation += 1
             return self.generation
 
-    def claim_provider_generation(self):
-        return self.parent.claim_provider_generation()
+    def claim_provider_generation(self, reserve=0):
+        return self.parent.claim_provider_generation(reserve)
 
     def is_superseded(self):
         return self.sealed.is_set() or self.parent.is_superseded()
@@ -1792,6 +1801,10 @@ def _call_live_provider(
         )
     failure_count = 0
     runaway_trips = 0
+    # #204: every claim of a build advisory, reissues included, keeps the reserve.
+    build_reserve = (
+        _BUILD_ADVISORY_RESERVE if task_id in _BUILD_ADVISORY_TASK_IDS else 0
+    )
     billed_reissues = 0
     free_reissues = 0
     logical_started = time.monotonic()
@@ -1913,12 +1926,14 @@ def _call_live_provider(
             )
             continue
         claim = getattr(scope, "claim_provider_generation", None)
-        if claim is not None and not claim():
+        if claim is not None and not (
+            claim(reserve=build_reserve) if build_reserve else claim()
+        ):
             # #1342: the turn spent its provider generations. Nothing is sent;
             # the caller's completed-refusal path ends the turn with one line.
             _provider_debug(
-                "LIVE_PROVIDER_TURN_CEILING task=%s generations=%d operation=%s"
-                % (task_id, _TURN_GENERATION_CEILING, operation_id)
+                "LIVE_PROVIDER_TURN_CEILING task=%s generations=%d reserve=%d operation=%s"
+                % (task_id, _TURN_GENERATION_CEILING, build_reserve, operation_id)
             )
             raise LiveProviderCompletedError(
                 task_id,
