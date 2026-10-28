@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The armor and inventory checks now read each item's whole description, and a character update that was saved is no longer asked of the model again when a log or check step fails afterwards, so the same change cannot be applied twice (#324).
 - The armor repair step no longer writes armor class or suggests a Defense bonus; the engine sets armor class (#1651).
 - The full (uncompressed) DM and combat prompts no longer show examples that write how many uses of an ability are left, such as "(0 uses until long rest)"; they now show only the use, matching the rule that the game counts what is left. The compressed prompts the game sends by default are unchanged (#301).
 - The old party-tracker quest sync tool is removed: it had done nothing since quests moved to their own record, yet reported success (#335).

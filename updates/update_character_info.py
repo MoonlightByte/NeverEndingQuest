@@ -3245,7 +3245,8 @@ Character Role: {character_role}
             try:
                 print(f"DEBUG: [SAVE] safe_write_json returned: {save_result}")
             except Exception as exc:
-                if commit_guard is None or isinstance(exc, LiveProviderSuperseded):
+                if isinstance(exc, LiveProviderSuperseded) or (
+                        commit_guard is None and isinstance(exc, ReadOnlySaveStop)):
                     raise
                 warning(f"Save-result diagnostic failed: {exc}", category="character_updates")
             
@@ -3293,7 +3294,8 @@ Character Role: {character_role}
                     else:
                         info(f"[Character Update] {character_name}'s {', '.join(changed_fields)} updated", category="character_updates")
                 except Exception as exc:
-                    if commit_guard is None or isinstance(exc, LiveProviderSuperseded):
+                    if isinstance(exc, LiveProviderSuperseded) or (
+                            commit_guard is None and isinstance(exc, ReadOnlySaveStop)):
                         raise
                     warning(f"Post-save diagnostics failed: {exc}", category="character_updates")
                 
@@ -3307,7 +3309,8 @@ Character Role: {character_role}
                         print(f"DEBUG: [XP Tracking] {character_name} XP BEFORE validation: {pre_validation_xp}")
                         info(f"[Character Validator] Starting smart validation for {character_name}...", category="character_validation")
                     except Exception as exc:
-                        if commit_guard is None or isinstance(exc, LiveProviderSuperseded):
+                        if isinstance(exc, LiveProviderSuperseded) or (
+                                commit_guard is None and isinstance(exc, ReadOnlySaveStop)):
                             raise
                         warning(f"Pre-validation diagnostics failed: {exc}", category="character_validation")
                     validator = AICharacterValidator(commit_guard=commit_guard)
@@ -3433,9 +3436,11 @@ Character Role: {character_role}
             if isinstance(e, LiveProviderSuperseded):
                 raise
             last_update_error = e
-            if commit_guard is not None and primary_committed:
-                with commit_guard():
-                    pass
+            if primary_committed:
+                # #324: the sheet holds this update; a later failure never reissues T079.
+                if commit_guard is not None:
+                    with commit_guard():
+                        pass
                 return True
             error(f"FAILURE: Error during update (attempt {attempt})", exception=e, category="character_updates")
             bounded_failure_count += 1
