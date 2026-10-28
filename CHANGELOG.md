@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Swapping what a character holds, such as putting away a shield to ready a mace, is no longer refused because of the order the items are listed in, and when both hands are full the refusal names what is in hand so the DM can suggest freeing one (#1520).
+- The quest journal is now told who your character is, so a journal entry no longer describes a character playing alone in the third person, as if they were someone else (#1625).
+- A scene image that finishes after the connection drops now still appears, and the Generate Image button no longer stays on "Generating..." after a reconnect (#1396).
+- Every item pickup, purchase and charged-item use is now kept on the character sheet, so the rules check sees the whole history instead of only the most recent entries, and repeating an old request no longer spends a charge twice (#1253).
 - Travel narration is now told who your character is: the journey and the final stitched arrival get your character's name and the party list, so a character travelling alone is no longer described as arriving with themself. A trip resumed after an interruption now describes the arrival at the time the clock shows there, the same time the journey ends at (#312).
 - The DM's view of a character's armor class, hit point maximum and speed now names the active effects already counted in it, so a spell like Shield of Faith is no longer counted twice (#1520).
 - Model-capture records are no longer lost when a call passes a setting that cannot be saved as JSON: that one value is left out, named in the record and in the capture error log, and the rest of the record is kept (#1621).

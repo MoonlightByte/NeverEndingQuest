@@ -42,8 +42,6 @@ from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import debug, info
 from utils.file_operations import safe_write_json
 
-RECEIPTS_KEPT = 20
-
 _FAULT_WORDS = {
     "E_CHARGES": "not enough charges",
     "E_OWNER": "the character does not own that item",
@@ -202,7 +200,7 @@ def mint_rows(path: str, working: Dict[str, Any], cid: str, location: str, clock
                 # before the call so a retry of this mint rolls the same.
                 mints = [m for m in working.get("chargeMints") or [] if isinstance(m, dict)]
                 mints.append({"request": request, "nqlId": iid, "dice": list(words), "clock": tick})
-                working["chargeMints"] = mints[-RECEIPTS_KEPT:]
+                working["chargeMints"] = mints
                 error = _write_sheet(path, working)
                 if error:
                     problems.append(f"{row.get('item_name')}: {error}")
@@ -426,7 +424,7 @@ def execute_expend(character_name: str, item_name: str, charges: Any, request_id
             if exhausted is not None:
                 receipt["exhausted"] = exhausted
             receipts.append(receipt)
-            working["chargeUses"] = receipts[-RECEIPTS_KEPT:]
+            working["chargeUses"] = receipts
             out = _projected(working)
 
             backup = _backup(path)
