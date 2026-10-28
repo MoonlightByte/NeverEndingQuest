@@ -21,7 +21,6 @@ from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import debug, info, warning
 from utils.file_operations import safe_write_json
 
-RECEIPTS_KEPT = 50
 # P3a: the refusal texts' fixed route for an item that is not listed.
 LOOT_ROUTE = "with updateCharacterInfo, or for standard gear with acquireItem by itemName (price 0 for found gear)"
 
@@ -498,10 +497,8 @@ def _acquire(character_name, item_name, quantity, price, request_id, party_track
             if catalog_id is not None:
                 receipt["source"] = {"locationId": location}
             receipts.append(receipt)
-            # P3a: a receipt with a source counts listed loot, so it is never trimmed.
-            plain = [i for i, r in enumerate(receipts) if "source" not in r]
-            kept = set(plain[-RECEIPTS_KEPT:])
-            working["acquisitions"] = [r for i, r in enumerate(receipts) if "source" in r or i in kept]
+            # #1253: every receipt is kept; the validator sees the whole history.
+            working["acquisitions"] = receipts
             out = _projected(working)
 
             backup = _backup(path)
