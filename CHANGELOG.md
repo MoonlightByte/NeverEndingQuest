@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When a fight's turn is replayed (on commit, restart or Load), the resources an Off-hand Attack spends are now applied after its Action's, in the order the turn resolved them, so an item both spend from ends at the right count (#1594).
 - Ending or removing a spell effect, a concentration spell, the effects that expire between turns and the conversion of older saves' temporary effects now wait for a briefly busy character sheet, with a status line, instead of failing or silently skipping the change; Load, Reset or Quit still end the wait, and a read-only save stops the turn at these steps too (#202).
 - Combat diagnostics now name why a combat decision request failed from the error's own type, never from the words of its message (#1515).
 - The toolkit's AI-written bestiary and NPC portrait descriptions are no longer held to a word count. The requests no longer ask for 100-150, 150-200 or 150-250 words, a complete short description is kept instead of being rejected as too short, a bestiary entry may carry more than 12 tags, and a long portrait description is no longer cut at 4000 characters before it reaches the image model (#262).
