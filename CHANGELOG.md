@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - When the rules engine is slow to answer or its process dies, the game now says it is trying again and asks it again instead of refusing the action; Load, Reset or Quit still end the wait, and a cancelled module build ends it too (#1253).
+- The quest journal is now told who your character is, so a journal entry no longer describes a character playing alone in the third person, as if they were someone else (#1625).
+- A scene image that finishes after the connection drops now still appears, and the Generate Image button no longer stays on "Generating..." after a reconnect (#1396).
 - Every item pickup, purchase and charged-item use is now kept on the character sheet, so the rules check sees the whole history instead of only the most recent entries, and repeating an old request no longer spends a charge twice (#1253).
 - Travel narration is now told who your character is: the journey and the final stitched arrival get your character's name and the party list, so a character travelling alone is no longer described as arriving with themself. A trip resumed after an interruption now describes the arrival at the time the clock shows there, the same time the journey ends at (#312).
 - The DM's view of a character's armor class, hit point maximum and speed now names the active effects already counted in it, so a spell like Shield of Faith is no longer counted twice (#1520).

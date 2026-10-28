@@ -4931,7 +4931,7 @@ def handle_generate_image(data):
                 from utils.prompt_sanitizer import sanitize_prompt
                 sanitized_prompt = sanitize_prompt(prompt)
                 if sanitized_prompt is None:
-                    emit('image_generation_error', {
+                    socketio.emit('image_generation_error', {
                         'message': ("The image could not be made: the image service refused this "
                                     "scene and no safer description could be written."),
                         'request_id': data.get('request_id'),
@@ -5016,8 +5016,8 @@ def handle_generate_image(data):
             # Don't fail the whole operation if saving fails
             print(f"Warning: Failed to save image locally: {save_error}")
         
-        # Emit the image URL back to the client
-        emit('image_generated', {
+        # Sent to every connection: a reconnect during the image call gets a new sid (#1396)
+        socketio.emit('image_generated', {
             'image_url': image_url,
             'prompt': prompt,
             'request_id': data.get('request_id'),
@@ -5027,7 +5027,7 @@ def handle_generate_image(data):
     except Exception as e:
         error_msg = f"Image generation failed: {str(e)}"
         print(f"ERROR: {error_msg}")
-        emit('image_generation_error', {
+        socketio.emit('image_generation_error', {
             'message': error_msg,
             'request_id': data.get('request_id') if isinstance(data, dict) else None,
             'source_message_id': data.get('source_message_id') if isinstance(data, dict) else None,
