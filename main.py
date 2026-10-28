@@ -8749,9 +8749,10 @@ def _travel_recovery_authority():
 
 
 @contextmanager
-def _charge_refresh_authority():
-    """#1253: the between-turns charge refresh can wait for a busy sheet, so it
-    runs under a scope that Load, Reset or Quit can end (#248's borrow-or-own)."""
+def _between_turns_authority():
+    """#1253, #202: the charge refresh, the effects migration and the effect
+    lifecycle run between turns and can wait for a busy sheet, so they run under a
+    scope that Load, Reset or Quit can end (#248's borrow-or-own)."""
     from utils.capture.live_provider_call import (
         finish_live_turn_scope, get_live_turn_scope, open_live_turn_scope,
     )
@@ -9490,7 +9491,9 @@ def _main_game_loop(startup_authority, turn_authority):
         try:
             from core.managers.effects_migration import run_effects_migration
 
-            effects_migration = run_effects_migration(create_backup=True)
+            # #202 A9: a busy sheet waits under a scope that Load, Reset or Quit can end.
+            with _between_turns_authority():
+                effects_migration = run_effects_migration(create_backup=True)
             # Each Load or Reset starts a new session: the same refusal shows again.
             _effects_migration_shown.clear()
             if effects_migration.get("status") == "blocked":
@@ -9499,7 +9502,7 @@ def _main_game_loop(startup_authority, turn_authority):
                     category="effects_tracking",
                 )
             _report_effects_migration(effects_migration)
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as effects_migration_exc:
             error(
@@ -9894,7 +9897,7 @@ def _main_game_loop(startup_authority, turn_authority):
             from core.managers.item_charges import refresh_party
 
             # #1253: a busy sheet waits under a scope that Load, Reset or Quit can end.
-            with _charge_refresh_authority() as charges_scope:
+            with _between_turns_authority() as charges_scope:
                 recharged = refresh_party(party_tracker_data, scope=charges_scope)
             if recharged:
                 # The DM learns counts from the sheet summary and from the
@@ -9923,23 +9926,27 @@ def _main_game_loop(startup_authority, turn_authority):
             from core.managers.effects_state import campaign_effects_migrated
 
             debug("EFFECTS: Checking for expired effects", category="effects_tracking")
-            if not campaign_effects_migrated():
-                _report_effects_migration(run_effects_migration(create_backup=True))
-            if campaign_effects_migrated():
-                acknowledge_effect_notifications(conversation_history)
-                effect_notice = process_effect_lifecycle(conversation_history)
-                if effect_notice:
-                    conversation_history.append(effect_notice)
-                    save_conversation_history(
-                        conversation_history,
-                        strict=True,
-                        allow_compression=False,
-                    )
+            # #202 A5, A9: a busy sheet waits under a scope that Load, Reset or Quit can end.
+            with _between_turns_authority():
+                if not campaign_effects_migrated():
+                    _report_effects_migration(run_effects_migration(create_backup=True))
+                if campaign_effects_migrated():
                     acknowledge_effect_notifications(conversation_history)
-            else:
-                from updates.process_effect_expirations import process_all_effect_expirations
+                    effect_notice = process_effect_lifecycle(conversation_history)
+                    if effect_notice:
+                        conversation_history.append(effect_notice)
+                        save_conversation_history(
+                            conversation_history,
+                            strict=True,
+                            allow_compression=False,
+                        )
+                        acknowledge_effect_notifications(conversation_history)
+                else:
+                    from updates.process_effect_expirations import process_all_effect_expirations
 
-                process_all_effect_expirations()
+                    process_all_effect_expirations()
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            raise
         except Exception as e:
             warning(
                 f"EFFECTS: Expiration processing failed safely: {str(e)}",

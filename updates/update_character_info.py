@@ -1738,7 +1738,9 @@ def prepare_character_delta(character_data, updates, character_role, schema,
         if why:
             from core.managers.concentration_runtime import clear_record, end_group
             clear_record(updated_data, focus["group"])
-            end_group(focus["group"], {"minimum": "knocked unconscious"}.get(why, why), skip_caster=character_name)
+            # #202 C1: this update holds its own sheet's lease; the nested clear stays bounded.
+            end_group(focus["group"], {"minimum": "knocked unconscious"}.get(why, why), skip_caster=character_name,
+                      nested=True)
     if stock_deltas:
         # The requested change reaches the engine unclamped: a stack that
         # would go below zero stays in the merged sheet so the engine sees

@@ -5028,8 +5028,12 @@ def apply_resolution(encounter, characters, resolution):
     # hand-over, the staging order: a Bonus Action taken before the Action,
     # then the hand-over's whole lists (never the engine), then the draw and
     # the Action's spends; an Off-hand Attack (R3) stays after the Action.
-    early = ([] if hand_over is None or bonus.get("order") == "afterAction"
-             else list(bonus.get("resources") or []))
+    # #1594: the bonus's records are split on its order once; an afterAction
+    # bonus's spends come after the Action's, as it was staged.
+    after_action = bonus.get("order") == "afterAction"
+    before = [] if after_action else list(bonus.get("resources") or [])
+    after = list(bonus.get("resources") or []) if after_action else []
+    early = before if hand_over is not None else []
     for resource in early:
         _apply_resource(new_characters, resource)
     if hand_over is not None:
@@ -5046,8 +5050,8 @@ def apply_resolution(encounter, characters, resolution):
                 and isinstance(rows[index], dict) and rows[index].get("item_name") == draw.get("item_name")):
             rows[index]["equipped"] = draw.get("equippedAfter") is True
 
-    late = [] if early else list(bonus.get("resources") or [])
-    for resource in late + list(event.get("resources", []) or []):
+    late = before if hand_over is None else []
+    for resource in late + list(event.get("resources", []) or []) + after:
         _apply_resource(new_characters, resource)
 
     for op in (resolution.get("effectOps") or event.get("effects") or []):
