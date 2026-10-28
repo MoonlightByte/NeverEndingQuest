@@ -226,8 +226,26 @@ class LiveTurnScope:
             )
             self.provider_generations = 0
 
-    def request_supersession(self, kind, operation_id=None):
+    def request_supersession(self, kind, operation_id=None, owner=False):
         with self.lock:
+            if owner:
+                # #270 rule 1: a Load or Reset owned by another id is
+                # followed, never preempted; the slot stays untouched. One
+                # that goes on to run (accepted, or the turn is complete)
+                # owns the lifecycle from this same lock section.
+                operation_id = str(operation_id or uuid4())
+                holder = _hold_lifecycle_owner(
+                    kind, operation_id,
+                    not self.controls_open or self.supersession is None
+                    or _can_promote_player_acted(self.supersession, kind),
+                )
+                if holder is not None:
+                    return {
+                        "kind": holder.kind,
+                        "operation_id": holder.operation_id,
+                        "accepted": False,
+                        "owner": holder,
+                    }
             if not self.controls_open:
                 return {
                     "kind": "turn_complete",
@@ -347,6 +365,172 @@ _scope_guard = threading.RLock()
 _active_scope = None
 _closing_scopes = []
 _executing_control_scope = ContextVar("executing_live_control_scope", default=None)
+
+
+# --- Lifecycle owner record (issue #270) ------------------------------------
+# One Load or Reset owns the lifecycle at a time, from the lock section that
+# accepts it to its terminal. A second Load/Reset/Save that meets it follows
+# it: on a restart the owner's terminal answers the follower, otherwise the
+# follower runs again once the owner is gone. _owner_guard is a leaf lock:
+# taken inside _scope_guard or a scope lock, it never takes another lock.
+@dataclass
+class LifecycleOwner:
+    kind: str
+    operation_id: str
+    terminal: threading.Event = field(default_factory=threading.Event)
+    followers: list = field(default_factory=list)
+    queued: bool = False
+
+
+_owner_guard = threading.Lock()
+_lifecycle_owner = None
+_model_owner_id = None
+_LIFECYCLE_LABELS = {"restore": "Load", "reset": "Reset", "save": "Save"}
+
+
+def _hold_lifecycle_owner(kind, operation_id, claim, queued=False):
+    """Return the owner another id holds; otherwise claim it when ``claim``."""
+    global _lifecycle_owner
+    with _owner_guard:
+        holder = _lifecycle_owner
+        if holder is not None and holder.operation_id != operation_id:
+            return holder
+        if claim:
+            if holder is None:
+                _lifecycle_owner = LifecycleOwner(str(kind), operation_id)
+            _lifecycle_owner.queued = _lifecycle_owner.queued or queued
+        return None
+
+
+def claim_lifecycle_owner(kind, operation_id):
+    """Claim the record for a path with no scope; the owner it meets, or None."""
+    return _hold_lifecycle_owner(kind, str(operation_id), True)
+
+
+def lifecycle_owner_ahead(operation_id):
+    """The owner another id holds, or None; nothing is claimed."""
+    return _hold_lifecycle_owner(None, str(operation_id), False)
+
+
+def claim_model_restore_owner(scope=None):
+    """The model's Load holds the record only, never the turn's slot (#270 C5).
+
+    Returns its id, or None when the slot is already set or another
+    operation owns the record (the model's Load is then dropped).
+    """
+    global _model_owner_id
+    operation_id = "model-%s" % uuid4()
+    if scope is None:
+        claimed = _hold_lifecycle_owner("restore", operation_id, True) is None
+    else:
+        with scope.lock:
+            claimed = scope.supersession is None and _hold_lifecycle_owner(
+                "restore", operation_id, True
+            ) is None
+    if not claimed:
+        return None
+    _model_owner_id = operation_id
+    return operation_id
+
+
+def model_restore_owner_id():
+    return _model_owner_id
+
+
+def _answer_lifecycle_followers(owner, followers, cause):
+    for follower in followers:
+        try:
+            follower["answer"](cause, owner.kind)
+        except Exception:
+            # Presentational: a closed tab or pipe cannot hold the terminal.
+            pass
+        finally:
+            follower["answered"] = True
+
+
+def release_lifecycle_owner(operation_id, restarting=False, cause="restart",
+                            keep_queued=False):
+    """End the record at its owner's terminal, keyed by id (#270).
+
+    A no-op when the record is absent or another id holds it, and with
+    ``keep_queued`` while a queued record still has to run. Restarting
+    answers every follower before ``terminal`` is set; otherwise the
+    followers run again.
+    """
+    global _lifecycle_owner
+    if operation_id is None:
+        return False
+    with _owner_guard:
+        owner = _lifecycle_owner
+        if (
+            owner is None or owner.operation_id != str(operation_id)
+            or (keep_queued and owner.queued)
+        ):
+            return False
+        _lifecycle_owner = None
+        followers = list(owner.followers)
+        del owner.followers[:]
+    if restarting:
+        _answer_lifecycle_followers(owner, followers, cause)
+    owner.terminal.set()
+    return True
+
+
+def answer_lifecycle_followers(cause):
+    """Answer the followers still waiting, leaving the owner untouched."""
+    with _owner_guard:
+        owner = _lifecycle_owner
+        if owner is None:
+            return 0
+        followers = list(owner.followers)
+        del owner.followers[:]
+    _answer_lifecycle_followers(owner, followers, cause)
+    return len(followers)
+
+
+def follow_lifecycle_owner(owner, kind, operation_id, answer):
+    """Register one follower; None when ``owner`` has already ended."""
+    follower = {
+        "kind": str(kind),
+        "operation_id": str(operation_id),
+        "answer": answer,
+        "answered": False,
+    }
+    with _owner_guard:
+        if _lifecycle_owner is not owner:
+            return None
+        owner.followers.append(follower)
+    return follower
+
+
+def leave_lifecycle_owner(owner, follower):
+    """Remove a follower; False once the owner's release has taken it."""
+    with _owner_guard:
+        kept = [item for item in owner.followers if item is not follower]
+        if len(kept) == len(owner.followers):
+            return False
+        owner.followers[:] = kept
+        return True
+
+
+def lifecycle_follower_text(kind, cause, owner_kind=None):
+    label = _LIFECYCLE_LABELS.get(str(kind), "This request")
+    if cause == "restart":
+        return (
+            "%s was not run: the earlier %s finished first and the game is "
+            "restarting. Nothing was changed by this request; choose it again "
+            "after the restart."
+            % (label, _LIFECYCLE_LABELS.get(str(owner_kind), "Load"))
+        )
+    if cause == "quit":
+        return (
+            "%s was not run: Quit was chosen first. Nothing was changed by "
+            "this request." % label
+        )
+    return (
+        "%s was not run: the game stopped before it could run. Nothing was "
+        "changed by this request." % label
+    )
 
 
 def open_live_turn_scope():
@@ -469,7 +653,7 @@ def close_live_turn_scope(scope):
         ).start()
 
 
-def request_live_turn_supersession(kind, operation_id=None, scope=None):
+def request_live_turn_supersession(kind, operation_id=None, scope=None, owner=False):
     """Fence the current live turn, optionally only if it is ``scope``."""
     with _scope_guard:
         if scope is None:
@@ -482,7 +666,7 @@ def request_live_turn_supersession(kind, operation_id=None, scope=None):
             target_scope = None
         if target_scope is None:
             return None
-    result = target_scope.request_supersession(kind, operation_id)
+    result = target_scope.request_supersession(kind, operation_id, owner)
     if result.get("accepted"):
         _safe_emit(_emit_working, "Applying your requested game control...")
         from core.combat.invocation import supersede_invocations
@@ -496,7 +680,7 @@ def request_live_turn_supersession(kind, operation_id=None, scope=None):
     return result
 
 
-def request_lifecycle_turn_supersession(kind, operation_id=None):
+def request_lifecycle_turn_supersession(kind, operation_id=None, owner=False):
     """Atomically claim and seal every active/closing player-turn scope."""
     requested_id = operation_id or str(uuid4())
     with _scope_guard:
@@ -508,7 +692,7 @@ def request_lifecycle_turn_supersession(kind, operation_id=None):
             if item is not _active_scope and not item.quiescent.is_set()
         )
         results = tuple(
-            scope.request_supersession(kind, requested_id) for scope in scopes
+            scope.request_supersession(kind, requested_id, owner) for scope in scopes
         )
     if any(result.get("accepted") for result in results):
         # Never acquire the status lock while holding the scope registry or a
@@ -625,15 +809,33 @@ def cancel_recovery_saves(scope):
 
 
 def claim_destructive_operation(scope, kind, execute, complete,
-                                operation_id=None):
+                                operation_id=None, owner=False):
     """Atomically claim (or promote from player_acted) a destructive
     supersession AND append its executable record in ONE scope-lock
     transaction (#214: the seal can never split an accepted claim from its
     record; an accepted destructive operation always has a queued record).
 
-    Returns {"status": "queued"|"conflict"|"closed", "kind", "operation_id"}.
+    Returns {"status": "queued"|"conflict"|"closed", "kind", "operation_id"};
+    a conflict with the lifecycle owner (#270) also carries "owner". With
+    ``owner`` the queued record owns the lifecycle until its ``complete``.
     """
+    record_id = str(operation_id or uuid4())
     with scope.lock:
+        holder = _hold_lifecycle_owner(
+            kind, record_id,
+            owner and scope.controls_open and (
+                scope.supersession is None
+                or _can_promote_player_acted(scope.supersession, kind)
+            ),
+            queued=True,
+        )
+        if holder is not None:
+            return {
+                "status": "conflict",
+                "kind": holder.kind,
+                "operation_id": holder.operation_id,
+                "owner": holder,
+            }
         if not scope.controls_open:
             return {
                 "status": "closed",
@@ -649,8 +851,14 @@ def claim_destructive_operation(scope, kind, execute, complete,
                 "kind": existing.get("kind"),
                 "operation_id": existing.get("operation_id"),
             }
-        record_id = operation_id or str(uuid4())
         scope.supersession = {"kind": str(kind), "operation_id": record_id}
+        if owner:
+            # #270 C4: every path that removes the record calls complete.
+            def complete(outcome, _complete=complete):
+                try:
+                    _complete(outcome)
+                finally:
+                    release_lifecycle_owner(record_id)
         scope.pending_saves.append({
             "operation_id": record_id,
             "execute": execute,
