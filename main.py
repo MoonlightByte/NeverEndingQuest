@@ -8871,8 +8871,10 @@ def main_game_loop():
     from utils.capture.live_provider_call import (
         LiveProviderSuperseded,
         abort_live_turn_scope,
+        claim_model_restore_owner,
         finish_live_turn_scope,
         get_live_turn_scope,
+        release_lifecycle_owner,
     )
     from utils.transient_filesystem import ReadOnlySaveStop
 
@@ -8886,10 +8888,17 @@ def main_game_loop():
                 result = transfer.request
             scope = get_live_turn_scope()
         if _is_restore_request(result) and scope is not None:
+            # #270 C5: the model's Load owns the lifecycle from before the
+            # turn closes, so a player Load in this window follows it. It
+            # holds the owner record only; the turn's slot is never written.
+            model_owner = claim_model_restore_owner(scope)
             finish_live_turn_scope(scope)
             scope.quiescent.wait()
-            if scope.is_superseded():
+            if scope.is_superseded() or model_owner is None:
+                release_lifecycle_owner(model_owner)
                 return None
+        elif _is_restore_request(result) and claim_model_restore_owner() is None:
+            return None
         return result
     except _TravelRecoveryControl as choice:
         return choice

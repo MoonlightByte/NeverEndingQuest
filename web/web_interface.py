@@ -360,8 +360,10 @@ def _pause_web_gameplay(message):
     emit_status_update(payload['message'], False)
 
 
-def _finish_web_restore(manager, outcome):
+def _finish_web_restore(manager, outcome, owner_id=None):
     global _restore_manager
+    from utils.capture.live_provider_call import release_lifecycle_owner
+
     payload = {
         'message': outcome.message,
         'restore_outcome': outcome.disposition,
@@ -381,6 +383,9 @@ def _finish_web_restore(manager, outcome):
         try:
             emit_status_update(payload['message'], False)
         finally:
+            # #270 C3: a restart answers the followers before os._exit;
+            # recovery lets them run again against the recovered state.
+            release_lifecycle_owner(owner_id, restarting=outcome.can_resume)
             # A disconnected browser cannot veto the verified disk terminal.
             # Reconnect can obtain the stored operation if no restart is safe.
             if outcome.can_resume:
@@ -388,6 +393,51 @@ def _finish_web_restore(manager, outcome):
                     socketio.sleep(1)
                 finally:
                     os._exit(0)
+
+
+def _answer_web_quit_first(kind, operation_id):
+    from utils.capture.live_provider_call import lifecycle_follower_text
+
+    emit('error', {
+        'message': lifecycle_follower_text(kind, 'quit'),
+        'operation_id': operation_id,
+    })
+
+
+def _follow_web_lifecycle_owner(owner, kind, data, operation_id):
+    """Follow an earlier Load or Reset to its terminal, never preempting it (#270).
+
+    A restart answers this request from the owner's terminal, because this
+    thread may not run again before os._exit; otherwise it runs again once.
+    """
+    from utils.capture.live_provider_call import (
+        follow_lifecycle_owner,
+        lifecycle_follower_text,
+    )
+
+    session_id = getattr(request, 'sid', None)
+
+    def answer(cause, owner_kind):
+        socketio.emit('error', {
+            'message': lifecycle_follower_text(kind, cause, owner_kind),
+            'operation_id': operation_id,
+        }, to=session_id)
+
+    follower = follow_lifecycle_owner(owner, kind, operation_id, answer)
+    if follower is None:
+        return handle_action(data, operation_id)
+    emit('system_message', {
+        'content': '%s is waiting for the earlier %s to finish.' % (
+            'Reset' if kind == 'reset' else 'Load',
+            'Reset' if owner.kind == 'reset' else 'Load',
+        ),
+        'operation_id': operation_id,
+        'waiting_for_operation_id': owner.operation_id,
+    })
+    while not follower['answered'] and not owner.terminal.wait(1.0):
+        pass
+    if not follower['answered']:
+        return handle_action(data, operation_id)
 
 
 def _stop_web_game_reader():
@@ -3136,8 +3186,10 @@ def handle_action(data, _operation_id=None):
         _operation_id = str(uuid4())
     parameters = data.get('parameters', {})
     from utils.capture.live_provider_call import (
+        claim_lifecycle_owner,
         get_lifecycle_turn_scopes,
         get_active_welcome_scope,
+        release_lifecycle_owner,
         request_lifecycle_turn_supersession,
     )
 
@@ -3324,7 +3376,7 @@ def handle_action(data, _operation_id=None):
             if live_scope is not None:
                 operation_id = _operation_id
                 turn_scopes, operations = request_lifecycle_turn_supersession(
-                    "restore", operation_id
+                    "restore", operation_id, owner=True
                 )
                 if not turn_scopes:
                     # The captured scope left the registry before the claim.
@@ -3342,13 +3394,16 @@ def handle_action(data, _operation_id=None):
                     None,
                 )
                 if conflict is not None:
-                    emit('error', {
-                        'message': (
-                            'Another lifecycle operation is already pending: '
-                            + conflict['kind']
-                        )
-                    })
-                    return
+                    if conflict.get('owner') is not None:
+                        return _follow_web_lifecycle_owner(conflict['owner'], 'restore', data, operation_id)
+                    if conflict['kind'] in ('quit', 'web_exit'):
+                        _answer_web_quit_first('restore', operation_id)
+                        return
+                    # #270: the slot's owner has already ended; run again
+                    # once these turns have stopped.
+                    for turn_scope in turn_scopes:
+                        turn_scope.quiescent.wait()
+                    return handle_action(data, _operation_id)
                 emit('system_message', {
                     'content': 'Load accepted. The current turn is stopping safely before the save is restored.',
                     'operation_id': operation_id,
@@ -3369,7 +3424,7 @@ def handle_action(data, _operation_id=None):
                     return _apply_web_restore(manager, save_folder, previous_clean)
 
                 def complete_welcome_restore(outcome):
-                    _finish_web_restore(manager, outcome)
+                    _finish_web_restore(manager, outcome, _operation_id)
 
                 # Claim/promotion AND record insertion are ONE scope-lock
                 # transaction: an accepted destructive claim always has its
@@ -3377,7 +3432,7 @@ def handle_action(data, _operation_id=None):
                 claim = claim_destructive_operation(
                     welcome_scope, "restore",
                     execute_welcome_restore, complete_welcome_restore,
-                    operation_id=_operation_id,
+                    operation_id=_operation_id, owner=True,
                 )
                 if claim['status'] == 'closed':
                     # Closed before the claim: Load is NEVER refused (#193).
@@ -3389,23 +3444,34 @@ def handle_action(data, _operation_id=None):
                     welcome_scope.quiescent.wait()
                     return handle_action(data, _operation_id)
                 if claim['status'] == 'conflict':
-                    emit('error', {
-                        'message': (
-                            'Another lifecycle operation is already pending: '
-                            + str(claim['kind'])
-                        )
-                    })
-                    return
+                    if claim.get('owner') is not None:
+                        return _follow_web_lifecycle_owner(claim['owner'], 'restore', data, _operation_id)
+                    if claim['kind'] in ('quit', 'web_exit'):
+                        _answer_web_quit_first('restore', _operation_id)
+                        return
+                    # #270: the slot's owner has already ended; the same
+                    # rule as "closed" above.
+                    welcome_scope.quiescent.wait()
+                    return handle_action(data, _operation_id)
                 emit('system_message', {
                     'content': 'Load accepted. The welcome-back narration is stopping safely first.',
                     'operation_id': claim['operation_id'],
                 })
                 return
+            holder = claim_lifecycle_owner('restore', _operation_id)
+            if holder is not None:
+                return _follow_web_lifecycle_owner(holder, 'restore', data, _operation_id)
             _begin_web_restore(manager, 'Load is stopping the previous game safely.', previous_clean)
             _stop_web_game_reader()
-            _finish_web_restore(manager, _apply_web_restore(manager, save_folder, previous_clean))
+            _finish_web_restore(
+                manager, _apply_web_restore(manager, save_folder, previous_clean), _operation_id
+            )
         except Exception as e:
             emit('error', {'message': f"Restore failed: {str(e)}"})
+        finally:
+            # #270 C4: an owner that leaves before its terminal lets its
+            # followers run again; a queued record releases on complete.
+            release_lifecycle_owner(_operation_id, keep_queued=True)
     
     elif action_type == 'deleteSave':
         try:
@@ -3427,7 +3493,7 @@ def handle_action(data, _operation_id=None):
             if live_scope is not None:
                 operation_id = _operation_id
                 turn_scopes, operations = request_lifecycle_turn_supersession(
-                    "reset", operation_id
+                    "reset", operation_id, owner=True
                 )
                 if not turn_scopes:
                     live_scope.quiescent.wait()
@@ -3442,13 +3508,16 @@ def handle_action(data, _operation_id=None):
                     None,
                 )
                 if conflict is not None:
-                    emit('error', {
-                        'message': (
-                            'Another lifecycle operation is already pending: '
-                            + conflict['kind']
-                        )
-                    })
-                    return
+                    if conflict.get('owner') is not None:
+                        return _follow_web_lifecycle_owner(conflict['owner'], 'reset', data, operation_id)
+                    if conflict['kind'] in ('quit', 'web_exit'):
+                        _answer_web_quit_first('reset', operation_id)
+                        return
+                    # #270: the slot's owner has already ended; run again
+                    # once these turns have stopped.
+                    for turn_scope in turn_scopes:
+                        turn_scope.quiescent.wait()
+                    return handle_action(data, _operation_id)
                 emit('system_message', {
                     'content': 'Reset accepted. The current turn is stopping safely before reset.',
                     'operation_id': operation_id,
@@ -3479,18 +3548,19 @@ def handle_action(data, _operation_id=None):
                     success, message = outcome
                     if success:
                         socketio.emit('reset_complete', {'message': 'Campaign has been reset. Reloading...'}, to=session_id)
+                        release_lifecycle_owner(_operation_id, restarting=True)
                         socketio.sleep(1)
                         print("INFO: Campaign reset complete. Server is shutting down for restart.")
                         os._exit(0)
                     else:
                         from updates.save_game_manager import RestoreOutcome
-                        _finish_web_restore(manager, RestoreOutcome('recovery_required', f'Campaign reset failed: {message}'))
+                        _finish_web_restore(manager, RestoreOutcome('recovery_required', f'Campaign reset failed: {message}'), _operation_id)
 
                 # One atomic claim+record transaction (same as Load).
                 claim = claim_destructive_operation(
                     welcome_scope, "reset",
                     execute_welcome_reset, complete_welcome_reset,
-                    operation_id=_operation_id,
+                    operation_id=_operation_id, owner=True,
                 )
                 if claim['status'] == 'closed':
                     # Same rule as Load: wait for the captured scope's
@@ -3498,18 +3568,23 @@ def handle_action(data, _operation_id=None):
                     welcome_scope.quiescent.wait()
                     return handle_action(data, _operation_id)
                 if claim['status'] == 'conflict':
-                    emit('error', {
-                        'message': (
-                            'Another lifecycle operation is already pending: '
-                            + str(claim['kind'])
-                        )
-                    })
-                    return
+                    if claim.get('owner') is not None:
+                        return _follow_web_lifecycle_owner(claim['owner'], 'reset', data, _operation_id)
+                    if claim['kind'] in ('quit', 'web_exit'):
+                        _answer_web_quit_first('reset', _operation_id)
+                        return
+                    # #270: the slot's owner has already ended; the same
+                    # rule as "closed" above.
+                    welcome_scope.quiescent.wait()
+                    return handle_action(data, _operation_id)
                 emit('system_message', {
                     'content': 'Reset accepted. The welcome-back narration is stopping safely first.',
                     'operation_id': claim['operation_id'],
                 })
                 return
+            holder = claim_lifecycle_owner('reset', _operation_id)
+            if holder is not None:
+                return _follow_web_lifecycle_owner(holder, 'reset', data, _operation_id)
             _begin_web_restore(manager, 'Resetting the campaign.')
             _stop_web_game_reader()
             reset_campaign.perform_reset_logic()
@@ -3518,6 +3593,7 @@ def handle_action(data, _operation_id=None):
             message_cache.clear()
             save_message_cache()
             emit('reset_complete', {'message': 'Campaign has been reset. Reloading...'})
+            release_lifecycle_owner(_operation_id, restarting=True)
             socketio.sleep(1)
             print("INFO: Campaign reset complete. Server is shutting down for restart.")
             os._exit(0)
@@ -3526,7 +3602,9 @@ def handle_action(data, _operation_id=None):
                 emit('error', {'message': f'Campaign reset could not start: {e}'})
                 return
             from updates.save_game_manager import RestoreOutcome
-            _finish_web_restore(manager, RestoreOutcome('recovery_required', f'Campaign reset failed: {e}'))
+            _finish_web_restore(manager, RestoreOutcome('recovery_required', f'Campaign reset failed: {e}'), _operation_id)
+        finally:
+            release_lifecycle_owner(_operation_id, keep_queued=True)
 
     elif action_type == 'recover_startup_handoff':
         session_id = getattr(request, 'sid', None) or 'unknown-session'
@@ -4441,10 +4519,14 @@ def handle_user_exit():
     try:
         print("INFO: User has initiated exit from the game")
         from utils.capture.live_provider_call import (
+            answer_lifecycle_followers,
             get_live_turn_scope,
             request_live_turn_supersession,
         )
 
+        # #270 C3: Exit is the web's Quit (D-214). A Load or Reset waiting
+        # behind another one is answered now, before this Exit's own waits.
+        answer_lifecycle_followers("quit")
         live_scope = get_live_turn_scope()
         if live_scope is not None:
             operation = request_live_turn_supersession("web_exit")
@@ -5225,11 +5307,23 @@ def run_game_loop():
         if isinstance(handoff, dm_main.WebRecoveryPause):
             _pause_web_gameplay(handoff.message)
         if isinstance(handoff, RestoreRequest):
-            previous_clean = _web_restore_state().get('can_resume') is not False
-            _finish_web_restore(
-                handoff.manager,
-                _apply_web_restore(handoff.manager, handoff.save_folder, previous_clean),
+            from utils.capture.live_provider_call import (
+                model_restore_owner_id,
+                release_lifecycle_owner,
             )
+
+            # #270: main_game_loop claimed the owner record for the model's
+            # Load; a fault before its terminal lets followers run again.
+            owned = model_restore_owner_id()
+            try:
+                previous_clean = _web_restore_state().get('can_resume') is not False
+                _finish_web_restore(
+                    handoff.manager,
+                    _apply_web_restore(handoff.manager, handoff.save_folder, previous_clean),
+                    owned,
+                )
+            finally:
+                release_lifecycle_owner(owned)
     except (BrokenPipeError, OSError) as e:
         # Handle broken pipe errors specifically
         try:
