@@ -3109,6 +3109,16 @@ from core.managers import roll_prompt as rules_roll_prompt
 rules_roll_prompt.set_listener(lambda prompt: socketio.emit('roll_prompt', {'prompt': prompt}))
 
 
+def _post_player_line(content):
+    """The player's line in the web log, cached for replay and shown (#1118 item 4)."""
+    message = {
+        'type': 'user-input',
+        'content': content
+    }
+    add_to_message_cache(message)
+    emit('game_output', message)
+
+
 @socketio.on('submit_check_roll')
 def handle_check_roll(data):
     if _web_gameplay_paused() or not (game_thread and game_thread.is_alive()):
@@ -3117,7 +3127,17 @@ def handle_check_roll(data):
     try:
         if not isinstance(data, dict) or 'faces' not in data:
             raise ValueError('Choose Roll for me or enter individual dice results.')
-        rules_roll_prompt.submit(data.get('id'), data['faces'], user_input_queue.put)
+        faces = data['faces']
+
+        def enqueue(line):
+            # #1118 item 4 (#1116): the panel's dice are the player's reply,
+            # shown once the submission is accepted and before the receipt.
+            # "Roll for me" posts nothing: the receipt shows the game's dice.
+            if faces:
+                _post_player_line('I rolled ' + ' and '.join(f'{face} on a d20' for face in faces) + '.')
+            user_input_queue.put(line)
+
+        rules_roll_prompt.submit(data.get('id'), faces, enqueue)
     except ValueError as exc:
         emit('error', {'message': str(exc)})
         emit('roll_prompt', {'prompt': rules_roll_prompt.current()})
@@ -3129,21 +3149,29 @@ def handle_user_input(data):
     if _web_gameplay_paused():
         emit('error', {'message': 'Gameplay is paused. Choose Load, Reset, or Exit.'})
         return
+    user_input = data.get('input', '') if isinstance(data, dict) else ''
+    if not isinstance(user_input, str):
+        return
     pending_roll = rules_roll_prompt.current()
     if pending_roll is not None:
-        # The legacy browser has a text-only composer. Keep its existing
-        # numeric dice input working through the same single-submit boundary.
+        # #1118 item 4: while a check panel is published, a line of bare
+        # numbers that fits it, or a blank line ("Roll for me"), answers the
+        # panel. Every other line is the player's own input, queued as usual:
+        # the game thread decides whether it answers the roll.
         from core.managers.checks_runtime import parse_faces
-        value = data.get('input') if isinstance(data, dict) else None
-        faces = parse_faces(value, pending_roll['faces']) if isinstance(value, str) else None
-        if faces is None:
-            emit('error', {'message': 'Use the roll panel or type the individual d20 results for this check.'})
-            emit('roll_prompt', {'prompt': pending_roll})
-        else:
-            handle_check_roll({'id': pending_roll['id'], 'faces': faces or None})
-        return
-    user_input = data.get('input', '')
-    if not isinstance(user_input, str) or not user_input.strip():
+        faces = parse_faces(user_input, pending_roll['faces'])
+        if faces is not None:
+            if faces:
+                _post_player_line(user_input)
+            try:
+                rules_roll_prompt.submit(pending_roll['id'], faces or None, user_input_queue.put)
+            except ValueError:
+                # A spent token: the first submission settles the check.
+                pass
+            except Exception as exc:
+                warning(f'Check roll submission failed: {type(exc).__name__}: {exc}', category='web_interface')
+            return
+    if not user_input.strip():
         return
     # #214 CR-1: supersede a pending background welcome AT THE ENQUEUE
     # BOUNDARY, before the game thread can pop this text - the game thread
@@ -3164,12 +3192,7 @@ def handle_user_input(data):
         pass
     # Commit the player-visible ledger entry before releasing the command to
     # the game thread, so a fast local response cannot appear above its input.
-    message = {
-        'type': 'user-input',
-        'content': user_input
-    }
-    add_to_message_cache(message)
-    emit('game_output', message)
+    _post_player_line(user_input)
     user_input_queue.put(user_input)
     if opening_scene:
         emit('system_message', {'content': 'Your action is queued for after the opening scene.'})
