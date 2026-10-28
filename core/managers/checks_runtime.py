@@ -1,9 +1,9 @@
-"""rollCheck staging, the roll prompt, and the DM Note line (C2a).
+"""rollCheck staging, the player's answer to an open roll, and the DM Note line (C2a).
 
-A submitted roll is player input: a check the DM asks for in
-turn N is scored before the DM's turn N+1 begins, and its result line is in
-that turn's DM Note. The player's dice are typed at a numbers-only roll
-prompt (blank = the game rolls); the DM never converts words into dice.
+A submitted roll is player input: a check the DM asks for waits until the
+player's next line answers it, and its result line is in the DM Note of the
+turn that line starts. Bare numbers and a blank line call no model; any other
+line is read by T126, and code acts on its typed answer (#1118 item 4).
 """
 from __future__ import annotations
 
@@ -16,15 +16,13 @@ from core.managers.effects_runtime import _resolve_character
 from core.nql import checks
 from utils.enhanced_logger import info, warning
 
-ROLL_TAG = "[ROLL]"
-
 
 def _is_player(role: Optional[str]) -> bool:
     return str(role or "").lower() == "player"
 
 
 def stage_roll_check(parameters: Dict[str, Any]) -> Dict[str, Any]:
-    """Validate a rollCheck action and either resolve it now or hold it for the roll prompt."""
+    """Validate a rollCheck action and either resolve it now or hold it for the player's answer."""
     name = parameters.get("characterName")
     if not isinstance(name, str) or not name.strip():
         return {"error": "rollCheck requires characterName."}
@@ -69,20 +67,14 @@ def stage_roll_check(parameters: Dict[str, Any]) -> Dict[str, Any]:
     if net.dice:
         # #889: an added die (Guidance, Bless) is the game's to roll.
         entry["dice"] = [{"name": d["name"], "count": d["count"], "sides": d["sides"]} for d in net.dice]
-    checks_state.add_pending(entry)
+    if not checks_state.add_pending(entry):
+        # #1118 item 4: a check persists across turns; asking for it again stages nothing new.
+        line = f"{resolved} {checks.label(stat)}: not resolved (already waiting for the player's roll; not staged again)"
+        checks_state.add_result(line)
+        info(f"CHECK: {line}", category="character_updates")
+        return {"resolved": line}
     info(f"CHECK: pending for {resolved}: {checks.label(stat)} ({net.mode}, {entry['faces']} dice)", category="character_updates")
     return {"pending": entry}
-
-
-def roll_prompt_text(entry: Dict[str, Any]) -> str:
-    what = checks.label(entry["stat"])
-    count = entry["faces"]
-    why = f" ({entry['netMode']}" + (f" from {', '.join(entry['sources'])}" if entry.get("sources") else "") + ")" if count == 2 else ""
-    dc = f" vs DC {entry['dc']}" if entry.get("dc") is not None else ""
-    dice = f"roll {count}d20{why} and type " + ("both results (e.g. 15 3)" if count == 2 else "the result (e.g. 15)")
-    added = "".join(f", plus {d['count']}d{d['sides']} from {d['name']} that the game rolls"
-                    for d in entry.get("dice") or [])
-    return f"{ROLL_TAG} {what} for {entry['characterName']}{dc}{added}: {dice}, or press Enter and the game rolls: "
 
 
 def fitting_faces(text: Any, count: int, sides: int) -> Any:
@@ -127,50 +119,17 @@ def _show_check_receipt(content: str, message_id: Optional[str] = None) -> None:
         print(content)
 
 
-def take_player_rolls(read: Callable[[str], str]) -> List[str]:
-    """Persist pending checks and return their outcomes for the next narrated turn.
-
-    The caller must not ask for another command after an accepted roll.
-    Empty means no roll was submitted and ordinary input is still needed.
-    """
-    completed: List[str] = []
-    while True:
-        pending = checks_state.pending_checks()
-        if not pending:
-            return completed
-        entry = pending[0]
-        faces: Optional[List[int]] = None
-        try:
-            while faces is None:
-                roll_prompt.publish({**entry, 'label': checks.label(entry['stat'])})
-                faces = parse_faces(read(roll_prompt_text(entry)), entry["faces"])
-                if faces is None:
-                    print(f"Type {entry['faces']} whole number{'s' if entry['faces'] == 2 else ''} between 1 and 20, or press Enter to let the game roll.")
-        finally:
+def read_player_line(read: Callable[[str], str], prompt: str) -> str:
+    """The free-command read (#1118 item 4). While a check heads the queue its panel is published for this
+    read and cleared once the read returns or raises; the line read is the answer (the settle takes it)."""
+    pending = checks_state.pending_checks()
+    try:
+        if pending:
+            roll_prompt.publish({**pending[0], "label": checks.label(pending[0]["stat"])})
+        return read(prompt)
+    finally:
+        if pending:
             roll_prompt.publish(None)
-        try:
-            _resolved, _role, _path, sheet = _resolve_character(entry["characterName"])
-            result = checks.resolve(sheet, entry["stat"], dc=entry.get("dc"), mode=entry.get("mode"), faces=faces or None)
-        except Exception as exc:  # the sheet vanished or the engine is down: the DM hears why
-            warning(f"CHECK: {entry['characterName']}: not resolved ({exc})", category="character_updates")
-            line = f"{entry['characterName']} {checks.label(entry['stat'])}: not resolved (rules engine unavailable)"
-            checks_state.complete_pending(entry, line)
-            completed.append(line)
-            continue
-        line = checks.describe(result) + (f" [{entry['reason']}]" if entry.get("reason") else "")
-        checks_state.complete_pending(entry, line)
-        # The rules command is not ordinary chat input. Publish its accepted
-        # dice separately as the player's reply, including engine-rolled dice,
-        # before the next DM narration. Keep totals/mechanics in the DM context.
-        if result.ok and result.faces:
-            from web.shared_state import emit_player_output
-            dice = [f"{face} on a d20" for face in result.faces]
-            rolled = " and ".join(dice)
-            emit_player_output({'type': 'user-input', 'content': f"I rolled {rolled}."})
-        if result.ok:
-            _show_check_receipt(checks.describe(result))
-        info(f"CHECK: {line}", category="character_updates")
-        completed.append(line)
 
 
 def _last_dm_narration(conversation_history: Any) -> str:
@@ -188,6 +147,102 @@ def _last_dm_narration(conversation_history: Any) -> str:
                 return parsed["narration"]
             return content if isinstance(content, str) else ""
     return ""
+
+
+def settle_pending_rolls(line: str, conversation_history: Any) -> Dict[str, Any]:
+    """Settle the open roll with the line the player typed (#1118 items 3 and 4).
+
+    The check at the head of the queue comes first; the short rest held for the
+    player's hit dice is offered only when no check waits. The placement, fast
+    path and result are ``settle_pending_rest``'s, plus "kind" ("check" or
+    "hitDie"): the request this line answered.
+    """
+    pending = checks_state.pending_checks()
+    if pending:
+        return _settle_pending_check(pending[0], line, conversation_history)
+    result = settle_pending_rest(line, conversation_history)
+    result["kind"] = "hitDie"
+    return result
+
+
+def _settle_pending_check(entry: Dict[str, Any], line: str, conversation_history: Any) -> Dict[str, Any]:
+    """A fitting answer or a request to roll scores the check, a decline closes it, and any other line
+    leaves it waiting: the DM answers the line and asks again (#1118 item 4)."""
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import (
+        LiveProviderCompletedError, LiveProviderSuperseded, get_live_turn_scope)
+    from utils.transient_filesystem import ReadOnlySaveStop
+
+    result = {"kind": "check", "pending": True, "settled": False, "unfitting": None, "readerUnavailable": False,
+              "providerError": None}
+    name, count = entry.get("characterName"), entry.get("faces")
+    label = checks.label(entry.get("stat"))
+    try:
+        answer = fitting_faces(line, count, 20)
+        if isinstance(answer, tuple):
+            result["unfitting"] = answer[1]
+            return result
+        if answer is None:
+            from core.ai.roll_answer import read_roll_answer, request_payload
+
+            try:
+                read = read_roll_answer(request_payload(
+                    f"{label} for {name}", "check", [{"count": count, "sides": 20}], True,
+                    _last_dm_narration(conversation_history), line))
+            except LiveProviderCompletedError as exc:
+                result["providerError"] = exc
+                return result
+            scope = get_live_turn_scope()
+            if scope is not None and scope.is_superseded():
+                return result
+            kind = read.get("kind")
+            if read.get("readerUnavailable"):
+                result["readerUnavailable"] = True
+                return result
+            if kind == "decline":
+                result["settled"] = checks_state.complete_pending(
+                    entry, f"{name} {label}: not resolved (the player chose not to roll)")
+                return result
+            if kind == "let_game_roll":
+                answer = []
+            elif kind == "faces":
+                values = read.get("values") or []
+                faces = values[0] if len(values) == 1 else [v for group in values for v in group]
+                if (len(values) != 1 or len(faces) != count
+                        or any(type(f) is not int or f < 1 or f > 20 for f in faces)):
+                    result["unfitting"] = faces
+                    return result
+                answer = faces
+            else:
+                return result
+        scope = get_live_turn_scope()
+        if scope is not None and scope.is_superseded():
+            return result
+        try:
+            _resolved, _role, _path, sheet = _resolve_character(name)
+            scored = checks.resolve(sheet, entry["stat"], dc=entry.get("dc"), mode=entry.get("mode"),
+                                    faces=answer or None)
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            raise
+        except Exception as exc:  # the sheet vanished or the engine is down: the DM hears why
+            warning(f"CHECK: {name}: not resolved ({exc})", category="character_updates")
+            result["settled"] = checks_state.complete_pending(
+                entry, f"{name} {label}: not resolved (rules engine unavailable)")
+            return result
+        result_line = checks.describe(scored) + (f" [{entry['reason']}]" if entry.get("reason") else "")
+        if not checks_state.complete_pending(entry, result_line):
+            return result
+        result["settled"] = True
+        if scored.ok:
+            _show_check_receipt(checks.describe(scored))
+        info(f"CHECK: {result_line}", category="character_updates")
+        return result
+    except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+        raise
+    except Exception as exc:
+        warning(f"CHECK: settle_failed for {name}: {type(exc).__name__}: {exc}", category="character_updates")
+        result["readerUnavailable"] = True
+        return result
 
 
 def settle_pending_rest(line: str, conversation_history: Any) -> Dict[str, Any]:
@@ -335,7 +390,19 @@ def _apply_held_rest(entry: Dict[str, Any], faces: List[Any], conversation_histo
 
 
 def pending_roll_note(settle_result: Optional[Dict[str, Any]] = None) -> str:
-    """The PENDING ROLL line for every DM turn while a held rest waits (#1118 item 3); DM-only, never sliced."""
+    """The PENDING ROLL line for every DM turn while a roll waits (#1118 items 3 and 4): the check at the head
+    of the queue, or else the held rest, never both; DM-only, never sliced."""
+    settle_result = settle_result or {}
+    pending = checks_state.pending_checks()
+    if pending:
+        check = pending[0]
+        name, faces = check.get("characterName"), check.get("faces")
+        note = (f"\nPENDING ROLL: {name}'s {checks.label(check.get('stat'))} waits for the player's d20 answer. You "
+                "cannot roll it or state a result. If the player's words are not that answer, answer them and ask for "
+                "the roll again in your own words.")
+        if settle_result.get("kind") == "check":
+            note += _last_answer_tail(settle_result, f"{faces}d20")
+        return note + "\n"
     entry = checks_state.pending_rest()
     if entry is None:
         return ""
@@ -346,13 +413,19 @@ def pending_roll_note(settle_result: Optional[Dict[str, Any]] = None) -> str:
             "points) or the player has moved on, do not ask: say so, and state the rest again without their hitDice "
             "and with no new updateTime; that closes this pending roll. If you call for a check this turn, ask for "
             "that check only.")
-    settle_result = settle_result or {}
+    if settle_result.get("kind", "hitDie") == "hitDie":
+        note += _last_answer_tail(settle_result, f"{count}d{die}")
+    return note + "\n"
+
+
+def _last_answer_tail(settle_result: Dict[str, Any], dice: str) -> str:
+    """What the DM hears about the player's last line when it did not settle the roll."""
     if settle_result.get("unfitting") is not None:
         values = ", ".join(str(v) for v in settle_result["unfitting"])
-        note += f" Their last answer, {values}, does not fit {count}d{die}."
-    elif settle_result.get("readerUnavailable") or settle_result.get("providerError") is not None:
-        note += " The game could not read their last line as an answer to this roll."
-    return note + "\n"
+        return f" Their last answer, {values}, does not fit {dice}."
+    if settle_result.get("readerUnavailable") or settle_result.get("providerError") is not None:
+        return " The game could not read their last line as an answer to this roll."
+    return ""
 
 
 LAST_NOTE = ""  # the CHECK RESULTS delivered with the current turn's DM note (the validator reviews against it)
@@ -426,13 +499,16 @@ def _rest_offers_validation() -> str:
 
 
 def _pending_validation() -> str:
-    """#1118 item 3: the validator's part while a held rest waits for the player's hit dice."""
-    if checks_state.pending_rest() is None:
+    """#1118 items 3 and 4: the validator's part while a roll waits for the player's answer. The restated-rest
+    close applies only when the held rest is the roll being asked for (no check waits)."""
+    check = bool(checks_state.pending_checks())
+    if not check and checks_state.pending_rest() is None:
         return ""
     return ("\nA roll is pending. A candidate that answers the player and asks for that roll again, with no result "
-            "narrated and no rest action, is valid. For a pending short rest, a candidate that closes it by restating "
-            "the rest without the player's hitDice, with no new updateTime, is valid. A candidate that narrates a "
-            "result for it is invalid.")
+            "narrated and no rest action, is valid."
+            + ("" if check else " For a pending short rest, a candidate that closes it by restating the rest without "
+               "the player's hitDice, with no new updateTime, is valid.")
+            + " A candidate that narrates a result for it is invalid.")
 
 
 def validation_context() -> str:
@@ -444,6 +520,6 @@ def validation_context() -> str:
             "a candidate that calls such a check pending or unresolved, contradicts its success or failure, or asks for "
             "the dice of a scored check line again, is invalid. The dice, bonus, total, DC and margin are the engine's and the player already "
             "sees them on the dice receipt: do NOT require the narration to state any of these numbers, and do not reject "
-            "a candidate for leaving them out. Numbers the player typed in chat are not dice; only these lines are. A READ "
+            "a candidate for leaving them out. The DM never scores a number the player typed; only these lines are results. A READ "
             "line governs how its read is narrated: a candidate in which an NPC confesses, explains or names what they are "
             "hiding in answer to that read is invalid." + LAST_NOTE + _rest_offers_validation() + _pending_validation())

@@ -37,7 +37,9 @@ def test_reconnect_typed_roll_and_duplicate_submission(game):
     client = web.socketio.test_client(web.app)
     try:
         client.emit("user_input", {"input": "I rolled 20"})
-        assert queue.empty()
+        # #1118 item 4: words during a check are the player's own line, queued for the game, with no error.
+        assert queue.get_nowait() == "I rolled 20"
+        assert not [m for m in client.get_received() if m["name"] == "error"]
         client.emit("submit_check_roll", {"id": token, "faces": [2, 18]})
         assert queue.get_nowait() == "2 18"
         client.emit("submit_check_roll", {"id": token, "faces": None})

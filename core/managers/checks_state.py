@@ -1,8 +1,8 @@
 """Pending checks and their results between DM turns (C2a).
 
-A rollCheck for the player character waits here until the roll prompt takes
-the player's dice (or lets the game roll); engine-rolled checks land as
-results at once. Every result is handed to the DM Note of the next DM turn
+A rollCheck for the player character waits here until the player's answer
+gives its dice (or lets the game roll), across turns if need be (#1118 item 4);
+engine-rolled checks land as results at once. Every result is handed to the DM Note of the next DM turn
 and then cleared. Lives beside effects_state.json; a new game starts empty.
 """
 from copy import deepcopy
@@ -51,10 +51,15 @@ def write_checks_state(state: Dict[str, Any]) -> bool:
 
 
 @_locked
-def add_pending(entry: Dict[str, Any]) -> None:
+def add_pending(entry: Dict[str, Any]) -> bool:
+    """Queue ``entry``; False, with nothing written, when the same check (character, stat, dc and mode) waits."""
     state = load_checks_state()
+    same = ("characterName", "stat", "dc", "mode")
+    if any(isinstance(p, dict) and all(p.get(k) == entry.get(k) for k in same) for p in state["pending"]):
+        return False
     state["pending"].append(entry)
     write_checks_state(state)
+    return True
 
 
 @_locked
@@ -79,18 +84,20 @@ def pop_pending() -> Dict[str, Any] | None:
 
 
 @_locked
-def complete_pending(entry: Dict[str, Any], line: str) -> None:
+def complete_pending(entry: Dict[str, Any], line: str) -> bool:
     """Remove a check only when its result can be saved in the same write.
 
     An EOF, process restart or failed write leaves the pending check available.
-    Refuse to consume a different campaign's check after a lifecycle change.
+    False, with nothing written, when the check at the head of the queue is no
+    longer ``entry`` (a Load or Reset changed it): nothing is applied.
     """
     state = load_checks_state()
     if not state['pending'] or state['pending'][0] != entry:
-        raise RuntimeError('Pending check changed before completion')
+        return False
     state['pending'].pop(0)
     state['results'].append(line)
     write_checks_state(state)
+    return True
 
 
 @_locked
@@ -232,3 +239,15 @@ def close_pending_rest() -> Dict[str, Any] | None:
         return None
     write_checks_state(state)
     return entry if isinstance(entry, dict) else None
+
+
+@_locked
+def close_pending_checks() -> List[Dict[str, Any]]:
+    """Close every pending check with no result line (combat began; #1118 item 4); returns them."""
+    state = load_checks_state()
+    closed = state["pending"]
+    if not closed:
+        return []
+    state["pending"] = []
+    write_checks_state(state)
+    return [entry for entry in closed if isinstance(entry, dict)]
