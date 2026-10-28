@@ -220,7 +220,8 @@ def _best(groups: Dict[Tuple[str, ...], List[Dict[str, Any]]]) -> List[Dict[str,
 
 def attack_rows(character: Dict[str, Any], location: str, *, binary: Optional[str] = None,
                 not_usable_now: Optional[List[str]] = None,
-                faults: Optional[list] = None) -> Tuple[Optional[List[Dict[str, Any]]], bool, str]:
+                faults: Optional[list] = None,
+                on_timeout: str = "reissue") -> Tuple[Optional[List[Dict[str, Any]]], bool, str]:
     """(rows, item rows included, reason). rows is None when the engine was unavailable or refused.
     Names of carried-mode rows whose slots are taken now are appended to ``not_usable_now``; the
     caught ``apply.EngineUnavailable``, or ("refused", phase) for a refusal, to ``faults``."""
@@ -228,9 +229,9 @@ def attack_rows(character: Dict[str, Any], location: str, *, binary: Optional[st
     cid = genesis.character_id(character)
     request: Dict[str, Any] = {"world": world.source, "world_name": "genesis.nql", "equipment": [cid]}
     try:
-        response = apply.call(dict(request, attack_options=[cid]), binary=binary)
+        response = apply.call(dict(request, attack_options=[cid]), binary=binary, on_timeout=on_timeout)
         if not response.get("ok") and response.get("phase") == "input":
-            response = apply.call(request, binary=binary)
+            response = apply.call(request, binary=binary, on_timeout=on_timeout)
     except apply.EngineUnavailable as error:
         if faults is not None:
             faults.append(error)
@@ -535,7 +536,8 @@ def grant_starting_packages(sheet: Dict[str, Any], origin: Dict[str, Any], picks
                 "status": [cid], "items_at": [{"kind": "character", "id": cid}],
                 "item_definitions": sorted(set(catalog_ids))}
     try:
-        response = apply.call(document)
+        # D-PKG-5: creation's timeout is raised for _startup_engine_fault to count (#1253 MI-5).
+        response = apply.call(document, on_timeout="raise")
     except apply.EngineUnavailable as error:
         faults.append(error)
         return None, None
