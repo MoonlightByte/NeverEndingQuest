@@ -31,8 +31,8 @@ You must validate that the character's Armor Class (AC) is calculated correctly 
 AC = Base Armor + Dex Modifier (limited by armor type) + Shield Bonus + Fighting Style Bonus + Other Bonuses
 
 ### Fighting Style Bonuses:
-- **Defense**: +1 AC when wearing any armor
-- All other fighting styles: No AC bonus
+- Class features, fighting styles and feats are not provided here; the game applies them itself, so never add a bonus for one.
+- `fighting_style_bonus` is always 0.
 
 ### Equipment Rules:
 - Only ONE base armor piece can be equipped
@@ -51,7 +51,6 @@ Character Data:
 {
   "armorClass": 15,
   "abilities": {"dexterity": 14},
-  "classFeatures": [{"name": "Fighting Style: Defense"}],
   "equipment": [
     {"item_name": "Chain Mail", "item_type": "armor", "equipped": true},
     {"item_name": "Shield", "item_type": "armor", "equipped": true}
@@ -61,10 +60,9 @@ Character Data:
 Calculation:
 - Chain Mail: 16 AC (heavy armor, no Dex bonus)
 - Shield: +2 AC  
-- Defense Fighting Style: +1 AC (wearing armor)
-- Correct AC: 16 + 0 + 2 + 1 = 19
+- Correct AC: 16 + 0 + 2 = 18
 
-Correction Needed: AC should be 19, not 15
+Correction Needed: AC should be 18, not 15
 ```
 
 ### Example 2: Rogue with Studded Leather

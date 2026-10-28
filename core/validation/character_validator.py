@@ -1237,109 +1237,6 @@ class AICharacterValidator:
 
         return self.validate_and_correct_character_smart_with_result(character_data).data
     
-    def validate_multiple_characters_smart(self, character_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Validate multiple characters with smart batching based on cache status
-        Only creates batches for validators that need API calls
-        
-        Args:
-            character_list: List of character data dictionaries
-            
-        Returns:
-            List of validated character data
-        """
-        if not character_list:
-            return []
-
-        # The legacy batch facade predates explicit validation results, but it
-        # must still honor the same ownership rule as the single-character
-        # paths: never let deterministic repairs mutate caller-owned objects.
-        working_characters = copy.deepcopy(character_list)
-        
-        info(f"[Smart Batch] Processing {len(working_characters)} characters", category="character_validation")
-        
-        # Group characters by validation needs
-        validation_batches = {
-            'ac': [],
-            'inventory': [],
-            'currency': []
-        }
-        
-        # Track which characters need which validations
-        character_needs = {}
-        
-        for character in working_characters:
-            char_name = character.get('name', 'Unknown')
-            needs = self.check_validation_needs(character)
-            character_needs[char_name] = needs
-            
-            # Add to appropriate batches
-            if needs['ac']:
-                validation_batches['ac'].append(character)
-            if needs['inventory']:
-                validation_batches['inventory'].append(character)
-            if needs['currency']:
-                validation_batches['currency'].append(character)
-        
-        # Report batch sizes
-        info(f"[Smart Batch] AC batch: {len(validation_batches['ac'])} characters", category="character_validation")
-        info(f"[Smart Batch] Inventory batch: {len(validation_batches['inventory'])} characters", category="character_validation")
-        info(f"[Smart Batch] Currency batch: {len(validation_batches['currency'])} characters", category="character_validation")
-        
-        # Process batches (could be parallelized in future)
-        results = {}
-        
-        # Batch AC validations
-        if validation_batches['ac']:
-            info(f"[Smart Batch] Processing AC validations for {len(validation_batches['ac'])} characters", category="character_validation")
-            for character in validation_batches['ac']:
-                char_name = character.get('name', 'Unknown')
-                validated = self.ai_validate_armor_class(character)
-                results[char_name] = validated
-        
-        # Batch inventory validations
-        if validation_batches['inventory']:
-            info(f"[Smart Batch] Processing inventory validations for {len(validation_batches['inventory'])} characters", category="character_validation")
-            for character in validation_batches['inventory']:
-                char_name = character.get('name', 'Unknown')
-                # Use existing result if already validated, otherwise use original
-                base_data = results.get(char_name, character)
-                validated = self.ai_validate_inventory_categories(base_data)
-                results[char_name] = validated
-        
-        # Batch currency validations
-        if validation_batches['currency']:
-            info(f"[Smart Batch] Processing currency validations for {len(validation_batches['currency'])} characters", category="character_validation")
-            for character in validation_batches['currency']:
-                char_name = character.get('name', 'Unknown')
-                # Use existing result if already validated, otherwise use original
-                base_data = results.get(char_name, character)
-                validated = self.ai_consolidate_inventory(base_data)
-                results[char_name] = validated
-        
-        # Apply non-AI validations to all characters
-        final_results = []
-        for character in working_characters:
-            char_name = character.get('name', 'Unknown')
-            
-            # Use validated version if exists, otherwise original
-            char_data = results.get(char_name, character)
-            
-            # Always apply non-AI validations on an owned copy.
-            char_data = self._apply_deterministic_validations(char_data)
-            
-            final_results.append(char_data)
-        
-        # Report savings
-        total_possible = len(working_characters) * 3  # 3 validators per character
-        total_called = len(validation_batches['ac']) + len(validation_batches['inventory']) + len(validation_batches['currency'])
-        total_skipped = total_possible - total_called
-        
-        print(f"DEBUG: [Smart Batch] Complete: {total_called}/{total_possible} API calls made ({total_skipped} skipped due to caching)")
-        info(f"[Smart Batch] Complete: {total_called}/{total_possible} API calls made ({total_skipped} skipped due to caching)", category="character_validation")
-        
-        return final_results
-    
     def ai_validate_armor_class_with_result(
         self,
         character_data: Dict[str, Any],
@@ -1458,7 +1355,6 @@ class AICharacterValidator:
                 # Each equipment correction names its row; two rows with one
                 # name are two rows.
                 merged_data = copy.deepcopy(character_data)
-                merged_data['armorClass'] = corrected_data['armorClass']
                 for update in corrected_data.get('equipment', []):
                     target = merged_data['equipment'][update['row']]
                     for field, value in update.items():
@@ -1523,11 +1419,6 @@ class AICharacterValidator:
 
         return _failed_validation_result(character_data, last_error)
 
-    def ai_validate_armor_class(self, character_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Backward-compatible data-only facade for T051."""
-
-        return self.ai_validate_armor_class_with_result(character_data).data
-    
     def ai_validate_inventory_categories_with_result(
         self,
         character_data: Dict[str, Any],
