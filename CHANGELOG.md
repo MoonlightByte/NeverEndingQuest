@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A second Load or Reset chosen while an earlier Load or Reset is still finishing (in the web page, in headless play, or after the Dungeon Master loads a save) now waits for the earlier one instead of being refused or running beside it. If the earlier one restarts the game, the second gets one plain answer that it was not run; if it does not, the second runs once it is done. A waiting Load or Reset is answered at once when you choose Quit or Exit (#270).
 - When a fight's turn is replayed (on commit, restart or Load), the resources an Off-hand Attack spends are now applied after its Action's, in the order the turn resolved them, so an item both spend from ends at the right count (#1594).
 - Ending or removing a spell effect, a concentration spell, the effects that expire between turns and the conversion of older saves' temporary effects now wait for a briefly busy character sheet, with a status line, instead of failing or silently skipping the change; Load, Reset or Quit still end the wait, and a read-only save stops the turn at these steps too (#202).
 - Combat diagnostics now name why a combat decision request failed from the error's own type, never from the words of its message (#1515).
