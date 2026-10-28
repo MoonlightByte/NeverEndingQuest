@@ -400,7 +400,7 @@ def _timeout_error(tmp_path):
     from core.nql import apply
     sleeper = _script(tmp_path / "sleeper", "exec sleep 5")
     with pytest.raises(apply.EngineUnavailable) as error:
-        apply.call({}, binary=str(sleeper), timeout=0.5)
+        apply.call({}, binary=str(sleeper), timeout=0.5, on_timeout="raise")  # creation's call (D-PKG-5, #1253)
     assert isinstance(error.value.__cause__, subprocess.TimeoutExpired)
     return error.value
 
@@ -431,7 +431,7 @@ def test_a_busy_wait_between_timeouts_resets_the_count(wizard, tmp_path, record_
     copy_path, holder = _held_copy(tmp_path, record_property, 5)
     try:
         with pytest.raises(apply.EngineUnavailable) as busy:
-            apply.call({}, binary=str(copy_path))
+            apply.call({}, binary=str(copy_path), on_timeout="raise")  # creation's call (#1253)
     finally:
         holder.kill()
         holder.wait()

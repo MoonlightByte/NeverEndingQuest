@@ -9756,9 +9756,11 @@ def _main_game_loop(startup_authority, turn_authority):
         # the player is told why: the line is chosen from the typed cause or
         # refused_because, never from reason text (issue #613).
         try:
-            refresh_result = CampaignManager().refresh_modules(
-                priority_module=str(party_tracker_data.get("module") or "").replace(" ", "_") or None
-            )
+            # #1253 MI-5: the join can wait on a slow rules engine; Load, Reset or Quit ends that wait.
+            with _between_turns_authority():
+                refresh_result = CampaignManager().refresh_modules(
+                    priority_module=str(party_tracker_data.get("module") or "").replace(" ", "_") or None
+                )
             debug(f"STATE_CHANGE: startup module refresh result: {refresh_result}", category="startup")
             # A joined module is a library notice, not story: it is shown as a
             # system card once the opening scene settles (#795).
@@ -9768,6 +9770,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 show_player_notice(_module_join_refusal_line(refusal))
             for refusal in refresh_result.get("not_joined", []):
                 show_player_notice(_module_not_joined_line(refusal))
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            raise
         except Exception as refresh_exc:
             warning(f"INITIALIZATION: startup module refresh failed: {refresh_exc}", category="startup")
     

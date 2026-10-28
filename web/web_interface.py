@@ -6603,6 +6603,14 @@ def simulate_build_process(params):
             socketio.emit('module_progress', dict(payload))
             return True
 
+        def engine_stop():
+            # #1253 MI-5: a cancelled build also ends a wait on a slow rules engine.
+            if cancel_build_flag.is_set():
+                raise ModuleCreationCancelledError("Module generation cancelled")
+
+        from core.nql import apply as nql_apply
+        nql_apply.engine_stop_check.set(engine_stop)
+
         creation_params = {
             'narrative': narrative,
             'module_name': module_name,
