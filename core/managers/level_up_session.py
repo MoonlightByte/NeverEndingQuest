@@ -169,9 +169,11 @@ class LevelUpSession:
         named = feature_names.name_features(self._sheet, scope=self._scope,
                                             live_selected="advisory" if self._scope is not None else None)
         if named.error:
-            return self._terminal("not_applied", "Your level-up has not been applied: the rules could not read "
+            # #1229: an account refusal at T125 ends on its account line, as T121's does.
+            return self._terminal("not_applied", named.refusal or (
+                                  "Your level-up has not been applied: the rules could not read "
                                   f"{self.character_name}'s older feature names. Nothing changed; ask to level up "
-                                  "again later.")
+                                  "again later."))
         self._sheet = named.sheet
         self.is_player = self._sheet.get("character_type") == "player"
         check = tables.eligibility(self._sheet, self.requested_level)
