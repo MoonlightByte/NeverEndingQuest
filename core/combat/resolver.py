@@ -1312,6 +1312,50 @@ def _typed_damage(sheet, damage_type, raw):
     return applied, found
 
 
+def _immune_condition_op(encounter, characters, op, event):
+    """#1520: ``op`` without the conditions its target is immune to, or None
+    when nothing is left of it.
+
+    The target's ``conditionImmunities`` are compared casefolded with each
+    condition id, as #527 compares damage types; a prose entry never matches.
+    A removed incapacitating condition resets the stored flag from the kept
+    conditions only. Each removal is journaled as a normalization.
+    """
+    effect = op.get("effect") if isinstance(op, dict) and op.get("op") == "add" else None
+    conditions = effect.get("conditions") if isinstance(effect, dict) else None
+    if not conditions:
+        return op
+    if op.get("owner"):
+        sheet = (characters or {}).get(op["owner"])
+        target_id = op.get("saveTargetId") or next(
+            (c.get("combatantId") for c in encounter.get("creatures") or []
+             if isinstance(c, dict) and c.get("name") == op["owner"]), None)
+    else:
+        creature = combatant_by_id(encounter, op.get("combatantId"))
+        sheet = _raw_combatant_sheet(encounter, characters, creature) if creature is not None else None
+        target_id = op.get("combatantId")
+    immune = {entry.strip().casefold() for entry in (sheet or {}).get("conditionImmunities") or []
+              if isinstance(entry, str)} if isinstance(sheet, dict) else set()
+    removed = [c for c in conditions if isinstance(c, str) and c.strip().casefold() in immune]
+    if not removed:
+        return op
+    op = deepcopy(op)
+    effect = op["effect"]
+    kept = [c for c in conditions if c not in removed]
+    effect["conditions"] = kept
+    if any(c.strip().casefold() in INCAPACITATING_CONDITIONS for c in removed):
+        effect["incapacitates"] = any(
+            isinstance(c, str) and c.strip().casefold() in INCAPACITATING_CONDITIONS for c in kept)
+    for condition in removed:
+        event.setdefault("normalizations", []).append({
+            "kind": "conditionImmunity", "combatantId": target_id,
+            "condition": condition.strip().casefold(), "effect": effect.get("name")})
+    if (not kept and effect.get("incapacitates") is not True and not effect.get("modifiers")
+            and not effect.get("onApply") and not effect.get("onRemove")):
+        return None
+    return op
+
+
 def _stated_condition_reference(characters, encounter, owner, combatant_id, *references):
     """The condition one of the references names among those the target states, or None.
 
@@ -2114,8 +2158,12 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
                     len(resolution.setdefault("effectOps", [])),
                 )
                 if op is not None:
-                    resolution["effectOps"].append(op)
-                    rider_applied = list(rider_conditions)
+                    # #1520: a condition the target is immune to is never staged,
+                    # and the rider record lists only the kept ones.
+                    op = _immune_condition_op(encounter, characters, op, event)
+                    if op is not None:
+                        resolution["effectOps"].append(op)
+                        rider_applied = list(op["effect"]["conditions"])
                 else:
                     resolution["violations"].append(
                         "rider effect contract rejected: %s" % "; ".join(problems))
@@ -4587,6 +4635,10 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                 continue
             op["saveTargetId"] = save_target_id
         op.pop("_applyOnExplicit", None)
+        # #1520: a condition the target is immune to is never staged.
+        op = _immune_condition_op(encounter, characters, op, event)
+        if op is None:
+            continue
         resolution["effectOps"].append(op)
     # The staged event is the durable record recovery replays. It contains
     # only effects that passed their deterministic save gate.
