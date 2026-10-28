@@ -14,6 +14,61 @@ from uuid import uuid4
 _PROCESS_LOCKS = {}
 _PROCESS_LOCKS_GUARD = threading.Lock()
 
+_REPR_LIMIT = 300
+# A value _json_safe left out; never written.
+_LEFT_OUT = object()
+
+
+def _described(value):
+    try:
+        shown = repr(value)
+    except Exception:
+        shown = "<repr failed>"
+    return "%s: %s" % (type(value).__name__, shown[:_REPR_LIMIT])
+
+
+def _json_safe(value, path, found, active=None):
+    """A copy of ``value`` that json.dump writes as it writes the original, with
+    each value it cannot write left out (#1621).
+
+    Values are kept by json's own isinstance tests, in its order, so a str or
+    int subclass, an OrderedDict or a NaN is written exactly as before. A value
+    json would refuse, a dict key it would refuse, or a reference back to an
+    enclosing container is left out of its dict (None in a list, so later
+    indexes stay true); ``found`` maps its dotted path to its type and repr.
+    """
+    if isinstance(value, str) or value is None or value is True or value is False:
+        return value
+    if isinstance(value, (int, float)):
+        return value
+    if not isinstance(value, (list, tuple, dict)):
+        found[path] = _described(value)
+        return _LEFT_OUT
+    active = set() if active is None else active
+    if id(value) in active:
+        found[path] = "cycle: a reference back to an enclosing %s" % type(value).__name__
+        return _LEFT_OUT
+    active.add(id(value))
+    try:
+        if isinstance(value, dict):
+            copied = {}
+            for key, item in value.items():
+                if not (isinstance(key, (str, int, float)) or key is None):
+                    found["%s.<key %s>" % (path, type(key).__name__) if path
+                          else "<key %s>" % type(key).__name__] = _described(key)
+                    continue
+                child = _json_safe(item, "%s.%s" % (path, key) if path else str(key), found, active)
+                if child is not _LEFT_OUT:
+                    copied[key] = child
+            return copied
+        copied = []
+        for index, item in enumerate(value):
+            child = _json_safe(item, "%s[%d]" % (path, index), found, active)
+            copied.append(None if child is _LEFT_OUT else child)
+        return copied
+    finally:
+        active.discard(id(value))
+
 
 def _process_lock(path):
     """Return one in-process lock shared by every writer instance for a file."""
@@ -26,9 +81,24 @@ def _process_lock(path):
 class CaptureFileWriter:
     """Writes and merges capture records into per-task-id JSON files."""
 
-    def __init__(self, capture_dir="model_captures"):
+    def __init__(self, capture_dir="model_captures", error_logger=None):
         self.capture_dir = capture_dir
+        # The capture error log (model_captures/errors.log), for values left out.
+        self.error_logger = error_logger
         os.makedirs(capture_dir, exist_ok=True)
+
+    def _report(self, task_id, invocation_id, found):
+        """One error-log line per value left out of a record (#1621)."""
+        if self.error_logger is None:
+            return
+        for path, described in found.items():
+            try:
+                self.error_logger.error(
+                    "[%s] capture record %s: left out non-JSON value at %s (%s)"
+                    % (task_id, invocation_id, path, described.split(":", 1)[0])
+                )
+            except Exception:
+                pass
 
     def _get_lock(self, task_id):
         return _process_lock(os.path.abspath(self._file_path(task_id)))
@@ -127,11 +197,17 @@ class CaptureFileWriter:
             },
             "errors": {}
         }
+        found = {}
+        record = _json_safe(record, "", found)
+        if found:
+            record["unserializable"] = found
 
         with self._locked_file(task_id):
             records = self._read(task_id)
             records.append(record)
             self._write(task_id, records)
+        if found:
+            self._report(task_id, invocation_id, found)
         return invocation_id
 
     def merge_background_output(self, task_id, invocation_id, label, content, latency_s,
@@ -147,9 +223,14 @@ class CaptureFileWriter:
                 output_entry["tokens"] = token_usage
             if cost_usd is not None:
                 output_entry["cost_usd"] = cost_usd
-            record["outputs"][label] = output_entry
+            found = {}
+            record["outputs"][label] = _json_safe(output_entry, "outputs.%s" % label, found)
+            if found:
+                record.setdefault("unserializable", {}).update(found)
             self._write(task_id, records)
-            return True
+        if found:
+            self._report(task_id, invocation_id, found)
+        return True
 
     def merge_background_error(self, task_id, invocation_id, label, error_str):
         """Record an error from a background variant into the errors dict."""
@@ -158,9 +239,15 @@ class CaptureFileWriter:
             record = self._find_record(records, task_id, invocation_id)
             if record is None:
                 return False
-            record["errors"][label] = error_str
+            found = {}
+            safe = _json_safe(error_str, "errors.%s" % label, found)
+            record["errors"][label] = None if safe is _LEFT_OUT else safe
+            if found:
+                record.setdefault("unserializable", {}).update(found)
             self._write(task_id, records)
-            return True
+        if found:
+            self._report(task_id, invocation_id, found)
+        return True
 
     @staticmethod
     def _find_record(records, task_id, invocation_id):

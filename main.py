@@ -130,6 +130,7 @@ from utils import quest_record
 from utils.player_stats import get_player_stat
 from updates.update_world_time import update_world_time
 from core.ai.conversation_utils import (
+    _effect_note,
     _effects_runtime_view,
     _format_temporary_effects,
     update_conversation_history,
@@ -1870,12 +1871,7 @@ def generate_arrival_narration(
     # Get details for the new location from the (now updated) party tracker
     new_location_name = party_tracker_data["worldConditions"]["currentLocation"]
     new_area_name = party_tracker_data["worldConditions"]["currentArea"]
-    player_names = [str(name) for name in party_tracker_data.get("partyMembers", [])]
-    npc_names = [
-        str(item.get("name"))
-        for item in party_tracker_data.get("partyNPCs", [])
-        if isinstance(item, dict) and item.get("name")
-    ]
+    player_names, npc_names = _transition_roster(party_tracker_data)
 
     # Construct the special prompt
     arrival_prompt = f"""
@@ -1984,12 +1980,13 @@ def generate_arrival_narration(
 
 
 # <--- NEW FUNCTION to blend the departure and arrival narrations --->
-def generate_seamless_transition_narration(departure_narration, arrival_narration, dm_text=""):
+def generate_seamless_transition_narration(departure_narration, arrival_narration, dm_text="", party=None):
     """
     Run layer 3/3 (T064), preserving both accepted layers as one seamless turn.
     dm_text is the DM's accepted narration of the turn (#670): the closing
     invitation keeps what it says the player asked for that waits for the next
-    turn. Empty dm_text leaves the prompt unchanged.
+    turn. Empty dm_text leaves the prompt unchanged. party (#312) gives the
+    stitch the committed roster T063 has; without it the prompt is unchanged.
     """
     from utils.capture.live_provider_call import LiveProviderSuperseded
     debug("STATE_CHANGE: Blending departure and arrival narrations into a seamless whole...", category="narrative_generation")
@@ -2007,6 +2004,17 @@ def generate_seamless_transition_narration(departure_narration, arrival_narratio
         "waits for their next turn, say so plainly in the closing invitation, in "
         "its own terms; take nothing else from it):\n---\n" + dm_text + "\n---\n"
     ) if dm_text else ""
+    roster_block = ""
+    if isinstance(party, dict):
+        player_names, npc_names = _transition_roster(party)
+        roster_block = (
+            "\nEXACT COMMITTED ROSTER:\n"
+            f"Player characters: {json.dumps(player_names, ensure_ascii=False)}\n"
+            f"Party NPCs: {json.dumps(npc_names, ensure_ascii=False)}\n"
+            "The travellers are exactly this roster; a player character is 'you', "
+            "never a separate companion. Others appear only as the arrival shows "
+            "them present.\n"
+        )
 
     stitching_prompt = f"""
 You are a master storyteller and narrative editor. The following two text blocks describe a party's departure from one place and their subsequent arrival at another. The transition between them is abrupt because they were generated separately.
@@ -2020,7 +2028,7 @@ Your task is to rewrite them into a single, cohesive, and cinematic narration.
 - Address the sole player character only in second person (you/your), never as a third-person protagonist.
 - End after the committed arrival with one open in-fiction invitation for the player to choose their next immediate action. Do not enumerate options and do not perform that next action.
 - When both blocks state the same fact, keep it once.
-
+{roster_block}
 DEPARTURE NARRATION:
 ---
 {departure_narration}
@@ -2341,6 +2349,20 @@ def _transition_trip_arrival_time(checkpoint):
     return {"clock": time_str[:5], "timeOfDay": get_time_context(time_str)}
 
 
+def _transition_roster(party):
+    """#312: the committed roster every travel narration layer is given:
+    (player character names, party NPC names), from the tracker's
+    partyMembers and partyNPCs."""
+    party = party if isinstance(party, dict) else {}
+    players = [str(name) for name in party.get("partyMembers", [])]
+    npcs = [
+        str(item.get("name"))
+        for item in party.get("partyNPCs", [])
+        if isinstance(item, dict) and item.get("name")
+    ]
+    return players, npcs
+
+
 def _transition_companions(party):
     """The party NPCs travelling with the player ([]: the player is alone)."""
     return [
@@ -2387,6 +2409,7 @@ def _transition_departure_prompt(checkpoint, party, dm_text=""):
     if arrival_time:
         facts["arrivalTime"] = arrival_time
     facts["companions"] = _transition_companions(party)
+    facts["playerCharacters"] = _transition_roster(party)[0]
     prompt = (
         "Narrate the player leaving the origin and the journey to the "
         "destination, ending as the player reaches it. Another agent narrates "
@@ -2399,8 +2422,10 @@ def _transition_departure_prompt(checkpoint, party, dm_text=""):
         "time of day you mention must match arrivalTime.timeOfDay at the "
         "arrival; do not restate clock times or dates (the game shows them), "
         "and never suggest that the clock stood still. The travellers are the "
-        "player and the named companions; with no companions the player "
-        "travels alone, so never write 'the party' or 'we'. When "
+        "player (playerCharacters: always 'you', never named in the third "
+        "person or described as travelling with someone of that name) and "
+        "the named companions; with no companions the player travels alone, "
+        "so never write 'the party' or 'we'. When "
         "previousVisit is supplied, or the destination has an "
         "adventureSummary, this is a return: frame it as going back, and say "
         "that anything has changed only from the supplied facts, such as the "
@@ -2421,11 +2446,13 @@ def _transition_departure_prompt(checkpoint, party, dm_text=""):
     return prompt + _transition_narration_action_context(checkpoint)
 
 
-def _transition_arrival_facts(party):
+def _transition_arrival_facts(party, checkpoint=None):
     """Layer 2/3 (T063) grounding: the code-filtered destination projection,
     its player storage, and the people the engine records present there.
     Hostile occupants are left out: the arrival never resolves or triggers an
-    encounter. "" when the destination is unreadable."""
+    encounter. "" when the destination is unreadable. The arrival time is
+    T013's: the checkpoint's committed arrival first (#312: a resumed turn's
+    party can predate it), else the tracker's clock."""
     from core.nql import occupants
     from utils import travel_map
 
@@ -2439,7 +2466,9 @@ def _transition_arrival_facts(party):
         area_name=world.get("currentArea"),
     )
     block = ""
-    arrival_time = _transition_arrival_time(party)
+    arrival_time = (
+        _transition_trip_arrival_time(checkpoint) if isinstance(checkpoint, dict) else None
+    ) or _transition_arrival_time(party)
     if arrival_time:
         block += (
             "\n    ARRIVAL TIME: %s, %s. Describe the scene as it is at this "
@@ -2495,9 +2524,9 @@ def _run_transition_chain(checkpoint, party, history):
         party,
     )
     arrival = generate_arrival_narration(
-        first, party, history, _transition_arrival_facts(party)
+        first, party, history, _transition_arrival_facts(party, checkpoint)
     )
-    return generate_seamless_transition_narration(first, arrival, dm_text)
+    return generate_seamless_transition_narration(first, arrival, dm_text, party=party)
 
 
 def _transition_outcome_lines(checkpoint, party):
@@ -8321,7 +8350,7 @@ def _party_stats_text(party_tracker_data, path_manager, party_members_stats):
             # D-KW-12: the engine id the DM keys a typed reference by (rest hitDice).
             from core.nql.genesis import character_id as _engine_character_id
             member_id = _engine_character_id(member_data_for_note)
-            party_stats_formatted.append(f"{display_name} (id {member_id}): Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}, {ability_str}{spell_slots_str}{currency_str}, Effects: {effects_str}")
+            party_stats_formatted.append(f"{display_name} (id {member_id}): Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}{_effect_note(member_data_for_note, 'maxHitPoints', prefix='max ')}, {ability_str}{spell_slots_str}{currency_str}, Effects: {effects_str}")
 
     party_stats_str = "; ".join(party_stats_formatted)
     return party_stats_str
