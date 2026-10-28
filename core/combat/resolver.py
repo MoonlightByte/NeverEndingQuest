@@ -4945,7 +4945,7 @@ def _apply_charges_after(sheet, item, resource, after_state):
         if exhausted:
             receipt["exhausted"] = deepcopy(exhausted)
         receipts.append(receipt)
-        sheet["chargeUses"] = receipts[-20:]  # item_charges.RECEIPTS_KEPT
+        sheet["chargeUses"] = receipts
 
 
 def _apply_resource(new_characters, resource):
