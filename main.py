@@ -9987,21 +9987,12 @@ def _main_game_loop(startup_authority, turn_authority):
             startup_ready_pending = False
         status_ready()
 
-        # C2a: a check the DM asked the player to roll is settled before the
-        # next free command. The roll prompt takes whole numbers (the player's
-        # dice) or a blank line (the game rolls); no words are read.
-        from core.managers.checks_runtime import take_player_rolls
+        # #1118 item 4: a check waiting for the player's roll is answered by this
+        # line (the settle below takes it); its web panel is published only while
+        # one of these reads waits.
+        from core.managers.checks_runtime import read_player_line
 
-        completed_checks = take_player_rolls(input)
-
-        # A dice submission is the next player input; narrate its authoritative
-        # result without requiring an unrelated command or rolling again. The
-        # line is the engine's, not the player's: its turn is saved as a
-        # check_continuation marker and runs no companion recall.
-        check_continuation = bool(completed_checks)
-        if completed_checks:
-            user_input_text = "Continue with the outcome of my submitted roll."
-        elif player_data_current:
+        if player_data_current:
             current_hp = player_data_current.get("hitPoints", "N/A")
             max_hp = player_data_current.get("maxHitPoints", "N/A")
             current_xp = player_data_current.get("experience_points", "N/A")
@@ -10031,7 +10022,7 @@ def _main_game_loop(startup_authority, turn_authority):
                     if hasattr(sys.stdin, "queue")
                     else TPK_BANNER_TERMINAL
                 )
-                user_input_text = input(f"{stats_display} {tpk_banner} ")
+                user_input_text = read_player_line(input, f"{stats_display} {tpk_banner} ")
             elif sheet_is_down(player_data_current):
                 # The banner names the character as the sheet spells it, not
                 # the file-form name the ordinary prompt line shows.
@@ -10046,21 +10037,21 @@ def _main_game_loop(startup_authority, turn_authority):
                     channel="main",
                     color="yellow",
                 )
-                user_input_text = input(
-                    f"{stats_display} " + MAIN_DOWN_BANNER.format(name=down_display_name) + " "
+                user_input_text = read_player_line(
+                    input, f"{stats_display} " + MAIN_DOWN_BANNER.format(name=down_display_name) + " "
                 )
             else:
-                user_input_text = input(f"{stats_display} {player_name_display}: ")
+                user_input_text = read_player_line(input, f"{stats_display} {player_name_display}: ")
         else:
             print("[DEBUG] About to show basic input prompt")
-            user_input_text = input("User: ")
+            user_input_text = read_player_line(input, "User: ")
 
-        # Skip processing if input is empty or only whitespace, unless a held
-        # rest waits: then a blank line lets the game roll (#1118 item 3).
-        from core.managers.checks_state import pending_rest
+        # Skip processing if input is empty or only whitespace, unless a roll
+        # waits: then a blank line lets the game roll (#1118 items 3 and 4).
+        from core.managers.checks_state import pending_checks, pending_rest
 
         if not user_input_text or not user_input_text.strip():
-            if check_continuation or pending_rest() is None:
+            if pending_rest() is None and not pending_checks():
                 continue
             user_input_text = ""
         else:
@@ -10172,32 +10163,34 @@ def _main_game_loop(startup_authority, turn_authority):
                 "recovery; no new action was applied."
             )
             continue
-        # #1118 item 3: a short rest held for the player's hit dice is settled by
-        # this line, inside the turn's one live scope and before the party stats
-        # and the DM note are built, so the note shows the sheets after the rest.
-        rest_settle = {}
-        if not check_continuation:
-            from core.managers.checks_runtime import settle_pending_rest
+        # #1118 items 3 and 4: a check waiting for the player's roll, or else a
+        # short rest held for their hit dice, is settled by this line, inside the
+        # turn's one live scope and before the party stats and the DM note are
+        # built, so the note shows the sheets after the rest.
+        from core.managers.checks_runtime import settle_pending_rolls
 
-            rest_settle = settle_pending_rest(user_input_text, conversation_history)
-            if rest_settle.get("providerError") is not None:
-                decision = provider_failure_policy(
-                    classify_provider_error(rest_settle["providerError"]), 1, False)
-                if decision["stop"]:
-                    from utils.capture.live_provider_call import finish_live_turn_scope
-
-                    display_dm_narration(decision["player_message"], channel="system")
-                    finish_live_turn_scope(live_turn_scope)
-                    continue
-            if not user_input_text.strip() and not rest_settle.get("settled"):
-                # A blank line that settles nothing is skipped, never an empty turn.
+        roll_settle = settle_pending_rolls(user_input_text, conversation_history)
+        if roll_settle.get("providerError") is not None:
+            decision = provider_failure_policy(
+                classify_provider_error(roll_settle["providerError"]), 1, False)
+            if decision["stop"]:
                 from utils.capture.live_provider_call import finish_live_turn_scope
 
+                display_dm_narration(decision["player_message"], channel="system")
                 finish_live_turn_scope(live_turn_scope)
                 continue
-            if rest_settle.get("settled") and not user_input_text.strip():
-                check_continuation = True
-                user_input_text = "Continue with the outcome of my submitted roll."
+        if not user_input_text.strip() and not roll_settle.get("settled"):
+            # A blank line that settles nothing is skipped, never an empty turn.
+            from utils.capture.live_provider_call import finish_live_turn_scope
+
+            finish_live_turn_scope(live_turn_scope)
+            continue
+        # A blank line that settles the roll is the engine's, not the player's:
+        # its turn is saved as a check_continuation marker and runs no companion
+        # recall. Any other line is the player's own turn.
+        check_continuation = bool(roll_settle.get("settled")) and not user_input_text.strip()
+        if check_continuation:
+            user_input_text = "Continue with the outcome of my submitted roll."
 
         # Remove duplicate NPCs if any exist
         party_tracker_data, npcs_were_cleaned = remove_duplicate_npcs(party_tracker_data)
@@ -10379,10 +10372,10 @@ def _main_game_loop(startup_authority, turn_authority):
         from core.managers.checks_runtime import rest_offers_note
 
         dm_note += rest_offers_note()
-        # #1118 item 3: a held rest still waiting, with this turn's settle note.
+        # #1118 items 3 and 4: a roll still waiting, with this turn's settle note.
         from core.managers.checks_runtime import pending_roll_note
 
-        dm_note += pending_roll_note(rest_settle)
+        dm_note += pending_roll_note(roll_settle)
 
         # The player's own words, never annotated with guessed items or a
         # word-matched SRD block (D-KW-5): the DM already sees every item and

@@ -57,11 +57,18 @@ RAW_LOG_PATH = os.path.join("modules", "logs", "headless_raw.log")
 
 
 def _pending_roll():
-    """The roll the game is holding for the player (D-1118-5 A, #1118 item 3), typed, from checks_state:
-    {kind: "hitDie", label, dice}; None when nothing is held. A harness never reads DM prose to find it."""
+    """The roll the game is holding for the player (D-1118-5 A, #1118 items 3 and 4), typed, from checks_state:
+    {kind: "check" or "hitDie", label, dice}; a waiting check comes before a held rest, as the settle takes
+    them. None when nothing is held. A harness never reads DM prose to find it."""
     try:
         from core.managers import checks_state
+        from core.nql import checks
 
+        pending = checks_state.pending_checks()
+        if pending:
+            check = pending[0]
+            return {"kind": "check", "label": f"{checks.label(check.get('stat'))} for {check.get('characterName')}",
+                    "dice": [{"count": check.get("faces"), "sides": 20}]}
         entry = checks_state.pending_rest()
     except Exception:
         return None

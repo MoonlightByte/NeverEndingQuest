@@ -4999,6 +4999,12 @@ def process_action(
                     conversation_history.append({"role": "user", "content": (
                         f"{interrupted.get('characterName')}'s pending short rest was interrupted by combat; "
                         "not applied, no hit die spent.")})
+                # #1118 item 4: combat closes every check still waiting for the player's roll (no result line).
+                from core.nql import checks
+
+                for check in checks_state.close_pending_checks():
+                    conversation_history.append({"role": "user", "content": (
+                        f"{check.get('characterName')} {checks.label(check.get('stat'))}: not resolved (combat began)")})
 
                 print(f"[DEBUG ACTION_HANDLER] About to call run_combat_simulation with encounter: {encounter_id}")
                 print("[DEBUG ACTION_HANDLER] This should start INTERACTIVE turn-based combat...")
@@ -5728,7 +5734,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
 
     elif action_type == ACTION_ROLL_CHECK:
         # C2a: the DM names the check; the engine scores it. The player's own
-        # dice come from the roll prompt before the next DM turn; companions
+        # dice come from their answer on a later turn (#1118 item 4); companions
         # and engine-rolled checks resolve now. Results reach the next DM Note.
         try:
             from core.managers.checks_runtime import stage_roll_check
