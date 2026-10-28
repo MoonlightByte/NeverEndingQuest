@@ -6924,11 +6924,18 @@ def process_ai_response(
         # does not exist yet, so its narration is held, as a transition holds
         # its departure narration (#182). A published build is narrated by the
         # DM's post-publish follow-up; a failed build shows only its system
-        # line. The stored reply leaves out the narration that was not shown.
+        # line. A reply that starts a fight (createEncounter, alone or after a
+        # prerequisite's updates) is held the same way: the combat opening
+        # narrates the fight from its encounterSummary (#1345, D-1345-1 A).
+        # The stored reply leaves out the narration that was not shown.
         if (
             len(actions) == 1
             and isinstance(actions[0], dict)
             and actions[0].get("action") == action_handler.ACTION_CREATE_NEW_MODULE
+        ) or any(
+            isinstance(action, dict)
+            and action.get("action") == action_handler.ACTION_CREATE_ENCOUNTER
+            for action in actions
         ):
             held_reply = dict(parsed_response)
             held_reply["narration"] = ""

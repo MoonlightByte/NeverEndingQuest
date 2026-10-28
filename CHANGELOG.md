@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When an attack or an ambush starts a fight, the DM no longer shows a lead-in line before it, so rule wording such as "begins formal combat" can no longer reach you; the fight's own opening describes how it starts (#1345).
 - The quest journal is now told who your character is, so a journal entry no longer describes a character playing alone in the third person, as if they were someone else (#1625).
 - A scene image that finishes after the connection drops now still appears, and the Generate Image button no longer stays on "Generating..." after a reconnect (#1396).
 - Every item pickup, purchase and charged-item use is now kept on the character sheet, so the rules check sees the whole history instead of only the most recent entries, and repeating an old request no longer spends a charge twice (#1253).

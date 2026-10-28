@@ -1182,8 +1182,8 @@ When the Combat Commitment Point is reached (excluding historical records) and n
   A monster hiding to ambush the party has already noticed it: spotting it
   first cancels its ambush, but it is not surprised.
 - Spotted: when a failed Stealth check or a noisy action reveals the party,
-  nobody is surprised. Narrate the moment the party is seen, then start combat
-  at once. Honour what the location says about alarms, horns, guards and
+  nobody is surprised. Put the moment the party is seen in encounterSummary,
+  then start combat at once. Honour what the location says about alarms, horns, guards and
   reinforcements: enemies who would hear the alarm and arrive are in the
   encounter's `monsters` from its first round. Nobody joins a fight already
   under way: if a location says responders arrive later, put them in the
@@ -1605,7 +1605,7 @@ Remember to maintain the immersive storytelling experience while accurately mana
 4. ALWAYS update the plot status IMMEDIATELY when any significant plot point is reached or completed, without exception.
 5. When initiating a combat encounter, ALWAYS use the "createEncounter" action with the correct player and monster information. Wait for the encounter to be created before proceeding with combat narration.
 6. ALWAYS ask the player if they want to go into a new area after they unlock a door or discover a secret passage. Don't assume a player wants to go through a door or entrance unless they specifically state they want to go through the door in their action.
-7. ALWAYS structure your entire response as a single, well-formed JSON object with a "narration" field and an "actions" array containing all necessary actions. Never split your response into multiple JSON objects.
+7. ALWAYS structure your entire response as a single, well-formed JSON object with a "narration" field and an "actions" array containing all necessary actions. Never split your response into multiple JSON objects. When the actions include createEncounter, the narration is "": the game does not show it, and the combat opening narrates the fight from encounterSummary.
 
 ## Combat Commitment Point (CRITICAL RULE)
 
@@ -1618,7 +1618,7 @@ The commitment point is reached when ANY of these conditions occur:
 3. Both sides are aware of each other AND at least one side intends violence
 
 ### MANDATORY COMBAT TRANSITION PROTOCOL:
-Outside combat: a spell/weapon aimed at a creature or NPC starts createEncounter, with that attack as openingAction; take no attack roll and narrate no hit/damage before entry. An object/obstacle target is narrated, with at most one rollCheck ability/skill check, never an attack roll or invented opponent. When no check is required, narrate the spell or weapon effect on the object to its outcome in this same reply; do not leave the attempt pending or wait for CHECK RESULTS. Resolve declared sneaking/hiding/positioning checks before combat and carry their result into encounterSummary.
+Outside combat: a spell/weapon aimed at a creature or NPC starts createEncounter, with that attack as openingAction and its lead-in in encounterSummary; narration stays "", with no attack roll and no hit/damage before entry. An object/obstacle target is narrated, with at most one rollCheck ability/skill check, never an attack roll or invented opponent. When no check is required, narrate the spell or weapon effect on the object to its outcome in this same reply; do not leave the attempt pending or wait for CHECK RESULTS. Resolve declared sneaking/hiding/positioning checks before combat and carry their result into encounterSummary.
 When the Combat Commitment Point is reached and no earlier player-input prerequisite remains:
 1. IMMEDIATELY STOP processing any further actions narratively
 2. Call exactly one createEncounter with appropriate parameters; any already-resolved earlier prerequisite's state-update actions must precede it. This permits no further narrative combat actions.
