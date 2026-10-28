@@ -1583,6 +1583,7 @@ def recover_pending_combat_output():
 def _offer_opening_action(text):
     """#882: show the player's declared first action at their first turn and
     offer it as the composer's text (web); the terminal sends it on Enter."""
+    from utils.player_notice import show_player_notice
     from web.shared_state import emit_player_output, has_player_output_sink
 
     sentence = text if text.endswith((".", "!", "?")) else text + "."
@@ -1590,10 +1591,9 @@ def _offer_opening_action(text):
     if not has_player_output_sink():
         print(line.replace("Send it as is", "Press Enter to send it"))
         return
-    # The shape of the rest receipt (#840): a narration on the system channel
-    # is cached with a message id, so the web shows it and a reload keeps it.
-    if emit_player_output({"type": "narration", "channel": "system", "content": line}) is not True:
-        print(line)
+    # An operational notice card (#1580), cached with its message id so a
+    # reload keeps it; a sink that rejects it gets no console copy.
+    show_player_notice(line)
     emit_player_output({"type": "input_suggestion", "channel": "input_suggestion", "content": text})
 
 

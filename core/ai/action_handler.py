@@ -4660,29 +4660,15 @@ def _travel_prepare_failure(exc):
 
 
 def _show_transition_notice(message_id, content):
-    """Show the player one travel notice (#855).
+    """Show the player one travel notice (#855) as an operational notice (#1580).
 
-    A frontend sink gets it with its message id. A sink that rejects it gets
-    no console copy: its stdout scraper would show an untracked duplicate
-    (the combat_manager pattern). Only a plain terminal, with no sink, prints.
+    It keeps the receipt's message id, so a replay is the same cached card. A
+    sink that rejects it gets no console copy: its stdout scraper would show an
+    untracked duplicate. Only a plain terminal, with no sink, prints.
     """
-    from web.shared_state import emit_player_output, has_player_output_sink
+    from utils.player_notice import show_player_notice
 
-    has_sink = has_player_output_sink()
-    if emit_player_output({
-        "type": "narration",
-        "channel": "system",
-        "content": content,
-        "message_id": message_id,
-    }) is True:
-        return
-    if has_sink:
-        warning(
-            "TRAVEL: the frontend did not accept the travel notice",
-            category="location_transitions",
-        )
-        return
-    print(content)
+    show_player_notice(content, message_id=message_id)
 
 
 # The turn whose fight already failed to start once (#444). It is only ever
