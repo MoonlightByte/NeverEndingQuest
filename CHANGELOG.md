@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The DM's view of a character's armor class, hit point maximum and speed now names the active effects already counted in it, so a spell like Shield of Faith is no longer counted twice (#1520).
 - Model-capture records are no longer lost when a call passes a setting that cannot be saved as JSON: that one value is left out, named in the record and in the capture error log, and the rest of the record is kept (#1621).
 - Combat pauses, the party-defeat stop, a refused combat action and the line telling a downed player how to let the round run now show as system notices instead of Dungeon Master messages (#1615).
 - More of the messages the game writes itself, such as a read-only file stopping the game, an unreadable memory journal, a module that could not join your world, or gameplay pausing after a problem, now appear as game notices instead of as the Dungeon Master speaking. In the terminal they read [SYSTEM] (#1611).

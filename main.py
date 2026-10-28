@@ -130,6 +130,7 @@ from utils import quest_record
 from utils.player_stats import get_player_stat
 from updates.update_world_time import update_world_time
 from core.ai.conversation_utils import (
+    _effect_note,
     _effects_runtime_view,
     _format_temporary_effects,
     update_conversation_history,
@@ -8321,7 +8322,7 @@ def _party_stats_text(party_tracker_data, path_manager, party_members_stats):
             # D-KW-12: the engine id the DM keys a typed reference by (rest hitDice).
             from core.nql.genesis import character_id as _engine_character_id
             member_id = _engine_character_id(member_data_for_note)
-            party_stats_formatted.append(f"{display_name} (id {member_id}): Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}, {ability_str}{spell_slots_str}{currency_str}, Effects: {effects_str}")
+            party_stats_formatted.append(f"{display_name} (id {member_id}): Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}{_effect_note(member_data_for_note, 'maxHitPoints', prefix='max ')}, {ability_str}{spell_slots_str}{currency_str}, Effects: {effects_str}")
 
     party_stats_str = "; ".join(party_stats_formatted)
     return party_stats_str

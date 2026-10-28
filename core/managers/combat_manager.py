@@ -2939,6 +2939,9 @@ def format_character_for_combat(char_data, char_type="player", role=None):
     Returns:
         Formatted string matching conversation_utils format
     """
+    # #1520 item 1: these blocks print the stored AC and speed (stored notes).
+    from core.ai.conversation_utils import _effect_note
+
     # Get equipment string - include ALL items with quantities (not just equipped)
     # Don't include item type in parentheses for combat - wastes tokens
     equipment_str = "None"
@@ -3010,7 +3013,7 @@ def format_character_for_combat(char_data, char_type="player", role=None):
     # Build the formatted string (exactly matching conversation_utils format)
     formatted_data = f"""{header}
 {type_line} | LVL: {char_data.get('level', 1)} | RACE: {char_data.get('race', 'Unknown')} | CLASS: {char_data.get('class', 'Unknown')} | ALIGN: {str(char_data.get('alignment', 'neutral')).upper()} | BG: {char_data.get('background', 'None')}
-AC: {char_data.get('armorClass', 10)} | SPD: {char_data.get('speed', 30)}
+AC: {char_data.get('armorClass', 10)}{_effect_note(char_data, 'armorClass', stored=True)} | SPD: {char_data.get('speed', 30)}{_effect_note(char_data, 'speed', stored=True)}
 STATUS: {char_data.get('status', 'alive')} | CONDITION: {char_data.get('condition', 'none')} | AFFECTED: {', '.join(char_data.get('condition_affected', []))}
 STATS: STR {char_data.get('abilities', {}).get('strength', 10)}, DEX {char_data.get('abilities', {}).get('dexterity', 10)}, CON {char_data.get('abilities', {}).get('constitution', 10)}, INT {char_data.get('abilities', {}).get('intelligence', 10)}, WIS {char_data.get('abilities', {}).get('wisdom', 10)}, CHA {char_data.get('abilities', {}).get('charisma', 10)}
 SAVES: {', '.join(char_data.get('savingThrows', []))}
@@ -3080,6 +3083,9 @@ def format_npc_for_combat(npc_data, npc_role=None):
     Returns:
         Formatted string matching conversation_utils format
     """
+    # #1520 item 1: these blocks print the stored AC and speed (stored notes).
+    from core.ai.conversation_utils import _effect_note
+
     # Get equipment string - include ALL items with quantities (not just equipped)
     # Don't include item type in parentheses for combat - wastes tokens
     equipment_str = "None"
@@ -3143,7 +3149,7 @@ def format_npc_for_combat(npc_data, npc_role=None):
     # Build the formatted string (exactly matching conversation_utils format)
     formatted_data = f"""NPC: {npc_data.get('name', 'Unknown')}
 ROLE: {npc_role if npc_role else 'Adventurer'} | TYPE: {npc_data.get('character_type', 'npc').capitalize()} | LVL: {npc_data.get('level', 1)} | RACE: {npc_data.get('race', 'Unknown')} | CLASS: {npc_data.get('class', 'Unknown')} | ALIGN: {str(npc_data.get('alignment', 'neutral')).upper()} | BG: {npc_data.get('background', 'None')}
-AC: {npc_data.get('armorClass', 10)} | SPD: {npc_data.get('speed', 30)}
+AC: {npc_data.get('armorClass', 10)}{_effect_note(npc_data, 'armorClass', stored=True)} | SPD: {npc_data.get('speed', 30)}{_effect_note(npc_data, 'speed', stored=True)}
 STATUS: {npc_data.get('status', 'alive')} | CONDITION: {npc_data.get('condition', 'none')} | AFFECTED: {', '.join(npc_data.get('condition_affected', []))}
 STATS: STR {npc_data.get('abilities', {}).get('strength', 10)}, DEX {npc_data.get('abilities', {}).get('dexterity', 10)}, CON {npc_data.get('abilities', {}).get('constitution', 10)}, INT {npc_data.get('abilities', {}).get('intelligence', 10)}, WIS {npc_data.get('abilities', {}).get('wisdom', 10)}, CHA {npc_data.get('abilities', {}).get('charisma', 10)}
 SAVES: {', '.join(npc_data.get('savingThrows', []))}
