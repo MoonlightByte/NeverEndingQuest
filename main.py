@@ -5709,7 +5709,7 @@ def _show_read_only_save_stop(path):
         f"SAVE STOP: {path} is read-only; the game stopped",
         category="session_management",
     )
-    display_dm_narration(_read_only_save_stop_line(path), channel="system")
+    show_player_notice(_read_only_save_stop_line(path))
 
 
 
@@ -6954,9 +6954,8 @@ def process_ai_response(
                 }
                 conversation_history.append(drop_notice)
                 save_conversation_history(conversation_history)
-                display_dm_narration(
+                show_player_notice(
                     _AGENTIC_POST_COMBAT_DROP_NOTICE,
-                    channel="system",
                     color="yellow",
                 )
                 _record_agentic_post_combat_updates_dropped(
@@ -8670,7 +8669,7 @@ def _startup_travel_followup_failed(recovery_scope, exc):
             "afterwards."
         )
         line = cause + " Gameplay is paused."
-    display_dm_narration(line, channel="system")
+    show_player_notice(line)
     if hasattr(sys.stdin, "queue"):
         # The web pause adds its own "Gameplay is paused." sentence.
         return WebRecoveryPause(cause)
@@ -8947,7 +8946,7 @@ def main_game_loop():
             finish_live_turn_scope(scope)
             scope.quiescent.wait()
         warning(f"ACTIVE MODULE: {exc}", category="session_management")
-        display_dm_narration(str(exc), channel="system")
+        show_player_notice(str(exc))
         if hasattr(sys.stdin, "queue"):
             return WebRecoveryPause(str(exc))
         from updates.save_game_manager import SaveGameManager
@@ -9113,7 +9112,7 @@ def _resume_active_combat(
             if source == "input":
                 # #230: a fight re-entered from an input that still cannot
                 # resume pauses on the controls; it is never re-sent.
-                display_dm_narration(unresumed_line + " Gameplay is paused.", channel="system")
+                show_player_notice(unresumed_line + " Gameplay is paused.")
                 if hasattr(sys.stdin, "queue"):
                     # The web pause adds its own "Gameplay is paused." sentence.
                     return WebRecoveryPause(unresumed_line), party_tracker_data, conversation_history
@@ -9161,7 +9160,7 @@ def _resume_active_combat(
             "The party's location could not be read after the fight, so "
             "the story cannot continue from here."
         )
-        display_dm_narration(cause + " Gameplay is paused.", channel="system")
+        show_player_notice(cause + " Gameplay is paused.")
         if hasattr(sys.stdin, "queue"):
             # The web pause adds its own "Gameplay is paused." sentence.
             return WebRecoveryPause(cause), party_tracker_data, conversation_history
@@ -9279,7 +9278,7 @@ def _main_game_loop(startup_authority, turn_authority):
             f"INITIALIZATION: {json_file} is read-only; the game cannot start",
             category="startup",
         )
-        display_dm_narration(_CONVERSATION_HISTORY_READ_ONLY_LINE, channel="system")
+        show_player_notice(_CONVERSATION_HISTORY_READ_ONLY_LINE)
         return
 
     # Issue #167 / E2E gate 2d: hydrate missing live module files from their _BU
@@ -9305,7 +9304,7 @@ def _main_game_loop(startup_authority, turn_authority):
             check_and_initialize_on_startup,
         )
         if check_and_initialize_on_startup() == JOURNAL_UNREADABLE:
-            display_dm_narration(_MEMORY_JOURNAL_UNREADABLE_LINE, channel="system")
+            show_player_notice(_MEMORY_JOURNAL_UNREADABLE_LINE)
             memory_journal_told = True
     except Exception as e:
         warning(f"Could not initialize memories (non-fatal): {e}", category="startup")
@@ -9327,7 +9326,7 @@ def _main_game_loop(startup_authority, turn_authority):
             try:
                 from core.memories.initialize_memories import journal_unreadable
                 if journal_unreadable():
-                    display_dm_narration(_MEMORY_JOURNAL_UNREADABLE_LINE, channel="system")
+                    show_player_notice(_MEMORY_JOURNAL_UNREADABLE_LINE)
             except Exception as note_exc:
                 warning(f"Could not check journal.json after the episodic upgrade: {note_exc}",
                         category="startup")
@@ -9739,9 +9738,9 @@ def _main_game_loop(startup_authority, turn_authority):
             for imported in refresh_result.get("imported", []):
                 _queue_library_notice(_module_joined_line(imported))
             for refusal in refresh_result.get("import_required", []):
-                display_dm_narration(_module_join_refusal_line(refusal), channel="system")
+                show_player_notice(_module_join_refusal_line(refusal))
             for refusal in refresh_result.get("not_joined", []):
-                display_dm_narration(_module_not_joined_line(refusal), channel="system")
+                show_player_notice(_module_not_joined_line(refusal))
         except Exception as refresh_exc:
             warning(f"INITIALIZATION: startup module refresh failed: {refresh_exc}", category="startup")
     
@@ -10198,7 +10197,7 @@ def _main_game_loop(startup_authority, turn_authority):
             if decision["stop"]:
                 from utils.capture.live_provider_call import finish_live_turn_scope
 
-                display_dm_narration(decision["player_message"], channel="system")
+                show_player_notice(decision["player_message"])
                 finish_live_turn_scope(live_turn_scope)
                 continue
         if not user_input_text.strip() and not roll_settle.get("settled"):
@@ -12238,7 +12237,7 @@ def main():
     except ActiveModuleUnavailable as exc:
         # The same one line and pause menu as main_game_loop (issue #448).
         warning(f"ACTIVE MODULE: {exc}", category="session_management")
-        display_dm_narration(str(exc), channel="system")
+        show_player_notice(str(exc))
         from updates.save_game_manager import SaveGameManager
         pending_result = _terminal_recovery_menu(SaveGameManager())
     print(f"DEBUG: [LocationGraph] Initialization complete. Total nodes loaded: {len(location_graph.nodes)}")
