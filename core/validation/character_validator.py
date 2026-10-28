@@ -628,7 +628,7 @@ class AICharacterValidator:
                 'item_name': item.get('item_name'),
                 'item_type': item.get('item_type'),
                 'equipped': item.get('equipped', False),
-                'description': item.get('description', '')[:200]  # Limit description length
+                'description': item.get('description', ''),
             }
             for field in _ARMOR_ROW_FIELDS:
                 if field in item:
@@ -696,7 +696,7 @@ class AICharacterValidator:
                     'row': index,
                     'item_name': item.get('item_name'),
                     'item_type': item.get('item_type'),
-                    'description': str(item.get('description', ''))[:150],
+                    'description': str(item.get('description', '')),
                     'quantity': item.get('quantity', 1)
                 })
 
