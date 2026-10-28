@@ -1844,11 +1844,13 @@ def _call_live_provider(
         notices_shown.add(key)
 
         def deliver(_message):
-            from web.shared_state import emit_player_output
+            from utils.player_notice import show_player_notice
+            from web.shared_state import has_player_output_sink
 
-            emit_player_output(
-                {"type": "narration", "channel": "system", "content": text}
-            )
+            # The operational notice card (#1580). A plain terminal has only
+            # the status line, as before.
+            if has_player_output_sink():
+                show_player_notice(text)
 
         _safe_emit(deliver, text)
 

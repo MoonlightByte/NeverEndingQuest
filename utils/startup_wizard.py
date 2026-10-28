@@ -2588,10 +2588,13 @@ def _startup_provider_pause(player_message, scope):
     (web) and Ctrl+C or end of input (console) stop setup as before."""
     from utils.capture.live_provider_call import LiveProviderSuperseded
 
+    from utils.player_notice import show_player_notice
+
     status_ready()
-    _say("\nDungeon Master: " + (player_message or (
+    # An operational notice, not the DM's voice (#1511).
+    show_player_notice((player_message or (
         "The AI provider did not answer, so character setup is waiting.")) +
-        " Your setup choices are kept. Send any message to try again.")
+        " Your setup choices are kept. Send any message to try again.", padded=True)
     try:
         while not input("\nYour response: ").strip():
             pass
@@ -2885,9 +2888,12 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
                     if location is not None:
                         warning(f"T093 proposals rejected {invalid} times ({rejected}); starting at "
                                 f"{location['areaId']}/{location['locationId']}", category="startup")
-                        _say("\nDungeon Master: The AI could not settle on a starting location, so your "
-                              f"adventure begins where the story starts: {location['locationName']} "
-                              f"in {location['areaName']}.")
+                        from utils.player_notice import show_player_notice
+
+                        # An operational notice, not the DM's voice (#1511).
+                        show_player_notice("The AI could not settle on a starting location, so your "
+                                           f"adventure begins where the story starts: {location['locationName']} "
+                                           f"in {location['areaName']}.", padded=True)
                         return location
                     # No place in this module resolves: wait for the player, then 4 fresh rounds.
                     _startup_provider_pause(
