@@ -17,13 +17,20 @@ from utils.enhanced_logger import warning
 
 
 def show_player_notice(text, *, message_id=None, color=None, padded=False):
-    """Show ``text`` to the player. False when a frontend owns delivery but did
-    not show it (paused or rejected); that is logged, never printed.
+    """Show ``text`` to the player. False when nothing was shown: no text, or a
+    frontend owns delivery but did not show it (paused or rejected). Either is
+    logged, never printed.
 
     ``color`` and ``padded`` shape only the console line, never the message.
     """
     from web.shared_state import emit_player_output, has_player_output_sink
 
+    if not isinstance(text, str) or not text.strip():
+        # #1233, as display_dm_narration: no text is never shown, neither as
+        # "None" nor as an empty card (#1611).
+        warning("PLAYER_NOTICE: skipped a notice with no text (%r)" % (text,),
+                category="player_notice")
+        return False
     has_sink = has_player_output_sink()
     if emit_player_output({
         "type": "system",

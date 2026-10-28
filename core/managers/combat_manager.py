@@ -471,6 +471,15 @@ os.makedirs("combat_logs", exist_ok=True)
 HISTORY_TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
 
 
+def _display_combat_notice(text):
+   """#1615: an operational combat line (a pause, the party-defeat stop, a
+   rejected action, the downed player's control line) as the typed system
+   notice, never a Dungeon Master card."""
+   from utils.player_notice import show_player_notice
+
+   return show_player_notice(text, color="yellow")
+
+
 def _display_combat_narration(narration, message_id=None):
    """Deliver combat narration through the frontend sink, else the console.
 
@@ -4734,7 +4743,7 @@ This is narration only. Do not advance the round or apply any combat action."""
            state["pauseReason"] = "party_defeated"
            if not safe_write_json(json_file_path, encounter_data):
                raise RuntimeError("Could not persist the party-defeat combat pause")
-           _display_combat_narration(TPK_PAUSE_TEXT)
+           _display_combat_notice(TPK_PAUSE_TEXT)
            try:
                from core.managers.status_manager import status_manager
                status_manager.update_status(
@@ -4822,7 +4831,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                and current_round_number != last_boundary_round
            ):
                last_boundary_round = current_round_number
-               _display_combat_narration(
+               _display_combat_notice(
                    COMBAT_DOWN_SINK_LINE.format(
                        name=player_name_display, token=GO_ON_TOKEN
                    )
@@ -5423,7 +5432,11 @@ This is narration only. Do not advance the round or apply any combat action."""
                    invocation_claim, conversation_history
                )
                if pause_narration:
-                   _display_combat_narration(pause_narration)
+                   if getattr(exc, "player_message", None):
+                       _display_combat_narration(pause_narration)
+                   else:
+                       # #1615: the engine's fallback, not the DM's words.
+                       _display_combat_notice(pause_narration)
                if (
                    agentic_recovery["action"] == "apply_staged_events"
                    and isinstance(exc, CombatTransactionError)
@@ -6110,7 +6123,7 @@ Rules:
        
        if not valid_response or not ai_response:
            error("FAILURE: Failed to get a valid AI response after multiple attempts", category="combat_events")
-           _display_combat_narration(T045_REJECTED_ACTION_NARRATION)
+           _display_combat_notice(T045_REJECTED_ACTION_NARRATION)
            continue
 
        # The T105 event describes only prior accepted evidence. Commit it once
