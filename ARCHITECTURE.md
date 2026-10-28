@@ -136,7 +136,6 @@ The codebase follows a clean, organized structure with logical separation of con
 │   ├── redirect_debug_output.py   # Debug output redirection
 │   ├── reset_campaign.py          # Campaign reset utilities
 │   ├── startup_wizard.py          # Character creation wizard
-│   ├── sync_party_tracker.py      # Party tracker synchronization
 │   ├── token_estimator.py         # AI token usage estimation
 │   └── xp.py                      # Experience point calculations
 ├── updates/               # State update modules (6 files)
