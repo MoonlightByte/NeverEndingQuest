@@ -130,6 +130,7 @@ from utils import quest_record
 from utils.player_stats import get_player_stat
 from updates.update_world_time import update_world_time
 from core.ai.conversation_utils import (
+    _effect_note,
     _effects_runtime_view,
     _format_temporary_effects,
     update_conversation_history,
@@ -8349,7 +8350,7 @@ def _party_stats_text(party_tracker_data, path_manager, party_members_stats):
             # D-KW-12: the engine id the DM keys a typed reference by (rest hitDice).
             from core.nql.genesis import character_id as _engine_character_id
             member_id = _engine_character_id(member_data_for_note)
-            party_stats_formatted.append(f"{display_name} (id {member_id}): Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}, {ability_str}{spell_slots_str}{currency_str}, Effects: {effects_str}")
+            party_stats_formatted.append(f"{display_name} (id {member_id}): Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}{_effect_note(member_data_for_note, 'maxHitPoints', prefix='max ')}, {ability_str}{spell_slots_str}{currency_str}, Effects: {effects_str}")
 
     party_stats_str = "; ".join(party_stats_formatted)
     return party_stats_str
@@ -9103,14 +9104,13 @@ def _resume_active_combat(
     if combat_still_active:
         recovery = _active_combat_recovery(party_tracker_data)
         if recovery:
-            display_dm_narration(
+            show_player_notice(
                 recovery.get("message")
                 or (
                     "Combat remains paused. Load or restore a save before "
                     "resuming encounter %s; no post-combat narration was "
                     "requested." % active_encounter_id
                 ),
-                channel="combat",
                 color="yellow",
             )
             # A recovered combat bypasses the ordinary startup-kickoff
@@ -9146,9 +9146,8 @@ def _resume_active_combat(
                     return WebRecoveryPause(unresumed_line), party_tracker_data, conversation_history
                 from updates.save_game_manager import SaveGameManager
                 return _terminal_recovery_menu(SaveGameManager()), party_tracker_data, conversation_history
-            display_dm_narration(
+            show_player_notice(
                 unresumed_line,
-                channel="combat",
                 color="yellow",
             )
     else:
@@ -10119,15 +10118,14 @@ def _main_game_loop(startup_authority, turn_authority):
             if combat_recovery.get("reason") == "party_defeated":
                 # D-242 Task 6: the party-defeat pause is the ratified interim
                 # until #184's defeat scene; the text names what actually works.
-                display_dm_narration(
+                show_player_notice(
                     TPK_PAUSE_TEXT
                     if hasattr(sys.stdin, "queue")
                     else TPK_PAUSE_TEXT + " Close this window or press Ctrl+C, then use the launcher.",
-                    channel="combat",
                     color="yellow",
                 )
             else:
-                display_dm_narration(
+                show_player_notice(
                     "Combat is paused (%s). This input was not sent to the "
                     "Dungeon Master. Load or restore a save before resuming "
                     "encounter %s."
@@ -10135,7 +10133,6 @@ def _main_game_loop(startup_authority, turn_authority):
                         combat_recovery["reason"],
                         combat_recovery["encounter_id"],
                     ),
-                    channel="combat",
                     color="yellow",
                 )
             continue

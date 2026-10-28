@@ -330,9 +330,15 @@ def format_flatlist(character: Dict[str, Any]) -> str:
     exhaustion_out = f" EXH={exhaustion}(-{2 * exhaustion}d20; long rest -1);" if type(exhaustion) is int and exhaustion > 0 else ""
     if type(exhaustion) is int and exhaustion > 0 and type(spd) is int:
         spd = f"{max(0, spd - 5 * exhaustion)}now(base{spd},exh-{5 * exhaustion})"
+    # #1520 item 1: the live effects already counted in the shown AC and speed.
+    try:
+        from core.effects.effective import effect_note
+        ac_note, spd_note = effect_note(character, "armorClass"), effect_note(character, "speed")
+    except Exception:
+        ac_note = spd_note = ""
     out = []
     # LVL removed - already in DM Note party stats
-    out.append(f"CHAR={name}; RACE={race}; CLASS={cls}; ALIGN={align}; BG={bg}; AC={ac}; SPD={spd}; STATUS={status}; CONDITION={condition}; AFFECTED={affected};")
+    out.append(f"CHAR={name}; RACE={race}; CLASS={cls}; ALIGN={align}; BG={bg}; AC={ac}{ac_note}; SPD={spd}{spd_note}; STATUS={status}; CONDITION={condition}; AFFECTED={affected};")
     # STATS removed - already in DM Note party stats (STR:X DEX:X etc.)
     out.append(f"SAVES={saves_out}; SKILLS={{{skills_out}}}; EXPERTISE={expertise_out}; PROF+{prof_bonus}; INIT={initiative}(final,prof+feats incl);{exhaustion_out}{modes_out}")
     out.append(f"SENSES={{darkvision:{darkv},PP:{pp}}}; LANG={langs_out};")
