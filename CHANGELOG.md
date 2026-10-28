@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The quest journal is now told who your character is, so a journal entry no longer describes a character playing alone in the third person, as if they were someone else (#1625).
 - Travel narration is now told who your character is: the journey and the final stitched arrival get your character's name and the party list, so a character travelling alone is no longer described as arriving with themself. A trip resumed after an interruption now describes the arrival at the time the clock shows there, the same time the journey ends at (#312).
 - The DM's view of a character's armor class, hit point maximum and speed now names the active effects already counted in it, so a spell like Shield of Faith is no longer counted twice (#1520).
 - Model-capture records are no longer lost when a call passes a setting that cannot be saved as JSON: that one value is left out, named in the record and in the capture error log, and the rest of the record is kept (#1621).
