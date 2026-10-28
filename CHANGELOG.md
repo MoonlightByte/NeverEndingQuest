@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- More of the messages the game writes itself, such as a read-only file stopping the game, an unreadable memory journal, a module that could not join your world, or gameplay pausing after a problem, now appear as game notices instead of as the Dungeon Master speaking. In the terminal they read [SYSTEM] (#1611).
 - A level-up on an account that is out of credit, has a rejected key or has no access to the model now ends with that reason and how to fix it, instead of saying the rules could not read older feature names (#1229).
 - When the web game stops on an error, the line that says so is now kept: reloading or reconnecting the page shows it after your last message instead of ending at your message with no reply. A stop caused by a broken output stream no longer says "Connection restored. You may continue playing.", which was not true; it shows the same stop line (#1392).
 - Five kinds of message the game writes itself no longer appear on the web as the Dungeon Master speaking: a change on the road that could not be made, your declared first action at the start of a fight, the provider notices ("Connection to ... restored", why a turn is retrying), the notice that the AI could not settle on a starting location, and the setup line that waits for the AI provider now show as plain notices, without the Dungeon Master's name, voice or image buttons. In the terminal those last two, and the road notices, start with [SYSTEM] (#1580, #1511).
