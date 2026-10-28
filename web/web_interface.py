@@ -5317,6 +5317,25 @@ def extract_module_context_for_monsters(module_name):
         error(f"Failed to extract monster context: {e}")
         return f"Module: {module_name}"
 
+def _queue_game_loop_stop_line():
+    """The game loop has ended on an error: one stop line, cached so a reload
+    still shows it (#1392). A paused web (a Load or Reset in progress) does not
+    cache, and a sink that fails is not trusted: either way the line is shown
+    live only, as before."""
+    payload = {
+        'type': 'error',
+        'content': SAFE_ACTION_FAILURE_MESSAGE,
+        'message_id': f"msg-{uuid4().hex}",
+        'timestamp': datetime.now().isoformat(),
+    }
+    try:
+        delivered = _queue_safe_player_output(payload) is True
+    except Exception:
+        delivered = False
+    if not delivered:
+        game_output_queue.put(payload)
+
+
 def run_game_loop():
     """Run the main game loop with enhanced error handling"""
     try:
@@ -5369,13 +5388,9 @@ def run_game_loop():
             except Exception:
                 pass
         
-        # Send a user-friendly message
+        # The loop has ended: one stop line, cached for a reload (#1392).
         try:
-            game_output_queue.put({
-                'type': 'info',
-                'content': 'Connection restored. You may continue playing.',
-                'timestamp': datetime.now().isoformat()
-            })
+            _queue_game_loop_stop_line()
         except Exception:
             pass
     except Exception as e:
@@ -5389,11 +5404,7 @@ def run_game_loop():
             pass
         
         try:
-            game_output_queue.put({
-                'type': 'error',
-                'content': SAFE_ACTION_FAILURE_MESSAGE,
-                'timestamp': datetime.now().isoformat()
-            })
+            _queue_game_loop_stop_line()
         except Exception:
             pass
     finally:
