@@ -71,7 +71,7 @@ NARRATIVE ELABORATION: Location descriptions and NPC sketches are starting seeds
   updateTime: activities >=5min
   createEncounter: initialize combat (NOT for traps unless monsters)
   updateEncounter: modify active encounter state
-  updatePlot: a quest starts, advances, completes, fails or reopens (by its plot status id)
+  updatePlot: a quest starts, advances, completes, fails or reopens (by its plot status id) Reject a plotImpact that records a companion's or NPC's choice as the player character's, or the player's request as its opposite; the correction keeps the action and re-attributes the impact.
   transitionLocation: party moves to new location (ID only)
   levelUp: dedicated advancement handoff; see @LEVEL_UP for PC consent and automatic NPC entry
   establishHub: gain base ownership

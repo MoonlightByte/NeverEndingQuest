@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A quest's log now keeps each choice with whoever made it: when a companion or someone you meet turns something down, the quest no longer records it as your own decision, and the rules check rejects a quest note that does (#333).
 - The quest journal is now told who your character is, so a journal entry no longer describes a character playing alone in the third person, as if they were someone else (#1625).
 - A scene image that finishes after the connection drops now still appears, and the Generate Image button no longer stays on "Generating..." after a reconnect (#1396).
 - Every item pickup, purchase and charged-item use is now kept on the character sheet, so the rules check sees the whole history instead of only the most recent entries, and repeating an old request no longer spends a charge twice (#1253).

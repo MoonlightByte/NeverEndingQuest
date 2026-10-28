@@ -1374,7 +1374,7 @@ Whenever the player mentions ANY future time reference (tomorrow, sunrise, morni
   - "failed": the quest can no longer be achieved. "plotImpact" says how it was lost.
   - "reopened": a completed or failed quest comes back into play. "plotImpact" says why.
   A quest never goes back to "not started".
-- "plotImpact" is one or two sentences, at most 500 characters, in your own words about what happened. The engine keeps it in the quest's log.
+- "plotImpact" is one or two sentences, at most 500 characters, in your own words about what happened. The engine keeps it in the quest's log. Keep each choice with whoever made it: the player character's own requests and decisions, a companion's words or decisions, and an NPC's decisions are recorded as theirs; write 'the party' only for what the player character chose or agreed to.
 - Completing ahead, only when it truly happened:
   {"action": "updatePlot", "parameters": {"plotPointId": "PP003", "newStatus": "completed", "plotImpact": "The party broke into the keep through the collapsed sewer.", "aheadReason": "They bypassed the gatehouse, so PP002 was never finished."}}
 - If the system answers with a "Quest Error", the record did not change: issue the action again with an id and status it allows, or narrate without it.
