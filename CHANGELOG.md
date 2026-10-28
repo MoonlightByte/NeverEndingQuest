@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The DM's view of a character's armor class, hit point maximum and speed now names the active effects already counted in it, so a spell like Shield of Faith is no longer counted twice (#1520).
 - Five kinds of message the game writes itself no longer appear on the web as the Dungeon Master speaking: a change on the road that could not be made, your declared first action at the start of a fight, the provider notices ("Connection to ... restored", why a turn is retrying), the notice that the AI could not settle on a starting location, and the setup line that waits for the AI provider now show as plain notices, without the Dungeon Master's name, voice or image buttons. In the terminal those last two, and the road notices, start with [SYSTEM] (#1580, #1511).
 - Module building no longer leaves a stuck AI request running in the background when the NPC-consistency, module-typing or route-timing step is slow. Those steps now stop cleanly, and loading or quitting during an in-game build stops them too (#204).
 - In a fight, a creature or character immune to a condition no longer gets it from a failed save, a venomous bite or a spell (#1520).

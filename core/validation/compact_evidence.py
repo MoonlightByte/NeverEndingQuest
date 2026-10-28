@@ -174,6 +174,15 @@ def feature_line(key, feature):
     return "%s=%s%s" % (key, head, ": " + desc if desc else "")
 
 
+def _stored_note(sheet, stat, prefix=""):
+    """#1520 item 1: a stored value's note: the effects inside it, and those on top."""
+    try:
+        from core.effects.effective import effect_note
+        return effect_note(sheet, stat, stored=True, prefix=prefix)
+    except Exception:
+        return ""
+
+
 def compact_sheet(sheet):
     s = sheet
     out = []
@@ -185,9 +194,11 @@ def compact_sheet(sheet):
     out.append("STATUS=%s; CONDITION=%s; AFFECTED=%s; EXH=%s; DEATH_SAVES=%s; INJURIES=%s" % (
         val(s.get("status")), val(s.get("condition")), joined(s.get("condition_affected")),
         val(s.get("exhaustion", 0)), keyed(s.get("deathSaves")) or "none", joined(s.get("injuries"))))
-    out.append("HP=%s/%s; TEMP_HP=%s; AC=%s; SPD=%s; INIT=%s; PROF=%s; XP=%s/%s; LEVELUPS=%s; CR=%s" % (
-        val(s.get("hitPoints")), val(s.get("maxHitPoints")), val(s.get("temporaryHitPoints", 0)),
-        val(s.get("armorClass")), val(s.get("speed")), signed(s.get("initiative")), signed(s.get("proficiencyBonus")),
+    out.append("HP=%s/%s%s; TEMP_HP=%s; AC=%s%s; SPD=%s%s; INIT=%s; PROF=%s; XP=%s/%s; LEVELUPS=%s; CR=%s" % (
+        val(s.get("hitPoints")), val(s.get("maxHitPoints")), _stored_note(s, "maxHitPoints", "max "),
+        val(s.get("temporaryHitPoints", 0)),
+        val(s.get("armorClass")), _stored_note(s, "armorClass"), val(s.get("speed")), _stored_note(s, "speed"),
+        signed(s.get("initiative")), signed(s.get("proficiencyBonus")),
         val(s.get("experience_points")), val(s.get("exp_required_for_next_level")),
         val(s.get("levelUpsPending", 0)), val(s.get("challengeRating"))))
     out.append("ABIL=" + keyed(s.get("abilities")))
@@ -288,7 +299,8 @@ def compact_sheet(sheet):
 LEGEND = ("Compact sheet format: one KEY=value line per fact; ITEM lines are name xquantity [type/subtype], "
           "equipped or unequipped when recorded, catalog id, typed armor and effects; an item description follows a colon "
           "only for magical, effect-bearing, charged or consumable items. SLOTS are level:current/max. "
-          "EFFECT lines give how each effect ends. Values are the stored sheet's, before effects.")
+          "EFFECT lines give how each effect ends. Values are the stored sheet's. A note after HP, AC or SPD names "
+          "the effects already inside that value (includes) and those applied on top of it (plus).")
 
 
 def compact_records(records):
