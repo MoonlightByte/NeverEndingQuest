@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Returning to an adventure no longer has the people around you deliver their news in the welcome-back scene, so your first question doesn't get the same speech twice (#1629).
 - The Map tab now shows the current area's map: places you have visited, the paths between them, and the roads leading on (#1604).
 - When the DM's story has someone you rescued or met walk along with you to another place, the DM now has to record that they came along, so they are there when you arrive instead of being left behind (#536, #537).
 - A merchant quoting a price no longer counts as a sale: the Dungeon Master records a purchase only when the story says the coins and goods changed hands, and the checker rejects one made while the deal is still open (#1626).
