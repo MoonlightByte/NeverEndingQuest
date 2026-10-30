@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The README now opens with a one-screen quickstart for Windows and Linux, and `python run_web.py` says in one plain line when no AI key is set yet (the game still opens and asks for it in Settings). A `config.py` that cannot be read now gives one plain message and a clean exit instead of a traceback (#193).
 - The armor and inventory checks now read each item's whole description, and a character update that was saved is no longer asked of the model again when a log or check step fails afterwards, so the same change cannot be applied twice (#324).
 - The armor repair step no longer writes armor class or suggests a Defense bonus; the engine sets armor class (#1651).
 - The full (uncompressed) DM and combat prompts no longer show examples that write how many uses of an ability are left, such as "(0 uses until long rest)"; they now show only the use, matching the rule that the game counts what is left. The compressed prompts the game sends by default are unchanged (#301).

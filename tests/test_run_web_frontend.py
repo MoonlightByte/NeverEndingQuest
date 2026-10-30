@@ -115,3 +115,43 @@ def test_direct_server_browser_defaults_and_invalid_values_to_legacy():
     assert "start_path = '/play/'" not in source
     assert "requested_path = safe_join(dist_dir, filename)" in source
     assert "os.path.isfile(os.path.join(dist_dir, filename))" not in source
+
+
+def test_unreadable_config_is_one_plain_message(tmp_path, monkeypatch, capsys):
+    import sys
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.delitem(sys.modules, "config", raising=False)
+    (tmp_path / "config.py").write_text('OPENAI_API_KEY = "x\n', encoding="utf-8")
+
+    assert run_web.load_config() is None
+    out = capsys.readouterr().out
+    assert out.startswith("[SYSTEM] config.py could not be read at line 1 (SyntaxError).")
+    assert "Traceback" not in out
+    sys.modules.pop("config", None)
+
+
+def test_credential_check_counts_config_settings_and_local(monkeypatch):
+    import model_config
+    from types import SimpleNamespace
+
+    placeholder = SimpleNamespace(OPENAI_API_KEY="your_openai_api_key_here",
+                                  GEMINI_API_KEY="your_gemini_api_key_here")
+    stored = {"openai": False, "gemini": False}
+    settings = {}
+    monkeypatch.setattr(model_config, "has_openai_key", lambda: stored["openai"])
+    monkeypatch.setattr(model_config, "has_gemini_key", lambda: stored["gemini"])
+    monkeypatch.setattr(model_config, "_load_user_settings", lambda: settings)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-env-is-not-read-by-the-web-game")
+
+    assert run_web.provider_credential_found(placeholder) is False
+    assert run_web.provider_credential_found(SimpleNamespace(OPENAI_API_KEY=" ")) is False
+    assert run_web.provider_credential_found(SimpleNamespace(OPENAI_API_KEY="sk-a")) is True
+    assert run_web.provider_credential_found(SimpleNamespace(GEMINI_API_KEY="g-a")) is True
+    stored["openai"] = True
+    assert run_web.provider_credential_found(placeholder) is True
+    stored.update(openai=False, gemini=True)
+    assert run_web.provider_credential_found(placeholder) is True
+    stored["gemini"] = False
+    settings["model_provider"] = "lmstudio"
+    assert run_web.provider_credential_found(placeholder) is True
