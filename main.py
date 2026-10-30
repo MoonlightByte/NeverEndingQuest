@@ -4398,7 +4398,9 @@ def validate_ai_response(
             {
                 "role": "system",
                 "content": (
-                    "Accepted Travel Agent facts for this turn (JSON): "
+                    "Engine travel facts for this turn (JSON; the route is checked, "
+                    "whether the destination matches the player's stated goal "
+                    "is yours to judge): "
                     + json.dumps(
                         transition_facts,
                         ensure_ascii=False,
@@ -12002,6 +12004,15 @@ def _review_dm_candidate(
                                 "transitionLocation and leave the next choice to the "
                                 "player."
                             )
+                    elif route_outcome.reason_code == "not_toward_goal":
+                        # #1635: the hop does not lead toward the place the
+                        # player named; the engine names the next step.
+                        retry_correction = (
+                            route_outcome.message
+                            + " Revise the complete response: move only along "
+                            "the way toward the player's goal, or use no "
+                            "transitionLocation and ask the player."
+                        )
                     elif route_outcome.reason_code in {
                         "no_valid_route",
                         "active_combat",
