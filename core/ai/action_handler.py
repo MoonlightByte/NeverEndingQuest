@@ -1730,6 +1730,15 @@ def apply_current_transition_action(operation_id, action_index):
             # refused before movement, or already committed / attempted on
             # a resumed checkpoint (the checkpoint owns receipt["status"])
             quest_outcome = str(receipt.get("quest_status") or "refused")
+        if quest_outcome == "refused" and not receipt.get("dmNoted"):
+            # #1122: the DM hears of the refusal once, in the next DM Note
+            # (deduplicated by request id should the checkpoint write fail).
+            from core.managers import checks_state as _checks_state
+
+            _checks_state.add_quest_note(
+                str(receipt.get("request_id") or ""), _quest_record.travel_refusal_note(receipt)
+            )
+            receipt["dmNoted"] = True
         if quest_outcome != "committed":
             record["status"] = "committed"
             deferred = checkpoint["deferred_actions"]
