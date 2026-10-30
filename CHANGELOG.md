@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A merchant quoting a price no longer counts as a sale: the Dungeon Master records a purchase only when the story says the coins and goods changed hands, and the checker rejects one made while the deal is still open (#1626).
 - Buying more of plain gear you already carry, such as rations or torches, now adds to the existing inventory row instead of starting a second one; magic, charged, worn, weapon and armor items still get their own row (#1627).
 - Looking in a storage container on an ordinary turn now tells the Dungeon Master what it holds, instead of "Storage: None" (#1612).
 - When an attack or an ambush starts a fight, the DM no longer shows a lead-in line before it, so rule wording such as "begins formal combat" can no longer reach you; the fight's own opening describes how it starts (#1345).
