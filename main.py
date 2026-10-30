@@ -1980,13 +1980,17 @@ def generate_arrival_narration(
 
 
 # <--- NEW FUNCTION to blend the departure and arrival narrations --->
-def generate_seamless_transition_narration(departure_narration, arrival_narration, dm_text="", party=None):
+def generate_seamless_transition_narration(departure_narration, arrival_narration, dm_text="", party=None,
+                                           down_rules=None):
     """
     Run layer 3/3 (T064), preserving both accepted layers as one seamless turn.
     dm_text is the DM's accepted narration of the turn (#670): the closing
     invitation keeps what it says the player asked for that waits for the next
     turn. Empty dm_text leaves the prompt unchanged. party (#312) gives the
     stitch the committed roster T063 has; without it the prompt is unchanged.
+    down_rules (#1637) is the down-scene rules string while a party member is
+    down: the closing invitation becomes the down closing and the rules ride
+    after the roster. None leaves the prompt unchanged.
     """
     from utils.capture.live_provider_call import LiveProviderSuperseded
     debug("STATE_CHANGE: Blending departure and arrival narrations into a seamless whole...", category="narrative_generation")
@@ -2016,6 +2020,19 @@ def generate_seamless_transition_narration(departure_narration, arrival_narratio
             "them present.\n"
         )
 
+    closing = (
+        "- End after the committed arrival with one open in-fiction invitation for the player to choose "
+        "their next immediate action. Do not enumerate options and do not perform that next action."
+    )
+    down_block = ""
+    if down_rules:
+        # #1637: a downed character cannot act; never ask what they do.
+        closing = (
+            "- A party member is down (the rules below): end on the party's move, the danger that remains "
+            "or the moment of rescue; never ask what the downed character does."
+        )
+        down_block = "\n" + down_rules + "\n"
+
     stitching_prompt = f"""
 You are a master storyteller and narrative editor. The following two text blocks describe a party's departure from one place and their subsequent arrival at another. The transition between them is abrupt because they were generated separately.
 
@@ -2026,9 +2043,9 @@ Your task is to rewrite them into a single, cohesive, and cinematic narration.
 - Do not add new plot points or actions; your role is to refine the existing narrative flow.
 - Do not add, count, or imply any actor who is not explicitly identified in the source blocks.
 - Address the sole player character only in second person (you/your), never as a third-person protagonist.
-- End after the committed arrival with one open in-fiction invitation for the player to choose their next immediate action. Do not enumerate options and do not perform that next action.
+{closing}
 - When both blocks state the same fact, keep it once.
-{roster_block}
+{roster_block}{down_block}
 DEPARTURE NARRATION:
 ---
 {departure_narration}
@@ -2372,7 +2389,26 @@ def _transition_companions(party):
     ]
 
 
-def _transition_departure_prompt(checkpoint, party, dm_text=""):
+def _transition_down_rules(party):
+    """#1637: the down-scene rules string (D-242) for the party's sheets, or
+    None when nobody is down. The same typed read as the DM turn and the
+    validator: each member's sheet on disk; a read fault gives None."""
+    try:
+        from core.combat.down_scene import from_sheets
+
+        path_manager = ModulePathManager(str(party.get("module", "")).replace(" ", "_"))
+        sheets = []
+        for name in _transition_roster(party)[0] + _transition_companions(party):
+            sheet = safe_json_load(path_manager.get_character_path(name))
+            if isinstance(sheet, dict):
+                sheets.append(sheet)
+        return from_sheets(sheets)
+    except Exception as exc:  # fail forward: the chain narrates as before
+        debug(f"DOWN: travel down-scene rules unavailable ({exc})", category="narrative_generation")
+        return None
+
+
+def _transition_departure_prompt(checkpoint, party, dm_text="", down_rules=None):
     """Layer 1/3 (T013): the departure from the origin, the journey, and the
     return or first arrival, from the committed trip facts and the DM's
     accepted narration of the turn. The arrival scene is T063's."""
@@ -2443,6 +2479,8 @@ def _transition_departure_prompt(checkpoint, party, dm_text=""):
             + dm_text
             + "\n---"
         )
+    if down_rules:
+        prompt += "\n\n" + down_rules
     return prompt + _transition_narration_action_context(checkpoint)
 
 
@@ -2519,14 +2557,19 @@ def _run_transition_chain(checkpoint, party, history):
     the stitch."""
     narration = checkpoint.get("narration") or {}
     dm_text = narration.get("departure_text") or narration.get("source_prompt")
+    # #1637: while a party member is down, every layer gets the down-scene rules.
+    down_rules = _transition_down_rules(party)
     first = generate_transition_narration(
-        _transition_departure_prompt(checkpoint, party, dm_text),
+        _transition_departure_prompt(checkpoint, party, dm_text, down_rules),
         party,
     )
-    arrival = generate_arrival_narration(
-        first, party, history, _transition_arrival_facts(party, checkpoint)
+    arrival_facts = _transition_arrival_facts(party, checkpoint)
+    if down_rules:
+        arrival_facts += "\n    " + down_rules + "\n"
+    arrival = generate_arrival_narration(first, party, history, arrival_facts)
+    return generate_seamless_transition_narration(
+        first, arrival, dm_text, party=party, down_rules=down_rules
     )
-    return generate_seamless_transition_narration(first, arrival, dm_text, party=party)
 
 
 def _transition_outcome_lines(checkpoint, party):
