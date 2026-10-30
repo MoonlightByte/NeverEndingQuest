@@ -711,6 +711,26 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 )
                 if controller != "human":
                     raise no_outcome
+            elif (
+                intent.get("action") == "attack"
+                and not intent.get("targetId")
+                and not intent.get("targets")
+                and not intent.get("effects")
+                and intent.get("resources")
+            ):
+                # #1636: an attack with no target, no outcome and a spend (an
+                # arrow) spent it on nothing. Returned as #839's is, in the
+                # same order for the player (after the typed refusals).
+                kinds = sorted({str(r.get("kind")) for r in intent["resources"] if isinstance(r, dict)})
+                no_outcome = CombatIntentError(
+                    "%s's attack names no listed target but spends %s. Give targetId of a listed "
+                    "combatant and the outcome, or drop the spend."
+                    % (actor.get("name") or actor_id, ", ".join(kinds) or "a resource"),
+                    actor_id,
+                    {"retryable": True},
+                )
+                if controller != "human":
+                    raise no_outcome
             resolution = resolve_adjudicated(
                 next_encounter,
                 next_characters,
