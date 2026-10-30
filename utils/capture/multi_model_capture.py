@@ -159,9 +159,11 @@ def _get_error_logger():
 def _get_writer():
     global _writer
     if _writer is None:
+        # Taken before _init_lock, which _get_error_logger takes too (#1621).
+        error_logger = _get_error_logger()
         with _init_lock:
             if _writer is None:
-                _writer = CaptureFileWriter(_capture_dir())
+                _writer = CaptureFileWriter(_capture_dir(), error_logger=error_logger)
     return _writer
 
 

@@ -212,11 +212,13 @@ def reset_foreign_save(module_name):
     try:
         backup_dir = perform_reset_logic()
     except Exception as exc:
-        print("[SYSTEM] Reset did not finish: " + str(exc))
+        from utils.player_notice import show_reset_failed
+
+        show_reset_failed(exc)
         return False
     from web.shared_state import message_log_reset
     message_log_reset()
-    print("Dungeon Master: This save belonged to another adventure, so the campaign was reset "
+    _say("Dungeon Master: This save belonged to another adventure, so the campaign was reset "
           f"first, as Reset does. The old game is backed up in {backup_dir}.")
     return True
 
@@ -235,7 +237,7 @@ def run_startup_sequence():
     from utils.capture.live_provider_call import LiveProviderSuperseded
 
     # flush=True publishes this line as its own card before the next one (#1422 F1).
-    print("\nDungeon Master: Welcome! Choose your adventure, then build your character.", flush=True)
+    _say("\nDungeon Master: Welcome! Choose your adventure, then build your character.", flush=True)
     initialize_game_files_from_bu()
     try:
         conversation = initialize_startup_conversation()
@@ -264,13 +266,16 @@ def run_startup_sequence():
         from core.nql.acquisition import balance
         purse = "You start with" if _startup_interview_started(conversation) else "You have"
         cleanup_startup_conversation()
-        print(f"\nDungeon Master: Your character setup is saved and verified. Welcome, {character['name']}! "
+        _say(f"\nDungeon Master: Your character setup is saved and verified. Welcome, {character['name']}! "
               f"{purse} {balance(character)['gold']} gold.{_saved_defense_line(character)}")
         return True
     except LiveProviderSuperseded:
         raise
     except (StartupCancelled, KeyboardInterrupt, EOFError):
-        print("Dungeon Master: Setup paused. Your choices are retained.")
+        # #341: a headless Reset ends input the same way as Quit, then removes
+        # the unfinished interview; it must not be told its choices are kept.
+        if _input_control_kind() != "reset":
+            _say("Dungeon Master: Setup paused. Your choices are retained.")
         raise StartupCancelled() from None
 
 
@@ -475,7 +480,7 @@ def _present_startup_menu(conversation, prompt, *, phase="startup_interview"):
             {"role": "assistant", "content": response},
         ])
         save_startup_conversation(conversation, live_scope=scope)
-        print(f"Dungeon Master: {response}")
+        _say(f"Dungeon Master: {response}")
 
 
 def _menu_key(text):
@@ -483,9 +488,40 @@ def _menu_key(text):
     return " ".join(str(text).split()).casefold()
 
 
+def _input_control_kind():
+    """The lifecycle control that ended input ("quit", "reset"), read from the
+    headless stdin when it carries one (#341); None for a terminal or the web."""
+    import sys
+
+    kind = getattr(sys.stdin, "lifecycle_control_kind", None)
+    try:
+        return kind() if callable(kind) else None
+    except Exception:
+        return None
+
+
+def _say(text, flush=False):
+    """A player-facing wizard line (#257): the frontend's narration sink, else today's print.
+
+    The card is what the stdout scraper used to build from the same line: the
+    text without its "Dungeon Master:" prefix and surrounding blank lines. With
+    no sink (the plain terminal) the print is byte-identical to before.
+    """
+    from web.shared_state import emit_player_output
+
+    content = text.strip()
+    if content.startswith("Dungeon Master:"):
+        content = content[len("Dungeon Master:"):].strip()
+    if content and emit_player_output(
+        {"type": "narration", "channel": "main", "content": content}
+    ) is True:
+        return
+    print(text, flush=flush)
+
+
 def _print_startup_choices(labels):
     """Print the exact numbered choices under the presented menu."""
-    print("\n".join(f"{i}. {label}" for i, label in enumerate(labels, 1)))
+    _say("\n".join(f"{i}. {label}" for i, label in enumerate(labels, 1)))
 
 
 # D-STARTUP-MENU-1 (#1260): the adventure menu lists the module builder as its
@@ -496,7 +532,7 @@ MODULE_BUILDER_OPTION = "Create a new adventure (module builder)"
 
 def _module_builder_coming_soon(labels):
     """The builder option: a coming-soon line and the menu again (no builder path)."""
-    print("Dungeon Master: Creating a new adventure with the module builder is coming soon. "
+    _say("Dungeon Master: Creating a new adventure with the module builder is coming soon. "
           "For now, please choose one of the installed adventures.")
     _print_startup_choices(labels)
 
@@ -514,7 +550,7 @@ def _read_menu_sentence(menu, labels, details, line):
 def present_module_options(conversation, modules):
     """Show available modules to player using AI"""
     if not modules:
-        print("Error: No valid modules found!")
+        _say("Error: No valid modules found!")
         return None
     
     # Build module list for AI
@@ -567,7 +603,7 @@ def select_module(conversation):
     modules = scan_available_modules()
     
     if not modules:
-        print("Error: No modules available. Please add modules to the modules/ directory.")
+        _say("Error: No modules available. Please add modules to the modules/ directory.")
         return None
     
     checkpoint = _startup_progress(conversation)
@@ -575,7 +611,7 @@ def select_module(conversation):
         for module in modules:
             if module['name'] == checkpoint['module']:
                 return module
-        print("Dungeon Master: Your selected adventure is no longer installed. Please choose an available adventure; your character choices are retained.")
+        _say("Dungeon Master: Your selected adventure is no longer installed. Please choose an available adventure; your character choices are retained.")
 
     # Module replacement invalidates location readiness, not player approval.
     # Resume the existing commit/read-back path for an already approved build.
@@ -614,7 +650,7 @@ def select_module(conversation):
                                           phase=selection_phase, location=None)
                     return selected
                 else:
-                    print(f"Dungeon Master: Please choose a number between 1 and {builder_number}")
+                    _say(f"Dungeon Master: Please choose a number between 1 and {builder_number}")
                     continue
             except ValueError:
                 pass
@@ -633,7 +669,7 @@ def select_module(conversation):
                                       phase=selection_phase, location=None)
                 return selected
             if len(matches) > 1:
-                print("Dungeon Master: That name matches more than one adventure. Please choose its displayed number.")
+                _say("Dungeon Master: That name matches more than one adventure. Please choose its displayed number.")
                 continue
             
             # Any other line is read by T127 (D-STARTUP-MENU-1).
@@ -648,10 +684,10 @@ def select_module(conversation):
                                       phase=selection_phase, location=None)
                 return selected
             if read.get("question"):
-                print(f"Dungeon Master: {read['question']}")
+                _say(f"Dungeon Master: {read['question']}")
                 continue
             
-            print("Dungeon Master: I didn't understand that. Please enter the number (1, 2, etc.) or the adventure's full name as listed.")
+            _say("Dungeon Master: I didn't understand that. Please enter the number (1, 2, etc.) or the adventure's full name as listed.")
             
         except KeyboardInterrupt:
             raise
@@ -761,13 +797,13 @@ def select_or_create_character(conversation, module):
                     return create_new_character(conversation, module)
                 if 1 <= choice_num <= len(characters):
                     selected_char = characters[choice_num - 1]
-                    print(f"Dungeon Master: Excellent! You've selected {selected_char['name']}!")
+                    _say(f"Dungeon Master: Excellent! You've selected {selected_char['name']}!")
                     chosen = _use_existing_startup_character(conversation, module, selected_char)
                     if chosen:
                         return chosen
                     continue
                 else:
-                    print(f"Dungeon Master: Please choose a number between 1 and {len(characters) + 1}; {len(characters) + 1} or 'new' creates a character")
+                    _say(f"Dungeon Master: Please choose a number between 1 and {len(characters) + 1}; {len(characters) + 1} or 'new' creates a character")
                     continue
             except ValueError:
                 pass
@@ -776,11 +812,11 @@ def select_or_create_character(conversation, module):
             answer = _menu_key(user_input)
             named = [char for char in characters if _menu_key(char['name']) == answer]
             if len(named) > 1:
-                print("Dungeon Master: That name matches more than one character. Please choose its displayed number.")
+                _say("Dungeon Master: That name matches more than one character. Please choose its displayed number.")
                 continue
             matched = named[0] if named else None
             if matched is not None:
-                print(f"Dungeon Master: Excellent! You've selected {matched['name']}!")
+                _say(f"Dungeon Master: Excellent! You've selected {matched['name']}!")
                 chosen = _use_existing_startup_character(conversation, module, matched)
                 if chosen:
                     return chosen
@@ -795,16 +831,16 @@ def select_or_create_character(conversation, module):
                 return create_new_character(conversation, module)
             if read.get("choice"):
                 selected_char = characters[read["choice"] - 1]
-                print(f"Dungeon Master: Excellent! You've selected {selected_char['name']}!")
+                _say(f"Dungeon Master: Excellent! You've selected {selected_char['name']}!")
                 chosen = _use_existing_startup_character(conversation, module, selected_char)
                 if chosen:
                     return chosen
                 continue
             if read.get("question"):
-                print(f"Dungeon Master: {read['question']}")
+                _say(f"Dungeon Master: {read['question']}")
                 continue
             
-            print("Dungeon Master: I didn't understand that. Please enter the character's number or full name as listed, or 'new' to create a new character.")
+            _say("Dungeon Master: I didn't understand that. Please enter the character's number or full name as listed, or 'new' to create a new character.")
             
         except KeyboardInterrupt:
             raise
@@ -841,7 +877,7 @@ def _use_existing_startup_character(conversation, module, selected):
                 category="startup")
         character = None
     if not isinstance(character, dict) or not character.get("name"):
-        print("Dungeon Master: That character file is unavailable. "
+        _say("Dungeon Master: That character file is unavailable. "
               "Please choose another character, or type 'new' to create one.")
         return None
     with _startup_operation() as scope:
@@ -1597,7 +1633,7 @@ def ai_character_interview(conversation, module):
             _append_scope([conversation], menu, None)
         else:
             warning("Startup creation scope unavailable; the interview continues without it", category="startup")
-    print("\nDungeon Master: Let's build your character together.", flush=True)  # #1422 F1
+    _say("\nDungeon Master: Let's build your character together.", flush=True)  # #1422 F1
     while True:
         scope = open_live_turn_scope()
         try:
@@ -1619,7 +1655,7 @@ def ai_character_interview(conversation, module):
                                         "approved. Answer the player's next message with the retained choices."),
                     }, ensure_ascii=False)})
                     save_startup_conversation(conversation, live_scope=scope)
-                    print(f"\nDungeon Master: {STARTUP_HANDBACK_NOTICE}")
+                    _say(f"\nDungeon Master: {STARTUP_HANDBACK_NOTICE}")
                     break
                 current_index = _latest_player_index(conversation)
                 facts = {
@@ -1721,7 +1757,7 @@ def ai_character_interview(conversation, module):
                     notice = _starting_gear_notice(proposal["character"], provenance)
                     if notice:
                         # Shown once, before the approved checkpoint: a restart after it loses nothing.
-                        print(f"\nDungeon Master: {notice}", flush=True)  # #1422 F1
+                        _say(f"\nDungeon Master: {notice}", flush=True)  # #1422 F1
                     _set_startup_progress(conversation, live_scope=scope, phase="approved",
                                           candidate=proposal["character"], character_path=None)
                     try:
@@ -1738,12 +1774,12 @@ def ai_character_interview(conversation, module):
                     # #1422 F5: the reply to the player's approval, shown only once
                     # the build is saved (a name conflict above continues instead).
                     if isinstance(proposal.get("narration"), str) and proposal["narration"].strip():
-                        print(f"\nDungeon Master: {proposal['narration']}", flush=True)
+                        _say(f"\nDungeon Master: {proposal['narration']}", flush=True)
                     return proposal["character"]
                 _set_startup_progress(conversation, live_scope=scope, phase="interview")
-                print(f"\nDungeon Master: {proposal['narration']}")
+                _say(f"\nDungeon Master: {proposal['narration']}")
                 if summary:
-                    print(f"\n{summary}")
+                    _say(f"\n{summary}")
                 if proposal["decision"] == "pause_setup":
                     # The reviewed typed decision, never the player's words (#855).
                     raise StartupCancelled()
@@ -2198,7 +2234,8 @@ def _startup_attack_rows(character, name, typed, untyped, provenance, faults):
     # when the engine is unavailable.
     not_usable_now = []
     rows, with_items, reason = startup_rows.attack_rows(character, armor_class.PROJECTION_LOCATION,
-                                                        not_usable_now=not_usable_now, faults=faults)
+                                                        not_usable_now=not_usable_now, faults=faults,
+                                                        on_timeout="raise")
     report = {"source": "core.nql.startup_rows", "typed_equipment": typed, "untyped_equipment": untyped,
               "item_rows": with_items}
     if rows is None:
@@ -2552,10 +2589,13 @@ def _startup_provider_pause(player_message, scope):
     (web) and Ctrl+C or end of input (console) stop setup as before."""
     from utils.capture.live_provider_call import LiveProviderSuperseded
 
+    from utils.player_notice import show_player_notice
+
     status_ready()
-    print("\nDungeon Master: " + (player_message or (
+    # An operational notice, not the DM's voice (#1511).
+    show_player_notice((player_message or (
         "The AI provider did not answer, so character setup is waiting.")) +
-        " Your setup choices are kept. Send any message to try again.")
+        " Your setup choices are kept. Send any message to try again.", padded=True)
     try:
         while not input("\nYour response: ").strip():
             pass
@@ -2849,9 +2889,12 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
                     if location is not None:
                         warning(f"T093 proposals rejected {invalid} times ({rejected}); starting at "
                                 f"{location['areaId']}/{location['locationId']}", category="startup")
-                        print("\nDungeon Master: The AI could not settle on a starting location, so your "
-                              f"adventure begins where the story starts: {location['locationName']} "
-                              f"in {location['areaName']}.")
+                        from utils.player_notice import show_player_notice
+
+                        # An operational notice, not the DM's voice (#1511).
+                        show_player_notice("The AI could not settle on a starting location, so your "
+                                           f"adventure begins where the story starts: {location['locationName']} "
+                                           f"in {location['areaName']}.", padded=True)
                         return location
                     # No place in this module resolves: wait for the player, then 4 fresh rounds.
                     _startup_provider_pause(
@@ -2928,8 +2971,8 @@ if __name__ == "__main__":
             pass  # Shared runner already acknowledged the intentional pause.
         else:
             if success:
-                print("Dungeon Master: Startup wizard completed successfully!")
+                _say("Dungeon Master: Startup wizard completed successfully!")
             else:
                 print("Error: Startup wizard failed or was cancelled.")
     else:
-        print("Dungeon Master: Character and module already configured. No setup needed.")
+        _say("Dungeon Master: Character and module already configured. No setup needed.")

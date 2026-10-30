@@ -48,7 +48,7 @@ except ImportError:
     from core.generators.area_generator import AreaGenerator, AreaConfig
 
 from utils.module_context import ModuleContext
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
 from utils.npc_reconciler import NpcReconciler
 from utils.file_operations import safe_write_json
 from utils.path_transaction_lock import path_transaction_lock
@@ -553,6 +553,10 @@ class ModuleBuilder:
         # they survive publication id normalization; the module declaration
         # is written from them after the stitcher re-prefix.
         self.npc_identity_decisions = []
+        # The (scope, status sink) this build's advisory calls (T104, T123)
+        # bind, set by the build's entry (#204); unset, the builder owns its
+        # scope and logs its status (_provider_binding).
+        self.provider_binding = None
         # How create_party_tracker chose the start: "entry" (the story's typed
         # entry ids) or "first-location" (the first location of the first area).
         self.party_start_source = None
@@ -572,6 +576,16 @@ class ModuleBuilder:
         if self.config.verbose:
             timestamp = datetime.now().strftime("%H:%M:%S")
             print(f"DEBUG: [Module Generator] [{timestamp}] {message}")
+
+    def _provider_binding(self):
+        """The (scope, status sink) for this build's advisory calls (#204): the
+        entry's, else a scope this build owns -- never a player's turn, its
+        Load or its status line -- with its status in the build log."""
+        if self.provider_binding is None:
+            from utils.capture.live_provider_call import LiveTurnScope
+
+            self.provider_binding = (LiveTurnScope(), self.log)
+        return self.provider_binding
     
     def _atomic_save_json(self, relative_filename: str, data: Dict[str, Any]) -> bool:
         """Atomic JSON write to self.config.output_directory/<relative_filename>.
@@ -624,9 +638,15 @@ class ModuleBuilder:
         links, and each link's time (`routes`, one T123 call; left out when the
         call fails). Nothing is read from prose by code. An entry that does not resolve
         against the written files is left out and logged; the module then
-        derives it as before. Never raises: on any failure no file is written
-        and the module derives as before.
+        derives it as before. Never raises, except a stop (the build's turn
+        superseded, or the save gone read-only), which ends the build before
+        publication (#204): on any other failure no file is written and the
+        module derives as before.
         """
+        from core.combat.invocation import InvocationSupersededError
+        from utils.capture.live_provider_call import LiveProviderSuperseded
+        from utils.transient_filesystem import ReadOnlySaveStop
+
         try:
             from utils.file_operations import safe_read_json
             from utils.roster_conversion import slug
@@ -718,11 +738,14 @@ class ModuleBuilder:
             # N5: each link's time, typed by one T123 call over the final ids;
             # none (the travel time table) when the call fails.
             from core.generators.module_declaration import type_routes
-            routes = type_routes(out, self.config.module_name)
+            routes = type_routes(out, self.config.module_name, self._provider_binding())
             if routes:
                 declaration["routes"] = routes
             self._atomic_save_json("module_declaration.json", declaration)
             return True
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            # A stop ends the build before publication (#204).
+            raise
         except Exception as exc:
             self.log(f"Module declaration not written (non-fatal; the module derives "
                      f"as before): {exc}")
@@ -2419,10 +2442,14 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
     def _apply_npc_coherence(self, context_path):
         """Issue #160: reconcile same-name NPCs recurring across areas via one
         bounded T104 model call (agentic decision) + code-validated fail-closed
-        apply. Enabled by the tip configuration and classic-only. On ANY problem
-        it logs and leaves the module unchanged -- it never aborts the build.
+        apply. Enabled by the tip configuration and classic-only. On any problem
+        it logs and leaves the module unchanged; only a stop (the build's turn
+        superseded, or the save gone read-only) ends the build (#204).
         """
         import config
+        from core.combat.invocation import InvocationSupersededError
+        from utils.capture.live_provider_call import LiveProviderSuperseded
+        from utils.transient_filesystem import ReadOnlySaveStop
         # Older local config.py files may predate this flag. The reviewed tip
         # default is enabled, so a missing setting must inherit True rather than
         # silently disabling T104 for upgraded installations.
@@ -2482,51 +2509,27 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             else:
                 response_format = {"type": "json_object"}
 
-            # Bound the model call with a hard timeout so a slow/hung local model
-            # (e.g. qwen over many groups) can NEVER hang a build. On timeout we
-            # skip (heal-forward: the module is left intact). We do NOT wait on the
-            # orphaned worker (shutdown wait=False), so the build proceeds.
-            import concurrent.futures
-
-            # Issue #134 follow-up: the thread timeout alone ABANDONS the worker
-            # but leaves its HTTP request streaming, so a local model (LM Studio)
-            # kept generating for thousands of tokens after the build had already
-            # moved on. For OpenAI-SDK-routed providers, also pass a per-request
-            # transport deadline: the SDK treats `timeout` as a request OPTION
-            # (never a payload field) and closes the connection on expiry --
-            # the disconnect is what actually stops local inference. The thread
-            # timeout stays as the backstop; timeout still lands on the same
-            # fail-closed skip path (module published unchanged post-T088).
-            # 110 < the 120s thread backstop so the transport reliably closes
-            # (and the worker exits with APITimeoutError -> the normal skip
-            # path) BEFORE the thread is ever abandoned. Connect is bounded per
-            # resolved address, as in live_provider_call._CONNECT_SECONDS: a
-            # bare 110 also bounds each connect, so silent first addresses
-            # outlast the backstop before any request (#667).
-            if provider in ("openai", "legacy", "lmstudio"):
-                import httpx
-
-                extra["timeout"] = httpx.Timeout(110, connect=5.0)
-
-            def _t104_call():
-                return capture_and_fanout(
-                    "T104", api_client.create_completion,
-                    _request_provider=provider,
-                    messages=[
-                        {"role": "system", "content": "You are an expert 5e module editor. "
-                         "Return only the requested strict JSON object."},
-                        {"role": "user", "content": prompt},
-                    ],
-                    model=cfg["model"],
-                    temperature=0.2,
-                    response_format=response_format,
-                    **extra)
-
-            _ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            try:
-                response = _ex.submit(_t104_call).result(timeout=120)
-            finally:
-                _ex.shutdown(wait=False)
+            # #204: one advisory call through the live transport -- a reaped
+            # provider child under the transport deadline, on the build's
+            # binding -- in place of a worker thread abandoned at 120 s. A
+            # failure lands on the same fail-closed skip path (the module is
+            # published unchanged post-T088); a stop ends the build.
+            scope, status = self._provider_binding()
+            response = capture_and_fanout(
+                "T104", api_client.create_completion,
+                _live_selected="advisory",
+                _detached_scope=scope,
+                _detached_status=status,
+                _request_provider=provider,
+                messages=[
+                    {"role": "system", "content": "You are an expert 5e module editor. "
+                     "Return only the requested strict JSON object."},
+                    {"role": "user", "content": prompt},
+                ],
+                model=cfg["model"],
+                temperature=0.2,
+                response_format=response_format,
+                **extra)
 
             content = response.choices[0].message.content.strip()
             if content.startswith("```"):
@@ -2552,6 +2555,8 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             safe_write_json(context_path, self.context.to_dict())
             self.npc_identity_decisions = self._identity_positions(parsed, packet, patched)
             self.log(f"Step 7.5: NPC coherence applied to {n_groups} group(s)")
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            raise
         except Exception as exc:
             self.log(f"Step 7.5: NPC coherence skipped (non-fatal): {exc}")
 
@@ -2625,8 +2630,8 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
     def create_bu_backups(self):
         """Create _BU.json backup files for all generated module files"""
-        import shutil
         import glob
+        from utils.module_lifecycle import copy_file_verified
         
         # Get all JSON files in the module directory (excluding subdirectories first)
         module_files = []
@@ -2657,12 +2662,10 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             # Create backup filename
             backup_file = json_file.replace(".json", "_BU.json")
             
-            try:
-                shutil.copy2(json_file, backup_file)
-                backup_count += 1
-                self.log(f"  Created backup: {os.path.relpath(backup_file, self.config.output_directory)}")
-            except Exception as e:
-                self.log(f"  WARNING: Failed to create backup for {json_file}: {e}")
+            # #143: a reset baseline that did not land fails the build.
+            copy_file_verified(json_file, backup_file)
+            backup_count += 1
+            self.log(f"  Created backup: {os.path.relpath(backup_file, self.config.output_directory)}")
         
         self.log(f"Created {backup_count} _BU.json backup files for reset functionality")
     
@@ -3139,7 +3142,7 @@ Return ONLY the JSON object, no explanations or additional text.""" % (
 
             parsed = _validate_parsed_module_params(json.loads(result), resolved_policy)
 
-            debug(
+            file_only(
                 f"AI_PROCESSING: AI parsed narrative into: {json.dumps(parsed, indent=2)}",
                 category="module_creation",
             )
@@ -3259,6 +3262,18 @@ def _ai_driven_module_creation_impl(
                 "module creation parameters must be an object"
             )
         resolved_policy = get_module_creation_policy(policy)
+        # #204: the scope this build's advisory calls (T104, T123) bind, by
+        # entry. An in-game build binds the live scope its action runs under,
+        # read once here, so a Load that replaces the turn stops the build
+        # instead of moving its later calls onto the next turn. Any other build
+        # owns its scope (ModuleBuilder._provider_binding).
+        provider_binding = None
+        if resolved_policy.name == "game":
+            from utils.capture.live_provider_call import get_live_provider_scope
+
+            live_scope = get_live_provider_scope()
+            if live_scope is not None:
+                provider_binding = (live_scope, None)
 
         # Report progress if callback provided
         if progress_callback:
@@ -3385,6 +3400,7 @@ def _ai_driven_module_creation_impl(
                     }
                 )
             builder = ModuleBuilder(config)
+            builder.provider_binding = provider_binding
             builder_holder["builder"] = builder
             if per_area_locations is not None:
                 builder.per_area_locations = list(per_area_locations)

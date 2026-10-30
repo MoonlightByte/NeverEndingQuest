@@ -19,11 +19,12 @@ from typing import Any, Dict, List, Optional
 
 from core.ai import api_client
 from core.leveling import tables
-from utils.capture.live_provider_call import LiveProviderSuperseded
+from utils.capture.live_provider_call import LiveProviderCompletedError, LiveProviderSuperseded, LiveProviderUnavailable
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.enhanced_logger import info, warning
+from utils.provider_errors import account_refusal_message, classify_provider_error
 
-register_callsite("T125", "core/leveling/feature_names.py", 152)
+register_callsite("T125", "core/leveling/feature_names.py", 155)
 
 _MAX_ATTEMPTS = 2
 
@@ -46,6 +47,7 @@ class NamingResult:
     sheet: Dict[str, Any]
     notes: List[str] = field(default_factory=list)
     error: Optional[str] = None
+    refusal: Optional[str] = None  # an account refusal's player line, set only with error (#1229)
 
 
 class NamingAnswerError(ValueError):
@@ -136,7 +138,8 @@ def name_features(sheet: Dict[str, Any], *, scope: Any = None, status: Any = Non
                   live_selected: Any = None) -> NamingResult:
     """Ask T125 once when ``naming_needed``; return a copy of the sheet with
     ``srd_name`` written on every asked entry. On failure the sheet is returned
-    unchanged with ``error`` set; the next validation asks again."""
+    unchanged with ``error`` set; the next validation asks again. An account
+    refusal stops at once with ``refusal`` set to its player line."""
     rows = naming_needed(sheet)
     if not rows:
         return NamingResult(sheet)
@@ -164,6 +167,16 @@ def name_features(sheet: Dict[str, Any], *, scope: Any = None, status: Any = Non
                 {"role": "assistant", "content": raw if isinstance(raw, str) else ""},
                 {"role": "user", "content": "Your last answer failed this contract: " + problem
                  + ". Return the complete JSON object again, with that defect corrected."}]
+            continue
+        except (LiveProviderCompletedError, LiveProviderUnavailable) as exc:
+            problem = f"T125 call failed: {exc}"
+            refusal = classify_provider_error(exc)
+            text = account_refusal_message(refusal["category"], refusal["provider"], "turn")
+            if text:
+                # #1229: another attempt cannot help a refused account; the caller shows its line.
+                warning(f"[Feature Names] {character}: legacy feature names not named: {problem}",
+                        category="character_validation")
+                return NamingResult(sheet, error=problem, refusal=text)
             continue
         except Exception as exc:
             problem = f"T125 call failed: {exc}"

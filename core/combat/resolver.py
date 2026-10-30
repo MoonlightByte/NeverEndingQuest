@@ -30,6 +30,7 @@ from core.combat.attacks import (
     FLAT_DAMAGE_DICE,
     is_executable_attack,
 )
+from core.combat.handover import apply_hand_over
 from core.effects.effective import effective_sheet, modifier_dice, modifier_total
 from core.effects.lifecycle import (
     INCAPACITATING_CONDITIONS,
@@ -1311,6 +1312,50 @@ def _typed_damage(sheet, damage_type, raw):
     return applied, found
 
 
+def _immune_condition_op(encounter, characters, op, event):
+    """#1520: ``op`` without the conditions its target is immune to, or None
+    when nothing is left of it.
+
+    The target's ``conditionImmunities`` are compared casefolded with each
+    condition id, as #527 compares damage types; a prose entry never matches.
+    A removed incapacitating condition resets the stored flag from the kept
+    conditions only. Each removal is journaled as a normalization.
+    """
+    effect = op.get("effect") if isinstance(op, dict) and op.get("op") == "add" else None
+    conditions = effect.get("conditions") if isinstance(effect, dict) else None
+    if not conditions:
+        return op
+    if op.get("owner"):
+        sheet = (characters or {}).get(op["owner"])
+        target_id = op.get("saveTargetId") or next(
+            (c.get("combatantId") for c in encounter.get("creatures") or []
+             if isinstance(c, dict) and c.get("name") == op["owner"]), None)
+    else:
+        creature = combatant_by_id(encounter, op.get("combatantId"))
+        sheet = _raw_combatant_sheet(encounter, characters, creature) if creature is not None else None
+        target_id = op.get("combatantId")
+    immune = {entry.strip().casefold() for entry in (sheet or {}).get("conditionImmunities") or []
+              if isinstance(entry, str)} if isinstance(sheet, dict) else set()
+    removed = [c for c in conditions if isinstance(c, str) and c.strip().casefold() in immune]
+    if not removed:
+        return op
+    op = deepcopy(op)
+    effect = op["effect"]
+    kept = [c for c in conditions if c not in removed]
+    effect["conditions"] = kept
+    if any(c.strip().casefold() in INCAPACITATING_CONDITIONS for c in removed):
+        effect["incapacitates"] = any(
+            isinstance(c, str) and c.strip().casefold() in INCAPACITATING_CONDITIONS for c in kept)
+    for condition in removed:
+        event.setdefault("normalizations", []).append({
+            "kind": "conditionImmunity", "combatantId": target_id,
+            "condition": condition.strip().casefold(), "effect": effect.get("name")})
+    if (not kept and effect.get("incapacitates") is not True and not effect.get("modifiers")
+            and not effect.get("onApply") and not effect.get("onRemove")):
+        return None
+    return op
+
+
 def _stated_condition_reference(characters, encounter, owner, combatant_id, *references):
     """The condition one of the references names among those the target states, or None.
 
@@ -2113,8 +2158,12 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
                     len(resolution.setdefault("effectOps", [])),
                 )
                 if op is not None:
-                    resolution["effectOps"].append(op)
-                    rider_applied = list(rider_conditions)
+                    # #1520: a condition the target is immune to is never staged,
+                    # and the rider record lists only the kept ones.
+                    op = _immune_condition_op(encounter, characters, op, event)
+                    if op is not None:
+                        resolution["effectOps"].append(op)
+                        rider_applied = list(op["effect"]["conditions"])
                 else:
                     resolution["violations"].append(
                         "rider effect contract rejected: %s" % "; ".join(problems))
@@ -3563,6 +3612,19 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
     }
     resolution = Resolution(event=event, charDeltas={}, creatureDeltas={},
                             effectOps=[], violations=[])
+    # #1111: the player's dice answered this turn are recorded with the ruling;
+    # the outcome still comes from its targets.
+    for answered in proposal.get("answeredRolls") or []:
+        if not isinstance(answered, dict):
+            continue
+        for term, group in zip(answered.get("terms") or [], answered.get("faces") or []):
+            if not isinstance(term, list) or len(term) != 2 or not isinstance(group, list):
+                continue
+            for face in group:
+                if type(face) is int:
+                    event["rolls"].append({"die": "d%d" % term[1], "value": face,
+                                           "purpose": answered.get("purpose"),
+                                           "source": answered.get("source")})
 
     resources = proposal.get("resources", []) or []
     effects = proposal.get("effects", []) or []
@@ -3750,6 +3812,14 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
         except (TypeError, ValueError):
             resolution["violations"].append(
                 "non-integer resource delta for %r dropped" % owner)
+            continue
+        if kind == "item" and delta > 0:
+            # #145 (D-145-2): no item appears from a proposed record; a give
+            # between party members is the giver's handOver, which the engine
+            # moves. Every record here is the model's (code rebuilds it).
+            resolution["violations"].append(
+                "item gain refused: %s %s %+d. Items are never added through resources; one party member "
+                "giving an item to another is the giver's handOver {item, toId, quantity}" % (owner, name, delta))
             continue
         if kind == "item" and isinstance(sheet, dict) and _charged_row(sheet, name) is not None:
             # H3: a wand, staff or rod is one unit whose charges are spent;
@@ -4565,6 +4635,10 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                 continue
             op["saveTargetId"] = save_target_id
         op.pop("_applyOnExplicit", None)
+        # #1520: a condition the target is immune to is never staged.
+        op = _immune_condition_op(encounter, characters, op, event)
+        if op is None:
+            continue
         resolution["effectOps"].append(op)
     # The staged event is the durable record recovery replays. It contains
     # only effects that passed their deterministic save gate.
@@ -4689,6 +4763,7 @@ def _apply_encounter_effect_operation(creature, operation):
             "armorClass": int(creature.get("armorClass", 10) or 10),
             "maxHitPoints": int(creature.get("maxHitPoints", 0) or 0),
         }
+    hp_before = creature.get("currentHitPoints")
     raw = _raw_combatant_sheet(None, None, creature)
     # An encounter creature record is not a character sheet: no engine world.
     updated = apply_effect_ops(raw, [operation], engine=False)
@@ -4707,6 +4782,16 @@ def _apply_encounter_effect_operation(creature, operation):
         value = rendered.get(sheet_field)
         if isinstance(value, (int, float)):
             creature[encounter_field] = int(value)
+    if (
+        type(hp_before) is int
+        and hp_before > 0
+        and creature.get("currentHitPoints") == 0
+        and normalize_status(creature.get("status")) == "alive"
+    ):
+        # #1550: the same status a hit that reaches 0 records (D-242-1).
+        creature["status"] = (
+            PLAYER_UNCONSCIOUS if is_party_member(creature) else NONPLAYER_DEAD
+        )
     if not creature["activeEffects"]:
         creature.pop("effectBaseStats", None)
     return creature
@@ -4770,7 +4855,36 @@ def _refresh_effect_control_flags(encounter, characters):
         )
 
 
-def _refresh_character_effect_projections(encounter, characters):
+def settle_effect_zero_status(encounter, before, characters):
+    """#1550: give a sheet that an effect took to 0 the status a hit records.
+
+    The lifecycle marks such a sheet unconscious without context; here the
+    encounter row decides by D-242-1: a party member stays unconscious, any
+    other combatant is dead. The row then shows the sheet's down status.
+    Only a sheet that had hit points in ``before`` changes, and a row or
+    sheet already dead or defeated is never overwritten.
+    """
+    for creature in (encounter or {}).get("creatures", []) or []:
+        if not isinstance(creature, dict) or creature.get("type") not in ("player", "npc"):
+            continue
+        sheet = (characters or {}).get(creature.get("name"))
+        if not isinstance(sheet, dict) or sheet.get("hitPoints") != 0:
+            continue
+        old = (before or {}).get(creature.get("name"))
+        old_hp = old.get("hitPoints") if isinstance(old, dict) else None
+        if (
+            type(old_hp) is int
+            and old_hp > 0
+            and normalize_status(sheet.get("status")) == PLAYER_UNCONSCIOUS
+            and not is_party_member(creature)
+        ):
+            sheet["status"] = NONPLAYER_DEAD
+        down = normalize_status(sheet.get("status"))
+        if down in (PLAYER_UNCONSCIOUS, NONPLAYER_DEAD) and normalize_status(creature.get("status")) == "alive":
+            creature["status"] = down
+
+
+def _refresh_character_effect_projections(encounter, characters, before=None):
     """Keep encounter display/cache fields aligned with canonical sheets.
 
     Character sheets own current HP and declarative effects.  Encounter
@@ -4778,6 +4892,7 @@ def _refresh_character_effect_projections(encounter, characters):
     refreshing them after every effect operation prevents an Aid-like maximum
     HP change from producing contradictory values such as 15/10 HP.
     """
+    settle_effect_zero_status(encounter, before, characters)
     for creature in (encounter or {}).get("creatures", []) or []:
         if not isinstance(creature, dict) or creature.get("type") not in (
             "player",
@@ -4830,7 +4945,71 @@ def _apply_charges_after(sheet, item, resource, after_state):
         if exhausted:
             receipt["exhausted"] = deepcopy(exhausted)
         receipts.append(receipt)
-        sheet["chargeUses"] = receipts[-20:]  # item_charges.RECEIPTS_KEPT
+        sheet["chargeUses"] = receipts
+
+
+def _apply_resource(new_characters, resource):
+    """Set one journaled resource record on its owner's sheet."""
+    sheet = new_characters.get(resource.get("owner"))
+    if not isinstance(sheet, dict):
+        return
+    # Absolute 'after' values make replay idempotent: re-applying the
+    # same staged event to an already-updated sheet is a no-op. The
+    # delta fallback exists only for events staged before this format.
+    if "after" in resource:
+        value = max(0, int(resource["after"]))
+        setter = lambda current: value
+    else:
+        setter = lambda current: max(0, current + int(resource["delta"]))
+    if resource["kind"] == "ammunition":
+        for item in sheet.get("ammunition", []):
+            if isinstance(item, dict) and item.get("name") == resource.get("name"):
+                item["quantity"] = setter(int(item.get("quantity", 0) or 0))
+                # AM: the engine's pending count rides on the journal; an
+                # older record without it leaves the row's count alone.
+                if type(resource.get("recoverableAfter")) is int:
+                    if resource["recoverableAfter"] > 0:
+                        item["recoverable"] = resource["recoverableAfter"]
+                    else:
+                        item.pop("recoverable", None)
+                break
+    elif resource["kind"] == "spellSlot":
+        level = ((sheet.get("spellcasting") or {}).get("spellSlots") or {}).get(
+            resource.get("name"))
+        if isinstance(level, dict):
+            cap = int(level.get("max", 0) or 0)
+            level["current"] = min(cap, setter(int(level.get("current", 0) or 0)))
+    elif resource["kind"] == "featureUse":
+        for feature in list(sheet.get("classFeatures", []) or []) + list(sheet.get("feats", []) or []):
+            if isinstance(feature, dict) and feature.get("name") == resource.get("name"):
+                usage = feature.get("usage")
+                if isinstance(usage, dict):
+                    cap = int(usage.get("max", 0) or 0)
+                    usage["current"] = min(cap, setter(int(usage.get("current", 0) or 0)))
+                break
+    elif resource["kind"] == "item":
+        if isinstance(resource.get("item"), dict):
+            from core.nql.item_use import resolve_row
+            found = resolve_row(sheet, resource["item"])
+            if found is not None:
+                index, item = found
+                # Keep zero-stock rows, as the existing item path does (#1121/#1197).
+                item["quantity"] = setter(item["quantity"])
+            return
+        for item in sheet.get("equipment", []):
+            if isinstance(item, dict) and item.get("item_name") == resource.get("name"):
+                item["quantity"] = setter(int(item.get("quantity", 0) or 0))
+                break
+    elif resource["kind"] == "charges":
+        # H3: the journaled engine state is written whole (a field the
+        # record omits is removed, the H2 store_view rule); a record
+        # without it applies nothing, there is no delta fallback.
+        after_state = resource.get("chargesAfter")
+        if isinstance(after_state, dict) and type(after_state.get("current")) is int:
+            for item in sheet.get("equipment", []):
+                if isinstance(item, dict) and item.get("item_name") == resource.get("name"):
+                    _apply_charges_after(sheet, item, resource, after_state)
+                    break
 
 
 def apply_resolution(encounter, characters, resolution):
@@ -4894,6 +5073,24 @@ def apply_resolution(encounter, characters, resolution):
         if "status" in delta:
             sheet["status"] = delta["status"]
 
+    bonus = event.get("bonusAction") if isinstance(event.get("bonusAction"), dict) else {}
+    hand_over = event.get("handOver") if isinstance(event.get("handOver"), dict) else None
+    # R2: the bonus action's spends come first (its absolute 'after' values
+    # are already on the sheet when the live path applied it). #145: with a
+    # hand-over, the staging order: a Bonus Action taken before the Action,
+    # then the hand-over's whole lists (never the engine), then the draw and
+    # the Action's spends; an Off-hand Attack (R3) stays after the Action.
+    # #1594: the bonus's records are split on its order once; an afterAction
+    # bonus's spends come after the Action's, as it was staged.
+    after_action = bonus.get("order") == "afterAction"
+    before = [] if after_action else list(bonus.get("resources") or [])
+    after = list(bonus.get("resources") or []) if after_action else []
+    early = before if hand_over is not None else []
+    for resource in early:
+        _apply_resource(new_characters, resource)
+    if hand_over is not None:
+        apply_hand_over(new_characters, hand_over)
+
     # NUM-B: a weapon drawn after a swing (BQ1); the record holds the absolute value.
     hands = event.get("hands")
     draw = hands.get("draw") if isinstance(hands, dict) else None
@@ -4905,70 +5102,9 @@ def apply_resolution(encounter, characters, resolution):
                 and isinstance(rows[index], dict) and rows[index].get("item_name") == draw.get("item_name")):
             rows[index]["equipped"] = draw.get("equippedAfter") is True
 
-    bonus = event.get("bonusAction") if isinstance(event.get("bonusAction"), dict) else {}
-    for resource in list(bonus.get("resources") or []) + list(event.get("resources", []) or []):
-        # R2: the bonus action's spends come first (its absolute 'after' values
-        # are already on the sheet when the live path applied it).
-        sheet = new_characters.get(resource.get("owner"))
-        if not isinstance(sheet, dict):
-            continue
-        # Absolute 'after' values make replay idempotent: re-applying the
-        # same staged event to an already-updated sheet is a no-op. The
-        # delta fallback exists only for events staged before this format.
-        if "after" in resource:
-            value = max(0, int(resource["after"]))
-            setter = lambda current: value
-        else:
-            setter = lambda current: max(0, current + int(resource["delta"]))
-        if resource["kind"] == "ammunition":
-            for item in sheet.get("ammunition", []):
-                if isinstance(item, dict) and item.get("name") == resource.get("name"):
-                    item["quantity"] = setter(int(item.get("quantity", 0) or 0))
-                    # AM: the engine's pending count rides on the journal; an
-                    # older record without it leaves the row's count alone.
-                    if type(resource.get("recoverableAfter")) is int:
-                        if resource["recoverableAfter"] > 0:
-                            item["recoverable"] = resource["recoverableAfter"]
-                        else:
-                            item.pop("recoverable", None)
-                    break
-        elif resource["kind"] == "spellSlot":
-            level = ((sheet.get("spellcasting") or {}).get("spellSlots") or {}).get(
-                resource.get("name"))
-            if isinstance(level, dict):
-                cap = int(level.get("max", 0) or 0)
-                level["current"] = min(cap, setter(int(level.get("current", 0) or 0)))
-        elif resource["kind"] == "featureUse":
-            for feature in list(sheet.get("classFeatures", []) or []) + list(sheet.get("feats", []) or []):
-                if isinstance(feature, dict) and feature.get("name") == resource.get("name"):
-                    usage = feature.get("usage")
-                    if isinstance(usage, dict):
-                        cap = int(usage.get("max", 0) or 0)
-                        usage["current"] = min(cap, setter(int(usage.get("current", 0) or 0)))
-                    break
-        elif resource["kind"] == "item":
-            if isinstance(resource.get("item"), dict):
-                from core.nql.item_use import resolve_row
-                found = resolve_row(sheet, resource["item"])
-                if found is not None:
-                    index, item = found
-                    # Keep zero-stock rows, as the existing item path does (#1121/#1197).
-                    item["quantity"] = setter(item["quantity"])
-                continue
-            for item in sheet.get("equipment", []):
-                if isinstance(item, dict) and item.get("item_name") == resource.get("name"):
-                    item["quantity"] = setter(int(item.get("quantity", 0) or 0))
-                    break
-        elif resource["kind"] == "charges":
-            # H3: the journaled engine state is written whole (a field the
-            # record omits is removed, the H2 store_view rule); a record
-            # without it applies nothing, there is no delta fallback.
-            after_state = resource.get("chargesAfter")
-            if isinstance(after_state, dict) and type(after_state.get("current")) is int:
-                for item in sheet.get("equipment", []):
-                    if isinstance(item, dict) and item.get("item_name") == resource.get("name"):
-                        _apply_charges_after(sheet, item, resource, after_state)
-                        break
+    late = before if hand_over is None else []
+    for resource in late + list(event.get("resources", []) or []) + after:
+        _apply_resource(new_characters, resource)
 
     for op in (resolution.get("effectOps") or event.get("effects") or []):
         if op.get("op") == "add" and isinstance(op.get("effect"), dict):
@@ -5118,7 +5254,7 @@ def apply_resolution(encounter, characters, resolution):
             sheet["temporaryHitPoints"] = max(0, snapshot["temporaryHitPoints"])
         if "status" in snapshot:
             sheet["status"] = snapshot["status"]
-    _refresh_character_effect_projections(new_encounter, new_characters)
+    _refresh_character_effect_projections(new_encounter, new_characters, before=characters)
     _refresh_effect_control_flags(new_encounter, new_characters)
     return new_encounter, new_characters
 

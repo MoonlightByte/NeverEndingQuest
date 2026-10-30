@@ -271,7 +271,7 @@ from utils.file_operations import safe_write_json
 from utils.transient_filesystem import ReadOnlySaveStop, raise_if_save_stopped
 from utils.module_refresh_lock import wait_for_module_refresh
 import core.ai.cumulative_summary as cumulative_summary
-from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name, file_only
 from core.ai import history_markers as hm
 
 # Set script name for logging
@@ -469,6 +469,15 @@ os.makedirs("combat_logs", exist_ok=True)
 
 # Constants for chat history generation
 HISTORY_TIMESTAMP_FORMAT = "%Y%m%d_%H%M%S"
+
+
+def _display_combat_notice(text):
+   """#1615: an operational combat line (a pause, the party-defeat stop, a
+   rejected action, the downed player's control line) as the typed system
+   notice, never a Dungeon Master card."""
+   from utils.player_notice import show_player_notice
+
+   return show_player_notice(text, color="yellow")
 
 
 def _display_combat_narration(narration, message_id=None):
@@ -1173,7 +1182,7 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
                     
             except (json.JSONDecodeError, TypeError, ValueError):
                 debug(f"VALIDATION: Invalid JSON from validation model (Attempt {attempt + 1})", category="combat_validation")
-                debug(f"VALIDATION: Problematic response: {validation_response}", category="combat_validation")
+                file_only(f"VALIDATION: Problematic response: {validation_response}", category="combat_validation")
                 continue
 
         except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop, LiveProviderCompletedError):
@@ -1583,6 +1592,7 @@ def recover_pending_combat_output():
 def _offer_opening_action(text):
     """#882: show the player's declared first action at their first turn and
     offer it as the composer's text (web); the terminal sends it on Enter."""
+    from utils.player_notice import show_player_notice
     from web.shared_state import emit_player_output, has_player_output_sink
 
     sentence = text if text.endswith((".", "!", "?")) else text + "."
@@ -1590,10 +1600,9 @@ def _offer_opening_action(text):
     if not has_player_output_sink():
         print(line.replace("Send it as is", "Press Enter to send it"))
         return
-    # The shape of the rest receipt (#840): a narration on the system channel
-    # is cached with a message id, so the web shows it and a reload keeps it.
-    if emit_player_output({"type": "narration", "channel": "system", "content": line}) is not True:
-        print(line)
+    # An operational notice card (#1580), cached with its message id so a
+    # reload keeps it; a sink that rejects it gets no console copy.
+    show_player_notice(line)
     emit_player_output({"type": "input_suggestion", "channel": "input_suggestion", "content": text})
 
 
@@ -2204,6 +2213,14 @@ def summarize_dialogue(
         else:  # legacy
             summary_config = config.COMBAT_SUMMARY_LEGACY
 
+        # #454: the round's status was cleared; show progress while T041
+        # writes the summary (its wait record attaches to this line).
+        try:
+            from core.managers.status_manager import status_wrapping_up_combat
+            status_wrapping_up_combat()
+        except Exception as e:
+            debug(f"Could not update status: {e}", category="status")
+
         response = capture_and_fanout("T041", api_client.create_completion,
             _request_provider=MODEL_PROVIDER,
             messages=dialogue_summary_prompt,
@@ -2509,6 +2526,12 @@ def _complete_agentic_combat(
     import copy
     from utils.capture.live_provider_call import get_live_turn_scope
 
+    from core.combat.invocation import fence_mark
+
+    # #202: one fence mark for the whole completion, so a Load, Reset or exit
+    # during any step stops every later lease before it writes a receipt.
+    completion_fence = fence_mark()
+
     # #1468: the after-fight calls (T041, T108, the DM's turn) get their own ceiling.
     completion_scope = get_live_turn_scope()
     if completion_scope is not None:
@@ -2529,8 +2552,12 @@ def _complete_agentic_combat(
             scalar_from_calendar(
                 (party_tracker_data.get("worldConditions") or {})
             ),
+            timeout_seconds=None,
+            fence=completion_fence,
         )
         encounter_data = safe_json_load(encounter_path) or encounter_data
+    except (InvocationSupersededError, ReadOnlySaveStop):
+        raise
     except Exception as exc:
         raise RuntimeError(
             "Combat effects could not reach their recoverable exit boundary"
@@ -2552,7 +2579,8 @@ def _complete_agentic_combat(
         # fired nothing here, and its pending count from an earlier fight is
         # not forfeit by this one.
         recovery = recover_ammunition(
-            encounter_path, _reward_paths(encounter_data, character_paths), fled
+            encounter_path, _reward_paths(encounter_data, character_paths), fled,
+            timeout_seconds=None, fence=completion_fence,
         )
         parts = []
         for name, lines in sorted((recovery or {}).items()):
@@ -2565,6 +2593,8 @@ def _complete_agentic_combat(
         if parts:
             ammunition_note = " Ammunition: " + "; ".join(parts) + "."
         encounter_data = safe_json_load(encounter_path) or encounter_data
+    except (InvocationSupersededError, ReadOnlySaveStop):
+        raise
     except Exception as exc:
         warning("AM: ammunition recovery skipped (%s)" % exc, category="combat_events")
 
@@ -2573,12 +2603,14 @@ def _complete_agentic_combat(
         encounter_path,
         _xp_paths(encounter_data, character_paths),
         xp_awarded,
+        timeout_seconds=None,
+        fence=completion_fence,
     )
 
     # Step S: publish one permanent area summary and receipt it. The area
     # append itself deduplicates by encounterId, covering a crash between the
     # area write and this encounter receipt.
-    with completion_lease(encounter_path) as receipt_encounter:
+    with completion_lease(encounter_path, fence=completion_fence) as receipt_encounter:
         completion = receipt_encounter["combatState"]["completion"]
         if completion.get("summaryPublished"):
             dialogue_summary = completion.get(
@@ -2619,7 +2651,7 @@ def _complete_agentic_combat(
 
     # Step A: use one deterministic archive path for this final revision. A
     # retry after the file write simply overwrites the same transcript.
-    with completion_lease(encounter_path) as receipt_encounter:
+    with completion_lease(encounter_path, fence=completion_fence) as receipt_encounter:
         state = receipt_encounter["combatState"]
         completion = state["completion"]
         archive_filename = completion.get("archiveFile")
@@ -2640,7 +2672,7 @@ def _complete_agentic_combat(
 
     # Step C: clear the active encounter only after both durable receipts.
     # Reconnect can therefore skip completed work and retry only this write.
-    with completion_lease(encounter_path) as receipt_encounter:
+    with completion_lease(encounter_path, fence=completion_fence) as receipt_encounter:
         completion = receipt_encounter["combatState"]["completion"]
         if not completion.get("summaryPublished") or not completion.get(
             "transcriptArchived"
@@ -2907,6 +2939,9 @@ def format_character_for_combat(char_data, char_type="player", role=None):
     Returns:
         Formatted string matching conversation_utils format
     """
+    # #1520 item 1: these blocks print the stored AC and speed (stored notes).
+    from core.ai.conversation_utils import _effect_note
+
     # Get equipment string - include ALL items with quantities (not just equipped)
     # Don't include item type in parentheses for combat - wastes tokens
     equipment_str = "None"
@@ -2978,7 +3013,7 @@ def format_character_for_combat(char_data, char_type="player", role=None):
     # Build the formatted string (exactly matching conversation_utils format)
     formatted_data = f"""{header}
 {type_line} | LVL: {char_data.get('level', 1)} | RACE: {char_data.get('race', 'Unknown')} | CLASS: {char_data.get('class', 'Unknown')} | ALIGN: {str(char_data.get('alignment', 'neutral')).upper()} | BG: {char_data.get('background', 'None')}
-AC: {char_data.get('armorClass', 10)} | SPD: {char_data.get('speed', 30)}
+AC: {char_data.get('armorClass', 10)}{_effect_note(char_data, 'armorClass', stored=True)} | SPD: {char_data.get('speed', 30)}{_effect_note(char_data, 'speed', stored=True)}
 STATUS: {char_data.get('status', 'alive')} | CONDITION: {char_data.get('condition', 'none')} | AFFECTED: {', '.join(char_data.get('condition_affected', []))}
 STATS: STR {char_data.get('abilities', {}).get('strength', 10)}, DEX {char_data.get('abilities', {}).get('dexterity', 10)}, CON {char_data.get('abilities', {}).get('constitution', 10)}, INT {char_data.get('abilities', {}).get('intelligence', 10)}, WIS {char_data.get('abilities', {}).get('wisdom', 10)}, CHA {char_data.get('abilities', {}).get('charisma', 10)}
 SAVES: {', '.join(char_data.get('savingThrows', []))}
@@ -3048,6 +3083,9 @@ def format_npc_for_combat(npc_data, npc_role=None):
     Returns:
         Formatted string matching conversation_utils format
     """
+    # #1520 item 1: these blocks print the stored AC and speed (stored notes).
+    from core.ai.conversation_utils import _effect_note
+
     # Get equipment string - include ALL items with quantities (not just equipped)
     # Don't include item type in parentheses for combat - wastes tokens
     equipment_str = "None"
@@ -3111,7 +3149,7 @@ def format_npc_for_combat(npc_data, npc_role=None):
     # Build the formatted string (exactly matching conversation_utils format)
     formatted_data = f"""NPC: {npc_data.get('name', 'Unknown')}
 ROLE: {npc_role if npc_role else 'Adventurer'} | TYPE: {npc_data.get('character_type', 'npc').capitalize()} | LVL: {npc_data.get('level', 1)} | RACE: {npc_data.get('race', 'Unknown')} | CLASS: {npc_data.get('class', 'Unknown')} | ALIGN: {str(npc_data.get('alignment', 'neutral')).upper()} | BG: {npc_data.get('background', 'None')}
-AC: {npc_data.get('armorClass', 10)} | SPD: {npc_data.get('speed', 30)}
+AC: {npc_data.get('armorClass', 10)}{_effect_note(npc_data, 'armorClass', stored=True)} | SPD: {npc_data.get('speed', 30)}{_effect_note(npc_data, 'speed', stored=True)}
 STATUS: {npc_data.get('status', 'alive')} | CONDITION: {npc_data.get('condition', 'none')} | AFFECTED: {', '.join(npc_data.get('condition_affected', []))}
 STATS: STR {npc_data.get('abilities', {}).get('strength', 10)}, DEX {npc_data.get('abilities', {}).get('dexterity', 10)}, CON {npc_data.get('abilities', {}).get('constitution', 10)}, INT {npc_data.get('abilities', {}).get('intelligence', 10)}, WIS {npc_data.get('abilities', {}).get('wisdom', 10)}, CHA {npc_data.get('abilities', {}).get('charisma', 10)}
 SAVES: {', '.join(npc_data.get('savingThrows', []))}
@@ -4680,6 +4718,8 @@ This is narration only. Do not advance the round or apply any combat action."""
                    encounter_id,
                    player_file,
                )
+           except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+               raise
            except Exception as exc:
                error(
                    "AGENTIC_COMBAT: Resume completion failed; leaving active encounter intact",
@@ -4703,7 +4743,7 @@ This is narration only. Do not advance the round or apply any combat action."""
            state["pauseReason"] = "party_defeated"
            if not safe_write_json(json_file_path, encounter_data):
                raise RuntimeError("Could not persist the party-defeat combat pause")
-           _display_combat_narration(TPK_PAUSE_TEXT)
+           _display_combat_notice(TPK_PAUSE_TEXT)
            try:
                from core.managers.status_manager import status_manager
                status_manager.update_status(
@@ -4791,7 +4831,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                and current_round_number != last_boundary_round
            ):
                last_boundary_round = current_round_number
-               _display_combat_narration(
+               _display_combat_notice(
                    COMBAT_DOWN_SINK_LINE.format(
                        name=player_name_display, token=GO_ON_TOKEN
                    )
@@ -5213,6 +5253,16 @@ This is narration only. Do not advance the round or apply any combat action."""
                agentic_recovery["action"] == "continue"
                and not automatic_initiative_step
            ):
+               # #351: acknowledge the accepted input before the synchronous
+               # companion packet and profile work below.
+               try:
+                   from core.managers.status_manager import (
+                       status_processing_combat,
+                   )
+
+                   status_processing_combat()
+               except Exception:
+                   pass
                try:
                    from core.npc.voice_context import (
                        dispatch_combat_voice_stage,
@@ -5280,6 +5330,24 @@ This is narration only. Do not advance the round or apply any combat action."""
                            for actor_id, row in voice_stage.intents.items()
                        },
                    }
+               # #269: the batch is committed when it is accepted, before the
+               # round runs, so a roll pause (which never re-voices) or a
+               # restart cannot lose it; the store dedups a repeated beat.
+               try:
+                   from core.npc.voice_context import (
+                       commit_accepted_combat_voice_batch,
+                   )
+
+                   commit_accepted_combat_voice_batch(
+                       voice_stage.batch,
+                       party_tracker_data,
+                   )
+               except Exception as exc:
+                   debug(
+                       "T105 accepted combat event skipped: %s"
+                       % type(exc).__name__,
+                       category="combat_events",
+                   )
 
            try:
                try:
@@ -5324,22 +5392,6 @@ This is narration only. Do not advance the round or apply any combat action."""
                        raise
                    _warn_unowned_supersession(exc, json_file_path)
                    raise CombatTurnPaused("unowned supersession") from exc
-               if voice_stage is not None:
-                   try:
-                       from core.npc.voice_context import (
-                           commit_accepted_combat_voice_batch,
-                       )
-
-                       commit_accepted_combat_voice_batch(
-                           voice_stage.batch,
-                           party_tracker_data,
-                       )
-                   except Exception as exc:
-                       debug(
-                           "T105 accepted combat event skipped: %s"
-                           % type(exc).__name__,
-                           category="combat_events",
-                       )
            except (CombatTurnPaused, CombatTransactionError) as exc:
                # Technical exception text may contain internal state terms,
                # paths, or provider details. Only explicitly approved player
@@ -5380,7 +5432,11 @@ This is narration only. Do not advance the round or apply any combat action."""
                    invocation_claim, conversation_history
                )
                if pause_narration:
-                   _display_combat_narration(pause_narration)
+                   if getattr(exc, "player_message", None):
+                       _display_combat_narration(pause_narration)
+                   else:
+                       # #1615: the engine's fallback, not the DM's words.
+                       _display_combat_notice(pause_narration)
                if (
                    agentic_recovery["action"] == "apply_staged_events"
                    and isinstance(exc, CombatTransactionError)
@@ -5520,6 +5576,8 @@ This is narration only. Do not advance the round or apply any combat action."""
                        encounter_id,
                        player_file,
                    )
+               except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+                   raise
                except Exception as exc:
                    error(
                        "AGENTIC_COMBAT: Completion failed; state remains recoverable",
@@ -5534,6 +5592,16 @@ This is narration only. Do not advance the round or apply any combat action."""
                return final_result
            continue
        
+       if not automatic_initiative_step:
+           # #351: acknowledge the accepted input before the legacy tracker
+           # call and the voice stage below.
+           try:
+               from core.managers.status_manager import status_processing_combat
+
+               status_processing_combat()
+           except Exception:
+               pass
+
        # Generate initiative order for validation context
        # Try to use AI-powered live initiative tracker
        # Get recent conversation for analysis (last 6 messages - enough for current round context)
@@ -6055,7 +6123,7 @@ Rules:
        
        if not valid_response or not ai_response:
            error("FAILURE: Failed to get a valid AI response after multiple attempts", category="combat_events")
-           _display_combat_narration(T045_REJECTED_ACTION_NARRATION)
+           _display_combat_notice(T045_REJECTED_ACTION_NARRATION)
            continue
 
        # The T105 event describes only prior accepted evidence. Commit it once
@@ -6144,8 +6212,7 @@ Rules:
                
        except json.JSONDecodeError as e:
            debug(f"VALIDATION: JSON parsing error - {str(e)}", category="combat_events")
-           debug("VALIDATION: Raw AI response:", category="combat_events")
-           debug(ai_response, category="combat_events")
+           file_only(f"VALIDATION: Raw AI response: {ai_response}", category="combat_events")
            continue
        
        # --- ACTION PROCESSING: CONSOLIDATE AND EXECUTE ---
@@ -6181,13 +6248,6 @@ Rules:
                        final_character_updates[character_name] = []
                    final_character_updates[character_name].append(changes)
                    info(f"CONSOLIDATING: Queued change for {character_name}: '{changes}'", category="combat_events")
-                   
-                   # AMMUNITION DEBUG LOGGING
-                   if any(word in changes.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
-                       debug(f"AMMO_DEBUG: Detected ammunition change for {character_name}", category="ammunition")
-                       debug(f"AMMO_DEBUG: Action type: {action_type}", category="ammunition")
-                       debug(f"AMMO_DEBUG: Changes text: '{changes}'", category="ammunition")
-                       debug(f"AMMO_DEBUG: Added to final_character_updates queue", category="ammunition")
 
            elif action_type == "updateencounter":
                # Encounter updates are separate and can be processed immediately.
@@ -6245,25 +6305,16 @@ Rules:
                # Join all changes into one comprehensive request string.
                final_change_string = "Following the turn's events: " + ", and ".join(changes_list) + "."
                info(f"FINAL_CHANGE_STRING for {character_name}: {final_change_string}", category="character_updates")
-               
-               # AMMUNITION DEBUG
-               if any(word in final_change_string.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
-                   debug(f"AMMO_DEBUG: About to update ammunition for {character_name}", category="ammunition")
-                   debug(f"AMMO_DEBUG: Final change string: '{final_change_string}'", category="ammunition")
 
                try:
                    update_success = update_character_info(character_name, final_change_string)
                    if not update_success:
                        error(f"FAILURE: Final consolidated update failed for {character_name}.", category="character_updates")
-                   else:
-                       # AMMUNITION DEBUG
-                       if any(word in final_change_string.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
-                           debug(f"AMMO_DEBUG: Successfully processed ammunition update for {character_name}", category="ammunition")
+               except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+                   # #1656: a Load, Reset, Quit or read-only save stop ends the combat step.
+                   raise
                except Exception as e:
                    error(f"FAILURE: Critical error during consolidated update for {character_name}", exception=e, category="character_updates")
-                   # AMMUNITION DEBUG
-                   if any(word in final_change_string.lower() for word in ["arrow", "bolt", "ammunition", "ammo", "expended"]):
-                       debug(f"AMMO_DEBUG: Exception during ammunition update: {str(e)}", category="ammunition")
 
        # STEP 3: If combat ended, perform final cleanup and exit the simulation.
        if is_combat_ending:

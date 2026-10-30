@@ -140,6 +140,7 @@ class LineClassifier:
             return
 
         if "Dungeon Master:" in clean_line:
+            self._flush_dm_buffer()  # #1167: a DM line already open is published, never replaced
             self._in_dm_section = True
             self._dm_buffer = [clean_line]
             return

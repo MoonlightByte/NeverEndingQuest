@@ -46,7 +46,7 @@ from core.leveling import choices as class_choices
 from core.leveling import tables as class_tables
 from core.nql.legacy_loadout import RECEIPT_FIELD, migrate as repair_initial_loadout
 from utils.module_path_manager import ModulePathManager
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
 from utils.character_sheet_contract import repair_required_ammunition_field
 from utils.file_operations import safe_write_json
 from utils.single_target_generation import (
@@ -425,10 +425,11 @@ Adhere strictly to 5e rules and the provided schema."""
     # messages so log scrapers and operators see the familiar output.
     if last_json_err is not None:
         print(f"{RED}Error: Invalid JSON in AI response. {str(last_json_err)}{RESET}")
-        print(f"{YELLOW}Processed AI response:{RESET}\n{last_ai_response}")
+        file_only(f"Processed AI response: {last_ai_response}", category="npc_builder")
     elif last_validation_err is not None:
-        print(f"{RED}Error: Generated NPC data does not match schema. {str(last_validation_err)}{RESET}")
-        print(f"{YELLOW}Problematic NPC data:{RESET}\n{json.dumps(last_parsed_data, indent=2)}")
+        print(f"{RED}Error: Generated NPC data does not match schema; details are in the log file{RESET}")
+        file_only(f"NPC schema error: {str(last_validation_err)}", category="npc_builder")
+        file_only(f"Problematic NPC data: {json.dumps(last_parsed_data, indent=2)}", category="npc_builder")
 
     return None
 
@@ -521,6 +522,7 @@ def build_npc_file_with_path(
     npc_background=None,
     path_manager=None,
     npc_identity=None,
+    stop_check=None,
 ):
     """Generate and save one NPC; return (sheet, path it was loaded or saved at), or None.
     npc_identity is the NPC's authored record, given to the model (#534).
@@ -573,6 +575,10 @@ def build_npc_file_with_path(
             transaction.remember_target(actual_target)
             return existing, actual_target
         _drop_model_recoverable(generated)
+        if stop_check is not None and stop_check():
+            # #1529: the game stopped the build; nothing is recorded or saved.
+            from utils.child_process import ChildStopped
+            raise ChildStopped("NPC build stopped by the game")
         # Record the intended path before the atomic save. This closes the
         # post-replace/pre-marker crash window for cleaned NPC filenames.
         transaction.remember_target(actual_target)

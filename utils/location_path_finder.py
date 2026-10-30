@@ -301,6 +301,7 @@ class LocationGraph:
                     # otherwise undo a completed NPC reconciliation.
                     with module_refresh_lock() as refresh_acquired:
                         if not refresh_acquired:
+                            # Keep the skip: the repair is redone on the next graph load (#1108).
                             print(
                                 "         Module refresh is busy; skipped "
                                 "persisting the connectivity repair."

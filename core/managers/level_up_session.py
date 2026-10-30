@@ -169,9 +169,11 @@ class LevelUpSession:
         named = feature_names.name_features(self._sheet, scope=self._scope,
                                             live_selected="advisory" if self._scope is not None else None)
         if named.error:
-            return self._terminal("not_applied", "Your level-up has not been applied: the rules could not read "
+            # #1229: an account refusal at T125 ends on its account line, as T121's does.
+            return self._terminal("not_applied", named.refusal or (
+                                  "Your level-up has not been applied: the rules could not read "
                                   f"{self.character_name}'s older feature names. Nothing changed; ask to level up "
-                                  "again later.")
+                                  "again later."))
         self._sheet = named.sheet
         self.is_player = self._sheet.get("character_type") == "player"
         check = tables.eligibility(self._sheet, self.requested_level)
@@ -371,8 +373,8 @@ class LevelUpSession:
     # ---- commit ------------------------------------------------------------------
     def _commit(self, narration: str) -> LevelUpTurn:
         from updates.update_character_info import (
-            _get_character_update_lock, commit_character_sheet, prepare_character_delta, repair_character_data)
-        from utils.path_transaction_lock import path_transaction_lock
+            _get_character_update_lock, commit_character_sheet, prepare_character_delta, repair_character_data,
+            wait_for_sheet_lease)
 
         s, sheet = self._settled, self._sheet
         cls = s.cls
@@ -579,10 +581,9 @@ class LevelUpSession:
         if not refreshed.get("refreshed"):
             warning(f"LEVEL-UP: {self.character_name} attack rows not refreshed ({refreshed.get('reason')})",
                     category="level_up")
+        # #1253: a busy sheet waits under the level-up's scope (with a status line); it never refuses.
         with _get_character_update_lock(os.path.basename(self._path)[:-5]), \
-                path_transaction_lock(self._path, suffix=".effects.lock", timeout_seconds=30.0) as lease:
-            if lease is None:
-                return self._interview("Your sheet is busy; say 'retry' in a moment.")
+                wait_for_sheet_lease(self._path, self.character_name, scope=self._scope):
             from updates.update_character_info import create_character_backup
             create_character_backup(self._path)
             commit_character_sheet(self._path, after, commit_guard=self.commit_guard, expected_before=self._loaded if self._loaded is not None else sheet)

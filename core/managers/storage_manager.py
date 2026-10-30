@@ -67,6 +67,12 @@ set_script_name(__name__)
 
 _STAGED_STORAGE_LOCK = threading.RLock()
 
+
+def _storage_contents_message(containers: List[Dict[str, Any]]) -> str:
+    """The DM's storage listing, the same on the direct and staged paths (#1612)."""
+    return "Storage contains: %s" % json.dumps(containers, ensure_ascii=False)
+
+
 class StorageManager:
     """Manages player storage with atomic file protection"""
     
@@ -631,8 +637,15 @@ class StorageManager:
         self,
         operation: Dict[str, Any],
         operation_id: str,
+        base_sheets=None,
+        reserved_ids=None,
     ) -> Dict[str, Any]:
-        """Freeze one travel-owned storage mutation before its first write."""
+        """Freeze one travel-owned storage mutation before its first write.
+
+        #1567: ``base_sheets`` maps a path to an earlier travel sibling's frozen
+        value (the storage file or a character sheet), which this sibling is
+        frozen on instead of the disk; ``reserved_ids`` are the item ids those
+        earlier siblings hold, so a new id steps past them as it does past disk."""
         operation = _create_with_items_as_store(operation)
         if not self._validate_storage_operation(operation):
             raise ValueError("invalid storage operation")
@@ -641,8 +654,14 @@ class StorageManager:
             raise ValueError("unsupported storage operation")
 
         timestamp = datetime.now().isoformat()
-        storage_exists = os.path.exists(self.storage_file)
-        storage_before = safe_read_json(self.storage_file) if storage_exists else None
+        base_storage = base_sheets(self.storage_file) if base_sheets else None
+        if base_storage is not None:
+            # The earlier sibling's after is on disk by the time this applies.
+            storage_exists = True
+            storage_before = copy.deepcopy(base_storage)
+        else:
+            storage_exists = os.path.exists(self.storage_file)
+            storage_before = safe_read_json(self.storage_file) if storage_exists else None
         if storage_exists and not isinstance(storage_before, dict):
             raise RuntimeError("player storage is unreadable")
         storage_working = copy.deepcopy(
@@ -669,8 +688,7 @@ class StorageManager:
                 "status": "staged",
                 "storage": None,
                 "character": None,
-                "message": "Storage contains: %s"
-                % json.dumps(visible, ensure_ascii=False),
+                "message": _storage_contents_message(visible),
                 "validation": {"status": "not_applicable"},
             }
 
@@ -717,7 +735,11 @@ class StorageManager:
             )
         else:
             character_path = self.path_manager.get_character_path(operation["character"])
-            character_before = safe_read_json(character_path)
+            base_character = base_sheets(character_path) if base_sheets else None
+            character_before = (
+                copy.deepcopy(base_character) if base_character is not None
+                else safe_read_json(character_path)
+            )
             if not isinstance(character_before, dict):
                 raise RuntimeError("storage character is unavailable")
             character_after = copy.deepcopy(character_before)
@@ -753,7 +775,7 @@ class StorageManager:
             # as the immediate path, applied to the working copies.
             outcome = nql_storage.transact(character_after, storage_working, container, operation,
                                            request_id="storage:%s" % operation_id,
-                                           reserved=nql_storage.held_ids_on_disk())
+                                           reserved=nql_storage.held_ids_on_disk() | set(reserved_ids or ()))
             if not outcome.ok:
                 if outcome.worn_items:
                     raise ValueError("selected items are still equipped")
@@ -886,7 +908,8 @@ class StorageManager:
             return {
                 "success": True,
                 "storage": storage_info,
-                "count": len(storage_info)
+                "count": len(storage_info),
+                "message": _storage_contents_message(location_storage),
             }
             
         except Exception as e:

@@ -159,6 +159,19 @@ def create_backup():
             ignore=lambda d, files: [n for n in files if n.endswith('.lock')],
         )
 
+    # Companion memories (NPC relationships, episodes, per-NPC memory files)
+    # are cleared in Phase 4 too, so the whole store is copied first; this
+    # backup is the only copy of it once Reset runs (#201). Kept at its
+    # relative path so a manual restore is a plain copy back.
+    for memory_dir in ("data/companion_memories", "data/companion_memories_compressed"):
+        if os.path.exists(memory_dir):
+            print(f"Backing up {memory_dir} directory...")
+            shutil.copytree(
+                memory_dir,
+                os.path.join(backup_dir, memory_dir),
+                ignore=lambda d, files: [n for n in files if n.endswith(('.lock', '.tmp'))],
+            )
+
     print(f"{GREEN}[OK] Backup complete: {backup_dir}{RESET}")
     return backup_dir
 
@@ -210,10 +223,14 @@ def reset_module(module_name):
                 bu_files.append(os.path.join(root, file))
     
     # Restore from backups
+    from utils.module_lifecycle import copy_file_verified
+
     for bu_file in bu_files:
         original_file = bu_file.replace("_BU.json", ".json")
         if os.path.exists(bu_file):
-            shutil.copy2(bu_file, original_file)
+            # #226: a transient sharing denial is retried and a live file is
+            # never left half-written.
+            copy_file_verified(bu_file, original_file)
             print(f"  [OK] Restored {os.path.relpath(original_file, module_path)}")
     
     # Clear characters directory completely

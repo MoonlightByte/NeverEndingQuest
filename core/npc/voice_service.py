@@ -558,7 +558,10 @@ class NpcVoiceService:
                 )
                 return validated, response, model
             except Exception as exc:
-                from utils.capture.live_provider_call import LiveProviderSuperseded
+                from utils.capture.live_provider_call import (
+                    LiveProviderCompletedError,
+                    LiveProviderSuperseded,
+                )
 
                 if isinstance(exc, LiveProviderSuperseded):
                     raise
@@ -583,6 +586,14 @@ class NpcVoiceService:
                     provider=provider,
                     model=effective_model,
                 )
+                # #372: the transport already reissued this call to its #1342
+                # bound; a second caller attempt would spend the turn's shared
+                # generations again. The retry stays for invalid_contract.
+                if (
+                    isinstance(exc, LiveProviderCompletedError)
+                    and exc.envelope.get("error_code") == "reissue_limit"
+                ):
+                    break
         raise NpcVoiceUnavailable("T105 attempts exhausted") from last_error
 
     def _think_with_provider(

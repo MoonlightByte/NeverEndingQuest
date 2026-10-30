@@ -60,8 +60,9 @@ def group_for(caster: str, spell: str) -> str:
 
 def record_cast(caster: str, spell: str, group: str, target: str, expiration: Optional[str]) -> None:
     """Write the caster's concentration record; a different spell replaces (and ends) the previous one."""
-    from updates.update_character_info import _get_character_update_lock
-    from utils.path_transaction_lock import path_transaction_lock
+    from updates.update_character_info import (
+        _get_character_update_lock, read_sheet_waiting, wait_for_sheet_lease,
+    )
 
     resolved, path, sheet = _caster_sheet(caster)
     if not sheet:
@@ -72,11 +73,9 @@ def record_cast(caster: str, spell: str, group: str, target: str, expiration: Op
     if previous and previous["group"] != group:
         end_group(previous["group"], f"replaced by {spell}", skip_caster=resolved)
     with _get_character_update_lock(resolved):
-        with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=5.0) as locked:
-            if locked is None:
-                warning(f"CONCENTRATION: could not lock {resolved}'s sheet to record {spell}", category="effects_tracking")
-                return
-            current = safe_read_json(path)
+        # #202 A10: a busy sheet or read waits (with a status line); the record is never skipped.
+        with wait_for_sheet_lease(path, resolved):
+            current = read_sheet_waiting(path, resolved)
             if not isinstance(current, dict):
                 return
             record = stats.concentration_of(current) if stats.concentration_of(current) and stats.concentration_of(current)["group"] == group else None
@@ -100,16 +99,21 @@ def clear_record(sheet: Dict[str, Any], group: Optional[str] = None) -> bool:
 
 
 def end_group(group: str, reason: str, *, skip_caster: Optional[str] = None,
-              except_effect_id: Optional[str] = None) -> List[str]:
+              except_effect_id: Optional[str] = None, nested: bool = False) -> List[str]:
     """End every effect of the group on every party sheet (via the outbox) and clear the caster's record.
 
     ``skip_caster`` names a sheet the caller holds in memory and clears itself (its
     disk copy is not touched here). ``except_effect_id`` is a record the caller
-    already removed. Returns the "<owner>: <name>" labels queued.
+    already removed. ``nested`` means the caller already holds another sheet's lease
+    (update_character_info's prepare_character_delta): the clear then keeps its bounded
+    5 s attempt and is skipped when busy, so it never waits on a second sheet with no
+    deadline (#202 C1). Returns the "<owner>: <name>" labels queued.
     """
     from core.effects.model import effect_identity
     from core.managers.effects_runtime import _queue_expiration_records
-    from updates.update_character_info import _get_character_update_lock
+    from updates.update_character_info import (
+        _get_character_update_lock, read_sheet_waiting, wait_for_sheet_lease,
+    )
     from utils.path_transaction_lock import path_transaction_lock
 
     sheets, paths = _party()
@@ -127,11 +131,15 @@ def end_group(group: str, reason: str, *, skip_caster: Optional[str] = None,
         record = stats.concentration_of(sheet)
         if record and record["group"] == group and owner != skip_caster:
             path = paths.get(owner)
-            with _get_character_update_lock(owner):
-                with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=5.0) as locked:
-                    current = safe_read_json(path) if locked is not None else None
-                    if isinstance(current, dict) and clear_record(current, group):
-                        safe_write_json(path, current)
+            # #202 A11: a busy sheet or read waits (with a status line), unless nested (C1).
+            lease = (path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=5.0) if nested
+                     else wait_for_sheet_lease(path, owner))
+            with _get_character_update_lock(owner), lease as locked:
+                current = None
+                if locked is not None:
+                    current = safe_read_json(path) if nested else read_sheet_waiting(path, owner)
+                if isinstance(current, dict) and clear_record(current, group):
+                    safe_write_json(path, current)
     if plans:
         _queue_expiration_records(plans)
     info(f"CONCENTRATION: group {group} ended ({reason}); effects queued to end: {labels or 'none'}",

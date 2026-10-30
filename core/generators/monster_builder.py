@@ -66,7 +66,7 @@ from jsonschema import validate, ValidationError
 from core.combat.attacks import typed_multiattack_issue
 import config
 from utils.module_path_manager import ModulePathManager
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
 from utils.file_operations import safe_write_json
 from utils.single_target_generation import (
     load_valid_generated_target,
@@ -257,7 +257,7 @@ Schema: {json.dumps(schema)}"""
                 **_extra)
 
             ai_response = response.choices[0].message.content.strip()
-            print(f"{YELLOW}AI Response:{RESET}\n{ai_response}")
+            file_only(f"AI Response: {ai_response}", category="monster_builder")
 
             # Remove markdown code block if present
             ai_response = re.sub(r'^```json\s*|\s*```$', '', ai_response, flags=re.MULTILINE)
@@ -310,10 +310,11 @@ Schema: {json.dumps(schema)}"""
     # messages so log scrapers and operators see the familiar output.
     if last_json_err is not None:
         print(f"{RED}Error: Invalid JSON in AI response. {str(last_json_err)}{RESET}")
-        print(f"{YELLOW}Processed AI response:{RESET}\n{last_ai_response}")
+        file_only(f"Processed AI response: {last_ai_response}", category="monster_builder")
     elif last_validation_err is not None:
-        print(f"{RED}Error: Generated monster data does not match schema. {str(last_validation_err)}{RESET}")
-        print(f"{YELLOW}Processed monster data:{RESET}\n{json.dumps(last_parsed_data, indent=2)}")
+        print(f"{RED}Error: Generated monster data does not match schema; details are in the log file{RESET}")
+        file_only(f"Monster schema error: {str(last_validation_err)}", category="monster_builder")
+        file_only(f"Processed monster data: {json.dumps(last_parsed_data, indent=2)}", category="monster_builder")
 
     return None
 
@@ -404,7 +405,8 @@ def _active_module_path_manager():
         return ModulePathManager()
 
 
-def build_monster_file(monster_name, schema, party_level=1, path_manager=None, key=None):
+def build_monster_file(monster_name, schema, party_level=1, path_manager=None, key=None,
+                       stop_check=None):
     """Generate and save one monster as a deduplicated target transaction.
     key (#293/typed-monster-key) names the stat block's file; the name is
     only what the generator is asked to create."""
@@ -426,6 +428,10 @@ def build_monster_file(monster_name, schema, party_level=1, path_manager=None, k
         generated = generate_monster(monster_name, schema, party_level)
         if not generated:
             return None
+        if stop_check is not None and stop_check():
+            # #1529: the game stopped the build; nothing is recorded or saved.
+            from utils.child_process import ChildStopped
+            raise ChildStopped("monster build stopped by the game")
         # Record the intended path before the atomic save. If this process dies
         # after os.replace but before returning, the next waiter still finds it.
         transaction.remember_target(target_path)
@@ -449,6 +455,9 @@ def main():
     parser.add_argument("--key", default=None,
                         help="The monster key the stat block is saved under "
                              "(#293/typed-monster-key); default: the name.")
+    parser.add_argument("--stop-file", default=None,
+                        help="#1529: stop without saving when this file exists "
+                             "or its directory is gone.")
     args = parser.parse_args()
 
     monster_name_arg = args.monster_name
@@ -491,9 +500,15 @@ def main():
     if not schema_data:
         return
 
-    generated_monster_data = build_monster_file(
-        monster_name_arg, schema_data, party_level, key=args.key
-    )
+    from utils.child_process import STOPPED_EXIT, ChildStopped, stop_file_set
+
+    try:
+        generated_monster_data = build_monster_file(
+            monster_name_arg, schema_data, party_level, key=args.key,
+            stop_check=(lambda: stop_file_set(args.stop_file)) if args.stop_file else None,
+        )
+    except ChildStopped:
+        sys.exit(STOPPED_EXIT)
     if generated_monster_data:
         info(f"SUCCESS: Monster creation ({monster_name_arg}) - PASS", category="monster_creation")
     else:

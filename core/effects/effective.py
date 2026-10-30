@@ -50,6 +50,60 @@ def modifier_total(sheet, stat):
     return total
 
 
+def effect_parts(sheet, stat):
+    """#1520 item 1: the live effects counted in ``stat``, as modifier_total
+    counts them: {"inside": [(name, modifier)], "onTop": [...]}.
+
+    ``inside`` holds engineOwned effects whose amount (any kind: +n, a set
+    rule, a floor) the rules engine keeps in the stored armorClass or
+    maxHitPoints; ``onTop`` holds the other live effects whose numeric value
+    effective_sheet adds to the stored field. A stored field holds only
+    ``inside``; an effective one holds both.
+    """
+    parts = {"inside": [], "onTop": []}
+    canonical = canonical_stat(stat)
+    if canonical is None:
+        return parts
+    for effect in _live_effects(sheet):
+        owned = canonical in ("armorClass", "maxHitPoints") and effect.get("engineOwned") is True
+        for modifier in effect.get("modifiers", []):
+            if not isinstance(modifier, dict):
+                continue
+            named = canonical_stat(modifier.get("stat"))
+            if named != canonical and not (
+                canonical == "maxHitPoints" and named == "hitPoints" and modifier.get("affectsMax") is True
+            ):
+                continue
+            if owned:
+                parts["inside"].append((effect.get("name"), modifier))
+            elif type(modifier.get("value")) in (int, float):
+                parts["onTop"].append((effect.get("name"), modifier))
+    return parts
+
+
+def effect_note(sheet, stat, stored=False, prefix=""):
+    """#1520 item 1: " (includes Shield of Faith +2)" for a value a reader is
+    shown, naming the live effects already counted in it, or "" when none is.
+    A stored value names ``onTop`` effects apart, as applied on top of it."""
+    from core.validation.compact_evidence import modifier_amount, one_line
+
+    parts = effect_parts(sheet, stat)
+
+    def listed(items):
+        return ", ".join("%s %s" % (one_line(name), modifier_amount(modifier)) for name, modifier in items)
+
+    if not stored:
+        items = parts["inside"] + parts["onTop"]
+        return " (%sincludes %s)" % (prefix, listed(items)) if items else ""
+    pieces = []
+    if parts["inside"]:
+        pieces.append("%sincludes %s" % (prefix, listed(parts["inside"])))
+    if parts["onTop"]:
+        pieces.append("%splus %s on top" % (prefix, listed(parts["onTop"])))
+    # ", " joins the two lists: a "; " would split a compact evidence field.
+    return " (%s)" % ", ".join(pieces) if pieces else ""
+
+
 def _effect_name_key(effect):
     name = effect.get("name")
     return " ".join(name.split()).casefold() if isinstance(name, str) and name.strip() else None

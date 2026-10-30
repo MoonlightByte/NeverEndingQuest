@@ -7,9 +7,7 @@ Filters validation errors and preserves recent valid context.
 import json
 from core.ai import history_markers as hm
 import os
-import queue
 import sys
-import threading
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from core.ai import api_client
@@ -24,55 +22,19 @@ if __name__ == "__main__":
 import config
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.enhanced_logger import info, debug, warning, error
+from utils.capture.live_provider_call import (
+    LiveProviderCompletedError,
+    LiveProviderSuperseded,
+    LiveProviderUnavailable,
+    get_live_provider_scope,
+)
 
-T020_COMPRESSION_TIMEOUT_SECONDS = 45.0
-_T020_SINGLE_FLIGHT = threading.Lock()
 
-
-class IncrementalCompressionTimeout(TimeoutError):
-    """The optional T020 provider call exceeded its gameplay-safe budget."""
-
-
-def _run_t020_with_timeout(call, timeout_seconds):
-    """Run the optional compression call without letting it gate gameplay.
-
-    Provider SDK cancellation behavior is not consistent across OpenAI,
-    Gemini, and OpenAI-compatible local servers.  A daemon worker gives this
-    callsite one provider-neutral deadline.  A response that arrives after the
-    deadline has no state-writing callback, so it is safely discarded.
-    """
-    if not _T020_SINGLE_FLIGHT.acquire(blocking=False):
-        raise IncrementalCompressionTimeout(
-            "a prior T020 call is still finishing"
-        )
-
-    outcome = queue.Queue(maxsize=1)
-
-    def invoke():
-        try:
-            outcome.put((True, call()))
-        except Exception as exc:  # Re-raised on the gameplay thread.
-            outcome.put((False, exc))
-        finally:
-            _T020_SINGLE_FLIGHT.release()
-
-    worker = threading.Thread(
-        target=invoke,
-        name="neq-t020-compression",
-        daemon=True,
-    )
-    worker.start()
-    try:
-        succeeded, value = outcome.get(
-            timeout=max(float(timeout_seconds), 0.001)
-        )
-    except queue.Empty as exc:
-        raise IncrementalCompressionTimeout(
-            f"T020 exceeded {timeout_seconds:g}s"
-        ) from exc
-    if not succeeded:
-        raise value
-    return value
+def _uncompressed_system_messages(window: List[Dict]) -> List[Dict]:
+    """The system messages of a compression window, in order (#317). T020
+    never summarises them (compress_messages skips them), so a compressed list
+    keeps them; dropping them left the saved history without its context."""
+    return [message for message in window if message.get("role") == "system"]
 
 
 class IncrementalLocationCompressor:
@@ -181,7 +143,13 @@ class IncrementalLocationCompressor:
     
     def compress_messages(self, messages: List[Dict], location_info: Dict) -> Optional[Dict]:
         """Compress a segment of messages into a summary."""
-        
+        # #290: T020 runs only as an advisory call of a live provider scope
+        # (cancellable, heartbeat, reaped). With no scope it is deferred to the
+        # next save inside a turn; the history is saved uncompressed.
+        if get_live_provider_scope() is None:
+            debug("Compression deferred: no live provider scope", category="compression")
+            return None
+
         # Build context for compression
         context_parts = []
         for msg in messages:
@@ -243,17 +211,15 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
             else:  # legacy
                 compress_config = config.NARR_COMPRESS_LEGACY
 
-            api_response = _run_t020_with_timeout(
-                lambda: capture_and_fanout(
-                    "T020",
-                    api_client.create_completion,
-                    _request_provider=MODEL_PROVIDER,
-                    messages=[{"role": "user", "content": compression_prompt}],
-                    model=compress_config["model"],
-                    temperature=self.COMPRESSION_TEMP,
-                    **{k: v for k, v in compress_config.items() if k != "model"},
-                ),
-                T020_COMPRESSION_TIMEOUT_SECONDS,
+            api_response = capture_and_fanout(
+                "T020",
+                api_client.create_completion,
+                _live_selected="advisory",
+                _request_provider=MODEL_PROVIDER,
+                messages=[{"role": "user", "content": compression_prompt}],
+                model=compress_config["model"],
+                temperature=self.COMPRESSION_TEMP,
+                **{k: v for k, v in compress_config.items() if k != "model"},
             )
             response = api_response.choices[0].message.content
             
@@ -268,11 +234,23 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
                 )
                 
                 return hm.marker("assistant", summary_content, hm.ROLLING_SUMMARY)
-        except IncrementalCompressionTimeout as exc:
+        except LiveProviderSuperseded:
+            raise
+        except LiveProviderUnavailable as exc:
             warning(
-                "Incremental conversation compression timed out; "
+                "Incremental conversation compression was unavailable; "
                 f"continuing with uncompressed history ({exc})"
             )
+        except LiveProviderCompletedError as exc:
+            if exc.envelope.get("error_class") == "turn_call_ceiling":
+                # The turn spent its provider generations: compression waits
+                # for a later turn.
+                warning(
+                    "Incremental conversation compression deferred: "
+                    "the turn's provider calls are spent"
+                )
+            else:
+                error(f"Compression failed: {exc}")
         except Exception as e:
             error(f"Compression failed: {e}")
         
@@ -339,7 +317,9 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
         # Add location transition if exists
         if last_transition_idx > 0:
             new_messages.append(messages[last_transition_idx])
-        
+
+        new_messages.extend(_uncompressed_system_messages(current_segment[:end]))
+
         # Add compressed summary
         new_messages.append(compressed)
         
@@ -434,7 +414,9 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
         # Add location transition if it exists
         if current_location_msg and last_transition_idx > 0:
             new_messages.append(current_location_msg)
-        
+
+        new_messages.extend(_uncompressed_system_messages(current_segment[:end]))
+
         # Add compressed summary
         new_messages.append(compressed)
         

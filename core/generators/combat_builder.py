@@ -20,6 +20,7 @@ import shutil
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.file_operations import safe_write_json
+from utils.child_process import STOPPED_EXIT, ChildStopped, run_fenced, stop_file_set
 
 # Set script name for logging
 set_script_name("combat_builder")
@@ -276,6 +277,21 @@ def _roll_initiative(data, sheet_backed):
     return random.randint(1, 20) + bonus
 
 
+# #1529: the parent's stop file (beside --result-file); None when run alone.
+_STOP_FILE = None
+
+
+def stop_requested():
+    """Whether the parent asked this build to stop (stop file, or its result
+    directory already removed)."""
+    return stop_file_set(_STOP_FILE)
+
+
+def _raise_if_stopped():
+    if stop_requested():
+        raise ChildStopped("encounter build stopped by the game")
+
+
 def load_or_create_monster(monster_key, monster_type):
     """The stat block named by monster_key (#293/typed-monster-key); when it
     does not exist yet, one is generated from monster_type (the typed
@@ -303,11 +319,18 @@ def load_or_create_monster(monster_key, monster_type):
         # failure silently falling back to level 1 (bug CH-M3).
         party_level = _get_party_level()
         from utils.encoding_utils import utf8_child_env
-        result = subprocess.run(
-            [sys.executable, monster_builder_path, monster_type,
-             "--party-level", str(party_level), "--key", monster_key],
-            stdin=subprocess.DEVNULL, capture_output=True,
-            encoding="utf-8", errors="replace", env=utf8_child_env())
+        _raise_if_stopped()
+        # #1529: the grandchild is waited on like this process is: a stop ends
+        # the wait inside the parent's grace (2 s here, 5 s there), and the
+        # grandchild checks the same stop file before it saves.
+        argv = [sys.executable, monster_builder_path, monster_type,
+                "--party-level", str(party_level), "--key", monster_key]
+        if _STOP_FILE:
+            argv += ["--stop-file", _STOP_FILE]
+        returncode, stdout, stderr = run_fenced(
+            argv, stop_check=_raise_if_stopped, grace=2.0, env=utf8_child_env())
+        result = subprocess.CompletedProcess(argv, returncode, stdout, stderr)
+        _raise_if_stopped()
         if result.returncode == 0:
             print(f"[COMBAT_BUILDER] Monster creation successful: {monster_type}")
             info(f"SUCCESS: Monster builder ({monster_type}) - PASS", category="combat_builder")
@@ -422,13 +445,15 @@ def load_or_create_npc(npc_name):
         # The builder gets the NPC's name, not its file stem, and reports the
         # file it loaded or saved, which may be under another stem (#884).
         built = None
+        _raise_if_stopped()
         try:
             from core.generators.npc_builder import build_npc_file_with_path, load_schema
             set_script_name("combat_builder")  # importing npc_builder renames the log prefix
             schema = load_schema("schemas/char_schema.json")
             if schema:
                 built = build_npc_file_with_path(
-                    npc_name, schema, npc_level=party_level, path_manager=path_manager
+                    npc_name, schema, npc_level=party_level, path_manager=path_manager,
+                    stop_check=stop_requested,
                 )
         except Exception as e:
             set_script_name("combat_builder")
@@ -767,6 +792,9 @@ def generate_encounter(encounter_data):
         path_manager = ModulePathManager(current_module)
     except:
         path_manager = ModulePathManager()  # Fallback to reading from file
+    # #1551: the npc slots that are roster companions, by value.
+    from core.combat.scene import companion_participant_keys
+    companion_keys = companion_participant_keys(encounter_data, party_tracker)
     player_file = player_sheet_path(path_manager, party_tracker, encounter_data['player'])
     logging.debug(f"Attempting to load player data from {player_file}")
     
@@ -918,12 +946,15 @@ def generate_encounter(encounter_data):
         )
         if occupant_id:
             npc["occupantId"] = occupant_id
-        # #1449: the DM's typed side for this slot sets the fight's faction;
-        # without one, ensure_combatant_ids keeps today's party default. The
-        # value is validated with the rest of the scene (reconcile_scene_manifest).
+        # #1449: the DM's typed side for this slot sets the fight's faction.
+        # #1551: a fighting npc must state one unless it is a roster companion
+        # (reconcile_scene_manifest refuses it otherwise); a companion with no
+        # side fights beside the party.
         side = _proposed_side(encounter_data, f"npc:{npc_index}")
         if side in ("hostile", "party"):
             npc["faction"] = side
+        elif f"npc:{npc_index}" in companion_keys:
+            npc["faction"] = "party"
         # Add the NPC to the encounter's creatures array
         encounter["creatures"].append(npc)
         scene_sources.append(
@@ -957,7 +988,7 @@ def generate_encounter(encounter_data):
         }
         for item in scene_sources
     ]
-    reconciled = reconcile_scene_manifest(encounter_data, canonical_snapshot)
+    reconciled = reconcile_scene_manifest(encounter_data, canonical_snapshot, companion_keys)
     encounter["sceneFacts"] = reconciled["sceneFacts"]
     for item in roster_sources:
         row = {
@@ -1140,6 +1171,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="Build a combat encounter from JSON on stdin.")
     parser.add_argument("--result-file", default=None)
     result_file = parser.parse_args(sys.argv[1:] if argv is None else argv).result_file
+    global _STOP_FILE
+    _STOP_FILE = os.path.join(os.path.dirname(os.path.abspath(result_file)), "stop") if result_file else None
     logging.debug("Starting combat encounter creation")
     
     # Read input from stdin
@@ -1180,6 +1213,7 @@ def main(argv=None):
         os.makedirs("modules/encounters", exist_ok=True)
         encounter_file = f"modules/encounters/encounter_{encounter['encounterId']}.json"
         logging.debug(f"Saving encounter data: {json.dumps(encounter, indent=2)}")
+        _raise_if_stopped()
         if save_json(encounter_file, encounter):
             logging.info(f"Encounter successfully built and saved to {encounter_file}")
             print(colored(f"Encounter successfully built and saved to {encounter_file}", "green"))
@@ -1204,4 +1238,8 @@ def main(argv=None):
         return 1
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except ChildStopped:
+        # #1529: stopped before a write; nothing more is written.
+        sys.exit(STOPPED_EXIT)

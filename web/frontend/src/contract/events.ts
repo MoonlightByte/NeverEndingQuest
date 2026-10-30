@@ -196,7 +196,7 @@ export interface ServerEvents {
   status_update: { message: string; is_processing: boolean; recovery_required?: boolean; wait?: WaitRecord | null };
   startup_status: { status: 'in_progress' | 'ready' | 'failed'; phase: string; startupAttemptId?: string };
   game_started: { message: string };
-  startup_recovery_response: { status: string; error?: string; retryAfterSeconds?: number; expectedStartupAttemptId?: string };
+  startup_recovery_response: { status: string; error?: string; retryAfterSeconds?: number; expectedStartupAttemptId?: string; playerMessage?: string };
   ui_state_snapshot: {
     roll_prompt?: RulesRollPrompt | null;
     request_id?: string;

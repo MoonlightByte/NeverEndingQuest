@@ -60,9 +60,11 @@ export function InputBar({ rollInsertion }: { rollInsertion?: { id: number; text
     setDraft('')
   }
 
-  if (rulesRoll) return <RulesRollPanel key={rulesRoll.id} prompt={rulesRoll} />
-
+  // #1118 item 4: a waiting check's panel sits above the text input, which stays:
+  // the player can answer the check in words, ask a question first, or move on.
   return (
+    <>
+    {rulesRoll && <RulesRollPanel key={rulesRoll.id} prompt={rulesRoll} />}
     <div className="neq-input-container shrink-0 border-t border-card bg-[#333] p-[10px]">
       {turnStatus && <p className={dmBusy ? 'neq-turn-status neq-turn-status--busy' : 'neq-turn-status'} role="status"><ThinkingMist />{turnStatus}</p>}
       <div className="flex items-center">
@@ -89,5 +91,6 @@ export function InputBar({ rollInsertion }: { rollInsertion?: { id: number; text
         </button>
       </div>
     </div>
+    </>
   )
 }

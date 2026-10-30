@@ -28,6 +28,7 @@ from uuid import UUID, uuid4
 from utils.transient_filesystem import (
     TRANSIENT_FILESYSTEM_ATTEMPTS,
     TRANSIENT_FILESYSTEM_BACKOFF_SECONDS,
+    ReadOnlySaveStop,
     is_transient_filesystem_error,
     raise_if_save_stopped,
     retry_transient_filesystem,
@@ -481,6 +482,11 @@ class ModuleLifecycleStore:
             return os.lstat(path)
         except FileNotFoundError:
             return None
+
+    @classmethod
+    def _entry_exists(cls, path: Union[str, Path]) -> bool:
+        """#140 FP-07: only FileNotFoundError means absent; any other error raises."""
+        return cls._entry_stat(Path(path)) is not None
 
     @classmethod
     def _require_plain_directory(
@@ -1408,6 +1414,29 @@ class ModuleLifecycleStore:
             raise LifecycleIndeterminateError(
                 "Story-first resume staging identity is occupied"
             )
+        resumed_workspace = BuildWorkspace(
+            intent["build_id"],
+            intent["token"],
+            kind,
+            intent["requested_name"],
+            intent["final_name"],
+            staging,
+            staging / "candidate" / intent["final_name"],
+        )
+        # #143 FP-19: the retry is spent before the candidate is claimed, so a
+        # failure from here on can lose it but never restore it or leave a
+        # marker that still matches.
+        self._atomic_write_json(
+            transaction / _STORY_FIRST_RESUME_FILE,
+            self._story_first_resume_value(
+                resumed_workspace,
+                stage=evidence["stage"],
+                failure_class=evidence["failure_class"],
+                issues=evidence["issues"],
+                retries_remaining=0,
+            ),
+        )
+        self._sync_directory(transaction)
         self._replace_entry(transaction, staging)
         self._sync_directory(self.resolved_root)
         self._sync_directory(self.staging_root)
@@ -1418,26 +1447,7 @@ class ModuleLifecycleStore:
             phase=LifecyclePhase.BUILDING,
             manifest_digest=None,
         )
-        (staging / "outcome.json").unlink()
-        resumed_workspace = BuildWorkspace(
-            intent["build_id"],
-            intent["token"],
-            kind,
-            intent["requested_name"],
-            intent["final_name"],
-            staging,
-            staging / "candidate" / intent["final_name"],
-        )
-        self._atomic_write_json(
-            staging / _STORY_FIRST_RESUME_FILE,
-            self._story_first_resume_value(
-                resumed_workspace,
-                stage=evidence["stage"],
-                failure_class=evidence["failure_class"],
-                issues=evidence["issues"],
-                retries_remaining=0,
-            ),
-        )
+        retry_transient_filesystem((staging / "outcome.json").unlink)
         self._sync_directory(staging)
         return resumed_workspace
 
@@ -1447,7 +1457,7 @@ class ModuleLifecycleStore:
         self._validate_workspace(workspace)
         marker = workspace.transaction_path / _STORY_FIRST_RESUME_FILE
         if marker.exists():
-            marker.unlink()
+            retry_transient_filesystem(marker.unlink)  # #143 FP-20
             self._sync_directory(workspace.transaction_path)
 
     @staticmethod
@@ -1614,7 +1624,7 @@ class ModuleLifecycleStore:
             message_digest,
             idempotency_key,
         )
-        if not os.path.lexists(active.candidate_path) or os.path.lexists(
+        if not self._entry_exists(active.candidate_path) or self._entry_exists(
             active.final_path
         ):
             raise LifecycleIndeterminateError(
@@ -1632,7 +1642,7 @@ class ModuleLifecycleStore:
             "message_digest": message_digest,
             "idempotency_key": idempotency_key,
         }
-        if os.path.lexists(path):
+        if self._entry_exists(path):
             existing = self._load_publication_receipt_metadata(
                 active.transaction_path,
                 intent,
@@ -1839,7 +1849,7 @@ class ModuleLifecycleStore:
         current = self.create_manifest(active.candidate_path)
         if self.manifest_digest(current) != active.manifest_digest:
             raise LifecycleIndeterminateError("Candidate changed after activation")
-        if os.path.lexists(active.final_path):
+        if self._entry_exists(active.final_path):
             raise LifecycleIndeterminateError("Final module path is occupied")
         if any(
             entry.name.casefold() == active.final_name.casefold()
@@ -1907,7 +1917,7 @@ class ModuleLifecycleStore:
         self.read_publication_receipt(active)
         if self.create_manifest(active.candidate_path) != dict(active.manifest):
             raise LifecycleIndeterminateError("Publication candidate manifest differs")
-        if os.path.lexists(active.final_path) or any(
+        if self._entry_exists(active.final_path) or any(
             entry.name.casefold() == active.final_name.casefold()
             for entry in os.scandir(self.modules_dir)
         ):
@@ -1946,7 +1956,7 @@ class ModuleLifecycleStore:
             raise LifecycleIndeterminateError(
                 "Published receipt differs from pre-promotion metadata"
             )
-        if os.path.lexists(active.candidate_path):
+        if self._entry_exists(active.candidate_path):
             raise LifecycleIndeterminateError("Publication candidate is not promoted")
         final_manifest = self.create_manifest(active.final_path)
         if final_manifest != dict(active.manifest):
@@ -2272,8 +2282,8 @@ class ModuleLifecycleStore:
             raise LifecycleIndeterminateError("Active manifest digest differs")
         candidate = transaction / "candidate" / intent["final_name"]
         final = self.modules_dir / intent["final_name"]
-        candidate_exists = os.path.lexists(candidate)
-        final_exists = os.path.lexists(final)
+        candidate_exists = self._entry_exists(candidate)
+        final_exists = self._entry_exists(final)
         if candidate_exists and final_exists:
             raise LifecycleIndeterminateError("Both hidden and public candidates exist")
         if not candidate_exists and not final_exists:
@@ -2330,7 +2340,7 @@ class ModuleLifecycleStore:
                 # NOT_PUBLISHED.  No path-derived recursive deletion occurs.
                 candidate_parent = candidate.parent
                 self._require_plain_directory(candidate_parent)
-                if os.path.lexists(candidate):
+                if self._entry_exists(candidate):
                     raise LifecycleIndeterminateError(
                         "Publication rollback target is occupied"
                     )
@@ -2338,7 +2348,7 @@ class ModuleLifecycleStore:
                 self._sync_directory(self.modules_dir)
                 self._sync_directory(candidate_parent)
                 if (
-                    os.path.lexists(final)
+                    self._entry_exists(final)
                     or self.create_manifest(candidate) != manifest
                 ):
                     raise LifecycleIndeterminateError(
@@ -2726,3 +2736,29 @@ class ModuleLifecycleStore:
         if len(matches) > 1:
             raise LifecycleIndeterminateError("Pending receipt lookup is ambiguous")
         return matches[0] if matches else None
+
+
+def copy_file_verified(source: Union[str, Path], destination: Union[str, Path]) -> None:
+    """Copy one file durably and prove the destination holds its exact bytes (#143).
+
+    A module's _BU.json reset baseline is written through the lifecycle's own
+    atomic writer (unique temp, fsync, bounded replace retry), then read back.
+    The error names only the file, never its absolute path, because a build
+    failure reason can reach the player.
+    """
+    source_path = Path(source)
+    destination_path = Path(destination)
+    try:
+        payload = retry_transient_filesystem(source_path.read_bytes)
+        ModuleLifecycleStore._atomic_write_bytes(destination_path, payload)
+        landed = retry_transient_filesystem(destination_path.read_bytes)
+    except ReadOnlySaveStop:
+        raise
+    except OSError as exc:
+        raise OSError(
+            "A module reset file could not be saved: %s" % destination_path.name
+        ) from exc
+    if landed != payload:
+        raise OSError(
+            "A module reset file did not verify after copying: %s" % destination_path.name
+        )

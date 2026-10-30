@@ -23,8 +23,9 @@ from utils.file_operations import safe_read_json, safe_write_json
 from utils.path_transaction_lock import path_transaction_lock
 from utils.module_refresh_lock import (
     module_refresh_lock,
+    wait_for_module_refresh,
 )
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
 from utils.encoding_utils import sanitize_text
 
 # Set script name for logging
@@ -168,7 +169,7 @@ SYSTEM_PROMPT = """You are a quest journal formatter for a fantasy RPG. Your tas
 CRITICAL RULES:
 1. Remove ALL location IDs in parentheses (e.g., MRV001, ARL001, DC001)
 2. Remove ALL meta-game language like "introduces NPCs", "sets the stage", "this quest", "plot point"
-3. Write from the player's perspective using "you" instead of "the party"
+3. Write from the player's perspective using "you" instead of "the party". The player characters named with the request are 'you': never name or describe them in the third person, even where a description or log entry does.
 4. Focus on what the player needs to DO, not module structure
 5. Keep the mystery, atmosphere, and fantasy feel
 6. Make it sound like a quest journal entry, not a module description
@@ -180,7 +181,7 @@ FORMATTING GUIDELINES:
 - Main quests: Clear objective + atmospheric context
 - Side quests: Brief, intriguing hooks
 - Each quest may carry a "log": the rules engine's record of what actually happened, in order (kind: started / note / completed / failed / reopened; text; for a completion, "ahead" names the quests the party skipped and "reason" says how). Summarize ONLY what the log says happened. The description is the goal the quest was given, not what the party did; never present its objectives as achievements.
-- Completed quests: past tense, what the log says was done; when the log entry names skipped quests ("ahead"), say the party went another way and what it skipped
+- Completed quests: past tense, what the log says was done; when the log entry names skipped quests ("ahead"), say you went another way and what it skipped
 - Failed quests: past tense, how the log says it was lost
 - In-progress quests: present tense, the current situation from the newest log text, then what remains of the goal
 
@@ -232,6 +233,16 @@ def _quest_source_projection(plot_data):
     return projection
 
 
+def _player_characters():
+    """#1625: the committed player character names (partyMembers), so T090 knows who "you" is.
+    An unreadable or malformed tracker gives no names, and the request is then unchanged."""
+    party = safe_read_json("party_tracker.json")
+    members = party.get("partyMembers") if isinstance(party, dict) else None
+    if not isinstance(members, list):
+        return []
+    return [name for name in members if isinstance(name, str) and name.strip()]
+
+
 def format_quest_batch(quests_to_format):
     """
     Send a batch of quests to AI for reformatting
@@ -253,7 +264,12 @@ def format_quest_batch(quests_to_format):
                 'log': _log_projection(quest_data),
             }
         
-        user_prompt = f"Reformat these quest descriptions into player-friendly journal entries:\n\n{json.dumps(quest_input, indent=2)}"
+        players = _player_characters()
+        roster = (
+            f'PLAYER CHARACTERS (always "you"): {json.dumps(players, ensure_ascii=False)}\n\n'
+            if players else ""
+        )
+        user_prompt = f"Reformat these quest descriptions into player-friendly journal entries:\n\n{roster}{json.dumps(quest_input, indent=2)}"
         
         debug(f"AI_REQUEST: Sending {len(quest_input)} quests for reformatting", category="quest_formatting")
 
@@ -326,7 +342,7 @@ def format_quest_batch(quests_to_format):
             
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             error(f"FAILURE: AI response failed validation: {e}", category="quest_formatting")
-            debug(f"AI_RESPONSE: {ai_response}", category="quest_formatting")
+            file_only(f"AI_RESPONSE: {ai_response}", category="quest_formatting")
             return None
             
     except Exception as e:
@@ -344,6 +360,10 @@ def format_quests_for_player(module_name):
     Returns:
         bool: Success or failure
     """
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.transient_filesystem import ReadOnlySaveStop
+
     try:
         path_manager = ModulePathManager(module_name)
         plot_path = path_manager.get_plot_path()
@@ -357,6 +377,7 @@ def format_quests_for_player(module_name):
         # the provider call. A standalone caller owns no lower-ranked lock, so
         # exiting this first scope releases refresh during the network wait.
         for source_attempt in range(SOURCE_RETRY_LIMIT):
+            # Busy refresh before any call is spent: skip; the next committed change runs T090 again (#1108).
             with module_refresh_lock() as snapshot_acquired:
                 if not snapshot_acquired:
                     warning(
@@ -384,13 +405,14 @@ def format_quests_for_player(module_name):
             if candidate is None:
                 return False
 
-            with module_refresh_lock() as commit_acquired:
-                if not commit_acquired:
-                    warning(
-                        "T090 commit skipped because module refresh is busy",
-                        category="quest_formatting",
-                    )
-                    return False
+            # The T090 call is spent: busy means wait, never a dropped result (#1108, #193 B2-ii).
+            # Load, Reset or Quit still end the wait.
+            with wait_for_module_refresh(
+                lambda seconds: (
+                    "Waiting for module work to finish before saving the quest log "
+                    "(%d seconds)." % seconds
+                )
+            ):
                 with _quest_file_lock(player_quests_path):
                     if not _plot_source_matches(source):
                         warning(
@@ -415,6 +437,8 @@ def format_quests_for_player(module_name):
             category="quest_formatting",
         )
         return False
+    except (InvocationSupersededError, LiveProviderSuperseded, ReadOnlySaveStop):
+        raise
     except Exception as e:
         error("FAILURE: Unexpected error in format_quests_for_player", exception=e, category="quest_formatting")
         return False

@@ -55,6 +55,28 @@ _WIZARD_PROMPT_MARKERS = (
 RAW_LOG_PATH = os.path.join("modules", "logs", "headless_raw.log")
 
 
+
+def _pending_roll():
+    """The roll the game is holding for the player (D-1118-5 A, #1118 items 3 and 4), typed, from checks_state:
+    {kind: "check" or "hitDie", label, dice}; a waiting check comes before a held rest, as the settle takes
+    them. None when nothing is held. A harness never reads DM prose to find it."""
+    try:
+        from core.managers import checks_state
+        from core.nql import checks
+
+        pending = checks_state.pending_checks()
+        if pending:
+            check = pending[0]
+            return {"kind": "check", "label": f"{checks.label(check.get('stat'))} for {check.get('characterName')}",
+                    "dice": [{"count": check.get("faces"), "sides": 20}]}
+        entry = checks_state.pending_rest()
+    except Exception:
+        return None
+    if not entry:
+        return None
+    return {"kind": "hitDie", "label": f"Hit die for {entry.get('characterName')}",
+            "dice": [{"count": entry.get("count"), "sides": entry.get("die")}]}
+
 class HeadlessSession:
     def __init__(self, repo_root, game_dir=None, debug=False, writer=None):
         self.repo_root = os.path.abspath(repo_root)
@@ -64,6 +86,9 @@ class HeadlessSession:
         self.input_queue = queue.Queue()
         self.prompt_pending = threading.Event()
         self._quitting = False
+        # #341: the control that set the quit latch through request_quit
+        # ("quit" or "reset"); the startup wizard reads it at its input boundary.
+        self._quit_kind = None
         self._exit_lock = threading.Lock()
         self._exit_emitted = False
         self._restart_in_progress = threading.Event()
@@ -135,7 +160,8 @@ class HeadlessSession:
             self._on_stream_event, self._raw_log, is_error=True)
         stdin_shim = HeadlessInput(
             self.input_queue, on_prompt=self._on_prompt,
-            is_quitting=lambda: self._quitting)
+            is_quitting=lambda: self._quitting,
+            lifecycle_control=lambda: self._quit_kind if self._quitting else None)
         sys.stdout = self._stdout_shim
         sys.stderr = stderr_shim
         sys.stdin = stdin_shim
@@ -213,19 +239,31 @@ class HeadlessSession:
             from updates.save_game_manager import RestoreRequest
             handoff = self._dm_main.main_game_loop()
             if isinstance(handoff, RestoreRequest):
-                self._restart_in_progress.set()
-                self._quitting = True
-                self.prompt_pending.clear()
-                self._restore_manager = handoff.manager
+                from utils.capture.live_provider_call import (
+                    model_restore_owner_id,
+                    release_lifecycle_owner,
+                )
 
-                def publish_restore(_ok, data=None, error=None):
-                    self.writer.emit('system', content=data['message'],
-                                     restore_outcome=data['restore_outcome'],
-                                     can_resume=data['can_resume'])
-                    self._on_status(data['message'], False)
+                # #270: main_game_loop claimed the owner record for the
+                # model's Load; a fault before its terminal lets followers
+                # run again (C4).
+                owned = model_restore_owner_id()
+                try:
+                    self._restart_in_progress.set()
+                    self._quitting = True
+                    self.prompt_pending.clear()
+                    self._restore_manager = handoff.manager
 
-                outcome = self._apply_restore(handoff.manager, handoff.save_folder)
-                self._finish_restore(outcome, handoff.manager, publish_restore)
+                    def publish_restore(_ok, data=None, error=None):
+                        self.writer.emit('system', content=data['message'],
+                                         restore_outcome=data['restore_outcome'],
+                                         can_resume=data['can_resume'])
+                        self._on_status(data['message'], False)
+
+                    outcome = self._apply_restore(handoff.manager, handoff.save_folder)
+                    self._finish_restore(outcome, handoff.manager, publish_restore, owned)
+                finally:
+                    release_lifecycle_owner(owned)
         except (EOFError, SystemExit):
             reason = "player_exit"
         except BaseException as exc:
@@ -405,11 +443,16 @@ class HeadlessSession:
         # would leave the flag stuck set for the whole following turn,
         # defeating the save/restore busy-guard.
         self.prompt_pending.set()
+        extra = {}
+        pending_roll = _pending_roll()
+        if pending_roll is not None:
+            extra["pendingRoll"] = pending_roll
         self.writer.emit(
             "prompt",
             kind=kind,
             raw_prompt=clean_prompt,
-            stats=self._parse_prompt_stats(clean_prompt))
+            stats=self._parse_prompt_stats(clean_prompt),
+            **extra)
         self.writer.emit("state", **snapshot)
 
     # -- runner-side API ---------------------------------------------------
@@ -442,8 +485,10 @@ class HeadlessSession:
             self.writer.emit("operation", name="input", status="accepted_deferred",
                              message="Your action is queued for after travel recovery.")
 
-    def _finish_restore(self, outcome, manager, result):
+    def _finish_restore(self, outcome, manager, result, owner_id=None):
         """Publish verified disk truth without terminating recovery command intake."""
+        from utils.capture.live_provider_call import release_lifecycle_owner
+
         self._recovery_required = not outcome.can_resume
         # Preserve the original save-root context even if failed copying changed
         # party_tracker. This stays process-local; it is not a crash manifest.
@@ -462,6 +507,9 @@ class HeadlessSession:
             },
             error=None if selected else outcome.message,
         )
+        # #270 C3: a restart answers the followers before the exit event;
+        # recovery lets them run again against the recovered state.
+        release_lifecycle_owner(owner_id, restarting=outcome.can_resume)
         if outcome.can_resume:
             self.emit_exit("restart", "clean game state available; relaunch the session")
         # No exit when recovery is required: ServeDriver remains able to accept
@@ -545,6 +593,7 @@ class HeadlessSession:
         # quiesce first. The engine thread may finish its superseded turn while
         # this control thread is waiting; setting the intent afterward races
         # that completion and misreports a player quit as ``engine_stop``.
+        self._quit_kind = kind
         self._quitting = True
         self.prompt_pending.clear()
         if turn_scopes:
@@ -572,7 +621,84 @@ class HeadlessSession:
         if cancelled:
             raise LiveProviderSuperseded("Load validation cancelled by Quit")
 
+    def _answer_quit_first(self, name, result, quit_id=None):
+        from utils.capture.live_provider_call import lifecycle_follower_text
+
+        result(False, data={
+            "status": "cancelled",
+            "cancelled_by_operation_id": quit_id,
+            "state_changed": False,
+        }, error=lifecycle_follower_text(name, "quit"), terminal="cancelled")
+
+    def _follow_lifecycle_owner(self, owner, command, result):
+        """Follow an earlier Load or Reset to its terminal, never preempting it (#270).
+
+        A restart answers this command from the owner's terminal; otherwise it
+        runs again once. A received Quit ends the wait (D-214, B2-ii).
+        """
+        from utils.capture.live_provider_call import (
+            follow_lifecycle_owner,
+            leave_lifecycle_owner,
+            lifecycle_follower_text,
+        )
+
+        name = command.get("name")
+        command_id = command.get("id")
+
+        def answer(cause, owner_kind):
+            result(False, data={
+                "status": "not_run",
+                "cause": cause,
+                "state_changed": False,
+            }, error=lifecycle_follower_text(name, cause, owner_kind), terminal="not run")
+
+        follower = follow_lifecycle_owner(owner, name, command_id, answer)
+        if follower is None:
+            self.handle_command(command)
+            return
+        self.writer.emit(
+            "operation",
+            id=command_id,
+            name=name,
+            status="accepted_deferred",
+            operation_id=str(command_id),
+            waiting_for_current_operation=True,
+            waiting_for_operation_id=owner.operation_id,
+        )
+        label = {"save": "Save", "restore": "Load", "reset": "Reset"}[name]
+        owner_label = "Reset" if owner.kind == "reset" else "Load"
+        elapsed = 0
+        while not follower["answered"]:
+            with self._preflight_guard:
+                quit_id = self._received_quit_id
+            # N2: answer only if this command is still ours to answer; once
+            # the owner's release has taken it, that release answers it.
+            if quit_id is not None and leave_lifecycle_owner(owner, follower):
+                self._answer_quit_first(name, result, quit_id)
+                return
+            if owner.terminal.wait(timeout=1.0):
+                break
+            elapsed += 1
+            self._on_status(
+                "%s is waiting for the earlier %s to finish (%ds)"
+                % (label, owner_label, elapsed),
+                True,
+            )
+        if not follower["answered"]:
+            self.handle_command(command)
+
     def handle_command(self, command):
+        try:
+            self._handle_command(command)
+        finally:
+            if command.get("name") in ("restore", "reset"):
+                from utils.capture.live_provider_call import release_lifecycle_owner
+
+                # #270 C4: an owner that leaves before its terminal lets its
+                # followers run again; a queued record releases on complete.
+                release_lifecycle_owner(str(command.get("id")), keep_queued=True)
+
+    def _handle_command(self, command):
         command_id = command.get("id")
         name = command.get("name")
         args = command.get("args") or {}
@@ -613,6 +739,15 @@ class HeadlessSession:
             if args.get("confirmed") is not True:
                 result(False, error="reset requires args.confirmed=true")
                 return
+            from utils.capture.live_provider_call import (
+                claim_lifecycle_owner,
+                release_lifecycle_owner,
+            )
+
+            holder = claim_lifecycle_owner("reset", command_id)
+            if holder is not None:
+                self._follow_lifecycle_owner(holder, command, result)
+                return
             self._restart_in_progress.set()
             self._on_status("Reset is starting safely", True)
             try:
@@ -636,10 +771,12 @@ class HeadlessSession:
                         "backup_dir": backup_dir,
                     },
                 )
+                release_lifecycle_owner(str(command_id), restarting=True)
                 self.emit_exit("restart", "campaign reset; relaunch the session")
             except Exception as exc:
                 self._recovery_required = True
                 result(False, error="%s: %s" % (type(exc).__name__, exc))
+                release_lifecycle_owner(str(command_id))
             return
 
         if self._recovery_required and name not in ("list_saves", "restore"):
@@ -649,6 +786,7 @@ class HeadlessSession:
         from utils.capture.live_provider_call import (
             get_active_welcome_scope,
             get_lifecycle_turn_scopes,
+            lifecycle_owner_ahead,
         )
 
         turn_scopes = get_lifecycle_turn_scopes()
@@ -659,16 +797,21 @@ class HeadlessSession:
         # (Reset needs no welcome branch: it quits+joins the engine first,
         # and request_quit already supersedes/quiesces a pending welcome.)
         welcome_scope = get_active_welcome_scope()
-        if name == "restore" and live_scope is None and welcome_scope is None:
+        if name in ("restore", "save") and live_scope is None and welcome_scope is None:
             # A scope can disappear before its engine publishes the next prompt
             # (or exits). Keep this same command until one of those authoritative
             # boundaries exists, rather than losing it to the old busy refusal.
+            # Save waits here too, e.g. during startup before any prompt (#346).
             wait_started = time.monotonic()
             while (
                 not self._recovery_required
                 and not self.prompt_pending.is_set()
                 and self._engine_thread is not None
                 and self._engine_thread.is_alive()
+                # #270: a Load stops waiting once another Load (the model's,
+                # applying on the engine thread) owns the lifecycle, and
+                # follows that owner from the claim below.
+                and not (name == "restore" and lifecycle_owner_ahead(command_id))
             ):
                 turn_scopes = get_lifecycle_turn_scopes()
                 live_scope = turn_scopes[0] if turn_scopes else None
@@ -676,13 +819,26 @@ class HeadlessSession:
                 if live_scope is not None or welcome_scope is not None:
                     break
                 self._on_status(
-                    "Load is waiting for the current game boundary (%ds)"
-                    % int(time.monotonic() - wait_started), True,
+                    "%s is waiting for the current game boundary (%ds)"
+                    % ("Save" if name == "save" else "Load",
+                       int(time.monotonic() - wait_started)), True,
                 )
                 self._engine_thread.join(timeout=0.5)
+        if (
+            name == "save"
+            and live_scope is None
+            and welcome_scope is None
+            and not self.prompt_pending.is_set()
+            and not self._recovery_required
+            and (self._engine_thread is None or not self._engine_thread.is_alive())
+        ):
+            result(False, error="The game stopped before Save could run; nothing was saved.")
+            return
         busy_persistence = (
             name == "delete_save"
-            or (name == "save" and live_scope is None)
+            # #346: a startup welcome can begin before the first prompt; Save
+            # queues against it below (#214 F8) instead of refusing busy.
+            or (name == "save" and live_scope is None and welcome_scope is None)
         )
         if busy_persistence and not self.prompt_pending.is_set() and not self._recovery_required:
             result(False, error="engine is busy; wait for the next prompt "
@@ -782,11 +938,17 @@ class HeadlessSession:
                             )
                             return
                         if claim["status"] == "conflict":
-                            result(
-                                False,
-                                error="another lifecycle operation is already pending",
-                            )
-                            return
+                            if claim.get("owner") is not None:
+                                self._follow_lifecycle_owner(claim["owner"], command, result)
+                                return
+                            if claim["kind"] in ("quit", "web_exit"):
+                                self._answer_quit_first("save", result, claim["operation_id"])
+                                return
+                        # #270: a claim whose owner has already ended (or
+                        # a closed welcome) runs again after this boundary.
+                        welcome_scope.quiescent.wait()
+                        self.handle_command(command)
+                        return
                         welcome_scope.quiescent.wait()
                         self.handle_command(command)
                         return
@@ -874,12 +1036,9 @@ class HeadlessSession:
                         request_live_turn_supersession,
                     )
 
-                    if self._restart_in_progress.is_set():
-                        result(
-                            False,
-                            error="another lifecycle operation is already pending",
-                        )
-                        return
+                    # #270: the owner record, not this flag, decides who
+                    # runs; clear the flag only if this command set it.
+                    already_reserved = self._restart_in_progress.is_set()
                     self._restart_in_progress.set()
                     may_apply_restore = False
                     supersession_error = None
@@ -888,6 +1047,7 @@ class HeadlessSession:
                             "restore",
                             str(command_id),
                             scope=live_scope,
+                            owner=True,
                         )
                     except Exception as exc:
                         operation = None
@@ -908,18 +1068,32 @@ class HeadlessSession:
                             # disappear while validation runs; wait for that
                             # exact boundary and redispatch the original ID.
                             self._wait_for_scope_quiescence((live_scope,), "Load")
-                            self._restart_in_progress.clear()
+                            if not already_reserved:
+                                self._restart_in_progress.clear()
                             self.handle_command(command)
+                            return
+                        elif operation.get("owner") is not None:
+                            if not already_reserved:
+                                self._restart_in_progress.clear()
+                            self._follow_lifecycle_owner(operation["owner"], command, result)
                             return
                         elif operation.get("kind") == "turn_complete":
                             may_apply_restore = True
                         elif operation.get("accepted"):
                             may_apply_restore = True
+                        elif operation.get("kind") in ("quit", "web_exit"):
+                            if not already_reserved:
+                                self._restart_in_progress.clear()
+                            self._answer_quit_first("restore", result, operation.get("operation_id"))
+                            return
                         else:
-                            supersession_error = (
-                                "another lifecycle operation is already pending: "
-                                + str(operation.get("kind"))
-                            )
+                            # #270: the slot's owner has already ended; run
+                            # again once this turn has stopped.
+                            self._wait_for_scope_quiescence(turn_scopes, "Load")
+                            if not already_reserved:
+                                self._restart_in_progress.clear()
+                            self.handle_command(command)
+                            return
                     if may_apply_restore:
                         self.writer.emit(
                             "operation",
@@ -935,12 +1109,15 @@ class HeadlessSession:
                     if self._engine_thread is not None:
                         self._engine_thread.join()
                     if not may_apply_restore:
+                        from utils.capture.live_provider_call import release_lifecycle_owner
+
                         result(False, error=supersession_error)
+                        release_lifecycle_owner(str(command_id), restarting=True, cause="stopped")
                         self.emit_exit("error", "state restore did not acquire authority")
                         return
                     self._on_status("Load is applying the selected save", True)
                     outcome = self._apply_restore(manager, folder)
-                    self._finish_restore(outcome, manager, result)
+                    self._finish_restore(outcome, manager, result, str(command_id))
                     return
                 if live_scope is not None:
                     from utils.capture.live_provider_call import (
@@ -948,24 +1125,26 @@ class HeadlessSession:
                     )
 
                     operation = request_live_turn_supersession(
-                        "restore", str(command_id)
+                        "restore", str(command_id), owner=True
                     )
                     if operation is None:
                         self._wait_for_scope_quiescence(turn_scopes, "Load")
                         self.handle_command(command)
                         return
+                    if operation.get("owner") is not None:
+                        self._follow_lifecycle_owner(operation["owner"], command, result)
+                        return
                     if operation["kind"] == "turn_complete":
                         self._wait_for_scope_quiescence(
                             turn_scopes, "Load"
                         )
+                    elif operation["kind"] in ("quit", "web_exit") and not operation["accepted"]:
+                        self._answer_quit_first("restore", result, operation["operation_id"])
+                        return
                     elif not operation["accepted"]:
-                        result(
-                            False,
-                            error=(
-                                "another lifecycle operation is already pending: "
-                                + operation["kind"]
-                            ),
-                        )
+                        # #270: the slot's owner has already ended.
+                        self._wait_for_scope_quiescence(turn_scopes, "Load")
+                        self.handle_command(command)
                         return
                     self.writer.emit(
                         "operation",
@@ -989,7 +1168,7 @@ class HeadlessSession:
                         return self._apply_restore(manager, folder)
 
                     def complete_welcome_restore(outcome):
-                        self._finish_restore(outcome, manager, result)
+                        self._finish_restore(outcome, manager, result, str(command_id))
 
                     # Claim/promotion AND record insertion are ONE scope-
                     # lock transaction: an accepted destructive claim always
@@ -1000,7 +1179,7 @@ class HeadlessSession:
                     claim = claim_destructive_operation(
                         welcome_scope, "restore",
                         execute_welcome_restore, complete_welcome_restore,
-                        operation_id=str(command_id),
+                        operation_id=str(command_id), owner=True,
                     )
                     if claim["status"] == "closed":
                         if not already_reserved:
@@ -1019,13 +1198,18 @@ class HeadlessSession:
                     if claim["status"] == "conflict":
                         if not already_reserved:
                             self._restart_in_progress.clear()
-                        result(
-                            False,
-                            error=(
-                                "another lifecycle operation is already "
-                                "pending: " + str(claim["kind"])
-                            ),
+                        if claim.get("owner") is not None:
+                            self._follow_lifecycle_owner(claim["owner"], command, result)
+                            return
+                        if claim["kind"] in ("quit", "web_exit"):
+                            self._answer_quit_first("restore", result, claim["operation_id"])
+                            return
+                        # #270: the slot's owner has already ended; the
+                        # same rule as "closed" below.
+                        self._wait_for_scope_quiescence(
+                            (welcome_scope,), "Load"
                         )
+                        self.handle_command(command)
                         return
                     self.writer.emit(
                         "operation",
@@ -1038,6 +1222,12 @@ class HeadlessSession:
                 # Even an idle engine holds a projection of the old files.
                 # Stop it before application, then let verified disk truth
                 # determine restart versus continued recovery command intake.
+                from utils.capture.live_provider_call import claim_lifecycle_owner
+
+                holder = claim_lifecycle_owner("restore", command_id)
+                if holder is not None:
+                    self._follow_lifecycle_owner(holder, command, result)
+                    return
                 self._restart_in_progress.set()
                 self._quitting = True
                 self.prompt_pending.clear()
@@ -1045,7 +1235,7 @@ class HeadlessSession:
                 if self._engine_thread is not None:
                     self._engine_thread.join()
                 outcome = self._apply_restore(manager, folder)
-                self._finish_restore(outcome, manager, result)
+                self._finish_restore(outcome, manager, result, str(command_id))
             else:
                 result(False, error="unhandled command %r" % name)
         except Exception as exc:
@@ -1058,6 +1248,15 @@ class HeadlessSession:
             if self._exit_emitted:
                 return
             self._exit_emitted = True
+        try:
+            from utils.capture.live_provider_call import answer_lifecycle_followers
+
+            # #270 C3 backstop: no follower is left unanswered at the exit.
+            answer_lifecycle_followers(
+                {"restart": "restart", "player_exit": "quit"}.get(reason, "stopped")
+            )
+        except Exception:
+            pass
         payload = {"reason": reason}
         if detail:
             payload["detail"] = detail

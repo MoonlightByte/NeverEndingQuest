@@ -21,6 +21,7 @@ from copy import deepcopy
 import logging
 import os
 import re
+import time
 import uuid
 
 from core.combat import (
@@ -31,6 +32,7 @@ from core.combat import (
     recharge_at_turn_start,
     resolution_from_event,
 )
+from core.combat.resolver import settle_effect_zero_status
 from core.effects.lifecycle import apply_effect_ops, enter_combat_effect, exit_combat_effect
 from core.effects.effective import effective_sheet
 from core.managers.combat_state import (
@@ -115,7 +117,28 @@ def _combat_leases(
     encounter_path,
     character_paths,
     timeout_seconds,
+    fence=None,
 ):
+    if fence is not None:
+        # #202: a completion step waits in fenced slices; see completion_lease.
+        started = time.monotonic()
+        status_shown = False
+        while True:
+            _raise_if_completion_stopped(fence)
+            entered = False
+            try:
+                with _combat_leases(
+                    encounter_path,
+                    character_paths,
+                    _COMPLETION_LEASE_SLICE,
+                ):
+                    entered = True
+                    yield
+                return
+            except CombatLeaseBusy:
+                if entered:
+                    raise
+            status_shown = _show_completion_wait(started, status_shown)
     coordinator = _combat_coordinator(encounter_path, character_paths)
     participants = _combat_lease_participants(
         coordinator,
@@ -386,8 +409,34 @@ def _return_stale_turn_to_intent(encounter, characters):
     state.pop("pauseReason", None)
 
 
+# #202: a completion lease waits in short slices so a Load, Reset or exit
+# between them ends the wait; there is no deadline (D-214).
+_COMPLETION_LEASE_SLICE = 0.25
+_COMPLETION_LEASE_STATUS_AFTER = 1.0
+
+
+def _raise_if_completion_stopped(fence):
+    from core.combat.invocation import InvocationSupersededError, fence_reason_since
+    from utils.transient_filesystem import raise_if_save_stopped
+
+    reason = fence_reason_since(fence)
+    if reason is not None:
+        raise InvocationSupersededError("Combat completion stopped by %s" % reason)
+    raise_if_save_stopped()
+
+
+def _show_completion_wait(started, status_shown):
+    """Show the existing wrap-up line once a completion has waited a while."""
+    if not status_shown and time.monotonic() - started >= _COMPLETION_LEASE_STATUS_AFTER:
+        from core.managers.status_manager import status_wrapping_up_combat
+
+        status_wrapping_up_combat()
+        return True
+    return status_shown
+
+
 @contextmanager
-def completion_lease(encounter_path, timeout_seconds=5.0):
+def completion_lease(encounter_path, timeout_seconds=None, fence=None):
     """Serialize and persist one idempotent combat-completion step.
 
     The caller performs one external side effect, records its receipt in
@@ -395,18 +444,47 @@ def completion_lease(encounter_path, timeout_seconds=5.0):
     raises, no receipt is written and reconnect can safely retry it. Lock
     ordering is combat lease before module-refresh lock; callers must never
     acquire these in the reverse order.
+
+    With no ``timeout_seconds`` the lease waits for another holder without a
+    deadline (#202). ``fence`` is the ``fence_mark()`` taken once when the
+    completion began: a Load, Reset or exit recorded after it, or a read-only
+    save stop, raises before each attempt, so no receipt lands after one. The
+    lock is re-entrant on its thread, so a waiter never waits on itself.
     """
-    with path_transaction_lock(
-        encounter_path,
-        suffix=".combat.lock",
-        timeout_seconds=timeout_seconds,
-    ) as acquired:
-        if acquired is None:
-            raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
-        encounter = _load_object(encounter_path, "encounter")
-        ensure_combat_state(encounter)
-        yield encounter
-        _write_object(encounter_path, encounter, "combat completion receipt")
+    if timeout_seconds is not None:
+        with path_transaction_lock(
+            encounter_path,
+            suffix=".combat.lock",
+            timeout_seconds=timeout_seconds,
+        ) as acquired:
+            if acquired is None:
+                raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
+            encounter = _load_object(encounter_path, "encounter")
+            ensure_combat_state(encounter)
+            yield encounter
+            _write_object(encounter_path, encounter, "combat completion receipt")
+        return
+
+    if fence is None:
+        from core.combat.invocation import fence_mark
+
+        fence = fence_mark()
+    started = time.monotonic()
+    status_shown = False
+    while True:
+        _raise_if_completion_stopped(fence)
+        with path_transaction_lock(
+            encounter_path,
+            suffix=".combat.lock",
+            timeout_seconds=_COMPLETION_LEASE_SLICE,
+        ) as acquired:
+            if acquired is not None:
+                encounter = _load_object(encounter_path, "encounter")
+                ensure_combat_state(encounter)
+                yield encounter
+                _write_object(encounter_path, encounter, "combat completion receipt")
+                return
+        status_shown = _show_completion_wait(started, status_shown)
 
 
 def _load_object(path, label):
@@ -1424,12 +1502,14 @@ def exit_effect_clock(
     character_paths,
     now_scalar,
     timeout_seconds=5.0,
+    fence=None,
 ):
     """Idempotently return surviving round effects to the world clock."""
     with _combat_leases(
         encounter_path,
         character_paths,
         timeout_seconds,
+        fence=fence,
     ):
         encounter = _load_object(encounter_path, "encounter")
         state = ensure_combat_state(encounter)
@@ -1446,7 +1526,11 @@ def exit_effect_clock(
                 if isinstance(effect, dict) and exit_combat_effect(effect, now_scalar) is None
             ]
             if ended:
+                before = character
                 character = apply_effect_ops(character, ended)
+                # #1550: an onRemove that took the last hit points records
+                # the status a hit would (D-242-1 by the encounter row).
+                settle_effect_zero_status(encounter, {name: before}, {name: character})
             surviving = []
             for effect in character.get("temporaryEffects", []) or []:
                 converted = (
@@ -1614,6 +1698,7 @@ def recover_ammunition(
     character_paths,
     forfeit,
     timeout_seconds=5.0,
+    fence=None,
 ):
     """AM: once per encounter, the engine returns the recoverable share of each stock.
 
@@ -1630,6 +1715,7 @@ def recover_ammunition(
         encounter_path,
         character_paths,
         timeout_seconds,
+        fence=fence,
     ):
         encounter = _load_object(encounter_path, "encounter")
         state = ensure_combat_state(encounter)
@@ -1682,12 +1768,14 @@ def apply_combat_rewards(
     character_paths,
     xp_per_character,
     timeout_seconds=5.0,
+    fence=None,
 ):
     """Apply end-of-combat XP once, including recovery between file writes."""
     with _combat_leases(
         encounter_path,
         character_paths,
         timeout_seconds,
+        fence=fence,
     ):
         encounter = _load_object(encounter_path, "encounter")
         state = ensure_combat_state(encounter)

@@ -1,5 +1,45 @@
 # NeverEndingQuest
 
+## Quickstart (about 10 minutes)
+
+You need Python 3.9 or newer, Git, Node.js LTS ([nodejs.org](https://nodejs.org/)),
+and an OpenAI API key ([platform.openai.com/api-keys](https://platform.openai.com/api-keys)).
+
+**Linux / macOS**
+```bash
+git clone https://github.com/MoonlightByte/NeverEndingQuest.git
+cd NeverEndingQuest
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python run_web.py
+```
+
+**Windows (Command Prompt)**
+```bat
+git clone https://github.com/MoonlightByte/NeverEndingQuest.git
+cd NeverEndingQuest
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+python run_web.py
+```
+
+**Your key:** the first `python run_web.py` creates `config.py` for you. Press
+**New Game** and the game opens **Settings** (the gear icon) to ask for your OpenAI
+key, checks it once, and carries on. Optional: put the key on the `OPENAI_API_KEY`
+line of `config.py` instead. Never commit `config.py`. Gemini and local servers
+(LM Studio, Ollama) are chosen in the same Settings panel; see [AI Provider Setup](#ai-provider-setup).
+
+**First screen:** the first launch builds the browser player (a minute or so),
+then opens `http://localhost:8357/play/`. Press **New Game** at the top. The game says
+*"Welcome! Choose your adventure, then build your character."*, offers the
+adventures, and then walks you through creating your character.
+
+Next time, run `python run_web.py` again from the same folder, with the venv
+activated. Windows users can instead use the
+[one-click installer](#-one-click-windows-installer-recommended).
+
 ## Help build NeverEndingQuest
 
 Find current opportunities, offer a hand, and pick up contributor guidance on
@@ -721,7 +761,9 @@ without a special launcher:
 1. Start the server and load a model.
 2. Launch either web player.
 3. Open **Settings → AI Provider** and choose **Local / Custom Server**.
-4. Enter the base URL, normally `http://localhost:1234/v1` for LM Studio.
+4. Enter the base URL, normally `http://localhost:1234/v1` for LM Studio or
+   `http://localhost:11434/v1` for Ollama (pull the model first with
+   `ollama pull <model>` and enter that name as the model identifier).
 5. Optionally enter a model identifier and API key. Local servers commonly need
    neither; hosted compatible services commonly require both.
 6. Select **Save**, then **Test Connection**.
@@ -891,7 +933,8 @@ modules/[module_name]/
 ├── module_plot.json   # Quest progression
 ├── module_items.json  # Typed loot items (optional)
 ├── party_tracker.json # Party state
-└── [name]_module.json # Module metadata
+├── module_context.json     # Index of areas, NPCs and references
+└── module_declaration.json # Start, gateways and routes
 ```
 
 ### Atomic Operations

@@ -268,6 +268,10 @@ startup_phase = ""
 MESSAGE_CACHE_FILE = "modules/conversation_history/game_interface_cache.json"
 MESSAGE_CACHE_SIZE = 15  # Keep last 15 messages
 message_cache = deque(maxlen=MESSAGE_CACHE_SIZE)
+# #1373: lines shown live whose cache write failed, oldest first. Guarded by
+# message_cache_lock; merged into every read of the file, so a reconnect
+# serves what the player saw, until a write succeeds or a Load/Reset.
+_unpersisted_messages = []
 
 def _ui_response(request_data, payload):
     """Add optional correlation and a monotonic response revision.
@@ -316,6 +320,10 @@ def _begin_web_restore(manager, message, previous_clean=True):
     # A Load or a Reset starts the session cost line over (#1388).
     from utils.session_spend import reset_session
     reset_session()
+    # #1373: a failed line from the replaced timeline must not come back.
+    # Taken before _ui_operation_lock: writers hold message_cache_lock first.
+    with message_cache_lock:
+        _unpersisted_messages.clear()
     with _ui_operation_lock:
         _restore_manager = manager
         _ui_operations['restore'] = {
@@ -352,8 +360,10 @@ def _pause_web_gameplay(message):
     emit_status_update(payload['message'], False)
 
 
-def _finish_web_restore(manager, outcome):
+def _finish_web_restore(manager, outcome, owner_id=None):
     global _restore_manager
+    from utils.capture.live_provider_call import release_lifecycle_owner
+
     payload = {
         'message': outcome.message,
         'restore_outcome': outcome.disposition,
@@ -373,6 +383,9 @@ def _finish_web_restore(manager, outcome):
         try:
             emit_status_update(payload['message'], False)
         finally:
+            # #270 C3: a restart answers the followers before os._exit;
+            # recovery lets them run again against the recovered state.
+            release_lifecycle_owner(owner_id, restarting=outcome.can_resume)
             # A disconnected browser cannot veto the verified disk terminal.
             # Reconnect can obtain the stored operation if no restart is safe.
             if outcome.can_resume:
@@ -380,6 +393,51 @@ def _finish_web_restore(manager, outcome):
                     socketio.sleep(1)
                 finally:
                     os._exit(0)
+
+
+def _answer_web_quit_first(kind, operation_id):
+    from utils.capture.live_provider_call import lifecycle_follower_text
+
+    emit('error', {
+        'message': lifecycle_follower_text(kind, 'quit'),
+        'operation_id': operation_id,
+    })
+
+
+def _follow_web_lifecycle_owner(owner, kind, data, operation_id):
+    """Follow an earlier Load or Reset to its terminal, never preempting it (#270).
+
+    A restart answers this request from the owner's terminal, because this
+    thread may not run again before os._exit; otherwise it runs again once.
+    """
+    from utils.capture.live_provider_call import (
+        follow_lifecycle_owner,
+        lifecycle_follower_text,
+    )
+
+    session_id = getattr(request, 'sid', None)
+
+    def answer(cause, owner_kind):
+        socketio.emit('error', {
+            'message': lifecycle_follower_text(kind, cause, owner_kind),
+            'operation_id': operation_id,
+        }, to=session_id)
+
+    follower = follow_lifecycle_owner(owner, kind, operation_id, answer)
+    if follower is None:
+        return handle_action(data, operation_id)
+    emit('system_message', {
+        'content': '%s is waiting for the earlier %s to finish.' % (
+            'Reset' if kind == 'reset' else 'Load',
+            'Reset' if owner.kind == 'reset' else 'Load',
+        ),
+        'operation_id': operation_id,
+        'waiting_for_operation_id': owner.operation_id,
+    })
+    while not follower['answered'] and not owner.terminal.wait(1.0):
+        pass
+    if not follower['answered']:
+        return handle_action(data, operation_id)
 
 
 def _stop_web_game_reader():
@@ -538,15 +596,20 @@ def load_message_cache(on_recovery=None):
                     # its display later fails; never replay the abandoned deque.
                     message_cache.clear()
                     cached_messages = _saved_narration_messages()
-                    notice = {
-                        'type': 'system', 'message_id': f'msg-{uuid4().hex}',
-                        'content': (
-                            'Recovered narration from this save. The original on-screen transcript was not included.'
-                            if cached_messages else
-                            'This save has no recoverable on-screen transcript. Resume your saved game to continue.'
-                        ),
-                    }
-                    cached_messages.append(notice)
+                    # #1659: a fresh install has no save, so there is nothing to recover.
+                    if cached_messages or any(os.path.exists(path) for path in (
+                            'party_tracker.json',
+                            'modules/conversation_history/conversation_history.json',
+                            'modules/conversation_history/startup_conversation.json')):
+                        notice = {
+                            'type': 'system', 'message_id': f'msg-{uuid4().hex}',
+                            'content': (
+                                'Recovered narration from this save. The original on-screen transcript was not included.'
+                                if cached_messages else
+                                'This save has no recoverable on-screen transcript. Resume your saved game to continue.'
+                            ),
+                        }
+                        cached_messages.append(notice)
                 migrated = False
                 for message in cached_messages:
                     if isinstance(message, dict) and not message.get("message_id"):
@@ -559,6 +622,7 @@ def load_message_cache(on_recovery=None):
                         wait_label='History recovery',
                     )
                     cached_messages = candidate
+                cached_messages = _with_unpersisted(cached_messages)[-MESSAGE_CACHE_SIZE:]
                 message_cache = deque(cached_messages, maxlen=MESSAGE_CACHE_SIZE)
             finally:
                 atomic_writer.release_lock(MESSAGE_CACHE_FILE)
@@ -571,6 +635,8 @@ def load_message_cache(on_recovery=None):
 
 def save_message_cache():
     """Save message cache to file"""
+    with message_cache_lock:
+        _unpersisted_messages.clear()
     try:
         from utils.file_operations import safe_write_json
 
@@ -582,6 +648,29 @@ def save_message_cache():
     except Exception as e:
         print(f"[MESSAGE_CACHE] Failed to save cache: {e}")
         return False
+
+
+def _with_unpersisted(durable):
+    """#1373: the durable lines, then each failed-write line not among them."""
+    stored = {m.get("message_id") for m in durable if isinstance(m, dict)}
+    return list(durable) + [
+        dict(m) for m in _unpersisted_messages if m.get("message_id") not in stored]
+
+
+def _keep_unpersisted(message, base, commit_guard):
+    """#1373: a line already shown live whose write failed stays in the ring
+    (authoritative for a reconnect) and is retried by the next write."""
+    message_id = message.get("message_id")
+    # Inside the guard: a superseded invocation never showed the line, so
+    # neither the ring nor the pending list may keep it.
+    with commit_guard() if commit_guard is not None else nullcontext():
+        _unpersisted_messages[:] = ([m for m in _unpersisted_messages
+                                     if m.get("message_id") != message_id]
+                                    + [dict(message)])[-MESSAGE_CACHE_SIZE:]
+        message_cache.clear()
+        message_cache.extend((list(base) + [dict(message)])[-MESSAGE_CACHE_SIZE:])
+    warning(f"MESSAGE_CACHE: write failed; {message_id} kept in memory for "
+            "reconnect, not yet on disk", category='web_interface')
 
 
 def _message_cache_matches(message):
@@ -601,14 +690,16 @@ def _message_cache_matches(message):
         try:
             atomic_writer.acquire_lock(MESSAGE_CACHE_FILE)
             acquired = True
-            if not os.path.exists(MESSAGE_CACHE_FILE):
-                return False
-            with open(MESSAGE_CACHE_FILE, 'r', encoding='utf-8') as handle:
-                durable = json.load(handle)
-            if not isinstance(durable, list):
-                return False
-            message_cache.clear()
-            message_cache.extend(durable[-MESSAGE_CACHE_SIZE:])
+            if os.path.exists(MESSAGE_CACHE_FILE):
+                with open(MESSAGE_CACHE_FILE, 'r', encoding='utf-8') as handle:
+                    durable = json.load(handle)
+                if not isinstance(durable, list):
+                    return False
+                durable = _with_unpersisted(durable)
+                message_cache.clear()
+                message_cache.extend(durable[-MESSAGE_CACHE_SIZE:])
+            else:
+                durable = _with_unpersisted([])
             for cached in durable:
                 if not isinstance(cached, dict):
                     continue
@@ -646,20 +737,28 @@ def _cache_message(message, *, commit_guard=None):
             return "paused"
 
         acquired = False
+        base = None
         try:
             # The file lock makes read/merge/write one cross-process operation.
             # Atomic replacement alone prevents torn JSON but cannot prevent
             # two server processes from overwriting each other's stable IDs.
             atomic_writer.acquire_lock(MESSAGE_CACHE_FILE, commit_guard=commit_guard)
             acquired = True
-            if os.path.exists(MESSAGE_CACHE_FILE):
-                with open(MESSAGE_CACHE_FILE, 'r', encoding='utf-8') as handle:
-                    durable = json.load(handle)
-                if not isinstance(durable, list):
-                    return "failed"
-                base = durable[-MESSAGE_CACHE_SIZE:]
-            else:
-                base = []
+            try:
+                if os.path.exists(MESSAGE_CACHE_FILE):
+                    with open(MESSAGE_CACHE_FILE, 'r', encoding='utf-8') as handle:
+                        durable = json.load(handle)
+                    if not isinstance(durable, list):
+                        raise ValueError("Display history must be a list")
+                    base = durable[-MESSAGE_CACHE_SIZE:]
+                else:
+                    base = []
+            except (OSError, ValueError):
+                # #1373: an unreadable file must not rewind the ring; the line
+                # is kept in memory and the file is left for the next write.
+                _keep_unpersisted(message, _with_unpersisted(list(message_cache)), commit_guard)
+                return "failed"
+            base = _with_unpersisted(base)[-MESSAGE_CACHE_SIZE:]
             if message_id is not None and any(
                 cached.get("message_id") == message_id
                 for cached in base
@@ -681,13 +780,19 @@ def _cache_message(message, *, commit_guard=None):
                 commit_guard=commit_guard,
                 on_read_only="fail",
             ):
+                _keep_unpersisted(message, base, commit_guard)
                 return "failed"
+            _unpersisted_messages.clear()
             with commit_guard() if commit_guard is not None else nullcontext():
                 message_cache.clear()
                 message_cache.extend(candidate)
         except LiveProviderSuperseded:
             raise
         except Exception:
+            _keep_unpersisted(
+                message,
+                base if base is not None else _with_unpersisted(list(message_cache)),
+                commit_guard)
             return "failed"
         finally:
             if acquired:
@@ -1028,6 +1133,8 @@ class WebOutputCapture:
                 # Check if this starts a Dungeon Master section
                 elif "Dungeon Master:" in clean_line:
                     try:
+                        # #1167: a DM line already open is published, never replaced
+                        self._flush_dm_buffer()
                         # Start capturing DM content
                         self.in_dm_section = True
                         self.dm_buffer = [clean_line]
@@ -2495,7 +2602,7 @@ def promote_to_bestiary():
 
         monster_name = monster_id.replace('_', ' ').title()
         prompt = f"""Generate a compelling 5th edition of the world's most popular roleplaying game style bestiary description for a monster named "{monster_name}".
-        The description should be concise (around 100-150 words) and focus on its appearance, typical behavior, and combat tactics.
+        The description should focus on its appearance, typical behavior, and combat tactics.
         Make it sound like an entry from an official monster manual. Do not include stat blocks.
         Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."""
         
@@ -2535,7 +2642,6 @@ def promote_to_bestiary():
         
         description = validate_generated_prose(
             sanitize_text(response.choices[0].message.content),
-            minimum_words=20,
         )
 
         new_entry = {
@@ -3008,6 +3114,16 @@ from core.managers import roll_prompt as rules_roll_prompt
 rules_roll_prompt.set_listener(lambda prompt: socketio.emit('roll_prompt', {'prompt': prompt}))
 
 
+def _post_player_line(content):
+    """The player's line in the web log, cached for replay and shown (#1118 item 4)."""
+    message = {
+        'type': 'user-input',
+        'content': content
+    }
+    add_to_message_cache(message)
+    emit('game_output', message)
+
+
 @socketio.on('submit_check_roll')
 def handle_check_roll(data):
     if _web_gameplay_paused() or not (game_thread and game_thread.is_alive()):
@@ -3016,7 +3132,17 @@ def handle_check_roll(data):
     try:
         if not isinstance(data, dict) or 'faces' not in data:
             raise ValueError('Choose Roll for me or enter individual dice results.')
-        rules_roll_prompt.submit(data.get('id'), data['faces'], user_input_queue.put)
+        faces = data['faces']
+
+        def enqueue(line):
+            # #1118 item 4 (#1116): the panel's dice are the player's reply,
+            # shown once the submission is accepted and before the receipt.
+            # "Roll for me" posts nothing: the receipt shows the game's dice.
+            if faces:
+                _post_player_line('I rolled ' + ' and '.join(f'{face} on a d20' for face in faces) + '.')
+            user_input_queue.put(line)
+
+        rules_roll_prompt.submit(data.get('id'), faces, enqueue)
     except ValueError as exc:
         emit('error', {'message': str(exc)})
         emit('roll_prompt', {'prompt': rules_roll_prompt.current()})
@@ -3028,21 +3154,29 @@ def handle_user_input(data):
     if _web_gameplay_paused():
         emit('error', {'message': 'Gameplay is paused. Choose Load, Reset, or Exit.'})
         return
+    user_input = data.get('input', '') if isinstance(data, dict) else ''
+    if not isinstance(user_input, str):
+        return
     pending_roll = rules_roll_prompt.current()
     if pending_roll is not None:
-        # The legacy browser has a text-only composer. Keep its existing
-        # numeric dice input working through the same single-submit boundary.
+        # #1118 item 4: while a check panel is published, a line of bare
+        # numbers that fits it, or a blank line ("Roll for me"), answers the
+        # panel. Every other line is the player's own input, queued as usual:
+        # the game thread decides whether it answers the roll.
         from core.managers.checks_runtime import parse_faces
-        value = data.get('input') if isinstance(data, dict) else None
-        faces = parse_faces(value, pending_roll['faces']) if isinstance(value, str) else None
-        if faces is None:
-            emit('error', {'message': 'Use the roll panel or type the individual d20 results for this check.'})
-            emit('roll_prompt', {'prompt': pending_roll})
-        else:
-            handle_check_roll({'id': pending_roll['id'], 'faces': faces or None})
-        return
-    user_input = data.get('input', '')
-    if not isinstance(user_input, str) or not user_input.strip():
+        faces = parse_faces(user_input, pending_roll['faces'])
+        if faces is not None:
+            if faces:
+                _post_player_line(user_input)
+            try:
+                rules_roll_prompt.submit(pending_roll['id'], faces or None, user_input_queue.put)
+            except ValueError:
+                # A spent token: the first submission settles the check.
+                pass
+            except Exception as exc:
+                warning(f'Check roll submission failed: {type(exc).__name__}: {exc}', category='web_interface')
+            return
+    if not user_input.strip():
         return
     # #214 CR-1: supersede a pending background welcome AT THE ENQUEUE
     # BOUNDARY, before the game thread can pop this text - the game thread
@@ -3063,12 +3197,7 @@ def handle_user_input(data):
         pass
     # Commit the player-visible ledger entry before releasing the command to
     # the game thread, so a fast local response cannot appear above its input.
-    message = {
-        'type': 'user-input',
-        'content': user_input
-    }
-    add_to_message_cache(message)
-    emit('game_output', message)
+    _post_player_line(user_input)
     user_input_queue.put(user_input)
     if opening_scene:
         emit('system_message', {'content': 'Your action is queued for after the opening scene.'})
@@ -3085,8 +3214,10 @@ def handle_action(data, _operation_id=None):
         _operation_id = str(uuid4())
     parameters = data.get('parameters', {})
     from utils.capture.live_provider_call import (
+        claim_lifecycle_owner,
         get_lifecycle_turn_scopes,
         get_active_welcome_scope,
+        release_lifecycle_owner,
         request_lifecycle_turn_supersession,
     )
 
@@ -3273,7 +3404,7 @@ def handle_action(data, _operation_id=None):
             if live_scope is not None:
                 operation_id = _operation_id
                 turn_scopes, operations = request_lifecycle_turn_supersession(
-                    "restore", operation_id
+                    "restore", operation_id, owner=True
                 )
                 if not turn_scopes:
                     # The captured scope left the registry before the claim.
@@ -3291,13 +3422,16 @@ def handle_action(data, _operation_id=None):
                     None,
                 )
                 if conflict is not None:
-                    emit('error', {
-                        'message': (
-                            'Another lifecycle operation is already pending: '
-                            + conflict['kind']
-                        )
-                    })
-                    return
+                    if conflict.get('owner') is not None:
+                        return _follow_web_lifecycle_owner(conflict['owner'], 'restore', data, operation_id)
+                    if conflict['kind'] in ('quit', 'web_exit'):
+                        _answer_web_quit_first('restore', operation_id)
+                        return
+                    # #270: the slot's owner has already ended; run again
+                    # once these turns have stopped.
+                    for turn_scope in turn_scopes:
+                        turn_scope.quiescent.wait()
+                    return handle_action(data, _operation_id)
                 emit('system_message', {
                     'content': 'Load accepted. The current turn is stopping safely before the save is restored.',
                     'operation_id': operation_id,
@@ -3318,7 +3452,7 @@ def handle_action(data, _operation_id=None):
                     return _apply_web_restore(manager, save_folder, previous_clean)
 
                 def complete_welcome_restore(outcome):
-                    _finish_web_restore(manager, outcome)
+                    _finish_web_restore(manager, outcome, _operation_id)
 
                 # Claim/promotion AND record insertion are ONE scope-lock
                 # transaction: an accepted destructive claim always has its
@@ -3326,7 +3460,7 @@ def handle_action(data, _operation_id=None):
                 claim = claim_destructive_operation(
                     welcome_scope, "restore",
                     execute_welcome_restore, complete_welcome_restore,
-                    operation_id=_operation_id,
+                    operation_id=_operation_id, owner=True,
                 )
                 if claim['status'] == 'closed':
                     # Closed before the claim: Load is NEVER refused (#193).
@@ -3338,23 +3472,34 @@ def handle_action(data, _operation_id=None):
                     welcome_scope.quiescent.wait()
                     return handle_action(data, _operation_id)
                 if claim['status'] == 'conflict':
-                    emit('error', {
-                        'message': (
-                            'Another lifecycle operation is already pending: '
-                            + str(claim['kind'])
-                        )
-                    })
-                    return
+                    if claim.get('owner') is not None:
+                        return _follow_web_lifecycle_owner(claim['owner'], 'restore', data, _operation_id)
+                    if claim['kind'] in ('quit', 'web_exit'):
+                        _answer_web_quit_first('restore', _operation_id)
+                        return
+                    # #270: the slot's owner has already ended; the same
+                    # rule as "closed" above.
+                    welcome_scope.quiescent.wait()
+                    return handle_action(data, _operation_id)
                 emit('system_message', {
                     'content': 'Load accepted. The welcome-back narration is stopping safely first.',
                     'operation_id': claim['operation_id'],
                 })
                 return
+            holder = claim_lifecycle_owner('restore', _operation_id)
+            if holder is not None:
+                return _follow_web_lifecycle_owner(holder, 'restore', data, _operation_id)
             _begin_web_restore(manager, 'Load is stopping the previous game safely.', previous_clean)
             _stop_web_game_reader()
-            _finish_web_restore(manager, _apply_web_restore(manager, save_folder, previous_clean))
+            _finish_web_restore(
+                manager, _apply_web_restore(manager, save_folder, previous_clean), _operation_id
+            )
         except Exception as e:
             emit('error', {'message': f"Restore failed: {str(e)}"})
+        finally:
+            # #270 C4: an owner that leaves before its terminal lets its
+            # followers run again; a queued record releases on complete.
+            release_lifecycle_owner(_operation_id, keep_queued=True)
     
     elif action_type == 'deleteSave':
         try:
@@ -3376,7 +3521,7 @@ def handle_action(data, _operation_id=None):
             if live_scope is not None:
                 operation_id = _operation_id
                 turn_scopes, operations = request_lifecycle_turn_supersession(
-                    "reset", operation_id
+                    "reset", operation_id, owner=True
                 )
                 if not turn_scopes:
                     live_scope.quiescent.wait()
@@ -3391,13 +3536,16 @@ def handle_action(data, _operation_id=None):
                     None,
                 )
                 if conflict is not None:
-                    emit('error', {
-                        'message': (
-                            'Another lifecycle operation is already pending: '
-                            + conflict['kind']
-                        )
-                    })
-                    return
+                    if conflict.get('owner') is not None:
+                        return _follow_web_lifecycle_owner(conflict['owner'], 'reset', data, operation_id)
+                    if conflict['kind'] in ('quit', 'web_exit'):
+                        _answer_web_quit_first('reset', operation_id)
+                        return
+                    # #270: the slot's owner has already ended; run again
+                    # once these turns have stopped.
+                    for turn_scope in turn_scopes:
+                        turn_scope.quiescent.wait()
+                    return handle_action(data, _operation_id)
                 emit('system_message', {
                     'content': 'Reset accepted. The current turn is stopping safely before reset.',
                     'operation_id': operation_id,
@@ -3428,18 +3576,19 @@ def handle_action(data, _operation_id=None):
                     success, message = outcome
                     if success:
                         socketio.emit('reset_complete', {'message': 'Campaign has been reset. Reloading...'}, to=session_id)
+                        release_lifecycle_owner(_operation_id, restarting=True)
                         socketio.sleep(1)
                         print("INFO: Campaign reset complete. Server is shutting down for restart.")
                         os._exit(0)
                     else:
                         from updates.save_game_manager import RestoreOutcome
-                        _finish_web_restore(manager, RestoreOutcome('recovery_required', f'Campaign reset failed: {message}'))
+                        _finish_web_restore(manager, RestoreOutcome('recovery_required', f'Campaign reset failed: {message}'), _operation_id)
 
                 # One atomic claim+record transaction (same as Load).
                 claim = claim_destructive_operation(
                     welcome_scope, "reset",
                     execute_welcome_reset, complete_welcome_reset,
-                    operation_id=_operation_id,
+                    operation_id=_operation_id, owner=True,
                 )
                 if claim['status'] == 'closed':
                     # Same rule as Load: wait for the captured scope's
@@ -3447,18 +3596,23 @@ def handle_action(data, _operation_id=None):
                     welcome_scope.quiescent.wait()
                     return handle_action(data, _operation_id)
                 if claim['status'] == 'conflict':
-                    emit('error', {
-                        'message': (
-                            'Another lifecycle operation is already pending: '
-                            + str(claim['kind'])
-                        )
-                    })
-                    return
+                    if claim.get('owner') is not None:
+                        return _follow_web_lifecycle_owner(claim['owner'], 'reset', data, _operation_id)
+                    if claim['kind'] in ('quit', 'web_exit'):
+                        _answer_web_quit_first('reset', _operation_id)
+                        return
+                    # #270: the slot's owner has already ended; the same
+                    # rule as "closed" above.
+                    welcome_scope.quiescent.wait()
+                    return handle_action(data, _operation_id)
                 emit('system_message', {
                     'content': 'Reset accepted. The welcome-back narration is stopping safely first.',
                     'operation_id': claim['operation_id'],
                 })
                 return
+            holder = claim_lifecycle_owner('reset', _operation_id)
+            if holder is not None:
+                return _follow_web_lifecycle_owner(holder, 'reset', data, _operation_id)
             _begin_web_restore(manager, 'Resetting the campaign.')
             _stop_web_game_reader()
             reset_campaign.perform_reset_logic()
@@ -3467,6 +3621,7 @@ def handle_action(data, _operation_id=None):
             message_cache.clear()
             save_message_cache()
             emit('reset_complete', {'message': 'Campaign has been reset. Reloading...'})
+            release_lifecycle_owner(_operation_id, restarting=True)
             socketio.sleep(1)
             print("INFO: Campaign reset complete. Server is shutting down for restart.")
             os._exit(0)
@@ -3475,7 +3630,9 @@ def handle_action(data, _operation_id=None):
                 emit('error', {'message': f'Campaign reset could not start: {e}'})
                 return
             from updates.save_game_manager import RestoreOutcome
-            _finish_web_restore(manager, RestoreOutcome('recovery_required', f'Campaign reset failed: {e}'))
+            _finish_web_restore(manager, RestoreOutcome('recovery_required', f'Campaign reset failed: {e}'), _operation_id)
+        finally:
+            release_lifecycle_owner(_operation_id, keep_queued=True)
 
     elif action_type == 'recover_startup_handoff':
         session_id = getattr(request, 'sid', None) or 'unknown-session'
@@ -3579,6 +3736,10 @@ def handle_action(data, _operation_id=None):
                     or recovery_result.get('reason')
                     or 'unknown'
                 )
+                # #1233: the account line from a refused opening, when there is one.
+                player_message = recovery_result.get('player_message')
+                if isinstance(player_message, str) and player_message.strip():
+                    payload['playerMessage'] = player_message
 
             log_web_audit(
                 'recover_startup_handoff',
@@ -4386,10 +4547,14 @@ def handle_user_exit():
     try:
         print("INFO: User has initiated exit from the game")
         from utils.capture.live_provider_call import (
+            answer_lifecycle_followers,
             get_live_turn_scope,
             request_live_turn_supersession,
         )
 
+        # #270 C3: Exit is the web's Quit (D-214). A Load or Reset waiting
+        # behind another one is answered now, before this Exit's own waits.
+        answer_lifecycle_followers("quit")
         live_scope = get_live_turn_scope()
         if live_scope is not None:
             operation = request_live_turn_supersession("web_exit")
@@ -4434,24 +4599,92 @@ _provider_selection_lock = threading.Lock()
 
 @socketio.on('set_model_provider')
 def handle_set_provider(data):
-    """Handle provider selection from web UI settings dropdown."""
+    """Handle provider selection from web UI settings dropdown.
+
+    #113: during a live turn or the welcome-back scene the change is queued
+    like a Save and applied on the game thread at that scope's safe boundary,
+    so one turn never runs on two providers.
+    """
     try:
         import model_config
         provider = data.get('provider', 'legacy')
         # Validate before persistence, but do not switch live model bindings
         # until the durable write succeeds. A rejected save must not silently
         # change the provider used by the running game.
-        with _provider_selection_lock:
-            if provider not in model_config.PROVIDER_MODELS:
-                raise ValueError(f"Unknown provider: {provider}. Valid: {list(model_config.PROVIDER_MODELS.keys())}")
-            model_config.persist_provider(provider)
-            model_config.set_provider(provider)
-            from utils.startup_provider_recovery import notify_configuration_saved
-            notify_configuration_saved()
+        if provider not in model_config.PROVIDER_MODELS:
+            raise ValueError(f"Unknown provider: {provider}. Valid: {list(model_config.PROVIDER_MODELS.keys())}")
 
+        def apply_provider():
+            with _provider_selection_lock:
+                model_config.persist_provider(provider)
+                model_config.set_provider(provider)
+                from utils.startup_provider_recovery import notify_configuration_saved
+                notify_configuration_saved()
             debug(f"Model provider set to: {provider}", category="web_interface")
+            return True, provider
 
+        from utils.capture.live_provider_call import (
+            get_active_welcome_scope,
+            get_lifecycle_turn_scopes,
+        )
+        turn_scopes = get_lifecycle_turn_scopes()
+        scope = turn_scopes[0] if turn_scopes else get_active_welcome_scope()
+        if scope is None:
+            # No turn or welcome is running: apply now, as before #113. The
+            # startup wizard's configuration wait runs inside a turn scope, so
+            # its Settings save is queued there and drained by that wait.
+            apply_provider()
             emit('provider_changed', {'provider': provider}, broadcast=True)
+            return
+
+        from uuid import uuid4
+        from flask import current_app, has_request_context, request
+        from utils.capture.live_provider_call import queue_live_save
+
+        # The record completes on the game thread, outside this request:
+        # capture the server and the requester now. Imports stay local so the
+        # handler runs on its own (the provider handler contract tests).
+        server = current_app.extensions['socketio'] if has_request_context() else None
+        session_id = (getattr(request, 'sid', None) if has_request_context() else None) or 'unknown-session'
+        boundary = 'the current turn' if turn_scopes else 'the welcome-back narration'
+
+        def notify(event, payload, to_requester):
+            if server is None:
+                emit(event, payload)
+            elif to_requester:
+                server.emit(event, payload, to=session_id)
+            else:
+                server.emit(event, payload)
+
+        def complete_provider(outcome):
+            success, message = outcome
+            if success:
+                notify('provider_changed', {'provider': provider}, False)
+            else:
+                notify('error', {'message': f"Failed to set provider: {message}"}, True)
+
+        def cancel_provider(operation_id, cause):
+            notify('system_message', {
+                'content': 'Waiting provider change cancelled by %s.' % cause['kind'],
+                'status': 'cancelled', 'operation_id': operation_id,
+                'superseding_operation_id': cause['operation_id'],
+            }, True)
+
+        # One id per request: queue_live_save drops a pending record with the
+        # same id, and choosing A, B, then A again must end on A.
+        queued_id = queue_live_save(
+            apply_provider, complete_provider,
+            "provider:%s:%s" % (session_id, uuid4()),
+            scope=scope, cancel=cancel_provider,
+        )
+        if queued_id is None:
+            # The scope sealed before the enqueue: wait for ITS quiescence,
+            # then re-dispatch against freshly read scopes, as Save does.
+            scope.quiescent.wait()
+            return handle_set_provider(data)
+        emit('system_message', {
+            'content': f'Provider change accepted and queued until {boundary} reaches a safe boundary.'
+        })
 
     except ValueError as e:
         error(f"Invalid provider: {e}", category="web_interface")
@@ -4703,7 +4936,7 @@ def handle_generate_image(data):
                 from utils.prompt_sanitizer import sanitize_prompt
                 sanitized_prompt = sanitize_prompt(prompt)
                 if sanitized_prompt is None:
-                    emit('image_generation_error', {
+                    socketio.emit('image_generation_error', {
                         'message': ("The image could not be made: the image service refused this "
                                     "scene and no safer description could be written."),
                         'request_id': data.get('request_id'),
@@ -4788,8 +5021,8 @@ def handle_generate_image(data):
             # Don't fail the whole operation if saving fails
             print(f"Warning: Failed to save image locally: {save_error}")
         
-        # Emit the image URL back to the client
-        emit('image_generated', {
+        # Sent to every connection: a reconnect during the image call gets a new sid (#1396)
+        socketio.emit('image_generated', {
             'image_url': image_url,
             'prompt': prompt,
             'request_id': data.get('request_id'),
@@ -4799,7 +5032,7 @@ def handle_generate_image(data):
     except Exception as e:
         error_msg = f"Image generation failed: {str(e)}"
         print(f"ERROR: {error_msg}")
-        emit('image_generation_error', {
+        socketio.emit('image_generation_error', {
             'message': error_msg,
             'request_id': data.get('request_id') if isinstance(data, dict) else None,
             'source_message_id': data.get('source_message_id') if isinstance(data, dict) else None,
@@ -5089,6 +5322,25 @@ def extract_module_context_for_monsters(module_name):
         error(f"Failed to extract monster context: {e}")
         return f"Module: {module_name}"
 
+def _queue_game_loop_stop_line():
+    """The game loop has ended on an error: one stop line, cached so a reload
+    still shows it (#1392). A paused web (a Load or Reset in progress) does not
+    cache, and a sink that fails is not trusted: either way the line is shown
+    live only, as before."""
+    payload = {
+        'type': 'error',
+        'content': SAFE_ACTION_FAILURE_MESSAGE,
+        'message_id': f"msg-{uuid4().hex}",
+        'timestamp': datetime.now().isoformat(),
+    }
+    try:
+        delivered = _queue_safe_player_output(payload) is True
+    except Exception:
+        delivered = False
+    if not delivered:
+        game_output_queue.put(payload)
+
+
 def run_game_loop():
     """Run the main game loop with enhanced error handling"""
     try:
@@ -5102,11 +5354,23 @@ def run_game_loop():
         if isinstance(handoff, dm_main.WebRecoveryPause):
             _pause_web_gameplay(handoff.message)
         if isinstance(handoff, RestoreRequest):
-            previous_clean = _web_restore_state().get('can_resume') is not False
-            _finish_web_restore(
-                handoff.manager,
-                _apply_web_restore(handoff.manager, handoff.save_folder, previous_clean),
+            from utils.capture.live_provider_call import (
+                model_restore_owner_id,
+                release_lifecycle_owner,
             )
+
+            # #270: main_game_loop claimed the owner record for the model's
+            # Load; a fault before its terminal lets followers run again.
+            owned = model_restore_owner_id()
+            try:
+                previous_clean = _web_restore_state().get('can_resume') is not False
+                _finish_web_restore(
+                    handoff.manager,
+                    _apply_web_restore(handoff.manager, handoff.save_folder, previous_clean),
+                    owned,
+                )
+            finally:
+                release_lifecycle_owner(owned)
     except (BrokenPipeError, OSError) as e:
         # Handle broken pipe errors specifically
         try:
@@ -5129,13 +5393,9 @@ def run_game_loop():
             except Exception:
                 pass
         
-        # Send a user-friendly message
+        # The loop has ended: one stop line, cached for a reload (#1392).
         try:
-            game_output_queue.put({
-                'type': 'info',
-                'content': 'Connection restored. You may continue playing.',
-                'timestamp': datetime.now().isoformat()
-            })
+            _queue_game_loop_stop_line()
         except Exception:
             pass
     except Exception as e:
@@ -5149,11 +5409,7 @@ def run_game_loop():
             pass
         
         try:
-            game_output_queue.put({
-                'type': 'error',
-                'content': SAFE_ACTION_FAILURE_MESSAGE,
-                'timestamp': datetime.now().isoformat()
-            })
+            _queue_game_loop_stop_line()
         except Exception:
             pass
     finally:
@@ -5477,7 +5733,7 @@ def _run_npc_description_job(
 NPC Name: {npc_name}
 Module Context: {module_context}
 
-The output should be a single paragraph (150-200 words) that is itself a high-quality image prompt. It must include:
+The output should be a single paragraph that is itself a high-quality image prompt. It must include:
 1.  **Physical Appearance:** Race, build, key features.
 2.  **Clothing & Gear:** Detailed description of their armor, clothes, and weapons (sheathed or at rest).
 3.  **Background/Setting:** A description of the environment (e.g., 'standing in a sun-dappled ancient forest', 'leaning against a table in a rustic tavern', 'in a dimly lit dungeon corridor').
@@ -5523,7 +5779,6 @@ Return only the image prompt as prose, without JSON, headings, or commentary.
 
                 description = validate_generated_prose(
                     sanitize_text(response.choices[0].message.content),
-                    minimum_words=30,
                 )
                 generated_at = datetime.now().isoformat()
                 entry = {
@@ -6353,6 +6608,14 @@ def simulate_build_process(params):
             socketio.emit('module_progress', dict(payload))
             return True
 
+        def engine_stop():
+            # #1253 MI-5: a cancelled build also ends a wait on a slow rules engine.
+            if cancel_build_flag.is_set():
+                raise ModuleCreationCancelledError("Module generation cancelled")
+
+        from core.nql import apply as nql_apply
+        nql_apply.engine_stop_check.set(engine_stop)
+
         creation_params = {
             'narrative': narrative,
             'module_name': module_name,
@@ -6605,21 +6868,12 @@ def handle_generate_unified_assets(data):
                                             if description_found:
                                                 break
 
-                                # If still no description, generate new one with AI
+                                # #218: there is no AI fallback; an NPC with no compendium or
+                                # area description is skipped and counted, as before.
                                 if not description_found:
-                                    # Use the NPC builder to generate a description
-                                    from core.generators.npc_builder import NPCBuilder
-                                    npc_builder = NPCBuilder()
-
-                                    # Generate description based on module context
-                                    npc_data = await asyncio.to_thread(
-                                        npc_builder.generate_npc_description,
-                                        asset['name'],
-                                        module_context
-                                    )
-                                    if npc_data:
-                                        description_text = npc_data.get('description', '')
-                                        info(f"Generated new AI description for {asset['name']}")
+                                    info(f"No description found for {asset['name']}; skipped")
+                                    completed += 1
+                                    continue
 
                                 # Save to NPC compendium
                                 if description_text:

@@ -147,7 +147,6 @@ PLAYER_INFO_UPDATE_MODEL = "gpt-4.1-mini-2025-04-14"   # Used in update_player_i
 NPC_INFO_UPDATE_MODEL = "gpt-4.1-mini-2025-04-14"      # Used in update_npc_info.py
 MONSTER_BUILDER_MODEL = "gpt-4.1-2025-04-14"
 ENCOUNTER_UPDATE_MODEL = "gpt-4.1-mini-2025-04-14"
-LEVEL_UP_MODEL = "gpt-4.1-2025-04-14"                  # Used in level_up.py
 DM_EFFECTS_MODEL = "gpt-4.1-2025-04-14"               # Used in update_character_effects.py
 
 # --- Transition Validation Model ---
@@ -618,15 +617,13 @@ TRANSITION_VAL_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_
 TRANSITION_VAL_LEGACY = {"model": "gpt-4.1-mini-2025-04-14"}
 TRANSITION_VAL_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
-# --- Level-up conversation configs (T121 table-driven session, T086 NPC auto-level) ---
+# --- Level-up conversation configs (T121 table-driven session) ---
 LEVELUP_CONV_GPT52_NONE = {"model": "gpt-5.2", "reasoning_effort": "none"}
 LEVELUP_CONV_GEMINI_FLASH_LOW = {"model": "gemini-3-flash-preview", "thinking_level": "low"}
 LEVELUP_CONV_LEGACY = {"model": "gpt-4.1-2025-04-14"}
 LEVELUP_CONV_LMSTUDIO = {"model": "local-model", "reasoning_effort": "none"}
 
-# --- T086: NPC Auto-Level-Up (single-shot JSON, temp=0.3) ---
-# The level-up conversation configs; a single-shot task, all models pass easily.
-# Uses same LEVELUP_CONV configs (no separate dicts needed -- same models work).
+# (T086, the dormant NPC auto-level-up, was retired in #362: no caller reached it.)
 
 # (T014, the background NPC movement decision, and T091, the location monster
 # reconciliation, were retired in P4-e/P4-f: the rules engine's occupant
@@ -1012,7 +1009,6 @@ MODEL_TIER_MAP = {
     "CHARACTER_VALIDATOR_MODEL": "full",
     "NPC_BUILDER_MODEL": "full",
     "MONSTER_BUILDER_MODEL": "full",
-    "LEVEL_UP_MODEL": "full",
     "ACTION_PREDICTION_MODEL": "full",
     "LOCATION_COMPRESSION_MODEL": "full",
     "DM_EFFECTS_MODEL": "full",

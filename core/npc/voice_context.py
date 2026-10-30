@@ -363,16 +363,19 @@ class PreparedOocVoiceHandle:
 
 
 def _voice_recall_row(npc_id: str, episode: Mapping[str, Any]) -> Dict[str, Any]:
-    personal_line = ""
+    # Every fact about this companion, in the episode's order: a later vow must
+    # not be dropped for an earlier discovery (#283).
+    personal_lines = []
     for fact in episode.get("salientFacts", []) or []:
         subject = fact.get("subject") if isinstance(fact, Mapping) else None
         if isinstance(subject, Mapping) and subject.get("id") == npc_id:
-            personal_line = _string(fact.get("oneLine"))
-            break
+            line = _string(fact.get("oneLine"))
+            if line and line not in personal_lines:
+                personal_lines.append(line)
     return {
         "episodeId": _string(episode.get("episodeId")),
         "headline": _string(episode.get("headline")),
-        "personalLine": personal_line,
+        "personalLines": personal_lines,
     }
 
 
@@ -1192,6 +1195,13 @@ def build_ooc_packets_for_turn(
     )
 
 
+def _combat_scene_id(module, location_id) -> str:
+    """#1568: the one scene id a combat working row is written and read under.
+    Combat is its own scene, so entering or leaving it still clears the
+    other side's row."""
+    return "%s|%s|combat" % (module, location_id)
+
+
 def build_combat_packets_for_window(
     *,
     encounter_data: Mapping[str, Any],
@@ -1264,7 +1274,7 @@ def build_combat_packets_for_window(
     state = encounter_data.get("combatState", {})
     revision = state.get("revision", 0) if isinstance(state, Mapping) else 0
     round_number = state.get("round", 1) if isinstance(state, Mapping) else 1
-    scene_id = "%s|%s|combat" % (module, location_id)
+    scene_id = _combat_scene_id(module, location_id)
     present_names = [
         _string(creature.get("name"))
         for creature in creatures
@@ -1618,6 +1628,19 @@ def commit_accepted_combat_voice_batch(
     relationship_store: Optional[RelationshipStore] = None,
 ) -> int:
     """Apply only validated prior-commit evidence, idempotently and fail-open."""
+    if batch is not None and batch.results:
+        # #1568: T105 stamps module|location; the combat reader asks for the
+        # combat scene, so the row is written under that one.
+        batch = replace(
+            batch,
+            results=tuple(
+                replace(
+                    result,
+                    scene_id=_combat_scene_id(result.module, result.location_id),
+                )
+                for result in batch.results
+            ),
+        )
     return commit_accepted_ooc_voice_batch(
         batch,
         party_tracker_data,

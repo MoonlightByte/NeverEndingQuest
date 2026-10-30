@@ -118,6 +118,9 @@ class Genesis:
     # rule declared carried. Its sheet row stays equipped: a write that reads
     # the engine's wearer back keeps the row's flag (no sheet change).
     carried: Dict[str, str] = field(default_factory=dict)
+    # #1520: item id -> hands the hand rule has it hold (a worn held row); a
+    # carried row holds none.
+    held_hands: Dict[str, int] = field(default_factory=dict)
     # NUM-H3b: observations that do not bear on defense (an off-vocabulary
     # weapon proficiency, a multiclass sheet's Martial Arts die or second
     # Unarmored Defense). Unlike gaps, they never stop an AC projection.
@@ -1494,6 +1497,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     first_holders = effect_first_holders(sheets)
     all_ids: set = set()
     carried: Dict[str, str] = {}
+    held: Dict[str, int] = {}
     # Item charges (H1): one item type per charged sheet row, declared after the pack.
     charged: Tuple[List[str], set] = ([], set())
 
@@ -1597,12 +1601,16 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
                                              hands_free=2 - hands, carried=carried)
             declared[index] = (line, ac_effect_lines(iid, entry, all_ids, gaps, cid))
             hands += held_hands
+            if held_hands:
+                held[iid] = held_hands
         for index, iid, entry in weapons_last:
             line, _, held_hands = _item_line(iid, entry, cid, f"custody character {_q(cid)};",
                                              True, definitions, gaps, cid, charged, hands_free=2 - hands,
                                              carried=carried)
             declared[index] = (line, ac_effect_lines(iid, entry, all_ids, gaps, cid))
             hands += held_hands
+            if held_hands:
+                held[iid] = held_hands
         for index in sorted(declared):
             items.append(declared[index][0])
             effects.extend(declared[index][1])
@@ -1729,7 +1737,7 @@ def build_world(sheets: List[Dict[str, Any]], location: str, location_name: str 
     lines.extend(charged[0])
     return Genesis(source="\n".join(lines) + "\n", location=loc, character_ids=character_ids, item_ids=item_ids,
                    container_ids=container_ids, content_ids=content_ids, effect_names=effect_names, gaps=gaps,
-                   carried=carried, notes=notes, effect_ids=effect_ids)
+                   carried=carried, notes=notes, effect_ids=effect_ids, held_hands=held)
 
 
 def expected_armor_class(sheet: Dict[str, Any]) -> Tuple[Optional[int], List[str]]:

@@ -23,11 +23,13 @@ from core.combat.bonus_actions import (
     off_hand_damage_rule,
 )
 from core.combat.events import make_event_id, validate_event
+from core.combat.handover import HandOverRefused, stage_hand_over
 from core.combat.resolver import (
     attack_row,
     json_ref,
     apply_encounter_effect_ticks,
     apply_effect_ticks,
+    settle_effect_zero_status,
     apply_resolution,
     end_dodge,
     plan_effect_ticks,
@@ -434,7 +436,7 @@ def _resolve_bonus_action(encounter, characters, actor, controller, intent, bonu
 
 
 def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_source, clamp_feature_heals=False,
-                           drop_removals_for=()):
+                           drop_removals_for=(), durable_owners=frozenset()):
     """Resolve a provider batch sequentially and return staged events.
 
     The batch must contain one ordered intent per claimed actor. Actors
@@ -444,6 +446,8 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
     ``mode='adjudicated'`` uses the bounded general outcome contract.
     ``clamp_feature_heals`` (#669): the batch is a correction of a feature heal
     over its typed limit; a heal still over it is clamped and journaled.
+    ``durable_owners`` (#145): the names whose sheets are character files the
+    commit writes; only they give or receive a ``handOver``.
     """
     if not isinstance(pending_turn, dict):
         raise CombatIntentError("A persisted pending turn is required")
@@ -589,6 +593,21 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             # The bonus action's own use, listed again on the Action, is the
             # same spend: it is not taken twice.
             bonus_spend_dropped = drop_bonus_spend(intent, bonus_done, actor.get("name"))
+        hand_over = intent.pop("handOver", None)
+        hand_over_done = None
+        if hand_over is not None:
+            # #145: the actor's hand-over, after its Bonus Action and before
+            # its Action; the engine moves the item here, and only here.
+            try:
+                hand_over_done, next_characters = stage_hand_over(
+                    next_encounter, next_characters, actor, hand_over, event_id, durable_owners,
+                    player=controller == "human",
+                )
+            except HandOverRefused as refused:
+                feedback = {"violations": ["handOver: %s" % refused], "retryable": True}
+                if refused.refusal is not None:
+                    feedback["playerResourceRefusal"] = [refused.refusal]
+                raise CombatIntentError(feedback["violations"][0], actor_id, feedback) from refused
         weapon_attack = pending_turn.get("weaponAttack")
         off_hand_phase = None
         if (
@@ -692,6 +711,26 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 )
                 if controller != "human":
                     raise no_outcome
+            elif (
+                intent.get("action") == "attack"
+                and not intent.get("targetId")
+                and not intent.get("targets")
+                and not intent.get("effects")
+                and intent.get("resources")
+            ):
+                # #1636: an attack with no target, no outcome and a spend (an
+                # arrow) spent it on nothing. Returned as #839's is, in the
+                # same order for the player (after the typed refusals).
+                kinds = sorted({str(r.get("kind")) for r in intent["resources"] if isinstance(r, dict)})
+                no_outcome = CombatIntentError(
+                    "%s's attack names no listed target but spends %s. Give targetId of a listed "
+                    "combatant and the outcome, or drop the spend."
+                    % (actor.get("name") or actor_id, ", ".join(kinds) or "a resource"),
+                    actor_id,
+                    {"retryable": True},
+                )
+                if controller != "human":
+                    raise no_outcome
             resolution = resolve_adjudicated(
                 next_encounter,
                 next_characters,
@@ -770,6 +809,8 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 actor_id,
                 feedback,
             )
+        if hand_over_done is not None:
+            resolution["event"]["handOver"] = hand_over_done
         if bonus_done is not None:
             resolution["event"]["bonusAction"] = bonus_done
             if bonus_spend_dropped:
@@ -850,6 +891,7 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 next_encounter,
                 effect_ticks,
             )
+            settle_effect_zero_status(next_encounter, before_ticks, next_characters)
             _record_character_state_after(
                 events[-1],
                 before_ticks,

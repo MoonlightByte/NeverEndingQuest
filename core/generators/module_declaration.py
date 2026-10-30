@@ -21,11 +21,11 @@ import os
 from pathlib import Path
 
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
-from utils.enhanced_logger import info, warning
+from utils.enhanced_logger import debug, info, warning
 from utils.file_operations import safe_write_json
 
-register_callsite("T122", "core/generators/module_declaration.py", 371)
-register_callsite("T123", "core/generators/module_declaration.py", 371)
+register_callsite("T122", "core/generators/module_declaration.py", 382)
+register_callsite("T123", "core/generators/module_declaration.py", 382)
 
 REFUSED = "module_declaration.refused.json"
 # Classifications whose occurrences are one being (as the builder's ONE_BEING).
@@ -352,12 +352,15 @@ def typed_declaration(response, packet, notes):
             "beings": beings, "start": None, "gateways": [], "dispositions": dispositions}
 
 
-def _structured_call(task_id, schema_name, schema, prompt):
-    """One bounded call on the task's explicit binding, for a strict JSON
-    response (T122 and T123, as T104's)."""
-    import concurrent.futures
+def _structured_call(task_id, schema_name, schema, prompt, binding=None):
+    """One advisory call on the task's explicit binding, for a strict JSON
+    response (T122 and T123, as T104's). It runs in one reaped provider child
+    under the transport deadline (#204). ``binding`` is the caller's
+    (scope, status sink); without one the call owns its scope and its status
+    goes to the debug log, so it never joins a player's turn."""
     from core.ai import api_client
     from model_config import get_provider, resolve_callsite_config
+    from utils.capture.live_provider_call import LiveTurnScope
 
     provider = get_provider()
     cfg = resolve_callsite_config(task_id, provider)
@@ -372,35 +375,25 @@ def _structured_call(task_id, schema_name, schema, prompt):
         response_format = {"type": "json_object"}
     else:
         response_format = {"type": "json_object"}
-    # The transport deadline (110 s) closes the request before the 120 s
-    # thread backstop abandons it, as for T104.
-    # Connect is bounded per resolved address, as in
-    # live_provider_call._CONNECT_SECONDS: a bare 110 also bounds each connect,
-    # so silent first addresses outlast the backstop before any request (#667).
-    if provider in ("openai", "legacy", "lmstudio"):
-        import httpx
-
-        extra["timeout"] = httpx.Timeout(110, connect=5.0)
-
-    def call():
-        return capture_and_fanout(
-            task_id, api_client.create_completion,
-            _request_provider=provider,
-            messages=[
-                {"role": "system", "content": "You are an expert 5e module editor. "
-                 "Return only the requested strict JSON object."},
-                {"role": "user", "content": prompt},
-            ],
-            model=cfg["model"],
-            temperature=0.2,
-            response_format=response_format,
-            **extra)
-
-    ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    try:
-        response = ex.submit(call).result(timeout=120)
-    finally:
-        ex.shutdown(wait=False)
+    if binding is None:
+        binding = (LiveTurnScope(),
+                   lambda message: debug(f"{task_id}: {message}", category="module_integration"))
+    scope, status = binding
+    response = capture_and_fanout(
+        task_id, api_client.create_completion,
+        _live_selected="advisory",
+        _detached_scope=scope,
+        _detached_status=status,
+        _request_provider=provider,
+        messages=[
+            {"role": "system", "content": "You are an expert 5e module editor. "
+             "Return only the requested strict JSON object."},
+            {"role": "user", "content": prompt},
+        ],
+        model=cfg["model"],
+        temperature=0.2,
+        response_format=response_format,
+        **extra)
     content = response.choices[0].message.content.strip()
     if content.startswith("```"):
         content = content.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
@@ -408,7 +401,7 @@ def _structured_call(task_id, schema_name, schema, prompt):
 
 
 def _t122_call(prompt):
-    """One bounded T122 call on the explicit T122 binding (as T104's)."""
+    """One T122 call on the explicit T122 binding, in a scope of its own (as T104's)."""
     return _structured_call("T122", "t122_module_typing", typing_response_schema(), prompt)
 
 
@@ -586,17 +579,23 @@ def typed_routes(response, packet):
             for rid, (a, b, both) in packet["_index"].items()]
 
 
-def _t123_call(prompt):
-    """One bounded T123 call on the explicit T123 binding."""
-    return _structured_call("T123", "t123_route_minutes", route_response_schema(), prompt)
+def _t123_call(prompt, binding=None):
+    """One T123 call on the explicit T123 binding, in the build's scope."""
+    return _structured_call("T123", "t123_route_minutes", route_response_schema(), prompt,
+                            binding)
 
 
-def type_routes(module_path, module_name):
+def type_routes(module_path, module_name, binding=None):
     """The module's `routes`, typed by one T123 call over its links, or None.
     Runs on a built candidate after id normalization (the module builder's
-    declaration emitter). Never raises: on any failure there are no routes,
+    declaration emitter), on the build's provider binding. Never raises,
+    except a stop (the build's turn superseded, or the save gone read-only),
+    which ends the build (#204): on any other failure there are no routes,
     and the travel time table applies to every link (utils/travel_map.py)."""
+    from core.combat.invocation import InvocationSupersededError
     from utils import roster_conversion
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.transient_filesystem import ReadOnlySaveStop
 
     try:
         game = roster_conversion.Game(".", [module_name], paths={module_name: os.fspath(module_path)},
@@ -605,7 +604,8 @@ def type_routes(module_path, module_name):
         if packet is None:
             info(f"MODULE_ROUTES: {module_name} has no links; no call", category="module_creation")
             return None
-        response = _t123_call(route_prompt({k: v for k, v in packet.items() if k != "_index"}))
+        response = _t123_call(route_prompt({k: v for k, v in packet.items() if k != "_index"}),
+                              binding)
         ok, errors = validate_route_typing(response, packet)
         if not ok:
             warning(f"MODULE_ROUTES: T123 timing of {module_name} failed validation "
@@ -615,6 +615,8 @@ def type_routes(module_path, module_name):
         routes = typed_routes(response, packet)
         info(f"MODULE_ROUTES: {module_name} timed: {len(routes)} links", category="module_creation")
         return routes
+    except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+        raise
     except Exception as exc:
         warning(f"MODULE_ROUTES: T123 timing of {module_name} failed ({exc}); the time table applies",
                 category="module_creation")

@@ -12,11 +12,12 @@ import os
 from contextlib import ExitStack
 from typing import Any, Dict, List, Optional
 
-from core.managers.item_transfer import _backup, _discard, _resolve, _restore
+from core.managers.item_acquisition import _stops
+from core.managers.item_transfer import _backup, _discard, _resolve, _restore, _restore_for_stop
 from core.nql import currency as nql_currency
 from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import debug, info
-from utils.file_operations import safe_read_json, safe_write_json
+from utils.file_operations import safe_write_json
 
 
 def _coins(text: Dict[str, int]) -> str:
@@ -26,8 +27,9 @@ def _coins(text: Dict[str, int]) -> str:
 
 def _run(paths: List[str], build, party_tracker: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """Lock every path in order, load the sheets, run ``build(sheets, location)``, write all or none."""
-    from updates.update_character_info import _get_character_update_lock
-    from utils.path_transaction_lock import path_transaction_lock
+    from updates.update_character_info import (
+        _get_character_update_lock, read_sheet_waiting, wait_for_sheet_lease,
+    )
 
     if len(set(os.path.normcase(os.path.realpath(p)) for p in paths)) != len(paths):
         return {"success": False, "error": "the same character appears twice"}
@@ -37,11 +39,10 @@ def _run(paths: List[str], build, party_tracker: Optional[Dict[str, Any]]) -> Di
     with ExitStack() as stack:
         for path in ordered:
             stack.enter_context(_get_character_update_lock(os.path.basename(path)[:-5]))
+        # #1253: a busy sheet or read waits (with a status line), in the same order; it never refuses.
         for path in ordered:
-            lease = stack.enter_context(path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=30.0))
-            if lease is None:
-                return {"success": False, "error": "a character sheet is busy; nothing was moved"}
-        sheets = [safe_read_json(p) for p in paths]
+            stack.enter_context(wait_for_sheet_lease(path))
+        sheets = [read_sheet_waiting(p) for p in paths]
         if not all(sheets):
             return {"success": False, "error": "could not load every character sheet"}
         outcome = build(sheets, location)
@@ -54,6 +55,10 @@ def _run(paths: List[str], build, party_tracker: Optional[Dict[str, Any]]) -> Di
             for path, sheet in zip(paths, outcome.sheets):
                 if not safe_write_json(path, sheet):
                     raise RuntimeError(f"failed to write {os.path.basename(path)}")
+        except _stops():
+            # #1253: a read-only save stop or a supersession ends the turn (#654).
+            _restore_for_stop(zip(paths, backups))
+            raise
         except Exception as error:
             for path, backup in zip(paths, backups):
                 _restore(path, backup)

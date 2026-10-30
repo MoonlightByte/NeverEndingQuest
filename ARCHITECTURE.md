@@ -127,7 +127,6 @@ The codebase follows a clean, organized structure with logical separation of con
 │   ├── encoding_utils.py          # Text encoding and JSON safety
 │   ├── enhanced_logger.py         # Comprehensive logging system
 │   ├── file_operations.py         # Atomic file operations
-│   ├── level_up.py                # Legacy level up system
 │   ├── location_path_finder.py    # Location pathfinding utilities
 │   ├── module_context.py          # Module context management
 │   ├── module_path_manager.py     # Module-centric path management
@@ -137,7 +136,6 @@ The codebase follows a clean, organized structure with logical separation of con
 │   ├── redirect_debug_output.py   # Debug output redirection
 │   ├── reset_campaign.py          # Campaign reset utilities
 │   ├── startup_wizard.py          # Character creation wizard
-│   ├── sync_party_tracker.py      # Party tracker synchronization
 │   ├── token_estimator.py         # AI token usage estimation
 │   └── xp.py                      # Experience point calculations
 ├── updates/               # State update modules (6 files)

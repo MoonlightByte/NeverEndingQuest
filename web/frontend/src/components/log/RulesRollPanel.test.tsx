@@ -16,9 +16,11 @@ beforeEach(() => {
   useRulesRoll.getState().setPrompt({ id: 'check', characterName: 'Hero', label: 'Strength check', faces: 2, netMode: 'advantage', reason: 'Lift the gate', submitted: false })
 })
 afterEach(() => { cleanup(); useRulesRoll.getState().setPrompt(null) })
-it('replaces normal input with a server-owned check', () => {
+it('shows a server-owned check above the text input, which stays (#1118 item 4)', () => {
   render(<InputBar />)
-  expect(screen.queryByLabelText('Player input')).toBeNull()
+  const panel = screen.getByRole('region', { name: 'Requested check' })
+  const input = screen.getByLabelText('Player input')
+  expect(panel.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   fireEvent.click(screen.getByText('Roll for me'))
   expect(emitC).toHaveBeenCalledWith('submit_check_roll', { id: 'check', faces: null })
 })

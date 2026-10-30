@@ -675,6 +675,19 @@ def correction(ident, reason, guidance) -> str:
     )
 
 
+def travel_refusal_note(receipt) -> str:
+    """#1122: the DM-only note for an updatePlot refused during a travel, after the fact. The reason and
+    guidance are the engine's and the module's own text, carried as they are."""
+    reason = str(receipt.get("reason") or "the engine refused it")
+    guidance = str(receipt.get("guidance") or "")
+    return (
+        "QUEST (refused during the last travel): updatePlot for %s was not recorded: %s. The travel itself "
+        "happened and nothing changed in the quest record. %sRecord it on a later turn only when the story "
+        "supports it; this is not for the player."
+        % (receipt.get("ident") or "(no plotPointId)", reason, (guidance + " ") if guidance else "")
+    )
+
+
 def _engine_refusal(module, fault, view, root):
     """(reason, guidance) for an E_QUEST / E_REFERENCE refusal."""
     field = str(fault.get("field") or "")
@@ -762,13 +775,14 @@ def prepare_travel_update(parameters, request_id, module, *, root=".") -> Dict[s
     p = parameters if isinstance(parameters, dict) else {}
     receipt: Dict[str, Any] = {
         "kind": "updatePlot", "module": module, "quest_id": None, "ident": str(p.get("plotPointId") or "").strip(),
-        "line": None, "request_id": request_id, "quest_status": "refused", "reason": None,
+        "line": None, "request_id": request_id, "quest_status": "refused", "reason": None, "guidance": None,
     }
     try:
         view = quest_view(module, root=root)
         mapped = update_line(module, p, view, root=root)
         if mapped["line"] is None:
             receipt["reason"] = mapped["reason"]
+            receipt["guidance"] = mapped["guidance"]
             return receipt
         receipt["quest_id"] = quest_id(module, mapped["ident"])
         receipt["line"] = mapped["line"]
@@ -823,17 +837,25 @@ def apply_travel_receipt(receipt, *, root=".") -> str:
         receipt["quest_status"] = "committed"
         info("QUESTS: travel updatePlot %s: %s" % (request_id, line), category="plot_updates")
         return "committed"
-    reason, _ = _engine_refusal(str(receipt.get("module") or ""), fault, None, root)
+    reason, guidance = _engine_refusal(str(receipt.get("module") or ""), fault, None, root)
     receipt["quest_status"] = "refused"
     receipt["reason"] = reason
+    receipt["guidance"] = guidance
     warning("QUESTS: travel updatePlot %s refused: %s (%s)" % (request_id, reason, line), category="plot_updates")
     return "refused"
 
 
 def journal_after_change(module):
     """T090 keeps the player's journal (D4): run after each committed change."""
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.transient_filesystem import ReadOnlySaveStop
+
     try:
         from utils.quest_player_formatter import format_quests_for_player
         format_quests_for_player((module or "").replace(" ", "_"))
+    except (InvocationSupersededError, LiveProviderSuperseded, ReadOnlySaveStop):
+        # A superseded turn or a save stop ends the turn, not just the journal (#1108).
+        raise
     except Exception as exc:  # fail forward
         warning("QUESTS: player journal not refreshed (%s)" % exc, category="plot_updates")

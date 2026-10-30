@@ -3,6 +3,9 @@
 .neq-rules-roll-title strong { color: #e6c580; font-size: 1.05rem; }
 .neq-rules-roll p { margin: .25rem 0; }
 .neq-rules-roll-reason { color: #c5bda9; }
+/* #1117: the own-dice range message; kept rendered when empty (a live region) with no margin. */
+.neq-rules-roll-error { color: #ff9a8a; }
+.neq-rules-roll-error:empty { margin: 0; }
 .neq-rules-roll-actions { display: flex; flex-wrap: wrap; gap: .65rem 1rem; align-items: baseline; margin-top: .5rem; }
 .neq-rules-roll button { min-height: 44px; padding: .4rem .85rem; border: 1px solid #aa8b52; border-radius: .35rem; background: #53432a; color: #fff0d5; cursor: pointer; }
 .neq-rules-roll button:disabled { opacity: .5; cursor: default; }

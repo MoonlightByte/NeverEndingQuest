@@ -265,14 +265,12 @@ def _diagnostic_context_counts(spell_references):
 
 
 def _provider_failure_class(exc):
-    message = str(exc).lower()
-    class_name = exc.__class__.__name__
-    if class_name == "CombatAgentContractError":
-        if "stale" in message or "actor order" in message:
-            return "stale_state_or_actor_order"
-        if "json" in message or "object" in message:
-            return "response_parse_error"
-        return "response_contract_error"
+    """#1515: the typed class a contract error carries from where it was
+    raised; any other failure is a provider error. Never the message's words."""
+    from core.ai.combat_agent import CombatAgentContractError
+
+    if isinstance(exc, CombatAgentContractError):
+        return exc.failure_class
     return "provider_error"
 
 
@@ -752,6 +750,115 @@ def _check_answered_roll_faces(encounter_path, encounter, pending, batch, voice_
             roll["requestedDc"] = asked_dc
         else:
             roll.pop("requestedDc", None)
+
+
+def _answered_rolls(pending, kept=None):
+    """#1111: this turn's answered model roll requests, oldest first. A request
+    exchange carries the typed requestedRoll (a code phase's ask carries only
+    requestedDie and is never counted); the next exchange answers it. Faces
+    are the game's stored rolledFaces, else the player's faces 3b accepted on
+    an earlier attempt of this window (``kept``, by answer index), else None."""
+    exchanges = pending.get("playerExchanges") if isinstance(pending, dict) else None
+    exchanges = exchanges if isinstance(exchanges, list) else []
+    answered = []
+    for index in range(1, len(exchanges)):
+        request, answer = exchanges[index - 1], exchanges[index]
+        if not isinstance(request, dict) or not isinstance(answer, dict):
+            continue
+        if request.get("withdrawn") is True or answer.get("withdrawn") is True or not request.get("dmRequest"):
+            continue
+        terms = _roll_die_terms(request.get("requestedRoll"))
+        if not terms:
+            continue
+        if answer.get("rolledBy") == "game" and isinstance(answer.get("rolledFaces"), list):
+            faces, source = deepcopy(answer["rolledFaces"]), "game"
+        else:
+            faces, source = deepcopy((kept or {}).get(index)), "player"
+        phase = str(request.get("requestedPhase") or "").strip().casefold()
+        answered.append({"phase": phase, "requestedRoll": request.get("requestedRoll"),
+                         "terms": [list(term) for term in terms], "faces": faces, "source": source})
+    return answered
+
+
+def _keep_accepted_faces(pending, batch, kept):
+    """#1111: remember the player's faces 3b accepted for the answered request,
+    by the answer's index, so a correction retry that drops them keeps them."""
+    exchanges = pending.get("playerExchanges") if isinstance(pending, dict) else None
+    if not isinstance(exchanges, list) or not exchanges:
+        return
+    for intent in (batch.get("intents") if isinstance(batch, dict) else None) or []:
+        roll = intent.get("playerRoll") if isinstance(intent, dict) else None
+        if isinstance(roll, dict) and roll.get("requestedRoll") and isinstance(roll.get("faces"), list):
+            kept[len(exchanges) - 1] = deepcopy(roll["faces"])
+
+
+def _keep_answered_roll(batch, encounter, pending, kept=None):
+    """#1111 (option A): a player roll request that a roll already answered
+    this turn asks for again is never shown. Matched on the typed phase and
+    die terms; a request beyond what the intent can use (its typed attacks for
+    an attack or damage roll, else one) is the repeat. The answer's faces go
+    into playerRoll; an intent that states no outcome, or an answer whose
+    faces code never had, gets one correction naming them instead. Returns
+    the kept records."""
+    answered = _answered_rolls(pending, kept)
+    if not answered:
+        return []
+    records = []
+    for intent in (batch or {}).get("intents", []) or []:
+        if not isinstance(intent, dict):
+            continue
+        actor = combatant_by_id(encounter, intent.get("actorId"))
+        request = intent.get("requiresPlayerInput")
+        if (not isinstance(actor, dict) or not _is_human_controlled(encounter, actor)
+                or not isinstance(request, dict) or request.get("kind") != "roll"):
+            continue
+        phase = str(request.get("phase") or "").strip().casefold()
+        terms = _roll_die_terms(request.get("die"))
+        same = [item for item in answered
+                if item["phase"] == phase and terms and item["terms"] == [list(term) for term in terms]]
+        attacks = intent.get("attacks")
+        allowed = (attacks if _roll_request_purpose(request) in ("attack", "damage")
+                   and type(attacks) is int and attacks >= 1 else 1)
+        if len(same) < allowed:
+            continue
+        latest = same[-1]
+        stated = bool(intent.get("targets")) or bool(intent.get("effects"))
+        if latest["faces"] is None or not stated:
+            known = (": %s" % " and ".join(str(face) for group in latest["faces"] for face in group)
+                     if latest["faces"] is not None else "")
+            raise CombatIntentError(
+                "The %s roll (%s) was already answered this turn%s. Rule it from that answer "
+                "(targets with hpDelta, 0 on a miss; the faces in playerRoll) and do not ask "
+                "the player for it again." % (phase or "requested", latest["requestedRoll"], known),
+                intent.get("actorId"),
+                {"answeredRoll": {"phase": phase, "requestedRoll": latest["requestedRoll"],
+                                  "faces": deepcopy(latest["faces"])},
+                 "retryable": True},
+            )
+        intent.pop("requiresPlayerInput", None)
+        intent["playerRoll"] = {"phase": phase, "requestedRoll": latest["requestedRoll"],
+                                "faces": deepcopy(latest["faces"])}
+        records.append({"actorId": intent.get("actorId"), "phase": phase,
+                        "requestedRoll": latest["requestedRoll"], "source": latest["source"]})
+    return records
+
+
+def _attach_answered_rolls(batch, encounter, pending, kept=None):
+    """#1111: the human intent carries this turn's answered dice with faces as
+    a typed record (answeredRolls), so its adjudicated event records the dice
+    the ruling used. A save is left out: a scored save records its own."""
+    answered = [item for item in _answered_rolls(pending, kept)
+                if item["faces"] is not None and item["phase"] != "save"]
+    if not answered:
+        return
+    for intent in (batch or {}).get("intents", []) or []:
+        actor = combatant_by_id(encounter, intent.get("actorId")) if isinstance(intent, dict) else None
+        if isinstance(actor, dict) and _is_human_controlled(encounter, actor) and intent.get("mode") == "adjudicated":
+            intent["answeredRolls"] = [
+                {"purpose": _roll_request_purpose({"phase": item["phase"]}) or item["phase"],
+                 "terms": deepcopy(item["terms"]), "faces": deepcopy(item["faces"]), "source": item["source"]}
+                for item in answered
+            ]
 
 
 def _stated_hit(intent):
@@ -1964,7 +2071,7 @@ def _open_off_hand_phase(encounter_path, encounter, characters, pending, batch, 
     return record
 
 
-def _resolve_ready_phase(encounter_path, encounter, characters, pending):
+def _resolve_ready_phase(encounter_path, encounter, characters, pending, character_paths=None):
     """Item 3: resolve the window from a completed code-issued roll phase,
     with the batch the model gave when the phase opened (no second T096
     pass). Returns (pending, events, roll_consumption, preview_characters);
@@ -1978,6 +2085,7 @@ def _resolve_ready_phase(encounter_path, encounter, characters, pending):
             pending,
             deepcopy(ready_attack.get("batch")),
             rolls,
+            durable_owners=frozenset(character_paths or ()),
         )
         roll_consumption = rolls.consumption()
         record_combat_diagnostic(
@@ -2924,7 +3032,7 @@ def execute_agentic_turn(
         # Item 3: the swing's dice are in; resolve the window with the batch
         # the model gave when the roll phase opened (no second T096 pass).
         pending, events, roll_consumption, _preview_characters = _resolve_ready_phase(
-            encounter_path, encounter, characters, pending,
+            encounter_path, encounter, characters, pending, character_paths,
         )
     provider_player_input = _composed_player_input(pending, player_input)
     if events is None and not _all_non_player(encounter, pending.get("actorIds", [])):
@@ -2955,6 +3063,8 @@ def execute_agentic_turn(
     # #1251: the provider's own batches rejected in this window, compared by
     # typed value; one returned again ends the window as the ceiling does.
     rejected_batches = []
+    # #1111: the player's faces 3b accepted this window, by answer index.
+    accepted_faces = {}
     while events is None:
         if game_roll_rerule:
             # #1118: T096 rules again with the game's roll; that pass is not
@@ -3092,6 +3202,7 @@ def execute_agentic_turn(
                 # The re-rule answers a new input (the game's roll).
                 rejected_batches = []
                 continue
+            _keep_accepted_faces(pending, batch, accepted_faces)
             # Item 10 (r2): the answered save keeps the DC it was asked at.
             _check_asked_save_dc(batch, asked_dc_corrected)
             # R2: a bonusAction outside the actor's bonusActionNames is
@@ -3142,7 +3253,7 @@ def execute_agentic_turn(
                 # on a save, so no roll is asked: the window resolves now. A
                 # fallback sends this batch down today's path below.
                 pending, events, roll_consumption, _preview_characters = _resolve_ready_phase(
-                    encounter_path, encounter, characters, written,
+                    encounter_path, encounter, characters, written, character_paths,
                 )
                 if events is not None:
                     continue
@@ -3154,6 +3265,21 @@ def execute_agentic_turn(
                 _validate_flat_damage_request(batch, encounter, characters)
                 _validate_feature_names(batch, encounter, characters)
             _validate_roll_request_phase(batch, encounter)
+            for kept_roll in _keep_answered_roll(batch, encounter, pending, accepted_faces):
+                record_combat_diagnostic(
+                    record_type="window_outcome",
+                    callsite="T096",
+                    outcome="answered_roll_kept",
+                    provider=intent_provider_name,
+                    model=intent_model_name,
+                    encounter_id=encounter.get("encounterId"),
+                    turn_id=pending.get("turnId"),
+                    revision=(encounter.get("combatState") or {}).get("revision"),
+                    round_number=(encounter.get("combatState") or {}).get("round"),
+                    window_kind=window_kind,
+                    actor_count=len(pending.get("actorIds") or []),
+                    attempt=attempt_number,
+                )
             try:
                 roll_audits = _audit_batch_spell_roll_requests(
                     batch,
@@ -3206,6 +3332,7 @@ def execute_agentic_turn(
                         rules_contract_key=audit.get("contractKey"),
                         rules_contract_version=audit.get("version"),
                     )
+            _attach_answered_rolls(batch, encounter, pending, accepted_faces)
             rolls = _fresh_rolls(encounter)
             events, _preview_encounter, _preview_characters = resolve_claimed_window(
                 encounter,
@@ -3217,6 +3344,8 @@ def execute_agentic_turn(
                 clamp_feature_heals=feature_heal_limits is not None,
                 # #725: an actor whose remove op was refused once has it dropped.
                 drop_removals_for=frozenset(removal_refused_actors),
+                # #145: a hand-over moves only between sheets the commit writes.
+                durable_owners=frozenset(character_paths or ()),
             )
             roll_consumption = rolls.consumption()
             record_combat_diagnostic(

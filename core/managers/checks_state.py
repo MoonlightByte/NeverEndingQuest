@@ -1,8 +1,8 @@
 """Pending checks and their results between DM turns (C2a).
 
-A rollCheck for the player character waits here until the roll prompt takes
-the player's dice (or lets the game roll); engine-rolled checks land as
-results at once. Every result is handed to the DM Note of the next DM turn
+A rollCheck for the player character waits here until the player's answer
+gives its dice (or lets the game roll), across turns if need be (#1118 item 4);
+engine-rolled checks land as results at once. Every result is handed to the DM Note of the next DM turn
 and then cleared. Lives beside effects_state.json; a new game starts empty.
 """
 from copy import deepcopy
@@ -51,10 +51,15 @@ def write_checks_state(state: Dict[str, Any]) -> bool:
 
 
 @_locked
-def add_pending(entry: Dict[str, Any]) -> None:
+def add_pending(entry: Dict[str, Any]) -> bool:
+    """Queue ``entry``; False, with nothing written, when the same check (character, stat, dc and mode) waits."""
     state = load_checks_state()
+    same = ("characterName", "stat", "dc", "mode")
+    if any(isinstance(p, dict) and all(p.get(k) == entry.get(k) for k in same) for p in state["pending"]):
+        return False
     state["pending"].append(entry)
     write_checks_state(state)
+    return True
 
 
 @_locked
@@ -79,18 +84,20 @@ def pop_pending() -> Dict[str, Any] | None:
 
 
 @_locked
-def complete_pending(entry: Dict[str, Any], line: str) -> None:
+def complete_pending(entry: Dict[str, Any], line: str) -> bool:
     """Remove a check only when its result can be saved in the same write.
 
     An EOF, process restart or failed write leaves the pending check available.
-    Refuse to consume a different campaign's check after a lifecycle change.
+    False, with nothing written, when the check at the head of the queue is no
+    longer ``entry`` (a Load or Reset changed it): nothing is applied.
     """
     state = load_checks_state()
     if not state['pending'] or state['pending'][0] != entry:
-        raise RuntimeError('Pending check changed before completion')
+        return False
     state['pending'].pop(0)
     state['results'].append(line)
     write_checks_state(state)
+    return True
 
 
 @_locked
@@ -124,6 +131,43 @@ def delivered_for_turn(turn_marker: Any) -> List[str]:
     if turn_marker is None or not isinstance(delivered, dict) or delivered.get("turn") != turn_marker:
         return []
     return [line for line in delivered.get("lines") or [] if isinstance(line, str)]
+
+
+# #1122: an updatePlot the engine refused during a travel, told to the DM once.
+# Queued under its request id; handed out like the check results above.
+
+@_locked
+def add_quest_note(request_id: str, text: str) -> None:
+    state = load_checks_state()
+    notes = state.get("questNotes") if isinstance(state.get("questNotes"), list) else []
+    delivered = state.get("questDelivered") if isinstance(state.get("questDelivered"), dict) else {}
+    known = {n.get("requestId") for n in notes + list(delivered.get("notes") or []) if isinstance(n, dict)}
+    if request_id in known:
+        return
+    state["questNotes"] = notes + [{"requestId": request_id, "text": text}]
+    write_checks_state(state)
+
+
+@_locked
+def consume_quest_notes(turn_marker: Any = None) -> List[str]:
+    """The quest notes for the DM turn starting now, with consume_results' rule:
+    handed again while the next note is built for the same marker, cleared once
+    a later turn's note is built."""
+    state = load_checks_state()
+    notes = [n for n in state.get("questNotes") or [] if isinstance(n, dict)]
+    delivered = state.get("questDelivered")
+    again: List[Dict[str, Any]] = []
+    if isinstance(delivered, dict) and delivered.get("turn") == turn_marker and turn_marker is not None:
+        again = [n for n in delivered.get("notes") or [] if isinstance(n, dict)]
+    handed = again + notes
+    if handed or delivered is not None or "questNotes" in state:
+        state.pop("questNotes", None)
+        if handed:
+            state["questDelivered"] = {"turn": turn_marker, "notes": handed}
+        else:
+            state.pop("questDelivered", None)
+        write_checks_state(state)
+    return [str(n.get("text") or "") for n in handed]
 
 
 # #1472: the Hit Die offer after a short rest. One open offer per character
@@ -194,3 +238,53 @@ def _rest_turn_end(offer: Dict[str, Any]) -> Any:
     if type(rest_tick) is not int or type(grace) is not int or grace < 0:
         return None
     return rest_tick + grace
+
+
+# #1118 item 3: a short rest held for the player's hit-die answer. At most one,
+# under its own top-level key: older builds keep an unknown key untouched and
+# never read it as a pending check.
+
+def pending_rest() -> Dict[str, Any] | None:
+    entry = load_checks_state().get("pendingRest")
+    return dict(entry) if isinstance(entry, dict) else None
+
+
+@_locked
+def hold_rest(entry: Dict[str, Any]) -> None:
+    state = load_checks_state()
+    state["pendingRest"] = entry
+    write_checks_state(state)
+
+
+@_locked
+def take_pending_rest(entry: Dict[str, Any]) -> bool:
+    """Remove ``entry`` before its rest is applied; False when the held rest changed (nothing is applied)."""
+    state = load_checks_state()
+    if state.get("pendingRest") != entry:
+        return False
+    del state["pendingRest"]
+    write_checks_state(state)
+    return True
+
+
+@_locked
+def close_pending_rest() -> Dict[str, Any] | None:
+    """Close the held rest, if any, with no die spent; returns it."""
+    state = load_checks_state()
+    entry = state.pop("pendingRest", None)
+    if entry is None:
+        return None
+    write_checks_state(state)
+    return entry if isinstance(entry, dict) else None
+
+
+@_locked
+def close_pending_checks() -> List[Dict[str, Any]]:
+    """Close every pending check with no result line (combat began; #1118 item 4); returns them."""
+    state = load_checks_state()
+    closed = state["pending"]
+    if not closed:
+        return []
+    state["pending"] = []
+    write_checks_state(state)
+    return [entry for entry in closed if isinstance(entry, dict)]

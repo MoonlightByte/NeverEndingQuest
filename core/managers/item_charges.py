@@ -37,12 +37,10 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from core.effects.clock import GameTimeError, scalar_from_calendar
 from core.nql import apply, genesis, item_catalog, stats
-from core.managers.item_acquisition import _backup, _discard, _projected, _resolve, _restore
+from core.managers.item_acquisition import _backup, _discard, _projected, _resolve, _restore, _stops
 from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import debug, info
-from utils.file_operations import safe_read_json, safe_write_json
-
-RECEIPTS_KEPT = 20
+from utils.file_operations import safe_write_json
 
 _FAULT_WORDS = {
     "E_CHARGES": "not enough charges",
@@ -122,6 +120,10 @@ def _write_sheet(path: str, working: Dict[str, Any]) -> Optional[str]:
     try:
         if not safe_write_json(path, out):
             raise RuntimeError("failed to write the character sheet")
+    except _stops():
+        # #1253: a read-only save stop or a supersession ends the turn (#654).
+        _restore(path, backup)
+        raise
     except Exception as error:
         _restore(path, backup)
         return f"could not save the character sheet: {error}"
@@ -198,7 +200,7 @@ def mint_rows(path: str, working: Dict[str, Any], cid: str, location: str, clock
                 # before the call so a retry of this mint rolls the same.
                 mints = [m for m in working.get("chargeMints") or [] if isinstance(m, dict)]
                 mints.append({"request": request, "nqlId": iid, "dice": list(words), "clock": tick})
-                working["chargeMints"] = mints[-RECEIPTS_KEPT:]
+                working["chargeMints"] = mints
                 error = _write_sheet(path, working)
                 if error:
                     problems.append(f"{row.get('item_name')}: {error}")
@@ -347,8 +349,9 @@ def spend_working(working: Dict[str, Any], index: int, charges: int, clock: Opti
 def execute_expend(character_name: str, item_name: str, charges: Any, request_id: Optional[str] = None,
                    party_tracker: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Spend ``charges`` of the character's item. {"success": True, "message"} or {"success": False, "error"}."""
-    from updates.update_character_info import _get_character_update_lock
-    from utils.path_transaction_lock import path_transaction_lock
+    from updates.update_character_info import (
+        _get_character_update_lock, read_sheet_waiting, wait_for_sheet_lease,
+    )
 
     path = _resolve(character_name)
     if path is None:
@@ -364,10 +367,9 @@ def execute_expend(character_name: str, item_name: str, charges: Any, request_id
     clock, clock_error = party_clock(party)
 
     with _get_character_update_lock(os.path.basename(path)[:-5]):
-        with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=30.0) as lease:
-            if lease is None:
-                return {"success": False, "error": "the character sheet is busy; nothing was spent"}
-            sheet = safe_read_json(path)
+        # #1253: a busy sheet or read waits (with a status line); it never refuses.
+        with wait_for_sheet_lease(path, character_name):
+            sheet = read_sheet_waiting(path, character_name)
             if not sheet:
                 return {"success": False, "error": "could not load the character sheet"}
 
@@ -422,13 +424,17 @@ def execute_expend(character_name: str, item_name: str, charges: Any, request_id
             if exhausted is not None:
                 receipt["exhausted"] = exhausted
             receipts.append(receipt)
-            working["chargeUses"] = receipts[-RECEIPTS_KEPT:]
+            working["chargeUses"] = receipts
             out = _projected(working)
 
             backup = _backup(path)
             try:
                 if not safe_write_json(path, out):
                     raise RuntimeError("failed to write the character sheet")
+            except _stops():
+                # #1253: a read-only save stop or a supersession ends the turn (#654).
+                _restore(path, backup)
+                raise
             except Exception as error:
                 _restore(path, backup)
                 return {"success": False, "error": f"could not save the character sheet: {error}"}
@@ -561,21 +567,21 @@ def due_rows(sheet: Dict[str, Any], now: int) -> List[int]:
     return out
 
 
-def refresh_sheet(character_name: str, now: int, location: str = "party") -> Dict[str, Any]:
+def refresh_sheet(character_name: str, now: int, location: str = "party", scope=None) -> Dict[str, Any]:
     """Count the recharge of one character's due items and store the engine's
     state. One view-only engine call (no actions, no event, revision 0), so
-    repeating it is harmless. {"refreshed": [item names]} or {"error"}."""
-    from updates.update_character_info import _get_character_update_lock
-    from utils.path_transaction_lock import path_transaction_lock
+    repeating it is harmless. {"refreshed": [item names]} or {"error"}. A busy
+    sheet waits under ``scope`` (#1253)."""
+    from updates.update_character_info import (
+        _get_character_update_lock, read_sheet_waiting, wait_for_sheet_lease,
+    )
 
     path = _resolve(character_name)
     if path is None:
         return {"error": f"no character sheet for {character_name!r}"}
     with _get_character_update_lock(os.path.basename(path)[:-5]):
-        with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=30.0) as lease:
-            if lease is None:
-                return {"error": "the character sheet is busy"}
-            sheet = safe_read_json(path)
+        with wait_for_sheet_lease(path, character_name, scope=scope):
+            sheet = read_sheet_waiting(path, character_name, scope=scope)
             if not sheet:
                 return {"error": "could not load the character sheet"}
             due = due_rows(sheet, now)
@@ -628,10 +634,11 @@ def refresh_sheet(character_name: str, now: int, location: str = "party") -> Dic
             return {"refreshed": refreshed, "minted": minted}
 
 
-def refresh_party(party_tracker: Optional[Dict[str, Any]] = None) -> Dict[str, List[str]]:
+def refresh_party(party_tracker: Optional[Dict[str, Any]] = None, scope=None) -> Dict[str, List[str]]:
     """Count due recharges for every party member and companion at the party
     clock. Nothing is called when no row is due; an unreadable calendar skips
-    the refresh (the next turn tries again). Never raises."""
+    the refresh (the next turn tries again). A busy sheet waits under ``scope``;
+    only a Load, Reset, Quit or read-only save stop is raised (#1253)."""
     party = party_tracker or safe_json_load("party_tracker.json") or {}
     now, clock_error = party_clock(party)
     if now is None:
@@ -643,7 +650,9 @@ def refresh_party(party_tracker: Optional[Dict[str, Any]] = None) -> Dict[str, L
     result: Dict[str, List[str]] = {}
     for name in names:
         try:
-            outcome = refresh_sheet(str(name), now, location)
+            outcome = refresh_sheet(str(name), now, location, scope=scope)
+        except _stops():
+            raise
         except Exception as error:  # fail forward: a refresh never breaks the turn
             debug(f"CHARGES: refresh of {name!r} skipped: {error}", category="storage_operations")
             continue

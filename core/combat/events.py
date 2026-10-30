@@ -131,6 +131,10 @@ def validate_event(event):
                 problems.append(
                     "effect tick %s must be a nonnegative integer" % field
                 )
+    if "handOver" in event:
+        # #145: the hand-over's whole lists, set by the replay.
+        from core.combat.handover import hand_over_problems
+        problems.extend(hand_over_problems(event.get("handOver")))
     character_state = event.get("characterStateAfter")
     if character_state is not None:
         if not isinstance(character_state, dict):

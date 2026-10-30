@@ -130,6 +130,7 @@ from utils import quest_record
 from utils.player_stats import get_player_stat
 from updates.update_world_time import update_world_time
 from core.ai.conversation_utils import (
+    _effect_note,
     _effects_runtime_view,
     _format_temporary_effects,
     update_conversation_history,
@@ -156,7 +157,8 @@ from core.managers.status_manager import (
     status_manager, status_ready, status_processing_ai, status_validating,
     status_retrying, status_transitioning_location, status_generating_summary,
     status_updating_journal, status_compressing_history, status_updating_character,
-    status_updating_party, status_updating_plot, status_advancing_time, status_saving
+    status_updating_party, status_updating_plot, status_advancing_time, status_saving,
+    status_processing_levelup,
 )
 
 # Import atomic file operations
@@ -169,6 +171,7 @@ from utils.reconcile_campaign_state import reconcile_campaign_state
 # Import training data collection
 # from simple_training_collector import log_complete_interaction  # DISABLED
 from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
+from utils.player_notice import show_player_notice, show_player_wait, show_reset_failed
 from utils.character_sheet_contract import repair_and_persist_character
 from utils.startup_handoff_state import (
     load_state as load_startup_state,
@@ -238,6 +241,25 @@ def _active_combat_recovery(party_tracker):
             else None
         ),
     }
+
+
+
+def _live_active_encounter(party_tracker):
+    """Return the tracker's active encounter id while that fight is live (#230)."""
+    if not isinstance(party_tracker, dict):
+        return None
+    encounter_id = (
+        (party_tracker.get("worldConditions") or {})
+        .get("activeCombatEncounter", "")
+    )
+    if not encounter_id:
+        return None
+    from core.managers.combat_state import active_encounter_is_live
+
+    encounter = safe_json_load(
+        os.path.join("modules", "encounters", f"encounter_{encounter_id}.json")
+    )
+    return encounter_id if active_encounter_is_live(encounter) else None
 
 
 def _post_combat_world(party_tracker):
@@ -713,8 +735,9 @@ def _apply_welcome(lifecycle):
                     lifecycle.refusal_provider,
                     "welcome",
                 )
-                if refusal_text is not None:
-                    display_dm_narration(refusal_text)
+                # #1233: a non-account refusal ends on the D-COST-4 line, not silence.
+                display_dm_narration(refusal_text if refusal_text is not None
+                                     else _dm_fail_forward_line())
         _finish_welcome(lifecycle, "FAILED")
         return
 
@@ -906,8 +929,12 @@ def _apply_welcome(lifecycle):
             if not is_kickoff_claim_still_active(lifecycle.startup_attempt_id, lifecycle.lease_owner):
                 _finish_welcome(lifecycle, "STALE_DISCARDED")
                 return
-            display_dm_narration(process_result["player_message"])
-            raise RuntimeError(process_result["player_message"])
+            # #1233: an unclassified refusal has no text; never show "None".
+            # #1228: an account refusal says the welcome beat is kept.
+            line = (_welcome_followup_refusal_line(process_result) or process_result["player_message"]
+                    or _dm_fail_forward_line())
+            display_dm_narration(line)
+            raise RuntimeError(line)
         if (
             isinstance(process_result, dict)
             and (
@@ -1227,6 +1254,8 @@ def _spawn_welcome_worker(conversation_history, note_message,
 
 # A refused opening call's welcome line, kept for after its one retry (#442).
 _kickoff_refusal_line = None
+# #1228: a leg of this kickoff run applied a welcome beat before a follow-up failed.
+_kickoff_beat_kept = False
 
 
 def _run_startup_kickoff_once(
@@ -1237,6 +1266,7 @@ def _run_startup_kickoff_once(
     startup_state,
     precomputed_response=None,
 ):
+    global _kickoff_refusal_line, _kickoff_beat_kept
     from core.combat.invocation import InvocationSupersededError
     from utils.capture.live_provider_call import LiveProviderCompletedError, LiveProviderSuperseded
 
@@ -1355,7 +1385,17 @@ def _run_startup_kickoff_once(
         }:
             if not is_kickoff_claim_still_active(startup_attempt_id, lease_owner):
                 return "stale_discarded"
-            display_dm_narration(process_result["player_message"])
+            # #1228: the welcome beat was applied before this follow-up failed.
+            _kickoff_beat_kept = True
+            refusal_line = _welcome_followup_refusal_line(process_result)
+            if refusal_line:
+                # #1228: told once, by the kickoff's caller after its forced retry (#442).
+                _kickoff_refusal_line = refusal_line
+                raise RuntimeError(refusal_line)
+            # #1233: with no text, raise without a line; the kickoff's caller
+            # shows one line after the forced retry (#442: told once).
+            if process_result["player_message"]:
+                display_dm_narration(process_result["player_message"])
             raise RuntimeError(process_result["player_message"])
         if (
             isinstance(process_result, dict)
@@ -1395,11 +1435,11 @@ def _run_startup_kickoff_once(
     except (LiveProviderSuperseded, InvocationSupersededError):
         return "stale_discarded"
     except Exception as exc:
-        global _kickoff_refusal_line
         if isinstance(exc, LiveProviderCompletedError):
             refusal = classify_provider_error(exc)
+            # #1228: once a leg kept a welcome beat, "Nothing in your game was changed" is false.
             _kickoff_refusal_line = account_refusal_message(
-                refusal["category"], refusal["provider"], "welcome"
+                refusal["category"], refusal["provider"], "followup" if _kickoff_beat_kept else "welcome"
             )
         fail_result = mark_kickoff_failed(startup_attempt_id, lease_owner, str(exc))
         emit_startup_marker(
@@ -1422,8 +1462,9 @@ def run_startup_kickoff_with_recovery(
     precomputed_response=None,
 ):
     """Run startup kickoff with exactly-once lease and one fallback recovery attempt."""
-    global _kickoff_refusal_line
+    global _kickoff_refusal_line, _kickoff_beat_kept
     _kickoff_refusal_line = None
+    _kickoff_beat_kept = False
     startup_state = load_startup_state()
     result = _run_startup_kickoff_once(
         conversation_history,
@@ -1478,6 +1519,48 @@ def run_startup_kickoff_with_recovery(
     return {"status": "failed", "reason": retry_result, "player_message": _kickoff_refusal_line}
 
 
+def _run_terminal_kickoff(conversation_history, party_tracker_data, location_data):
+    """#1538: the synchronous kickoff (terminal limited-mode) runs under a live
+    turn scope like a player turn, so its calls get heartbeat, reissue and the
+    account refusal line. A scope a resumed fight left open is borrowed."""
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import (
+        LiveProviderSuperseded, abort_live_turn_scope, finish_live_turn_scope,
+        get_live_turn_scope, open_live_turn_scope,
+    )
+
+    scope = get_live_turn_scope()
+    owned = scope is None
+    if owned:
+        scope = open_live_turn_scope()
+    engine_fault = False
+    try:
+        return run_startup_kickoff_with_recovery(
+            conversation_history,
+            party_tracker_data,
+            location_data,
+        )
+    except (LiveProviderSuperseded, InvocationSupersededError):
+        raise
+    except BaseException:
+        engine_fault = True
+        raise
+    finally:
+        if owned:
+            if engine_fault:
+                abort_live_turn_scope(scope=scope)
+            else:
+                finish_live_turn_scope(scope)
+
+
+def _kickoff_failure_line(kickoff_result):
+    """#1233: the one line a failed synchronous kickoff ends on: its account
+    line, else the D-COST-4 line. "pending" and "done" show nothing."""
+    if not isinstance(kickoff_result, dict) or kickoff_result.get("status") != "failed":
+        return None
+    return kickoff_result.get("player_message") or _dm_fail_forward_line()
+
+
 def recover_startup_handoff():
     """Manual recovery path for web action endpoint."""
     prep = prepare_manual_recovery_state()
@@ -1514,7 +1597,9 @@ def recover_startup_handoff():
         return {"status": "recovered"}
     if result.get("status") == "pending":
         return {"status": "in_progress"}
-    return {"status": "failed", "error": result.get("reason", "unknown")}
+    # #1233: the account line, when the opening was refused, reaches the web.
+    return {"status": "failed", "error": result.get("reason", "unknown"),
+            "player_message": result.get("player_message")}
 
 
 # Add this new function near the top of the file
@@ -1579,9 +1664,18 @@ def _resume_guidance(unresolved=False):
         from core.managers import checks_state
         from core.nql import checks
         pending = checks_state.pending_checks()
+        held_rest = checks_state.pending_rest()
     except Exception:
-        pending = []
-    if pending:
+        pending, held_rest = [], None
+    if held_rest and not pending:
+        # #1118 item 3: a short rest is held for the player's hit dice.
+        guidance += (
+            "A short rest is waiting for the player's hit dice (" + str(held_rest.get("characterName")) + ": "
+            + str(held_rest.get("count")) + "d" + str(held_rest.get("die")) + "). Remind them, in your own words, "
+            "that they can roll it or ask you to roll it; do not ask for a new action and do not narrate the "
+            "healing or the rest's end. "
+        )
+    elif pending:
         entry = pending[0]
         attempt = entry.get("reason") or checks.label(entry.get("stat"))
         guidance += (
@@ -1777,12 +1871,7 @@ def generate_arrival_narration(
     # Get details for the new location from the (now updated) party tracker
     new_location_name = party_tracker_data["worldConditions"]["currentLocation"]
     new_area_name = party_tracker_data["worldConditions"]["currentArea"]
-    player_names = [str(name) for name in party_tracker_data.get("partyMembers", [])]
-    npc_names = [
-        str(item.get("name"))
-        for item in party_tracker_data.get("partyNPCs", [])
-        if isinstance(item, dict) and item.get("name")
-    ]
+    player_names, npc_names = _transition_roster(party_tracker_data)
 
     # Construct the special prompt
     arrival_prompt = f"""
@@ -1891,12 +1980,17 @@ def generate_arrival_narration(
 
 
 # <--- NEW FUNCTION to blend the departure and arrival narrations --->
-def generate_seamless_transition_narration(departure_narration, arrival_narration, dm_text=""):
+def generate_seamless_transition_narration(departure_narration, arrival_narration, dm_text="", party=None,
+                                           down_rules=None):
     """
     Run layer 3/3 (T064), preserving both accepted layers as one seamless turn.
     dm_text is the DM's accepted narration of the turn (#670): the closing
     invitation keeps what it says the player asked for that waits for the next
-    turn. Empty dm_text leaves the prompt unchanged.
+    turn. Empty dm_text leaves the prompt unchanged. party (#312) gives the
+    stitch the committed roster T063 has; without it the prompt is unchanged.
+    down_rules (#1637) is the down-scene rules string while a party member is
+    down: the closing invitation becomes the down closing and the rules ride
+    after the roster. None leaves the prompt unchanged.
     """
     from utils.capture.live_provider_call import LiveProviderSuperseded
     debug("STATE_CHANGE: Blending departure and arrival narrations into a seamless whole...", category="narrative_generation")
@@ -1914,6 +2008,30 @@ def generate_seamless_transition_narration(departure_narration, arrival_narratio
         "waits for their next turn, say so plainly in the closing invitation, in "
         "its own terms; take nothing else from it):\n---\n" + dm_text + "\n---\n"
     ) if dm_text else ""
+    roster_block = ""
+    if isinstance(party, dict):
+        player_names, npc_names = _transition_roster(party)
+        roster_block = (
+            "\nEXACT COMMITTED ROSTER:\n"
+            f"Player characters: {json.dumps(player_names, ensure_ascii=False)}\n"
+            f"Party NPCs: {json.dumps(npc_names, ensure_ascii=False)}\n"
+            "The travellers are exactly this roster; a player character is 'you', "
+            "never a separate companion. Others appear only as the arrival shows "
+            "them present.\n"
+        )
+
+    closing = (
+        "- End after the committed arrival with one open in-fiction invitation for the player to choose "
+        "their next immediate action. Do not enumerate options and do not perform that next action."
+    )
+    down_block = ""
+    if down_rules:
+        # #1637: a downed character cannot act; never ask what they do.
+        closing = (
+            "- A party member is down (the rules below): end on the party's move, the danger that remains "
+            "or the moment of rescue; never ask what the downed character does."
+        )
+        down_block = "\n" + down_rules + "\n"
 
     stitching_prompt = f"""
 You are a master storyteller and narrative editor. The following two text blocks describe a party's departure from one place and their subsequent arrival at another. The transition between them is abrupt because they were generated separately.
@@ -1925,9 +2043,9 @@ Your task is to rewrite them into a single, cohesive, and cinematic narration.
 - Do not add new plot points or actions; your role is to refine the existing narrative flow.
 - Do not add, count, or imply any actor who is not explicitly identified in the source blocks.
 - Address the sole player character only in second person (you/your), never as a third-person protagonist.
-- End after the committed arrival with one open in-fiction invitation for the player to choose their next immediate action. Do not enumerate options and do not perform that next action.
+{closing}
 - When both blocks state the same fact, keep it once.
-
+{roster_block}{down_block}
 DEPARTURE NARRATION:
 ---
 {departure_narration}
@@ -2248,6 +2366,20 @@ def _transition_trip_arrival_time(checkpoint):
     return {"clock": time_str[:5], "timeOfDay": get_time_context(time_str)}
 
 
+def _transition_roster(party):
+    """#312: the committed roster every travel narration layer is given:
+    (player character names, party NPC names), from the tracker's
+    partyMembers and partyNPCs."""
+    party = party if isinstance(party, dict) else {}
+    players = [str(name) for name in party.get("partyMembers", [])]
+    npcs = [
+        str(item.get("name"))
+        for item in party.get("partyNPCs", [])
+        if isinstance(item, dict) and item.get("name")
+    ]
+    return players, npcs
+
+
 def _transition_companions(party):
     """The party NPCs travelling with the player ([]: the player is alone)."""
     return [
@@ -2257,7 +2389,26 @@ def _transition_companions(party):
     ]
 
 
-def _transition_departure_prompt(checkpoint, party, dm_text=""):
+def _transition_down_rules(party):
+    """#1637: the down-scene rules string (D-242) for the party's sheets, or
+    None when nobody is down. The same typed read as the DM turn and the
+    validator: each member's sheet on disk; a read fault gives None."""
+    try:
+        from core.combat.down_scene import from_sheets
+
+        path_manager = ModulePathManager(str(party.get("module", "")).replace(" ", "_"))
+        sheets = []
+        for name in _transition_roster(party)[0] + _transition_companions(party):
+            sheet = safe_json_load(path_manager.get_character_path(name))
+            if isinstance(sheet, dict):
+                sheets.append(sheet)
+        return from_sheets(sheets)
+    except Exception as exc:  # fail forward: the chain narrates as before
+        debug(f"DOWN: travel down-scene rules unavailable ({exc})", category="narrative_generation")
+        return None
+
+
+def _transition_departure_prompt(checkpoint, party, dm_text="", down_rules=None):
     """Layer 1/3 (T013): the departure from the origin, the journey, and the
     return or first arrival, from the committed trip facts and the DM's
     accepted narration of the turn. The arrival scene is T063's."""
@@ -2294,6 +2445,7 @@ def _transition_departure_prompt(checkpoint, party, dm_text=""):
     if arrival_time:
         facts["arrivalTime"] = arrival_time
     facts["companions"] = _transition_companions(party)
+    facts["playerCharacters"] = _transition_roster(party)[0]
     prompt = (
         "Narrate the player leaving the origin and the journey to the "
         "destination, ending as the player reaches it. Another agent narrates "
@@ -2306,8 +2458,10 @@ def _transition_departure_prompt(checkpoint, party, dm_text=""):
         "time of day you mention must match arrivalTime.timeOfDay at the "
         "arrival; do not restate clock times or dates (the game shows them), "
         "and never suggest that the clock stood still. The travellers are the "
-        "player and the named companions; with no companions the player "
-        "travels alone, so never write 'the party' or 'we'. When "
+        "player (playerCharacters: always 'you', never named in the third "
+        "person or described as travelling with someone of that name) and "
+        "the named companions; with no companions the player travels alone, "
+        "so never write 'the party' or 'we'. When "
         "previousVisit is supplied, or the destination has an "
         "adventureSummary, this is a return: frame it as going back, and say "
         "that anything has changed only from the supplied facts, such as the "
@@ -2325,14 +2479,18 @@ def _transition_departure_prompt(checkpoint, party, dm_text=""):
             + dm_text
             + "\n---"
         )
+    if down_rules:
+        prompt += "\n\n" + down_rules
     return prompt + _transition_narration_action_context(checkpoint)
 
 
-def _transition_arrival_facts(party):
+def _transition_arrival_facts(party, checkpoint=None):
     """Layer 2/3 (T063) grounding: the code-filtered destination projection,
     its player storage, and the people the engine records present there.
     Hostile occupants are left out: the arrival never resolves or triggers an
-    encounter. "" when the destination is unreadable."""
+    encounter. "" when the destination is unreadable. The arrival time is
+    T013's: the checkpoint's committed arrival first (#312: a resumed turn's
+    party can predate it), else the tracker's clock."""
     from core.nql import occupants
     from utils import travel_map
 
@@ -2346,7 +2504,9 @@ def _transition_arrival_facts(party):
         area_name=world.get("currentArea"),
     )
     block = ""
-    arrival_time = _transition_arrival_time(party)
+    arrival_time = (
+        _transition_trip_arrival_time(checkpoint) if isinstance(checkpoint, dict) else None
+    ) or _transition_arrival_time(party)
     if arrival_time:
         block += (
             "\n    ARRIVAL TIME: %s, %s. Describe the scene as it is at this "
@@ -2397,14 +2557,19 @@ def _run_transition_chain(checkpoint, party, history):
     the stitch."""
     narration = checkpoint.get("narration") or {}
     dm_text = narration.get("departure_text") or narration.get("source_prompt")
+    # #1637: while a party member is down, every layer gets the down-scene rules.
+    down_rules = _transition_down_rules(party)
     first = generate_transition_narration(
-        _transition_departure_prompt(checkpoint, party, dm_text),
+        _transition_departure_prompt(checkpoint, party, dm_text, down_rules),
         party,
     )
-    arrival = generate_arrival_narration(
-        first, party, history, _transition_arrival_facts(party)
+    arrival_facts = _transition_arrival_facts(party, checkpoint)
+    if down_rules:
+        arrival_facts += "\n    " + down_rules + "\n"
+    arrival = generate_arrival_narration(first, party, history, arrival_facts)
+    return generate_seamless_transition_narration(
+        first, arrival, dm_text, party=party, down_rules=down_rules
     )
-    return generate_seamless_transition_narration(first, arrival, dm_text)
 
 
 def _transition_outcome_lines(checkpoint, party):
@@ -4026,7 +4191,7 @@ def _normalize_dm_candidate(primary_response, party_tracker_data):
     try:
         from core.combat.scene import validate_typed_encounter_actions
 
-        validate_typed_encounter_actions(json.loads(response_to_validate))
+        validate_typed_encounter_actions(json.loads(response_to_validate), party_tracker_data)
     except (json.JSONDecodeError, ValueError, TypeError) as exc:
         return (False, f"Typed combat scene error: {exc}")
 
@@ -4829,7 +4994,7 @@ def validate_ai_response(
 
         except (json.JSONDecodeError, ValueError, TypeError):
             debug(f"VALIDATION: Invalid JSON from validation model (attempt {attempt}); reissuing the same validation packet", category="ai_validation")
-            debug(f"VALIDATION: Problematic response: {validation_response}", category="ai_validation")
+            file_only(f"VALIDATION: Problematic response: {validation_response}", category="ai_validation")
             continue  # Retry the validation
 
 def load_validation_prompt():
@@ -5383,6 +5548,11 @@ def display_dm_narration(content, channel="main", color="blue", message_id=None,
     """
     from web.shared_state import emit_player_output
 
+    if not isinstance(content, str) or not content.strip():
+        # #1233: no text is never shown, neither as "None" nor as an empty line.
+        warning(f"NARRATION: skipped a DM narration with no text ({content!r})",
+                category="narration")
+        return
     delivered = False
     if content and content.strip():
         delivered = emit_player_output(
@@ -5611,7 +5781,7 @@ def _show_read_only_save_stop(path):
         f"SAVE STOP: {path} is read-only; the game stopped",
         category="session_management",
     )
-    display_dm_narration(_read_only_save_stop_line(path), channel="system")
+    show_player_notice(_read_only_save_stop_line(path))
 
 
 
@@ -6797,11 +6967,18 @@ def process_ai_response(
         # does not exist yet, so its narration is held, as a transition holds
         # its departure narration (#182). A published build is narrated by the
         # DM's post-publish follow-up; a failed build shows only its system
-        # line. The stored reply leaves out the narration that was not shown.
+        # line. A reply that starts a fight (createEncounter, alone or after a
+        # prerequisite's updates) is held the same way: the combat opening
+        # narrates the fight from its encounterSummary (#1345, D-1345-1 A).
+        # The stored reply leaves out the narration that was not shown.
         if (
             len(actions) == 1
             and isinstance(actions[0], dict)
             and actions[0].get("action") == action_handler.ACTION_CREATE_NEW_MODULE
+        ) or any(
+            isinstance(action, dict)
+            and action.get("action") == action_handler.ACTION_CREATE_ENCOUNTER
+            for action in actions
         ):
             held_reply = dict(parsed_response)
             held_reply["narration"] = ""
@@ -6856,9 +7033,8 @@ def process_ai_response(
                 }
                 conversation_history.append(drop_notice)
                 save_conversation_history(conversation_history)
-                display_dm_narration(
+                show_player_notice(
                     _AGENTIC_POST_COMBAT_DROP_NOTICE,
-                    channel="system",
                     color="yellow",
                 )
                 _record_agentic_post_combat_updates_dropped(
@@ -7492,8 +7668,12 @@ def save_conversation_history(
     commit_guard=None,
 ):
     from utils.capture.live_provider_call import LiveProviderSuperseded
-    history_to_save = history
+    from utils.transient_filesystem import ReadOnlySaveStop
     try:
+        # #290: the authoritative conversation is persisted before T020 runs,
+        # so a lifecycle supersession or a failure during compression never
+        # loses it.
+        safe_json_dump(history, json_file, commit_guard=commit_guard)
         # Compression is an optional optimization.  Its constructor, local
         # context lookup, or provider call must never prevent the authoritative
         # conversation from being persisted.
@@ -7508,20 +7688,18 @@ def save_conversation_history(
                     # Apply compression (returns new list if successful)
                     compressed_history = compressor.apply_compression_to_list(history)
                     if compressed_history:
-                        history_to_save = compressed_history
+                        safe_json_dump(compressed_history, json_file, commit_guard=commit_guard)
                         info("Conversation history compressed successfully", category="compression")
                     else:
                         debug("Compression not applied - conditions not fully met", category="compression")
-        except LiveProviderSuperseded:
+        except (LiveProviderSuperseded, ReadOnlySaveStop):
             raise
         except Exception as compression_error:
             warning(
-                "Conversation compression failed; saving uncompressed history: "
+                "Conversation compression failed; the uncompressed history is saved: "
                 f"{compression_error}",
                 category="compression",
             )
-
-        safe_json_dump(history_to_save, json_file, commit_guard=commit_guard)
         return True
     except LiveProviderSuperseded:
         raise
@@ -7732,8 +7910,13 @@ def _get_ai_response_impl(
         opening_tracker = load_json_file("party_tracker.json") or {}
         messages_to_send = with_opening_scene(messages_to_send, opening_tracker)
         messages_for_diagnostics = with_opening_scene(messages_for_diagnostics, opening_tracker)
-    messages_to_send = with_narration_delivery(messages_to_send)
-    messages_for_diagnostics = with_narration_delivery(messages_for_diagnostics)
+    # #223: a rebuilt request gets the current party state, on this request only.
+    current_note = (_current_state_note()
+                    if _current_state_target(messages_to_send) is not None
+                    or _current_state_target(messages_for_diagnostics) is not None else None)
+    messages_to_send = with_narration_delivery(_with_current_state_note(messages_to_send, current_note))
+    messages_for_diagnostics = with_narration_delivery(
+        _with_current_state_note(messages_for_diagnostics, current_note))
 
     # Suppress the fixed-path diagnostics export for the detached welcome; it
     # would race a concurrent player turn. T105 private guidance is redacted
@@ -8104,6 +8287,125 @@ def order_conversation_messages(conversation_history, main_system_prompt_text):
     return ordered_history
 
 
+def _party_members_stats(party_tracker_data, path_manager):
+    """The party's stats rows for the DM note, read from the sheets: every
+    member, then every party NPC. A party NPC's roster level is copied from its
+    sheet in party_tracker_data; the caller writes it when the flag is set
+    (#223: a rebuilt request reads the same rows and writes nothing)."""
+    party_members_stats = []
+    for member_name_iter in party_tracker_data["partyMembers"]:
+        member_file_path = path_manager.get_character_path(member_name_iter)
+        member_data_iter = load_json_file(member_file_path)
+        if member_data_iter:
+            member_data_iter = _effects_runtime_view(member_data_iter)
+            stats = {
+                "name": member_name_iter,  # Keep original case to match file names
+                "display_name": member_name_iter.capitalize(),  # For display purposes
+                "level": member_data_iter.get("level", "N/A"),
+                "xp": member_data_iter.get("experience_points", "N/A"),
+                "hp": member_data_iter.get("hitPoints", "N/A"),
+                "max_hp": member_data_iter.get("maxHitPoints", "N/A")
+            }
+            party_members_stats.append(stats)
+
+    roster_level_synced = False
+    try:
+        for npc_info_iter in party_tracker_data["partyNPCs"]:
+            debug(f"STATE_CHANGE: Processing NPC: {npc_info_iter['name']}", category="npc_management")
+            npc_name_iter = npc_info_iter["name"]
+            npc_data_file = path_manager.get_character_path(npc_name_iter)
+            debug(f"FILE_OP: NPC file path: {npc_data_file}", category="npc_management")
+            npc_data_iter = load_json_file(npc_data_file)
+            debug(f"FILE_OP: NPC data loaded: {npc_data_iter is not None}", category="npc_management")
+            if npc_data_iter:
+                # The character sheet owns the level; the roster entry is a
+                # record-keeping copy. A level-up writes the sheet only, so
+                # copy the value across on every pass (no model involved).
+                sheet_level = npc_data_iter.get("level")
+                if isinstance(sheet_level, int) and npc_info_iter.get("level") != sheet_level:
+                    npc_info_iter["level"] = sheet_level
+                    roster_level_synced = True
+                npc_data_iter = _effects_runtime_view(npc_data_iter)
+                stats = {
+                    "name": npc_info_iter["name"],
+                    "display_name": npc_info_iter["name"].capitalize(),  # For display purposes
+                    "level": npc_data_iter.get("level", npc_info_iter.get("level", "N/A")),
+                    "xp": npc_data_iter.get("experience_points", "N/A"),
+                    "hp": npc_data_iter.get("hitPoints", "N/A"),
+                    "max_hp": npc_data_iter.get("maxHitPoints", "N/A")
+                }
+                party_members_stats.append(stats)
+                debug(f"STATE_CHANGE: Added NPC stats: {stats}", category="npc_management")
+    except Exception as e:
+        error(f"FAILURE: Error processing NPCs", exception=e, category="npc_management")
+        import traceback
+        traceback.print_exc()
+    return party_members_stats, roster_level_synced
+
+
+def _party_stats_text(party_tracker_data, path_manager, party_members_stats):
+    """The DM note's "Party stats" text for the stats rows (#223: the turn note
+    and a rebuilt request's current note share it)."""
+    world_conditions = party_tracker_data["worldConditions"]
+    party_stats_formatted = []
+    for stats_item in party_members_stats:
+        # Check if this is a player or an NPC
+        if stats_item['name'] in party_tracker_data["partyMembers"]:
+            member_data_for_note = load_json_file(path_manager.get_character_path(stats_item['name']))
+        else:
+            member_data_for_note = load_json_file(path_manager.get_character_path(stats_item['name']))
+        if member_data_for_note:
+            member_data_for_note = _effects_runtime_view(member_data_for_note)
+            abilities = member_data_for_note.get("abilities", {})
+            ability_str = f"STR:{abilities.get('strength', 'N/A')} DEX:{abilities.get('dexterity', 'N/A')} CON:{abilities.get('constitution', 'N/A')} INT:{abilities.get('intelligence', 'N/A')} WIS:{abilities.get('wisdom', 'N/A')} CHA:{abilities.get('charisma', 'N/A')}"
+            next_level_xp_note = member_data_for_note.get("exp_required_for_next_level", "N/A")
+            pending_level_ups = member_data_for_note.get("levelUpsPending")
+            if type(pending_level_ups) is int and pending_level_ups > 0:
+                # Engine-written (core/nql/stats): the XP has crossed the threshold; offer levelUp, never recompute.
+                next_level_xp_note = f"{next_level_xp_note} LEVEL-UP EARNED ({pending_level_ups}; offer levelUp)"
+            display_name = stats_item.get('display_name', stats_item['name'].capitalize())
+
+            # Extract spell slot information if character has spellcasting
+            spell_slots_str = ""
+            spellcasting = member_data_for_note.get("spellcasting", {})
+            if spellcasting and "spellSlots" in spellcasting:
+                spell_slots = spellcasting["spellSlots"]
+                slot_parts = []
+                for level in range(1, 10):  # Spell levels 1-9
+                    level_key = f"level{level}"
+                    if level_key in spell_slots:
+                        slot_data = spell_slots[level_key]
+                        current = slot_data.get("current", 0)
+                        maximum = slot_data.get("max", 0)
+                        if maximum > 0:  # Only show levels with available slots
+                            slot_parts.append(f"L{level}:{current}/{maximum}")
+                if slot_parts:
+                    spell_slots_str = f", Spell Slots: {' '.join(slot_parts)}"
+
+            # Extract currency
+            currency = member_data_for_note.get("currency", {})
+            gp = currency.get("gold", 0)
+            sp = currency.get("silver", 0)
+            cp = currency.get("copper", 0)
+            currency_parts = []
+            if gp: currency_parts.append(f"{gp}GP")
+            if sp: currency_parts.append(f"{sp}SP")
+            if cp: currency_parts.append(f"{cp}CP")
+            currency_str = f", Currency: {' '.join(currency_parts)}" if currency_parts else ", Currency: 0GP"
+
+            effects_str = _format_temporary_effects(member_data_for_note)
+            focus = member_data_for_note.get("concentration")
+            if isinstance(focus, dict) and focus.get("name"):
+                effects_str = f"{effects_str}, concentrating on {focus['name']} (engine-held)"
+            # D-KW-12: the engine id the DM keys a typed reference by (rest hitDice).
+            from core.nql.genesis import character_id as _engine_character_id
+            member_id = _engine_character_id(member_data_for_note)
+            party_stats_formatted.append(f"{display_name} (id {member_id}): Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}{_effect_note(member_data_for_note, 'maxHitPoints', prefix='max ')}, {ability_str}{spell_slots_str}{currency_str}, Effects: {effects_str}")
+
+    party_stats_str = "; ".join(party_stats_formatted)
+    return party_stats_str
+
+
 def _prepare_rebuilt_history_for_t067(
     conversation_history, main_system_prompt_text=None
 ):
@@ -8137,9 +8439,65 @@ def _prepare_rebuilt_history_for_t067(
     detached_history = ensure_main_system_prompt(
         detached_history, main_system_prompt_text
     )
+    # #223: the newest note in this history was built before the change that
+    # led here; requests from it get the current state (never saved as text).
+    for message in reversed(detached_history):
+        if isinstance(message, dict) and message.get("role") == "user":
+            message[hm.CURRENT_STATE_FIELD] = True
+            break
     return order_conversation_messages(
         detached_history, main_system_prompt_text
     )
+
+
+def _current_state_target(messages):
+    """#223: the index of the flagged rebuilt message a request should carry
+    the current state on, or None. A player turn after it means the history
+    has moved on and its own note is current."""
+    for index in range(len(messages or []) - 1, -1, -1):
+        message = messages[index]
+        if not isinstance(message, dict):
+            continue
+        if message.get(hm.CURRENT_STATE_FIELD) is True:
+            return index
+        if message.get("role") == "user" and hm.player_input(message) is not None:
+            return None
+    return None
+
+
+def _current_state_note():
+    """#223: the current time, place and party stats, from the tracker and the
+    sheets on disk, in the turn note's own wording; None without a party."""
+    party_tracker_data = load_json_file("party_tracker.json") or {}
+    world_conditions = party_tracker_data.get("worldConditions")
+    members = party_tracker_data.get("partyMembers")
+    if not isinstance(world_conditions, dict) or not isinstance(members, list) or not members:
+        return None
+    path_manager = ModulePathManager((party_tracker_data.get("module", "") or "").replace(" ", "_"))
+    party_members_stats, _roster_level_synced = _party_members_stats(party_tracker_data, path_manager)
+    if not party_members_stats:
+        return None
+    from utils.time_context import format_time_with_context
+
+    return (
+        "Dungeon Master Note (current state, after the last committed change): "
+        f"Current date and time: {format_time_with_context(world_conditions)}, "
+        f"{world_conditions.get('season', 'Unknown')} season. "
+        f"Current location: {world_conditions.get('currentLocation')} ({world_conditions.get('currentLocationId')}). "
+        f"Party stats: {_party_stats_text(party_tracker_data, path_manager, party_members_stats)}. "
+        "These values supersede the party stats in earlier Dungeon Master Notes."
+    )
+
+
+def _with_current_state_note(messages, note):
+    """#223: the request's messages with ``note`` appended to the flagged
+    rebuilt message (a copy); the same list when there is none."""
+    index = _current_state_target(messages) if note else None
+    if index is None or not isinstance(messages[index].get("content"), str):
+        return messages
+    messages = list(messages)
+    messages[index] = dict(messages[index], content=messages[index]["content"] + "\n\n" + note)
+    return messages
 
 def _requires_note(point):
     """The DM Note's open-requirement suffix: '; requires PP001'."""
@@ -8314,7 +8672,7 @@ def _terminal_recovery_menu(manager):
         try:
             saves = manager.list_save_games()
         except Exception as exc:
-            print('[SYSTEM] Could not list saves: ' + str(exc))
+            show_player_notice('Could not list saves: ' + str(exc))
             saves = []
         choices = {
             str(index): save['save_folder']
@@ -8347,6 +8705,29 @@ def _travel_recovery_pending():
     return True
 
 
+def _staged_completion_pending():
+    """#217: a staged module completion also needs the recovery authority.
+
+    Reads the drain's own intent listing, so the two always agree; an unreadable
+    listing is never clean absence.
+    """
+    from core.managers.campaign_manager import (
+        _COMPLETION_INTENT_TEMP_PATTERN, _campaign_completion_metadata_dir,
+    )
+
+    # The path only: CampaignManager() would load (and recover) the campaign.
+    intents_dir = os.path.join(
+        _campaign_completion_metadata_dir("modules/campaign.json"), "intents",
+    )
+    if not os.path.isdir(intents_dir):
+        return False
+    try:
+        names = os.listdir(intents_dir)
+    except OSError:
+        return True
+    return any(not _COMPLETION_INTENT_TEMP_PATTERN.fullmatch(name) for name in names)
+
+
 def _startup_travel_followup_failed(recovery_scope, exc):
     """Startup finished an interrupted journey but could not reload after it (#211).
 
@@ -8367,7 +8748,7 @@ def _startup_travel_followup_failed(recovery_scope, exc):
             "afterwards."
         )
         line = cause + " Gameplay is paused."
-    display_dm_narration(line, channel="system")
+    show_player_notice(line)
     if hasattr(sys.stdin, "queue"):
         # The web pause adds its own "Gameplay is paused." sentence.
         return WebRecoveryPause(cause)
@@ -8413,7 +8794,7 @@ def _travel_recovery_authority():
         _emit_working, _safe_emit,
     )
 
-    if not _travel_recovery_pending():
+    if not _travel_recovery_pending() and not _staged_completion_pending():
         yield None
         return
     scope = get_live_turn_scope()
@@ -8456,6 +8837,26 @@ def _travel_recovery_authority():
             scope.purpose, scope.phase = old_purpose, old_phase
         if completed:
             _check_live_authority(scope)
+
+
+@contextmanager
+def _between_turns_authority():
+    """#1253, #202: the charge refresh, the effects migration and the effect
+    lifecycle run between turns and can wait for a busy sheet, so they run under a
+    scope that Load, Reset or Quit can end (#248's borrow-or-own)."""
+    from utils.capture.live_provider_call import (
+        finish_live_turn_scope, get_live_turn_scope, open_live_turn_scope,
+    )
+
+    scope = get_live_turn_scope()
+    owned = scope is None
+    if owned:
+        scope = open_live_turn_scope()
+    try:
+        yield scope
+    finally:
+        if owned:
+            finish_live_turn_scope(scope)
 
 
 def _finish_pending_travel_before_input(scope):
@@ -8518,7 +8919,7 @@ def _run_terminal_restore(request):
             outcome = manager.restore_save_game_outcome(folder, previous_clean=previous_clean)
         except Exception as exc:
             outcome = RestoreOutcome('recovery_required', str(exc))
-        print('[SYSTEM] ' + outcome.message)
+        show_player_notice(outcome.message)
         if outcome.can_resume:
             return True
         previous_clean = False
@@ -8533,7 +8934,7 @@ def _run_terminal_restore(request):
             try:
                 perform_reset_logic()
             except Exception as exc:
-                print('[SYSTEM] Reset did not finish: ' + str(exc))
+                show_reset_failed(exc)
                 continue
             return True
 
@@ -8561,8 +8962,10 @@ def main_game_loop():
     from utils.capture.live_provider_call import (
         LiveProviderSuperseded,
         abort_live_turn_scope,
+        claim_model_restore_owner,
         finish_live_turn_scope,
         get_live_turn_scope,
+        release_lifecycle_owner,
     )
     from utils.transient_filesystem import ReadOnlySaveStop
 
@@ -8576,10 +8979,17 @@ def main_game_loop():
                 result = transfer.request
             scope = get_live_turn_scope()
         if _is_restore_request(result) and scope is not None:
+            # #270 C5: the model's Load owns the lifecycle from before the
+            # turn closes, so a player Load in this window follows it. It
+            # holds the owner record only; the turn's slot is never written.
+            model_owner = claim_model_restore_owner(scope)
             finish_live_turn_scope(scope)
             scope.quiescent.wait()
-            if scope.is_superseded():
+            if scope.is_superseded() or model_owner is None:
+                release_lifecycle_owner(model_owner)
                 return None
+        elif _is_restore_request(result) and claim_model_restore_owner() is None:
+            return None
         return result
     except _TravelRecoveryControl as choice:
         return choice
@@ -8615,7 +9025,7 @@ def main_game_loop():
             finish_live_turn_scope(scope)
             scope.quiescent.wait()
         warning(f"ACTIVE MODULE: {exc}", category="session_management")
-        display_dm_narration(str(exc), channel="system")
+        show_player_notice(str(exc))
         if hasattr(sys.stdin, "queue"):
             return WebRecoveryPause(str(exc))
         from updates.save_game_manager import SaveGameManager
@@ -8634,6 +9044,283 @@ _MEMORY_JOURNAL_UNREADABLE_LINE = (
 )
 
 
+# Effects-upgrade results already shown this session, so a per-turn retry
+# does not repeat them (#1128); the load-time call clears it.
+_effects_migration_shown = set()
+
+
+def _report_effects_migration(result):
+    """Tell the player, once per session, why the effects upgrade did not happen, or that it now has (#1128).
+
+    Reads only the typed result: ``refusals`` when blocked, ``reasonCode`` and
+    ``reason`` when deferred. A combat boundary or another running upgrade is
+    routine and clears on its own, so it is not shown.
+    """
+    status = result.get("status") if isinstance(result, dict) else None
+    if status == "migrated":
+        show_player_notice(
+            "Temporary effects were upgraded safely. "
+            "A pre-conversion save was created automatically."
+        )
+        debug(f"EFFECTS: Effects V2 migration completed: {result}", category="effects_tracking")
+        return
+    if status == "blocked":
+        # A conversion error's text has no bound; the console line keeps each reason readable.
+        reasons = tuple(" ".join(str(item).split())[:200] for item in result.get("refusals") or [])
+        key = ("blocked", reasons)
+        lines = [
+            "Temporary effects could not be upgraded, so this campaign stays on its older "
+            "effect handling (effects may not expire on their own). Reasons:"
+        ] + ["  - " + reason for reason in reasons]
+    elif status == "deferred" and result.get("reasonCode") == "party_sheet_unreadable":
+        key = ("deferred", result.get("reasonCode"), result.get("reason"))
+        lines = ["Temporary-effect upgrade is waiting: %s. It retries each turn." % result.get("reason")]
+    else:
+        return
+    if key in _effects_migration_shown:
+        return
+    _effects_migration_shown.add(key)
+    show_player_notice("\n".join(lines))
+
+
+def _resume_active_combat(
+    party_tracker_data, active_encounter_id, claim, main_system_prompt_text, *, source
+):
+    """Resume the tracker's active fight, at startup or on a player's input (#230).
+
+    Returns (outcome, party_tracker_data, conversation_history); outcome is
+    None when the game loop goes on, else the loop returns it.
+    """
+    from core.combat.invocation import InvocationSupersededError, require_current_invocation
+    from utils.capture.live_provider_call import LiveProviderCompletedError
+
+    show_player_notice(f"Active combat encounter '{active_encounter_id}' detected. Resuming combat...", color="yellow")
+    
+    # Load conversation history and inject combat resume markers BEFORE starting combat
+    conversation_history = load_json_file(json_file) or []
+    
+    # Inject combat recovery tracking messages
+    tracking_message = {
+        "role": "user",
+        "content": "[SYSTEM: Combat was interrupted and is being resumed from crash]"
+    }
+    conversation_history.append(tracking_message)
+    
+    recovery_marker = {
+        "role": "assistant",
+        "content": "[SYSTEM: Combat recovery initiated - continuing from last known state]"
+    }
+    conversation_history.append(recovery_marker)
+    
+    # Save the updated conversation history
+    save_conversation_history(conversation_history)
+    debug("STATE_CHANGE: Added combat resume tracking messages before combat restart", category="session_management")
+    
+    # Directly get location info for the combat manager
+    location_data_resume = get_location_data_from_party_tracker(party_tracker_data)
+
+    # Call run_combat_simulation directly to get the return values
+    from core.managers.combat_manager import run_combat_simulation
+    # A quit at a combat prompt returns None; the fight stays active (#444).
+    combat_refusal_line = None
+    try:
+        combat_result = run_combat_simulation(
+            active_encounter_id, party_tracker_data, location_data_resume,
+            invocation_claim=claim,
+        )
+    except LiveProviderCompletedError as refused:
+        # #1087: a refused combat call leaves the fight saved and active.
+        combat_result = None
+        refusal = classify_provider_error(refused)
+        combat_refusal_line = account_refusal_message(
+            refusal["category"], refusal["provider"], "combat"
+        )
+    dialogue_summary = (
+        combat_result[0]
+        if isinstance(combat_result, tuple) and combat_result
+        else None
+    )
+    require_current_invocation(claim)
+
+    # After combat, reload everything to ensure state is fresh
+    party_tracker_data = load_json_file("party_tracker.json")
+    conversation_history = load_json_file(json_file) or []
+    combat_still_active = (
+        isinstance(party_tracker_data, dict)
+        and (party_tracker_data.get("worldConditions") or {}).get(
+            "activeCombatEncounter"
+        ) == active_encounter_id
+    )
+    if combat_still_active:
+        recovery = _active_combat_recovery(party_tracker_data)
+        if recovery:
+            show_player_notice(
+                recovery.get("message")
+                or (
+                    "Combat remains paused. Load or restore a save before "
+                    "resuming encounter %s; no post-combat narration was "
+                    "requested." % active_encounter_id
+                ),
+                color="yellow",
+            )
+            # A recovered combat bypasses the ordinary startup-kickoff
+            # path.  Reuse its established already-done marker so web
+            # clients enter the playable state and keep Load/Reset
+            # operable while the encounter remains safely paused.
+            if source == "startup":
+                startup_state = load_startup_state() or {}
+                emit_startup_marker(
+                    "startup_kickoff_skipped",
+                    source="combat_recovery",
+                    result="already_done",
+                    startup_attempt_id=startup_state.get(
+                        "startup_attempt_id"
+                    ),
+                    state_version=startup_state.get("state_version"),
+                    lease_owner=startup_state.get("lease_owner"),
+                    attempt_count=startup_state.get("attempt_count"),
+                )
+        else:
+            unresumed_line = (
+                combat_refusal_line
+                or "Combat did not reach a confirmed completion state. "
+                "The active encounter was preserved for recovery and "
+                "no post-combat narration was requested."
+            )
+            if source == "input":
+                # #230: a fight re-entered from an input that still cannot
+                # resume pauses on the controls; it is never re-sent.
+                show_player_notice(unresumed_line + " Gameplay is paused.")
+                if hasattr(sys.stdin, "queue"):
+                    # The web pause adds its own "Gameplay is paused." sentence.
+                    return WebRecoveryPause(unresumed_line), party_tracker_data, conversation_history
+                from updates.save_game_manager import SaveGameManager
+                return _terminal_recovery_menu(SaveGameManager()), party_tracker_data, conversation_history
+            show_player_notice(
+                unresumed_line,
+                color="yellow",
+            )
+    else:
+        show_player_notice(
+            "Combat resolved. Integrating summary and "
+            "continuing adventure...",
+            color="yellow",
+        )
+
+    # ** CRITICAL FIX: Integrate the combat summary into the main conversation history **
+    if dialogue_summary and not combat_still_active:
+        # We create a clear, systemic message indicating combat is over.
+        # The same record text as the handoff from action_handler (#253).
+        combat_summary_message = render_combat_record_marker(
+            "Combat Summary: " + dialogue_summary,
+            combat_record_exit_kind(active_encounter_id),
+            combat_record_xp_receipt(active_encounter_id),
+            combat_record_joined_against_party(active_encounter_id),
+        )
+        conversation_history.append({"role": "user", "content": combat_summary_message})
+        debug("STATE_CHANGE: Appended combat summary to main history after resumed session.", category="session_management")
+        save_conversation_history(conversation_history)
+        # The engine's location record for the resumed fight (P4-c).
+        from core.nql import occupants as _occupants
+        _occupants.resolve_combat(active_encounter_id)
+
+    if not combat_still_active and _post_combat_world(party_tracker_data) is None:
+        # The fight's record is kept above. Without the party's location
+        # the story cannot go on, so no narration is asked for (#444).
+        # The #448 shape; the travel-recovery scope has already closed.
+        error(
+            "FAILURE: party_tracker.json has no readable location after "
+            "the resumed fight",
+            category="session_management",
+        )
+        cause = (
+            "The party's location could not be read after the fight, so "
+            "the story cannot continue from here."
+        )
+        show_player_notice(cause + " Gameplay is paused.")
+        if hasattr(sys.stdin, "queue"):
+            # The web pause adds its own "Gameplay is paused." sentence.
+            return WebRecoveryPause(cause), party_tracker_data, conversation_history
+        from updates.save_game_manager import SaveGameManager
+        return _terminal_recovery_menu(SaveGameManager()), party_tracker_data, conversation_history
+
+    # ** CRITICAL FIX: Get a new AI response for post-combat narration **
+    # This makes the resumed flow behave exactly like the normal flow.
+    if not combat_still_active:
+        conversation_history = _prepare_rebuilt_history_for_t067(
+            conversation_history, main_system_prompt_text
+        )
+    ai_response_after_combat = None
+    if not combat_still_active:
+        try:
+            ai_response_after_combat = get_ai_response(conversation_history)
+        except LiveProviderCompletedError as refused:
+            # #442: the fight's result is kept; the turn loop starts.
+            display_dm_narration(_provider_refusal_followup(refused)["player_message"])
+    if ai_response_after_combat:
+        require_current_invocation(claim)
+        # Process the AI's post-combat response to get the game moving again.
+        # We need to load the fresh location data for this call.
+        location_data_post_combat = get_location_data_from_party_tracker(party_tracker_data)
+        # Match the uninterrupted-combat handoff: the committed combat
+        # state owns HP/XP, so the immediate narration pass must not
+        # reapply a model-authored echo after reconnect recovery.
+        process_ai_response._just_finished_combat = True
+        post_combat_result = _process_fresh_dm_response(
+            ai_response_after_combat,
+            party_tracker_data,
+            location_data_post_combat,
+            conversation_history,
+            invocation_claim=claim,
+        )
+        if _is_restore_request(post_combat_result):
+            return post_combat_result, party_tracker_data, conversation_history
+        (
+            post_combat_result,
+            party_tracker_data,
+            location_data_post_combat,
+            conversation_history,
+        ) = resolve_retryable_ai_result(
+            post_combat_result,
+            party_tracker_data,
+            location_data_post_combat,
+            conversation_history,
+            invocation_claim=claim,
+        )
+        if _is_restore_request(post_combat_result):
+            return post_combat_result, party_tracker_data, conversation_history
+        if isinstance(post_combat_result, dict) and post_combat_result.get("status") == "superseded_invocation":
+            raise InvocationSupersededError("Post-combat handoff was superseded")
+        require_current_invocation(claim)
+        if isinstance(post_combat_result, dict) and post_combat_result.get("status") in {
+            "provider_error", "travel_content_unavailable", "review_exhausted",
+        }:
+            display_dm_narration(_followup_failure_message(post_combat_result))
+        if isinstance(post_combat_result, dict) and post_combat_result.get("status") == "error":
+            # #442: the same line the turn loop prints for a failed action.
+            _show_action_failure(post_combat_result)
+            warning("Post-combat response processing failed safely", category="module_management")
+        elif (
+            isinstance(post_combat_result, dict)
+            and post_combat_result.get("retryable") is True
+        ):
+            retry_status = post_combat_result.get(
+                "status", "state_recovery_pending"
+            )
+            show_player_notice(
+                "Post-combat narration is paused while game "
+                f"state recovers ({retry_status})."
+            )
+            warning(
+                f"Post-combat response processing paused: {retry_status}",
+                category="module_management",
+            )
+    
+    print("[DEBUG] Combat resumption complete - should enter main game loop now")
+    debug("CRITICAL: Combat resumption complete - attempting to enter main loop", category="session_management")
+    return None, party_tracker_data, conversation_history
+
+
 def _main_game_loop(startup_authority, turn_authority):
     global needs_conversation_history_update, should_inject_creation_prompt
     from core.combat.invocation import InvocationSupersededError, require_current_invocation
@@ -8644,7 +9331,7 @@ def _main_game_loop(startup_authority, turn_authority):
     # A new session saves again; a file still read-only stops it again at its
     # first save (issue #654).
     from utils.transient_filesystem import (
-        clear_save_stop, raise_if_save_stopped, save_stop_path,
+        ReadOnlySaveStop, clear_save_stop, raise_if_save_stopped, save_stop_path,
     )
     clear_save_stop()
 
@@ -8668,7 +9355,7 @@ def _main_game_loop(startup_authority, turn_authority):
             f"INITIALIZATION: {json_file} is read-only; the game cannot start",
             category="startup",
         )
-        display_dm_narration(_CONVERSATION_HISTORY_READ_ONLY_LINE, channel="system")
+        show_player_notice(_CONVERSATION_HISTORY_READ_ONLY_LINE)
         return
 
     # Issue #167 / E2E gate 2d: hydrate missing live module files from their _BU
@@ -8694,7 +9381,7 @@ def _main_game_loop(startup_authority, turn_authority):
             check_and_initialize_on_startup,
         )
         if check_and_initialize_on_startup() == JOURNAL_UNREADABLE:
-            display_dm_narration(_MEMORY_JOURNAL_UNREADABLE_LINE, channel="system")
+            show_player_notice(_MEMORY_JOURNAL_UNREADABLE_LINE)
             memory_journal_told = True
     except Exception as e:
         warning(f"Could not initialize memories (non-fatal): {e}", category="startup")
@@ -8716,7 +9403,7 @@ def _main_game_loop(startup_authority, turn_authority):
             try:
                 from core.memories.initialize_memories import journal_unreadable
                 if journal_unreadable():
-                    display_dm_narration(_MEMORY_JOURNAL_UNREADABLE_LINE, channel="system")
+                    show_player_notice(_MEMORY_JOURNAL_UNREADABLE_LINE)
             except Exception as note_exc:
                 warning(f"Could not check journal.json after the episodic upgrade: {note_exc}",
                         category="startup")
@@ -8862,8 +9549,8 @@ def _main_game_loop(startup_authority, turn_authority):
 
             name_migration = run_name_migration(create_backup=True)
             if name_migration.get("status") == "renamed":
-                print(
-                    "[SYSTEM] Characters' names were updated to their proper names. "
+                show_player_notice(
+                    "Characters' names were updated to their proper names. "
                     "A save from before the update was created automatically."
                 )
                 info(f"NAME_MIGRATION: completed: {name_migration}", category="startup")
@@ -8893,26 +9580,18 @@ def _main_game_loop(startup_authority, turn_authority):
         try:
             from core.managers.effects_migration import run_effects_migration
 
-            effects_migration = run_effects_migration(create_backup=True)
-            if effects_migration.get("status") == "migrated":
-                print(
-                    "[SYSTEM] Temporary effects were upgraded safely. "
-                    "A pre-conversion save was created automatically."
-                )
-                debug(
-                    f"EFFECTS: Effects V2 migration completed: {effects_migration}",
-                    category="effects_tracking",
-                )
-            elif effects_migration.get("status") == "blocked":
+            # #202 A9: a busy sheet waits under a scope that Load, Reset or Quit can end.
+            with _between_turns_authority():
+                effects_migration = run_effects_migration(create_backup=True)
+            # Each Load or Reset starts a new session: the same refusal shows again.
+            _effects_migration_shown.clear()
+            if effects_migration.get("status") == "blocked":
                 warning(
                     f"EFFECTS: Automatic conversion was refused safely: {effects_migration}",
                     category="effects_tracking",
                 )
-                print(
-                    "[SYSTEM] Temporary-effect conversion needs review. "
-                    "The campaign remains on its legacy effect handling for this session."
-                )
-        except (LiveProviderSuperseded, InvocationSupersededError):
+            _report_effects_migration(effects_migration)
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as effects_migration_exc:
             error(
@@ -8934,8 +9613,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 if backup_folder
                 else " Retry startup; if it repeats, restore the automatic pre-conversion save."
             )
-            print(
-                "[SYSTEM] Startup stopped because temporary-effect conversion "
+            show_player_notice(
+                "Startup stopped because temporary-effect conversion "
                 "could not be recovered safely." + recovery
             )
             return
@@ -8984,19 +9663,19 @@ def _main_game_loop(startup_authority, turn_authority):
                     % pending_transition_recovery.get("reason"),
                     category="location_transitions",
                 )
-                # Player-visible in web + headless + terminal: the DM narration
-                # section is the only cross-mode player output surface (a bare
-                # "[SYSTEM]" line would route to the debug stream). Register is an
-                # owner decision (D-210-2); the out-of-fiction channel is issue #212.
-                print(
-                    "Dungeon Master: A prior travel action didn't finish cleanly, "
+                # Player-visible in web + headless + terminal: delivered as DM
+                # narration through the frontend sink, else printed (#257: a
+                # direct print opened a scraped section that later debug lines
+                # joined). Register is an owner decision (D-210-2); the
+                # out-of-fiction channel is issue #212.
+                display_dm_narration(
+                    "A prior travel action didn't finish cleanly, "
                     "so you remain where the party actually stands - %s. You can "
                     "continue from here, or load an earlier save to redo that "
                     "journey." % here
                 )
-                # [travel #210] Flush so the DM-narration section is emitted and
-                # CLOSED before the next startup diagnostic line, which would
-                # otherwise be absorbed into this notice's narration block. Guarded
+                # [travel #210] Terminal fallback: flush so the printed notice is
+                # out before the next startup diagnostic line. Guarded
                 # like emit_startup_marker's flush so a broken/closed terminal pipe
                 # cannot raise into the boot except-branch and abort startup.
                 try:
@@ -9042,221 +9721,17 @@ def _main_game_loop(startup_authority, turn_authority):
 
         startup_claim = startup_authority.enter_context(combat_execution_authority())
         active_encounter_id = party_tracker_data["worldConditions"]["activeCombatEncounter"]
-        print(colored(f"[SYSTEM] Active combat encounter '{active_encounter_id}' detected. Resuming combat...", "yellow"))
         combat_was_resumed = True  # Mark that we're resuming from combat
-        
-        # Load conversation history and inject combat resume markers BEFORE starting combat
-        conversation_history = load_json_file(json_file) or []
-        
-        # Inject combat recovery tracking messages
-        tracking_message = {
-            "role": "user",
-            "content": "[SYSTEM: Combat was interrupted and is being resumed from crash]"
-        }
-        conversation_history.append(tracking_message)
-        
-        recovery_marker = {
-            "role": "assistant",
-            "content": "[SYSTEM: Combat recovery initiated - continuing from last known state]"
-        }
-        conversation_history.append(recovery_marker)
-        
-        # Save the updated conversation history
-        save_conversation_history(conversation_history)
-        debug("STATE_CHANGE: Added combat resume tracking messages before combat restart", category="session_management")
-        
-        # Directly get location info for the combat manager
-        location_data_resume = get_location_data_from_party_tracker(party_tracker_data)
-
-        # Call run_combat_simulation directly to get the return values
-        from core.managers.combat_manager import run_combat_simulation
-        # A quit at a combat prompt returns None; the fight stays active (#444).
-        combat_refusal_line = None
-        try:
-            combat_result = run_combat_simulation(
-                active_encounter_id, party_tracker_data, location_data_resume,
-                invocation_claim=startup_claim,
-            )
-        except LiveProviderCompletedError as refused:
-            # #1087: a refused combat call leaves the fight saved and active.
-            combat_result = None
-            refusal = classify_provider_error(refused)
-            combat_refusal_line = account_refusal_message(
-                refusal["category"], refusal["provider"], "combat"
-            )
-        dialogue_summary = (
-            combat_result[0]
-            if isinstance(combat_result, tuple) and combat_result
-            else None
+        outcome, party_tracker_data, conversation_history = _resume_active_combat(
+            party_tracker_data,
+            active_encounter_id,
+            startup_claim,
+            main_system_prompt_text,
+            source="startup",
         )
-        require_current_invocation(startup_claim)
+        if outcome is not None:
+            return outcome
 
-        # After combat, reload everything to ensure state is fresh
-        party_tracker_data = load_json_file("party_tracker.json")
-        conversation_history = load_json_file(json_file) or []
-        combat_still_active = (
-            isinstance(party_tracker_data, dict)
-            and (party_tracker_data.get("worldConditions") or {}).get(
-                "activeCombatEncounter"
-            ) == active_encounter_id
-        )
-        if combat_still_active:
-            recovery = _active_combat_recovery(party_tracker_data)
-            if recovery:
-                display_dm_narration(
-                    recovery.get("message")
-                    or (
-                        "Combat remains paused. Load or restore a save before "
-                        "resuming encounter %s; no post-combat narration was "
-                        "requested." % active_encounter_id
-                    ),
-                    channel="combat",
-                    color="yellow",
-                )
-                # A recovered combat bypasses the ordinary startup-kickoff
-                # path.  Reuse its established already-done marker so web
-                # clients enter the playable state and keep Load/Reset
-                # operable while the encounter remains safely paused.
-                startup_state = load_startup_state() or {}
-                emit_startup_marker(
-                    "startup_kickoff_skipped",
-                    source="combat_recovery",
-                    result="already_done",
-                    startup_attempt_id=startup_state.get(
-                        "startup_attempt_id"
-                    ),
-                    state_version=startup_state.get("state_version"),
-                    lease_owner=startup_state.get("lease_owner"),
-                    attempt_count=startup_state.get("attempt_count"),
-                )
-            else:
-                display_dm_narration(
-                    combat_refusal_line
-                    or "Combat did not reach a confirmed completion state. "
-                    "The active encounter was preserved for recovery and "
-                    "no post-combat narration was requested.",
-                    channel="combat",
-                    color="yellow",
-                )
-        else:
-            print(colored(
-                "[SYSTEM] Combat resolved. Integrating summary and "
-                "continuing adventure...",
-                "yellow",
-            ))
-
-        # ** CRITICAL FIX: Integrate the combat summary into the main conversation history **
-        if dialogue_summary and not combat_still_active:
-            # We create a clear, systemic message indicating combat is over.
-            # The same record text as the handoff from action_handler (#253).
-            combat_summary_message = render_combat_record_marker(
-                "Combat Summary: " + dialogue_summary,
-                combat_record_exit_kind(active_encounter_id),
-                combat_record_xp_receipt(active_encounter_id),
-                combat_record_joined_against_party(active_encounter_id),
-            )
-            conversation_history.append({"role": "user", "content": combat_summary_message})
-            debug("STATE_CHANGE: Appended combat summary to main history after resumed session.", category="session_management")
-            save_conversation_history(conversation_history)
-            # The engine's location record for the resumed fight (P4-c).
-            from core.nql import occupants as _occupants
-            _occupants.resolve_combat(active_encounter_id)
-
-        if not combat_still_active and _post_combat_world(party_tracker_data) is None:
-            # The fight's record is kept above. Without the party's location
-            # the story cannot go on, so no narration is asked for (#444).
-            # The #448 shape; the travel-recovery scope has already closed.
-            error(
-                "FAILURE: party_tracker.json has no readable location after "
-                "the resumed fight",
-                category="session_management",
-            )
-            cause = (
-                "The party's location could not be read after the fight, so "
-                "the story cannot continue from here."
-            )
-            display_dm_narration(cause + " Gameplay is paused.", channel="system")
-            if hasattr(sys.stdin, "queue"):
-                # The web pause adds its own "Gameplay is paused." sentence.
-                return WebRecoveryPause(cause)
-            from updates.save_game_manager import SaveGameManager
-            return _terminal_recovery_menu(SaveGameManager())
-
-        # ** CRITICAL FIX: Get a new AI response for post-combat narration **
-        # This makes the resumed flow behave exactly like the normal flow.
-        if not combat_still_active:
-            conversation_history = _prepare_rebuilt_history_for_t067(
-                conversation_history, main_system_prompt_text
-            )
-        ai_response_after_combat = None
-        if not combat_still_active:
-            try:
-                ai_response_after_combat = get_ai_response(conversation_history)
-            except LiveProviderCompletedError as refused:
-                # #442: the fight's result is kept; the turn loop starts.
-                display_dm_narration(_provider_refusal_followup(refused)["player_message"])
-        if ai_response_after_combat:
-            require_current_invocation(startup_claim)
-            # Process the AI's post-combat response to get the game moving again.
-            # We need to load the fresh location data for this call.
-            location_data_post_combat = get_location_data_from_party_tracker(party_tracker_data)
-            # Match the uninterrupted-combat handoff: the committed combat
-            # state owns HP/XP, so the immediate narration pass must not
-            # reapply a model-authored echo after reconnect recovery.
-            process_ai_response._just_finished_combat = True
-            post_combat_result = _process_fresh_dm_response(
-                ai_response_after_combat,
-                party_tracker_data,
-                location_data_post_combat,
-                conversation_history,
-                invocation_claim=startup_claim,
-            )
-            if _is_restore_request(post_combat_result):
-                return post_combat_result
-            (
-                post_combat_result,
-                party_tracker_data,
-                location_data_post_combat,
-                conversation_history,
-            ) = resolve_retryable_ai_result(
-                post_combat_result,
-                party_tracker_data,
-                location_data_post_combat,
-                conversation_history,
-                invocation_claim=startup_claim,
-            )
-            if _is_restore_request(post_combat_result):
-                return post_combat_result
-            if isinstance(post_combat_result, dict) and post_combat_result.get("status") == "superseded_invocation":
-                raise InvocationSupersededError("Post-combat handoff was superseded")
-            require_current_invocation(startup_claim)
-            if isinstance(post_combat_result, dict) and post_combat_result.get("status") in {
-                "provider_error", "travel_content_unavailable", "review_exhausted",
-            }:
-                display_dm_narration(_followup_failure_message(post_combat_result))
-            if isinstance(post_combat_result, dict) and post_combat_result.get("status") == "error":
-                # #442: the same line the turn loop prints for a failed action.
-                print(f"[SYSTEM] {_action_failure_line(post_combat_result)}")
-                warning("Post-combat response processing failed safely", category="module_management")
-            elif (
-                isinstance(post_combat_result, dict)
-                and post_combat_result.get("retryable") is True
-            ):
-                retry_status = post_combat_result.get(
-                    "status", "state_recovery_pending"
-                )
-                print(
-                    "[SYSTEM] Post-combat narration is paused while game "
-                    f"state recovers ({retry_status})."
-                )
-                warning(
-                    f"Post-combat response processing paused: {retry_status}",
-                    category="module_management",
-                )
-        
-        print("[DEBUG] Combat resumption complete - should enter main game loop now")
-        debug("CRITICAL: Combat resumption complete - attempting to enter main loop", category="session_management")
-        
     # --- END: COMBAT RESUMPTION LOGIC ---
     else:
         # print("[DEBUG] Normal startup path - will enter main game loop")
@@ -9331,18 +9806,22 @@ def _main_game_loop(startup_authority, turn_authority):
         # the player is told why: the line is chosen from the typed cause or
         # refused_because, never from reason text (issue #613).
         try:
-            refresh_result = CampaignManager().refresh_modules(
-                priority_module=str(party_tracker_data.get("module") or "").replace(" ", "_") or None
-            )
+            # #1253 MI-5: the join can wait on a slow rules engine; Load, Reset or Quit ends that wait.
+            with _between_turns_authority():
+                refresh_result = CampaignManager().refresh_modules(
+                    priority_module=str(party_tracker_data.get("module") or "").replace(" ", "_") or None
+                )
             debug(f"STATE_CHANGE: startup module refresh result: {refresh_result}", category="startup")
             # A joined module is a library notice, not story: it is shown as a
             # system card once the opening scene settles (#795).
             for imported in refresh_result.get("imported", []):
                 _queue_library_notice(_module_joined_line(imported))
             for refusal in refresh_result.get("import_required", []):
-                display_dm_narration(_module_join_refusal_line(refusal), channel="system")
+                show_player_notice(_module_join_refusal_line(refusal))
             for refusal in refresh_result.get("not_joined", []):
-                display_dm_narration(_module_not_joined_line(refusal), channel="system")
+                show_player_notice(_module_not_joined_line(refusal))
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            raise
         except Exception as refresh_exc:
             warning(f"INITIALIZATION: startup module refresh failed: {refresh_exc}", category="startup")
     
@@ -9424,7 +9903,7 @@ def _main_game_loop(startup_authority, turn_authority):
             )
         else:
             # Exactly-once synchronous kickoff (terminal limited-mode).
-            kickoff_result = run_startup_kickoff_with_recovery(
+            kickoff_result = _run_terminal_kickoff(
                 conversation_history,
                 party_tracker_data,
                 location_data,
@@ -9436,8 +9915,9 @@ def _main_game_loop(startup_authority, turn_authority):
                     f"INITIALIZATION: Startup kickoff did not complete cleanly: {kickoff_result}",
                     category="startup",
                 )
-                if kickoff_result.get("player_message"):
-                    display_dm_narration(kickoff_result["player_message"])
+                failure_line = _kickoff_failure_line(kickoff_result)
+                if failure_line:
+                    display_dm_narration(failure_line)
 
     # Add safeguard against infinite loops in non-interactive environments
     empty_input_count = 0
@@ -9509,7 +9989,9 @@ def _main_game_loop(startup_authority, turn_authority):
         try:
             from core.managers.item_charges import refresh_party
 
-            recharged = refresh_party(party_tracker_data)
+            # #1253: a busy sheet waits under a scope that Load, Reset or Quit can end.
+            with _between_turns_authority() as charges_scope:
+                recharged = refresh_party(party_tracker_data, scope=charges_scope)
             if recharged:
                 # The DM learns counts from the sheet summary and from the
                 # "Charges:" lines the spend action leaves, so a recharge gets
@@ -9521,6 +10003,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 conversation_history = update_character_data(conversation_history, party_tracker_data)
                 conversation_history = ensure_main_system_prompt(conversation_history, main_system_prompt_text)
                 conversation_history = order_conversation_messages(conversation_history, main_system_prompt_text)
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            raise
         except Exception as charges_exc:
             debug(f"CHARGES: refresh skipped this turn: {charges_exc}", category="storage_operations")
 
@@ -9535,23 +10019,27 @@ def _main_game_loop(startup_authority, turn_authority):
             from core.managers.effects_state import campaign_effects_migrated
 
             debug("EFFECTS: Checking for expired effects", category="effects_tracking")
-            if not campaign_effects_migrated():
-                run_effects_migration(create_backup=True)
-            if campaign_effects_migrated():
-                acknowledge_effect_notifications(conversation_history)
-                effect_notice = process_effect_lifecycle(conversation_history)
-                if effect_notice:
-                    conversation_history.append(effect_notice)
-                    save_conversation_history(
-                        conversation_history,
-                        strict=True,
-                        allow_compression=False,
-                    )
+            # #202 A5, A9: a busy sheet waits under a scope that Load, Reset or Quit can end.
+            with _between_turns_authority():
+                if not campaign_effects_migrated():
+                    _report_effects_migration(run_effects_migration(create_backup=True))
+                if campaign_effects_migrated():
                     acknowledge_effect_notifications(conversation_history)
-            else:
-                from updates.process_effect_expirations import process_all_effect_expirations
+                    effect_notice = process_effect_lifecycle(conversation_history)
+                    if effect_notice:
+                        conversation_history.append(effect_notice)
+                        save_conversation_history(
+                            conversation_history,
+                            strict=True,
+                            allow_compression=False,
+                        )
+                        acknowledge_effect_notifications(conversation_history)
+                else:
+                    from updates.process_effect_expirations import process_all_effect_expirations
 
-                process_all_effect_expirations()
+                    process_all_effect_expirations()
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            raise
         except Exception as e:
             warning(
                 f"EFFECTS: Expiration processing failed safely: {str(e)}",
@@ -9601,21 +10089,12 @@ def _main_game_loop(startup_authority, turn_authority):
             startup_ready_pending = False
         status_ready()
 
-        # C2a: a check the DM asked the player to roll is settled before the
-        # next free command. The roll prompt takes whole numbers (the player's
-        # dice) or a blank line (the game rolls); no words are read.
-        from core.managers.checks_runtime import take_player_rolls
+        # #1118 item 4: a check waiting for the player's roll is answered by this
+        # line (the settle below takes it); its web panel is published only while
+        # one of these reads waits.
+        from core.managers.checks_runtime import read_player_line
 
-        completed_checks = take_player_rolls(input)
-
-        # A dice submission is the next player input; narrate its authoritative
-        # result without requiring an unrelated command or rolling again. The
-        # line is the engine's, not the player's: its turn is saved as a
-        # check_continuation marker and runs no companion recall.
-        check_continuation = bool(completed_checks)
-        if completed_checks:
-            user_input_text = "Continue with the outcome of my submitted check."
-        elif player_data_current:
+        if player_data_current:
             current_hp = player_data_current.get("hitPoints", "N/A")
             max_hp = player_data_current.get("maxHitPoints", "N/A")
             current_xp = player_data_current.get("experience_points", "N/A")
@@ -9645,7 +10124,7 @@ def _main_game_loop(startup_authority, turn_authority):
                     if hasattr(sys.stdin, "queue")
                     else TPK_BANNER_TERMINAL
                 )
-                user_input_text = input(f"{stats_display} {tpk_banner} ")
+                user_input_text = read_player_line(input, f"{stats_display} {tpk_banner} ")
             elif sheet_is_down(player_data_current):
                 # The banner names the character as the sheet spells it, not
                 # the file-form name the ordinary prompt line shows.
@@ -9660,18 +10139,23 @@ def _main_game_loop(startup_authority, turn_authority):
                     channel="main",
                     color="yellow",
                 )
-                user_input_text = input(
-                    f"{stats_display} " + MAIN_DOWN_BANNER.format(name=down_display_name) + " "
+                user_input_text = read_player_line(
+                    input, f"{stats_display} " + MAIN_DOWN_BANNER.format(name=down_display_name) + " "
                 )
             else:
-                user_input_text = input(f"{stats_display} {player_name_display}: ")
+                user_input_text = read_player_line(input, f"{stats_display} {player_name_display}: ")
         else:
             print("[DEBUG] About to show basic input prompt")
-            user_input_text = input("User: ")
+            user_input_text = read_player_line(input, "User: ")
 
-        # Skip processing if input is empty or only whitespace
+        # Skip processing if input is empty or only whitespace, unless a roll
+        # waits: then a blank line lets the game roll (#1118 items 3 and 4).
+        from core.managers.checks_state import pending_checks, pending_rest
+
         if not user_input_text or not user_input_text.strip():
-            continue
+            if pending_rest() is None and not pending_checks():
+                continue
+            user_input_text = ""
         else:
             # Reset counter on valid input
             empty_input_count = 0
@@ -9688,15 +10172,14 @@ def _main_game_loop(startup_authority, turn_authority):
             if combat_recovery.get("reason") == "party_defeated":
                 # D-242 Task 6: the party-defeat pause is the ratified interim
                 # until #184's defeat scene; the text names what actually works.
-                display_dm_narration(
+                show_player_notice(
                     TPK_PAUSE_TEXT
                     if hasattr(sys.stdin, "queue")
                     else TPK_PAUSE_TEXT + " Close this window or press Ctrl+C, then use the launcher.",
-                    channel="combat",
                     color="yellow",
                 )
             else:
-                display_dm_narration(
+                show_player_notice(
                     "Combat is paused (%s). This input was not sent to the "
                     "Dungeon Master. Load or restore a save before resuming "
                     "encounter %s."
@@ -9704,10 +10187,110 @@ def _main_game_loop(startup_authority, turn_authority):
                         combat_recovery["reason"],
                         combat_recovery["encounter_id"],
                     ),
-                    channel="combat",
                     color="yellow",
                 )
             continue
+
+        # #230 (D-230-1/2): a fight still live after a mid-session break is
+        # re-entered on this input, as at startup; the typed line is not sent.
+        live_encounter_id = _live_active_encounter(party_tracker_data)
+        if live_encounter_id:
+            from utils.capture.live_provider_call import combat_execution_authority
+
+            with combat_execution_authority() as resume_claim:
+                outcome, party_tracker_data, conversation_history = _resume_active_combat(
+                    party_tracker_data,
+                    live_encounter_id,
+                    resume_claim,
+                    main_system_prompt_text,
+                    source="input",
+                )
+            if outcome is not None:
+                return outcome
+            continue
+
+        from utils.capture.live_provider_call import open_live_turn_scope
+
+        live_turn_scope = open_live_turn_scope()
+        level_up_publication_guard = None
+
+
+        # Old-format repairs are advisory and may invoke T018/T019/T087/T027.
+        # They run only after the real prompt/control surface exists and inside
+        # the cancellable live scope; current v2 markers are already preceded
+        # by their accepted T016 summary and therefore take this path zero times.
+        transitions_were_processed = False
+        while True:
+            original_history = copy.deepcopy(conversation_history)
+            repaired_history = check_and_process_location_transitions(
+                conversation_history,
+                party_tracker_data,
+                path_manager,
+            )
+            if repaired_history == original_history:
+                break
+            conversation_history = repaired_history
+            transitions_were_processed = True
+        if transitions_were_processed:
+            save_conversation_history(conversation_history)
+            try:
+                from core.ai.chunked_compression_integration import (
+                    check_and_perform_chunked_compression,
+                )
+
+                check_and_perform_chunked_compression()
+                conversation_history = load_json_file(json_file) or conversation_history
+            except Exception as legacy_compression_error:
+                warning(
+                    "Legacy chronicle enrichment remained unavailable: %s"
+                    % type(legacy_compression_error).__name__,
+                    category="conversation_management",
+                )
+        pending_legacy = safe_json_load(
+            action_handler.PENDING_LOCATION_TRANSITION_FILE
+        )
+        if (
+            isinstance(pending_legacy, dict)
+            and pending_legacy.get("version") == 2
+            and pending_legacy.get("kind") == "legacy_repair"
+        ):
+            from utils.capture.live_provider_call import finish_live_turn_scope
+
+            finish_live_turn_scope(live_turn_scope)
+            action_handler.TurnRoster.record(None)
+            show_player_notice(
+                "An older travel record is safely paused for exact "
+                "recovery; no new action was applied."
+            )
+            continue
+        # #1118 items 3 and 4: a check waiting for the player's roll, or else a
+        # short rest held for their hit dice, is settled by this line, inside the
+        # turn's one live scope and before the party stats and the DM note are
+        # built, so the note shows the sheets after the rest.
+        from core.managers.checks_runtime import settle_pending_rolls
+
+        roll_settle = settle_pending_rolls(user_input_text, conversation_history)
+        if roll_settle.get("providerError") is not None:
+            decision = provider_failure_policy(
+                classify_provider_error(roll_settle["providerError"]), 1, False)
+            if decision["stop"]:
+                from utils.capture.live_provider_call import finish_live_turn_scope
+
+                show_player_notice(decision["player_message"])
+                finish_live_turn_scope(live_turn_scope)
+                continue
+        if not user_input_text.strip() and not roll_settle.get("settled"):
+            # A blank line that settles nothing is skipped, never an empty turn.
+            from utils.capture.live_provider_call import finish_live_turn_scope
+
+            finish_live_turn_scope(live_turn_scope)
+            continue
+        # A blank line that settles the roll is the engine's, not the player's:
+        # its turn is saved as a check_continuation marker and runs no companion
+        # recall. Any other line is the player's own turn.
+        check_continuation = bool(roll_settle.get("settled")) and not user_input_text.strip()
+        if check_continuation:
+            user_input_text = "Continue with the outcome of my submitted roll."
 
         # Remove duplicate NPCs if any exist
         party_tracker_data, npcs_were_cleaned = remove_duplicate_npcs(party_tracker_data)
@@ -9716,54 +10299,7 @@ def _main_game_loop(startup_authority, turn_authority):
             safe_write_json("party_tracker.json", party_tracker_data)
             debug("FILE_OP: Updated party_tracker.json with duplicate NPCs removed", category="npc_management")
 
-        party_members_stats = []
-        for member_name_iter in party_tracker_data["partyMembers"]:
-            member_file_path = path_manager.get_character_path(member_name_iter)
-            member_data_iter = load_json_file(member_file_path)
-            if member_data_iter:
-                member_data_iter = _effects_runtime_view(member_data_iter)
-                stats = {
-                    "name": member_name_iter,  # Keep original case to match file names
-                    "display_name": member_name_iter.capitalize(),  # For display purposes
-                    "level": member_data_iter.get("level", "N/A"),
-                    "xp": member_data_iter.get("experience_points", "N/A"),
-                    "hp": member_data_iter.get("hitPoints", "N/A"),
-                    "max_hp": member_data_iter.get("maxHitPoints", "N/A")
-                }
-                party_members_stats.append(stats)
-
-        roster_level_synced = False
-        try:
-            for npc_info_iter in party_tracker_data["partyNPCs"]:
-                debug(f"STATE_CHANGE: Processing NPC: {npc_info_iter['name']}", category="npc_management")
-                npc_name_iter = npc_info_iter["name"]
-                npc_data_file = path_manager.get_character_path(npc_name_iter)
-                debug(f"FILE_OP: NPC file path: {npc_data_file}", category="npc_management")
-                npc_data_iter = load_json_file(npc_data_file)
-                debug(f"FILE_OP: NPC data loaded: {npc_data_iter is not None}", category="npc_management")
-                if npc_data_iter:
-                    # The character sheet owns the level; the roster entry is a
-                    # record-keeping copy. A level-up writes the sheet only, so
-                    # copy the value across on every pass (no model involved).
-                    sheet_level = npc_data_iter.get("level")
-                    if isinstance(sheet_level, int) and npc_info_iter.get("level") != sheet_level:
-                        npc_info_iter["level"] = sheet_level
-                        roster_level_synced = True
-                    npc_data_iter = _effects_runtime_view(npc_data_iter)
-                    stats = {
-                        "name": npc_info_iter["name"],
-                        "display_name": npc_info_iter["name"].capitalize(),  # For display purposes
-                        "level": npc_data_iter.get("level", npc_info_iter.get("level", "N/A")),
-                        "xp": npc_data_iter.get("experience_points", "N/A"),
-                        "hp": npc_data_iter.get("hitPoints", "N/A"),
-                        "max_hp": npc_data_iter.get("maxHitPoints", "N/A")
-                    }
-                    party_members_stats.append(stats)
-                    debug(f"STATE_CHANGE: Added NPC stats: {stats}", category="npc_management")
-        except Exception as e:
-            error(f"FAILURE: Error processing NPCs", exception=e, category="npc_management")
-            import traceback
-            traceback.print_exc()
+        party_members_stats, roster_level_synced = _party_members_stats(party_tracker_data, path_manager)
         if roster_level_synced:
             safe_write_json("party_tracker.json", party_tracker_data)
             debug("FILE_OP: Updated party_tracker.json partyNPCs levels from character sheets", category="npc_management")
@@ -9781,62 +10317,7 @@ def _main_game_loop(startup_authority, turn_authority):
             # Use enhanced time formatting with context
             from utils.time_context import format_time_with_context
             date_time_str = format_time_with_context(world_conditions)
-            party_stats_formatted = []
-            for stats_item in party_members_stats:
-                # Check if this is a player or an NPC
-                if stats_item['name'] in party_tracker_data["partyMembers"]:
-                    member_data_for_note = load_json_file(path_manager.get_character_path(stats_item['name']))
-                else:
-                    member_data_for_note = load_json_file(path_manager.get_character_path(stats_item['name']))
-                if member_data_for_note:
-                    member_data_for_note = _effects_runtime_view(member_data_for_note)
-                    abilities = member_data_for_note.get("abilities", {})
-                    ability_str = f"STR:{abilities.get('strength', 'N/A')} DEX:{abilities.get('dexterity', 'N/A')} CON:{abilities.get('constitution', 'N/A')} INT:{abilities.get('intelligence', 'N/A')} WIS:{abilities.get('wisdom', 'N/A')} CHA:{abilities.get('charisma', 'N/A')}"
-                    next_level_xp_note = member_data_for_note.get("exp_required_for_next_level", "N/A")
-                    pending_level_ups = member_data_for_note.get("levelUpsPending")
-                    if type(pending_level_ups) is int and pending_level_ups > 0:
-                        # Engine-written (core/nql/stats): the XP has crossed the threshold; offer levelUp, never recompute.
-                        next_level_xp_note = f"{next_level_xp_note} LEVEL-UP EARNED ({pending_level_ups}; offer levelUp)"
-                    display_name = stats_item.get('display_name', stats_item['name'].capitalize())
-                
-                    # Extract spell slot information if character has spellcasting
-                    spell_slots_str = ""
-                    spellcasting = member_data_for_note.get("spellcasting", {})
-                    if spellcasting and "spellSlots" in spellcasting:
-                        spell_slots = spellcasting["spellSlots"]
-                        slot_parts = []
-                        for level in range(1, 10):  # Spell levels 1-9
-                            level_key = f"level{level}"
-                            if level_key in spell_slots:
-                                slot_data = spell_slots[level_key]
-                                current = slot_data.get("current", 0)
-                                maximum = slot_data.get("max", 0)
-                                if maximum > 0:  # Only show levels with available slots
-                                    slot_parts.append(f"L{level}:{current}/{maximum}")
-                        if slot_parts:
-                            spell_slots_str = f", Spell Slots: {' '.join(slot_parts)}"
-                
-                    # Extract currency
-                    currency = member_data_for_note.get("currency", {})
-                    gp = currency.get("gold", 0)
-                    sp = currency.get("silver", 0)
-                    cp = currency.get("copper", 0)
-                    currency_parts = []
-                    if gp: currency_parts.append(f"{gp}GP")
-                    if sp: currency_parts.append(f"{sp}SP")
-                    if cp: currency_parts.append(f"{cp}CP")
-                    currency_str = f", Currency: {' '.join(currency_parts)}" if currency_parts else ", Currency: 0GP"
-
-                    effects_str = _format_temporary_effects(member_data_for_note)
-                    focus = member_data_for_note.get("concentration")
-                    if isinstance(focus, dict) and focus.get("name"):
-                        effects_str = f"{effects_str}, concentrating on {focus['name']} (engine-held)"
-                    # D-KW-12: the engine id the DM keys a typed reference by (rest hitDice).
-                    from core.nql.genesis import character_id as _engine_character_id
-                    member_id = _engine_character_id(member_data_for_note)
-                    party_stats_formatted.append(f"{display_name} (id {member_id}): Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}, {ability_str}{spell_slots_str}{currency_str}, Effects: {effects_str}")
-
-            party_stats_str = "; ".join(party_stats_formatted)
+            party_stats_str = _party_stats_text(party_tracker_data, path_manager, party_members_stats)
             party_stats_str += ". (These values reflect the state before the player's current action.)"
             current_location_name_note = world_conditions["currentLocation"]
             current_location_id_note = world_conditions["currentLocationId"]
@@ -9937,6 +10418,12 @@ def _main_game_loop(startup_authority, turn_authority):
             # Format party members and NPCs for DM note
             party_members_list = party_tracker_data.get('partyMembers', [])
             party_members_str = ", ".join(party_members_list) if party_members_list else "None"
+            # The player is partyMembers[0] (#189): name them so narration
+            # speaks to them, not about them.
+            player_character_str = (
+                f"Player character: {party_members_list[0]} (narrate to them as \"you\"; "
+                f"narrate everyone else in third person). "
+            ) if party_members_list else ""
         
             # Each companion with its occupant id, or the [slot n] of a row
             # saved before ids; joined people no row carries are listed after
@@ -9966,6 +10453,7 @@ def _main_game_loop(startup_authority, turn_authority):
             dm_note = (f"Dungeon Master Note: Current date and time: {date_time_str}, {current_season} season. "
                 f"Current location: {current_location_name_note} ({current_location_id_note}) in the {current_area_name} area. "
                 f"Party members: {party_members_str}. "
+                f"{player_character_str}"
                 f"{party_npcs_span} "
                 f"Party stats: {party_stats_str}.{party_orphan_sentence}")
             if not should_inject_creation_prompt:
@@ -9984,66 +10472,20 @@ def _main_game_loop(startup_authority, turn_authority):
         from core.managers.checks_runtime import rest_offers_note
 
         dm_note += rest_offers_note()
+        # #1118 items 3 and 4: a roll still waiting, with this turn's settle note.
+        from core.managers.checks_runtime import pending_roll_note
+
+        dm_note += pending_roll_note(roll_settle)
+        # #1122: a quest update the engine refused during the last travel, once; the DM decides.
+        from core.managers.checks_runtime import quest_notes_note
+
+        dm_note += quest_notes_note(sum(1 for m in conversation_history if isinstance(m, dict) and m.get("role") == "assistant"))
 
         # The player's own words, never annotated with guessed items or a
         # word-matched SRD block (D-KW-5): the DM already sees every item and
         # spell on the party sheets.
         user_input_with_note = build_enhanced_dm_note(dm_note, user_input_text)
         
-        from utils.capture.live_provider_call import open_live_turn_scope
-
-        live_turn_scope = open_live_turn_scope()
-        level_up_publication_guard = None
-
-
-        # Old-format repairs are advisory and may invoke T018/T019/T087/T027.
-        # They run only after the real prompt/control surface exists and inside
-        # the cancellable live scope; current v2 markers are already preceded
-        # by their accepted T016 summary and therefore take this path zero times.
-        transitions_were_processed = False
-        while True:
-            original_history = copy.deepcopy(conversation_history)
-            repaired_history = check_and_process_location_transitions(
-                conversation_history,
-                party_tracker_data,
-                path_manager,
-            )
-            if repaired_history == original_history:
-                break
-            conversation_history = repaired_history
-            transitions_were_processed = True
-        if transitions_were_processed:
-            save_conversation_history(conversation_history)
-            try:
-                from core.ai.chunked_compression_integration import (
-                    check_and_perform_chunked_compression,
-                )
-
-                check_and_perform_chunked_compression()
-                conversation_history = load_json_file(json_file) or conversation_history
-            except Exception as legacy_compression_error:
-                warning(
-                    "Legacy chronicle enrichment remained unavailable: %s"
-                    % type(legacy_compression_error).__name__,
-                    category="conversation_management",
-                )
-        pending_legacy = safe_json_load(
-            action_handler.PENDING_LOCATION_TRANSITION_FILE
-        )
-        if (
-            isinstance(pending_legacy, dict)
-            and pending_legacy.get("version") == 2
-            and pending_legacy.get("kind") == "legacy_repair"
-        ):
-            from utils.capture.live_provider_call import finish_live_turn_scope
-
-            finish_live_turn_scope(live_turn_scope)
-            action_handler.TurnRoster.record(None)
-            print(
-                "[SYSTEM] An older travel record is safely paused for exact "
-                "recovery; no new action was applied."
-            )
-            continue
         pre_turn_accepted_history = copy.deepcopy(conversation_history)
 
         from core.combat.invocation import (
@@ -10056,8 +10498,8 @@ def _main_game_loop(startup_authority, turn_authority):
 
         t067_claim = begin_invocation(
             "T067",
-            wait_observer=lambda _claim: print(
-                "[SYSTEM] The current game operation is still finishing; waiting safely."
+            wait_observer=lambda _claim: show_player_wait(
+                "The current game operation is still finishing; waiting safely."
             ),
         )
         # This turn's [slot] numbers count from the roster its note showed.
@@ -10274,8 +10716,8 @@ def _main_game_loop(startup_authority, turn_authority):
                 retry_status = final_result.get(
                     "status", "state_recovery_pending"
                 )
-                print(
-                    "[SYSTEM] The game state changed while that turn was "
+                show_player_notice(
+                    "The game state changed while that turn was "
                     f"processing ({retry_status}). Your state is safe; "
                     "please retry after recovery completes."
                 )
@@ -10287,7 +10729,7 @@ def _main_game_loop(startup_authority, turn_authority):
                 isinstance(final_result, dict)
                 and final_result.get("status") == "error"
             ):
-                print(f"[SYSTEM] {_action_failure_line(final_result)}")
+                _show_action_failure(final_result)
                 warning(
                     "Response processing failed safely",
                     category="module_management",
@@ -10309,7 +10751,7 @@ def _main_game_loop(startup_authority, turn_authority):
             elif final_result == "restart":
                 from utils.capture.live_provider_call import finish_live_turn_scope
                 finish_live_turn_scope(live_turn_scope)
-                print("\n[SYSTEM] Restarting game with restored save...\n")
+                show_player_notice("Restarting game with restored save...", padded=True)
                 return main_game_loop()
             elif isinstance(final_result, dict) and final_result.get("status") == "enter_levelup_mode":
                 level_up_session = final_result["session"]
@@ -10349,6 +10791,9 @@ def _main_game_loop(startup_authority, turn_authority):
                         break
                     if not level_up_input or not level_up_input.strip():
                         continue
+                    # Busy for the whole step, the sheet commit after approval included; the
+                    # next input() reopens the command bar at its readline boundary (#76).
+                    status_processing_levelup()
                     turn = level_up_session.handle_input(level_up_input)
                     display_dm_narration(
                         turn.narration, channel="levelup", commit_guard=level_up_publication_guard
@@ -10705,6 +11150,19 @@ def _action_failure_line(result):
     return SAFE_ACTION_FAILURE_MESSAGE
 
 
+def _show_action_failure(result):
+    """Tell the player a failed action result, once (#442, #212).
+
+    `_handle_ordinary_action_failure` already showed an `action-failure:`
+    result as its error card, so that one stays a console line. Any other
+    error (the #433 draft-shape refusal) was shown nowhere, so it is a notice.
+    """
+    if str(result.get("message_id", "")).startswith("action-failure:"):
+        print(f"[SYSTEM] {_action_failure_line(result)}")
+    else:
+        show_player_notice(_action_failure_line(result))
+
+
 def _provider_refusal_followup(exc):
     """A refused follow-up as the provider_error result the turn shows (#442).
 
@@ -10733,6 +11191,14 @@ def _followup_failure_message(result):
         return (account_refusal_message(result.get("category"), result.get("provider"), "followup")
                 or _FOLLOWUP_NOT_APPLIED_MESSAGE)
     return result.get("player_message") or _FOLLOWUP_NOT_APPLIED_MESSAGE
+
+
+def _welcome_followup_refusal_line(result):
+    """#1228: a refused follow-up after the welcome beat was applied: an account
+    category's follow-up line ("What already happened in your game is kept"), else None."""
+    if not isinstance(result, dict) or result.get("status") != "provider_error":
+        return None
+    return account_refusal_message(result.get("category"), result.get("provider"), "followup")
 
 
 # #488: the fact a misordered travel draft lacks. Code checks only the order.
@@ -11854,7 +12320,7 @@ def main():
     except ActiveModuleUnavailable as exc:
         # The same one line and pause menu as main_game_loop (issue #448).
         warning(f"ACTIVE MODULE: {exc}", category="session_management")
-        display_dm_narration(str(exc), channel="system")
+        show_player_notice(str(exc))
         from updates.save_game_manager import SaveGameManager
         pending_result = _terminal_recovery_menu(SaveGameManager())
     print(f"DEBUG: [LocationGraph] Initialization complete. Total nodes loaded: {len(location_graph.nodes)}")
@@ -11874,7 +12340,7 @@ def main():
                 try:
                     perform_reset_logic()
                 except Exception as exc:
-                    print('[SYSTEM] Reset did not finish: ' + str(exc))
+                    show_reset_failed(exc)
                     result = _terminal_recovery_menu(result.manager)
                 else:
                     break

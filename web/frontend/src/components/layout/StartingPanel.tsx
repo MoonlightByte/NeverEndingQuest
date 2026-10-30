@@ -21,6 +21,8 @@ function startupRecoveryMessage(
   if (status === 'not_recoverable') {
     return { type: 'error', content: 'Startup recovery not allowed in current state.' }
   }
+  // #1233: a refused opening names the account problem instead.
+  if (recovery.playerMessage) return { type: 'error', content: recovery.playerMessage }
   const reason = recovery.error ? ` (${recovery.error})` : ''
   const retryHint = recovery.retryAfterSeconds
     ? ` Retry in ${recovery.retryAfterSeconds}s.`

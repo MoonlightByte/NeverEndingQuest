@@ -30,16 +30,21 @@ from updates.update_character_info import (
     fuzzy_match_character_name,
     get_character_path,
     normalize_character_name,
+    read_sheet_waiting,
     update_character_info,
+    wait_for_sheet_lease,
 )
 from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import info, warning
 from utils.file_operations import safe_write_json
-from utils.path_transaction_lock import path_transaction_lock
 
 
 class EffectsRuntimeError(RuntimeError):
     """A declarative effect operation could not be completed safely."""
+
+
+class NoActiveEffect(EffectsRuntimeError):
+    """removeEffect named no effect or condition active on the sheet (#1549)."""
 
 
 class CharacterProposalDropped(EffectsRuntimeError):
@@ -121,14 +126,9 @@ def update_character_with_effects(
 
     resolved, role, path, _sheet = _resolve_character(character_name)
     with _get_character_update_lock(resolved, role):
-        with path_transaction_lock(
-            path,
-            suffix=".effects.lock",
-            timeout_seconds=30.0,
-        ) as locked:
-            if locked is None:
-                raise EffectsRuntimeError("timed out acquiring the character effect lease")
-            sheet = safe_json_load(path)
+        # #1253 (#202 A1): a busy sheet or read waits (with a status line); it never refuses.
+        with wait_for_sheet_lease(path, resolved):
+            sheet = read_sheet_waiting(path, resolved, load=safe_json_load)
             if not isinstance(sheet, dict):
                 raise EffectsRuntimeError("character sheet became unavailable")
             classifier = _lazy_classifier(resolved, changes, sheet, _world_scalar(party_tracker_data))
@@ -290,16 +290,15 @@ def remove_effect(character_name, *, effect_id=None, name=None, reason="removed"
     )
     condition = None if matches else _condition_reference(sheet, effect_id=effect_id, name=name)
     if not matches and condition is None:
-        raise EffectsRuntimeError("removeEffect found no active effect to end")
+        raise NoActiveEffect("removeEffect found no active effect to end")
     operations = [
         {"op": "remove", "effectId": item.get("effectId"), "name": item.get("name")}
         for item in matches
     ]
     with _get_character_update_lock(resolved):
-        with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=5.0) as locked:
-            if locked is None:
-                raise EffectsRuntimeError("timed out removing effect")
-            current = safe_json_load(path)
+        # #202 A2: a busy sheet or read waits (with a status line); it never refuses.
+        with wait_for_sheet_lease(path, resolved):
+            current = read_sheet_waiting(path, resolved, load=safe_json_load)
             if not isinstance(current, dict):
                 raise EffectsRuntimeError("character sheet became unavailable")
             updated = _end_condition(current, condition) if condition else apply_effect_ops(current, operations)
@@ -317,19 +316,22 @@ def remove_effect(character_name, *, effect_id=None, name=None, reason="removed"
     }
 
 
-def prepare_remove_effect(character_name, *, effect_id=None, name=None, reason="removed"):
-    """Freeze the exact sheet mutation for one v2 travel sibling."""
+def prepare_remove_effect(character_name, *, effect_id=None, name=None, reason="removed", base_sheet=None):
+    """Freeze the exact sheet mutation for one v2 travel sibling. `base_sheet`
+    is an earlier same-character sibling's frozen after (#1549)."""
     if not campaign_effects_migrated():
         raise EffectsRuntimeError(
             "removeEffect is unavailable until the campaign effects conversion completes"
         )
     resolved, role, path, sheet = _resolve_character(character_name)
+    if base_sheet is not None:
+        sheet = deepcopy(base_sheet)
     matches = _resolve_effect_reference(
         sheet.get("temporaryEffects", []) or [], effect_id=effect_id, name=name
     )
     condition = None if matches else _condition_reference(sheet, effect_id=effect_id, name=name)
     if not matches and condition is None:
-        raise EffectsRuntimeError("removeEffect found no active effect to end")
+        raise NoActiveEffect("removeEffect found no active effect to end")
     operations = [
         {"op": "remove", "effectId": item.get("effectId"), "name": item.get("name")}
         for item in matches
@@ -361,9 +363,13 @@ def _end_concentration_group(matches, reason):
         end_group(group, f"ended by the DM: {reason}", except_effect_id=removed[0] if len(removed) == 1 else None)
 
 
-def prepare_character_update(character_name, changes, party_tracker_data=None, affects=None, casting_resource=None):
-    """Freeze required T078/T079 output and advisory sheet corrections."""
+def prepare_character_update(character_name, changes, party_tracker_data=None, affects=None, casting_resource=None,
+                             base_sheet=None, reserved_ids=None):
+    """Freeze required T078/T079 output and advisory sheet corrections. `base_sheet`
+    is an earlier same-character sibling's frozen after (#1549)."""
     resolved, role, _path, sheet = _resolve_character(character_name)
+    if base_sheet is not None:
+        sheet = deepcopy(base_sheet)
     classifier = _lazy_classifier(resolved, changes, sheet, _world_scalar(party_tracker_data))
     receipt = _update_character_info_unlocked(
         resolved,
@@ -374,6 +380,8 @@ def prepare_character_update(character_name, changes, party_tracker_data=None, a
         structural_reissue=True,
         affects=affects,
         casting_resource=casting_resource,
+        base_sheet=base_sheet,
+        reserved_ids=reserved_ids,
     )
     if not isinstance(receipt, dict):
         raise CharacterProposalDropped(resolved)
@@ -401,12 +409,9 @@ def prepare_character_update(character_name, changes, party_tracker_data=None, a
 def apply_staged_character_update(receipt):
     """Apply or recognize one exact prepared character sheet."""
     with _get_character_update_lock(receipt["owner"], receipt.get("role")):
-        with path_transaction_lock(
-            receipt["path"], suffix=".effects.lock", timeout_seconds=30.0
-        ) as locked:
-            if locked is None:
-                raise EffectsRuntimeError("character file is busy")
-            current = safe_json_load(receipt["path"])
+        # #202 A3: a busy sheet or read waits (with a status line); it never refuses.
+        with wait_for_sheet_lease(receipt["path"], receipt["owner"]):
+            current = read_sheet_waiting(receipt["path"], receipt["owner"], load=safe_json_load)
             if current == receipt["after"]:
                 return "already_committed"
             if current != receipt["before"]:
@@ -423,12 +428,9 @@ def apply_staged_character_update(receipt):
 def apply_staged_remove_effect(receipt):
     """Apply or recognize a frozen exact removeEffect sheet value."""
     with _get_character_update_lock(receipt["owner"], receipt.get("role")):
-        with path_transaction_lock(
-            receipt["path"], suffix=".effects.lock", timeout_seconds=30.0
-        ) as locked:
-            if locked is None:
-                raise EffectsRuntimeError("character effect file is busy")
-            current = safe_json_load(receipt["path"])
+        # #202 A4: a busy sheet or read waits (with a status line); it never refuses.
+        with wait_for_sheet_lease(receipt["path"], receipt["owner"]):
+            current = read_sheet_waiting(receipt["path"], receipt["owner"], load=safe_json_load)
             if not isinstance(current, dict):
                 raise EffectsRuntimeError("character sheet became unavailable")
             if current == receipt["after"]:
@@ -511,10 +513,9 @@ def _apply_outbox_records(paths):
                 path = None
         if not path:
             continue
-        with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=5.0) as locked:
-            if locked is None:
-                raise EffectsRuntimeError("timed out applying expiration")
-            sheet = safe_json_load(path)
+        # #202 A5: a busy sheet or read waits (with a status line); it never refuses.
+        with wait_for_sheet_lease(path, owner):
+            sheet = read_sheet_waiting(path, owner, load=safe_json_load)
             if not isinstance(sheet, dict):
                 raise EffectsRuntimeError("effect owner sheet became unavailable")
             updated = apply_effect_ops(sheet, [record.get("operation")])

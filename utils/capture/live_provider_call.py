@@ -58,6 +58,7 @@ _ADVISORY_TASK_IDS = frozenset(
         "T013",
         "T018",
         "T019",
+        "T020",
         "T027",
         "T051",
         "T052",
@@ -74,6 +75,9 @@ _ADVISORY_TASK_IDS = frozenset(
         "T113",
         "T105",
         "T112",
+        "T104",
+        "T122",
+        "T123",
     }
 )
 _LIVE_TASK_IDS = _REQUIRED_TASK_IDS | _ADVISORY_TASK_IDS
@@ -114,6 +118,11 @@ _BILLED_PHASES = frozenset({"acknowledged", "working", "receiving", "done"})
 # #1342: provider generations one live turn scope may spend, reissues
 # included. Every scope (play turn, combat round, wizard) has the same bound.
 _TURN_GENERATION_CEILING = 24
+# #204: module-build advisories (NPC coherence, module typing, route timing)
+# leave the turn's last generations to its required follow-up (the module
+# creation narration): a first try plus the billed reissues it may spend.
+_BUILD_ADVISORY_TASK_IDS = frozenset({"T104", "T122", "T123"})
+_BUILD_ADVISORY_RESERVE = 1 + _BILLED_REISSUE_LIMIT
 # Transport phases the child reports, in the order a healthy generation
 # passes through them (#409 plan section 4). Evidence only: never authority.
 _PHASE_NAMES = (
@@ -206,10 +215,11 @@ class LiveTurnScope:
             self.generation += 1
             return self.generation
 
-    def claim_provider_generation(self):
-        """Count one provider generation; False once the turn ceiling is spent (#1342)."""
+    def claim_provider_generation(self, reserve=0):
+        """Count one provider generation; False once the turn ceiling is spent (#1342),
+        or once it would leave fewer than ``reserve`` generations (#204)."""
         with self.lock:
-            if self.provider_generations >= _TURN_GENERATION_CEILING:
+            if self.provider_generations + reserve >= _TURN_GENERATION_CEILING:
                 return False
             self.provider_generations += 1
             return True
@@ -225,8 +235,26 @@ class LiveTurnScope:
             )
             self.provider_generations = 0
 
-    def request_supersession(self, kind, operation_id=None):
+    def request_supersession(self, kind, operation_id=None, owner=False):
         with self.lock:
+            if owner:
+                # #270 rule 1: a Load or Reset owned by another id is
+                # followed, never preempted; the slot stays untouched. One
+                # that goes on to run (accepted, or the turn is complete)
+                # owns the lifecycle from this same lock section.
+                operation_id = str(operation_id or uuid4())
+                holder = _hold_lifecycle_owner(
+                    kind, operation_id,
+                    not self.controls_open or self.supersession is None
+                    or _can_promote_player_acted(self.supersession, kind),
+                )
+                if holder is not None:
+                    return {
+                        "kind": holder.kind,
+                        "operation_id": holder.operation_id,
+                        "accepted": False,
+                        "owner": holder,
+                    }
             if not self.controls_open:
                 return {
                     "kind": "turn_complete",
@@ -299,8 +327,8 @@ class AdvisoryProviderScope:
             self.generation += 1
             return self.generation
 
-    def claim_provider_generation(self):
-        return self.parent.claim_provider_generation()
+    def claim_provider_generation(self, reserve=0):
+        return self.parent.claim_provider_generation(reserve)
 
     def is_superseded(self):
         return self.sealed.is_set() or self.parent.is_superseded()
@@ -346,6 +374,172 @@ _scope_guard = threading.RLock()
 _active_scope = None
 _closing_scopes = []
 _executing_control_scope = ContextVar("executing_live_control_scope", default=None)
+
+
+# --- Lifecycle owner record (issue #270) ------------------------------------
+# One Load or Reset owns the lifecycle at a time, from the lock section that
+# accepts it to its terminal. A second Load/Reset/Save that meets it follows
+# it: on a restart the owner's terminal answers the follower, otherwise the
+# follower runs again once the owner is gone. _owner_guard is a leaf lock:
+# taken inside _scope_guard or a scope lock, it never takes another lock.
+@dataclass
+class LifecycleOwner:
+    kind: str
+    operation_id: str
+    terminal: threading.Event = field(default_factory=threading.Event)
+    followers: list = field(default_factory=list)
+    queued: bool = False
+
+
+_owner_guard = threading.Lock()
+_lifecycle_owner = None
+_model_owner_id = None
+_LIFECYCLE_LABELS = {"restore": "Load", "reset": "Reset", "save": "Save"}
+
+
+def _hold_lifecycle_owner(kind, operation_id, claim, queued=False):
+    """Return the owner another id holds; otherwise claim it when ``claim``."""
+    global _lifecycle_owner
+    with _owner_guard:
+        holder = _lifecycle_owner
+        if holder is not None and holder.operation_id != operation_id:
+            return holder
+        if claim:
+            if holder is None:
+                _lifecycle_owner = LifecycleOwner(str(kind), operation_id)
+            _lifecycle_owner.queued = _lifecycle_owner.queued or queued
+        return None
+
+
+def claim_lifecycle_owner(kind, operation_id):
+    """Claim the record for a path with no scope; the owner it meets, or None."""
+    return _hold_lifecycle_owner(kind, str(operation_id), True)
+
+
+def lifecycle_owner_ahead(operation_id):
+    """The owner another id holds, or None; nothing is claimed."""
+    return _hold_lifecycle_owner(None, str(operation_id), False)
+
+
+def claim_model_restore_owner(scope=None):
+    """The model's Load holds the record only, never the turn's slot (#270 C5).
+
+    Returns its id, or None when the slot is already set or another
+    operation owns the record (the model's Load is then dropped).
+    """
+    global _model_owner_id
+    operation_id = "model-%s" % uuid4()
+    if scope is None:
+        claimed = _hold_lifecycle_owner("restore", operation_id, True) is None
+    else:
+        with scope.lock:
+            claimed = scope.supersession is None and _hold_lifecycle_owner(
+                "restore", operation_id, True
+            ) is None
+    if not claimed:
+        return None
+    _model_owner_id = operation_id
+    return operation_id
+
+
+def model_restore_owner_id():
+    return _model_owner_id
+
+
+def _answer_lifecycle_followers(owner, followers, cause):
+    for follower in followers:
+        try:
+            follower["answer"](cause, owner.kind)
+        except Exception:
+            # Presentational: a closed tab or pipe cannot hold the terminal.
+            pass
+        finally:
+            follower["answered"] = True
+
+
+def release_lifecycle_owner(operation_id, restarting=False, cause="restart",
+                            keep_queued=False):
+    """End the record at its owner's terminal, keyed by id (#270).
+
+    A no-op when the record is absent or another id holds it, and with
+    ``keep_queued`` while a queued record still has to run. Restarting
+    answers every follower before ``terminal`` is set; otherwise the
+    followers run again.
+    """
+    global _lifecycle_owner
+    if operation_id is None:
+        return False
+    with _owner_guard:
+        owner = _lifecycle_owner
+        if (
+            owner is None or owner.operation_id != str(operation_id)
+            or (keep_queued and owner.queued)
+        ):
+            return False
+        _lifecycle_owner = None
+        followers = list(owner.followers)
+        del owner.followers[:]
+    if restarting:
+        _answer_lifecycle_followers(owner, followers, cause)
+    owner.terminal.set()
+    return True
+
+
+def answer_lifecycle_followers(cause):
+    """Answer the followers still waiting, leaving the owner untouched."""
+    with _owner_guard:
+        owner = _lifecycle_owner
+        if owner is None:
+            return 0
+        followers = list(owner.followers)
+        del owner.followers[:]
+    _answer_lifecycle_followers(owner, followers, cause)
+    return len(followers)
+
+
+def follow_lifecycle_owner(owner, kind, operation_id, answer):
+    """Register one follower; None when ``owner`` has already ended."""
+    follower = {
+        "kind": str(kind),
+        "operation_id": str(operation_id),
+        "answer": answer,
+        "answered": False,
+    }
+    with _owner_guard:
+        if _lifecycle_owner is not owner:
+            return None
+        owner.followers.append(follower)
+    return follower
+
+
+def leave_lifecycle_owner(owner, follower):
+    """Remove a follower; False once the owner's release has taken it."""
+    with _owner_guard:
+        kept = [item for item in owner.followers if item is not follower]
+        if len(kept) == len(owner.followers):
+            return False
+        owner.followers[:] = kept
+        return True
+
+
+def lifecycle_follower_text(kind, cause, owner_kind=None):
+    label = _LIFECYCLE_LABELS.get(str(kind), "This request")
+    if cause == "restart":
+        return (
+            "%s was not run: the earlier %s finished first and the game is "
+            "restarting. Nothing was changed by this request; choose it again "
+            "after the restart."
+            % (label, _LIFECYCLE_LABELS.get(str(owner_kind), "Load"))
+        )
+    if cause == "quit":
+        return (
+            "%s was not run: Quit was chosen first. Nothing was changed by "
+            "this request." % label
+        )
+    return (
+        "%s was not run: the game stopped before it could run. Nothing was "
+        "changed by this request." % label
+    )
 
 
 def open_live_turn_scope():
@@ -468,7 +662,7 @@ def close_live_turn_scope(scope):
         ).start()
 
 
-def request_live_turn_supersession(kind, operation_id=None, scope=None):
+def request_live_turn_supersession(kind, operation_id=None, scope=None, owner=False):
     """Fence the current live turn, optionally only if it is ``scope``."""
     with _scope_guard:
         if scope is None:
@@ -481,7 +675,7 @@ def request_live_turn_supersession(kind, operation_id=None, scope=None):
             target_scope = None
         if target_scope is None:
             return None
-    result = target_scope.request_supersession(kind, operation_id)
+    result = target_scope.request_supersession(kind, operation_id, owner)
     if result.get("accepted"):
         _safe_emit(_emit_working, "Applying your requested game control...")
         from core.combat.invocation import supersede_invocations
@@ -495,7 +689,7 @@ def request_live_turn_supersession(kind, operation_id=None, scope=None):
     return result
 
 
-def request_lifecycle_turn_supersession(kind, operation_id=None):
+def request_lifecycle_turn_supersession(kind, operation_id=None, owner=False):
     """Atomically claim and seal every active/closing player-turn scope."""
     requested_id = operation_id or str(uuid4())
     with _scope_guard:
@@ -507,7 +701,7 @@ def request_lifecycle_turn_supersession(kind, operation_id=None):
             if item is not _active_scope and not item.quiescent.is_set()
         )
         results = tuple(
-            scope.request_supersession(kind, requested_id) for scope in scopes
+            scope.request_supersession(kind, requested_id, owner) for scope in scopes
         )
     if any(result.get("accepted") for result in results):
         # Never acquire the status lock while holding the scope registry or a
@@ -624,15 +818,33 @@ def cancel_recovery_saves(scope):
 
 
 def claim_destructive_operation(scope, kind, execute, complete,
-                                operation_id=None):
+                                operation_id=None, owner=False):
     """Atomically claim (or promote from player_acted) a destructive
     supersession AND append its executable record in ONE scope-lock
     transaction (#214: the seal can never split an accepted claim from its
     record; an accepted destructive operation always has a queued record).
 
-    Returns {"status": "queued"|"conflict"|"closed", "kind", "operation_id"}.
+    Returns {"status": "queued"|"conflict"|"closed", "kind", "operation_id"};
+    a conflict with the lifecycle owner (#270) also carries "owner". With
+    ``owner`` the queued record owns the lifecycle until its ``complete``.
     """
+    record_id = str(operation_id or uuid4())
     with scope.lock:
+        holder = _hold_lifecycle_owner(
+            kind, record_id,
+            owner and scope.controls_open and (
+                scope.supersession is None
+                or _can_promote_player_acted(scope.supersession, kind)
+            ),
+            queued=True,
+        )
+        if holder is not None:
+            return {
+                "status": "conflict",
+                "kind": holder.kind,
+                "operation_id": holder.operation_id,
+                "owner": holder,
+            }
         if not scope.controls_open:
             return {
                 "status": "closed",
@@ -648,8 +860,14 @@ def claim_destructive_operation(scope, kind, execute, complete,
                 "kind": existing.get("kind"),
                 "operation_id": existing.get("operation_id"),
             }
-        record_id = operation_id or str(uuid4())
         scope.supersession = {"kind": str(kind), "operation_id": record_id}
+        if owner:
+            # #270 C4: every path that removes the record calls complete.
+            def complete(outcome, _complete=complete):
+                try:
+                    _complete(outcome)
+                finally:
+                    release_lifecycle_owner(record_id)
         scope.pending_saves.append({
             "operation_id": record_id,
             "execute": execute,
@@ -1028,7 +1246,7 @@ class _GenerationReader(threading.Thread):
         except (ValueError, TypeError, AttributeError):
             # Evidence loss only (a malformed frame); the envelope protocol
             # and the provider call are unaffected. Logged, not swallowed.
-            _LOGGER.warning("LIVE_PROVIDER_PHASE_FRAME_UNREADABLE %r", line)
+            _provider_debug("LIVE_PROVIDER_PHASE_FRAME_UNREADABLE %r" % (line,))
             return
         with self._lock:
             if name == "endpoint":
@@ -1435,6 +1653,17 @@ def _reconstruct_response(envelope):
     return response
 
 
+def _provider_debug(message):
+    """Provider-call diagnostics stay in the debug log: a console warning can
+    land in the headless player stream (#233, #1545)."""
+    try:
+        from utils.enhanced_logger import debug
+
+        debug(message, category="ai_routing")
+    except Exception:
+        pass
+
+
 def call_live_provider(
     task_id,
     messages,
@@ -1459,6 +1688,55 @@ def call_live_provider(
     ``purpose`` names what the player is waiting for when the task id alone
     cannot (#1422 F2); an unknown value falls back to the task id's purpose.
     """
+    shown = {}
+    try:
+        return _call_live_provider(
+            task_id, messages, request_kwargs, policy=policy, scope=scope,
+            status_emit=status_emit, authority_check=authority_check,
+            purpose=purpose, shown=shown,
+        )
+    finally:
+        _restore_covered_status(shown)
+
+
+def _restore_covered_status(shown):
+    """#1088: when the call's own publication still shows, put back the line
+    its progress covered, with no wait record. A newer status, a line another
+    call owned, or a superseded scope is left alone."""
+    record = shown.get("record")
+    scope = shown.get("scope")
+    if record is None or shown.get("prior_wait") is not None:
+        return
+    if scope is not None and scope.is_superseded():
+        return
+    try:
+        from core.managers.status_manager import status_manager
+
+        if status_manager.get_status_detail()[2] is not record:
+            return
+        before = shown.get("before")
+        if before is None:
+            # No line was shown: drop only this call's record from the caller's line.
+            status_manager.publish_wait(None)
+        elif before[2] is None or before[2] is shown.get("initial"):
+            status_manager.update_status(before[0], before[1])
+    except Exception:
+        pass
+
+
+def _call_live_provider(
+    task_id,
+    messages,
+    request_kwargs,
+    *,
+    policy,
+    scope,
+    status_emit,
+    authority_check,
+    purpose,
+    shown,
+):
+    """call_live_provider's body; ``shown`` records the status it published (#1088)."""
     if task_id not in _LIVE_TASK_IDS:
         raise ValueError("task is outside the reviewed live provider allowlist")
     if policy not in {"required", "advisory"}:
@@ -1469,6 +1747,7 @@ def call_live_provider(
             "%s is classified %s, not %s" % (task_id, expected_policy, policy)
         )
     scope = scope if scope is not None else get_live_provider_scope()
+    shown["scope"] = scope
     emit = status_emit if status_emit is not None else _emit_working
     completion_required = bool(
         isinstance(scope, AdvisoryProviderScope)
@@ -1522,10 +1801,17 @@ def call_live_provider(
         )
     failure_count = 0
     runaway_trips = 0
+    # #204: every claim of a build advisory, reissues included, keeps the reserve.
+    build_reserve = (
+        _BUILD_ADVISORY_RESERVE if task_id in _BUILD_ADVISORY_TASK_IDS else 0
+    )
     billed_reissues = 0
     free_reissues = 0
     logical_started = time.monotonic()
     notices_shown = set()
+    # #221: the player was told a provider failure is being retried; the
+    # attempt that answers says so once.
+    failure_announced = False
     player_turn = scope is not None and scope is get_live_turn_scope()
 
     from utils.provider_errors import provider_display_name
@@ -1558,11 +1844,13 @@ def call_live_provider(
         notices_shown.add(key)
 
         def deliver(_message):
-            from web.shared_state import emit_player_output
+            from utils.player_notice import show_player_notice
+            from web.shared_state import has_player_output_sink
 
-            emit_player_output(
-                {"type": "narration", "channel": "system", "content": text}
-            )
+            # The operational notice card (#1580). A plain terminal has only
+            # the status line, as before.
+            if has_player_output_sink():
+                show_player_notice(text)
 
         _safe_emit(deliver, text)
 
@@ -1604,6 +1892,9 @@ def call_live_provider(
         from core.managers.status_manager import status_manager
 
         record = wait_record(retry_until)
+        if "before" not in shown:
+            shown["before"] = status_manager.get_status_detail()
+        shown["record"] = record
         _safe_emit(lambda text: status_manager.update_status(text, True, wait=record), message)
 
     def retry_wait(seconds, message):
@@ -1618,7 +1909,11 @@ def call_live_provider(
         try:
             from core.managers.status_manager import status_manager
 
-            status_manager.publish_wait(wait_record())
+            # #1088: a record already showing belongs to another call's wait.
+            shown["prior_wait"] = status_manager.get_status_detail()[2]
+            record = wait_record()
+            if status_manager.publish_wait(record):
+                shown["initial"] = shown["record"] = record
         except Exception:
             pass
 
@@ -1633,12 +1928,14 @@ def call_live_provider(
             )
             continue
         claim = getattr(scope, "claim_provider_generation", None)
-        if claim is not None and not claim():
+        if claim is not None and not (
+            claim(reserve=build_reserve) if build_reserve else claim()
+        ):
             # #1342: the turn spent its provider generations. Nothing is sent;
             # the caller's completed-refusal path ends the turn with one line.
-            _LOGGER.warning(
-                "LIVE_PROVIDER_TURN_CEILING task=%s generations=%d operation=%s",
-                task_id, _TURN_GENERATION_CEILING, operation_id,
+            _provider_debug(
+                "LIVE_PROVIDER_TURN_CEILING task=%s generations=%d reserve=%d operation=%s"
+                % (task_id, _TURN_GENERATION_CEILING, build_reserve, operation_id)
             )
             raise LiveProviderCompletedError(
                 task_id,
@@ -1900,6 +2197,19 @@ def call_live_provider(
                     "Still working; checking the current adventure...",
                 )
                 continue
+            if failure_announced:
+                restored = "Connection to %s restored. Continuing." % provider_name
+                notify_player_once("restored", restored)
+                if publish_wait:
+                    # The call has finished: no live wait record under this line.
+                    from core.managers.status_manager import status_manager
+
+                    _safe_emit(
+                        lambda text: status_manager.update_status(text, True),
+                        restored,
+                    )
+                else:
+                    _safe_emit(emit, restored)
             return response
 
         failure_count += 1
@@ -1913,9 +2223,9 @@ def call_live_provider(
             # whitespace guard is unconditional and stays.
             runaway_trips += 1
             if runaway_trips >= 2 and "_output_ceiling_chars" in frozen_kwargs:
-                _LOGGER.warning(
-                    "LIVE_PROVIDER_CEILING_LIFTED task=%s ceiling=%s trips=%d",
-                    task_id, frozen_kwargs.get("_output_ceiling_chars"), runaway_trips,
+                _provider_debug(
+                    "LIVE_PROVIDER_CEILING_LIFTED task=%s ceiling=%s trips=%d"
+                    % (task_id, frozen_kwargs.get("_output_ceiling_chars"), runaway_trips)
                 )
                 frozen_kwargs.pop("_output_ceiling_chars", None)
         if envelope.get("disposition") in {"retryable_http", "retryable_transport", "empty"}:
@@ -1931,10 +2241,10 @@ def call_live_provider(
                 free_reissues += 1
                 exhausted = free_reissues > _FREE_REISSUE_LIMIT
             if exhausted:
-                _LOGGER.warning(
-                    "LIVE_PROVIDER_REISSUE_LIMIT task=%s billed=%d free=%d last=%s",
-                    task_id, billed_reissues, free_reissues,
-                    envelope.get("error_class"),
+                _provider_debug(
+                    "LIVE_PROVIDER_REISSUE_LIMIT task=%s billed=%d free=%d last=%s"
+                    % (task_id, billed_reissues, free_reissues,
+                       envelope.get("error_class"))
                 )
                 limit = _limit_envelope("reissue_limit", task_id, frozen_kwargs)
                 limit["http_status"] = envelope.get("http_status")
@@ -1947,13 +2257,16 @@ def call_live_provider(
             and envelope.get("disposition") in {
                 "retryable_http",
                 "retryable_transport",
+                # #372: an empty answer reissues here as for required tasks,
+                # within the #1342 billed bound counted above.
+                "empty",
             }
         ):
-            _LOGGER.warning(
-                "LIVE_PROVIDER_REISSUE task=%s class=%s status=%s",
-                task_id,
-                envelope.get("error_class", "transport_unavailable"),
-                envelope.get("http_status"),
+            _provider_debug(
+                "LIVE_PROVIDER_REISSUE task=%s class=%s status=%s"
+                % (task_id,
+                   envelope.get("error_class", "transport_unavailable"),
+                   envelope.get("http_status"))
             )
             retry_wait(_delay_for_error(envelope, failure_count), "")
             continue
@@ -2005,6 +2318,7 @@ def call_live_provider(
                 "class:%s" % envelope.get("disposition"), reason
             )
             emit_status("%s %s" % (turn_heartbeat(generation), reason))
+            failure_announced = True
         retry_wait(
             _delay_for_error(envelope, failure_count),
             wizard_heartbeat if wizard_task else (

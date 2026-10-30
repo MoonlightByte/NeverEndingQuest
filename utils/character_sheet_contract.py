@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from utils.file_operations import safe_read_json, safe_write_json
 from utils.enhanced_logger import info, warning
+from utils.player_notice import show_player_notice
 
 
 STARTUP_ARRAY_DEFAULTS = {
@@ -561,7 +562,7 @@ def repair_and_persist_character(
         rule_changes, rule_gaps = migrate_effect_rules(repaired_data, now_tick)
         for gap in rule_gaps:
             warning(f"REPAIR: {gap}", category="character_repair")
-            rule_lines.append(f"[SYSTEM] {gap}.")
+            rule_lines.append(f"{gap}.")
         if rule_changes:
             raw_changes = list(raw_changes) + rule_changes
         # A receipt for a gap (#1446) writes no rule, so the armor class is left as it was.
@@ -597,7 +598,7 @@ def repair_and_persist_character(
         repaired_data = granted
         raw_changes = raw_changes + ["order_grants=" + ",".join(entry["feature"] for entry in order_added)]
         hero = repaired_data.get("name") or os.path.basename(character_file_path)
-        order_lines = [f"[SYSTEM] {hero}'s sheet now records what the {entry['option']} {entry['choice']} grants: "
+        order_lines = [f"{hero}'s sheet now records what the {entry['option']} {entry['choice']} grants: "
                        f"{entry['printed']} (SRD 5.2.1)." for entry in order_added]
 
     # Extract field names from changes (e.g., "ammunition=default_list" -> "ammunition")
@@ -631,8 +632,8 @@ def repair_and_persist_character(
                 category="character_repair",
             )
             for line in order_lines:
-                print(line)
+                show_player_notice(line)
     for line in rule_lines:
-        print(line)
+        show_player_notice(line)
 
     return repaired_data, changes

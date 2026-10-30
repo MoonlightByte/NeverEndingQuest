@@ -109,7 +109,7 @@ from typing import Dict, List, Any, Optional, Tuple
 from uuid import uuid4
 from core.ai import api_client
 import config
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T032", "core/generators/module_stitcher.py", 1450)
 register_callsite("T033", "core/generators/module_stitcher.py", 4016)
@@ -123,6 +123,7 @@ from utils.transient_filesystem import (
     is_transient_filesystem_error,
     read_bytes_preserving_errors,
     replace_target_is_read_only,
+    retry_transient_filesystem,
 )
 from utils.module_path_manager import ModulePathManager
 
@@ -757,9 +758,13 @@ class ModuleStitcher:
 
     def _read_registry_snapshot(self) -> Tuple[Optional[Dict[str, Any]], str]:
         """Fresh-read and shape-check the on-disk world registry."""
-        try:
+        def _load():
             with open(self.world_registry_file, "r", encoding="utf-8") as handle:
-                registry = json.load(handle)
+                return json.load(handle)
+
+        try:
+            # #141 FP-10: a sharing denial right after a write is retried.
+            registry = retry_transient_filesystem(_load)
         except Exception as exc:
             return None, f"World registry could not be read: {exc}"
 
@@ -1607,7 +1612,8 @@ Create atmospheric travel narration that leads into this adventure."""
                     "generatedDate": datetime.now().isoformat()
                 }
             except (json.JSONDecodeError, TypeError, ValueError):
-                print(f"Warning: Could not parse AI travel narration: {ai_response[:200]}...")
+                warning("Could not parse AI travel narration; the reply is in the log file")
+                file_only(f"T032 unparsed travel narration: {ai_response}", category="module_stitcher")
                 return {
                     "travelNarration": f"The party travels to the {first_area_name} region, where new adventures await.",
                     "dmGuidance": "Present this as a clean transition to the new module.",
@@ -4535,6 +4541,7 @@ Respond with JSON:
 
         with module_refresh_lock() as acquired:
             if not acquired:
+                # Keep the skip: the next scan joins these modules (#1108).
                 warning(
                     "Module integration skipped: refresh lock timeout",
                     category="module_integration",
@@ -4869,34 +4876,29 @@ Respond with JSON:
         """
         Update BU (backup) files with corrected location IDs after conflict resolution.
         This ensures BU files match the corrected files for all JSON files that have BU versions.
+        A BU file that does not land raises (#143): publication must not go on
+        with a stale reset baseline.
         """
-        try:
-            updated_count = 0
-            
-            # Walk through all directories in the module
-            for root, dirs, files in os.walk(module_path):
-                for filename in files:
-                    if filename.endswith('.json') and not filename.endswith('_BU.json'):
-                        json_file = os.path.join(root, filename)
-                        bu_file = os.path.join(root, filename.replace('.json', '_BU.json'))
-                        
-                        # Check if a BU version exists
-                        if os.path.exists(bu_file):
-                            # Copy the corrected file to its BU version
-                            try:
-                                import shutil
-                                shutil.copy2(json_file, bu_file)
-                                updated_count += 1
-                                rel_path = os.path.relpath(bu_file, module_path)
-                                print(f"DEBUG: [Module Stitcher] Updated BU file: {rel_path}")
-                            except Exception as e:
-                                print(f"DEBUG: [Module Stitcher] ERROR: Failed to update BU file {bu_file}: {e}")
-            
-            return updated_count
-            
-        except Exception as e:
-            print(f"DEBUG: [Module Stitcher] ERROR: Failed to update BU files: {e}")
-            return 0
+        from utils.module_lifecycle import copy_file_verified
+
+        updated_count = 0
+        
+        # Walk through all directories in the module
+        for root, dirs, files in os.walk(module_path):
+            for filename in files:
+                if filename.endswith('.json') and not filename.endswith('_BU.json'):
+                    json_file = os.path.join(root, filename)
+                    bu_file = os.path.join(root, filename.replace('.json', '_BU.json'))
+                    
+                    # Check if a BU version exists
+                    if os.path.exists(bu_file):
+                        # Copy the corrected file to its BU version
+                        copy_file_verified(json_file, bu_file)
+                        updated_count += 1
+                        rel_path = os.path.relpath(bu_file, module_path)
+                        print(f"DEBUG: [Module Stitcher] Updated BU file: {rel_path}")
+        
+        return updated_count
 
 
 # Utility functions for integration

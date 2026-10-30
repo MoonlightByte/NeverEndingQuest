@@ -102,6 +102,7 @@ import copy
 import shutil
 import os
 import threading
+from contextlib import contextmanager
 from datetime import datetime
 from jsonschema import validate, ValidationError
 import config
@@ -132,7 +133,7 @@ from utils.encoding_utils import safe_json_load
 from utils.status_words import status_word_refusal
 from core.validation.character_validator import AICharacterValidator, armor_contract_errors
 from core.validation.character_effects_validator import AICharacterEffectsValidator
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
 
 # Set script name for logging
 set_script_name(__name__)
@@ -1570,7 +1571,7 @@ def drop_non_party_keys(character_name, updates, character_role=None):
 
 def prepare_character_delta(character_data, updates, character_role, schema,
                             character_name, managed_effect_operation=None,
-                            model_authored=False):
+                            model_authored=False, reserved_ids=None):
     """Shared provider-free stored-value preparation (#323 D-323-10).
 
     Ordinary T079 input joins after effective-to-base normalization. Typed
@@ -1737,7 +1738,9 @@ def prepare_character_delta(character_data, updates, character_role, schema,
         if why:
             from core.managers.concentration_runtime import clear_record, end_group
             clear_record(updated_data, focus["group"])
-            end_group(focus["group"], {"minimum": "knocked unconscious"}.get(why, why), skip_caster=character_name)
+            # #202 C1: this update holds its own sheet's lease; the nested clear stays bounded.
+            end_group(focus["group"], {"minimum": "knocked unconscious"}.get(why, why), skip_caster=character_name,
+                      nested=True)
     if stock_deltas:
         # The requested change reaches the engine unclamped: a stack that
         # would go below zero stays in the merged sheet so the engine sees
@@ -1769,7 +1772,9 @@ def prepare_character_delta(character_data, updates, character_role, schema,
         # is reported like a schema failure so the model can correct its delta.
         from core.nql import equipment as nql_equipment
 
-        outcome = nql_equipment.reconcile(character_data, updated_data, reserved=nql_equipment.genesis.held_ids_on_disk())
+        # #1569: a travel sibling also steps past the ids its earlier siblings froze.
+        reserved = nql_equipment.genesis.held_ids_on_disk() | set(reserved_ids or ())
+        outcome = nql_equipment.reconcile(character_data, updated_data, reserved=reserved)
         if not outcome.ok:
             checks.update(error_message=(
                 "the equipment change was refused by the rules engine: "
@@ -2054,6 +2059,65 @@ def _get_character_update_lock(character_name, character_role=None):
         return lock
 
 
+def _sheet_wait_line(path, name=None):
+    """#1253: the status line while a character sheet is busy."""
+    if not name:
+        name = os.path.splitext(os.path.basename(path))[0].replace("_", " ").title()
+    return f"Waiting for {name}'s character sheet..."
+
+
+@contextmanager
+def wait_for_sheet_lease(path, name=None, scope=None):
+    """#1253 (B2, D-VS-5): hold a sheet's ``.effects.lock`` with no give-up
+    deadline. The lock's own wait cannot be ended by a callback, so the lock is
+    tried in short attempts; between them a Load, Reset, Quit or read-only save
+    stop ends the wait, and the player sees a status line. Callers keep the
+    character update lock outside this lease, so the lock order is unchanged."""
+    from utils.capture.live_provider_call import _interruptible_wait, get_live_provider_scope
+    from utils.path_transaction_lock import path_transaction_lock
+
+    while True:
+        with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=0.25) as lease:
+            if lease is not None:
+                yield lease
+                return
+        _interruptible_wait(0.25, scope if scope is not None else get_live_provider_scope(),
+                            _sheet_wait_line(path, name))
+
+
+def read_sheet_waiting(path, name=None, scope=None, load=None):
+    """#1253 MI-9 (B1): read a sheet under its lease, waiting while another
+    program briefly holds the file. With no ``load`` a missing or corrupt sheet
+    gives None, as safe_read_json does; a ``load`` (effects_runtime's
+    safe_json_load) keeps its own results and errors and only waits while busy."""
+    from utils.capture.live_provider_call import _interruptible_wait, get_live_provider_scope
+    from utils.transient_filesystem import (
+        is_transient_filesystem_error, read_bytes_preserving_errors, retry_transient_filesystem,
+    )
+
+    while True:
+        try:
+            if load is not None:
+                return load(path)
+            raw = retry_transient_filesystem(lambda: read_bytes_preserving_errors(path))
+            return json.loads(raw.decode("utf-8"))
+        except ReadOnlySaveStop:
+            raise
+        except OSError as exc:
+            if not is_transient_filesystem_error(exc):
+                if load is not None:
+                    raise
+                warning(f"SHEET: {path} could not be read: {exc}", category="character_updates")
+                return None
+        except ValueError as exc:
+            if load is not None:
+                raise
+            warning(f"SHEET: {path} could not be read: {exc}", category="character_updates")
+            return None
+        _interruptible_wait(0.25, scope if scope is not None else get_live_provider_scope(),
+                            _sheet_wait_line(path, name))
+
+
 def _effect_operations(operation):
     """A managed effect operation as a list: one dict, a list of dicts, or none."""
     if isinstance(operation, dict):
@@ -2247,6 +2311,8 @@ def _update_character_info_unlocked(
     commit_guard=None,
     affects=None,
     casting_resource=None,
+    base_sheet=None,
+    reserved_ids=None,
 ):
     """
     Unified function to update character information for both players and NPCs
@@ -2260,6 +2326,8 @@ def _update_character_info_unlocked(
         bool: True if successful, False otherwise
     """
     
+    if base_sheet is not None and not prepare_only:
+        raise ValueError("base_sheet is only for a prepared update (#1549)")
     if commit_guard is not None:
         with commit_guard():
             pass
@@ -2281,7 +2349,9 @@ def _update_character_info_unlocked(
     character_path = get_character_path(character_name, character_role)
     
     try:
-        character_data = safe_read_json(character_path)
+        # #1549: a later same-character travel sibling is prepared on the
+        # earlier sibling's frozen sheet, not the one on disk.
+        character_data = copy.deepcopy(base_sheet) if base_sheet is not None else safe_read_json(character_path)
         if not character_data:
             error(f"FAILURE: Could not load character data for {character_name}", category="file_operations")
             return False
@@ -2849,7 +2919,7 @@ Character Role: {character_role}
 
             # Log the raw LLM response for debugging ammunition issues
             if "ammunition" in changes.lower() or "bolt" in changes.lower() or "arrow" in changes.lower():
-                debug(f"LLM_RESPONSE for ammunition update: {raw_response[:500]}...", category="character_updates")
+                file_only(f"LLM_RESPONSE for ammunition update: {raw_response[:500]}...", category="character_updates")
             
             # Enhanced debug logging for NPCs
             if character_role == 'npc':
@@ -3044,6 +3114,7 @@ Character Role: {character_role}
                 character_data, updates, character_role, schema, character_name,
                 managed_effect_operation if declarative_effects else None,
                 model_authored=True,
+                reserved_ids=reserved_ids,
             )
             
             # Debug HP changes AFTER merge
@@ -3174,7 +3245,8 @@ Character Role: {character_role}
             try:
                 print(f"DEBUG: [SAVE] safe_write_json returned: {save_result}")
             except Exception as exc:
-                if commit_guard is None or isinstance(exc, LiveProviderSuperseded):
+                if isinstance(exc, LiveProviderSuperseded) or (
+                        commit_guard is None and isinstance(exc, ReadOnlySaveStop)):
                     raise
                 warning(f"Save-result diagnostic failed: {exc}", category="character_updates")
             
@@ -3222,7 +3294,8 @@ Character Role: {character_role}
                     else:
                         info(f"[Character Update] {character_name}'s {', '.join(changed_fields)} updated", category="character_updates")
                 except Exception as exc:
-                    if commit_guard is None or isinstance(exc, LiveProviderSuperseded):
+                    if isinstance(exc, LiveProviderSuperseded) or (
+                            commit_guard is None and isinstance(exc, ReadOnlySaveStop)):
                         raise
                     warning(f"Post-save diagnostics failed: {exc}", category="character_updates")
                 
@@ -3236,7 +3309,8 @@ Character Role: {character_role}
                         print(f"DEBUG: [XP Tracking] {character_name} XP BEFORE validation: {pre_validation_xp}")
                         info(f"[Character Validator] Starting smart validation for {character_name}...", category="character_validation")
                     except Exception as exc:
-                        if commit_guard is None or isinstance(exc, LiveProviderSuperseded):
+                        if isinstance(exc, LiveProviderSuperseded) or (
+                                commit_guard is None and isinstance(exc, ReadOnlySaveStop)):
                             raise
                         warning(f"Pre-validation diagnostics failed: {exc}", category="character_validation")
                     validator = AICharacterValidator(commit_guard=commit_guard)
@@ -3292,7 +3366,8 @@ Character Role: {character_role}
                         print(f"DEBUG: [XP Tracking] WARNING: XP changed during validation! {pre_validation_xp} -> {post_validation_xp}")
                         
                 except Exception as e:
-                    if commit_guard is not None and isinstance(e, LiveProviderSuperseded):
+                    if isinstance(e, LiveProviderSuperseded) or (
+                            commit_guard is None and isinstance(e, ReadOnlySaveStop)):
                         raise
                     warning(f"VALIDATION: Character validation error", category="character_validation")
                     # Don't fail the update if validation has issues
@@ -3310,7 +3385,8 @@ Character Role: {character_role}
                         warning("VALIDATION: Character effects validation failed, but update completed", category="character_validation")
                         
                 except Exception as e:
-                    if commit_guard is not None and isinstance(e, LiveProviderSuperseded):
+                    if isinstance(e, LiveProviderSuperseded) or (
+                            commit_guard is None and isinstance(e, ReadOnlySaveStop)):
                         raise
                     warning(f"VALIDATION: Character effects validation error", category="character_validation")
                     # Don't fail the update if validation has issues
@@ -3331,7 +3407,7 @@ Character Role: {character_role}
                 return True
             error(f"FAILURE: JSON decode error (attempt {attempt})", exception=e, category="ai_processing")
             bounded_failure_count += 1
-            debug(f"AI_CALL: Raw response: {raw_response}", category="ai_processing")
+            file_only(f"AI_CALL: Raw response: {raw_response}", category="ai_processing")
             # print(f"\n[DEBUG ERROR] JSON decode error for {character_name}")
             # print(f"Raw response that failed to parse: {raw_response}")
             # print(f"Error: {str(e)}\n")
@@ -3362,9 +3438,11 @@ Character Role: {character_role}
             if isinstance(e, LiveProviderSuperseded):
                 raise
             last_update_error = e
-            if commit_guard is not None and primary_committed:
-                with commit_guard():
-                    pass
+            if primary_committed:
+                # #324: the sheet holds this update; a later failure never reissues T079.
+                if commit_guard is not None:
+                    with commit_guard():
+                        pass
                 return True
             error(f"FAILURE: Error during update (attempt {attempt})", exception=e, category="character_updates")
             bounded_failure_count += 1
@@ -3561,101 +3639,6 @@ def update_multiple_characters_parallel(
     return results
 
 
-def validate_multiple_characters_parallel(
-    character_list: List[Dict[str, Any]] = None,
-    character_names: List[str] = None,
-    max_workers: int = 4
-) -> Dict[str, Dict[str, Any]]:
-    """
-    Validate multiple characters in parallel using the optimized AICharacterValidator.
-    Uses smart batching and caching to minimize API calls.
-    
-    Args:
-        character_list: List of character data dictionaries (if already loaded)
-        character_names: List of character names to load and validate
-        max_workers: Maximum number of parallel validation workers
-    
-    Returns:
-        Dict mapping character names to validation results
-    
-    Example:
-        # After combat, validate all party members
-        results = validate_multiple_characters_parallel(
-            character_names=["Eirik Hearthwise", "Ranger Thane", "Lyra Nyx", "Thorin Ironforge"]
-        )
-        # Smart validator checks cache first, only calls API for changed data
-    """
-    # Load character data if names provided
-    if character_names and not character_list:
-        info(f"[PARALLEL VALIDATION] Loading {len(character_names)} characters", 
-             category="character_validation")
-        
-        character_list = []
-        party_tracker_data = safe_json_load("party_tracker.json")
-        current_module = party_tracker_data.get("module", "").replace(" ", "_") if party_tracker_data else None
-        path_manager = ModulePathManager(current_module)
-        
-        for char_name in character_names:
-            char_path = get_character_path(char_name)
-            if char_path and os.path.exists(char_path):
-                char_data = safe_read_json(char_path)
-                if char_data:
-                    character_list.append(char_data)
-                    debug(f"[PARALLEL VALIDATION] Loaded {char_name}", 
-                          category="character_validation")
-            else:
-                warning(f"[PARALLEL VALIDATION] Could not find: {char_name}", 
-                        category="character_validation")
-    
-    if not character_list:
-        warning("[PARALLEL VALIDATION] No characters to validate", 
-                category="character_validation")
-        return {}
-    
-    info(f"[PARALLEL VALIDATION] Starting smart validation for {len(character_list)} characters", 
-         category="character_validation")
-    start_time = time.time()
-    
-    # Use the optimized smart batching validator with caching
-    validator = AICharacterValidator()
-    
-    # Check what needs validation first (cache check)
-    validation_needs = {}
-    for char in character_list:
-        char_name = char.get('name', 'Unknown')
-        needs = validator.check_validation_needs(char)
-        validation_needs[char_name] = needs
-        
-        # Log what will be validated
-        validators_needed = [v for v, needed in needs.items() if needed]
-        if validators_needed:
-            info(f"[PARALLEL VALIDATION] {char_name} needs: {', '.join(validators_needed)}", 
-                 category="character_validation")
-        else:
-            info(f"[PARALLEL VALIDATION] {char_name} fully cached - no API calls", 
-                 category="character_validation")
-    
-    # Run smart batched validation (only calls API for non-cached data)
-    results = validator.validate_multiple_characters_smart(character_list)
-    
-    elapsed = time.time() - start_time
-    info(f"[PARALLEL VALIDATION] Completed in {elapsed:.2f} seconds", 
-         category="character_validation")
-    
-    # Count actual API calls made
-    api_calls_made = sum(
-        sum(1 for v, needed in needs.items() if needed)
-        for needs in validation_needs.values()
-    )
-    api_calls_without_cache = len(character_list) * 3  # AC, inventory, currency
-    
-    info(f"[PARALLEL VALIDATION] API calls: {api_calls_made}/{api_calls_without_cache} " +
-         f"(saved {api_calls_without_cache - api_calls_made} calls via cache)", 
-         category="character_validation")
-    
-    return results
-
-
 def update_party_parallel(changes_dict: Dict[str, str], max_workers: int = 4) -> Dict[str, bool]:
     """
     Convenience function to update all party members in parallel.
@@ -3689,39 +3672,6 @@ def update_party_parallel(changes_dict: Dict[str, str], max_workers: int = 4) ->
     # Convert dict to list of tuples for parallel processing
     updates_list = [(name, change, None) for name, change in changes_dict.items()]
     return update_multiple_characters_parallel(updates_list, max_workers)
-
-
-def validate_party_parallel(max_workers: int = 4) -> Dict[str, Dict[str, Any]]:
-    """
-    Convenience function to validate all party members in parallel.
-    Uses smart caching to minimize API calls - only validates changed data.
-    
-    Args:
-        max_workers: Maximum number of parallel validation threads
-    
-    Returns:
-        Dict mapping character names to validation results
-    
-    Example:
-        # After combat ends, validate all party members
-        results = validate_party_parallel()
-        # Only makes API calls for data that changed during combat
-    """
-    # Get current party members from tracker
-    party_tracker = safe_json_load("party_tracker.json")
-    if not party_tracker or "partyMembers" not in party_tracker:
-        warning("[PARALLEL VALIDATION] No party members found", 
-                category="character_validation")
-        return {}
-    
-    party_members = party_tracker["partyMembers"]
-    info(f"[PARALLEL VALIDATION] Validating party: {', '.join(party_members)}", 
-         category="character_validation")
-    
-    return validate_multiple_characters_parallel(
-        character_names=party_members,
-        max_workers=max_workers
-    )
 
 
 if __name__ == "__main__":

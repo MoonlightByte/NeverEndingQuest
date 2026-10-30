@@ -25,6 +25,7 @@ except:
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.transient_filesystem import raise_if_save_stopped
+from utils.file_operations import safe_write_json
 
 # Set script name for logging
 set_script_name("update_encounter")
@@ -244,8 +245,11 @@ Remember to only update monster information and leave player and NPC data unchan
 
             # Save the updated encounter info
             raise_if_save_stopped()
-            with open(f"modules/encounters/encounter_{encounter_id}.json", "w") as file:
-                json.dump(encounter_info, file, indent=2)
+            # Atomic (#207): a crash mid-save keeps the previous file whole. A
+            # failed save is a disk fault, not a model fault, so no retry.
+            if not safe_write_json(f"modules/encounters/encounter_{encounter_id}.json", encounter_info):
+                error(f"FAILURE: Encounter update could not be saved", category="encounter_updates")
+                return False, original_info
 
             return True, encounter_info
 

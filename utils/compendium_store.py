@@ -11,7 +11,6 @@ from __future__ import annotations
 import copy
 import json
 import os
-import re
 import threading
 from contextlib import ExitStack
 from dataclasses import dataclass
@@ -348,8 +347,8 @@ def compendium_entry_exists(filepath: str, collection_key: str, entry_id: str) -
                 atomic_writer.release_lock(filepath)
 
 
-def validate_generated_prose(text: str, *, minimum_words: int = 20) -> str:
-    """Return usable prose or reject empty/structured/placeholder-like output."""
+def validate_generated_prose(text: str) -> str:
+    """Return usable prose or reject empty or structured output."""
     if not isinstance(text, str):
         raise ValueError("Generated description must be text")
     prose = text.strip()
@@ -363,10 +362,4 @@ def validate_generated_prose(text: str, *, minimum_words: int = 20) -> str:
         structured_value = None
     if isinstance(structured_value, (dict, list)):
         raise ValueError("Generated description returned structured data, not prose")
-    words = re.findall(r"[A-Za-z][A-Za-z'-]*", prose)
-    if len(words) < minimum_words:
-        raise ValueError(
-            f"Generated description is too short ({len(words)} words; "
-            f"minimum {minimum_words})"
-        )
     return prose

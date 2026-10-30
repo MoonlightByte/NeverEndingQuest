@@ -71,14 +71,22 @@ def _refusal_reason(before, old, new, fault):
     return f"{name} cannot be equipped: the engine allows {fault['expected']} ({fault['actual']} held)"
 
 
-def _capacity_reason(before, fault):
+def _capacity_reason(before, fault, world=None):
     """The reason for an engine E_EQUIPMENT refusal (no free hand, a second
-    shield): the engine's typed capacity, ``expected``/``actual``. None keeps
+    shield): the engine's typed capacity, ``expected``/``actual``. For the
+    hands it also names what the hand rule has in hand (#1520). None keeps
     the engine's text."""
     if fault.get("field") is None or fault.get("expected") is None or fault.get("actual") is None:
         return None
+    held = ""
+    if fault["field"] == "capacity.hand" and world is not None:
+        ids = world.item_ids.get(genesis.character_id(before), {})
+        names = [e.get("item_name") for index, e in enumerate(before.get("equipment") or [])
+                 if isinstance(e, dict) and world.held_hands.get(ids.get(index, "")) and e.get("item_name")]
+        if names:
+            held = "; in hand: " + ", ".join(names)
     return (f"{before.get('name')} cannot equip that: the engine's {fault['field']} allows "
-            f"{fault['expected']} ({fault['actual']} would be in use)")
+            f"{fault['expected']} ({fault['actual']} would be in use{held})")
 
 
 def _fold_target(old, new, iid, world) -> Optional[str]:
@@ -174,8 +182,11 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
             fields.append('definition "gear:worn";')
         ops.append(f"create item {_q(iid)} named {_q(e.get('item_name', ''))} {{ {' '.join(fields)} }};")
     # Equipped flag changes on items that exist before and after. The engine
-    # wears exactly one unit: a stack is drawn from (#1135, below).
+    # wears exactly one unit: a stack is drawn from (#1135, below). Every
+    # unequip goes before any equip, so a swap that ends legal never passes
+    # through an over-full state (#1520).
     draws: List[str] = []
+    equips: List[str] = []
     for iid, e in new.items():
         if iid not in old or _stock(e) <= 0:
             continue
@@ -186,7 +197,7 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
             if _stock(e) > 1:
                 draws.append(iid)
                 continue
-            ops.append(f"equip {_q(iid)} on {_q(cid)};")
+            equips.append(f"equip {_q(iid)} on {_q(cid)};")
         elif (was and not now and _stock(old[iid]) == 1 and _stock(e) >= _stock(old[iid])
               and iid not in world.carried):
             # A row the hand rule declared carried (NUM-H3a) is not worn in the
@@ -195,6 +206,7 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
             if fold is not None:
                 ops.append(f"consume {_q(iid)} from {_q(cid)} by 1;")
                 ops.append(f"add {_q(fold)} to {_q(cid)} by 1;")
+    ops.extend(equips)
     for iid, e in created:
         if e.get("equipped") is True:
             if not wearable.get(iid):
@@ -235,7 +247,7 @@ def reconcile(before: Dict[str, Any], after: Dict[str, Any], *, location: str = 
         if isinstance(fault, dict) and fault.get("code") == "E_QUANTITY":
             reason = _refusal_reason(before, old, new, fault) or reason
         elif isinstance(fault, dict) and fault.get("code") == "E_EQUIPMENT":
-            reason = _capacity_reason(before, fault) or reason
+            reason = _capacity_reason(before, fault, world) or reason
         return EquipmentOutcome(False, operations=ops, fault=fault, reason=reason, gaps=gaps)
 
     views = {v["at"]["id"]: v["items"] for v in response.get("items_at", [])}

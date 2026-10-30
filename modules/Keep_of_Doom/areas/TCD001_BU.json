@@ -878,7 +878,7 @@
         "Religion DC 14: Understand how to properly use blessed or holy items against the shadows."
       ],
       "accessibility": "Open chamber with ritual features; shadow pools create hazardous areas.",
-      "dangerLevel": "Extreme",
+      "dangerLevel": "Very High",
       "features": [
         {
           "name": "Shadow Relic",

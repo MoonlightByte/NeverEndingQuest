@@ -322,6 +322,10 @@ def status_generating_summary():
     """Set status for generating adventure summary"""
     status_manager.update_status("Generating adventure summary...", True)
 
+def status_wrapping_up_combat():
+    """Set status while the combat summary is written (#454)"""
+    status_manager.update_status("Wrapping up the battle...", True)
+
 def status_updating_journal():
     """Set status for updating journal"""
     status_manager.update_status("Updating journal entry...", True)

@@ -29,6 +29,7 @@
 # - Error recovery and suggestion generation
 # ============================================================================
 
+import copy
 import json
 import os
 from datetime import datetime
@@ -39,6 +40,11 @@ import config
 from core.ai import api_client
 from utils.encoding_utils import safe_json_load, safe_json_dump
 from utils.transient_filesystem import ReadOnlySaveStop
+from utils.capture.live_provider_call import (
+    LiveProviderCompletedError,
+    LiveProviderSuperseded,
+)
+from core.combat.invocation import InvocationSupersededError
 from utils.module_path_manager import ModulePathManager
 import jsonschema
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
@@ -70,8 +76,9 @@ class StorageProcessor:
             return safe_json_load(self.schema_file)
         return {}
         
-    def _get_game_context(self, character_name: str) -> Dict[str, Any]:
-        """Get current game context for processing"""
+    def _get_game_context(self, character_name: str, base_sheets=None) -> Dict[str, Any]:
+        """Get current game context for processing. ``base_sheets`` maps a path to
+        an earlier travel sibling's frozen value, read instead of the disk (#1567)."""
         context = {
             "character": None,
             "party": None,
@@ -82,7 +89,10 @@ class StorageProcessor:
         try:
             # Get character data
             character_file = self.path_manager.get_character_path(character_name)
-            if os.path.exists(character_file):
+            base_character = base_sheets(character_file) if base_sheets else None
+            if base_character is not None:
+                context["character"] = copy.deepcopy(base_character)
+            elif os.path.exists(character_file):
                 context["character"] = safe_json_load(character_file)
                 
             # Get party data
@@ -100,8 +110,9 @@ class StorageProcessor:
                 }
                 
             # Get existing storage at current location
-            if os.path.exists("player_storage.json"):
-                storage_data = safe_json_load("player_storage.json")
+            base_storage = base_sheets("player_storage.json") if base_sheets else None
+            if base_storage is not None or os.path.exists("player_storage.json"):
+                storage_data = base_storage if base_storage is not None else safe_json_load("player_storage.json")
                 current_location_id = context["location"]["id"] if context["location"] else "UNKNOWN"
                 context["existing_storage"] = [
                     storage for storage in storage_data.get("playerStorage", [])
@@ -314,12 +325,10 @@ For "What's in our storage here?":
         description: str,
         character_name: str,
         *,
-        structural_reissue: bool = False,
+        base_sheets=None,
     ) -> Dict[str, Any]:
         """Process natural language storage description into validated operation with retry logic"""
         
-        # A required travel proposal (structural_reissue) gets the same 3
-        # tries; its caller then drops it and the travel goes on (#855).
         max_attempts = 3
         original_description = description
 
@@ -330,7 +339,7 @@ For "What's in our storage here?":
                 debug(f"AI_CALL: Storage processing attempt {attempt} of {max_attempts}", category="storage_operations")
                 
                 # Get game context
-                context = self._get_game_context(character_name)
+                context = self._get_game_context(character_name, base_sheets=base_sheets)
                 
                 # Create AI prompt
                 messages = self._create_processing_prompt(description, context)
@@ -401,7 +410,7 @@ For "What's in our storage here?":
                     is_valid, validation_error = self._validate_operation(operation)
                 
                 if not is_valid:
-                    warning(f"VALIDATION: Failed on attempt {attempt + 1}: {validation_error}", category="storage_operations")
+                    warning(f"VALIDATION: Failed on attempt {attempt}: {validation_error}", category="storage_operations")
                     
                     if attempt >= max_attempts:
                         return {
@@ -425,7 +434,7 @@ For "What's in our storage here?":
                     continue  # Retry with feedback
                     
                 # Success!
-                info(f"SUCCESS: Storage processing succeeded on attempt {attempt + 1}", category="storage_operations")
+                info(f"SUCCESS: Storage processing succeeded on attempt {attempt}", category="storage_operations")
                 return {
                     "success": True,
                     "operation": operation,
@@ -433,10 +442,18 @@ For "What's in our storage here?":
                     "processed_at": datetime.now().isoformat()
                 }
                 
-            except ReadOnlySaveStop:
+            except (
+                ReadOnlySaveStop,
+                LiveProviderSuperseded,
+                InvocationSupersededError,
+                LiveProviderCompletedError,
+            ):
+                # A player's Load/Reset/Quit, or a provider result the
+                # transport has already bounded (#1342), ends T049 here.
+                # Only unusable output and other faults are retried (#375).
                 raise
             except Exception as e:
-                error(f"FAILURE: Storage processing exception on attempt {attempt + 1}", exception=e, category="storage_operations")
+                error(f"FAILURE: Storage processing exception on attempt {attempt}", exception=e, category="storage_operations")
                 if attempt >= max_attempts:
                     return {
                         "success": False,
@@ -457,12 +474,12 @@ def process_storage_request(
     description: str,
     character_name: str,
     *,
-    structural_reissue: bool = False,
+    base_sheets=None,
 ) -> Dict[str, Any]:
     """Process a storage request from natural language description"""
     processor = StorageProcessor()
     return processor.process_storage_description(
         description,
         character_name,
-        structural_reissue=structural_reissue,
+        base_sheets=base_sheets,
     )

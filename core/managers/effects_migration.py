@@ -28,6 +28,7 @@ from core.managers.effects_state import (
     load_effects_state,
 )
 from updates.save_game_manager import SaveGameManager
+from updates.update_character_info import read_sheet_waiting, wait_for_sheet_lease
 from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import warning
 from utils.file_operations import safe_write_json
@@ -493,7 +494,7 @@ def preflight_effects_migration():
         return {"status": "already_migrated"}
     combat_gate = _combat_migration_gate(party)
     if combat_gate:
-        return {"status": "deferred", "reason": combat_gate}
+        return {"status": "deferred", "reasonCode": "combat_boundary", "reason": combat_gate}
 
     tracker = _load_tracker()
     files, duplicates, unreadable = _discover_character_files(
@@ -503,7 +504,7 @@ def preflight_effects_migration():
     party_paths = _party_sheet_paths(party)
     held = sorted(path for path in unreadable if os.path.normcase(os.path.normpath(path)) in party_paths)
     if held:
-        return {"status": "deferred", "reason": "party sheet unreadable: %s" % held}
+        return {"status": "deferred", "reasonCode": "party_sheet_unreadable", "reason": "party sheet unreadable: %s" % held}
     reports = ["unreadable file skipped: %s" % path for path in unreadable]
     duplicates = _settle_duplicates(party, files, duplicates, reports)
     if duplicates:
@@ -588,10 +589,11 @@ def _resume_applying_migration(state):
         converted = record.get("converted")
         if not path or not isinstance(converted, dict):
             raise EffectsMigrationError("migration journal lacks converted sheet data")
-        with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=5.0) as locked:
-            if locked is None:
-                raise EffectsMigrationError("timed out resuming %s" % record.get("owner"))
-            current = safe_json_load(path)
+        # #202 A9: a busy sheet or read waits (with a status line) under the caller's scope.
+        # The plan's owner is the file stem; the status line names the character.
+        name = converted.get("name")
+        with wait_for_sheet_lease(path, name):
+            current = read_sheet_waiting(path, name, load=safe_json_load)
             current_hash = _canonical_hash(current)
             if current_hash == record.get("beforeHash"):
                 if not safe_write_json(path, converted):
@@ -637,7 +639,7 @@ def run_effects_migration(create_backup=True):
         timeout_seconds=30.0,
     ) as acquired:
         if acquired is None:
-            return {"status": "deferred", "reason": "another migration is active"}
+            return {"status": "deferred", "reasonCode": "migration_active", "reason": "another migration is active"}
         if campaign_effects_migrated():
             return {"status": "already_migrated"}
         existing_state = load_effects_state()
@@ -680,10 +682,10 @@ def run_effects_migration(create_backup=True):
 
         for record in preflight["conversions"]:
             path = record["path"]
-            with path_transaction_lock(path, suffix=".effects.lock", timeout_seconds=5.0) as locked:
-                if locked is None:
-                    raise EffectsMigrationError("timed out converting %s" % record["owner"])
-                current = safe_json_load(path)
+            # #202 A9: a busy sheet or read waits (with a status line) under the caller's scope.
+            name = (record.get("converted") or {}).get("name")
+            with wait_for_sheet_lease(path, name):
+                current = read_sheet_waiting(path, name, load=safe_json_load)
                 current_hash = _canonical_hash(current)
                 if current_hash == record["beforeHash"]:
                     if not safe_write_json(path, record["converted"]):

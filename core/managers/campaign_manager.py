@@ -1958,6 +1958,7 @@ class CampaignManager:
         """
         with module_refresh_lock() as acquired:
             if not acquired:
+                # Keep the reported skip: the next scan joins these modules (#1108).
                 return {
                     "success": False,
                     "newly_integrated": [],
@@ -2220,69 +2221,6 @@ class CampaignManager:
             
         except Exception as e:
             error(f"FAILURE: Error checking module completion for {module_name}", exception=e, category="module_loading")
-            return False
-    
-    def sync_party_tracker_with_plot(self, module_name: str) -> bool:
-        """Sync party_tracker.json quest statuses with module_plot.json
-        
-        DEPRECATED: This method is no longer needed as module_plot.json is now the single 
-        source of truth for quest data. The method is preserved for backward compatibility
-        but returns immediately without performing any sync operations.
-        """
-        # Early return - activeQuests syncing is deprecated
-        debug(f"DEPRECATED: sync_party_tracker_with_plot called for {module_name} - no action taken", category="plot_updates")
-        return False
-        
-        try:
-            # Load module plot data
-            path_manager = ModulePathManager(module_name)
-            plot_file = os.path.join(path_manager.module_dir, "module_plot.json")
-            party_file = "party_tracker.json"
-            
-            if not os.path.exists(plot_file):
-                debug(f"FILE_OP: No module_plot.json found for {module_name}", category="file_operations")
-                return False
-            
-            plot_data = safe_json_load(plot_file)
-            party_data = safe_json_load(party_file)
-            
-            # Create a mapping of quest IDs to their plot statuses
-            quest_statuses = {}
-            
-            # Get statuses from main plot points
-            for point in plot_data.get('plotPoints', []):
-                quest_id = point.get('id')
-                status = point.get('status')
-                if quest_id and status:
-                    quest_statuses[quest_id] = status
-                
-                # Also get side quest statuses
-                for side_quest in point.get('sideQuests', []):
-                    sq_id = side_quest.get('id')
-                    sq_status = side_quest.get('status')
-                    if sq_id and sq_status:
-                        quest_statuses[sq_id] = sq_status
-            
-            # Update party tracker quests
-            updated = False
-            for quest in party_data.get('activeQuests', []):
-                quest_id = quest.get('id')
-                if quest_id in quest_statuses:
-                    new_status = quest_statuses[quest_id]
-                    if quest.get('status') != new_status:
-                        debug(f"STATE_CHANGE: Syncing quest {quest_id}: {quest.get('status')} -> {new_status}", category="plot_updates")
-                        quest['status'] = new_status
-                        updated = True
-            
-            # Save updated party tracker if changes were made
-            if updated:
-                safe_json_dump(party_data, party_file)
-                info(f"SUCCESS: Party tracker synced with module plot for {module_name}", category="plot_updates")
-            
-            return updated
-            
-        except Exception as e:
-            error(f"FAILURE: Error syncing party tracker with plot for {module_name}", exception=e, category="plot_updates")
             return False
     
     @staticmethod
@@ -3892,13 +3830,9 @@ The chronicle should feel like a tale told by firelight years later—when inhib
 
 **Do Not Fear Length:** Your chronicle serves as both entertainment and historical record. A longer, richer narrative that captures every NPC encountered, every location explored, and every meaningful moment is far superior to a brief summary that loses precious details. Let the story breathe. Give each scene the space it deserves. If the tale requires three pages or thirty, so be it—completeness and emotional truth are your only masters.
 
-**Critical Instruction: Enrich and Extrapolate**
-While you must remain true to the events that occurred, you have the creative freedom—nay, the sacred duty—to flesh out the intimate details that make characters real. If the conversation history doesn't explicitly state someone's nickname, but their personality suggests one, include it. If their actions imply a quirk, phobia, or desire, weave it into the narrative. Did the rogue who always scouts ahead perhaps have a fear of being trapped? Did the cleric who heals everyone hide their own pain behind gentle smiles? Did the tension between two characters suggest an attraction neither would admit?
-This freedom never extends to events: never add a meeting, conversation, fight, reward, discovery or outcome that the conversation or the plot statuses do not record.
-
-Fill in these human details with the same care a novelist would. The conversation history provides the skeleton of events—you must add the flesh, blood, and beating heart. Every hero has quirks, every companion has pet names, every relationship has inside jokes. Find them. Create them. Make them real. 
-
-Remember: Players want to discover things about their characters they didn't even realize were true. They want to read about the nervous habit they didn't know they had, the pet name that perfectly captures a relationship, the secret fear that explains their bravery. This is your gift to them—not just remembering what was, but revealing what must have been.
+**Critical Instruction: Record, Never Invent**
+Every nickname, quirk, fear, desire, preference, attraction or relationship detail in your chronicle must be one the conversation shows: said, done or described there. Keep each with the right speaker and subject. A character's guess, suspicion or a rumor stays theirs ("Kira suspected..."), never a fact. Where the conversation is silent, the chronicle is silent: do not supply a nickname, habit, fear or feeling the record does not hold, however well it would fit. Vividness comes from how you tell what happened, not from details you add.
+The same holds for events: never add a meeting, conversation, fight, reward, discovery or outcome that the conversation or the plot statuses do not record.
 
 **The Golden Rule: Names Are Memory, Details Are Soul**
 Before you begin your chronicle, you MUST extract and document every nickname, pet name, term of endearment, and playful moniker used throughout the journey. These are not mere details—they are the verbal DNA of relationships. A chronicle that forgets what lovers called each other in private moments, what friends teased each other with around campfires, or what enemies spat as curses has failed in its most sacred duty.
@@ -3931,9 +3865,9 @@ Equally sacred are the intimate details that make each character a complete pers
 - Combat preferences and signature moves
 - Social triggers and boundaries
 
-Then weave ALL of these throughout your chronicle. Use them liberally. When you write "Eirik turned to Kira," you have failed if there was a moment where he called her something more intimate. When you describe a rest, you have failed if you don't mention how someone always sleeps with their weapon, or needs three cups of tea to be civil in the morning. These details are how we know these are real people with real relationships, not just character classes moving through a plot.
+Then weave ALL of these throughout your chronicle. Use them liberally. When you write "Eirik turned to Kira," you have failed if there was a moment where he called her something more intimate. When you describe a rest, you have failed if the conversation showed how someone always sleeps with their weapon, or needs three cups of tea to be civil in the morning, and you leave it out. These details are how we know these are real people with real relationships, not just character classes moving through a plot.
 
-If the conversation doesn't explicitly state these details but the character's actions suggest them, you MUST extrapolate. Did someone always volunteer for night watch? Perhaps they have insomnia or nightmares. Did someone always suggest taverns? Perhaps they have a weakness for good ale or a fear of sleeping outdoors. Your sacred duty is to see beyond the actions to the person underneath.
+If the conversation does not state or show such a detail, leave it out: a guess about the person underneath is not a memory.
 
 FORMATTING RULES: Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode. Use straight quotes (') and regular dashes (-) only. Do NOT use markdown formatting (no **, no ###, no bullet points)."""
         

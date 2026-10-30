@@ -83,7 +83,7 @@ from core.managers.status_manager import (
     status_updating_plot, status_advancing_time, status_processing_levelup
 )
 from utils.location_path_finder import LocationGraph
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, file_only, set_script_name
 from core.nql.journal import entry_id as journal_entry_id
 
 
@@ -907,14 +907,86 @@ def load_current_transition_checkpoint(operation_id=None):
     return _drop_stored_party_npcs(checkpoint)
 
 
+def _sheet_chain_key(path):
+    return os.path.normcase(os.path.abspath(path))
+
+
+def _extend_sheet_chain(sheet_chain, receipt):
+    """Record the frozen sheets a staged sibling leaves behind (#1549); a
+    storage sibling leaves the storage file too (#1567)."""
+    if not isinstance(receipt, dict):
+        return
+    if receipt.get("kind") in ("updateCharacterInfo", "removeEffect"):
+        targets = [receipt] if receipt.get("path") and "after" in receipt else []
+    elif receipt.get("kind") == "storageInteraction":
+        targets = [receipt.get("character"), receipt.get("storage")]
+    else:
+        targets = []
+    for target in targets:
+        if isinstance(target, dict) and target.get("path") and isinstance(target.get("after"), dict):
+            sheet_chain[_sheet_chain_key(target["path"])] = target["after"]
+
+
+def _chain_reserved_ids(sheet_chain):
+    """Every item id the trip's frozen siblings hold (#1567): a new id minted
+    by a later sibling steps past these as it does past the disk."""
+    from core.nql import genesis
+
+    sheets, containers = [], []
+    for frozen in sheet_chain.values():
+        if isinstance(frozen.get("playerStorage"), list):
+            containers.extend(frozen["playerStorage"])
+        else:
+            sheets.append(frozen)
+    return genesis.held_ids(sheets, containers)
+
+
+def _chain_planned_remove_effect(operation_id, index, record, sheet_chain):
+    """Re-freeze a removeEffect planned from disk on an earlier same-character
+    sibling's sheet (#1549). An effect that sibling already ended leaves a no-op."""
+    from core.managers.effects_runtime import NoActiveEffect, prepare_remove_effect
+
+    receipt = record.get("receipt")
+    if not isinstance(receipt, dict) or not receipt.get("path"):
+        return record
+    base = sheet_chain.get(_sheet_chain_key(receipt["path"]))
+    if base is None:
+        return record
+    parameters = record["action"].get("parameters", {})
+    try:
+        chained = prepare_remove_effect(
+            parameters.get("characterName"),
+            effect_id=parameters.get("effectId"),
+            name=parameters.get("effectName"),
+            reason=parameters.get("reason") or "removed",
+            base_sheet=base,
+        )
+    except NoActiveEffect:
+        chained = dict(receipt, before=copy.deepcopy(base), after=copy.deepcopy(base), concentration_groups=[])
+    checkpoint = load_current_transition_checkpoint(operation_id)
+    checkpoint["deferred_actions"]["actions"][index]["receipt"] = chained
+    _write_location_transition_checkpoint(checkpoint)
+    return checkpoint["deferred_actions"]["actions"][index]
+
+
 def prepare_current_transition_actions(operation_id):
     """Freeze required semantic sibling proposals before movement."""
     checkpoint = load_current_transition_checkpoint(operation_id)
     if checkpoint is None:
         raise RuntimeError("current transition checkpoint is unavailable")
     records = checkpoint["deferred_actions"]["actions"]
+    # #1549: same-character sheet siblings are frozen in sequence. Each one's
+    # before is the previous same-sheet sibling's after, so applying them in
+    # index order keeps the exact before/after check. Only pending records are
+    # (re)frozen.
+    sheet_chain = {}
     for index, record in enumerate(records):
         family = record.get("family")
+        if family == "removeEffect" and record.get("status") == "pending":
+            record = _chain_planned_remove_effect(operation_id, index, record, sheet_chain)
+        if record.get("status") != "pending":
+            _extend_sheet_chain(sheet_chain, record.get("receipt"))
+            continue
         if family not in {
             "updatePlot",
             "moveBackgroundNPC",
@@ -929,6 +1001,7 @@ def prepare_current_transition_actions(operation_id):
         } or record.get(
             "receipt"
         ) is not None:
+            _extend_sheet_chain(sheet_chain, record.get("receipt"))
             continue
         parameters = record["action"].get("parameters", {})
         if family in (
@@ -979,6 +1052,7 @@ def prepare_current_transition_actions(operation_id):
         elif family == "updateCharacterInfo":
             from core.managers.effects_runtime import (
                 CharacterProposalDropped,
+                _resolve_character,
                 prepare_character_update,
             )
             from updates.update_character_info import EngineRefusedChange
@@ -996,10 +1070,13 @@ def prepare_current_transition_actions(operation_id):
                     # #914: no named character; dropped like an unworkable
                     # update, never written to a default character.
                     raise CharacterProposalDropped("A party member")
+                sheet_path = _resolve_character(character_name)[2]
                 receipt = prepare_character_update(
                     character_name, changes, party,
                     affects=parameters.get("affects"),
                     casting_resource=parameters.get("castingResource"),
+                    base_sheet=sheet_chain.get(_sheet_chain_key(sheet_path)),
+                    reserved_ids=_chain_reserved_ids(sheet_chain),
                 )
             except CharacterProposalDropped as dropped:
                 # #855: no usable proposal within the bounded tries. The
@@ -1045,17 +1122,23 @@ def prepare_current_transition_actions(operation_id):
                 description = parameters.get("description")
                 if not isinstance(description, str) or not description.strip():
                     raise ValueError("storageInteraction requires a description")
+                # #1567: frozen on the earlier siblings' sheets and storage.
+                def chained(path):
+                    return sheet_chain.get(_sheet_chain_key(path))
+
                 proposal = process_storage_request(
                     description,
                     character_name,
-                    structural_reissue=True,
+                    base_sheets=chained,
                 )
                 if not proposal.get("success"):
                     raise RuntimeError("required storage proposal was not accepted")
                 receipt = StorageManager(
                     ensure_storage=False
                 ).prepare_staged_operation(
-                    proposal["operation"], record["operation_id"]
+                    proposal["operation"], record["operation_id"],
+                    base_sheets=chained,
+                    reserved_ids=_chain_reserved_ids(sheet_chain),
                 )
                 receipt["message_id"] = str(uuid4())
             except _TRAVEL_PREPARE_PASSTHROUGH:
@@ -1145,6 +1228,7 @@ def prepare_current_transition_actions(operation_id):
                 "status": "staged",
             }
         )
+        _extend_sheet_chain(sheet_chain, receipt)
         checkpoint = load_current_transition_checkpoint(operation_id)
         checkpoint["deferred_actions"]["actions"][index]["receipt"] = receipt
         if family == "updatePartyTracker":
@@ -1646,6 +1730,15 @@ def apply_current_transition_action(operation_id, action_index):
             # refused before movement, or already committed / attempted on
             # a resumed checkpoint (the checkpoint owns receipt["status"])
             quest_outcome = str(receipt.get("quest_status") or "refused")
+        if quest_outcome == "refused" and not receipt.get("dmNoted"):
+            # #1122: the DM hears of the refusal once, in the next DM Note
+            # (deduplicated by request id should the checkpoint write fail).
+            from core.managers import checks_state as _checks_state
+
+            _checks_state.add_quest_note(
+                str(receipt.get("request_id") or ""), _quest_record.travel_refusal_note(receipt)
+            )
+            receipt["dmNoted"] = True
         if quest_outcome != "committed":
             record["status"] = "committed"
             deferred = checkpoint["deferred_actions"]
@@ -4027,6 +4120,7 @@ def _cache_module_starting_location(
         return False
     with module_refresh_lock() as acquired:
         if not acquired:
+            # Keep the skip: this is a cache entry only (#1108).
             return False
         world_registry = safe_json_load(registry_path)
         if not isinstance(world_registry, dict):
@@ -4329,7 +4423,9 @@ Determine the most logical starting location based on adventure flow, area types
                 pass
         
         ai_response = response.choices[0].message.content.strip()
-        debug(f"AI_CALL: Starting location analysis response: {ai_response}", category="ai_operations")
+        # #257: the model's reply goes to the log files only, never the console
+        # (in web and headless mode the console can become player narration).
+        file_only(f"AI_CALL: Starting location analysis response: {ai_response}", category="ai_operations")
         
         # Parse AI response - handle markdown code blocks
         json_content = ai_response
@@ -4347,7 +4443,7 @@ Determine the most logical starting location based on adventure flow, area types
                 elif in_json_block:
                     json_lines.append(line)
             json_content = '\n'.join(json_lines)
-            debug(f"AI_CALL: Extracted JSON from code block: {json_content}", category="ai_operations")
+            file_only(f"AI_CALL: Extracted JSON from code block: {json_content}", category="ai_operations")
         
         try:
             result = json.loads(json_content)
@@ -4356,7 +4452,7 @@ Determine the most logical starting location based on adventure flow, area types
             required_fields = ['locationId', 'locationName', 'areaId', 'areaName']
             if all(field in result for field in required_fields):
                 info(f"AI_CALL: AI determined starting location: {result['areaId']}/{result['locationId']} - {result['locationName']}", category="module_loading")
-                debug(f"AI_CALL: AI reasoning: {result.get('reasoning', 'No reasoning provided')}", category="ai_operations")
+                file_only(f"AI_CALL: AI reasoning: {result.get('reasoning', 'No reasoning provided')}", category="ai_operations")
                 
                 return (
                     result['locationId'],
@@ -4365,11 +4461,12 @@ Determine the most logical starting location based on adventure flow, area types
                     result['areaName']
                 ), "model"
             else:
-                print(f"ERROR: AI response missing required fields: {result}")
+                print("ERROR: AI response missing required fields")
+                file_only(f"AI_CALL: AI response missing required fields: {result}", category="ai_operations")
                 
         except json.JSONDecodeError as e:
             print(f"ERROR: Could not parse AI response as JSON: {e}")
-            print(f"AI response was: {ai_response}")
+            file_only(f"AI_CALL: AI response was: {ai_response}", category="ai_operations")
         
         # Fallback to first area/location if AI analysis fails
         print("WARNING: AI analysis failed, falling back to first available location")
@@ -4476,14 +4573,6 @@ def _engine_request_id(invocation_claim, action_context, suffix):
     return "dm:%s:%d:%s" % (turn_id, index, suffix)
 
 
-def _show_rest_receipt(content):
-    """Show the player the hit dice the engine rolled on a short rest (#840)."""
-    from web.shared_state import emit_player_output
-
-    if emit_player_output({"type": "narration", "channel": "system", "content": content}) is not True:
-        print(content)
-
-
 # Shown to the player when a travel turn drops a change it could not work out
 # (#855, the #841 voice).
 _DROPPED_SHEET_NOTICE = (
@@ -4580,29 +4669,15 @@ def _travel_prepare_failure(exc):
 
 
 def _show_transition_notice(message_id, content):
-    """Show the player one travel notice (#855).
+    """Show the player one travel notice (#855) as an operational notice (#1580).
 
-    A frontend sink gets it with its message id. A sink that rejects it gets
-    no console copy: its stdout scraper would show an untracked duplicate
-    (the combat_manager pattern). Only a plain terminal, with no sink, prints.
+    It keeps the receipt's message id, so a replay is the same cached card. A
+    sink that rejects it gets no console copy: its stdout scraper would show an
+    untracked duplicate. Only a plain terminal, with no sink, prints.
     """
-    from web.shared_state import emit_player_output, has_player_output_sink
+    from utils.player_notice import show_player_notice
 
-    has_sink = has_player_output_sink()
-    if emit_player_output({
-        "type": "narration",
-        "channel": "system",
-        "content": content,
-        "message_id": message_id,
-    }) is True:
-        return
-    if has_sink:
-        warning(
-            "TRAVEL: the frontend did not accept the travel notice",
-            category="location_transitions",
-        )
-        return
-    print(content)
+    show_player_notice(content, message_id=message_id)
 
 
 # The turn whose fight already failed to start once (#444). It is only ever
@@ -4751,23 +4826,9 @@ def process_action(
                 "modules", "encounters", f"encounter_{active_encounter}.json"
             )
             active_data = safe_json_load(active_path)
-            stale_active = not isinstance(active_data, dict)
-            if isinstance(active_data, dict):
-                from core.managers.combat_state import (
-                    all_hostiles_resolved,
-                    all_party_resolved,
-                )
-                active_state = active_data.get("combatState") or {}
-                if active_state.get("pipelineMode") == "agentic":
-                    stale_active = (
-                        (active_state.get("completion") or {}).get("status")
-                        == "closed"
-                    )
-                else:
-                    stale_active = (
-                        all_hostiles_resolved(active_data)
-                        or all_party_resolved(active_data)
-                    )
+            from core.managers.combat_state import active_encounter_is_live
+
+            stale_active = not active_encounter_is_live(active_data)
             if stale_active:
                 warning(
                     "Clearing stale active encounter %s before creating a new one"
@@ -4849,13 +4910,26 @@ def process_action(
             result_dir = tempfile.mkdtemp(prefix="combat_builder_")
             try:
                 from utils.encoding_utils import utf8_child_env
-                result = subprocess.run(
+                from utils.child_process import run_fenced
+                from utils.capture.live_provider_call import _check_live_authority, get_live_provider_scope
+                from utils.transient_filesystem import raise_if_save_stopped
+
+                def stop_check():
+                    # #1529: a Load/Reset (or a read-only save stop) ends the
+                    # build's wait; the builder and its child are reaped first.
+                    try:
+                        _check_live_authority(get_live_provider_scope())
+                    except OSError:
+                        pass  # unreadable authority is never a supersession
+                    raise_if_save_stopped()
+
+                returncode, stdout, stderr = run_fenced(
                     [sys.executable, combat_builder_path, "--result-file",
                      os.path.join(result_dir, "result.json")],
-                    input=json.dumps(action),
-                    capture_output=True, encoding="utf-8", errors="replace",
-                    env=utf8_child_env()
+                    input_text=json.dumps(action), stop_check=stop_check,
+                    stop_file=os.path.join(result_dir, "stop"), env=utf8_child_env(),
                 )
+                result = subprocess.CompletedProcess([], returncode, stdout, stderr)
                 encounter_id, build_failure = _built_encounter(
                     os.path.join(result_dir, "result.json"), result.returncode
                 )
@@ -4911,6 +4985,21 @@ def process_action(
                     return _combat_start_failed(
                         "location_unreadable", conversation_history, invocation_claim
                     )
+
+                # #1118 item 3: combat interrupts a short rest still held for the player's hit die.
+                from core.managers import checks_state
+
+                interrupted = checks_state.close_pending_rest()
+                if interrupted:
+                    conversation_history.append({"role": "user", "content": (
+                        f"{interrupted.get('characterName')}'s pending short rest was interrupted by combat; "
+                        "not applied, no hit die spent.")})
+                # #1118 item 4: combat closes every check still waiting for the player's roll (no result line).
+                from core.nql import checks
+
+                for check in checks_state.close_pending_checks():
+                    conversation_history.append({"role": "user", "content": (
+                        f"{check.get('characterName')} {checks.label(check.get('stat'))}: not resolved (combat began)")})
 
                 print(f"[DEBUG ACTION_HANDLER] About to call run_combat_simulation with encounter: {encounter_id}")
                 print("[DEBUG ACTION_HANDLER] This should start INTERACTIVE turn-based combat...")
@@ -5591,6 +5680,9 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                             "error_message": "Character update failed safely; no partial effect was applied."
                         },
                     )
+            except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+                # #1253: a Load, Reset, Quit or read-only save stop ends the turn (#654).
+                raise
             except EngineRefusedChange as refusal:
                 # The rules engine refused the change (coins, hit points, spell
                 # slots or feature uses). Nothing was written; the model hears
@@ -5600,7 +5692,8 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 conversation_history.append({"role": "user", "content": (
                     f"Rules Error: {refusal.reason}. Nothing changed on {character_name}'s sheet. Later actions from "
                     "this response have not executed. Do not repeat earlier completed actions; propose a change the "
-                    "sheet can cover (a payment, a spell slot or a feature use that is still available) or narrate "
+                    "sheet can cover (a payment, a spell slot or a feature use that is still available, or freeing a "
+                    "hand before readying another item) or narrate "
                     "why it cannot happen.")})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
@@ -5637,7 +5730,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
 
     elif action_type == ACTION_ROLL_CHECK:
         # C2a: the DM names the check; the engine scores it. The player's own
-        # dice come from the roll prompt before the next DM turn; companions
+        # dice come from their answer on a later turn (#1118 item 4); companions
         # and engine-rolled checks resolve now. Results reach the next DM Note.
         try:
             from core.managers.checks_runtime import stage_roll_check
@@ -5701,6 +5794,9 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 reason=parameters.get("reason") or "removed",
             )
             return create_return(needs_update=True)
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            # #202: a Load, Reset, Quit or read-only save stop ends the turn (#654).
+            raise
         except Exception as exc:
             error("FAILURE: removeEffect failed safely", exception=exc, category="effects_tracking")
             return create_return(
@@ -6275,8 +6371,18 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     response_data={"error_code": "equipment_prerequisite"} if equipment_prerequisite else None,
                 )
                 
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
+        except LiveProviderCompletedError as e:
+            # A provider refusal (#240) ends the turn with its account text
+            # (#432), as on the updateCharacterInfo path (#375).
+            error("FAILURE: Storage request refused by the provider", exception=e, category="storage_operations")
+            refusal = classify_provider_error(e)
+            return create_return(status="error", response_data={
+                "error_message": "Storage request could not be processed safely.",
+                "provider_refusal": refusal["category"],
+                "provider_refusal_provider": refusal["provider"],
+            })
         except Exception as e:
             print(f"ERROR: Exception while processing storage interaction: {str(e)}")
             import traceback
@@ -6318,7 +6424,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 conversation_history.append({"role": "user", "content": error_message})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as e:
             print(f"ERROR: Exception while processing transferItem: {str(e)}")
@@ -6361,7 +6467,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 conversation_history.append({"role": "user", "content": error_message})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as e:
             print(f"ERROR: Exception while processing expendCharges: {str(e)}")
@@ -6459,7 +6565,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 conversation_history.append({"role": "user", "content": error_message})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as e:
             print(f"ERROR: Exception while processing {action_type}: {str(e)}")
@@ -6477,33 +6583,51 @@ Please use a valid location that exists in the current area ({current_area_id}) 
         debug("STATE_CHANGE: Processing rest action", category="character_updates")
         status_updating_character()
         try:
-            from core.managers.rest_manager import ask_hit_die_faces, execute_rest, player_hit_dice
+            from core.managers import checks_state
+            from core.managers.rest_manager import execute_rest, open_offer, player_hit_dice, rest_outcome_lines
 
-            # 7b-host: the player rolls their own hit dice (or presses Enter
-            # and the engine rolls); every other character's are the engine's.
-            faces = None
+            operation = str(getattr(invocation_claim, "logical_invocation_id", "") or "").strip() or None
+            # #1118 item 3: a later rest replaces a short rest still held for the player's hit die.
+            replaced = checks_state.close_pending_rest()
+            if replaced:
+                conversation_history.append({"role": "user", "content": (
+                    f"{replaced.get('characterName')}'s pending short rest was replaced by a later rest; "
+                    "no hit die spent.")})
+                needs_conversation_history_update = True
+            # #1118 item 3: the player's own hit dice are held for their answer, which the DM asks for in
+            # the story; the player's next line settles it (checks_runtime.settle_pending_rest). Every other
+            # character's are the engine's. An afterRest spend is held only while its offer is open.
+            ask = None
             if str(parameters.get("restType") or "").strip().lower() == "short":
                 ask = player_hit_dice(party_tracker_data or {}, parameters.get("hitDice"))
-                if ask:
-                    faces = {ask[0]: ask_hit_die_faces(*ask, read=input)}
+                if ask and parameters.get("afterRest") is not None and open_offer(
+                        party_tracker_data or {}, parameters.get("afterRest"), operation) is None:
+                    ask = None
+            if ask:
+                name, die, count = ask
+                checks_state.hold_rest({"characterName": name, "die": die, "count": count, "restType": "short",
+                                        "hitDice": parameters.get("hitDice"), "afterRest": parameters.get("afterRest"),
+                                        "operation": operation})
+                info(f"REST: held for {name}'s {count}d{die} hit dice", category="character_updates")
+                return create_return(needs_update=needs_conversation_history_update)
             result = execute_rest(parameters.get("restType"), party_tracker_data, conversation_history,
-                                  hit_dice=parameters.get("hitDice"), faces=faces,
-                                  after_rest=parameters.get("afterRest"),
-                                  grace_seconds=_later_update_time_seconds(action_context),
-                                  operation=str(getattr(invocation_claim, "logical_invocation_id", "") or "").strip()
-                                  or None)
+                                  hit_dice=parameters.get("hitDice"), after_rest=parameters.get("afterRest"),
+                                  grace_seconds=_later_update_time_seconds(action_context), operation=operation)
+            outcome = rest_outcome_lines(result)
             if result.get("success"):
                 info(f"SUCCESS: {result.get('message')}", category="character_updates")
-                conversation_history.append({"role": "user", "content": f"Rest: {result.get('message')}"})
-                if result.get("hit_dice_receipts"):
+                conversation_history.append({"role": "user", "content": outcome["line"]})
+                if outcome["receipt"]:
                     # #840: the engine rolled the hit dice; the player sees the roll.
-                    _show_rest_receipt(" ".join(result["hit_dice_receipts"]))
+                    from core.managers.checks_runtime import _show_check_receipt
+
+                    _show_check_receipt(outcome["receipt"])
                 if result.get("effects_note"):
                     # process_effect_lifecycle returns a complete message
                     # ({"role": "system", "content": ...}); append it as is.
                     conversation_history.append(result["effects_note"])
                 needs_conversation_history_update = True
-                if result.get("hit_dice_refused"):
+                if outcome["refused"]:
                     # #1239 (D-1239-2 B, D-1239-4): the rest went ahead without some hit dice (refused
                     # before rolling as certain to heal nothing, or refused by the engine, D-KWA-7e); the
                     # DM tells the player now, in its own words.
@@ -6517,13 +6641,13 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             else:
                 print(f"ERROR: rest failed: {result.get('error')}")
                 conversation_history.append({"role": "user", "content": (
-                    f"Rest Error: {result.get('error', 'the rest was refused')}. No sheet changed. Later actions from "
+                    f"{outcome['line']}. No sheet changed. Later actions from "
                     "this response have not executed. Do not repeat earlier completed actions; state the rest again "
                     "with restType short or long (hitDice only on a short rest), or narrate why the party cannot "
                     "rest.")})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
-        except (LiveProviderSuperseded, InvocationSupersededError):
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
             raise
         except Exception as e:
             print(f"ERROR: Exception while processing rest: {str(e)}")

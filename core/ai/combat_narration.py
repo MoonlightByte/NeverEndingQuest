@@ -191,6 +191,19 @@ def _bonus_fact(event, creatures, presentation=None):
     return fact
 
 
+def _hand_over_fact(event, creatures, presentation=None):
+    """#145: the resolved hand-over, by display names only."""
+    record = event.get("handOver")
+    if not isinstance(record, dict):
+        return None
+    return {
+        "giver": _display_name(creatures, record.get("fromId"), record.get("fromName"), presentation),
+        "receiver": _display_name(creatures, record.get("toId"), record.get("toName"), presentation),
+        "item": record.get("itemName"),
+        "quantity": record.get("quantity"),
+    }
+
+
 def _fact_event(event, creatures, presentation=None):
     outcome = event.get("outcome") or {}
     intent = event.get("intent") or {}
@@ -258,6 +271,8 @@ def _fact_event(event, creatures, presentation=None):
         "drew": _drawn_item(event),
         # R2: the Bonus Action taken first (feature, option, its HP changes)
         "bonusAction": _bonus_fact(event, creatures, presentation),
+        # #145: an item one party member handed another, before the Action
+        "handOver": _hand_over_fact(event, creatures, presentation),
     }
     return {key: value for key, value in fact.items() if value is not None}
 
@@ -470,8 +485,13 @@ def narration_coverage_violations(covered_event_ids, dossier):
 def update_narration_activity(activity, events):
     """Accumulate a per-combatant summary from committed typed facts."""
     result = deepcopy(activity) if isinstance(activity, dict) else {}
+    # #244: a row is normalized once per call; later lookups (a self-target
+    # event's actor and target) share it, so no handed-out row is detached.
+    normalized_ids = set()
 
     def row_for(combatant_id):
+        if combatant_id in normalized_ids:
+            return result[combatant_id]
         row = result.get(combatant_id)
         if not isinstance(row, dict):
             row = {}
@@ -484,6 +504,7 @@ def update_narration_activity(activity, events):
             "recentFacts": list(row.get("recentFacts") or []),
         }
         result[combatant_id] = normalized
+        normalized_ids.add(combatant_id)
         return normalized
 
     for event in events or []:
