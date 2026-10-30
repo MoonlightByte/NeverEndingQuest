@@ -27,6 +27,11 @@ beat is now.
   accept, refuse, or answer in your own voice; never hand an offer made to you
   back to the player or congratulate the player for it. If it names another
   companion and concerns them, react to them by name.
+  If the player's words name no one and one speaker clearly holds the
+  exchange with the player character in the recent scene, the words normally
+  continue that exchange: if that was you, answer them; if it was someone
+  else, the answer is theirs to give, so set say to null or keep to a brief
+  aside.
 - COMBAT: beat.summary, also scene.stakes, is the game's account of this
   combat window: the encounter's situation, then the player character's
   declared action for the window when there is one. It is not speech to the
