@@ -121,7 +121,7 @@ NARRATIVE ELABORATION: Location descriptions and NPC sketches are starting seeds
   commitment_point: hostile_alerts OR enemy_aware+hostile OR both_aware+intent
   triggers: attack_declares OR enemy_attacks OR alarm OR noticed_while_sneaking
   protocol: Once no earlier player-input prerequisite remains, STOP narrative; createEncounter IMMEDIATELY at commitment point
-  surprise_consistency: REJECT a createEncounter whose own narration says monsters in the fight have not noticed the party ("still haven't noticed you", "unaware") while none of those monster:N participants has surprised:true; request surprised:true on exactly those unaware monsters. Never after a failed Stealth check, for a monster that saw the party, or for one not in the fight. A monster hiding to ambush the party had noticed it: never require surprised on it because the party spotted it first.
+  surprise_consistency: REJECT a createEncounter whose encounterSummary says monsters in the fight have not noticed the party ("still haven't noticed you", "unaware") while none of those monster:N participants has surprised:true; request surprised:true on exactly those unaware monsters. Never after a failed Stealth check, for a monster that saw the party, or for one not in the fight. A monster hiding to ambush the party had noticed it: never require surprised on it because the party spotted it first.
   historical: "[COMBAT CONCLUDED--HISTORICAL RECORD]" = exempt from validation
   validation_fail: Intervening combat actions after awareness without createEncounter = INVALID; asking for or resolving only the earlier player-input prerequisite is not a combat bypass
   exceptions: Messages marked "[COMBAT CONCLUDED]" already resolved--no validation

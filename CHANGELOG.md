@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When an attack or an ambush starts a fight, the DM no longer shows a lead-in line before it, so rule wording such as "begins formal combat" can no longer reach you; the fight's own opening describes how it starts (#1345).
 - A quest's log now keeps each choice with whoever made it: when a companion or someone you meet turns something down, the quest no longer records it as your own decision, and the rules check rejects a quest note that does (#333).
 - Swapping what a character holds, such as putting away a shield to ready a mace, is no longer refused because of the order the items are listed in, and when both hands are full the refusal names what is in hand so the DM can suggest freeing one (#1520).
 - Load, Reset, Quit and a read-only save stop now end a character update's after-save checks and the combat step at once, instead of being logged and carried past (#1656).
