@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Looking in a storage container on an ordinary turn now tells the Dungeon Master what it holds, instead of "Storage: None" (#1612).
 - Load, Reset, Quit and a read-only save stop now end a character update's after-save checks and the combat step at once, instead of being logged and carried past (#1656).
 - A fresh install no longer opens with "This save has no recoverable on-screen transcript"; that notice now appears only when a save exists (#1659).
 - The README now opens with a one-screen quickstart for Windows and Linux, and `python run_web.py` says in one plain line when no AI key is set yet (the game still opens and asks for it in Settings). A `config.py` that cannot be read now gives one plain message and a clean exit instead of a traceback (#1658).

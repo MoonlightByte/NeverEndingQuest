@@ -67,6 +67,12 @@ set_script_name(__name__)
 
 _STAGED_STORAGE_LOCK = threading.RLock()
 
+
+def _storage_contents_message(containers: List[Dict[str, Any]]) -> str:
+    """The DM's storage listing, the same on the direct and staged paths (#1612)."""
+    return "Storage contains: %s" % json.dumps(containers, ensure_ascii=False)
+
+
 class StorageManager:
     """Manages player storage with atomic file protection"""
     
@@ -682,8 +688,7 @@ class StorageManager:
                 "status": "staged",
                 "storage": None,
                 "character": None,
-                "message": "Storage contains: %s"
-                % json.dumps(visible, ensure_ascii=False),
+                "message": _storage_contents_message(visible),
                 "validation": {"status": "not_applicable"},
             }
 
@@ -903,7 +908,8 @@ class StorageManager:
             return {
                 "success": True,
                 "storage": storage_info,
-                "count": len(storage_info)
+                "count": len(storage_info),
+                "message": _storage_contents_message(location_storage),
             }
             
         except Exception as e:
