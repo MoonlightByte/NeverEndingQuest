@@ -6310,6 +6310,9 @@ Rules:
                    update_success = update_character_info(character_name, final_change_string)
                    if not update_success:
                        error(f"FAILURE: Final consolidated update failed for {character_name}.", category="character_updates")
+               except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+                   # #1656: a Load, Reset, Quit or read-only save stop ends the combat step.
+                   raise
                except Exception as e:
                    error(f"FAILURE: Critical error during consolidated update for {character_name}", exception=e, category="character_updates")
 

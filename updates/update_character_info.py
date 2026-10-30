@@ -3366,7 +3366,8 @@ Character Role: {character_role}
                         print(f"DEBUG: [XP Tracking] WARNING: XP changed during validation! {pre_validation_xp} -> {post_validation_xp}")
                         
                 except Exception as e:
-                    if commit_guard is not None and isinstance(e, LiveProviderSuperseded):
+                    if isinstance(e, LiveProviderSuperseded) or (
+                            commit_guard is None and isinstance(e, ReadOnlySaveStop)):
                         raise
                     warning(f"VALIDATION: Character validation error", category="character_validation")
                     # Don't fail the update if validation has issues
@@ -3384,7 +3385,8 @@ Character Role: {character_role}
                         warning("VALIDATION: Character effects validation failed, but update completed", category="character_validation")
                         
                 except Exception as e:
-                    if commit_guard is not None and isinstance(e, LiveProviderSuperseded):
+                    if isinstance(e, LiveProviderSuperseded) or (
+                            commit_guard is None and isinstance(e, ReadOnlySaveStop)):
                         raise
                     warning(f"VALIDATION: Character effects validation error", category="character_validation")
                     # Don't fail the update if validation has issues
