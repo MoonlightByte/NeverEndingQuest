@@ -117,7 +117,6 @@ function refreshAuthoritativeState(): void {
 
 // ---------- transport-level ----------
 socket.on('connect', () => {
-  useLog.getState().beginHistorySync()
   useConnectionNotice.getState().clear()
   void reloadIfRestartPending()
   const connectionEpoch = hydration.beginConnection()
@@ -146,6 +145,9 @@ on('connected', (payload) => {
     useLog.setState({ messages: [], previousSessionCount: 0, images: [] })
     displayedServerInstance = payload.server_instance_id
   }
+  // The server sends `connected` and `cached_messages` before Socket.IO
+  // delivers `connect`, so the history window must open here (#1373).
+  useLog.getState().beginHistorySync()
   hydration.advertise(payload.capabilities, payload.server_instance_id)
   useWorld.getState().bindServerInstance(hydration.currentEpoch(), payload.server_instance_id)
   usePlayer.getState().bindServerInstance(hydration.currentEpoch(), payload.server_instance_id)
