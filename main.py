@@ -1659,6 +1659,8 @@ def _resume_guidance(unresolved=False):
         "As the narrator, welcome the player back to the table in a sentence. In the fiction no time has passed: "
         "characters do not remark on the player having been away. Give a brief present-tense reminder of where "
         "they are, who is with them and what was just happening, without retelling the whole adventure. "
+        "People present may greet the player or show what they are doing, but they do not deliver information, "
+        "briefings or answers the player has not already heard in the story; keep those for when the player asks. "
     )
     try:
         from core.managers import checks_state

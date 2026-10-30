@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Returning to an adventure no longer has the people around you deliver their news in the welcome-back scene, so your first question doesn't get the same speech twice (#1629).
 - When you set off along a road someone can't name, the Dungeon Master now says you don't know the way yet and asks where you head, instead of dropping the move (#1628).
 - Asking for a roll to work out something you named yourself no longer gets the Dungeon Master's request refused and redrafted (#1638).
 - The Map tab now shows the current area's map: places you have visited, the paths between them, and the roads leading on (#1604).
