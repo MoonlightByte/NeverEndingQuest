@@ -596,15 +596,20 @@ def load_message_cache(on_recovery=None):
                     # its display later fails; never replay the abandoned deque.
                     message_cache.clear()
                     cached_messages = _saved_narration_messages()
-                    notice = {
-                        'type': 'system', 'message_id': f'msg-{uuid4().hex}',
-                        'content': (
-                            'Recovered narration from this save. The original on-screen transcript was not included.'
-                            if cached_messages else
-                            'This save has no recoverable on-screen transcript. Resume your saved game to continue.'
-                        ),
-                    }
-                    cached_messages.append(notice)
+                    # #1659: a fresh install has no save, so there is nothing to recover.
+                    if cached_messages or any(os.path.exists(path) for path in (
+                            'party_tracker.json',
+                            'modules/conversation_history/conversation_history.json',
+                            'modules/conversation_history/startup_conversation.json')):
+                        notice = {
+                            'type': 'system', 'message_id': f'msg-{uuid4().hex}',
+                            'content': (
+                                'Recovered narration from this save. The original on-screen transcript was not included.'
+                                if cached_messages else
+                                'This save has no recoverable on-screen transcript. Resume your saved game to continue.'
+                            ),
+                        }
+                        cached_messages.append(notice)
                 migrated = False
                 for message in cached_messages:
                     if isinstance(message, dict) and not message.get("message_id"):
@@ -6602,6 +6607,14 @@ def simulate_build_process(params):
                 raise ModuleCreationCancelledError("Module generation cancelled")
             socketio.emit('module_progress', dict(payload))
             return True
+
+        def engine_stop():
+            # #1253 MI-5: a cancelled build also ends a wait on a slow rules engine.
+            if cancel_build_flag.is_set():
+                raise ModuleCreationCancelledError("Module generation cancelled")
+
+        from core.nql import apply as nql_apply
+        nql_apply.engine_stop_check.set(engine_stop)
 
         creation_params = {
             'narrative': narrative,

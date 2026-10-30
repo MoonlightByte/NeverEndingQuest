@@ -2223,69 +2223,6 @@ class CampaignManager:
             error(f"FAILURE: Error checking module completion for {module_name}", exception=e, category="module_loading")
             return False
     
-    def sync_party_tracker_with_plot(self, module_name: str) -> bool:
-        """Sync party_tracker.json quest statuses with module_plot.json
-        
-        DEPRECATED: This method is no longer needed as module_plot.json is now the single 
-        source of truth for quest data. The method is preserved for backward compatibility
-        but returns immediately without performing any sync operations.
-        """
-        # Early return - activeQuests syncing is deprecated
-        debug(f"DEPRECATED: sync_party_tracker_with_plot called for {module_name} - no action taken", category="plot_updates")
-        return False
-        
-        try:
-            # Load module plot data
-            path_manager = ModulePathManager(module_name)
-            plot_file = os.path.join(path_manager.module_dir, "module_plot.json")
-            party_file = "party_tracker.json"
-            
-            if not os.path.exists(plot_file):
-                debug(f"FILE_OP: No module_plot.json found for {module_name}", category="file_operations")
-                return False
-            
-            plot_data = safe_json_load(plot_file)
-            party_data = safe_json_load(party_file)
-            
-            # Create a mapping of quest IDs to their plot statuses
-            quest_statuses = {}
-            
-            # Get statuses from main plot points
-            for point in plot_data.get('plotPoints', []):
-                quest_id = point.get('id')
-                status = point.get('status')
-                if quest_id and status:
-                    quest_statuses[quest_id] = status
-                
-                # Also get side quest statuses
-                for side_quest in point.get('sideQuests', []):
-                    sq_id = side_quest.get('id')
-                    sq_status = side_quest.get('status')
-                    if sq_id and sq_status:
-                        quest_statuses[sq_id] = sq_status
-            
-            # Update party tracker quests
-            updated = False
-            for quest in party_data.get('activeQuests', []):
-                quest_id = quest.get('id')
-                if quest_id in quest_statuses:
-                    new_status = quest_statuses[quest_id]
-                    if quest.get('status') != new_status:
-                        debug(f"STATE_CHANGE: Syncing quest {quest_id}: {quest.get('status')} -> {new_status}", category="plot_updates")
-                        quest['status'] = new_status
-                        updated = True
-            
-            # Save updated party tracker if changes were made
-            if updated:
-                safe_json_dump(party_data, party_file)
-                info(f"SUCCESS: Party tracker synced with module plot for {module_name}", category="plot_updates")
-            
-            return updated
-            
-        except Exception as e:
-            error(f"FAILURE: Error syncing party tracker with plot for {module_name}", exception=e, category="plot_updates")
-            return False
-    
     @staticmethod
     def _apply_party_tracker_updates(
         party_tracker_data: Dict[str, Any],

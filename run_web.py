@@ -285,6 +285,41 @@ def create_default_party_tracker():
             return False
     return True
 
+def load_config():
+    """Import config.py; a file that cannot be read is one plain message."""
+    try:
+        import config
+        return config
+    except Exception as exc:
+        line = getattr(exc, "lineno", None)
+        where = f" at line {line}" if line else ""
+        print(f"[SYSTEM] config.py could not be read{where} ({type(exc).__name__}). "
+              "Fix it, or rename it and run again to start from a fresh copy of config_template.py.")
+        return None
+
+
+def provider_credential_found(config):
+    """True when some provider can play: a key in config.py, one saved from Settings, or a Local server.
+
+    The web game reads keys only from config.py and the Settings store, never
+    from environment variables, so those are not counted.
+    """
+    def real(value, placeholder):
+        return isinstance(value, str) and value.strip() not in ("", placeholder)
+
+    if real(getattr(config, "OPENAI_API_KEY", ""), "your_openai_api_key_here"):
+        return True
+    if real(getattr(config, "GEMINI_API_KEY", ""), "your_gemini_api_key_here"):
+        return True
+    try:
+        import model_config
+        if model_config._load_user_settings().get("model_provider") == "lmstudio":
+            return True
+        return model_config.has_openai_key() or model_config.has_gemini_key()
+    except Exception:
+        return False
+
+
 def main(ui="react", toolkit=False):
     # Check if config.py exists first
     if not os.path.exists('config.py'):
@@ -302,13 +337,19 @@ def main(ui="react", toolkit=False):
             except OSError:
                 pass
             print("\n[OK] Created config.py from template")
-            print("First start: open the game in your browser and add your OpenAI API key in Settings (the gear icon).")
         except Exception as e:
             print(f"[ERROR] Failed to create config.py: {e}")
             print("Please manually copy config_template.py to config.py")
             input("\nPress Enter to exit...")
             return
     
+    config = load_config()
+    if config is None:
+        return 1
+    if not toolkit and not provider_credential_found(config):
+        print("[SYSTEM] No AI key yet. Press New Game in the browser and the game will ask for your "
+              "OpenAI key in Settings (the gear icon).")
+
     # DISABLED FOR DEBUGGING - Create default party_tracker.json if it doesn't exist
     # if not create_default_party_tracker():
     #     print("[WARNING] Could not create party_tracker.json - some features may not work")
@@ -338,11 +379,7 @@ def main(ui="react", toolkit=False):
     start_path = "/toolkit" if toolkit else ("/play/" if selected_ui == "react" else "/")
     
     print("Launching NeverEndingQuest Web Interface...")
-    try:
-        import config
-        port = getattr(config, 'WEB_PORT', 8357)
-    except ImportError:
-        port = 8357  # Default port if config doesn't exist yet
+    port = getattr(config, 'WEB_PORT', 8357)
     print(f"Starting the {selected_ui.title()} player")
     print(f"The browser should open automatically. If not, navigate to http://localhost:{port}{start_path}")
     

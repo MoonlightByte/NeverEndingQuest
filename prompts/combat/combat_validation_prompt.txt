@@ -109,7 +109,7 @@ Required fields in combat responses:
 
 **VALID - Channel Divinity**:
 Action: "I use Preserve Life"
-Update: "Uses Channel Divinity ability Preserve Life (0 uses until rest)"
+Update: "Uses Channel Divinity ability Preserve Life"
 ✓ Correctly identified as ability, no spell slots consumed
 
 **INVALID - Channel Divinity**:
