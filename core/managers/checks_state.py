@@ -133,6 +133,43 @@ def delivered_for_turn(turn_marker: Any) -> List[str]:
     return [line for line in delivered.get("lines") or [] if isinstance(line, str)]
 
 
+# #1122: an updatePlot the engine refused during a travel, told to the DM once.
+# Queued under its request id; handed out like the check results above.
+
+@_locked
+def add_quest_note(request_id: str, text: str) -> None:
+    state = load_checks_state()
+    notes = state.get("questNotes") if isinstance(state.get("questNotes"), list) else []
+    delivered = state.get("questDelivered") if isinstance(state.get("questDelivered"), dict) else {}
+    known = {n.get("requestId") for n in notes + list(delivered.get("notes") or []) if isinstance(n, dict)}
+    if request_id in known:
+        return
+    state["questNotes"] = notes + [{"requestId": request_id, "text": text}]
+    write_checks_state(state)
+
+
+@_locked
+def consume_quest_notes(turn_marker: Any = None) -> List[str]:
+    """The quest notes for the DM turn starting now, with consume_results' rule:
+    handed again while the next note is built for the same marker, cleared once
+    a later turn's note is built."""
+    state = load_checks_state()
+    notes = [n for n in state.get("questNotes") or [] if isinstance(n, dict)]
+    delivered = state.get("questDelivered")
+    again: List[Dict[str, Any]] = []
+    if isinstance(delivered, dict) and delivered.get("turn") == turn_marker and turn_marker is not None:
+        again = [n for n in delivered.get("notes") or [] if isinstance(n, dict)]
+    handed = again + notes
+    if handed or delivered is not None or "questNotes" in state:
+        state.pop("questNotes", None)
+        if handed:
+            state["questDelivered"] = {"turn": turn_marker, "notes": handed}
+        else:
+            state.pop("questDelivered", None)
+        write_checks_state(state)
+    return [str(n.get("text") or "") for n in handed]
+
+
 # #1472: the Hit Die offer after a short rest. One open offer per character
 # under its own key; it lives until it is spent, a newer rest replaces or
 # ends it, or the clock moves past the end of its rest turn. Delivery (the
