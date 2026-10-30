@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-30
+
+- The game now reports its real version and no longer tells a fresh install to update (#1676).
+
 ## [1.0.0] - 2026-10-30
 
 - When you head for a place further off, the first step now has to lead toward it; the Dungeon Master can no longer walk you back the way you came (#1635).
