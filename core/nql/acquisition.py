@@ -155,10 +155,15 @@ def item_line(cid: str, iid: str, entry: Dict[str, Any], quantity: int) -> str:
             f"quantity {quantity}; }};")
 
 
+def add_line(cid: str, iid: str, quantity: int) -> str:
+    """Top up an item the character already holds (#1627)."""
+    return f"add {_q(iid)} to {_q(cid)} by {quantity};"
+
+
 def ammunition_lines(cid: str, iid: str, name: str, quantity: int, existing: bool) -> str:
     """Catalog ammunition joins the sheet's ammunition stock (AM), not the equipment list."""
     if existing:
-        return f"add {_q(iid)} to {_q(cid)} by {quantity};"
+        return add_line(cid, iid, quantity)
     return f"create item {_q(iid)} named {_q(name)} {{ owner {_q(cid)}; custody character {_q(cid)}; quantity {quantity}; }};"
 
 
