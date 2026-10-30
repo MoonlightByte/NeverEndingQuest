@@ -596,15 +596,20 @@ def load_message_cache(on_recovery=None):
                     # its display later fails; never replay the abandoned deque.
                     message_cache.clear()
                     cached_messages = _saved_narration_messages()
-                    notice = {
-                        'type': 'system', 'message_id': f'msg-{uuid4().hex}',
-                        'content': (
-                            'Recovered narration from this save. The original on-screen transcript was not included.'
-                            if cached_messages else
-                            'This save has no recoverable on-screen transcript. Resume your saved game to continue.'
-                        ),
-                    }
-                    cached_messages.append(notice)
+                    # #1659: a fresh install has no save, so there is nothing to recover.
+                    if cached_messages or any(os.path.exists(path) for path in (
+                            'party_tracker.json',
+                            'modules/conversation_history/conversation_history.json',
+                            'modules/conversation_history/startup_conversation.json')):
+                        notice = {
+                            'type': 'system', 'message_id': f'msg-{uuid4().hex}',
+                            'content': (
+                                'Recovered narration from this save. The original on-screen transcript was not included.'
+                                if cached_messages else
+                                'This save has no recoverable on-screen transcript. Resume your saved game to continue.'
+                            ),
+                        }
+                        cached_messages.append(notice)
                 migrated = False
                 for message in cached_messages:
                     if isinstance(message, dict) and not message.get("message_id"):
