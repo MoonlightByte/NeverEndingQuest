@@ -136,6 +136,14 @@ def build_module_thread(module_name, narrative, num_areas, locations_per_area, s
             
             # Emit progress update to specific client
             socketio.emit('module_progress', data, room=socket_id)
+
+        def engine_stop():
+            # #1253 MI-5: a cancelled build also ends a wait on a slow rules engine.
+            if current_build['cancelled']:
+                raise Exception("Build cancelled by user")
+
+        from core.nql import apply as nql_apply
+        nql_apply.engine_stop_check.set(engine_stop)
         
         # Build the module
         progress_callback({'stage': 0, 'total_stages': 9, 'stage_name': 'Initializing', 'percentage': 0})

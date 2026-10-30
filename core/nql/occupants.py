@@ -45,7 +45,6 @@ from core.nql import apply, game_clock
 
 DOCUMENT = "live_state.json"
 CONVERSION_DIR = os.path.join("modules", "logs", "roster_conversion")
-TIMEOUT = 60
 
 # A creature's typed end in the fight -> the occupant outcome.
 RESOLUTION_OUTCOME = {"fled": "fled", "yielded": "surrendered"}
@@ -128,7 +127,7 @@ def _create(root: str, world: str, places: List[str]) -> Optional[Dict[str, Any]
         except Exception as exc:  # fail forward: a bad file must not stop play
             warning("OCCUPANTS: conversion failed (%s); the document starts from the seeds"
                     % exc, category="location_transitions")
-    response = apply.call({"world": world, "new_live_state": True}, timeout=TIMEOUT)
+    response = apply.call({"world": world, "new_live_state": True})
     if not response.get("ok"):
         warning("OCCUPANTS: the engine refused the world source: %s" % response.get("error"),
                 category="location_transitions")
@@ -158,7 +157,7 @@ def _call(world: str, live: Dict[str, Any], actions: Optional[str], request_id: 
         body["map"] = list(map_view)
     if journal_view is not None:
         body["journal"] = dict(journal_view)
-    return apply.call(body, timeout=TIMEOUT)
+    return apply.call(body)
 
 
 def _send_quest_requests(root: str, world: str, live: Dict[str, Any],
