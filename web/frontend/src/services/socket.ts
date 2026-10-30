@@ -28,6 +28,9 @@ import { cancelPendingRestart, reloadIfRestartPending } from './restart'
 export const socket: Socket = io()
 
 let requestSequence = 0
+// #1396: image answers go to every connection, so their request ids must not
+// repeat across tabs. getRandomValues also works outside a secure context.
+const tabToken = crypto.getRandomValues(new Uint32Array(1))[0].toString(16).padStart(8, '0')
 const baseDocumentTitle = document.title
 let readyTitleMarked = false
 
@@ -68,7 +71,7 @@ function requestKey(event: string): string | null {
 function withRequestIdentity(event: string, payload: unknown): { payload: unknown; requestId?: string } {
   const key = requestKey(event)
   if (!key) return { payload }
-  const requestId = `e${hydration.currentEpoch()}-${++requestSequence}`
+  const requestId = `e${hydration.currentEpoch()}-${++requestSequence}-${tabToken}`
   return { payload: { ...(payload && typeof payload === 'object' ? payload : {}), request_id: requestId }, requestId }
 }
 
@@ -114,7 +117,6 @@ function refreshAuthoritativeState(): void {
 
 // ---------- transport-level ----------
 socket.on('connect', () => {
-  useLog.getState().beginHistorySync()
   useConnectionNotice.getState().clear()
   void reloadIfRestartPending()
   const connectionEpoch = hydration.beginConnection()
@@ -143,6 +145,9 @@ on('connected', (payload) => {
     useLog.setState({ messages: [], previousSessionCount: 0, images: [] })
     displayedServerInstance = payload.server_instance_id
   }
+  // The server sends `connected` and `cached_messages` before Socket.IO
+  // delivers `connect`, so the history window must open here (#1373).
+  useLog.getState().beginHistorySync()
   hydration.advertise(payload.capabilities, payload.server_instance_id)
   useWorld.getState().bindServerInstance(hydration.currentEpoch(), payload.server_instance_id)
   usePlayer.getState().bindServerInstance(hydration.currentEpoch(), payload.server_instance_id)

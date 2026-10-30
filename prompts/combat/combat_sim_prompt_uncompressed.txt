@@ -91,7 +91,7 @@ When a player declares ANY action, you MUST:
 **Racial/Feat Spellcasting**:
 - Classify as SPELL cast via ABILITY
 - Resource from the racial trait/feat, not spell slots
-- Example: "Uses Fey Teleportation to cast Misty Step (0 uses until long rest)"
+- Example: "Uses Fey Teleportation to cast Misty Step"
 
 ## Common Mistakes to AVOID:
 - X Assuming all healing is a spell

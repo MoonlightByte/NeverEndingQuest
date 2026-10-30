@@ -596,15 +596,20 @@ def load_message_cache(on_recovery=None):
                     # its display later fails; never replay the abandoned deque.
                     message_cache.clear()
                     cached_messages = _saved_narration_messages()
-                    notice = {
-                        'type': 'system', 'message_id': f'msg-{uuid4().hex}',
-                        'content': (
-                            'Recovered narration from this save. The original on-screen transcript was not included.'
-                            if cached_messages else
-                            'This save has no recoverable on-screen transcript. Resume your saved game to continue.'
-                        ),
-                    }
-                    cached_messages.append(notice)
+                    # #1659: a fresh install has no save, so there is nothing to recover.
+                    if cached_messages or any(os.path.exists(path) for path in (
+                            'party_tracker.json',
+                            'modules/conversation_history/conversation_history.json',
+                            'modules/conversation_history/startup_conversation.json')):
+                        notice = {
+                            'type': 'system', 'message_id': f'msg-{uuid4().hex}',
+                            'content': (
+                                'Recovered narration from this save. The original on-screen transcript was not included.'
+                                if cached_messages else
+                                'This save has no recoverable on-screen transcript. Resume your saved game to continue.'
+                            ),
+                        }
+                        cached_messages.append(notice)
                 migrated = False
                 for message in cached_messages:
                     if isinstance(message, dict) and not message.get("message_id"):
@@ -4931,7 +4936,7 @@ def handle_generate_image(data):
                 from utils.prompt_sanitizer import sanitize_prompt
                 sanitized_prompt = sanitize_prompt(prompt)
                 if sanitized_prompt is None:
-                    emit('image_generation_error', {
+                    socketio.emit('image_generation_error', {
                         'message': ("The image could not be made: the image service refused this "
                                     "scene and no safer description could be written."),
                         'request_id': data.get('request_id'),
@@ -5016,8 +5021,8 @@ def handle_generate_image(data):
             # Don't fail the whole operation if saving fails
             print(f"Warning: Failed to save image locally: {save_error}")
         
-        # Emit the image URL back to the client
-        emit('image_generated', {
+        # Sent to every connection: a reconnect during the image call gets a new sid (#1396)
+        socketio.emit('image_generated', {
             'image_url': image_url,
             'prompt': prompt,
             'request_id': data.get('request_id'),
@@ -5027,7 +5032,7 @@ def handle_generate_image(data):
     except Exception as e:
         error_msg = f"Image generation failed: {str(e)}"
         print(f"ERROR: {error_msg}")
-        emit('image_generation_error', {
+        socketio.emit('image_generation_error', {
             'message': error_msg,
             'request_id': data.get('request_id') if isinstance(data, dict) else None,
             'source_message_id': data.get('source_message_id') if isinstance(data, dict) else None,
@@ -6602,6 +6607,14 @@ def simulate_build_process(params):
                 raise ModuleCreationCancelledError("Module generation cancelled")
             socketio.emit('module_progress', dict(payload))
             return True
+
+        def engine_stop():
+            # #1253 MI-5: a cancelled build also ends a wait on a slow rules engine.
+            if cancel_build_flag.is_set():
+                raise ModuleCreationCancelledError("Module generation cancelled")
+
+        from core.nql import apply as nql_apply
+        nql_apply.engine_stop_check.set(engine_stop)
 
         creation_params = {
             'narrative': narrative,

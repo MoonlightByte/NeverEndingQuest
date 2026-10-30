@@ -2234,7 +2234,8 @@ def _startup_attack_rows(character, name, typed, untyped, provenance, faults):
     # when the engine is unavailable.
     not_usable_now = []
     rows, with_items, reason = startup_rows.attack_rows(character, armor_class.PROJECTION_LOCATION,
-                                                        not_usable_now=not_usable_now, faults=faults)
+                                                        not_usable_now=not_usable_now, faults=faults,
+                                                        on_timeout="raise")
     report = {"source": "core.nql.startup_rows", "typed_equipment": typed, "untyped_equipment": untyped,
               "item_rows": with_items}
     if rows is None:

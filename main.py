@@ -130,6 +130,7 @@ from utils import quest_record
 from utils.player_stats import get_player_stat
 from updates.update_world_time import update_world_time
 from core.ai.conversation_utils import (
+    _effect_note,
     _effects_runtime_view,
     _format_temporary_effects,
     update_conversation_history,
@@ -1870,12 +1871,7 @@ def generate_arrival_narration(
     # Get details for the new location from the (now updated) party tracker
     new_location_name = party_tracker_data["worldConditions"]["currentLocation"]
     new_area_name = party_tracker_data["worldConditions"]["currentArea"]
-    player_names = [str(name) for name in party_tracker_data.get("partyMembers", [])]
-    npc_names = [
-        str(item.get("name"))
-        for item in party_tracker_data.get("partyNPCs", [])
-        if isinstance(item, dict) and item.get("name")
-    ]
+    player_names, npc_names = _transition_roster(party_tracker_data)
 
     # Construct the special prompt
     arrival_prompt = f"""
@@ -1984,12 +1980,17 @@ def generate_arrival_narration(
 
 
 # <--- NEW FUNCTION to blend the departure and arrival narrations --->
-def generate_seamless_transition_narration(departure_narration, arrival_narration, dm_text=""):
+def generate_seamless_transition_narration(departure_narration, arrival_narration, dm_text="", party=None,
+                                           down_rules=None):
     """
     Run layer 3/3 (T064), preserving both accepted layers as one seamless turn.
     dm_text is the DM's accepted narration of the turn (#670): the closing
     invitation keeps what it says the player asked for that waits for the next
-    turn. Empty dm_text leaves the prompt unchanged.
+    turn. Empty dm_text leaves the prompt unchanged. party (#312) gives the
+    stitch the committed roster T063 has; without it the prompt is unchanged.
+    down_rules (#1637) is the down-scene rules string while a party member is
+    down: the closing invitation becomes the down closing and the rules ride
+    after the roster. None leaves the prompt unchanged.
     """
     from utils.capture.live_provider_call import LiveProviderSuperseded
     debug("STATE_CHANGE: Blending departure and arrival narrations into a seamless whole...", category="narrative_generation")
@@ -2007,6 +2008,30 @@ def generate_seamless_transition_narration(departure_narration, arrival_narratio
         "waits for their next turn, say so plainly in the closing invitation, in "
         "its own terms; take nothing else from it):\n---\n" + dm_text + "\n---\n"
     ) if dm_text else ""
+    roster_block = ""
+    if isinstance(party, dict):
+        player_names, npc_names = _transition_roster(party)
+        roster_block = (
+            "\nEXACT COMMITTED ROSTER:\n"
+            f"Player characters: {json.dumps(player_names, ensure_ascii=False)}\n"
+            f"Party NPCs: {json.dumps(npc_names, ensure_ascii=False)}\n"
+            "The travellers are exactly this roster; a player character is 'you', "
+            "never a separate companion. Others appear only as the arrival shows "
+            "them present.\n"
+        )
+
+    closing = (
+        "- End after the committed arrival with one open in-fiction invitation for the player to choose "
+        "their next immediate action. Do not enumerate options and do not perform that next action."
+    )
+    down_block = ""
+    if down_rules:
+        # #1637: a downed character cannot act; never ask what they do.
+        closing = (
+            "- A party member is down (the rules below): end on the party's move, the danger that remains "
+            "or the moment of rescue; never ask what the downed character does."
+        )
+        down_block = "\n" + down_rules + "\n"
 
     stitching_prompt = f"""
 You are a master storyteller and narrative editor. The following two text blocks describe a party's departure from one place and their subsequent arrival at another. The transition between them is abrupt because they were generated separately.
@@ -2018,9 +2043,9 @@ Your task is to rewrite them into a single, cohesive, and cinematic narration.
 - Do not add new plot points or actions; your role is to refine the existing narrative flow.
 - Do not add, count, or imply any actor who is not explicitly identified in the source blocks.
 - Address the sole player character only in second person (you/your), never as a third-person protagonist.
-- End after the committed arrival with one open in-fiction invitation for the player to choose their next immediate action. Do not enumerate options and do not perform that next action.
+{closing}
 - When both blocks state the same fact, keep it once.
-
+{roster_block}{down_block}
 DEPARTURE NARRATION:
 ---
 {departure_narration}
@@ -2341,6 +2366,20 @@ def _transition_trip_arrival_time(checkpoint):
     return {"clock": time_str[:5], "timeOfDay": get_time_context(time_str)}
 
 
+def _transition_roster(party):
+    """#312: the committed roster every travel narration layer is given:
+    (player character names, party NPC names), from the tracker's
+    partyMembers and partyNPCs."""
+    party = party if isinstance(party, dict) else {}
+    players = [str(name) for name in party.get("partyMembers", [])]
+    npcs = [
+        str(item.get("name"))
+        for item in party.get("partyNPCs", [])
+        if isinstance(item, dict) and item.get("name")
+    ]
+    return players, npcs
+
+
 def _transition_companions(party):
     """The party NPCs travelling with the player ([]: the player is alone)."""
     return [
@@ -2350,7 +2389,26 @@ def _transition_companions(party):
     ]
 
 
-def _transition_departure_prompt(checkpoint, party, dm_text=""):
+def _transition_down_rules(party):
+    """#1637: the down-scene rules string (D-242) for the party's sheets, or
+    None when nobody is down. The same typed read as the DM turn and the
+    validator: each member's sheet on disk; a read fault gives None."""
+    try:
+        from core.combat.down_scene import from_sheets
+
+        path_manager = ModulePathManager(str(party.get("module", "")).replace(" ", "_"))
+        sheets = []
+        for name in _transition_roster(party)[0] + _transition_companions(party):
+            sheet = safe_json_load(path_manager.get_character_path(name))
+            if isinstance(sheet, dict):
+                sheets.append(sheet)
+        return from_sheets(sheets)
+    except Exception as exc:  # fail forward: the chain narrates as before
+        debug(f"DOWN: travel down-scene rules unavailable ({exc})", category="narrative_generation")
+        return None
+
+
+def _transition_departure_prompt(checkpoint, party, dm_text="", down_rules=None):
     """Layer 1/3 (T013): the departure from the origin, the journey, and the
     return or first arrival, from the committed trip facts and the DM's
     accepted narration of the turn. The arrival scene is T063's."""
@@ -2387,6 +2445,7 @@ def _transition_departure_prompt(checkpoint, party, dm_text=""):
     if arrival_time:
         facts["arrivalTime"] = arrival_time
     facts["companions"] = _transition_companions(party)
+    facts["playerCharacters"] = _transition_roster(party)[0]
     prompt = (
         "Narrate the player leaving the origin and the journey to the "
         "destination, ending as the player reaches it. Another agent narrates "
@@ -2399,8 +2458,10 @@ def _transition_departure_prompt(checkpoint, party, dm_text=""):
         "time of day you mention must match arrivalTime.timeOfDay at the "
         "arrival; do not restate clock times or dates (the game shows them), "
         "and never suggest that the clock stood still. The travellers are the "
-        "player and the named companions; with no companions the player "
-        "travels alone, so never write 'the party' or 'we'. When "
+        "player (playerCharacters: always 'you', never named in the third "
+        "person or described as travelling with someone of that name) and "
+        "the named companions; with no companions the player travels alone, "
+        "so never write 'the party' or 'we'. When "
         "previousVisit is supplied, or the destination has an "
         "adventureSummary, this is a return: frame it as going back, and say "
         "that anything has changed only from the supplied facts, such as the "
@@ -2418,14 +2479,18 @@ def _transition_departure_prompt(checkpoint, party, dm_text=""):
             + dm_text
             + "\n---"
         )
+    if down_rules:
+        prompt += "\n\n" + down_rules
     return prompt + _transition_narration_action_context(checkpoint)
 
 
-def _transition_arrival_facts(party):
+def _transition_arrival_facts(party, checkpoint=None):
     """Layer 2/3 (T063) grounding: the code-filtered destination projection,
     its player storage, and the people the engine records present there.
     Hostile occupants are left out: the arrival never resolves or triggers an
-    encounter. "" when the destination is unreadable."""
+    encounter. "" when the destination is unreadable. The arrival time is
+    T013's: the checkpoint's committed arrival first (#312: a resumed turn's
+    party can predate it), else the tracker's clock."""
     from core.nql import occupants
     from utils import travel_map
 
@@ -2439,7 +2504,9 @@ def _transition_arrival_facts(party):
         area_name=world.get("currentArea"),
     )
     block = ""
-    arrival_time = _transition_arrival_time(party)
+    arrival_time = (
+        _transition_trip_arrival_time(checkpoint) if isinstance(checkpoint, dict) else None
+    ) or _transition_arrival_time(party)
     if arrival_time:
         block += (
             "\n    ARRIVAL TIME: %s, %s. Describe the scene as it is at this "
@@ -2490,14 +2557,19 @@ def _run_transition_chain(checkpoint, party, history):
     the stitch."""
     narration = checkpoint.get("narration") or {}
     dm_text = narration.get("departure_text") or narration.get("source_prompt")
+    # #1637: while a party member is down, every layer gets the down-scene rules.
+    down_rules = _transition_down_rules(party)
     first = generate_transition_narration(
-        _transition_departure_prompt(checkpoint, party, dm_text),
+        _transition_departure_prompt(checkpoint, party, dm_text, down_rules),
         party,
     )
-    arrival = generate_arrival_narration(
-        first, party, history, _transition_arrival_facts(party)
+    arrival_facts = _transition_arrival_facts(party, checkpoint)
+    if down_rules:
+        arrival_facts += "\n    " + down_rules + "\n"
+    arrival = generate_arrival_narration(first, party, history, arrival_facts)
+    return generate_seamless_transition_narration(
+        first, arrival, dm_text, party=party, down_rules=down_rules
     )
-    return generate_seamless_transition_narration(first, arrival, dm_text)
 
 
 def _transition_outcome_lines(checkpoint, party):
@@ -5709,7 +5781,7 @@ def _show_read_only_save_stop(path):
         f"SAVE STOP: {path} is read-only; the game stopped",
         category="session_management",
     )
-    display_dm_narration(_read_only_save_stop_line(path), channel="system")
+    show_player_notice(_read_only_save_stop_line(path))
 
 
 
@@ -6895,11 +6967,18 @@ def process_ai_response(
         # does not exist yet, so its narration is held, as a transition holds
         # its departure narration (#182). A published build is narrated by the
         # DM's post-publish follow-up; a failed build shows only its system
-        # line. The stored reply leaves out the narration that was not shown.
+        # line. A reply that starts a fight (createEncounter, alone or after a
+        # prerequisite's updates) is held the same way: the combat opening
+        # narrates the fight from its encounterSummary (#1345, D-1345-1 A).
+        # The stored reply leaves out the narration that was not shown.
         if (
             len(actions) == 1
             and isinstance(actions[0], dict)
             and actions[0].get("action") == action_handler.ACTION_CREATE_NEW_MODULE
+        ) or any(
+            isinstance(action, dict)
+            and action.get("action") == action_handler.ACTION_CREATE_ENCOUNTER
+            for action in actions
         ):
             held_reply = dict(parsed_response)
             held_reply["narration"] = ""
@@ -6954,9 +7033,8 @@ def process_ai_response(
                 }
                 conversation_history.append(drop_notice)
                 save_conversation_history(conversation_history)
-                display_dm_narration(
+                show_player_notice(
                     _AGENTIC_POST_COMBAT_DROP_NOTICE,
-                    channel="system",
                     color="yellow",
                 )
                 _record_agentic_post_combat_updates_dropped(
@@ -8322,7 +8400,7 @@ def _party_stats_text(party_tracker_data, path_manager, party_members_stats):
             # D-KW-12: the engine id the DM keys a typed reference by (rest hitDice).
             from core.nql.genesis import character_id as _engine_character_id
             member_id = _engine_character_id(member_data_for_note)
-            party_stats_formatted.append(f"{display_name} (id {member_id}): Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}, {ability_str}{spell_slots_str}{currency_str}, Effects: {effects_str}")
+            party_stats_formatted.append(f"{display_name} (id {member_id}): Level {stats_item['level']}, XP {stats_item['xp']}/{next_level_xp_note}, HP {stats_item['hp']}/{stats_item['max_hp']}{_effect_note(member_data_for_note, 'maxHitPoints', prefix='max ')}, {ability_str}{spell_slots_str}{currency_str}, Effects: {effects_str}")
 
     party_stats_str = "; ".join(party_stats_formatted)
     return party_stats_str
@@ -8670,7 +8748,7 @@ def _startup_travel_followup_failed(recovery_scope, exc):
             "afterwards."
         )
         line = cause + " Gameplay is paused."
-    display_dm_narration(line, channel="system")
+    show_player_notice(line)
     if hasattr(sys.stdin, "queue"):
         # The web pause adds its own "Gameplay is paused." sentence.
         return WebRecoveryPause(cause)
@@ -8947,7 +9025,7 @@ def main_game_loop():
             finish_live_turn_scope(scope)
             scope.quiescent.wait()
         warning(f"ACTIVE MODULE: {exc}", category="session_management")
-        display_dm_narration(str(exc), channel="system")
+        show_player_notice(str(exc))
         if hasattr(sys.stdin, "queue"):
             return WebRecoveryPause(str(exc))
         from updates.save_game_manager import SaveGameManager
@@ -9076,14 +9154,13 @@ def _resume_active_combat(
     if combat_still_active:
         recovery = _active_combat_recovery(party_tracker_data)
         if recovery:
-            display_dm_narration(
+            show_player_notice(
                 recovery.get("message")
                 or (
                     "Combat remains paused. Load or restore a save before "
                     "resuming encounter %s; no post-combat narration was "
                     "requested." % active_encounter_id
                 ),
-                channel="combat",
                 color="yellow",
             )
             # A recovered combat bypasses the ordinary startup-kickoff
@@ -9113,15 +9190,14 @@ def _resume_active_combat(
             if source == "input":
                 # #230: a fight re-entered from an input that still cannot
                 # resume pauses on the controls; it is never re-sent.
-                display_dm_narration(unresumed_line + " Gameplay is paused.", channel="system")
+                show_player_notice(unresumed_line + " Gameplay is paused.")
                 if hasattr(sys.stdin, "queue"):
                     # The web pause adds its own "Gameplay is paused." sentence.
                     return WebRecoveryPause(unresumed_line), party_tracker_data, conversation_history
                 from updates.save_game_manager import SaveGameManager
                 return _terminal_recovery_menu(SaveGameManager()), party_tracker_data, conversation_history
-            display_dm_narration(
+            show_player_notice(
                 unresumed_line,
-                channel="combat",
                 color="yellow",
             )
     else:
@@ -9161,7 +9237,7 @@ def _resume_active_combat(
             "The party's location could not be read after the fight, so "
             "the story cannot continue from here."
         )
-        display_dm_narration(cause + " Gameplay is paused.", channel="system")
+        show_player_notice(cause + " Gameplay is paused.")
         if hasattr(sys.stdin, "queue"):
             # The web pause adds its own "Gameplay is paused." sentence.
             return WebRecoveryPause(cause), party_tracker_data, conversation_history
@@ -9279,7 +9355,7 @@ def _main_game_loop(startup_authority, turn_authority):
             f"INITIALIZATION: {json_file} is read-only; the game cannot start",
             category="startup",
         )
-        display_dm_narration(_CONVERSATION_HISTORY_READ_ONLY_LINE, channel="system")
+        show_player_notice(_CONVERSATION_HISTORY_READ_ONLY_LINE)
         return
 
     # Issue #167 / E2E gate 2d: hydrate missing live module files from their _BU
@@ -9305,7 +9381,7 @@ def _main_game_loop(startup_authority, turn_authority):
             check_and_initialize_on_startup,
         )
         if check_and_initialize_on_startup() == JOURNAL_UNREADABLE:
-            display_dm_narration(_MEMORY_JOURNAL_UNREADABLE_LINE, channel="system")
+            show_player_notice(_MEMORY_JOURNAL_UNREADABLE_LINE)
             memory_journal_told = True
     except Exception as e:
         warning(f"Could not initialize memories (non-fatal): {e}", category="startup")
@@ -9327,7 +9403,7 @@ def _main_game_loop(startup_authority, turn_authority):
             try:
                 from core.memories.initialize_memories import journal_unreadable
                 if journal_unreadable():
-                    display_dm_narration(_MEMORY_JOURNAL_UNREADABLE_LINE, channel="system")
+                    show_player_notice(_MEMORY_JOURNAL_UNREADABLE_LINE)
             except Exception as note_exc:
                 warning(f"Could not check journal.json after the episodic upgrade: {note_exc}",
                         category="startup")
@@ -9730,18 +9806,22 @@ def _main_game_loop(startup_authority, turn_authority):
         # the player is told why: the line is chosen from the typed cause or
         # refused_because, never from reason text (issue #613).
         try:
-            refresh_result = CampaignManager().refresh_modules(
-                priority_module=str(party_tracker_data.get("module") or "").replace(" ", "_") or None
-            )
+            # #1253 MI-5: the join can wait on a slow rules engine; Load, Reset or Quit ends that wait.
+            with _between_turns_authority():
+                refresh_result = CampaignManager().refresh_modules(
+                    priority_module=str(party_tracker_data.get("module") or "").replace(" ", "_") or None
+                )
             debug(f"STATE_CHANGE: startup module refresh result: {refresh_result}", category="startup")
             # A joined module is a library notice, not story: it is shown as a
             # system card once the opening scene settles (#795).
             for imported in refresh_result.get("imported", []):
                 _queue_library_notice(_module_joined_line(imported))
             for refusal in refresh_result.get("import_required", []):
-                display_dm_narration(_module_join_refusal_line(refusal), channel="system")
+                show_player_notice(_module_join_refusal_line(refusal))
             for refusal in refresh_result.get("not_joined", []):
-                display_dm_narration(_module_not_joined_line(refusal), channel="system")
+                show_player_notice(_module_not_joined_line(refusal))
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            raise
         except Exception as refresh_exc:
             warning(f"INITIALIZATION: startup module refresh failed: {refresh_exc}", category="startup")
     
@@ -10092,15 +10172,14 @@ def _main_game_loop(startup_authority, turn_authority):
             if combat_recovery.get("reason") == "party_defeated":
                 # D-242 Task 6: the party-defeat pause is the ratified interim
                 # until #184's defeat scene; the text names what actually works.
-                display_dm_narration(
+                show_player_notice(
                     TPK_PAUSE_TEXT
                     if hasattr(sys.stdin, "queue")
                     else TPK_PAUSE_TEXT + " Close this window or press Ctrl+C, then use the launcher.",
-                    channel="combat",
                     color="yellow",
                 )
             else:
-                display_dm_narration(
+                show_player_notice(
                     "Combat is paused (%s). This input was not sent to the "
                     "Dungeon Master. Load or restore a save before resuming "
                     "encounter %s."
@@ -10108,7 +10187,6 @@ def _main_game_loop(startup_authority, turn_authority):
                         combat_recovery["reason"],
                         combat_recovery["encounter_id"],
                     ),
-                    channel="combat",
                     color="yellow",
                 )
             continue
@@ -10198,7 +10276,7 @@ def _main_game_loop(startup_authority, turn_authority):
             if decision["stop"]:
                 from utils.capture.live_provider_call import finish_live_turn_scope
 
-                display_dm_narration(decision["player_message"], channel="system")
+                show_player_notice(decision["player_message"])
                 finish_live_turn_scope(live_turn_scope)
                 continue
         if not user_input_text.strip() and not roll_settle.get("settled"):
@@ -10398,6 +10476,10 @@ def _main_game_loop(startup_authority, turn_authority):
         from core.managers.checks_runtime import pending_roll_note
 
         dm_note += pending_roll_note(roll_settle)
+        # #1122: a quest update the engine refused during the last travel, once; the DM decides.
+        from core.managers.checks_runtime import quest_notes_note
+
+        dm_note += quest_notes_note(sum(1 for m in conversation_history if isinstance(m, dict) and m.get("role") == "assistant"))
 
         # The player's own words, never annotated with guessed items or a
         # word-matched SRD block (D-KW-5): the DM already sees every item and
@@ -12238,7 +12320,7 @@ def main():
     except ActiveModuleUnavailable as exc:
         # The same one line and pause menu as main_game_loop (issue #448).
         warning(f"ACTIVE MODULE: {exc}", category="session_management")
-        display_dm_narration(str(exc), channel="system")
+        show_player_notice(str(exc))
         from updates.save_game_manager import SaveGameManager
         pending_result = _terminal_recovery_menu(SaveGameManager())
     print(f"DEBUG: [LocationGraph] Initialization complete. Total nodes loaded: {len(location_graph.nodes)}")

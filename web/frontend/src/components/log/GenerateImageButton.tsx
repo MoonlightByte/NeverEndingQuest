@@ -4,11 +4,14 @@
  * answers with image_generated (stored in the log store and rendered inline
  * by GameLog next to the narration whose content matches the echoed prompt)
  * or image_generation_error (appended to the log as an error message).
- * The pending state clears when either response lands.
+ * The pending state clears when either response lands, or when the socket
+ * drops during the request and comes back (#1396): an answer sent while no
+ * socket was connected is lost. A click made while already disconnected stays
+ * pending, since socket.io sends that buffered request on reconnect.
  */
 import { useEffect, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
-import { useLog } from '../../stores'
+import { useLog, useSession } from '../../stores'
 import { useEmberDesktop } from '../layout/EmberPresentation'
 import { EmberIcon } from '../layout/EmberIcon'
 
@@ -24,6 +27,9 @@ export function GenerateImageButton({ content, messageId }: { content: string; m
   const requestIdRef = useRef<string | undefined>(undefined)
   const images = useLog((s) => s.images)
   const messages = useLog((s) => s.messages)
+  const connected = useSession((s) => s.connected)
+  const droppedRef = useRef(false)
+  const wasConnectedRef = useRef(connected)
 
   useEffect(() => {
     if (!pending) return
@@ -34,8 +40,21 @@ export function GenerateImageButton({ content, messageId }: { content: string; m
     if (matched || errored) setPending(false)
   }, [pending, images, messages, content, messageId])
 
+  useEffect(() => {
+    const wasConnected = wasConnectedRef.current
+    wasConnectedRef.current = connected
+    if (!pending) return
+    if (wasConnected && !connected) {
+      droppedRef.current = true
+    } else if (connected && droppedRef.current) {
+      droppedRef.current = false
+      setPending(false)
+    }
+  }, [pending, connected])
+
   const request = () => {
     if (pending) return
+    droppedRef.current = false
     setPending(true)
     requestIdRef.current = emitC('generate_image', { prompt: buildImagePrompt(content), source_message_id: messageId })
   }

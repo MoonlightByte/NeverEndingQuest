@@ -1730,6 +1730,15 @@ def apply_current_transition_action(operation_id, action_index):
             # refused before movement, or already committed / attempted on
             # a resumed checkpoint (the checkpoint owns receipt["status"])
             quest_outcome = str(receipt.get("quest_status") or "refused")
+        if quest_outcome == "refused" and not receipt.get("dmNoted"):
+            # #1122: the DM hears of the refusal once, in the next DM Note
+            # (deduplicated by request id should the checkpoint write fail).
+            from core.managers import checks_state as _checks_state
+
+            _checks_state.add_quest_note(
+                str(receipt.get("request_id") or ""), _quest_record.travel_refusal_note(receipt)
+            )
+            receipt["dmNoted"] = True
         if quest_outcome != "committed":
             record["status"] = "committed"
             deferred = checkpoint["deferred_actions"]
@@ -5683,7 +5692,8 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 conversation_history.append({"role": "user", "content": (
                     f"Rules Error: {refusal.reason}. Nothing changed on {character_name}'s sheet. Later actions from "
                     "this response have not executed. Do not repeat earlier completed actions; propose a change the "
-                    "sheet can cover (a payment, a spell slot or a feature use that is still available) or narrate "
+                    "sheet can cover (a payment, a spell slot or a feature use that is still available, or freeing a "
+                    "hand before readying another item) or narrate "
                     "why it cannot happen.")})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)

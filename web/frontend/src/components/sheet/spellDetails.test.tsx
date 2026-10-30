@@ -22,7 +22,9 @@ describe('public spell reference lookup', () => {
 import json
 from core.ai.srd_reference import SRDReferenceIndex, normalize_rule_name
 index = SRDReferenceIndex.from_path()
-names = [term for _, term, _ in index.lookup_terms()]
+# #1643: lookup_terms went with the player-words matcher (07996ad0); same names.
+names = [entry["name"] for entry in index.entries.values()]
+names += [alias for aliases in index._aliases_by_key.values() for alias in aliases]
 names += ["  MÉLF’S   Acid—Arrow!! ", "Melf's Acid Arrow", "Ａｃｉｄ Ａｒｒｏｗ", "Éclair", "Cafe\\u0301", "A\\u034fB", "A\\u20ddB", "A\\u05b0B", ""]
 print(json.dumps({"map": index.compatibility_spell_map(), "names": [[n, normalize_rule_name(n)] for n in names]}))
 `], { cwd, encoding: 'utf8' })) as { map: Record<string, Record<string, unknown>>; names: [string, string][] }

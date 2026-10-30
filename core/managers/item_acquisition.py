@@ -21,7 +21,6 @@ from utils.encoding_utils import safe_json_load
 from utils.enhanced_logger import debug, info, warning
 from utils.file_operations import safe_write_json
 
-RECEIPTS_KEPT = 50
 # P3a: the refusal texts' fixed route for an item that is not listed.
 LOOT_ROUTE = "with updateCharacterInfo, or for standard gear with acquireItem by itemName (price 0 for found gear)"
 
@@ -241,6 +240,18 @@ def _ammunition_row(sheet: Dict[str, Any], entry: Dict[str, Any]) -> Optional[Di
     return held[0] if len(held) == 1 else None
 
 
+def _stack_row(sheet: Dict[str, Any], entry: Dict[str, Any], rule: Any) -> Optional[Dict[str, Any]]:
+    """#1627: the one unequipped, charge-free row of this plain catalog gear that
+    a purchase tops up. Magic, weapons, armor and charged items always get a new
+    row; zero or several such rows keep today's new row (as #552 does for ammunition)."""
+    if rule is not None or entry.get("magical") or entry.get("kind") in ("weapon", "armor"):
+        return None
+    rows = [r for r in sheet.get("equipment") or []
+            if isinstance(r, dict) and r.get("catalog_id") == entry["id"]
+            and isinstance(r.get("nql_id"), str) and not r.get("equipped") and "charges" not in r]
+    return rows[0] if len(rows) == 1 else None
+
+
 def _loot_check(item_name: Any, catalog_id: str, quantity: Any, price: Any, party: Any, wait) -> Dict[str, Any]:
     """The sheet-free checks of a catalogId take: the structural check, then the
     listing check. Every result carries ``listing``, from one location read."""
@@ -409,14 +420,20 @@ def _acquire(character_name, item_name, quantity, price, request_id, party_track
                 debug(f"ACQUIRE: genesis gap: {gap}", category="storage_operations")
 
             ammunition = entry.get("kind") == "ammunition"
+            stack = None
             if ammunition:
                 row = _ammunition_row(working, entry)
                 iid = genesis.ammunition_id(working, row["name"] if row else entry["name"])
                 lines = acquisition.coin_lines(cid, delta) + [
                     acquisition.ammunition_lines(cid, iid, entry["name"], quantity, row is not None)]
             else:
-                iid = acquisition.next_item_id(working, entry, reserved=held)
-                lines = acquisition.coin_lines(cid, delta) + [acquisition.item_line(cid, iid, entry, quantity)]
+                stack = _stack_row(working, entry, rule)
+                if stack is not None:
+                    iid = stack["nql_id"]
+                    lines = acquisition.coin_lines(cid, delta) + [acquisition.add_line(cid, iid, quantity)]
+                else:
+                    iid = acquisition.next_item_id(working, entry, reserved=held)
+                    lines = acquisition.coin_lines(cid, delta) + [acquisition.item_line(cid, iid, entry, quantity)]
             request = request_id or f"acquire:{datetime.utcnow().strftime('%Y%m%d%H%M%S%f')}"
             document = {"world": world.source, "world_name": "acquire-genesis.nql",
                         "actions": "\n".join(lines), "actions_name": "acquire.nql",
@@ -472,6 +489,9 @@ def _acquire(character_name, item_name, quantity, price, request_id, party_track
                 landed = f"{created.get('quantity', quantity)} {entry['name']}" + (
                     f" in the {row['name']} stock" if row is not None and row["name"] != entry["name"]
                     else " in the ammunition stock")
+            elif stack is not None:
+                stack["quantity"] = int(created.get("quantity", 0))
+                landed = f"{quantity} {entry['name']} (now {stack['quantity']})"
             else:
                 row = acquisition.row_from_views(created, definition, entry)
                 if rule is not None:
@@ -498,10 +518,8 @@ def _acquire(character_name, item_name, quantity, price, request_id, party_track
             if catalog_id is not None:
                 receipt["source"] = {"locationId": location}
             receipts.append(receipt)
-            # P3a: a receipt with a source counts listed loot, so it is never trimmed.
-            plain = [i for i, r in enumerate(receipts) if "source" not in r]
-            kept = set(plain[-RECEIPTS_KEPT:])
-            working["acquisitions"] = [r for i, r in enumerate(receipts) if "source" in r or i in kept]
+            # #1253: every receipt is kept; the validator sees the whole history.
+            working["acquisitions"] = receipts
             out = _projected(working)
 
             backup = _backup(path)
