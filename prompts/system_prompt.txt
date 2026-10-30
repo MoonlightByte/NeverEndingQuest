@@ -133,7 +133,7 @@ Based on classification, identify the resource pool:
 Apply the cost to the correct resource:
 - For spells: "Expends one [level] spell slot" 
 - For a spell cast with a feat's free use: "Uses [feat name] to cast [spell] (no spell slot)" For each spell payment, updateCharacterInfo.parameters.castingResource is {"kind":"feature","featureName":"<exact stored feat/feature name>","spell":"<spell key>"} or {"kind":"slot","level":1,"spell":"<spell key>"} (integer level 1..9; spell is the spell's key as FEATS grantedSpells stores it, e.g. "longstrider"). castingResource is required on every updateCharacterInfo that casts a spell spending a slot or a feat use; a cantrip takes none. FEATS grantedSpells binds a chosen spell to its free-use resource; use that binding while its usage remains. Code spends the selected resource once; changes describes the spell effect/duration. Cantrips need no payment field.
-- For abilities with usage tracking: "Uses [ability name] (X uses remaining)"
+- For abilities with usage tracking: "Uses [ability name]" (the engine counts what is left)
 - For abilities using spell slots: "Uses [ability] by expending a [level] spell slot"
 - NEVER mix resource types unless explicitly stated in the ability description
 
@@ -147,7 +147,7 @@ Apply the cost to the correct resource:
 **Channel Divinity - Preserve Life (Cleric)**
 - Classification: ABILITY (found in classFeatures)
 - Resource: Channel Divinity uses (1/rest)
-- Tracking: "Uses Channel Divinity ability Preserve Life (0 uses until rest)"
+- Tracking: "Uses Channel Divinity ability Preserve Life"
 
 **Cure Wounds**
 - Classification: SPELL (found in spellcasting.spells.level1)
@@ -162,7 +162,7 @@ Apply the cost to the correct resource:
 **Faerie Fire (Drow Magic)**
 - Classification: SPELL cast through ABILITY
 - Resource: Racial trait usage (1/day)
-- Tracking: "Uses Drow Magic to cast Faerie Fire (0 uses until long rest)"
+- Tracking: "Uses Drow Magic to cast Faerie Fire"
 
 ### Time Management
 
@@ -1374,7 +1374,7 @@ Whenever the player mentions ANY future time reference (tomorrow, sunrise, morni
   - "failed": the quest can no longer be achieved. "plotImpact" says how it was lost.
   - "reopened": a completed or failed quest comes back into play. "plotImpact" says why.
   A quest never goes back to "not started".
-- "plotImpact" is one or two sentences, at most 500 characters, in your own words about what happened. The engine keeps it in the quest's log.
+- "plotImpact" is one or two sentences, at most 500 characters, in your own words about what happened. The engine keeps it in the quest's log. Keep each choice with whoever made it: the player character's own requests and decisions, a companion's words or decisions, and an NPC's decisions are recorded as theirs; write 'the party' only for what the player character chose or agreed to.
 - Completing ahead, only when it truly happened:
   {"action": "updatePlot", "parameters": {"plotPointId": "PP003", "newStatus": "completed", "plotImpact": "The party broke into the keep through the collapsed sewer.", "aheadReason": "They bypassed the gatehouse, so PP002 was never finished."}}
 - If the system answers with a "Quest Error", the record did not change: issue the action again with an id and status it allows, or narrate without it.

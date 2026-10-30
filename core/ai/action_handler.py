@@ -5683,7 +5683,8 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 conversation_history.append({"role": "user", "content": (
                     f"Rules Error: {refusal.reason}. Nothing changed on {character_name}'s sheet. Later actions from "
                     "this response have not executed. Do not repeat earlier completed actions; propose a change the "
-                    "sheet can cover (a payment, a spell slot or a feature use that is still available) or narrate "
+                    "sheet can cover (a payment, a spell slot or a feature use that is still available, or freeing a "
+                    "hand before readying another item) or narrate "
                     "why it cannot happen.")})
                 needs_conversation_history_update = True
                 return create_return(status="needs_response", needs_update=True)
