@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When you set off along a road someone can't name, the Dungeon Master now says you don't know the way yet and asks where you head, instead of dropping the move (#1628).
 - Asking for a roll to work out something you named yourself no longer gets the Dungeon Master's request refused and redrafted (#1638).
 - The Map tab now shows the current area's map: places you have visited, the paths between them, and the roads leading on (#1604).
 - When the DM's story has someone you rescued or met walk along with you to another place, the DM now has to record that they came along, so they are there when you arrive instead of being left behind (#536, #537).
