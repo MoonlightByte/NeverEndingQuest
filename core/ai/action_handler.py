@@ -2681,6 +2681,10 @@ def pre_validate_transition(
     from utils.capture.live_provider_call import LiveProviderSuperseded
     from utils.file_operations import safe_read_json
 
+    # #1635: set once the typed goal (`toward`) is checked; every approval
+    # carries it to T065.
+    goal_facts = {}
+
     def finish(
         approved,
         message,
@@ -2691,6 +2695,8 @@ def pre_validate_transition(
         intermediate_destination_id="",
         intermediate_destination_name="",
     ):
+        if approved and goal_facts:
+            facts = {**dict(facts or {}), **goal_facts}
         if return_plan:
             return TransitionPrevalidationOutcome(
                 approved=bool(approved),
@@ -2766,6 +2772,71 @@ def pre_validate_transition(
                     "must_not_move": True,
                     "read_errors": read_errors,
                 },
+            )
+
+        # #1635: a typed goal beyond this move. The hop must lie on a
+        # shortest path to it; all three legs use the same snapshot BFS so an
+        # inter-area edge counts once in each.
+        toward_id = parameters.get("toward")
+        if toward_id not in (None, "") and toward_id != new_location_id:
+            nodes = snapshot.get("nodes", {})
+
+            def node_name(location_id):
+                return (nodes.get(location_id) or {}).get("location_name", location_id)
+
+            if not isinstance(toward_id, str) or toward_id not in nodes:
+                return finish(
+                    False,
+                    "[TRAVEL SYSTEM] toward must be a location id from the atlas "
+                    "(the place the player named, or an area's entry location); "
+                    "%r is not one." % (toward_id,),
+                    reason_code="not_toward_goal",
+                    facts={
+                        "requested_destination_id": str(new_location_id),
+                        "goal_location_id": str(toward_id),
+                        "goal_reason": "toward is not a location id",
+                    },
+                )
+            to_goal = find_path_in_snapshot(snapshot, current_location_id, toward_id)
+            from_hop = find_path_in_snapshot(snapshot, new_location_id, toward_id)
+            goal_path = to_goal.get("path") or []
+            next_step = goal_path[1] if len(goal_path) > 1 else ""
+            on_way = (
+                to_goal.get("success") is True
+                and from_hop.get("success") is True
+                and (len(path) - 1) + (len(from_hop["path"]) - 1) == len(goal_path) - 1
+            )
+            if not on_way:
+                goal_name = node_name(toward_id)
+                if next_step:
+                    message = (
+                        "[TRAVEL SYSTEM] %s does not lead toward %s; the next step "
+                        "toward it is %s (%s). Use transitionLocation(%s) with toward "
+                        "%s, or ask the player."
+                        % (node_name(new_location_id), goal_name,
+                           node_name(next_step), next_step, next_step, toward_id)
+                    )
+                else:
+                    message = (
+                        "[TRAVEL SYSTEM] No route from here leads toward %s; do not "
+                        "move the party toward it, ask the player." % goal_name
+                    )
+                return finish(
+                    False,
+                    message,
+                    reason_code="not_toward_goal",
+                    facts={
+                        "requested_destination_id": str(new_location_id),
+                        "goal_location_id": str(toward_id),
+                        "goal_name": str(goal_name),
+                        "next_step_id": str(next_step),
+                        "next_step_name": str(node_name(next_step)) if next_step else "",
+                    },
+                )
+            goal_facts.update(
+                goal_location_id=str(toward_id),
+                goal_location_name=str(node_name(toward_id)),
+                on_shortest_path_to_goal=True,
             )
 
         # Analyze path for encounters and blocking
