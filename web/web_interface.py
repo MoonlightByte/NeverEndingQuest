@@ -69,7 +69,6 @@ import zipfile
 from uuid import uuid4
 from contextlib import redirect_stdout, redirect_stderr, nullcontext
 from utils.capture.live_provider_call import LiveProviderSuperseded
-from openai import OpenAI
 from core.ai import api_client
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T094", "web/web_interface.py", 1816)
@@ -101,6 +100,13 @@ import main as dm_main
 import utils.reset_campaign as reset_campaign
 from core.managers.status_manager import set_status_callback, set_detail_callback, set_compression_callback, wait_payload
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
+
+
+def OpenAI(*args, **kwargs):
+    """The SDK client, imported when the local-endpoint probe first builds one (#1682)."""
+    from openai import OpenAI as sdk_client
+    return sdk_client(*args, **kwargs)
+
 
 # Toolkit components are imported by the toolkit routes that use them (#1682), so a
 # play session never loads them; the flag only checks that they are installed.
