@@ -576,6 +576,17 @@ def _publish_recovered_cache(path, candidate):
                         category='web_interface')
 
 
+def _tracker_names_module():
+    """True unless party_tracker.json is missing or names no module (#1689).
+    An unreadable tracker still counts as a save."""
+    from utils.module_path_manager import ActiveModuleUnavailable, ModulePathManager
+    try:
+        ModulePathManager()
+    except ActiveModuleUnavailable as exc:
+        return exc.reason not in ('missing', 'no_module')
+    return True
+
+
 def load_message_cache(on_recovery=None):
     """Load/preserve delivery records, or initialize a labeled saved projection."""
     global message_cache
@@ -604,8 +615,9 @@ def load_message_cache(on_recovery=None):
                     message_cache.clear()
                     cached_messages = _saved_narration_messages()
                     # #1659: a fresh install has no save, so there is nothing to recover.
-                    if cached_messages or any(os.path.exists(path) for path in (
-                            'party_tracker.json',
+                    # The Windows installer writes an empty tracker, so a save is a tracker
+                    # that names a module, not one that exists (#1689).
+                    if cached_messages or _tracker_names_module() or any(os.path.exists(path) for path in (
                             'modules/conversation_history/conversation_history.json',
                             'modules/conversation_history/startup_conversation.json')):
                         notice = {
@@ -4585,6 +4597,7 @@ def handle_request_storage_data(data=None):
         debug("WEB_REQUEST: No storage yet (no party_tracker.json)", category="web_interface")
         emit('storage_data_response', _ui_response(data, {'data': {'success': True, 'storage': [], 'count': 0}}))
         return
+    from utils.module_path_manager import ActiveModuleUnavailable
     try:
         from core.managers.storage_manager import get_storage_manager
         manager = get_storage_manager()
@@ -4596,6 +4609,14 @@ def handle_request_storage_data(data=None):
         else:
             emit('storage_data_response', _ui_response(data, {'data': {}, 'error': 'Failed to retrieve storage data.'}))
             
+    except ActiveModuleUnavailable as e:
+        if e.reason not in ('missing', 'no_module'):
+            print(f"ERROR handling storage request: {e}")
+            emit('storage_data_response', _ui_response(data, {'data': {}, 'error': 'An internal error occurred while fetching storage data.'}))
+            return
+        # The installer's empty tracker names no module yet: no storage yet (#1689).
+        debug("WEB_REQUEST: No storage yet (no active module)", category="web_interface")
+        emit('storage_data_response', _ui_response(data, {'data': {'success': True, 'storage': [], 'count': 0}}))
     except Exception as e:
         print(f"ERROR handling storage request: {e}")
         emit('storage_data_response', _ui_response(data, {'data': {}, 'error': 'An internal error occurred while fetching storage data.'}))
