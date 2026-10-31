@@ -269,7 +269,33 @@ def parse_args(argv=None):
     parser.add_argument("--frontend-ready", action="store_true", help="check current React assets without requiring Node/npm")
     parser.add_argument("--data-dir", default=None,
                         help="keep saves, modules and settings in this folder (same as env NEQ_DATA_DIR)")
+    parser.add_argument("--no-browser", action="store_true", help="do not open a browser window")
+    ports = parser.add_mutually_exclusive_group()
+    ports.add_argument("--port", type=int, default=None,
+                       help="serve on this port (0 = any free port); prints NEQ_PORT=<n> and writes run/port")
+    ports.add_argument("--port-or-free", type=int, default=None, metavar="N",
+                       help="serve on port N, or on a free port if N is taken; prints NEQ_PORT=<n> and writes run/port")
+    parser.add_argument("--serve", action="store_true",
+                        help="run the server in this process instead of a restarting child (desktop shell, frozen builds)")
     return parser.parse_args(argv)
+
+
+def bind_for_args(args, root=None):
+    """Bind first, then serve (#1681, #1682): with --port or --port-or-free, bind the
+    socket now, write <data root>/run/port and print NEQ_PORT=<n>; otherwise None."""
+    if args.port is None and args.port_or_free is None:
+        return None
+    from utils.local_server import bind_listen, clear_port_file, write_port_file
+    root = root or os.environ.get("NEQ_DATA_DIR") or os.getcwd()
+    clear_port_file(root)
+    if args.port is not None:
+        sock = bind_listen(args.port)
+    else:
+        sock = bind_listen(args.port_or_free, or_free=True)
+    port = sock.getsockname()[1]
+    write_port_file(port, root)
+    print(f"NEQ_PORT={port}", flush=True)
+    return sock
 
 def create_default_party_tracker():
     """Create a default party_tracker.json if it doesn't exist"""
@@ -322,7 +348,7 @@ def provider_credential_found(config):
         return False
 
 
-def main(ui="react", toolkit=False):
+def main(ui="react", toolkit=False, args=None, bound_socket=None):
     # Check if config.py exists first
     if not os.path.exists('config.py'):
         print("[D20] Welcome to NeverEndingQuest! [D20]")
@@ -342,8 +368,11 @@ def main(ui="react", toolkit=False):
         except Exception as e:
             print(f"[ERROR] Failed to create config.py: {e}")
             print("Please manually copy config_template.py to config.py")
-            input("\nPress Enter to exit...")
-            return
+            from utils.local_server import prompts_allowed
+            if prompts_allowed():
+                input("\nPress Enter to exit...")
+                return
+            return 1
     
     config = load_config()
     if config is None:
@@ -382,9 +411,18 @@ def main(ui="react", toolkit=False):
     
     print("Launching NeverEndingQuest Web Interface...")
     port = getattr(config, 'WEB_PORT', 8357)
+    if bound_socket is not None:
+        port = bound_socket.getsockname()[1]
     print(f"Starting the {selected_ui.title()} player")
     print(f"The browser should open automatically. If not, navigate to http://localhost:{port}{start_path}")
     
+    if args is not None and args.serve:
+        # #1681/#1682 (E1): one interpreter per world. A Load or Reset still
+        # ends this process with exit 0; the launcher starts it again.
+        import web.web_interface as web_server
+        web_server.serve(selected_ui, toolkit, no_browser=args.no_browser, bound_socket=bound_socket)
+        return 0
+
     # Run the web interface with restart capability
     while True:
         try:
@@ -396,8 +434,18 @@ def main(ui="react", toolkit=False):
                 # The working directory is the data root; the server stays in the install folder.
                 server_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "web_interface.py")
             command = [sys.executable, server_script, "--ui", selected_ui]
+            if getattr(sys, "frozen", False):
+                # A frozen build has no separate script: the same executable serves in-process.
+                command = [sys.executable, "--serve", "--ui", selected_ui]
             if toolkit:
                 command.append("--toolkit")
+            if args is not None:
+                if args.no_browser:
+                    command.append("--no-browser")
+                if args.port is not None:
+                    command += ["--port", str(args.port)]
+                if args.port_or_free is not None:
+                    command += ["--port-or-free", str(args.port_or_free)]
             result = subprocess.run(command, env=child_env)
             
             # Check if it was a planned restart (exit code 0)
@@ -429,15 +477,28 @@ if __name__ == "__main__":
     # #1681/#1682: a data root (--data-dir or NEQ_DATA_DIR) holds this player's
     # state; seed or refresh it, then run from it. Unset: nothing changes.
     from utils.data_root import enter_data_root, prepare_data_root, resolve_data_root
+    from utils.local_server import (EmptyLocalToken, UPDATES_THROUGH_APP, desktop_mode,
+                                    local_token, prompts_allowed)
+    try:
+        local_token()
+    except EmptyLocalToken as exc:
+        print(f"[SECURITY] {exc}")
+        sys.exit(2)
     data_root = resolve_data_root(args.data_dir)
+    # --serve: bind first, so NEQ_PORT=<n> is the first line a launcher reads.
+    bound_socket = bind_for_args(args, root=data_root) if args.serve else None
     if data_root is not None:
         prepare_data_root(data_root)
         enter_data_root(data_root)
         print(f"[SETUP] Data folder: {data_root}")
     # Check for updates before starting
     try:
-        from utils.version_checker import check_for_updates
-        status, local_ver, remote_ver, message = check_for_updates(silent=True)
+        from utils.version_checker import check_for_updates, get_local_version
+        if desktop_mode():
+            # The desktop app delivers updates itself; no GitHub check here.
+            status, local_ver, remote_ver, message = "desktop", get_local_version(), None, UPDATES_THROUGH_APP
+        else:
+            status, local_ver, remote_ver, message = check_for_updates(silent=True)
 
         print(f"\nNeverEndingQuest v{local_ver}")
 
@@ -446,15 +507,19 @@ if __name__ == "__main__":
             print(f"  UPDATE AVAILABLE: v{local_ver} -> v{remote_ver}")
             print(f"{'='*60}")
             print("\nA new version is available!")
-            print("\nTo update:")
-            print("  1. Close the game")
-            print("  2. Run: git pull")
-            print("  3. Run: pip install -r requirements.txt (or venv\\Scripts\\activate then pip install)")
-            print("  4. Restart the game")
+            if desktop_mode():
+                print(f"  {UPDATES_THROUGH_APP}")
+            else:
+                print("\nTo update:")
+                print("  1. Close the game")
+                print("  2. Run: git pull")
+                print("  3. Run: pip install -r requirements.txt (or venv\\Scripts\\activate then pip install)")
+                print("  4. Restart the game")
             print()
-            input("Press Enter to continue with current version...")
+            if prompts_allowed():
+                input("Press Enter to continue with current version...")
 
     except Exception as e:
         print(f"[VERSION_CHECK] Could not check for updates: {e}")
 
-    sys.exit(main(args.ui, toolkit=args.toolkit))
+    sys.exit(main(args.ui, toolkit=args.toolkit, args=args, bound_socket=bound_socket))

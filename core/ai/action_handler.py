@@ -113,6 +113,8 @@ except ImportError:
 # Set script name for logging
 set_script_name("action_handler")
 
+from utils import activity as _activity  # #1681/#1682: save_seq for GET /health
+
 
 def _module_transition_completion_id(
     from_module: str,
@@ -1915,6 +1917,7 @@ def apply_current_transition_action(operation_id, action_index):
         )
         if not success:
             raise RuntimeError("staged save could not complete: %s" % message)
+        _activity.save_completed()
         _publish_stable_transition_message(
             receipt["message_id"], "Game saved successfully! %s" % message
         )
@@ -6957,6 +6960,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             success, message = manager.create_save_game(description, save_mode)
             
             if success:
+                _activity.save_completed()
                 info(f"SUCCESS: Save game created: {message}", category="save_game")
                 # Add success message to conversation
                 save_message = f"Game saved successfully! {message}"

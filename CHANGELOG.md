@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Starting a game no longer loads the module toolkit until a toolkit page is opened (#1682).
 - The game can keep your saves, adventures and settings in a separate folder, chosen with --data-dir or NEQ_DATA_DIR; the first start fills it, later starts refresh the shipped prompts and add new adventures without touching anything you played. With neither set, nothing changes (#1681, #1682).
+- A launcher such as the desktop app can now start the game on a chosen or free port without opening a browser, check whether a turn is still running, and ask the game to stop once the turn is safe; when the desktop app starts it, the game only accepts requests that carry the app's private key, updates come through the app, and the game never waits for a key press. Your settings now stay in your data folder (#1681, #1682).
 
 ## [1.0.1] - 2026-10-30
 
