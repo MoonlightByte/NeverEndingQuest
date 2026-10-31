@@ -98,14 +98,12 @@ import utils.reset_campaign as reset_campaign
 from core.managers.status_manager import set_status_callback, set_detail_callback, set_compression_callback, wait_payload
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 
-# Import toolkit components for API support
-try:
-    from core.toolkit.pack_manager import PackManager
-    from core.toolkit.monster_generator import MonsterGenerator
-    from core.toolkit.video_processor import VideoProcessor
-    TOOLKIT_AVAILABLE = True
-except ImportError:
-    TOOLKIT_AVAILABLE = False
+# Toolkit components are imported by the toolkit routes that use them (#1682), so a
+# play session never loads them; the flag only checks that they are installed.
+from importlib.util import find_spec
+TOOLKIT_AVAILABLE = all(find_spec(name) for name in (
+    "core.toolkit.pack_manager", "core.toolkit.monster_generator", "core.toolkit.video_processor"))
+if not TOOLKIT_AVAILABLE:
     print("Module Toolkit not available - toolkit endpoints disabled")
 
 # Set script name for logging
@@ -1625,6 +1623,7 @@ def get_packs():
         return jsonify({'error': 'Module Toolkit components are not available on the server.'}), 503
 
     try:
+        from core.toolkit.pack_manager import PackManager
         manager = PackManager()
         # First, get the complete list of packs, including the unwanted ones.
         all_packs = manager.list_available_packs()
@@ -1651,6 +1650,7 @@ def create_pack():
     
     try:
         data = request.json
+        from core.toolkit.pack_manager import PackManager
         manager = PackManager()
         # Pass all the new fields to the manager
         result = manager.create_pack(
@@ -1681,6 +1681,7 @@ def activate_pack(pack_name):
             if not backup_result.get('success'):
                 warning(f"TOOLKIT: Failed to create live assets backup: {backup_result.get('error')}")
         
+        from core.toolkit.pack_manager import PackManager
         manager = PackManager()
         result = manager.activate_pack(pack_name, create_backup=False)  # Don't need pack backup since we did live backup
         
@@ -1704,6 +1705,7 @@ def export_pack(pack_name):
     
     try:
         import tempfile
+        from core.toolkit.pack_manager import PackManager
         manager = PackManager()
         
         # Export to temp directory
@@ -1736,6 +1738,7 @@ def delete_pack(pack_name):
         return jsonify({'success': False, 'error': 'Toolkit not available'})
     
     try:
+        from core.toolkit.pack_manager import PackManager
         manager = PackManager()
         result = manager.delete_pack(pack_name)
         return jsonify(result)
@@ -1969,6 +1972,7 @@ def import_pack():
                 file.save(tmp.name)
             
             # File is now closed, safe to process
+            from core.toolkit.pack_manager import PackManager
             manager = PackManager()
             # Pass the target folder name and import options to the manager
             result = manager.import_pack(
@@ -2003,6 +2007,7 @@ def get_monsters():
         
         # Use a temporary generator instance to get monster list
         from config import OPENAI_API_KEY
+        from core.toolkit.monster_generator import MonsterGenerator
         generator = MonsterGenerator(api_key=OPENAI_API_KEY)
         monsters = generator.get_monster_list(pack_name=pack_name)
         return jsonify(monsters)
@@ -2102,6 +2107,7 @@ def generate_monsters():
         def run_generation():
             try:
                 from config import OPENAI_API_KEY
+                from core.toolkit.monster_generator import MonsterGenerator
                 generator = MonsterGenerator(api_key=OPENAI_API_KEY)
                 
                 # Create progress callback
@@ -2171,6 +2177,7 @@ def process_video():
             print(f"[INFO] Temp file: {tmp_file}")
             print(f"[INFO] File size: {os.path.getsize(tmp_file)} bytes")
             
+            from core.toolkit.video_processor import VideoProcessor
             processor = VideoProcessor()
             result = processor.process_monster_video(
                 input_path=tmp_file,
@@ -2676,6 +2683,7 @@ def create_pack_toolkit():
     
     try:
         data = request.json
+        from core.toolkit.pack_manager import PackManager
         manager = PackManager()
         result = manager.create_pack(
             name=data.get('name'),
@@ -2701,6 +2709,7 @@ def save_toolkit_settings():
         
         # Save active pack
         if active_pack:
+            from core.toolkit.pack_manager import PackManager
             manager = PackManager()
             manager.activate_pack(active_pack)
         
