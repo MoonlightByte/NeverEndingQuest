@@ -87,6 +87,46 @@ def _projected(sheet: Dict[str, Any]) -> Dict[str, Any]:
     return sheet
 
 
+def _sheet_paths(from_character: str, to_character: str):
+    """(giver_path, receiver_path, None), or (None, None, reason) with the reasons a give has always returned."""
+    giver_path = _resolve(from_character)
+    receiver_path = _resolve(to_character)
+    if giver_path is None:
+        return None, None, f"no character sheet for giver {from_character!r}"
+    if receiver_path is None:
+        return None, None, f"no character sheet for receiver {to_character!r}"
+    if os.path.normcase(os.path.realpath(giver_path)) == os.path.normcase(os.path.realpath(receiver_path)):
+        return None, None, "giver and receiver are the same character"
+    return giver_path, receiver_path, None
+
+
+def _location(party_tracker: Optional[Dict[str, Any]]) -> str:
+    party = party_tracker or safe_json_load("party_tracker.json") or {}
+    return str((party.get("worldConditions") or {}).get("currentLocationId") or "party")
+
+
+def transfer_check(from_character: str, to_character: str, item_name: str, quantity: Any,
+                   party_tracker: Optional[Dict[str, Any]] = None, *, sheets: bool = True) -> Optional[str]:
+    """#360: the reason this give would be refused, or None, read before the DM's reply is shown.
+
+    The same checks execute_transfer makes, in the same order and with the same reasons; the
+    engine's give runs on copies of both sheets (transfer.transact) and nothing is written.
+    With ``sheets`` False only the sheet-free checks run (an earlier action of the same reply
+    may change a sheet). A corrupt sheet or an unavailable engine raises; the caller decides."""
+    giver_path, receiver_path, reason = _sheet_paths(from_character, to_character)
+    if reason or not sheets:
+        return reason
+    if quantity in (None, ""):
+        quantity = 1
+    giver = safe_json_load(giver_path)
+    receiver = safe_json_load(receiver_path)
+    if not giver or not receiver:
+        return "could not load both character sheets"
+    outcome = nql_transfer.transact(giver, receiver, item_name, quantity, location=_location(party_tracker),
+                                    reserved=nql_storage.held_ids_on_disk())
+    return None if outcome.ok else outcome.reason
+
+
 def execute_transfer(from_character: str, to_character: str, item_name: str, quantity: Any,
                      party_tracker: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Run one give. Returns {"success": bool, "message": str} or {"success": False, "error": str}."""
@@ -95,19 +135,13 @@ def execute_transfer(from_character: str, to_character: str, item_name: str, qua
         _get_character_update_lock, read_sheet_waiting, wait_for_sheet_lease,
     )
 
-    giver_path = _resolve(from_character)
-    receiver_path = _resolve(to_character)
-    if giver_path is None:
-        return {"success": False, "error": f"no character sheet for giver {from_character!r}"}
-    if receiver_path is None:
-        return {"success": False, "error": f"no character sheet for receiver {to_character!r}"}
-    if os.path.normcase(os.path.realpath(giver_path)) == os.path.normcase(os.path.realpath(receiver_path)):
-        return {"success": False, "error": "giver and receiver are the same character"}
+    giver_path, receiver_path, reason = _sheet_paths(from_character, to_character)
+    if reason:
+        return {"success": False, "error": reason}
     if quantity in (None, ""):
         quantity = 1
 
-    party = party_tracker or safe_json_load("party_tracker.json") or {}
-    location = str((party.get("worldConditions") or {}).get("currentLocationId") or "party")
+    location = _location(party_tracker)
 
     # Both leases, always in path order, so two concurrent gives cannot deadlock.
     first, second = sorted((giver_path, receiver_path))

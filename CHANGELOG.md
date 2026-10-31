@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A handoff the sheets cannot support is corrected before it is shown, instead of shown and then contradicted (#360).
 - Starting a game no longer loads the module toolkit until a toolkit page is opened (#1682).
 - A game uses about a quarter less memory at rest: the model client library loads when first needed (#1682).
 - The game can keep your saves, adventures and settings in a separate folder, chosen with --data-dir or NEQ_DATA_DIR; the first start fills it, later starts refresh the shipped prompts and add new adventures without touching anything you played. With neither set, nothing changes (#1681, #1682).

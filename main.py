@@ -11288,6 +11288,59 @@ def _acquire_catalog_refusal(actions, party, wait):
     return None
 
 
+# #360: actions that never write a character sheet. A transferItem with only these
+# before it in the reply is checked against the sheets before it is shown.
+_SHEET_NEUTRAL_ACTIONS = frozenset((
+    "rollCheck", "updatePlot", "setOccupantAttitude", "moveOccupant",
+    "resolveOccupant", "returnOccupant", "listSaves",
+))
+
+
+def _transfer_refusal(actions, party, last_attempt):
+    """#360: the engine's reason a draft's transferItem would be refused, before
+    anything is shown, or None. The sheets and the engine are consulted only
+    for a transferItem no earlier action of the reply could change a sheet
+    for; after one, only the sheet-free checks run. On the last attempt the
+    draft passes, so the turn never fails on it. A corrupt sheet or an
+    unavailable engine leaves the outcome to the commit, as #1329 does."""
+    from core.managers.item_acquisition import _stops
+    from core.managers.item_transfer import transfer_check
+
+    if last_attempt:
+        return None
+    sheets = True
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        kind = action.get("action")
+        if kind != action_handler.ACTION_TRANSFER_ITEM:
+            if kind not in _SHEET_NEUTRAL_ACTIONS:
+                sheets = False
+            continue
+        parameters = action.get("parameters")
+        parameters = parameters if isinstance(parameters, dict) else {}
+        item_name = parameters.get("itemName", "")
+        try:
+            reason = transfer_check(
+                parameters.get("fromCharacter", ""),
+                parameters.get("toCharacter", ""),
+                item_name,
+                parameters.get("quantity", 1),
+                party,
+                sheets=sheets,
+            )
+        except _stops():
+            raise
+        except Exception as exc:
+            info(f"VALIDATION: transferItem pre-check unavailable ({type(exc).__name__}); left to the commit",
+                 category="ai_validation")
+            reason = None
+        if reason:
+            return "transferItem %s: %s" % (json.dumps(item_name), reason)
+        sheets = False
+    return None
+
+
 # #1357: at most this many places are offered in a destination clarification.
 _CLARIFY_PLACE_LIMIT = 4
 
@@ -11562,6 +11615,31 @@ def _review_dm_candidate(
                     info(
                         "VALIDATION: acquireItem refused by the catalog before "
                         f"review; retry {retry_count}",
+                        category="ai_validation",
+                    )
+                    review_retry_status(retry_count)
+
+                # #360: a handoff the sheets cannot support is corrected here,
+                # so it is never shown and then contradicted.
+                transfer_refusal = (
+                    _transfer_refusal(
+                        actions, party, rejected_drafts >= _DM_REVIEW_REJECTION_LIMIT - 1)
+                    if transition_check_passed else None
+                )
+                if transfer_refusal:
+                    retry_count += 1
+                    transition_check_passed = False
+                    rejected_candidate = ai_response_content
+                    retry_correction = (
+                        "The previous structured response was rejected before "
+                        "anything was shown: " + transfer_refusal + ". The handoff "
+                        "cannot happen as written. Correct that action's "
+                        "fromCharacter, toCharacter, itemName or quantity from the "
+                        "current sheets, or drop it and narrate why it cannot "
+                        "happen. Return the complete corrected JSON."
+                    )
+                    info(
+                        f"VALIDATION: transferItem refused before review; retry {retry_count}",
                         category="ai_validation",
                     )
                     review_retry_status(retry_count)
