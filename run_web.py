@@ -267,6 +267,8 @@ def parse_args(argv=None):
     parser.add_argument("--prepare-frontend", action="store_true", help="prepare React assets without starting a game")
     parser.add_argument("--check-frontend-tools", action="store_true", help="check Node/npm against locked dependencies without installing")
     parser.add_argument("--frontend-ready", action="store_true", help="check current React assets without requiring Node/npm")
+    parser.add_argument("--data-dir", default=None,
+                        help="keep saves, modules and settings in this folder (same as env NEQ_DATA_DIR)")
     return parser.parse_args(argv)
 
 def create_default_party_tracker():
@@ -389,7 +391,11 @@ def main(ui="react", toolkit=False):
             # Run the web interface and capture the return code
             child_env = os.environ.copy()
             child_env.pop("NEQ_START_PATH", None)
-            command = [sys.executable, "web/web_interface.py", "--ui", selected_ui]
+            server_script = "web/web_interface.py"
+            if os.environ.get("NEQ_DATA_DIR"):
+                # The working directory is the data root; the server stays in the install folder.
+                server_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "web_interface.py")
+            command = [sys.executable, server_script, "--ui", selected_ui]
             if toolkit:
                 command.append("--toolkit")
             result = subprocess.run(command, env=child_env)
@@ -420,6 +426,14 @@ if __name__ == "__main__":
         sys.exit(0 if check_frontend_tools() else 1)
     if args.prepare_frontend:
         sys.exit(0 if ensure_react_frontend() else 1)
+    # #1681/#1682: a data root (--data-dir or NEQ_DATA_DIR) holds this player's
+    # state; seed or refresh it, then run from it. Unset: nothing changes.
+    from utils.data_root import enter_data_root, prepare_data_root, resolve_data_root
+    data_root = resolve_data_root(args.data_dir)
+    if data_root is not None:
+        prepare_data_root(data_root)
+        enter_data_root(data_root)
+        print(f"[SETUP] Data folder: {data_root}")
     # Check for updates before starting
     try:
         from utils.version_checker import check_for_updates
