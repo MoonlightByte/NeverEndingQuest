@@ -4,6 +4,7 @@ import type { Status } from './lifecycle'
 
 const TEXT: Record<Status, (s: number) => [string, string]> = {
   'starting': () => ['Starting NeverEndingQuest...', 'Getting the game server ready.'],
+  'reloading': () => ['Loading...', 'The game server is restarting to load your game.'],
   'still-starting': s => ['Still starting...', `${s} s so far. The first run sets up your saves folder, which can take a while. Game > Open logs shows progress.`],
   'closing-starting': () => ['Starting, will close when ready', 'The game server is still starting. It will close as soon as it is ready. Game > Force quit stops it now.'],
   'closing': () => ['Saving and closing...', 'The game is saving.'],

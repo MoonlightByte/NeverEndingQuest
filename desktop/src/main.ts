@@ -132,11 +132,13 @@ function showGame(url: string): void {
     })
     // Windows logoff or shutdown: ask the server to save; the OS sets the deadline from here.
     mainWindow.on('session-end', () => { lifecycle.requestQuit() })
-    mainWindow.once('ready-to-show', () => {
-      mainWindow?.show()
-      if (statusWindow && !statusWindow.isDestroyed()) statusWindow.hide()
-    })
   }
+  // Also the reload after a Load or Reset relaunch, possibly at a new port (origin, CSP and token
+  // header follow lifecycle.port).
+  mainWindow.webContents.once('did-finish-load', () => {
+    mainWindow?.show()
+    if (statusWindow && !statusWindow.isDestroyed()) statusWindow.hide()
+  })
   void mainWindow.loadURL(url)
 }
 

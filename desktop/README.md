@@ -17,6 +17,13 @@ The installer (A3) and updates (A4) build on this folder.
 - Your saves, settings and logs stay in `%APPDATA%\NeverEndingQuest`. Logs: `logs\desktop.log` and `logs\server.log`
   (Game > Open logs).
 
+## Load and Reset
+
+Loading a save or resetting ends the server with exit code 0, and it expects to be started again. The app
+restarts it with the same token and the last port, then reloads the game window (at a new address if that port
+was taken). Only a non-zero exit, or a restarted server that stops before it is ready, shows the
+"game server stopped" dialog.
+
 ## Closing
 
 Quit asks the server to save and stop, then waits for it, with no time limit. During a turn the window says

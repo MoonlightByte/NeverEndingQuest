@@ -8,7 +8,7 @@ export interface ChildHandle {
   onStdoutLine(cb: (line: string) => void): void
 }
 
-export type Status = 'starting' | 'still-starting' | 'closing-starting' | 'closing' | 'closing-turn' | 'closing-unanswered'
+export type Status = 'starting' | 'reloading' | 'still-starting' | 'closing-starting' | 'closing' | 'closing-turn' | 'closing-unanswered'
 
 export interface Ui {
   status(kind: Status, elapsedSeconds: number): void
@@ -50,13 +50,26 @@ export class Lifecycle {
   private quitRequested = false
   private generation = 0
   private startedAt = 0
+  // Set while a server that exited 0 on its own (Load or Reset, D-A1-2) is being started again.
+  private relaunching = false
 
   constructor(private readonly d: Deps) {}
 
   // Also the Restart path: every start deletes run/port and mints a new token before spawning.
   start(): void {
-    const gen = ++this.generation
     this.token = this.d.newToken()
+    this.relaunching = false
+    this.spawn()
+  }
+
+  // A Load or Reset ends the server with exit 0 and expects it back: same token, same root, last port.
+  private relaunch(): void {
+    this.relaunching = true
+    this.spawn()
+  }
+
+  private spawn(): void {
+    const gen = ++this.generation
     this.port = null
     this.d.deletePortFile()
     const child = this.d.spawnServer(this.token, preferredPort(this.d.readLastPort()))
@@ -64,8 +77,8 @@ export class Lifecycle {
     this.childAlive = true
     this.phase = 'starting'
     this.startedAt = this.d.now()
-    this.d.log(`server spawned pid=${child.pid}`)
-    this.d.ui.status('starting', 0)
+    this.d.log(`server spawned pid=${child.pid}${this.relaunching ? ' (relaunch after exit 0)' : ''}`)
+    this.d.ui.status(this.relaunching ? 'reloading' : 'starting', 0)
     child.onStdoutLine(line => {
       if (gen === this.generation && this.port === null) {
         const port = parsePortLine(line)
@@ -105,6 +118,7 @@ export class Lifecycle {
     if (health && health.ready && this.port !== null) {
       this.serverVersion = health.version
       this.phase = 'ready'
+      this.relaunching = false
       this.d.log(`server ready port=${this.port} version=${health.version}`)
       this.d.writeLastPort(this.port)
       if (this.quitRequested) {
@@ -124,6 +138,10 @@ export class Lifecycle {
     if (this.quitRequested) {
       this.phase = 'exited'
       this.d.ui.exit(0)
+    } else if (this.phase === 'ready' && code === 0) {
+      // Not our /shutdown: a Load or Reset asking to be relaunched. A relaunched server that then
+      // exits before it is ready falls through to the start-failed dialog below.
+      this.relaunch()
     } else if (this.phase === 'starting') {
       this.phase = 'stopped'
       this.d.ui.startFailed()
