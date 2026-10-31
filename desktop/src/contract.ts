@@ -11,6 +11,11 @@ export const LOCAL_HOST = '127.0.0.1'
 // <data root>/run/port, body {"port": n, "pid": n}, written temp + rename by the server.
 export const PORT_FILE_PARTS = ['run', 'port'] as const
 
+// <data root>/run/last-port: the port of the last run, passed back as --port-or-free so the game's origin
+// (and with it the page's localStorage settings) stays the same across launches. Written by the shell.
+export const LAST_PORT_FILE_PARTS = ['run', 'last-port'] as const
+export const DEFAULT_PORT = 8357
+
 // Copied from the parent environment when present (matched upper-cased; Windows names are case-insensitive).
 export const ENV_ALLOW = [
   'PATH', 'SYSTEMROOT', 'SYSTEMDRIVE', 'WINDIR', 'COMSPEC', 'PATHEXT', 'TEMP',

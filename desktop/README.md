@@ -5,7 +5,10 @@ The installer (A3) and updates (A4) build on this folder.
 
 ## What it does
 
-- Starts the server with `--no-browser --port 0 --data-dir %APPDATA%\NeverEndingQuest` and `NEQ_DESKTOP=1`.
+- Starts the server with `--no-browser --port-or-free <port> --data-dir %APPDATA%\NeverEndingQuest` and `NEQ_DESKTOP=1`.
+  The port is the last run's (`run\last-port`, 8357 on the first launch), so the game keeps the same address and
+  its settings stored in the page carry over between launches. The server takes a free port only if that one is busy;
+  if `run\last-port` exists but cannot be read, the shell asks for any free port (`--port 0`).
   Packaged: `resources\server\run_web.exe` (the PyInstaller folder). From a checkout: `run_web.py --serve`.
 - Reads the port from `%APPDATA%\NeverEndingQuest\run\port` (deleted before every start; accepted only when its
   pid is the server the app started), with the `NEQ_PORT=<n>` stdout line as a fallback.

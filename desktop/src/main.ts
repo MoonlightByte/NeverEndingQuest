@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as http from 'node:http'
 import * as path from 'node:path'
-import { HEALTH_PATH, LOCAL_HOST, PORT_FILE_PARTS, SHUTDOWN_PATH, TOKEN_HEADER } from './contract'
+import { HEALTH_PATH, LAST_PORT_FILE_PARTS, LOCAL_HOST, PORT_FILE_PARTS, SHUTDOWN_PATH, TOKEN_HEADER } from './contract'
 import { Lifecycle, type ChildHandle, type Status } from './lifecycle'
 import { buildMenu } from './menu'
 import { lockedPreferences } from './prefs'
@@ -14,6 +14,7 @@ import { statusPageUrl } from './statusPage'
 const dataDir = path.join(app.getPath('appData'), 'NeverEndingQuest')
 const logsDir = path.join(dataDir, 'logs')
 const portFile = path.join(dataDir, ...PORT_FILE_PARTS)
+const lastPortFile = path.join(dataDir, ...LAST_PORT_FILE_PARTS)
 const desktopLog = path.join(logsDir, 'desktop.log')
 const serverLog = path.join(logsDir, 'server.log')
 const repoRoot = path.resolve(__dirname, '..', '..')
@@ -51,13 +52,14 @@ let mainWindow: BrowserWindow | null = null
 let statusWindow: BrowserWindow | null = null
 let exiting = false
 
-function spawnServer(token: string): ChildHandle {
+function spawnServer(token: string, port: number | null): ChildHandle {
   const cmd = serverCommand({
     packaged: app.isPackaged,
     resourcesPath: process.resourcesPath,
     repoRoot,
     dataDir,
     python: devPython(process.env),
+    port,
   })
   const env = childEnv(process.env, token)
   // Argv and env key names only; values (the token above all) never reach a log.
@@ -172,6 +174,21 @@ const lifecycle = new Lifecycle({
   deletePortFile: () => fs.rmSync(portFile, { force: true }),
   readPortFile: () => {
     try { return fs.readFileSync(portFile, 'utf8') } catch { return null }
+  },
+  readLastPort: () => {
+    try {
+      return { kind: 'text', body: fs.readFileSync(lastPortFile, 'utf8') }
+    } catch (err) {
+      return (err as NodeJS.ErrnoException).code === 'ENOENT' ? { kind: 'missing' } : { kind: 'unreadable' }
+    }
+  },
+  writeLastPort: port => {
+    try {
+      fs.writeFileSync(`${lastPortFile}.tmp`, `${port}\n`)
+      fs.renameSync(`${lastPortFile}.tmp`, lastPortFile)
+    } catch (err) {
+      log(`last-port not saved: ${String(err)}`)
+    }
   },
   spawnServer,
   getHealth: async (port, token) => {

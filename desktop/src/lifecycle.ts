@@ -1,6 +1,6 @@
 // Start, quit and restart of the game server, kept free of electron so the kit rows can drive it.
 // Nothing here kills the server on a clock: only the child exiting or the player's Force quit ends it.
-import { localOrigin, parseHealth, parsePortFile, parsePortLine, type Health } from './serverSpawn'
+import { localOrigin, parseHealth, parsePortFile, parsePortLine, preferredPort, type Health, type LastPortRead } from './serverSpawn'
 
 export interface ChildHandle {
   pid: number | undefined
@@ -22,7 +22,9 @@ export interface Deps {
   newToken(): string
   deletePortFile(): void
   readPortFile(): string | null
-  spawnServer(token: string): ChildHandle
+  readLastPort(): LastPortRead
+  writeLastPort(port: number): void
+  spawnServer(token: string, port: number | null): ChildHandle
   getHealth(port: number, token: string): Promise<string | null>
   postShutdown(port: number, token: string): Promise<boolean>
   forceKill(pid: number): void
@@ -57,7 +59,7 @@ export class Lifecycle {
     this.token = this.d.newToken()
     this.port = null
     this.d.deletePortFile()
-    const child = this.d.spawnServer(this.token)
+    const child = this.d.spawnServer(this.token, preferredPort(this.d.readLastPort()))
     this.child = child
     this.childAlive = true
     this.phase = 'starting'
@@ -104,6 +106,7 @@ export class Lifecycle {
       this.serverVersion = health.version
       this.phase = 'ready'
       this.d.log(`server ready port=${this.port} version=${health.version}`)
+      this.d.writeLastPort(this.port)
       if (this.quitRequested) {
         void this.shutdown()
       } else {

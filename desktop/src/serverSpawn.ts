@@ -2,7 +2,7 @@
 // can exercise them under plain node.
 import { randomBytes } from 'node:crypto'
 import * as path from 'node:path'
-import { DEV_PYTHON_ENV, ENV_ALLOW, ENV_DROP, LOCAL_HOST, TOKEN_ENV } from './contract'
+import { DEFAULT_PORT, DEV_PYTHON_ENV, ENV_ALLOW, ENV_DROP, LOCAL_HOST, TOKEN_ENV } from './contract'
 
 export interface Health {
   version: string
@@ -31,6 +31,18 @@ export function parsePortFile(body: string, childPid: number | undefined): numbe
 }
 
 const PORT_LINE = /^NEQ_PORT=(\d{1,5})$/
+
+export type LastPortRead = { kind: 'missing' } | { kind: 'unreadable' } | { kind: 'text', body: string }
+
+// The port to ask for: the last run's port, 8357 on a first launch or a garbage file, and null (any free
+// port, --port 0) only when the file exists but cannot be read.
+export function preferredPort(read: LastPortRead): number | null {
+  if (read.kind === 'unreadable') return null
+  if (read.kind === 'missing') return DEFAULT_PORT
+  const body = read.body.trim()
+  if (!/^\d{1,5}$/.test(body)) return DEFAULT_PORT
+  return validPort(Number(body)) ?? DEFAULT_PORT
+}
 
 // Stdout fallback: the server prints NEQ_PORT=<n> once bound; banner lines may come first.
 export function parsePortLine(line: string): number | null {
@@ -105,8 +117,10 @@ export function serverCommand(opts: {
   repoRoot: string
   dataDir: string
   python: string
+  port: number | null
 }): ServerCommand {
-  const flags = ['--no-browser', '--port', '0', '--data-dir', opts.dataDir]
+  const port = opts.port === null ? ['--port', '0'] : ['--port-or-free', String(opts.port)]
+  const flags = ['--no-browser', ...port, '--data-dir', opts.dataDir]
   if (opts.packaged) {
     return { file: path.join(opts.resourcesPath, 'server', 'run_web.exe'), args: flags, cwd: opts.dataDir }
   }
