@@ -1,0 +1,21 @@
+{
+  "name": "neverendingquest-desktop",
+  "productName": "NeverEndingQuest",
+  "version": "1.0.1",
+  "description": "Windows desktop shell for NeverEndingQuest: starts the game server and opens the game.",
+  "private": true,
+  "license": "SEE LICENSE IN ../LICENSING.md",
+  "author": "Eternal Tavern LLC",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p .",
+    "dev": "tsc -p . && electron .",
+    "dist": "tsc -p . && electron-builder --win --dir"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "electron": "44.7.2",
+    "electron-builder": "26.17.0",
+    "typescript": "6.0.3"
+  }
+}

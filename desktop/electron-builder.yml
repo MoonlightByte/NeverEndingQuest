@@ -1,0 +1,16 @@
+# Windows only (owner decision D-A0-1). A2 builds an unpacked folder; the NSIS installer and
+# signing are added in A3.
+appId: com.eternaltavern.neverendingquest
+productName: NeverEndingQuest
+directories:
+  output: release
+files:
+  - dist/**
+  - package.json
+asar: true
+extraResources:
+  # The PyInstaller one-folder server from A1.3 (desktop/pyinstaller), placed at resources/server.
+  - from: ../dist-server/neq-server
+    to: server
+win:
+  target: dir

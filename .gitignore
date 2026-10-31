@@ -528,3 +528,9 @@ test_validation_system.py
 verify_models.py
 FOR_CODEX_FILES_AND_EVIDENCE.md
 docs/CODEX_HANDOFF_VALIDATION_SYSTEM.md
+
+# Desktop shell (desktop/)
+desktop/node_modules/
+desktop/dist/
+desktop/release/
+dist-server/
