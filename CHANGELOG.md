@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A Windows desktop app shell now starts the game server and opens the game in its own window, and waits for your turn to be saved before it closes (#1681).
+
 ## [1.0.1] - 2026-10-30
 
 - The game now reports its real version and no longer tells a fresh install to update (#1676).
