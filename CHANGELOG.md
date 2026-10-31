@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The Windows installer's API-key menu shows correctly and no longer says a key is configured right after you skip it; run from inside a downloaded copy of the game, it installs that copy instead of downloading a second one and no longer creates an empty party file; and it puts the desktop shortcut on the desktop you actually see, OneDrive included, and says where (#1686, #1687, #1688).
 - A brand-new install no longer shows the recovery notice for a save it does not have, and opening the game no longer logs a storage error before a game is started (#1689).
 - A handoff the sheets cannot support is corrected before it is shown, instead of shown and then contradicted (#360).
 - Starting a game no longer loads the module toolkit until a toolkit page is opened (#1682).
