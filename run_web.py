@@ -157,6 +157,10 @@ def _react_build_is_current(frontend_dir):
     index = frontend_dir / "dist" / "index.html"
     if not _react_bundle_is_usable(frontend_dir / "dist"):
         return False
+    if getattr(sys, "frozen", False):
+        # #1681: a packaged build ships dist without its sources, and copying
+        # or installing it resets file times; the shipped dist is the build.
+        return True
 
     build_time = index.stat().st_mtime
     input_paths = [
