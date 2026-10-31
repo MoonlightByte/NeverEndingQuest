@@ -446,9 +446,6 @@ def main(ui="react", toolkit=False, args=None, bound_socket=None):
                 # The working directory is the data root; the server stays in the install folder.
                 server_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web", "web_interface.py")
             command = [sys.executable, server_script, "--ui", selected_ui]
-            if getattr(sys, "frozen", False):
-                # A frozen build has no separate script: the same executable serves in-process.
-                command = [sys.executable, "--serve", "--ui", selected_ui]
             if toolkit:
                 command.append("--toolkit")
             if args is not None:
@@ -492,10 +489,15 @@ if __name__ == "__main__":
     from utils.local_server import (EmptyLocalToken, UPDATES_THROUGH_APP, desktop_mode,
                                     local_token, prompts_allowed)
     try:
-        local_token()
+        launch_token = local_token()
     except EmptyLocalToken as exc:
         print(f"[SECURITY] {exc}")
         sys.exit(2)
+    if getattr(sys, "frozen", False) or launch_token:
+        # #1681: a frozen build or a launcher (desktop shell, world supervisor)
+        # gets one process that serves in-process and ends with exit 0 on a
+        # Load, Reset or /shutdown; the launcher, not run_web, starts it again.
+        args.serve = True
     data_root = resolve_data_root(args.data_dir)
     # --serve: bind first, so NEQ_PORT=<n> is the first line a launcher reads.
     bound_socket = bind_for_args(args, root=data_root) if args.serve else None
