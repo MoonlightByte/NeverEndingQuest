@@ -37,6 +37,14 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
+# #1681: a frozen build starts its script children (the provider child,
+# combat_builder, monster_builder) as [sys.executable, <script>.py, ...];
+# they run here as their bundled modules, before anything is printed.
+if getattr(sys, "frozen", False) and __name__ == "__main__":
+    from utils.frozen_dispatch import run_frozen_script
+    if run_frozen_script(sys.argv):
+        sys.exit(0)
+
 
 _AUTO_NPM = object()
 
