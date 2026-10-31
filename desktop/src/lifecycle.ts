@@ -8,7 +8,7 @@ export interface ChildHandle {
   onStdoutLine(cb: (line: string) => void): void
 }
 
-export type Status = 'starting' | 'reloading' | 'still-starting' | 'closing-starting' | 'closing' | 'closing-turn' | 'closing-unanswered'
+export type Status = 'starting' | 'reloading' | 'still-starting' | 'closing-starting' | 'closing' | 'closing-turn' | 'closing-save' | 'closing-unanswered'
 
 export interface Ui {
   status(kind: Status, elapsedSeconds: number): void
@@ -207,7 +207,7 @@ export class Lifecycle {
       if (gen !== this.generation || !this.childAlive) return
       const health = body === null ? null : parseHealth(body)
       if (health === null) this.d.ui.status('closing-unanswered', 0)
-      else this.d.ui.status(health.inFlight > 0 ? 'closing-turn' : 'closing', 0)
+      else this.d.ui.status(health.inFlight > 0 ? 'closing-turn' : health.backgroundPending > 0 ? 'closing-save' : 'closing', 0)
       this.d.schedule(() => this.watchClosing(gen), HEALTH_POLL_MS)
     })
   }

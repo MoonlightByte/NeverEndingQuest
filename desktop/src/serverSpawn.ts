@@ -8,6 +8,7 @@ export interface Health {
   version: string
   ready: boolean
   inFlight: number
+  backgroundPending: number
 }
 
 export interface ServerCommand {
@@ -50,14 +51,19 @@ export function parsePortLine(line: string): number | null {
   return m ? validPort(Number(m[1])) : null
 }
 
+function count(n: unknown): n is number {
+  return typeof n === 'number' && Number.isInteger(n) && n >= 0
+}
+
 export function parseHealth(body: string): Health | null {
   let data: unknown
   try { data = JSON.parse(body) } catch { return null }
   if (!data || typeof data !== 'object') return null
-  const { version, ready, in_flight: inFlight } = data as { version?: unknown, ready?: unknown, in_flight?: unknown }
+  const { version, ready, in_flight: inFlight, background_pending: pending = 0 } =
+    data as { version?: unknown, ready?: unknown, in_flight?: unknown, background_pending?: unknown }
   if (typeof version !== 'string' || typeof ready !== 'boolean') return null
-  if (typeof inFlight !== 'number' || !Number.isInteger(inFlight) || inFlight < 0) return null
-  return { version, ready, inFlight }
+  if (!count(inFlight) || !count(pending)) return null
+  return { version, ready, inFlight, backgroundPending: pending }
 }
 
 // Splits a byte stream into lines without ever holding more than maxLen characters of one line,

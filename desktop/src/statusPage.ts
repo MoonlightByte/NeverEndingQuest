@@ -9,6 +9,7 @@ const TEXT: Record<Status, (s: number) => [string, string]> = {
   'closing-starting': () => ['Starting, will close when ready', 'The game server is still starting. It will close as soon as it is ready. Game > Force quit stops it now.'],
   'closing': () => ['Saving and closing...', 'The game is saving.'],
   'closing-turn': () => ['Finishing your turn...', 'The game will close as soon as the current turn is saved. Game > Force quit stops it now.'],
+  'closing-save': () => ['Finishing a save...', 'The game will close as soon as it has finished saving. Game > Force quit stops it now.'],
   'closing-unanswered': () => ['Closing...', 'The game server is not answering yet. Keep waiting, or use Game > Force quit.'],
 }
 
