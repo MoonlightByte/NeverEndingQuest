@@ -1057,3 +1057,18 @@ def _gemini_completion(messages, model, temperature, response_format=_UNSET, **k
     # Normalization is centralized in create_completion() so OpenAI, Gemini,
     # legacy, and Local/Custom all expose identical response/error semantics.
     return response
+
+
+# #1681/#1682: every in-process send is counted for GET /health
+# (background_pending, last_activity). Callers reach create_completion through
+# this module, so the wrapper sees all of them.
+import functools as _functools
+from utils import activity as _activity
+
+_create_completion_unmetered = create_completion
+
+
+@_functools.wraps(_create_completion_unmetered)
+def create_completion(*args, **kwargs):
+    with _activity.model_send():
+        return _create_completion_unmetered(*args, **kwargs)

@@ -2330,5 +2330,21 @@ def _call_live_provider(
         )
 
 
+# #1681/#1682: every provider-child generation is counted for GET /health
+# (background_pending, last_activity) from spawn to reap. utils is imported at
+# call time: run as the provider child, this file has no repo root on sys.path
+# until _child_main adds it.
+import functools as _functools
+
+_call_live_provider_unmetered = _call_live_provider
+
+
+@_functools.wraps(_call_live_provider_unmetered)
+def _call_live_provider(*args, **kwargs):
+    from utils import activity
+    with activity.model_send():
+        return _call_live_provider_unmetered(*args, **kwargs)
+
+
 if __name__ == "__main__":
     sys.exit(_child_main())

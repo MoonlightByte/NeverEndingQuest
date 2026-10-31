@@ -53,6 +53,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # #1681/#1682: a data root (NEQ_DATA_DIR) goes first, so its config.py is the one imported.
 from utils.data_root import apply_data_root_path
 apply_data_root_path()
+from utils import activity
 
 from flask import Flask, render_template, request, jsonify, Response, abort, session, redirect
 from flask_socketio import SocketIO, emit
@@ -168,6 +169,17 @@ else:
 WEB_HOST = os.environ.get("NEQ_WEB_HOST", "127.0.0.1").strip() or "127.0.0.1"
 _LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
 _OPERATOR_TOKEN = os.environ.get("NEQ_OPERATOR_TOKEN", "").strip()
+# #1681/#1682: a launch token (NEQ_LOCAL_TOKEN, from the desktop shell or a
+# world supervisor) guards every request and keeps the server on this computer.
+from utils.local_server import (EmptyLocalToken, LocalGuard, UPDATES_THROUGH_APP,
+                                desktop_mode, local_token)
+try:
+    _LOCAL_TOKEN = local_token()
+except EmptyLocalToken as _exc:
+    print(f"[SECURITY] {_exc}")
+    sys.exit(2)
+if _LOCAL_TOKEN:
+    WEB_HOST = "127.0.0.1"
 
 if WEB_HOST not in _LOOPBACK_HOSTS and not _OPERATOR_TOKEN:
     raise RuntimeError(
@@ -195,6 +207,10 @@ import engineio.payload
 engineio.payload.Payload.max_decode_packets = SOCKET_MAX_DECODE_PACKETS = 96
 
 socketio = SocketIO(app, cors_allowed_origins=None)
+_served_port = None   # the bound port when this process binds its own socket (#1681/#1682)
+_shutdown_requested = threading.Event()
+if _LOCAL_TOKEN:
+    app.wsgi_app = LocalGuard(app.wsgi_app, _LOCAL_TOKEN, lambda: _served_port)
 
 
 @app.before_request
@@ -3106,8 +3122,12 @@ def handle_connect():
 
     # Check for updates and notify client
     try:
-        from utils.version_checker import check_for_updates
-        status, local_ver, remote_ver, message = check_for_updates(silent=True)
+        from utils.version_checker import check_for_updates, get_local_version
+        if desktop_mode():
+            status, local_ver, remote_ver, message = (
+                'desktop', get_local_version(), None, UPDATES_THROUGH_APP)
+        else:
+            status, local_ver, remote_ver, message = check_for_updates(silent=True)
 
         emit('version_status', {
             'update_available': status == 'update_available',
@@ -3156,6 +3176,7 @@ def _post_player_line(content):
 
 @socketio.on('submit_check_roll')
 def handle_check_roll(data):
+    activity.touch()
     if _web_gameplay_paused() or not (game_thread and game_thread.is_alive()):
         emit('error', {'message': 'Your game is not waiting for a roll.'})
         return
@@ -3181,6 +3202,10 @@ def handle_check_roll(data):
 @socketio.on('user_input')
 def handle_user_input(data):
     """Handle input from the user"""
+    activity.touch()
+    if _shutdown_requested.is_set():
+        emit('error', {'message': 'The game is closing; your last turn is being finished and saved.'})
+        return
     if _web_gameplay_paused():
         emit('error', {'message': 'Gameplay is paused. Choose Load, Reset, or Exit.'})
         return
@@ -3239,6 +3264,7 @@ def handle_user_input(data):
 @socketio.on('action')
 def handle_action(data, _operation_id=None):
     """Handle direct action requests from the UI (save, load, reset)."""
+    activity.touch()
     action_type = data.get('action')
     if action_type in {'restoreGame', 'nuclearReset'} and _operation_id is None:
         _operation_id = str(uuid4())
@@ -3330,6 +3356,7 @@ def handle_action(data, _operation_id=None):
                 def complete_save(outcome):
                     success, message = outcome
                     if success:
+                        activity.save_completed()
                         socketio.emit('system_message', {'content': f"Game saved: {message}"}, to=session_id)
                     else:
                         socketio.emit('error', {'message': f"Save failed: {message}"}, to=session_id)
@@ -3357,6 +3384,7 @@ def handle_action(data, _operation_id=None):
                 def complete_welcome_save(outcome):
                     success, message = outcome
                     if success:
+                        activity.save_completed()
                         socketio.emit('system_message', {'content': f"Game saved: {message}"}, to=session_id)
                     else:
                         socketio.emit('error', {'message': f"Save failed: {message}"}, to=session_id)
@@ -3400,6 +3428,7 @@ def handle_action(data, _operation_id=None):
                 return
             success, message = manager.create_save_game(description, save_mode)
             if success:
+                activity.save_completed()
                 emit('system_message', {'content': f"Game saved: {message}"})
             else:
                 emit('error', {'message': f"Save failed: {message}"})
@@ -4621,39 +4650,47 @@ def handle_request_storage_data(data=None):
         print(f"ERROR handling storage request: {e}")
         emit('storage_data_response', _ui_response(data, {'data': {}, 'error': 'An internal error occurred while fetching storage data.'}))
 
+def _quit_stop(notify):
+    """Raise the Quit stop (D-214): answer waiting Load/Reset followers, stop the
+    live turn and the welcome-back work at their next stop point, and wait until
+    both are quiescent. notify(event, payload) tells the player what is happening.
+    """
+    from utils.capture.live_provider_call import (
+        answer_lifecycle_followers,
+        get_active_welcome_scope,
+        get_live_turn_scope,
+        request_live_turn_supersession,
+    )
+
+    # #270 C3: Exit is the web's Quit (D-214). A Load or Reset waiting
+    # behind another one is answered now, before this Exit's own waits.
+    answer_lifecycle_followers("quit")
+    live_scope = get_live_turn_scope()
+    if live_scope is not None:
+        operation = request_live_turn_supersession("web_exit")
+        notify('system_message', {
+            'content': 'Exit accepted. The current turn is stopping safely.',
+            'operation_id': operation['operation_id'],
+        })
+        live_scope.quiescent.wait()
+    welcome_scope = get_active_welcome_scope()
+    if welcome_scope is not None:
+        # #214: player exit must not leave welcome work attached to the
+        # exited player - supersede, then wait for the game-thread
+        # discard handback (readline pump) to reach quiescence.
+        welcome_scope.request_supersession("web_exit")
+        notify('system_message', {
+            'content': 'Exit accepted. The welcome-back narration is stopping safely.',
+        })
+        welcome_scope.quiescent.wait()
+
+
 @socketio.on('user_exit')
 def handle_user_exit():
     """Handle intentional user exit - log and clean up"""
     try:
         print("INFO: User has initiated exit from the game")
-        from utils.capture.live_provider_call import (
-            answer_lifecycle_followers,
-            get_live_turn_scope,
-            request_live_turn_supersession,
-        )
-
-        # #270 C3: Exit is the web's Quit (D-214). A Load or Reset waiting
-        # behind another one is answered now, before this Exit's own waits.
-        answer_lifecycle_followers("quit")
-        live_scope = get_live_turn_scope()
-        if live_scope is not None:
-            operation = request_live_turn_supersession("web_exit")
-            emit('system_message', {
-                'content': 'Exit accepted. The current turn is stopping safely.',
-                'operation_id': operation['operation_id'],
-            })
-            live_scope.quiescent.wait()
-        from utils.capture.live_provider_call import get_active_welcome_scope
-        welcome_scope = get_active_welcome_scope()
-        if welcome_scope is not None:
-            # #214: player exit must not leave welcome work attached to the
-            # exited player - supersede, then wait for the game-thread
-            # discard handback (readline pump) to reach quiescence.
-            welcome_scope.request_supersession("web_exit")
-            emit('system_message', {
-                'content': 'Exit accepted. The welcome-back narration is stopping safely.',
-            })
-            welcome_scope.quiescent.wait()
+        _quit_stop(emit)
         emit('exit_acknowledged', {'message': 'Exit acknowledged'})
         # Note: We do NOT shut down the server here
         # Multiple users might be connected, and server shutdown is an admin function
@@ -5666,6 +5703,8 @@ def open_browser():
         port = getattr(config, 'WEB_PORT', 8357)
     except ImportError:
         port = 8357
+    if _served_port is not None:
+        port = _served_port
     start_path = _web_start_path()
     webbrowser.open(f'http://localhost:{port}{start_path}')
 
@@ -7277,6 +7316,9 @@ def handle_generate_unified_assets(data):
 @socketio.on('trigger_update')
 def handle_trigger_update():
     """Handle auto-update request from client"""
+    if desktop_mode():
+        emit('update_error', {'error': UPDATES_THROUGH_APP})
+        return
     import subprocess
     import sys
     import os
@@ -7369,6 +7411,108 @@ def handle_trigger_update():
     except Exception as e:
         emit_update('update_error', {'error': str(e)})
 
+def _health_state():
+    """The world's state for GET /health and the shutdown wait (#1681, #1682)."""
+    from utils.capture.live_provider_call import get_active_welcome_scope, get_live_turn_scope
+    from utils.version_checker import get_local_version
+    in_flight = int(get_live_turn_scope() is not None or get_active_welcome_scope() is not None)
+    restore = _web_restore_state()
+    return {
+        'version': get_local_version(),
+        'ready': _server_serving.is_set(),
+        'in_flight': in_flight,
+        'background_pending': activity.sends_in_flight(),
+        'at_start': not (game_thread and game_thread.is_alive()) and not restore.get('pending'),
+        'save_seq': activity.save_seq(),
+        'last_activity': activity.last_activity(),
+    }
+
+
+_server_serving = threading.Event()
+
+
+@app.route('/health')
+def health():
+    return jsonify(_health_state())
+
+
+@app.route('/shutdown', methods=['POST'])
+def shutdown():
+    """Graceful stop for a launcher holding the launch token (desktop shell or
+    world supervisor): raise the Quit stop, let the turn and the model sends
+    finish, then exit 0. There is no timer: /health keeps reporting in_flight
+    and background_pending while it waits."""
+    if not _LOCAL_TOKEN:
+        abort(404)
+    if _shutdown_requested.is_set():
+        return jsonify({'status': 'stopping'}), 202
+    _shutdown_requested.set()
+
+    def stop_when_quiet():
+        try:
+            _quit_stop(lambda event, payload: socketio.emit(event, payload))
+        except Exception as exc:
+            print(f"ERROR raising the Quit stop for shutdown: {exc}")
+        while True:
+            state = _health_state()
+            if state['in_flight'] == 0 and state['background_pending'] == 0:
+                break
+            time.sleep(0.25)
+        try:
+            save_message_cache()
+        except Exception as exc:
+            print(f"ERROR saving the message cache at shutdown: {exc}")
+        print("INFO: Shutdown requested by the launcher; the game is quiet. Exiting.")
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(0)
+
+    threading.Thread(target=stop_when_quiet, name="neq-shutdown", daemon=True).start()
+    return jsonify({'status': 'stopping'}), 202
+
+
+def serve(selected_ui, toolkit=False, no_browser=False, bound_socket=None):
+    """Run the server in this process (run_web --serve, or this file as a
+    script). With bound_socket (--port / --port-or-free: bind first, then
+    serve) it serves on that socket; without one it binds config.WEB_PORT as
+    before."""
+    global _served_port
+    app.config.update(PLAYER_UI=selected_ui, TOOLKIT_ONLY=toolkit)
+    # Create templates directory if it doesn't exist
+    os.makedirs('templates', exist_ok=True)
+    
+    if not no_browser:
+        # Start browser opening in a separate thread
+        browser_thread = threading.Thread(target=open_browser, daemon=True)
+        browser_thread.start()
+    
+    print("Starting NeverEndingQuest Web Interface...")
+    if bound_socket is not None:
+        from werkzeug.serving import make_server
+        _served_port = bound_socket.getsockname()[1]
+        server = make_server(WEB_HOST, _served_port, app, threaded=True, fd=bound_socket.fileno())
+        print(f"Serving at http://127.0.0.1:{_served_port}{_web_start_path()}")
+        _server_serving.set()
+        server.serve_forever()
+        return
+    try:
+        import config
+        port = getattr(config, 'WEB_PORT', 8357)
+    except ImportError:
+        port = 8357
+    start_path = _web_start_path()
+    print(f"Opening browser at http://localhost:{port}{start_path}")
+    
+    # Run the Flask app with SocketIO
+    _server_serving.set()
+    socketio.run(app,
+                host=WEB_HOST,
+                port=port,
+                debug=False,
+                use_reloader=False,
+                allow_unsafe_werkzeug=True)
+
+
 if __name__ == '__main__':
     from run_web import parse_args, select_ui, ensure_react_frontend, check_frontend_tools
     boot_args = parse_args()
@@ -7388,27 +7532,6 @@ if __name__ == '__main__':
         if selected_ui is None:
             print('[SETUP] React is not ready. No game was started; retry setup or use --ui legacy.')
             sys.exit(1)
-    app.config.update(PLAYER_UI=selected_ui, TOOLKIT_ONLY=boot_args.toolkit)
-    # Create templates directory if it doesn't exist
-    os.makedirs('templates', exist_ok=True)
-    
-    # Start browser opening in a separate thread
-    browser_thread = threading.Thread(target=open_browser, daemon=True)
-    browser_thread.start()
-    
-    print("Starting NeverEndingQuest Web Interface...")
-    try:
-        import config
-        port = getattr(config, 'WEB_PORT', 8357)
-    except ImportError:
-        port = 8357
-    start_path = _web_start_path()
-    print(f"Opening browser at http://localhost:{port}{start_path}")
-    
-    # Run the Flask app with SocketIO
-    socketio.run(app,
-                host=WEB_HOST,
-                port=port,
-                debug=False,
-                use_reloader=False,
-                allow_unsafe_werkzeug=True)
+    from run_web import bind_for_args
+    serve(selected_ui, boot_args.toolkit, no_browser=boot_args.no_browser,
+          bound_socket=bind_for_args(boot_args))
