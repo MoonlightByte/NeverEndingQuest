@@ -66,7 +66,9 @@ function spawnServer(token: string, port: number | null): ChildHandle {
   log(`spawn ${cmd.file} ${cmd.args.join(' ')} env-keys=${Object.keys(env).sort().join(',')}`)
   rotate(serverLog)
   const out = fs.createWriteStream(serverLog, { flags: 'a' })
-  const child = spawn(cmd.file, cmd.args, { cwd: cmd.cwd, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+  // Off Windows (dev only) the server gets its own process group so Force quit can kill the whole tree.
+  const detached = process.platform !== 'win32'
+  const child = spawn(cmd.file, cmd.args, { cwd: cmd.cwd, env, windowsHide: true, detached, stdio: ['ignore', 'pipe', 'pipe'] })
   const splitter = new LineSplitter()
   const lineCbs: ((line: string) => void)[] = []
   const exitCbs: ((code: number | null) => void)[] = []
@@ -100,7 +102,7 @@ function forceKill(pid: number): void {
   if (cmd) {
     spawn(cmd.file, cmd.args, { windowsHide: true, stdio: 'ignore' }).on('error', err => log(`taskkill failed: ${err.message}`))
   } else {
-    try { process.kill(pid, 'SIGKILL') } catch (err) { log(`kill failed: ${String(err)}`) }
+    try { process.kill(-pid, 'SIGKILL') } catch (err) { log(`kill failed: ${String(err)}`) }
   }
 }
 

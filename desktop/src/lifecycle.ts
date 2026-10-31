@@ -52,6 +52,8 @@ export class Lifecycle {
   private startedAt = 0
   // Set while a server that exited 0 on its own (Load or Reset, D-A1-2) is being started again.
   private relaunching = false
+  // True once the server has answered POST /shutdown with a 2xx; until then every closing round re-posts it.
+  private shutdownAccepted = false
 
   constructor(private readonly d: Deps) {}
 
@@ -184,17 +186,24 @@ export class Lifecycle {
   private async shutdown(): Promise<void> {
     if (this.port === null) return
     this.phase = 'quitting'
+    this.shutdownAccepted = false
     this.d.ui.status('closing', 0)
-    const ok = await this.d.postShutdown(this.port, this.token)
-    this.d.log(`shutdown requested ok=${ok}`)
+    await this.postShutdown()
     this.watchClosing(this.generation)
+  }
+
+  // A request that timed out or failed is only a reason to send it again (/shutdown is idempotent).
+  private async postShutdown(): Promise<void> {
+    if (this.shutdownAccepted || this.port === null) return
+    this.shutdownAccepted = await this.d.postShutdown(this.port, this.token)
+    this.d.log(`shutdown requested accepted=${this.shutdownAccepted}`)
   }
 
   // Shows what the server is doing while it closes; never ends it.
   private watchClosing(gen: number): void {
     if (gen !== this.generation || !this.childAlive || this.port === null) return
     const port = this.port
-    void this.d.getHealth(port, this.token).then(body => {
+    void this.postShutdown().then(() => this.d.getHealth(port, this.token)).then(body => {
       if (gen !== this.generation || !this.childAlive) return
       const health = body === null ? null : parseHealth(body)
       if (health === null) this.d.ui.status('closing-unanswered', 0)
