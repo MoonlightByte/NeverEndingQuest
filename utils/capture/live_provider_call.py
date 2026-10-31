@@ -1185,6 +1185,9 @@ def _child_main():
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         if repo_root not in sys.path:
             sys.path.insert(0, repo_root)
+        # #1681/#1682: the data root's config.py wins over the install folder's.
+        from utils.data_root import apply_data_root_path
+        apply_data_root_path()
         from core.ai import api_client
 
         response = api_client.create_completion(
