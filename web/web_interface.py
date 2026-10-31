@@ -50,6 +50,9 @@ import secrets
 
 # Add parent directory to path FIRST so we can import from utils, core, etc.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# #1681/#1682: a data root (NEQ_DATA_DIR) goes first, so its config.py is the one imported.
+from utils.data_root import apply_data_root_path
+apply_data_root_path()
 
 from flask import Flask, render_template, request, jsonify, Response, abort, session, redirect
 from flask_socketio import SocketIO, emit
