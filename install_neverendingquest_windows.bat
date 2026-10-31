@@ -61,7 +61,10 @@ git --version
 echo [OK] Git found!
 echo.
 
-REM Step 3: Clone repository
+REM Step 3: Install the checkout this installer is in, else clone one (#1687)
+set "SELF_DIR=%~dp0"
+if exist "!SELF_DIR!run_web.py" if exist "!SELF_DIR!requirements.txt" goto INSTALL_SELF
+
 echo Step 3: Cloning repository...
 echo Installing to: %CD%
 echo.
@@ -87,6 +90,13 @@ if exist "NeverEndingQuest" (
 )
 
 cd NeverEndingQuest
+goto INSTALL_READY
+
+:INSTALL_SELF
+echo Step 3: Installing the checkout this installer is in: !SELF_DIR!
+cd /d "!SELF_DIR!"
+
+:INSTALL_READY
 
 REM Step 4: Create virtual environment
 echo.
@@ -118,7 +128,7 @@ if %errorlevel% neq 0 (
     echo ERROR: Failed to install dependencies
     echo.
     echo Try running manually:
-    echo   cd %CD%
+    echo   cd !CD!
     echo   venv\Scripts\activate
     echo   pip install -r requirements.txt
     pause
@@ -147,7 +157,7 @@ if %errorlevel% equ 0 (
     echo ========================================
     echo.
     echo Choose your setup method:
-    echo   1. Enter API key now (recommended)
+    echo   1. Enter API key now ^(recommended^)
     echo   2. Skip and add manually later
     echo.
     choice /C 12 /N /M "Enter your choice (1 or 2): "
@@ -186,17 +196,6 @@ if %errorlevel% equ 0 (
     echo [OK] API key already configured in config.py
 )
 
-REM Step 6b: Create empty party_tracker.json to prevent startup errors
-echo.
-echo Step 6b: Creating initial game files...
-
-if not exist "party_tracker.json" (
-    echo {} > party_tracker.json
-    echo [OK] Created empty party_tracker.json
-) else (
-    echo [OK] party_tracker.json already exists
-)
-
 REM Step 7: Create desktop shortcut and launch script
 echo.
 echo Step 7: Creating launch scripts...
@@ -210,17 +209,21 @@ echo pause >> launch_game.bat
 
 echo [OK] Created launch_game.bat
 
-REM Create desktop shortcut
+REM Create the desktop shortcut on the desktop the user sees, OneDrive included (#1688)
 set SCRIPT_DIR=%CD%
-set SHORTCUT_TARGET=%USERPROFILE%\Desktop\NeverEndingQuest.lnk
+set "SHORTCUT_STATUS="
+set "SHORTCUT_PATH="
+for /f "usebackq tokens=1* delims=|" %%a in (`powershell -NoProfile -ExecutionPolicy Bypass -Command "$d = [Environment]::GetFolderPath('Desktop'); if (-not $d) { $d = Join-Path $env:USERPROFILE 'Desktop' }; $p = Join-Path $d 'NeverEndingQuest.lnk'; try { $ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut($p); $s.TargetPath = '%SCRIPT_DIR%\launch_game.bat'; $s.WorkingDirectory = '%SCRIPT_DIR%'; $s.Description = 'Launch NeverEndingQuest AI Dungeon Master'; $s.Save() } catch { }; if (Test-Path -LiteralPath $p -PathType Leaf) { 'OK|' + $p } else { 'FAIL|' + $p }"`) do (
+    set "SHORTCUT_STATUS=%%a"
+    set "SHORTCUT_PATH=%%b"
+)
+if not defined SHORTCUT_PATH set "SHORTCUT_PATH=%USERPROFILE%\Desktop\NeverEndingQuest.lnk"
 
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws = New-Object -ComObject WScript.Shell; $s = $ws.CreateShortcut('%SHORTCUT_TARGET%'); $s.TargetPath = '%SCRIPT_DIR%\launch_game.bat'; $s.WorkingDirectory = '%SCRIPT_DIR%'; $s.Description = 'Launch NeverEndingQuest AI Dungeon Master'; $s.Save()" 2>nul
-
-if exist "%USERPROFILE%\Desktop\NeverEndingQuest.lnk" (
-    echo [OK] Desktop shortcut created!
+if "!SHORTCUT_STATUS!"=="OK" (
+    echo [OK] Desktop shortcut created: !SHORTCUT_PATH!
 ) else (
-    echo [WARNING] Could not create desktop shortcut
-    echo You can manually create a shortcut to: %CD%\launch_game.bat
+    echo [WARNING] Could not create the desktop shortcut at !SHORTCUT_PATH!
+    echo You can manually create a shortcut to: !CD!\launch_game.bat
 )
 
 echo.
