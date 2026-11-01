@@ -121,11 +121,13 @@ jobs:
           python desktop\build-tools\make_icon.py
           if ($LASTEXITCODE -ne 0) { throw "make_icon.py failed" }
 
+      # --ignore-scripts: no dependency install scripts on a release build; electron-builder
+      # downloads Electron itself.
       - name: Install and compile the shell
         shell: powershell
         working-directory: desktop
         run: |
-          npm ci --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
           if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
           npm run build
           if ($LASTEXITCODE -ne 0) { throw "tsc failed" }
