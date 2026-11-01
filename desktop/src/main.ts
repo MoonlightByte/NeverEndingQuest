@@ -239,7 +239,7 @@ const lifecycle = new Lifecycle({
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide()
       void serverDialog("NeverEndingQuest's game server stopped.")
     },
-    exit: code => void updater.onExit(code, lifecycle.forced),
+    exit: code => void updater.onExit(code, lifecycle.cleanShutdown),
   },
 })
 
@@ -274,11 +274,11 @@ const updater = new Updater({
       title: 'NeverEndingQuest',
       message: 'Waiting for NeverEndingQuest to close',
       detail: `The update installs once these have closed: ${running.map(p => p.name).join(', ')}.`,
-      buttons: ['Keep waiting', 'Force quit'],
-      defaultId: 0,
-      cancelId: 0,
+      buttons: ['Close them and update', 'Keep waiting', 'Quit without updating'],
+      defaultId: 1,
+      cancelId: 1,
     })
-    return response === 1 ? 'force' : 'wait'
+    return response === 0 ? 'close' : response === 2 ? 'quit' : 'wait'
   },
   kill: pids => { for (const pid of pids) forceKill(pid) },
   install: (silent, runAfter) => {

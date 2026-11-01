@@ -66,9 +66,13 @@ FunctionEnd
 !macroend
 
 ; ${_RETURN} = 0 while any process runs from the install folder (the app, run_web.exe or its helpers).
+; The folder reaches PowerShell through an environment variable, never inside the command text, so
+; a path with a quote (O'Brien) cannot break the script; the trailing backslash keeps a sibling folder
+; (NeverEndingQuest2) from matching.
 !macro NEQ_FIND_RUNNING _RETURN
   ${If} $IsPowerShellAvailable == 0
-    nsExec::Exec `"$PowerShellPath" -NoProfile -NonInteractive -C "if ((Get-CimInstance -ClassName Win32_Process | ? {$$_.Path -and $$_.Path.StartsWith('$INSTDIR', 'CurrentCultureIgnoreCase')}).Count -gt 0) { exit 0 } else { exit 1 }"`
+    System::Call 'Kernel32::SetEnvironmentVariable(t "NEQ_INSTALL_DIR", t "$INSTDIR\")i'
+    nsExec::Exec `"$PowerShellPath" -NoProfile -NonInteractive -C "if ((Get-CimInstance -ClassName Win32_Process | ? {$$_.Path -and $$_.Path.StartsWith($$env:NEQ_INSTALL_DIR, 'OrdinalIgnoreCase')}).Count -gt 0) { exit 0 } else { exit 1 }"`
     Pop ${_RETURN}
   ${Else}
     nsExec::Exec `"$CmdPath" /C tasklist /FI "USERNAME eq %USERNAME%" /FI "IMAGENAME eq ${APP_EXECUTABLE_FILENAME}" /FO CSV /NH | "$SYSDIR\findstr.exe" /B /I /C:"\"${APP_EXECUTABLE_FILENAME}\""`

@@ -44,8 +44,8 @@ export interface UpdaterDeps {
   requestQuit(): void
   // Processes under the install folder other than the app; null when they cannot be listed.
   installProcesses(): Promise<RunningProcess[] | null>
-  // Keep waiting / Force quit; never decided by a timer.
-  waiting(running: RunningProcess[]): Promise<'wait' | 'force'>
+  // Close them and update / Keep waiting / Quit without updating; never decided by a timer.
+  waiting(running: RunningProcess[]): Promise<'close' | 'wait' | 'quit'>
   kill(pids: number[]): void
   install(silent: boolean, runAfter: boolean): void
   exit(code: number): void
@@ -95,11 +95,12 @@ export class Updater {
     })
   }
 
-  // The lifecycle's exit: the server is gone. Installs only after a normal quit (not Force quit).
-  async onExit(code: number, forced: boolean): Promise<void> {
+  // The lifecycle's exit: the server is gone. Installs only after a clean shutdown (our /shutdown
+  // accepted, then exit 0); never after Force quit, a crash, or a quit with no server.
+  async onExit(code: number, cleanShutdown: boolean): Promise<void> {
     if (this.exiting) return
     this.exiting = true
-    if (this.downloadedVersion === null || forced || code !== 0) {
+    if (this.downloadedVersion === null || !cleanShutdown) {
       this.d.exit(code)
       return
     }
@@ -113,7 +114,12 @@ export class Updater {
       if (running.length === 0) break
       this.d.log(`update waiting for ${running.map(p => `${p.name}(${p.pid})`).join(', ')}`)
       const choice = await this.d.waiting(running)
-      if (choice === 'force') this.d.kill(running.map(p => p.pid))
+      if (choice === 'quit') {
+        this.d.log('update not installed: quit without updating')
+        this.d.exit(code)
+        return
+      }
+      if (choice === 'close') this.d.kill(running.map(p => p.pid))
       await new Promise<void>(resolve => this.d.schedule(resolve, WAIT_RECHECK_MS))
     }
     const restart = this.mode === 'restart'
