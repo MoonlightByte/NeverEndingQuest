@@ -87,6 +87,8 @@ class HeadlessClient:
             argv += ["--character", self.character]
         if self.debug:
             argv.append("--debug")
+        from utils.provider_gateway import child_argv
+        argv = child_argv(argv)  # #1682
         self._process = subprocess.Popen(
             argv, cwd=self.repo_root, stdin=subprocess.PIPE,
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,

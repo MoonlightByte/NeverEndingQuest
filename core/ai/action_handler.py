@@ -4985,6 +4985,7 @@ def process_action(
             try:
                 from utils.encoding_utils import utf8_child_env
                 from utils.child_process import run_fenced
+                from utils.provider_gateway import child_argv
                 from utils.capture.live_provider_call import _check_live_authority, get_live_provider_scope
                 from utils.transient_filesystem import raise_if_save_stopped
 
@@ -4998,8 +4999,8 @@ def process_action(
                     raise_if_save_stopped()
 
                 returncode, stdout, stderr = run_fenced(
-                    [sys.executable, combat_builder_path, "--result-file",
-                     os.path.join(result_dir, "result.json")],
+                    child_argv([sys.executable, combat_builder_path, "--result-file",
+                     os.path.join(result_dir, "result.json")]),
                     input_text=json.dumps(action), stop_check=stop_check,
                     stop_file=os.path.join(result_dir, "stop"), env=utf8_child_env(),
                 )

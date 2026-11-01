@@ -1187,6 +1187,9 @@ def _child_main():
             sys.path.insert(0, repo_root)
         # #1681/#1682: the data root's config.py wins over the install folder's.
         from utils.data_root import apply_data_root_path
+        # #1682: the parent passes the operator's --provider-gateway as argv.
+        from utils.provider_gateway import take_from_argv
+        take_from_argv(sys.argv)
         apply_data_root_path()
         from core.ai import api_client
 
@@ -1959,9 +1962,10 @@ def _call_live_provider(
             protocol=pickle.HIGHEST_PROTOCOL,
         )
         helper_path = os.path.abspath(__file__)
+        from utils.provider_gateway import child_argv
         try:
             process = subprocess.Popen(
-                [sys.executable, helper_path, "--provider-child"],
+                child_argv([sys.executable, helper_path, "--provider-child"]),
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
