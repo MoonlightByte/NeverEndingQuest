@@ -79,3 +79,11 @@ FunctionEnd
     ${EndIf}
   ${EndIf}
 !macroend
+
+; Uninstall: remove electron-updater's download cache (%LOCALAPPDATA%\<package name>-updater, a full
+; installer copy). Not during an update: the running update installer lives in that folder.
+!macro customUnInstall
+  ${IfNot} ${isUpdated}
+    RMDir /r "$LOCALAPPDATA\neverendingquest-desktop-updater"
+  ${EndIf}
+!macroend

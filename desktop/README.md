@@ -70,7 +70,8 @@ shows Keep waiting / Force quit. Releases are not code-signed yet (D-A0-8), so t
 checked against the sha512 in the release's latest.yml but not for a signature.
 
 Neither the installer nor the uninstaller ever closes a running game: if NeverEndingQuest is running, they ask
-you to quit it with Game > Quit (which saves first) and press Retry. Cancel stops them.
+you to quit it with Game > Quit (which saves first) and press Retry. Cancel stops them. Uninstalling also removes
+the update download cache (`%LOCALAPPDATA%\neverendingquest-desktop-updater`).
 
 ## Running from a checkout (developers)
 
