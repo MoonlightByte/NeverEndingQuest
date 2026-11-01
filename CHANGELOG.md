@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The legacy player, the module toolkit and the module builder now load their live-connection script from the game itself instead of a web CDN, so they work offline and never contact cdn.socket.io (#1681).
 - A packaged build of the game can now run its helper steps (the model call, and building combat encounters and monsters) on its own; running from source is unchanged (#1681).
 - The game server can now be built as a standalone Windows folder for the desktop app (desktop/pyinstaller/build.ps1), from hash-locked build requirements; a packaged build, or one started by the desktop app, runs as a single process that the app restarts, and uses its shipped React player as is (#1681).
+- A GitHub Actions workflow (desktop-windows) builds the desktop server folder on Windows for v* tags and manual runs and keeps it as a 7-day build artifact; it does not sign or publish anything (#1681).
 
 ## [1.0.1] - 2026-10-30
 

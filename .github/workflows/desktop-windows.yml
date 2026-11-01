@@ -1,0 +1,66 @@
+# Desktop server build (#1681, A1.4): builds dist-server/neq-server with
+# desktop/pyinstaller/build.ps1 (hash-locked requirements, engine pair check,
+# smoke test) and uploads it as the neq-server artifact. No signing and no
+# release here; the installer jobs come later. 0 model calls.
+name: desktop-windows
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-windows-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  server:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python 3.12 (x64)
+        id: python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+          architecture: x64
+
+      # build.ps1 builds the React player from a clean checkout; no cache.
+      - name: Node.js 20.19.6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "20.19.6"
+          package-manager-cache: false
+
+      - name: Build the server folder
+        shell: powershell
+        env:
+          PYTHON_EXE: ${{ steps.python.outputs.python-path }}
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File desktop\pyinstaller\build.ps1 -Python "$env:PYTHON_EXE"
+
+      - name: Build summary
+        shell: powershell
+        env:
+          BUILD_REF: ${{ github.ref_name }}
+          BUILD_SHA: ${{ github.sha }}
+        run: |
+          $files = (Get-ChildItem -Recurse -File dist-server\neq-server | Measure-Object -Property Length -Sum)
+          "neq-server for $env:BUILD_REF ($env:BUILD_SHA): $($files.Count) files, $([math]::Round($files.Sum / 1MB)) MB" |
+            Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload neq-server
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: neq-server
+          path: dist-server/neq-server
+          retention-days: 7
+          if-no-files-found: error
