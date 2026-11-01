@@ -34,8 +34,8 @@ On Windows logoff or shutdown the app asks the server to save, but Windows decid
 
 ## Building the installer
 
-Windows, from a checkout, after building the server folder (`desktop/pyinstaller/build.ps1`, which writes
-`dist-server/neq-server`):
+Windows, from a checkout, with Node.js 20.19 or newer, after building the server folder
+(`desktop/pyinstaller/build.ps1`, which writes `dist-server/neq-server`):
 
     python -m pip install --require-hashes --no-deps -r desktop/build-tools/requirements-icon.txt
     python desktop/build-tools/make_icon.py
