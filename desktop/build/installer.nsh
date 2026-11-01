@@ -67,11 +67,20 @@ FunctionEnd
 
 ; ${_RETURN} = 0 while any process runs from the install folder (the app, run_web.exe or its helpers).
 ; The folder reaches PowerShell through an environment variable, never inside the command text, so
-; a path with a quote (O'Brien) cannot break the script; the trailing backslash keeps a sibling folder
-; (NeverEndingQuest2) from matching.
+; a path with a quote (O'Brien) cannot break the script. Trailing backslashes are stripped first
+; (a drive root such as D:\ has one) and exactly one is added, so a sibling folder (NeverEndingQuest2)
+; does not match and a drive-root install still does.
 !macro NEQ_FIND_RUNNING _RETURN
   ${If} $IsPowerShellAvailable == 0
-    System::Call 'Kernel32::SetEnvironmentVariable(t "NEQ_INSTALL_DIR", t "$INSTDIR\")i'
+    StrCpy $R2 $INSTDIR
+    ${Do}
+      StrCpy $R3 $R2 1 -1
+      ${If} $R3 != "\"
+        ${Break}
+      ${EndIf}
+      StrCpy $R2 $R2 -1
+    ${Loop}
+    System::Call 'Kernel32::SetEnvironmentVariable(t "NEQ_INSTALL_DIR", t "$R2\")i'
     nsExec::Exec `"$PowerShellPath" -NoProfile -NonInteractive -C "if ((Get-CimInstance -ClassName Win32_Process | ? {$$_.Path -and $$_.Path.StartsWith($$env:NEQ_INSTALL_DIR, 'OrdinalIgnoreCase')}).Count -gt 0) { exit 0 } else { exit 1 }"`
     Pop ${_RETURN}
   ${Else}
