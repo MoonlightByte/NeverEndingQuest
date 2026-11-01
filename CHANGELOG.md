@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A hosted server operator can start the game with --provider-gateway <url> to send the OpenAI and Gemini requests to its own gateway instead of the providers' APIs; it is read only from the command line, never from the environment or any settings file, every helper process the game starts receives it, and without it nothing changes (#1682).
 - A Windows desktop app shell now starts the game server and opens the game in its own window, and waits for your turn to be saved before it closes (#1681).
 - A Windows installer, NeverEndingQuest-Setup-<version>.exe, now installs the desktop app for your user only and keeps your saves when you uninstall it; the desktop-windows workflow builds it and publishes it with the release on a v* tag (#1681).
 - The Windows desktop app updates itself from published releases: it downloads a new version in the background, offers it only on the start screen or after a save, and installs it only after the game has saved and closed; the installer and uninstaller no longer close a running game, they ask you to quit it first (#1681).

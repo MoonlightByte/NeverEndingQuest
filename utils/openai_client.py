@@ -106,7 +106,10 @@ OPENAI_API_BASE_URL = "https://api.openai.com/v1"
 def openai_api_client(api_key=None, **kwargs):
     """The one way to build a client that carries the OpenAI key (#1399).
 
-    base_url is always OPENAI_API_BASE_URL; a caller cannot pass another.
+    base_url is OPENAI_API_BASE_URL; a caller cannot pass another. The one
+    exception is the operator's --provider-gateway URL (#1682), read from
+    this process's argv only (utils/provider_gateway.py), never from the
+    environment or a settings file.
     ``api_key`` defaults to config.OPENAI_API_KEY, read at call time. The
     Local/Custom branch above is the only client built elsewhere: it uses
     the player's own endpoint and never the OpenAI key.
@@ -114,11 +117,12 @@ def openai_api_client(api_key=None, **kwargs):
     if "base_url" in kwargs:
         raise TypeError("openai_api_client pins base_url to the OpenAI API")
     from openai import OpenAI
+    from utils import provider_gateway
 
     http_client = kwargs.pop("http_client", None) or _provider_http_client()
     return OpenAI(
         api_key=api_key or config.OPENAI_API_KEY,
-        base_url=OPENAI_API_BASE_URL,
+        base_url=provider_gateway.gateway() or OPENAI_API_BASE_URL,
         http_client=http_client,
         **kwargs,
     )

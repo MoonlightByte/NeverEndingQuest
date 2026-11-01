@@ -72,8 +72,9 @@ def main():
     # Start the web interface
     try:
         # Launch in subprocess so we can control it better
+        from utils.provider_gateway import child_argv
         process = subprocess.Popen(
-            [sys.executable, 'web/web_interface.py', '--toolkit'],
+            child_argv([sys.executable, 'web/web_interface.py', '--toolkit']),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
@@ -101,4 +102,6 @@ def main():
     return 0
 
 if __name__ == "__main__":
+    from utils.provider_gateway import take_from_argv
+    take_from_argv(sys.argv)  # #1682
     sys.exit(main())

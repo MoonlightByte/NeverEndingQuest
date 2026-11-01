@@ -78,7 +78,13 @@ def _get_client():
                     )
 
                 os.environ['GEMINI_API_KEY'] = api_key
-                _gemini_client = genai.Client()
+                from utils.provider_gateway import gateway
+                if gateway() is None:
+                    _gemini_client = genai.Client()
+                else:
+                    # #1682: the operator's --provider-gateway (argv only).
+                    from google.genai import types
+                    _gemini_client = genai.Client(http_options=types.HttpOptions(base_url=gateway()))
     return _gemini_client
 
 
