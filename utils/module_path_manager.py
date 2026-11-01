@@ -62,7 +62,15 @@ set_script_name(__name__)
 # ============================================================================
 
 class ActiveModuleUnavailable(RuntimeError):
-    """The active module could not be read; no other module is substituted (#448)."""
+    """The active module could not be read; no other module is substituted (#448).
+
+    ``reason`` says why (#1689): "missing" (no party_tracker.json), "no_module" (the
+    tracker names no module, as on a fresh install) or "unreadable" (anything else).
+    """
+
+    def __init__(self, message, reason="unreadable"):
+        super().__init__(message)
+        self.reason = reason
 
 
 class ModulePathManager:
@@ -95,16 +103,16 @@ class ModulePathManager:
                 f"No active module: party_tracker.json could not be read ({e})"
             ) from e
         if data is None:
-            raise ActiveModuleUnavailable("No active module: party_tracker.json is missing")
+            raise ActiveModuleUnavailable("No active module: party_tracker.json is missing", reason="missing")
         if not isinstance(data, dict):
             raise ActiveModuleUnavailable(
                 "No active module: party_tracker.json could not be read (not an object)"
             )
         if "module" not in data:
-            raise ActiveModuleUnavailable("No active module: party_tracker.json has no 'module'")
+            raise ActiveModuleUnavailable("No active module: party_tracker.json has no 'module'", reason="no_module")
         module = data["module"]
         if not isinstance(module, str) or not module.strip():
-            raise ActiveModuleUnavailable("No active module: party_tracker.json has an empty 'module'")
+            raise ActiveModuleUnavailable("No active module: party_tracker.json has an empty 'module'", reason="no_module")
         module = module.strip()
         # Only log if module changes or on first load
         if ModulePathManager._last_module_logged != module:

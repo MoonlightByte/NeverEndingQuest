@@ -4,9 +4,14 @@ Provides centralized client creation with LM Studio support
 """
 
 import socket
+from importlib.util import find_spec
 
-import httpx
-from openai import OpenAI
+# httpx and the provider SDK are imported by the builders below, on the first client
+# (#1682): a world whose model sends all run in provider children never loads them.
+# A missing package still fails here, at import, where the top-level imports failed.
+for _package in ("httpx", "openai"):
+    if find_spec(_package) is None:
+        raise ModuleNotFoundError("No module named %r" % _package, name=_package)
 import config
 
 
@@ -43,6 +48,8 @@ PROVIDER_SOCKET_OPTIONS = tuple(_provider_socket_options())
 
 def _provider_http_client():
     """One httpx client shape for every OpenAI-compatible provider."""
+    import httpx
+
     return httpx.Client(
         transport=httpx.HTTPTransport(socket_options=list(PROVIDER_SOCKET_OPTIONS)),
     )
@@ -78,6 +85,7 @@ def get_openai_client(provider=None, *, local_endpoint=None):
         # Live children receive the parent's frozen Local/Custom connection
         # settings. Other callers keep the existing live-settings behavior.
         ep = local_endpoint if local_endpoint is not None else model_config.get_local_endpoint()
+        from openai import OpenAI
         return OpenAI(
             base_url=ep["base_url"],
             api_key=ep["api_key"] or "not-needed",
@@ -105,6 +113,8 @@ def openai_api_client(api_key=None, **kwargs):
     """
     if "base_url" in kwargs:
         raise TypeError("openai_api_client pins base_url to the OpenAI API")
+    from openai import OpenAI
+
     http_client = kwargs.pop("http_client", None) or _provider_http_client()
     return OpenAI(
         api_key=api_key or config.OPENAI_API_KEY,

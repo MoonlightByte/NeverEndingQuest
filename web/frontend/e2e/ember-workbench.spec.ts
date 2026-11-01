@@ -15,10 +15,10 @@ for (const width of [1586, 390]) {
       page.on('pageerror', e => errors.push(e.message))
       await page.route('**/*', async route => {
         const url = new URL(route.request().url())
-        if (url.hostname === 'cdn.socket.io') return route.fulfill({ contentType: 'application/javascript', body: socketFixture })
+        if (url.pathname === '/static/js/vendor/socket.io-4.6.0.min.js') return route.fulfill({ contentType: 'application/javascript', body: socketFixture })
         if (url.pathname === '/') {
           const template = await readFile(path.join(root, 'web/templates', `${surface}.html`), 'utf8')
-          return route.fulfill({ contentType: 'text/html', body: template.replace(/\{\{ url_for\('static', filename='((?:css|js)\/ember-[^']+)'\) \}\}/g, '/static/$1') })
+          return route.fulfill({ contentType: 'text/html', body: template.replace(/\{\{ url_for\('static', filename='((?:css|js)\/(?:ember-|vendor\/socket\.io-)[^']+)'\) \}\}/g, '/static/$1') })
         }
         if (url.pathname.startsWith('/static/css/ember-') || url.pathname.startsWith('/static/js/ember-') || url.pathname.startsWith('/static/fonts/ember/')) {
           const file = path.resolve(root, 'web', '.' + url.pathname)
@@ -75,11 +75,11 @@ for (const width of [1586, 390]) {
         writes.push(`${route.request().method()} ${url.pathname}`)
         return route.abort()
       }
-      if (url.hostname === 'cdn.socket.io') return route.fulfill({ contentType: 'application/javascript', body: socketFixture })
+      if (url.pathname === '/static/js/vendor/socket.io-4.6.0.min.js') return route.fulfill({ contentType: 'application/javascript', body: socketFixture })
       if (url.origin !== 'http://ember-workbench.test') return route.abort()
       if (url.pathname === '/') {
         const template = await readFile(path.join(root, 'web/templates/module_toolkit.html'), 'utf8')
-        return route.fulfill({ contentType: 'text/html', body: template.replace(/\{\{ url_for\('static', filename='((?:css|js)\/ember-[^']+)'\) \}\}/g, '/static/$1') })
+        return route.fulfill({ contentType: 'text/html', body: template.replace(/\{\{ url_for\('static', filename='((?:css|js)\/(?:ember-|vendor\/socket\.io-)[^']+)'\) \}\}/g, '/static/$1') })
       }
       if (/^\/static\/(css|js|fonts)\/ember[-/]/.test(url.pathname)) {
         const file = path.resolve(root, 'web', '.' + url.pathname)

@@ -1185,6 +1185,9 @@ def _child_main():
         repo_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         if repo_root not in sys.path:
             sys.path.insert(0, repo_root)
+        # #1681/#1682: the data root's config.py wins over the install folder's.
+        from utils.data_root import apply_data_root_path
+        apply_data_root_path()
         from core.ai import api_client
 
         response = api_client.create_completion(
@@ -2325,6 +2328,22 @@ def _call_live_provider(
                 lambda: turn_heartbeat(generation)
             ),
         )
+
+
+# #1681/#1682: every provider-child generation is counted for GET /health
+# (background_pending, last_activity) from spawn to reap. utils is imported at
+# call time: run as the provider child, this file has no repo root on sys.path
+# until _child_main adds it.
+import functools as _functools
+
+_call_live_provider_unmetered = _call_live_provider
+
+
+@_functools.wraps(_call_live_provider_unmetered)
+def _call_live_provider(*args, **kwargs):
+    from utils import activity
+    with activity.model_send():
+        return _call_live_provider_unmetered(*args, **kwargs)
 
 
 if __name__ == "__main__":

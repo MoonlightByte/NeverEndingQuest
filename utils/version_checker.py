@@ -10,7 +10,8 @@ from pathlib import Path
 
 def get_local_version():
     """Read local VERSION file"""
-    version_file = Path("VERSION")
+    # The install folder's VERSION, not the working directory's (a data root has none; #1681/#1682).
+    version_file = Path(__file__).resolve().parent.parent / "VERSION"
     if version_file.exists():
         return version_file.read_text().strip()
     return "0.0.0"

@@ -1084,6 +1084,12 @@ def get_model_for_callsite(task_id, default_var):
 # game directories.  Provider selection belongs to the installation, not the
 # campaign cwd, so always read the same ignored settings file the UI writes.
 _USER_SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "user_settings.json")
+# #1681/#1682: a data root (desktop app, hosted world) is this player's
+# installation, so its settings live there and survive an app update that
+# replaces the install folder. Headless --game-dir runs do not set it.
+if os.environ.get("NEQ_DATA_DIR", "").strip():
+    _USER_SETTINGS_FILE = os.path.join(
+        os.path.abspath(os.environ["NEQ_DATA_DIR"].strip()), "user_settings.json")
 _SECRET_SETTING_NAMES = {
     "openai_api_key": "openai_api_key",
     "gemini_api_key": "gemini_api_key",

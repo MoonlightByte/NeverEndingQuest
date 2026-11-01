@@ -8,6 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - A Windows desktop app shell now starts the game server and opens the game in its own window, and waits for your turn to be saved before it closes (#1681).
+- The Windows installer's API-key menu shows correctly and no longer says a key is configured right after you skip it; run from inside a downloaded copy of the game, it installs that copy instead of downloading a second one and no longer creates an empty party file; and it puts the desktop shortcut on the desktop you actually see, OneDrive included, and says where (#1686, #1687, #1688).
+- A brand-new install no longer shows the recovery notice for a save it does not have, and opening the game no longer logs a storage error before a game is started (#1689).
+- A handoff the sheets cannot support is corrected before it is shown, instead of shown and then contradicted (#360).
+- Starting a game no longer loads the module toolkit until a toolkit page is opened (#1682).
+- A game uses about a quarter less memory at rest: the model client library loads when first needed (#1682).
+- The game can keep your saves, adventures and settings in a separate folder, chosen with --data-dir or NEQ_DATA_DIR; the first start fills it, later starts refresh the shipped prompts and add new adventures without touching anything you played. With neither set, nothing changes (#1681, #1682).
+- A launcher such as the desktop app can now start the game on a chosen or free port without opening a browser, check whether a turn is still running, and ask the game to stop once the turn is safe; when the desktop app starts it, the game only accepts requests that carry the app's private key, updates come through the app, and the game never waits for a key press. Your settings now stay in your data folder (#1681, #1682).
+- The legacy player, the module toolkit and the module builder now load their live-connection script from the game itself instead of a web CDN, so they work offline and never contact cdn.socket.io (#1681).
+- A packaged build of the game can now run its helper steps (the model call, and building combat encounters and monsters) on its own; running from source is unchanged (#1681).
+- The game server can now be built as a standalone Windows folder for the desktop app (desktop/pyinstaller/build.ps1), from hash-locked build requirements; a packaged build, or one started by the desktop app, runs as a single process that the app restarts, and uses its shipped React player as is (#1681).
+- A GitHub Actions workflow (desktop-windows) builds the desktop server folder on Windows for v* tags and manual runs and keeps it as a 7-day build artifact; it does not sign or publish anything (#1681).
 
 ## [1.0.1] - 2026-10-30
 

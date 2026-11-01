@@ -10,11 +10,11 @@ async function fixture(page: Page) {
   await page.route('**/*', async route => {
     const url = new URL(route.request().url())
     if (route.request().method() !== 'GET') { writes.push(url.pathname); return route.abort() }
-    if (url.hostname === 'cdn.socket.io') return route.fulfill({ contentType: 'application/javascript', body: 'window.__emits=[];window.io=()=>({on(){return this},emit(name){window.__emits.push(name);return this}})' })
+    if (url.pathname === '/static/js/vendor/socket.io-4.6.0.min.js') return route.fulfill({ contentType: 'application/javascript', body: 'window.__emits=[];window.io=()=>({on(){return this},emit(name){window.__emits.push(name);return this}})' })
     if (url.origin !== 'http://ember-workbench.test') return route.abort()
     if (url.pathname === '/') {
       const template = await readFile(path.join(web, 'web/templates/module_toolkit.html'), 'utf8')
-      return route.fulfill({ contentType: 'text/html', body: template.replace(/\{\{ url_for\('static', filename='((?:css|js)\/ember-[^']+)'\) \}\}/g, '/static/$1') })
+      return route.fulfill({ contentType: 'text/html', body: template.replace(/\{\{ url_for\('static', filename='((?:css|js)\/(?:ember-|vendor\/socket\.io-)[^']+)'\) \}\}/g, '/static/$1') })
     }
     if (/^\/static\/(css|js|fonts)\/ember[-/]/.test(url.pathname)) {
       const file = path.resolve(web, 'web', '.' + url.pathname)
