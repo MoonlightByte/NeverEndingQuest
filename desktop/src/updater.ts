@@ -58,7 +58,6 @@ export class Updater {
   // 'restart' after Update and restart; otherwise a downloaded update installs on a plain Quit.
   private mode: 'restart' | 'on-quit' = 'on-quit'
   private seqAtDownload: number | null = null
-  private offered = false
   private exiting = false
 
   constructor(private readonly d: UpdaterDeps) {}
@@ -79,14 +78,14 @@ export class Updater {
   }
 
   private pollOffer(): void {
-    if (this.offered || this.exiting) return
     void this.d.health().then(async health => {
-      if (this.offered || this.exiting) return
+      // Quitting: no dialog over the closing app.
+      if (this.exiting) return
       if (health === null || !shouldOffer(health, this.seqAtDownload)) {
         this.d.schedule(() => this.pollOffer(), OFFER_POLL_MS)
         return
       }
-      this.offered = true
+      // Offered once per launch: the poll stops here whatever the answer.
       const now = await this.d.offer(this.downloadedVersion ?? '')
       if (now && !this.exiting) {
         this.d.log('update and restart chosen')
