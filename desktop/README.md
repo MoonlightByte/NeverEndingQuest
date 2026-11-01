@@ -53,6 +53,28 @@ Releases come from the desktop-windows workflow on a v* tag. They are unsigned f
 environment has the Azure Trusted Signing variables (AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT,
 AZURE_CERT_PROFILE) and the OIDC ids (AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_SUBSCRIPTION_ID).
 
+## Releasing
+
+1. In one PR, set the same version in `VERSION`, `desktop/package.json` and `desktop/package-lock.json` (twice: the
+   top-level `version` and `packages[""].version`), and add a `## [x.y.z] - YYYY-MM-DD` section to `CHANGELOG.md`
+   with the lines from `[Unreleased]`. Merge it.
+2. The owner tags the merge commit: `git tag -a vX.Y.Z <merge sha> -m "NeverEndingQuest X.Y.Z"`, then
+   `git push origin vX.Y.Z`. Only the owner can create `v*` tags (ruleset). Use the command line, not GitHub's
+   "Draft a new release" form: the workflow creates the release itself.
+3. The desktop-windows workflow runs:
+   - **server** builds the PyInstaller folder;
+   - **installer** waits for the owner's approval in the `release` environment, then checks that the tag, `VERSION`
+     and `desktop/package.json` agree, builds, and verifies latest.yml against the installer;
+   - **release** publishes the GitHub release with the installer, its .blockmap and latest.yml.
+4. Tags are always plain `vX.Y.Z`, and the release is always a full published release. The workflow refuses a version
+   with a hyphen (`-rc1`, `-beta.2`): electron-builder would put it on its own update channel (`rc1.yml`), so stable
+   installs would never see it and it would never see a stable release. To test before a release, run the workflow
+   by hand (Actions, desktop-windows, Run workflow), which builds an internal installer with updates off.
+5. Never reuse a version number. To withdraw a release, the owner deletes the GitHub release and the tag
+   (`gh release delete vX.Y.Z --yes`, then `git push origin --delete vX.Y.Z`) and ships the fix as the next version.
+   Installs already on the withdrawn version keep it until the fix is published (the updater never downgrades), and
+   an install that already downloaded it installs it on its next quit.
+
 ## Updates
 
 The installed app from a tag release checks this repository's published GitHub releases once per launch and

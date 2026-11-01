@@ -1,5 +1,25 @@
 # NeverEndingQuest
 
+## Windows: download the app
+
+Download `NeverEndingQuest-Setup-1.1.0.exe` from the
+[latest release](https://github.com/MoonlightByte/NeverEndingQuest/releases/latest) and run it.
+It installs for your user only (no admin prompt) and keeps your saves in `%APPDATA%\NeverEndingQuest`,
+also when you uninstall it.
+
+**Why Windows warns you:** the installer is not code-signed yet, so Microsoft Defender SmartScreen does not
+recognise it and shows a purple "Windows protected your PC" box ("Microsoft Defender SmartScreen prevented an
+unrecognized app from starting..."). To install:
+
+1. Choose **More info**. The box now shows the file name you downloaded and "Publisher: Unknown publisher".
+2. Choose **Run anyway**.
+
+![The SmartScreen box after More info, with Run anyway](docs/images/windows-smartscreen-run-anyway.png)
+
+Windows asks only the first time you run that downloaded file. Updates after that come through the app: it
+offers a new version on the start screen or after a save, and installs it quietly after you quit. Installing
+takes a minute or two, and the app reopens by itself when you chose Update and restart.
+
 ## Quickstart (about 10 minutes)
 
 You need Python 3.9 or newer, Git, Node.js LTS ([nodejs.org](https://nodejs.org/)),
