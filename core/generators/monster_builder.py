@@ -516,4 +516,6 @@ def main():
         sys.exit(1)  # Exit with an error code
 
 if __name__ == "__main__":
+    from utils.provider_gateway import take_from_argv
+    take_from_argv(sys.argv)  # #1682
     main()

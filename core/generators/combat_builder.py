@@ -21,6 +21,7 @@ from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name
 from utils.file_operations import safe_write_json
 from utils.child_process import STOPPED_EXIT, ChildStopped, run_fenced, stop_file_set
+from utils.provider_gateway import child_argv, take_from_argv
 
 # Set script name for logging
 set_script_name("combat_builder")
@@ -328,7 +329,7 @@ def load_or_create_monster(monster_key, monster_type):
         if _STOP_FILE:
             argv += ["--stop-file", _STOP_FILE]
         returncode, stdout, stderr = run_fenced(
-            argv, stop_check=_raise_if_stopped, grace=2.0, env=utf8_child_env())
+            child_argv(argv), stop_check=_raise_if_stopped, grace=2.0, env=utf8_child_env())
         result = subprocess.CompletedProcess(argv, returncode, stdout, stderr)
         _raise_if_stopped()
         if result.returncode == 0:
@@ -1239,6 +1240,7 @@ def main(argv=None):
 
 if __name__ == "__main__":
     try:
+        take_from_argv(sys.argv)  # #1682
         sys.exit(main())
     except ChildStopped:
         # #1529: stopped before a write; nothing more is written.

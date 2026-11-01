@@ -7406,7 +7406,8 @@ def handle_trigger_update():
         socketio.sleep(1)
 
         # Restart the server process
-        os.execv(sys.executable, ['python'] + sys.argv)
+        from utils.provider_gateway import child_argv
+        os.execv(sys.executable, ['python'] + child_argv(sys.argv))
 
     except Exception as e:
         emit_update('update_error', {'error': str(e)})
@@ -7514,6 +7515,8 @@ def serve(selected_ui, toolkit=False, no_browser=False, bound_socket=None):
 
 
 if __name__ == '__main__':
+    from utils.provider_gateway import take_from_argv
+    take_from_argv(sys.argv)  # #1682
     from run_web import parse_args, select_ui, ensure_react_frontend, check_frontend_tools
     boot_args = parse_args()
     if boot_args.frontend_ready:

@@ -37,6 +37,12 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
 
+# #1682: an operator's --provider-gateway is read from argv only, before any
+# other parsing and before a frozen child is dispatched.
+if __name__ == "__main__":
+    from utils.provider_gateway import take_from_argv
+    take_from_argv(sys.argv)
+
 # #1681: a frozen build starts its script children (the provider child,
 # combat_builder, monster_builder) as [sys.executable, <script>.py, ...];
 # they run here as their bundled modules, before anything is printed.
@@ -455,7 +461,8 @@ def main(ui="react", toolkit=False, args=None, bound_socket=None):
                     command += ["--port", str(args.port)]
                 if args.port_or_free is not None:
                     command += ["--port-or-free", str(args.port_or_free)]
-            result = subprocess.run(command, env=child_env)
+            from utils.provider_gateway import child_argv
+            result = subprocess.run(child_argv(command), env=child_env)  # #1682
             
             # Check if it was a planned restart (exit code 0)
             if result.returncode == 0:
