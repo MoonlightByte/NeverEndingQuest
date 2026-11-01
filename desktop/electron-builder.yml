@@ -1,16 +1,48 @@
-# Windows only (owner decision D-A0-1). A2 builds an unpacked folder; the NSIS installer and
-# signing are added in A3.
+# Windows only (owner decision D-A0-1). Base configuration: developer builds (`npm run dist`,
+# `npm run dist:installer`) and manual workflow runs. Tag releases add electron-builder.release.yml
+# (unsigned, D-A0-8) or electron-builder.signed.yml (dormant until signing credentials exist).
 appId: com.eternaltavern.neverendingquest
 productName: NeverEndingQuest
 directories:
   output: release
+  buildResources: build
 files:
   - dist/**
   - package.json
 asar: true
 extraResources:
-  # The PyInstaller one-folder server from A1.3 (desktop/pyinstaller), placed at resources/server.
+  # The PyInstaller one-folder server (desktop/pyinstaller/build.ps1), placed at resources/server.
   - from: ../dist-server/neq-server
     to: server
 win:
-  target: dir
+  target:
+    - target: nsis
+      arch: x64
+  # Made from dm_logo.png by build-tools/make_icon.py (not tracked).
+  icon: build/icon.ico
+nsis:
+  oneClick: false
+  # Per user: %LOCALAPPDATA%\Programs\NeverEndingQuest, no admin prompt.
+  perMachine: false
+  allowElevation: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: NeverEndingQuest
+  runAfterFinish: true
+  # Saves, settings and logs live in %APPDATA%\NeverEndingQuest and must survive an uninstall.
+  deleteAppDataOnUninstall: false
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  # Refuses an install folder at or above the data root (.onVerifyInstDir).
+  include: build/installer.nsh
+  artifactName: NeverEndingQuest-Setup-${version}.exe
+  differentialPackage: true
+  warningsAsErrors: true
+publish:
+  # Writes app-update.yml into the app and latest.yml beside the installer. Builds always run with
+  # --publish never; the release job uploads.
+  provider: github
+  owner: MoonlightByte
+  repo: NeverEndingQuest
+  releaseType: release

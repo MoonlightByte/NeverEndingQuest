@@ -32,6 +32,27 @@ only way the app ever kills it. Quitting while the game is still starting closes
 
 On Windows logoff or shutdown the app asks the server to save, but Windows decides how long it waits.
 
+## Building the installer
+
+Windows, from a checkout, with Node.js 20.19 or newer, after building the server folder
+(`desktop/pyinstaller/build.ps1`, which writes `dist-server/neq-server`):
+
+    python -m pip install --require-hashes --no-deps -r desktop/build-tools/requirements-icon.txt
+    python desktop/build-tools/make_icon.py
+    cd desktop
+    npm ci
+    npm run dist:installer
+
+The result is `desktop/release/NeverEndingQuest-Setup-<version>.exe` (per user, no admin prompt) with
+`latest.yml` and the `.blockmap` beside it. The installer refuses an install folder that is, contains or sits
+inside `%APPDATA%\NeverEndingQuest`, and uninstalling keeps that folder. Running the uninstaller by hand with
+`--delete-app-data` would remove it, saves included; the Apps settings page never passes that flag.
+
+Releases come from the desktop-windows workflow on a v* tag. They are unsigned for now (owner decision D-A0-8):
+`electron-builder.release.yml` is used, and `electron-builder.signed.yml` takes over only when the `release`
+environment has the Azure Trusted Signing variables (AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT,
+AZURE_CERT_PROFILE) and the OIDC ids (AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_SUBSCRIPTION_ID).
+
 ## Running from a checkout (developers)
 
 From the repository root, with the game's Python environment set up:
