@@ -45,6 +45,8 @@ export class Lifecycle {
   port: number | null = null
   token = ''
   serverVersion = ''
+  // Set by Force quit; a forced exit never installs a downloaded update.
+  forced = false
   private child: ChildHandle | null = null
   private childAlive = false
   private quitRequested = false
@@ -175,6 +177,7 @@ export class Lifecycle {
   forceQuit(): void {
     this.d.log('force quit requested by the player')
     this.quitRequested = true
+    this.forced = true
     if (!this.childAlive || this.child?.pid === undefined) {
       this.phase = 'exited'
       this.d.ui.exit(0)
