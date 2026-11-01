@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A Windows desktop app shell now starts the game server and opens the game in its own window, and waits for your turn to be saved before it closes (#1681).
+- A Windows installer, NeverEndingQuest-Setup-<version>.exe, now installs the desktop app for your user only and keeps your saves when you uninstall it; the desktop-windows workflow builds it and publishes it with the release on a v* tag (#1681).
 - The Windows installer's API-key menu shows correctly and no longer says a key is configured right after you skip it; run from inside a downloaded copy of the game, it installs that copy instead of downloading a second one and no longer creates an empty party file; and it puts the desktop shortcut on the desktop you actually see, OneDrive included, and says where (#1686, #1687, #1688).
 - A brand-new install no longer shows the recovery notice for a save it does not have, and opening the game no longer logs a storage error before a game is started (#1689).
 - A handoff the sheets cannot support is corrected before it is shown, instead of shown and then contradicted (#360).
@@ -18,8 +20,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A packaged build of the game can now run its helper steps (the model call, and building combat encounters and monsters) on its own; running from source is unchanged (#1681).
 - The game server can now be built as a standalone Windows folder for the desktop app (desktop/pyinstaller/build.ps1), from hash-locked build requirements; a packaged build, or one started by the desktop app, runs as a single process that the app restarts, and uses its shipped React player as is (#1681).
 - A GitHub Actions workflow (desktop-windows) builds the desktop server folder on Windows for v* tags and manual runs and keeps it as a 7-day build artifact; it does not sign or publish anything (#1681).
-- A Windows desktop app shell now starts the game server and opens the game in its own window, and waits for your turn to be saved before it closes (#1681).
-- A Windows installer, NeverEndingQuest-Setup-<version>.exe, now installs the desktop app for your user only and keeps your saves when you uninstall it; the desktop-windows workflow builds it and publishes it with the release on a v* tag (#1681).
 
 ## [1.0.1] - 2026-10-30
 
