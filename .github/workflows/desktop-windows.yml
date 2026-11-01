@@ -112,6 +112,8 @@ jobs:
           if ($env:TAG -ne "v$version" -or $desktop -ne $version) {
             throw "Tag $env:TAG, VERSION $version and desktop/package.json $desktop must agree"
           }
+          # A hyphenated version would get its own update channel (rc1.yml): stable installs never see it.
+          if ($version -match '-') { throw "Version $version has a hyphen: releases are plain X.Y.Z (no pre-release channels)" }
 
       - name: Icon
         shell: powershell
@@ -226,8 +228,8 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  # Publishes the GitHub release with the installer in one step, never as a draft (the updater
-  # ignores drafts). The only job that may write to the repository.
+  # Publishes the GitHub release with the installer in one step, always a full release: never a
+  # draft or a pre-release (the updater ignores both). The only job that may write to the repository.
   release:
     needs: installer
     if: github.ref_type == 'tag'
@@ -236,6 +238,13 @@ jobs:
     permissions:
       contents: write
     steps:
+      # Refuses on its own, even if the installer job's check is ever changed.
+      - name: Refuse pre-release versions
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          case "$TAG" in *-*) echo "Tag $TAG has a hyphen: releases are plain vX.Y.Z" >&2; exit 1;; esac
+
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -270,8 +279,6 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
-          prerelease=()
-          if [[ "$TAG" == *-* ]]; then prerelease=(--prerelease); fi
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --title "NeverEndingQuest ${TAG#v}" --notes-file notes.md "${prerelease[@]}" \
+            --title "NeverEndingQuest ${TAG#v}" --notes-file notes.md \
             out/NeverEndingQuest-Setup-*.exe out/NeverEndingQuest-Setup-*.exe.blockmap out/latest.yml

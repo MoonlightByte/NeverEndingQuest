@@ -257,7 +257,7 @@ const updater = new Updater({
       type: 'info' as const,
       title: 'NeverEndingQuest',
       message: `NeverEndingQuest ${version} is ready to install.`,
-      detail: 'The game saves and closes, the update installs, and NeverEndingQuest starts again. Choose Later to install it the next time you quit.',
+      detail: 'The game saves and closes, then the update installs. Installing takes a minute or two; the app reopens by itself. Choose Later to install it the next time you quit.',
       buttons: ['Update and restart', 'Later'],
       defaultId: 0,
       cancelId: 1,
