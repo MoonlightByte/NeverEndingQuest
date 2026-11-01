@@ -148,6 +148,8 @@ web/static/media/videos/skeleton.mp4
 *.jpeg
 # Exception for DM logo
 !dm_logo.png
+# README and docs images
+!docs/images/*.png
 # Allow game media assets
 !web/static/media/monsters/*.jpg
 !web/static/media/monsters/*.mp4
