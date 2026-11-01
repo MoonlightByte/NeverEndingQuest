@@ -124,6 +124,7 @@ export class Updater {
     }
     const restart = this.mode === 'restart'
     this.d.log(`installing update ${this.downloadedVersion} restart=${restart}`)
-    this.d.install(!restart, restart)
+    // Always silent (/S): the assisted installer would otherwise wait on its wizard (F-W7-1).
+    this.d.install(true, restart)
   }
 }
