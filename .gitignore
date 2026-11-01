@@ -528,3 +528,7 @@ test_validation_system.py
 verify_models.py
 FOR_CODEX_FILES_AND_EVIDENCE.md
 docs/CODEX_HANDOFF_VALIDATION_SYSTEM.md
+
+# Desktop server build output (desktop/pyinstaller/build.ps1, #1681)
+/build-server/
+/dist-server/
