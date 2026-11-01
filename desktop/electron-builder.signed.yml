@@ -1,0 +1,16 @@
+# Dormant (D-A0-8): used only when the release environment has the Azure Trusted Signing
+# variables and OIDC ids. Signs inside electron-builder so latest.yml hashes the signed installer.
+extends: ./electron-builder.release.yml
+win:
+  verifyUpdateCodeSignature: true
+  # Signing was asked for: a signing failure fails the build instead of shipping unsigned.
+  forceCodeSigning: true
+  azureSignOptions:
+    # Also written to app-update.yml: updates must be signed by this publisher.
+    publisherName: Eternal Tavern LLC
+    endpoint: ${env.AZURE_SIGNING_ENDPOINT}
+    codeSigningAccountName: ${env.AZURE_SIGNING_ACCOUNT}
+    certificateProfileName: ${env.AZURE_CERT_PROFILE}
+    fileDigest: SHA256
+    timestampRfc3161: http://timestamp.acs.microsoft.com
+    timestampDigest: SHA256

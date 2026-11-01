@@ -64,3 +64,212 @@ jobs:
           path: dist-server/neq-server
           retention-days: 7
           if-no-files-found: error
+
+  # A3 (#1681): the NSIS installer. Tag builds run in the release environment (the owner approves
+  # each release) and use electron-builder.release.yml (unsigned, D-A0-8), or electron-builder.signed.yml
+  # once the signing variables exist. Manual runs build an internal installer from the base config.
+  installer:
+    needs: server
+    runs-on: windows-2025
+    timeout-minutes: 60
+    environment: ${{ github.ref_type == 'tag' && 'release' || '' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Python 3.12 (x64)
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+          architecture: x64
+
+      # No dependency cache: a release is built from the lockfile alone.
+      - name: Node.js 20.19.6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "20.19.6"
+          package-manager-cache: false
+
+      - name: Download neq-server
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: neq-server
+          path: dist-server/neq-server
+
+      - name: Version check (tags)
+        if: github.ref_type == 'tag'
+        shell: powershell
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          $desktop = (Get-Content desktop\package.json -Raw | ConvertFrom-Json).version
+          if ($env:TAG -ne "v$version" -or $desktop -ne $version) {
+            throw "Tag $env:TAG, VERSION $version and desktop/package.json $desktop must agree"
+          }
+
+      - name: Icon
+        shell: powershell
+        run: |
+          python -m pip install --require-hashes --no-deps -r desktop\build-tools\requirements-icon.txt
+          if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
+          python desktop\build-tools\make_icon.py
+          if ($LASTEXITCODE -ne 0) { throw "make_icon.py failed" }
+
+      - name: Install and compile the shell
+        shell: powershell
+        working-directory: desktop
+        run: |
+          npm ci --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { throw "npm ci failed" }
+          npm run build
+          if ($LASTEXITCODE -ne 0) { throw "tsc failed" }
+
+      # Signing stays dormant until the release environment has every signing variable and OIDC id.
+      - name: Choose the build configuration
+        id: config
+        shell: powershell
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          CERT_PROFILE: ${{ vars.AZURE_CERT_PROFILE }}
+          HAS_TENANT: ${{ secrets.AZURE_TENANT_ID != '' }}
+          HAS_CLIENT: ${{ secrets.AZURE_CLIENT_ID != '' }}
+          HAS_SUBSCRIPTION: ${{ secrets.AZURE_SUBSCRIPTION_ID != '' }}
+        run: |
+          $signed = '0'
+          if ($env:REF_TYPE -ne 'tag') {
+            $config = 'electron-builder.yml'
+            $line = 'INTERNAL BUILD: manual run, base configuration, not signed, updates off'
+          } elseif ($env:SIGNING_ENDPOINT -and $env:SIGNING_ACCOUNT -and $env:CERT_PROFILE -and
+                    $env:HAS_TENANT -eq 'true' -and $env:HAS_CLIENT -eq 'true' -and $env:HAS_SUBSCRIPTION -eq 'true') {
+            $signed = '1'
+            $config = 'electron-builder.signed.yml'
+            $line = 'SIGNED BUILD: Azure Trusted Signing through electron-builder'
+          } else {
+            $config = 'electron-builder.release.yml'
+            $line = 'UNSIGNED BUILD (D-A0-8): no signing credentials configured; building the unsigned release'
+          }
+          Write-Output $line
+          $line | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          "signed=$signed" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+          "file=$config" | Out-File -Append -Encoding utf8 $env:GITHUB_OUTPUT
+
+      - name: Azure login (signed builds only)
+        if: steps.config.outputs.signed == '1'
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906  # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Build the installer
+        shell: powershell
+        working-directory: desktop
+        env:
+          CONFIG_FILE: ${{ steps.config.outputs.file }}
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_CERT_PROFILE: ${{ vars.AZURE_CERT_PROFILE }}
+        run: |
+          npx electron-builder --win nsis --publish never -c $env:CONFIG_FILE
+          if ($LASTEXITCODE -ne 0) { throw "electron-builder failed" }
+
+      # latest.yml must describe the installer byte for byte, or every update download is rejected.
+      - name: Verify
+        shell: powershell
+        working-directory: desktop\release
+        env:
+          SIGNED: ${{ steps.config.outputs.signed }}
+        run: |
+          $installer = Get-ChildItem -File NeverEndingQuest-Setup-*.exe | Select-Object -First 1
+          if (-not $installer) { throw "installer not found" }
+          $yml = Get-Content latest.yml -Raw
+          $sha = [regex]::Match($yml, '(?m)^sha512:\s*(\S+)').Groups[1].Value
+          $size = [regex]::Match($yml, '(?m)^\s+size:\s*(\d+)').Groups[1].Value
+          $hasher = [System.Security.Cryptography.SHA512]::Create()
+          $stream = [System.IO.File]::OpenRead($installer.FullName)
+          try { $actual = [Convert]::ToBase64String($hasher.ComputeHash($stream)) } finally { $stream.Dispose() }
+          if ($actual -ne $sha) { throw "latest.yml sha512 does not match $($installer.Name)" }
+          if ([string]$installer.Length -ne $size) { throw "latest.yml size $size does not match $($installer.Length)" }
+          Write-Output "latest.yml matches $($installer.Name) ($($installer.Length) bytes)"
+          if ($env:SIGNED -eq '1') {
+            $files = @($installer.FullName, 'win-unpacked\NeverEndingQuest.exe', 'win-unpacked\resources\server\run_web.exe',
+                       'win-unpacked\resources\server\_internal\bin\firelight-apply.exe', 'win-unpacked\resources\server\_internal\bin\nql-apply.exe')
+            foreach ($file in $files) {
+              $sig = Get-AuthenticodeSignature $file
+              if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Eternal Tavern LLC') {
+                throw "signature check failed for ${file}: $($sig.Status)"
+              }
+            }
+            Write-Output "Authenticode: all files signed by Eternal Tavern LLC"
+          } else {
+            Write-Output "signature check skipped: unsigned build (D-A0-8)"
+          }
+
+      - name: Upload installer
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: installer
+          path: |
+            desktop/release/NeverEndingQuest-Setup-*.exe
+            desktop/release/NeverEndingQuest-Setup-*.exe.blockmap
+            desktop/release/latest.yml
+          retention-days: 7
+          if-no-files-found: error
+
+  # Publishes the GitHub release with the installer in one step, never as a draft (the updater
+  # ignores drafts). The only job that may write to the repository.
+  release:
+    needs: installer
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download installer
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+        with:
+          name: installer
+          path: out
+
+      - name: Release notes
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          version = os.environ["TAG"][1:]
+          text = open("CHANGELOG.md", encoding="utf-8").read().replace("\r\n", "\n")
+          match = re.search(r"^## \[" + re.escape(version) + r"\][^\n]*\n(.*?)(?=^## \[|\Z)", text, re.S | re.M)
+          if not match:
+              sys.exit(f"CHANGELOG.md has no [{version}] section")
+          notes = match.group(1).strip()
+          notes += ("\n\nWindows: download NeverEndingQuest-Setup-" + version + ".exe below. The installer is not"
+                    " code-signed yet, so Windows may show \"Windows protected your PC\": choose More info, then Run anyway.")
+          open("notes.md", "w", encoding="utf-8").write(notes + "\n")
+          PY
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          prerelease=()
+          if [[ "$TAG" == *-* ]]; then prerelease=(--prerelease); fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "NeverEndingQuest ${TAG#v}" --notes-file notes.md "${prerelease[@]}" \
+            out/NeverEndingQuest-Setup-*.exe out/NeverEndingQuest-Setup-*.exe.blockmap out/latest.yml

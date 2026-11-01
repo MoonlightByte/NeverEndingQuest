@@ -1,0 +1,8 @@
+# Tag releases while unsigned (owner decision D-A0-8, v1.1.0). Updates are on; the downloaded
+# installer is not signature-checked because none is signed.
+extends: ./electron-builder.yml
+extraMetadata:
+  neqUpdates: true
+win:
+  verifyUpdateCodeSignature: false
+  forceCodeSigning: false

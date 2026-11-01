@@ -1,5 +1,15 @@
 # NeverEndingQuest
 
+## Windows: download the app
+
+Download `NeverEndingQuest-Setup-<version>.exe` from the
+[latest release](https://github.com/MoonlightByte/NeverEndingQuest/releases/latest) and run it.
+It installs for your user only (no admin prompt) and keeps your saves in `%APPDATA%\NeverEndingQuest`,
+also when you uninstall it.
+
+The installer is not code-signed yet, so Windows may show "Windows protected your PC".
+Choose **More info**, then **Run anyway**.
+
 ## Quickstart (about 10 minutes)
 
 You need Python 3.9 or newer, Git, Node.js LTS ([nodejs.org](https://nodejs.org/)),

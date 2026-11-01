@@ -10,7 +10,8 @@
   "scripts": {
     "build": "tsc -p .",
     "dev": "tsc -p . && electron .",
-    "dist": "tsc -p . && electron-builder --win --dir"
+    "dist": "tsc -p . && electron-builder --win --dir",
+    "dist:installer": "tsc -p . && electron-builder --win nsis --publish never"
   },
   "devDependencies": {
     "@types/node": "24.13.3",
