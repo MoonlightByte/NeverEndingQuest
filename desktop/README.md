@@ -53,6 +53,26 @@ Releases come from the desktop-windows workflow on a v* tag. They are unsigned f
 environment has the Azure Trusted Signing variables (AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT,
 AZURE_CERT_PROFILE) and the OIDC ids (AZURE_TENANT_ID, AZURE_CLIENT_ID, AZURE_SUBSCRIPTION_ID).
 
+## Updates
+
+The installed app from a tag release checks this repository's published GitHub releases once per launch and
+downloads a newer installer in the background (prereleases only when the running version is one). Dev runs and
+manual workflow builds never check. A downloaded update is offered only on the start screen or after a save has
+finished, never during a turn or while a save is still being written:
+
+- **Update and restart** quits the normal way (the server saves and stops), then installs and starts the new
+  version.
+- **Later** installs it the next time you quit, again only after the server has stopped. Force quit never
+  installs.
+
+Before installing, the app checks that nothing from the install folder is still running. If something is, it
+shows Keep waiting / Force quit. Releases are not code-signed yet (D-A0-8), so the downloaded installer is
+checked against the sha512 in the release's latest.yml but not for a signature.
+
+Neither the installer nor the uninstaller ever closes a running game: if NeverEndingQuest is running, they ask
+you to quit it with Game > Quit (which saves first) and press Retry. Cancel stops them. Uninstalling also removes
+the update download cache (`%LOCALAPPDATA%\neverendingquest-desktop-updater`).
+
 ## Running from a checkout (developers)
 
 From the repository root, with the game's Python environment set up:

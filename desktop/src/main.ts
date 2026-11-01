@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, shell } from 'electron'
-import { spawn } from 'node:child_process'
+import { autoUpdater } from 'electron-updater'
+import { execFile, spawn } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as http from 'node:http'
 import * as path from 'node:path'
@@ -8,8 +9,9 @@ import { Lifecycle, type ChildHandle, type Status } from './lifecycle'
 import { buildMenu } from './menu'
 import { lockedPreferences } from './prefs'
 import { installSecurity } from './security'
-import { childEnv, devPython, forceKillCommand, LineSplitter, newToken, serverCommand } from './serverSpawn'
+import { childEnv, devPython, forceKillCommand, LineSplitter, newToken, parseHealth, serverCommand } from './serverSpawn'
 import { statusPageUrl } from './statusPage'
+import { blockingProcesses, Updater, updatesEnabled, type RunningProcess } from './updater'
 
 const dataDir = path.join(app.getPath('appData'), 'NeverEndingQuest')
 const logsDir = path.join(dataDir, 'logs')
@@ -104,6 +106,28 @@ function forceKill(pid: number): void {
   } else {
     try { process.kill(-pid, 'SIGKILL') } catch (err) { log(`kill failed: ${String(err)}`) }
   }
+}
+
+// Every process whose image is under the install folder, as "<pid> <name>" lines; null on failure.
+function installProcesses(): Promise<RunningProcess[] | null> {
+  if (process.platform !== 'win32') return Promise.resolve([])
+  const installDir = path.dirname(process.execPath) + path.sep
+  const script = "Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($env:NEQ_INSTALL_DIR, 'OrdinalIgnoreCase') } | ForEach-Object { \"$($_.ProcessId) $($_.Name)\" }"
+  return new Promise(resolve => {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script],
+      { windowsHide: true, timeout: 30_000, env: { ...process.env, NEQ_INSTALL_DIR: installDir } }, (err, stdout) => {
+        if (err) {
+          log(`install-folder process list failed: ${err.message}`)
+          resolve(null)
+          return
+        }
+        resolve(blockingProcesses(stdout.split(/\r?\n/), path.basename(process.execPath)))
+      })
+  })
+}
+
+function readAppPackage(): { neqUpdates?: unknown } {
+  try { return JSON.parse(fs.readFileSync(path.join(app.getAppPath(), 'package.json'), 'utf8')) as { neqUpdates?: unknown } } catch { return {} }
 }
 
 function showStatus(kind: Status, elapsed: number): void {
@@ -215,8 +239,55 @@ const lifecycle = new Lifecycle({
       if (mainWindow && !mainWindow.isDestroyed()) mainWindow.hide()
       void serverDialog("NeverEndingQuest's game server stopped.")
     },
-    exit: exitApp,
+    exit: code => void updater.onExit(code, lifecycle.cleanShutdown),
   },
+})
+
+const updatesOn = updatesEnabled(app.isPackaged, readAppPackage())
+const updater = new Updater({
+  enabled: updatesOn,
+  check: () => { autoUpdater.checkForUpdates().catch((err: unknown) => log(`update check failed: ${String(err)}`)) },
+  health: async () => {
+    if (lifecycle.phase !== 'ready' || lifecycle.port === null) return null
+    const res = await request('GET', lifecycle.port, HEALTH_PATH, lifecycle.token)
+    return res && res.status === 200 ? parseHealth(res.body) : null
+  },
+  offer: async version => {
+    const options = {
+      type: 'info' as const,
+      title: 'NeverEndingQuest',
+      message: `NeverEndingQuest ${version} is ready to install.`,
+      detail: 'The game saves and closes, the update installs, and NeverEndingQuest starts again. Choose Later to install it the next time you quit.',
+      buttons: ['Update and restart', 'Later'],
+      defaultId: 0,
+      cancelId: 1,
+    }
+    const parent = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() ? mainWindow : null
+    const { response } = parent ? await dialog.showMessageBox(parent, options) : await dialog.showMessageBox(options)
+    return response === 0
+  },
+  requestQuit: () => { lifecycle.requestQuit() },
+  installProcesses,
+  waiting: async running => {
+    const { response } = await dialog.showMessageBox({
+      type: 'warning',
+      title: 'NeverEndingQuest',
+      message: 'Waiting for NeverEndingQuest to close',
+      detail: `The update installs once these have closed: ${running.map(p => p.name).join(', ')}.`,
+      buttons: ['Close them and update', 'Keep waiting', 'Quit without updating'],
+      defaultId: 1,
+      cancelId: 1,
+    })
+    return response === 0 ? 'close' : response === 2 ? 'quit' : 'wait'
+  },
+  kill: pids => { for (const pid of pids) forceKill(pid) },
+  install: (silent, runAfter) => {
+    exiting = true
+    autoUpdater.quitAndInstall(silent, runAfter)
+  },
+  exit: exitApp,
+  schedule: (fn, ms) => { setTimeout(fn, ms) },
+  log,
 })
 
 if (!app.requestSingleInstanceLock()) {
@@ -262,5 +333,21 @@ if (!app.requestSingleInstanceLock()) {
     }))
 
     lifecycle.start()
+
+    // GitHub releases of this repo (app-update.yml), published ones only; prereleases only for a
+    // prerelease build. The download is not installed until the player quits (updater.ts).
+    if (updatesOn) {
+      autoUpdater.autoDownload = true
+      autoUpdater.autoInstallOnAppQuit = false
+      autoUpdater.logger = {
+        info: (m: unknown) => log(`updater: ${String(m)}`),
+        warn: (m: unknown) => log(`updater warn: ${String(m)}`),
+        error: (m: unknown) => log(`updater error: ${String(m)}`),
+        debug: () => {},
+      }
+      autoUpdater.on('update-downloaded', info => { void updater.downloaded(info.version) })
+      autoUpdater.on('error', err => log(`updater error: ${err.message}`))
+      updater.start()
+    }
   })
 }

@@ -45,6 +45,11 @@ export class Lifecycle {
   port: number | null = null
   token = ''
   serverVersion = ''
+  // Set by Force quit; a forced exit never installs a downloaded update.
+  forced = false
+  // True only when our /shutdown was accepted and the server then exited 0: the one exit after
+  // which a downloaded update may install (a crash while closing, or a quit with no server, is not).
+  cleanShutdown = false
   private child: ChildHandle | null = null
   private childAlive = false
   private quitRequested = false
@@ -138,6 +143,7 @@ export class Lifecycle {
     this.childAlive = false
     this.d.log(`server exited code=${code}`)
     if (this.quitRequested) {
+      this.cleanShutdown = this.shutdownAccepted && code === 0 && !this.forced
       this.phase = 'exited'
       this.d.ui.exit(0)
     } else if (this.phase === 'ready' && code === 0) {
@@ -175,6 +181,7 @@ export class Lifecycle {
   forceQuit(): void {
     this.d.log('force quit requested by the player')
     this.quitRequested = true
+    this.forced = true
     if (!this.childAlive || this.child?.pid === undefined) {
       this.phase = 'exited'
       this.d.ui.exit(0)

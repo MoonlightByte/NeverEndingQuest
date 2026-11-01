@@ -9,6 +9,10 @@ export interface Health {
   ready: boolean
   inFlight: number
   backgroundPending: number
+  // Start screen with no game running (C-3); false when the server does not say.
+  atStart: boolean
+  // Advances on every completed save (C-3); null when the server does not say.
+  saveSeq: number | null
 }
 
 export interface ServerCommand {
@@ -59,11 +63,11 @@ export function parseHealth(body: string): Health | null {
   let data: unknown
   try { data = JSON.parse(body) } catch { return null }
   if (!data || typeof data !== 'object') return null
-  const { version, ready, in_flight: inFlight, background_pending: pending = 0 } =
-    data as { version?: unknown, ready?: unknown, in_flight?: unknown, background_pending?: unknown }
+  const { version, ready, in_flight: inFlight, background_pending: pending = 0, at_start: atStart, save_seq: saveSeq } =
+    data as { version?: unknown, ready?: unknown, in_flight?: unknown, background_pending?: unknown, at_start?: unknown, save_seq?: unknown }
   if (typeof version !== 'string' || typeof ready !== 'boolean') return null
   if (!count(inFlight) || !count(pending)) return null
-  return { version, ready, inFlight, backgroundPending: pending }
+  return { version, ready, inFlight, backgroundPending: pending, atStart: atStart === true, saveSeq: count(saveSeq) ? saveSeq : null }
 }
 
 // Splits a byte stream into lines without ever holding more than maxLen characters of one line,
