@@ -6,6 +6,7 @@ import os
 import time
 from contextlib import contextmanager
 
+from utils.data_root import resolve_data_root
 from utils.path_transaction_lock import (
     path_transaction_lock,
     path_transaction_lock_owned,
@@ -15,7 +16,13 @@ from utils.path_transaction_lock import (
 GAME_ROOT = os.path.abspath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
 )
-RUNTIME_LOCKS_DIR = os.path.join(GAME_ROOT, ".runtime_locks")
+# #1708: lock files live with the game's writable state. With a data folder
+# (NEQ_DATA_DIR, set by enter_data_root before run_web prints "[SETUP] Data
+# folder:", and inherited by every child process) they are under it, so a
+# read-only install can still save; with none, the path is the code root's as
+# before. Resolved once at import, so every worker of a world agrees on the
+# same lock files.
+RUNTIME_LOCKS_DIR = os.path.join(resolve_data_root() or GAME_ROOT, ".runtime_locks")
 LOCK_FILE = os.path.join(RUNTIME_LOCKS_DIR, "module_refresh")
 LOCK_SUFFIX = ".advisory.lock"
 
@@ -52,7 +59,8 @@ def module_refresh_lock(max_wait_seconds: float = 5.0, poll_seconds: float = 0.0
     # only the logical identity: an old sentinel at that path is deliberately
     # ignored while the adjacent advisory lock controls ownership.
     #
-    # IMPORTANT DEPLOYMENT CONTRACT: this absolute, game-root-derived identity
+    # IMPORTANT DEPLOYMENT CONTRACT: this absolute identity (under the data
+    # root when one is set, else the game root; #1708)
     # replaces the historical ``modules/module_refresh.lock.advisory.lock``.
     # Every worker must be stopped before deploying this change and restarted
     # from the same version. Mixed old/new workers would lock different inodes
