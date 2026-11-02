@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A game with a separate data folder now keeps its lock files there instead of in the install folder, so it can save when the install folder is read-only; without a data folder nothing changes (#1708).
+
 ## [1.1.0] - 2026-11-01
 
 - NeverEndingQuest 1.1.0 is the first Windows desktop release: download the installer from the release page (#1681).
