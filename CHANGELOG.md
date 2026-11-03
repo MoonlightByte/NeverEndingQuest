@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - The rules check no longer rejects a companion drawing or readying a weapon they carry as part of an attack; a weapon the character does not carry is still rejected (#1740).
+- The Map tab no longer counts a room with an empty id as undiscovered, so its undiscovered count matches the rooms it can show (#1707).
 - Companions no longer treat their own private guess that something is unknown as fact for the DM, so the scene's real details can come through: a scout can point to the river crossing below, and a leader who says no names what would change her mind (#1724).
 - The roll reader now takes "I roll Persuasion" with no number as a request for the game to roll, and a question about a waiting roll (such as "Does the lock give?") no longer gives the roll up (#1728).
 - In The Thornwood Watch, Scout Neris is back at Scout's Watch at the East Tower, where the location's own text places her, so the DM can have her speak there. Games already started keep their copy of the area; a new game or Reset has her (#1733).
