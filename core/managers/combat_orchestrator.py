@@ -101,7 +101,7 @@ class CombatTurnPaused(RuntimeError):
 def _phase_paused(technical_message, record):
     """The pause for an open code-issued roll phase: the DM's lead and its card."""
     return CombatTurnPaused(technical_message, player_message=record.get("lead") or None,
-                            card=record.get("card"), card_id=record.get("cardId"))
+                            card=_shown_card(record.get("card")), card_id=record.get("cardId"))
 
 
 def _batch_targets(batch):
@@ -1842,6 +1842,35 @@ def _phase_lead(record):
     return _roll_lead(record, key)
 
 
+_CARD_DAMAGE_RE = re.compile(r"Damage: (\d+d\d+), (the total|each die)$")
+
+
+def _shown_card(card):
+    """#1706: the dice card as the player reads it. "Damage: 1d10, the total"
+    read like a result missing its number, so the shown card says the damage
+    is still to roll. Display only: the card joined into the ask (T096's
+    dmRequest, T126's asked) keeps its own words."""
+    if not isinstance(card, str):
+        return card
+    return _CARD_DAMAGE_RE.sub(
+        lambda match: "Damage to roll: %s, %s" % (
+            match.group(1), "as one total" if match.group(2) == "the total" else "each die"),
+        card,
+    )
+
+
+def _damage_receipt(record, entry, values, count, sides):
+    """#1706: the player's scored damage roll, shown as a system record (player
+    output only, as the game roll's own line); the DM narrates it without the
+    numbers."""
+    rolled = "%dd%d = %d" % (count, sides, sum(values))
+    if count > 1 and len(values) == count:
+        rolled = "%dd%d = %s = %d" % (count, sides, " + ".join(str(value) for value in values), sum(values))
+    spell = record.get("spell") if isinstance(record.get("spell"), dict) else {}
+    target = "" if spell.get("type") == "save" else " on %s" % _spoken_name(record.get("targetName"))
+    return "%s damage%s: %s." % (_phase_weapon(record, entry), target, rolled)
+
+
 def _join_ask(lead, card):
     """The ask as one text, for T096's dmRequest and T126's ``asked``."""
     return "%s %s" % (lead, card) if lead else card
@@ -2309,7 +2338,7 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
             # own new record each time, so every line gets a visible answer.
             raise CombatTurnPaused(
                 "Code-issued roll is waiting for the player",
-                player_message=record.get("lead") or None, card=record.get("card"),
+                player_message=record.get("lead") or None, card=_shown_card(record.get("card")),
                 card_id=record.get("cardId") if record.get("lead") else None,
             )
         record["lead"] = lead
@@ -2371,6 +2400,8 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
     )
     if game_card is not None:
         _show_check_receipt(game_card)
+    elif phase == "damage":
+        _show_check_receipt(_damage_receipt(record, entry, values, count, sides))
     return pending, (record if is_open else None)
 
 
