@@ -3131,6 +3131,11 @@ Character Role: {character_role}
                     type(amount) is int and amount > 0 for amount in updates["spellSlotDelta"].values()):
                 # #1680: outside a rest a slot comes back only through what
                 # regains it, typed: a feature use or an item charge.
+                if post_combat is not None:
+                    # #1763: in the automatic post-combat pass it is a replay,
+                    # reported as not applied (#1730), not a payment to ask for.
+                    raise PostCombatReplayRefused(
+                        "a change to spellSlotDelta after the fight needs the player's next action")
                 raise EngineRefusedChange(
                     "a regained spell slot is paid by what regains it: castingResource with regainsSlots "
                     "(kind feature with featureName, or kind item after its expendCharges)")
