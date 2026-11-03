@@ -5736,12 +5736,16 @@ def process_action(
                         "error_code": "transition_recovery_conflict",
                     },
                 )
-            departure_summary = resolve_current_transition_departure(
-                transition_id, transition_context
-            )
-            transition_context["departure_summary"] = departure_summary
+            # #1633: in-module travel commits its departure after the arrival
+            # is shown (main._resume_v2_location_transition); a module
+            # handoff commits it here, before the handoff replaces the module.
+            if current_checkpoint.get("module_handoff") is not None:
+                departure_summary = resolve_current_transition_departure(
+                    transition_id, transition_context
+                )
+                transition_context["departure_summary"] = departure_summary
 
-            info("SUCCESS: Location movement and departure state committed", category="location_transitions")
+            info("SUCCESS: Location movement committed", category="location_transitions")
             response_data = {
                 "departure_summary": transition_context.get("departure_summary"),
             }
