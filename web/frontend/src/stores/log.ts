@@ -7,6 +7,8 @@ const DEBUG_RING_LIMIT = 200
 
 export interface GeneratedImage {
   image_url: string
+  /** The game-served local copy (#1755); preferred over the provider's expiring image_url. */
+  local_url?: string
   prompt: string
   request_id?: string
   source_message_id?: string
