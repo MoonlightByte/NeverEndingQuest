@@ -7061,8 +7061,14 @@ def process_ai_response(
         pending_archive_info = None
         
         post_combat_refused = []
+        # #1731: a castingResource payment before a createEncounter is staged:
+        # the encounter commits it once its fight is built, just before play,
+        # and a fight that could not be set up spends nothing.
+        encounter_payments = action_handler.stage_encounter_payments(actions)
         # Execute accepted actions once, in the order the DM and referee approved.
         for action_index, action in enumerate(actions):
+            if encounter_payments and action_index in encounter_payments["staged"]:
+                continue
             # Snapshot the history length BEFORE the handler runs: needs_response
             # producers append their user-role note to this same list, and the
             # follow-up block below must insert the assistant candidate BEFORE
@@ -7086,6 +7092,11 @@ def process_ai_response(
                     turn_roster=turn_roster,
                     post_combat_encounter=(
                         post_combat_id if _agentic_post_combat_update(action) else None
+                    ),
+                    encounter_payments=(
+                        encounter_payments
+                        if encounter_payments and action_index == encounter_payments["encounter_index"]
+                        else None
                     ),
                 )
             except (LiveProviderSuperseded, InvocationSupersededError):
