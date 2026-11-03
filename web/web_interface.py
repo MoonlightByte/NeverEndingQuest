@@ -3449,7 +3449,11 @@ def handle_action(data, _operation_id=None):
         try:
             manager = _web_save_manager()
             save_folder = parameters.get("saveFolder")
-            valid, validation_message = manager.validate_restore_target(save_folder)
+            # #1715: the list's typed save_module names the save's folder.
+            if manager.select_save_module(parameters.get("saveModule")):
+                valid, validation_message = manager.validate_restore_target(save_folder)
+            else:
+                valid, validation_message = False, "Choose an existing save from the save list"
             if not valid:
                 clean = _web_restore_state().get('can_resume') is not False
                 emit('restore_complete', {
@@ -3565,7 +3569,10 @@ def handle_action(data, _operation_id=None):
             from updates.save_game_manager import SaveGameManager
             manager = SaveGameManager()
             save_folder = parameters.get("saveFolder")
-            success, message = manager.delete_save_game(save_folder)
+            if manager.select_save_module(parameters.get("saveModule")):  # #1715
+                success, message = manager.delete_save_game(save_folder)
+            else:
+                success, message = False, "Choose an existing save from the save list"
             if success:
                 emit('system_message', {'content': f"Save deleted: {message}"})
             else:
@@ -3782,7 +3789,8 @@ def handle_action(data, _operation_id=None):
             if isinstance(recovery_result, RestoreRequest):
                 return handle_action({
                     'action': 'restoreGame',
-                    'parameters': {'saveFolder': recovery_result.save_folder},
+                    'parameters': {'saveFolder': recovery_result.save_folder,
+                                   'saveModule': getattr(recovery_result.manager, 'current_module', None)},
                 })
             status = recovery_result.get('status', 'failed')
             if status not in {'recovered', 'already_ready', 'failed', 'in_progress', 'not_recoverable'}:
