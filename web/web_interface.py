@@ -641,7 +641,7 @@ def load_message_cache(on_recovery=None):
                             'content': (
                                 'Recovered narration from this save. The original on-screen transcript was not included.'
                                 if cached_messages else
-                                'This save has no recoverable on-screen transcript. Resume your saved game to continue.'
+                                'This save has no recoverable on-screen transcript. Press Start Game (or New Game) to resume your saved game.'
                             ),
                         }
                         cached_messages.append(notice)

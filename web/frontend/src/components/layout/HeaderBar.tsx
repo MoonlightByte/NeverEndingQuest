@@ -98,6 +98,10 @@ export function HeaderBar() {
     && (gameReady || startupStatus === 'in_progress' || startupStatus === 'failed')
   const recoveryControlsAvailable = lifecycleAvailable || recoveryRequired || restorePending
   const isStarting = mode === 'starting' || sessionMode === 'starting'
+  // #1705: on the start screen (no game running or starting) Load is open too,
+  // so a returning player loads a save before any model call; the resume call
+  // comes after the load, when they press Start.
+  const loadAvailable = recoveryControlsAvailable || (!isStarting && sessionMode !== 'play')
   // Legacy changes the initial connected/pre-start label to "New Game" until
   // the first successful start records neq_hasPlayed. Subsequent fresh starts
   // retain the normal "Start Game" wording.
@@ -137,8 +141,8 @@ export function HeaderBar() {
           style={{ backgroundColor: lifecycleAvailable ? '#ff9800' : '#555', color: 'white' }}>
           Save
         </button>
-        <button type="button" className={buttonClass} onClick={handleLoad} disabled={resetPending || !connected || !recoveryControlsAvailable}
-          style={{ backgroundColor: recoveryControlsAvailable ? '#9c27b0' : '#555', color: 'white' }}>
+        <button type="button" className={buttonClass} onClick={handleLoad} disabled={resetPending || !connected || !loadAvailable}
+          style={{ backgroundColor: loadAvailable ? '#9c27b0' : '#555', color: 'white' }}>
           Load
         </button>
         <button type="button" className={buttonClass} onClick={handleReset} disabled={resetPending || !connected || !recoveryControlsAvailable}
