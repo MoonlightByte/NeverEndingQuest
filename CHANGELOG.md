@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - In a hosted game, a refused AI key, quota or model during character creation no longer locks the input or points to Settings the player does not have: the message says the problem is on the host's side, setup choices are kept, and the next message tries again (#1711).
+- With no game started yet, the Load list now shows the saves of every adventure, each with its adventure, and loading or deleting one uses that adventure's save folder; before, it showed only an old shared folder, which is normally empty (#1715).
 
 ## [1.1.1] - 2026-11-02
 
