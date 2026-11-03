@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Companions no longer treat their own private guess that something is unknown as fact for the DM, so the scene's real details can come through: a scout can point to the river crossing below, and a leader who says no names what would change her mind (#1724).
 - A line you send while the game's connection drops is no longer lost without a word: it comes back to the input box with a note to send it again (#1732).
 - A weapon hit you roll the damage for now shows the damage it did once the hit is scored: the dice, your bonus and the total, and any resistance, in one line instead of the dice alone (#1721).
 - The DM now asks for one roll at a time, asks again in words for a roll still waiting, and gives each part of a player's line a word in its reply, such as a spell cast before a move (#1722).
