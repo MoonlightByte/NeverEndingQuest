@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Travel no longer waits for a second location-update call when the first leaves out a required field such as a location's coordinates; the field is taken from the location as it was (#1633).
+- A turn the reviewer keeps rejecting ends less often in "I wasn't able to do that": each review keeps the demands already made, lists everything to fix at once, and accepts reading something the world data gives no details for in general terms (#1727).
 - When you ask someone else in the scene a question, a companion no longer repeats it for you; the person you asked answers (#1729).
 - The rules check no longer rejects a companion drawing or readying a weapon they carry as part of an attack; a weapon the character does not carry is still rejected (#1740).
 - The Map tab no longer counts a room with an empty id as undiscovered, so its undiscovered count matches the rooms it can show (#1707).

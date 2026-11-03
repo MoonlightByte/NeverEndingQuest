@@ -4796,9 +4796,13 @@ def validate_ai_response(
         validation_messages_to_send = list(validation_messages_to_send) + [{
             "role": "system",
             "content": (
-                "Prior review feedback (not story events). Preserve applicable "
-                "constraints; current canonical facts supersede stale factual "
-                "instructions. Judge this latest candidate independently:\n"
+                "Prior review feedback on this same player turn (not story "
+                "events). Its demands stand: never reject a draft for meeting "
+                "one, and never reverse one; current canonical facts supersede "
+                "stale factual instructions. If an earlier demand cannot be met "
+                "with the supplied records, say so and name a way the DM can "
+                "pass. When invalid, name every defect you see in this candidate "
+                "in one reason, most important first:\n"
                 + json.dumps(review_feedback, ensure_ascii=True)
             ),
         }]
@@ -8248,6 +8252,7 @@ def _build_dm_review_request(
                 "Revise the latest assistant draft above, not an earlier rejected "
                 "draft. Preserve applicable prior constraints; current canonical "
                 "evidence and current review supersede stale factual instructions. "
+                "Meet every correction listed, not only the last. "
                 "Return the complete corrected JSON response.\n"
                 + json.dumps(review_feedback, ensure_ascii=True)
             ),
