@@ -18,8 +18,12 @@ import { ThinkingMist, useDmBusy } from './ThinkingMist'
 import { useComposerGating } from '../../modes/useComposerGating'
 import { useEmberDesktop } from '../layout/EmberPresentation'
 import { EmberIcon } from '../layout/EmberIcon'
+import type { TrayDie } from './DiceStrip'
 
-export function InputBar({ rollInsertion }: { rollInsertion?: { id: number; text: string } } = {}) {
+/** A dice-tray insertion: its sentence and, #1750, the same faces as typed dice. */
+export interface RollInsertion { id: number; text: string; dice?: TrayDie[] }
+
+export function InputBar({ rollInsertion }: { rollInsertion?: RollInsertion } = {}) {
   const ember = useEmberDesktop()
   const turnStatus = useTurnStatus()
   const dmBusy = useDmBusy()
@@ -31,13 +35,20 @@ export function InputBar({ rollInsertion }: { rollInsertion?: { id: number; text
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
   const insertedRoll = useRef<number | null>(null)
+  // #1750: the tray sentence that filled an empty draft, with its typed dice;
+  // sent beside the line only while the draft is still exactly that sentence.
+  const trayLine = useRef<{ text: string; dice: TrayDie[] } | null>(null)
   const suggestion = useInputSuggestion((s) => s.suggestion)
   const unsentLine = useUnsentLine((s) => s.line)
   const [unsent, setUnsent] = useState(false)
   useEffect(() => {
     if (!rollInsertion || insertedRoll.current === rollInsertion.id) return
     insertedRoll.current = rollInsertion.id
-    setDraft((previous) => previous.trim() ? `${previous.trimEnd()} ${rollInsertion.text}` : rollInsertion.text)
+    setDraft((previous) => {
+      trayLine.current = !previous.trim() && rollInsertion.dice?.length
+        ? { text: rollInsertion.text.trim(), dice: rollInsertion.dice } : null
+      return previous.trim() ? `${previous.trimEnd()} ${rollInsertion.text}` : rollInsertion.text
+    })
     inputRef.current?.focus()
   }, [rollInsertion])
   // #882: an offered action fills an empty draft only; a typed draft stays.
@@ -71,7 +82,9 @@ export function InputBar({ rollInsertion }: { rollInsertion?: { id: number; text
     // when the visual controls are enabled for exact surface parity.
     if (!input || !gating.canSend) return
     setUnsent(false)
-    emitC('user_input', { input })
+    const tray = trayLine.current
+    trayLine.current = null
+    emitC('user_input', tray && input === tray.text ? { input, dice: tray.dice } : { input })
     setDraft('')
   }
 

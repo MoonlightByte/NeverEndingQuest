@@ -1728,12 +1728,18 @@ _TRAY_SENTENCE = re.compile(
 
 
 def _tray_faces(text, record, entry):
-    """The typed values a dice-tray sentence carries for the open phase,
-    "invalid" when its dice are not the ones asked for, None when the text is
-    not a tray sentence."""
-    if not _TRAY_SENTENCE.match(text):
-        return None
-    dice = [(int(face), int(die)) for face, die in re.findall(_TRAY_DIE, text, re.IGNORECASE)]
+    """The values the dice tray sent for the open phase, "invalid" when its
+    dice are not the ones asked for, None when the line is not a tray answer.
+    #1750: the typed dice sent with the line (tray_roll) come first; a client
+    that sends only the tray sentence is still read from it until the hosted
+    client ships the typed payload."""
+    from core.managers import tray_roll
+
+    dice = tray_roll.take(text)
+    if dice is None:
+        if not _TRAY_SENTENCE.match(text):
+            return None
+        dice = [(int(face), int(die)) for face, die in re.findall(_TRAY_DIE, text, re.IGNORECASE)]
     count, sides = player_weapon_attack_dice(record, entry)
     wanted = 20 if record.get("phase") == "attack" else sides
     if len(dice) != count or any(die != wanted or not 1 <= face <= die for face, die in dice):
