@@ -60,6 +60,10 @@ import re
 
 # Add the project root to the Python path so we can import from utils, core, etc.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+# #1681/#1682/#1717: a data root (NEQ_DATA_DIR) goes first, so its config.py is the
+# one imported; this child is spawned with the install folder on its path.
+from utils.data_root import apply_data_root_path
+apply_data_root_path()
 
 from core.ai import api_client
 from jsonschema import validate, ValidationError

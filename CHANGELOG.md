@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Load now works from the start screen, so you can load a save before starting a game and without any AI call; after a load with no on-screen transcript, the notice says to press Start Game (or New Game) to resume (#1705).
 - A hosted server operator can start the game with --shipped-frontend to use the web player shipped in web/frontend/dist as it is: no file-time check and never a build, so an install without Node.js and with a read-only install folder starts the web player; it is read only from the command line, and without it nothing changes (#1710).
 - A new web-dist workflow builds the web player for every commit on main and keeps it for 30 days as neq-web-dist-<sha> (a zip and its sha256), so a hosted install can ship the player without Node.js; the install steps are in the workflow file (#1710).
+- With a separate data folder, fights start again: the combat builder, the monster builder and the headless server now load the settings (config.py) from the data folder like the game itself, instead of failing to find them; without a data folder nothing changes (#1717).
 
 ## [1.1.0] - 2026-11-01
 
