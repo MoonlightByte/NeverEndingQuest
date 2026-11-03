@@ -243,6 +243,23 @@ def _legacy_name_matches_identity(legacy_name: str, identity: Mapping[str, Any])
                for registered_name in _identity_names(identity))
 
 
+def _identities_for_legacy_seed(snapshot: Mapping[str, Any], legacy_name: str) -> list:
+    """npc identities whose seed is the sheet path the game gives legacy_name.
+    Both come from the roster name, so this compares two code-owned path keys
+    and no display name (#1346). An unresolvable name gives []."""
+    try:
+        from utils.module_path_manager import character_sheet_path
+
+        seed = normalize_identity_seed(character_sheet_path(legacy_name))
+    except (AttributeError, TypeError, ValueError, OSError):
+        return []
+    return [
+        identity_id
+        for identity_id, registered in snapshot["identities"].items()
+        if registered.get("kind") == "npc" and registered.get("identitySeed") == seed
+    ]
+
+
 # Per-NPC POV overlay (Phase 2). The canonical episode ledger holds the shared truth;
 # these rows are the cheap per-NPC delta (how THIS npc holds it), code-derived.
 POV_TAGS = frozenset({
@@ -1000,16 +1017,28 @@ class RelationshipStore:
             legacy_name = _text(value.get("npc_name"), 100)
             if not legacy_name:
                 continue
-            # Identity boundary: resolve the legacy file's npc name ONCE against
-            # the registered roster identities by canonical VALUE comparison of
-            # the whole name or an alias (#855).
-            # Exactly-one match imports; zero or ambiguous = skip LOUDLY, never guess.
-            matching_ids = [
+            # Identity boundary (#855). The file's npc_name was the party roster
+            # name, and the companion's identity seed is the sheet path the game
+            # derives from that same name, so the seed is looked up first, with
+            # no display-name compare (#1346). Without a seed match, the whole
+            # name or an alias is compared as canonical tokens (D-1346-1).
+            # Exactly-one match imports; zero, ambiguous or a disagreement is
+            # skipped LOUDLY, never guessed.
+            name_ids = [
                 identity_id
                 for identity_id, registered in snapshot["identities"].items()
                 if registered.get("kind") == "npc"
                 and _legacy_name_matches_identity(legacy_name, registered)
             ]
+            seed_ids = _identities_for_legacy_seed(snapshot, legacy_name)
+            if seed_ids and name_ids and name_ids != seed_ids:
+                matching_ids = seed_ids + [i for i in name_ids if i not in seed_ids]
+                detail = "npc_name=%r: sheet path and name resolve to different identities; skipped" % (
+                    legacy_name,)
+            else:
+                matching_ids = seed_ids or name_ids
+                detail = "npc_name=%r matched %d roster identities (need exactly 1); skipped" % (
+                    legacy_name, len(matching_ids))
             if matching_ids == [npc_id]:
                 matches.append((candidate, raw, value))
             elif len(matching_ids) != 1:
@@ -1018,8 +1047,7 @@ class RelationshipStore:
                     record_store_health(
                         "legacy_import_unresolved_identity",
                         path=str(candidate),
-                        detail="npc_name=%r matched %d roster identities (need exactly 1); skipped"
-                        % (legacy_name, len(matching_ids)),
+                        detail=detail,
                     )
         if len(matches) != 1:
             return False

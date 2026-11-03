@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Travel shows your arrival as soon as it is narrated; the record of the place you left is written afterwards, before your next turn, instead of before the arrival (#1633).
+- A companion's memories from older saves now load when the party list and the character sheet name them differently, such as "Kira" and "Scout Kira" (#1346).
 - Travel no longer waits for a second location-update call when the first leaves out a required field such as a location's coordinates; the field is taken from the location as it was (#1633).
 - A turn the reviewer keeps rejecting ends less often in "I wasn't able to do that": each review keeps the demands already made, lists everything to fix at once, and accepts reading something the world data gives no details for in general terms (#1727).
 - When you ask someone else in the scene a question, a companion no longer repeats it for you; the person you asked answers (#1729).
@@ -24,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A spell slot or feature use paid for the spell that opens a fight is now spent only once the fight is ready to start; if the fight cannot be set up, nothing is spent, and the DM is told exactly what was and was not spent (#1731).
 - Right after a fight, the DM can now wake or heal a hero who was knocked out (hit points regained, back from unconscious, stabilised); a change the fight itself already made, such as its damage or spent resources, is still not applied twice (#1730).
 - With no game started yet, the Load list now shows the saves of every adventure, each with its adventure, and loading or deleting one uses that adventure's save folder; before, it showed only an old shared folder, which is normally empty (#1715).
+- Arcane Recovery and other features or items that bring back spell slots (Natural Recovery, Harness Divine Power, Font of Magic, Eldritch Master, a Pearl of Power) now spend their use and return the slot together; a slot can no longer come back for free, and a use is never spent when there is no empty slot to regain (#1680).
 
 ## [1.1.1] - 2026-11-02
 
