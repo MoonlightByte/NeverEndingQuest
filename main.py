@@ -8689,13 +8689,15 @@ def _terminal_recovery_menu(manager):
         except Exception as exc:
             show_player_notice('Could not list saves: ' + str(exc))
             saves = []
+        # #1715: with no module context the list spans every module; each
+        # choice keeps the module its save was found in.
         choices = {
-            str(index): save['save_folder']
+            str(index): (save.get('save_module'), save['save_folder'])
             for index, save in enumerate(saves, 1) if save.get('save_folder')
         }
         print('Gameplay is paused. Choose a saved game, Reset, or Quit.')
-        for index, saved_folder in choices.items():
-            print(index + ': ' + saved_folder)
+        for index, (saved_module, saved_folder) in choices.items():
+            print(index + ': ' + (saved_module + ': ' if saved_module else '') + saved_folder)
         try:
             choice = input('Save number / reset / quit: ').strip()
             if choice.lower() == 'quit':
@@ -8704,7 +8706,9 @@ def _terminal_recovery_menu(manager):
                 if input('Reset the campaign? Type RESET to confirm: ').strip() == 'RESET':
                     return _TravelRecoveryControl('reset', manager)
             if choice in choices:
-                return _TravelRecoveryControl('restore', manager, choices[choice])
+                saved_module, saved_folder = choices[choice]
+                if manager.select_save_module(saved_module):
+                    return _TravelRecoveryControl('restore', manager, saved_folder)
         except (EOFError, KeyboardInterrupt):
             return _TravelRecoveryControl('quit', manager)
 
