@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - After a fight, a spell slot the game's summary tries to give back is noted as not applied, and the rest of that turn's healing still happens (#1763).
+- A generated image, or its failure notice, that finishes while no browser tab is connected now shows when a tab connects again, and an image failure that arrives during a reconnect is no longer dropped (#1640, #1387).
 - A long fight with your hero down no longer stops partway: each downed round gets its own budget of model calls, as your other combat turns do (#1756).
 - A check's roll panel now reaches the screen before the command box opens, so the box never opens on a turn that asks for a roll while the panel is still on its way (#1630).
 - The combat dice tray sends its dice to the game as typed values beside the sentence it writes, and the game reads those values instead of the sentence; older clients that send only the sentence keep working (#1750).
