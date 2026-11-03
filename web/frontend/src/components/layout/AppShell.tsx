@@ -23,8 +23,8 @@ import { EXIT_SAFE_MESSAGE, HeaderBar } from './HeaderBar'
 import { CoreHydrationOwner } from './CoreHydrationOwner'
 import { StartingPanel } from './StartingPanel'
 import { GameLog } from '../log/GameLog'
-import { InputBar } from '../log/InputBar'
-import { DiceStrip, useDiceRolls } from '../log/DiceStrip'
+import { InputBar, type RollInsertion } from '../log/InputBar'
+import { DiceStrip, useDiceRolls, type TrayDie } from '../log/DiceStrip'
 import { AdventureBox, InitiativeTracker, PartyStrip } from '../party'
 import { RightPanelTabs } from '../sheet/RightPanelTabs'
 import { SaveDialog } from '../dialogs/SaveDialog'
@@ -65,9 +65,9 @@ function CenterColumn({ focused, onToggleFocus }: { focused: boolean; onToggleFo
   const ember = useEmberDesktop()
   const location = useWorld(state => state.location)
   const dice = useDiceRolls()
-  const [rollInsertion, setRollInsertion] = useState<{ id: number; text: string }>()
+  const [rollInsertion, setRollInsertion] = useState<RollInsertion>()
   const insertSequence = useRef(0)
-  const insertRoll = (text: string) => setRollInsertion({ id: ++insertSequence.current, text })
+  const insertRoll = (text: string, dice: TrayDie[]) => setRollInsertion({ id: ++insertSequence.current, text, dice })
   const instance = useSession(state => state.serverInstanceId)
   const previous = useRef(instance)
   useEffect(() => {

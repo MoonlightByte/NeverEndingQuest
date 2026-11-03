@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The combat dice tray sends its dice to the game as typed values beside the sentence it writes, and the game reads those values instead of the sentence; older clients that send only the sentence keep working (#1750).
 - Travel no longer waits for a second location-update call when the first leaves out a required field such as a location's coordinates; the field is taken from the location as it was (#1633).
 - A turn the reviewer keeps rejecting ends less often in "I wasn't able to do that": each review keeps the demands already made, lists everything to fix at once, and accepts reading something the world data gives no details for in general terms (#1727).
 - When you ask someone else in the scene a question, a companion no longer repeats it for you; the person you asked answers (#1729).
