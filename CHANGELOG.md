@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A long fight with your hero down no longer stops partway: each downed round gets its own budget of model calls, as your other combat turns do (#1756).
 - Travel shows your arrival as soon as it is narrated; the record of the place you left is written afterwards, before your next turn, instead of before the arrival (#1633).
 - A companion's memories from older saves now load when the party list and the character sheet name them differently, such as "Kira" and "Scout Kira" (#1346).
 - Travel no longer waits for a second location-update call when the first leaves out a required field such as a location's coordinates; the field is taken from the location as it was (#1633).
