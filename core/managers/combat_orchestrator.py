@@ -1849,15 +1849,78 @@ def _phase_lead(record):
 
 
 def _damage_receipt(record, entry, values, count, sides):
-    """#1706: the player's scored damage roll, shown as a system record (player
-    output only, as the game roll's own line); the DM narrates it without the
-    numbers."""
+    """#1706: the player's scored spell damage roll, shown as a system record
+    (player output only, as the game roll's own line); the DM narrates it
+    without the numbers. A weapon's damage is shown once scored (#1721)."""
     rolled = "%dd%d = %d" % (count, sides, sum(values))
     if count > 1 and len(values) == count:
         rolled = "%dd%d = %s = %d" % (count, sides, " + ".join(str(value) for value in values), sum(values))
     spell = record.get("spell") if isinstance(record.get("spell"), dict) else {}
     target = "" if spell.get("type") == "save" else " on %s" % _spoken_name(record.get("targetName"))
     return "%s damage%s: %s." % (_phase_weapon(record, entry), target, rolled)
+
+
+_TRAIT_WORDS = {"resistance": "resistant", "vulnerability": "vulnerable", "immunity": "immune"}
+
+
+def _scored_damage_line(scored, target_id, encounter, characters, off_hand=False):
+    """#1721: the player's weapon hit as scored, from the typed journal only:
+    the damage roll row (value, faces, facesTreated) and the swing (damage,
+    rawDamage, damageTraits). The bonus is the swing's raw damage less the
+    dice; it is never worked out here. None when no player damage was rolled."""
+    row = next((roll for roll in scored.get("rolls") or []
+                if isinstance(roll, dict) and roll.get("purpose") == "damage" and "source" in roll), None)
+    swing = next((swing for swing in (scored.get("outcome") or {}).get("swings") or []
+                  if isinstance(swing, dict) and swing.get("hit") is True), None)
+    if row is None or swing is None or type(row.get("value")) is not int:
+        return None
+    rolled, faces, treated = row["value"], row.get("faces") or [], row.get("facesTreated")
+    dice = "%s = %d" % (row.get("die"), rolled)
+    if treated:
+        dice = "%s = %s, Great Weapon Fighting %s = %d" % (
+            row.get("die"), " + ".join(str(face) for face in faces), " + ".join(str(face) for face in treated), rolled)
+    elif len(faces) > 1:
+        dice = "%s = %s = %d" % (row.get("die"), " + ".join(str(face) for face in faces), rolled)
+    damage = int(swing.get("damage") or 0)
+    raw = swing.get("rawDamage", damage)
+    text = dice
+    if raw != rolled:
+        text += ", %+d bonus = %d" % (raw - rolled, raw)
+    traits = [_TRAIT_WORDS.get(trait, trait) for trait in swing.get("damageTraits") or []]
+    if traits:
+        text += ", %s: %d" % (", ".join(traits), damage)
+    name = str(swing.get("ability") or "")
+    entry = weapon_attack_sheet_entry(encounter, characters, {"actorId": scored.get("actorId"), "ability": name})
+    weapon = _spoken_weapon({"ability": name}, entry)
+    target = combatant_by_id(encounter, target_id)
+    on = " on %s" % _spoken_name(target.get("name")) if isinstance(target, dict) else ""
+    return "%s%s damage%s%s: %s." % ("Off-hand " if off_hand else "", weapon, on,
+                                     " (critical)" if swing.get("critical") is True else "", text)
+
+
+def _scored_damage_lines(events, encounter, characters):
+    """#1721: one line per player weapon hit in the committed events; spells
+    keep their own lines. Reads the events only."""
+    lines = []
+    for event in events or []:
+        if not isinstance(event, dict):
+            continue
+        outcome = event.get("outcome") or {}
+        if outcome.get("scoredBy") == "code" and "spellAttack" not in outcome and "spellSave" not in outcome:
+            scored = dict(event, outcome=outcome)
+            lines.append(_scored_damage_line(scored, (event.get("intent") or {}).get("targetId"),
+                                             encounter, characters))
+        bonus = event.get("bonusAction")
+        if isinstance(bonus, dict) and bonus.get("featureName") == OFF_HAND_ATTACK:
+            scored = dict(bonus, actorId=event.get("actorId"))
+            lines.append(_scored_damage_line(scored, bonus.get("targetId"), encounter, characters, off_hand=True))
+    return [line for line in lines if line]
+
+
+def _show_scored_damage(events, encounter, characters):
+    from core.managers.checks_runtime import _show_check_receipt
+    for line in _scored_damage_lines(events, encounter, characters):
+        _show_check_receipt(line)
 
 
 def _join_ask(lead, card):
@@ -2389,7 +2452,8 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
     )
     if game_card is not None:
         _show_check_receipt(game_card)
-    elif phase == "damage":
+    elif phase == "damage" and isinstance(record.get("spell"), dict):
+        # #1721: a weapon's damage is shown once the hit is scored.
         _show_check_receipt(_damage_receipt(record, entry, values, count, sides))
     return pending, (record if is_open else None)
 
@@ -2899,6 +2963,7 @@ def execute_agentic_turn(
             pending.get("turnId"),
             invocation_claim=invocation_claim,
         )
+        _show_scored_damage(persisted_events, committed, characters)
         delivered = _deliver_committed_turn(
             encounter_path,
             committed,
@@ -3574,6 +3639,7 @@ def execute_agentic_turn(
         pending["turnId"],
         invocation_claim=invocation_claim,
     )
+    _show_scored_damage(events, committed, committed_characters)
     delivered = _deliver_committed_turn(
         encounter_path,
         committed,
