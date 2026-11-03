@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A generated image, or its failure notice, that finishes while no browser tab is connected now shows when a tab connects again, and an image failure that arrives during a reconnect is no longer dropped (#1640, #1387).
 - A companion's memories from older saves now load when the party list and the character sheet name them differently, such as "Kira" and "Scout Kira" (#1346).
 - Travel no longer waits for a second location-update call when the first leaves out a required field such as a location's coordinates; the field is taken from the location as it was (#1633).
 - A turn the reviewer keeps rejecting ends less often in "I wasn't able to do that": each review keeps the demands already made, lists everything to fix at once, and accepts reading something the world data gives no details for in general terms (#1727).
