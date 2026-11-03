@@ -34,6 +34,10 @@ from uuid import uuid4
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 if REPO_ROOT not in sys.path:
     sys.path.insert(0, REPO_ROOT)
+# #1681/#1682/#1717: a data root (NEQ_DATA_DIR) goes first, so its config.py is the
+# one imported; this child is spawned with the install folder on its path.
+from utils.data_root import apply_data_root_path
+apply_data_root_path()
 
 from core.headless.protocol import ProtocolWriter, parse_command_line
 
