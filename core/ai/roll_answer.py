@@ -51,15 +51,15 @@ _SYSTEM = """You read one line a player typed while the game is waiting for a di
 Return exactly one JSON object {"kind": ..., "values": [...]} where kind is one of:
 - "let_game_roll": the player asks the game to roll it. The player asks the game to roll when they ask the DM or the game to make this roll for them. A line that says the character rolls or makes this roll without giving a number ("I roll Persuasion", "I make the check") also asks the game to roll it.
 - "faces": the player says what they rolled for this roll. Put the numbers in values, one list per dice term in the order the request lists its dice, exactly as the player gave them, even a number the die cannot show or fewer numbers than dice. When eachDie is false and the phase is not "attack", the roll takes one total: when the player states that total, values is [[total]], not the dice that made it.
-- "decline": the player gives this roll up: they take the action back, change their mind, say they would rather do something else, or name a different action to take instead of this one, even before they say what it is. A question about this roll or how it turns out is not a decline, even when it says what the player will do if it fails.
+- "decline": the player gives this roll up: they take the action back, change their mind, say they would rather do something else, or name a different action to take instead of this one, even before they say what it is. A question about this roll or how it turns out is not a decline, even when it says what the player will do if it fails. Giving up a different, earlier attempt while still making this roll is not a decline of this one.
 - "other": anything else: a question (including one about this roll: whether it is needed, whether it worked), a remark, an unclear line, or something the player does before rolling while still meaning to make this roll.
 
 Numbers meant for a later die or for something else are not this roll's faces. A line that mentions dice but does not ask the game to roll is not "let_game_roll". values is [] unless kind is "faces".
 
 Examples, each while the game waits for the roll it asked for:
-- "I roll Stealth." while Stealth is asked: "let_game_roll".
-- "Does it open? If not, I walk away." while the check to open it is asked: "other".
-- "Forget the lock, I make an Athletics check to climb instead." while the lock check is asked: "decline"."""
+- "I'm throwing for Acrobatics." while Acrobatics is asked: "let_game_roll".
+- "Will that knot last? Otherwise I swim." while the knot check is asked: "other".
+- "Scratch that, I'd rather swim." while the knot check is asked: "decline"."""
 
 
 class RollAnswerError(ValueError):
