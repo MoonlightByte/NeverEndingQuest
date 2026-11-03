@@ -11262,9 +11262,11 @@ def _casting_resource_refusal(actions, last_attempt):
     update_character_info would update. On the last attempt a missing spell
     passes, shape-only, so the turn never fails on it."""
     from core.nql.resources import casting_resource_problem
-    from updates.update_character_info import get_character_path, resolve_character_target
+    from updates.update_character_info import (
+        get_character_path, item_recovery_charge_spent, resolve_character_target,
+    )
 
-    for action in actions:
+    for index, action in enumerate(actions):
         if not isinstance(action, dict) or action.get("action") != action_handler.ACTION_UPDATE_CHARACTER_INFO:
             continue
         parameters = action.get("parameters")
@@ -11280,6 +11282,11 @@ def _casting_resource_refusal(actions, last_attempt):
         problem = casting_resource_problem(choice, sheet)
         if not isinstance(sheet, dict) and (problem or ("",))[0] != "missing_spell":
             continue  # no readable sheet: the apply path owns the binding outcome
+        if problem is None and choice.get("kind") == "item" and not item_recovery_charge_spent(
+                choice, name, {"actions": actions, "current_index": index}):
+            # #1680: an item regains slots only after its own expendCharges.
+            return ("an item slot recovery needs the item's charge spent first: an earlier expendCharges "
+                    "of %s for %s in this response" % (choice.get("itemName"), name))
         if problem is None:
             continue
         if problem[0] == "missing_spell" and last_attempt:
