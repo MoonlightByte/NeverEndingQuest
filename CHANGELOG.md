@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A line you send while the game's connection drops is no longer lost without a word: it comes back to the input box with a note to send it again (#1732).
 - A weapon hit you roll the damage for now shows the damage it did once the hit is scored: the dice, your bonus and the total, and any resistance, in one line instead of the dice alone (#1721).
 - The DM now asks for one roll at a time, asks again in words for a roll still waiting, and gives each part of a player's line a word in its reply, such as a spell cast before a move (#1722).
 - In a hosted game, a refused AI key, quota or model during character creation no longer locks the input or points to Settings the player does not have: the message says the problem is on the host's side, setup choices are kept, and the next message tries again (#1711).
