@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The DM now sees which quest is next and the places and story of its side quests, so the story moves on when the party reaches the next objective, and a side quest is offered when the main line is blocked (#1723).
 ## [1.1.1] - 2026-11-02
 
 - A game with a separate data folder now keeps its lock files there instead of in the install folder, so it can save when the install folder is read-only; without a data folder nothing changes (#1708).
