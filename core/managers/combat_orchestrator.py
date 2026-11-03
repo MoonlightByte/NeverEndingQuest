@@ -101,7 +101,7 @@ class CombatTurnPaused(RuntimeError):
 def _phase_paused(technical_message, record):
     """The pause for an open code-issued roll phase: the DM's lead and its card."""
     return CombatTurnPaused(technical_message, player_message=record.get("lead") or None,
-                            card=record.get("card"), card_id=record.get("cardId"))
+                            card=record.get("cardShown") or record.get("card"), card_id=record.get("cardId"))
 
 
 def _batch_targets(batch):
@@ -1774,9 +1774,11 @@ def _wants_each_die(record, count):
 def _roll_card(record, entry):
     """The dice card of the open phase (#1118, D-1118-8 D): a record of what is
     rolled, for what, and what code already scored; never an ask (the DM's
-    lead asks). Also stores record["dice"]."""
+    lead asks). Also stores record["dice"] and, for a damage roll, the card as
+    the player is shown it, record["cardShown"] (#1706)."""
     count, sides = player_weapon_attack_dice(record, entry)
     record["dice"] = "%dd%d" % (count, sides)
+    record.pop("cardShown", None)
     if record.get("phase") == "attack":
         why = (
             " (%s from %s)" % (record.get("mode"), ", ".join(record.get("modeSources") or []))
@@ -1804,15 +1806,19 @@ def _roll_card(record, entry):
                 str(save.get("type") or "").capitalize(), result.get("total"), save.get("dc"),
                 {"half": ", half damage", "none": ", no damage"}.get(result.get("effect"), ""),
             ))
-        return "%s: %s. Damage: %dd%d, the total" % (record.get("ability"), "; ".join(verdicts), count, sides)
+        head = "%s: %s." % (record.get("ability"), "; ".join(verdicts))
+        # #1706: the shown card says the damage is still to roll; the card
+        # itself (joined into the ask) keeps its words.
+        record["cardShown"] = "%s Damage to roll: %dd%d, as one total" % (head, count, sides)
+        return "%s Damage: %dd%d, the total" % (head, count, sides)
     hit = (
         "critical hit" if record.get("critical")
         else "hit, %s vs AC %s," % (record.get("attackTotal"), record.get("targetAC"))
     )
-    what = "each die" if _wants_each_die(record, count) else "the total"
-    return "%s %s on %s. Damage: %dd%d, %s" % (
-        _phase_weapon(record, entry), hit, _spoken_name(record.get("targetName")), count, sides, what,
-    )
+    each_die = _wants_each_die(record, count)
+    head = "%s %s on %s." % (_phase_weapon(record, entry), hit, _spoken_name(record.get("targetName")))
+    record["cardShown"] = "%s Damage to roll: %dd%d, %s" % (head, count, sides, "each die" if each_die else "as one total")
+    return "%s Damage: %dd%d, %s" % (head, count, sides, "each die" if each_die else "the total")
 
 
 def _phase_weapon(record, entry):
@@ -1840,6 +1846,18 @@ def _phase_lead(record):
     spell = record.get("spell") if isinstance(record.get("spell"), dict) else {}
     key = "hitLead" if record.get("phase") == "damage" and spell.get("type") != "save" else "rollLead"
     return _roll_lead(record, key)
+
+
+def _damage_receipt(record, entry, values, count, sides):
+    """#1706: the player's scored damage roll, shown as a system record (player
+    output only, as the game roll's own line); the DM narrates it without the
+    numbers."""
+    rolled = "%dd%d = %d" % (count, sides, sum(values))
+    if count > 1 and len(values) == count:
+        rolled = "%dd%d = %s = %d" % (count, sides, " + ".join(str(value) for value in values), sum(values))
+    spell = record.get("spell") if isinstance(record.get("spell"), dict) else {}
+    target = "" if spell.get("type") == "save" else " on %s" % _spoken_name(record.get("targetName"))
+    return "%s damage%s: %s." % (_phase_weapon(record, entry), target, rolled)
 
 
 def _join_ask(lead, card):
@@ -2043,7 +2061,7 @@ def _open_off_hand_phase(encounter_path, encounter, characters, pending, batch, 
     record["batch"] = deepcopy(batch)
     if isinstance(main_swing, dict):
         record["mainSwing"] = {key: deepcopy(value) for key, value in main_swing.items()
-                               if key not in ("batch", "prompt", "dice", "lead", "card", "cardId")}
+                               if key not in ("batch", "prompt", "dice", "lead", "card", "cardShown", "cardId")}
         record["mainSwing"]["spokenWeapon"] = _spoken_weapon(
             main_swing, weapon_attack_sheet_entry(encounter, characters, main_swing))
     record["prompt"] = _weapon_attack_prompt(record, entry)
@@ -2309,7 +2327,7 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
             # own new record each time, so every line gets a visible answer.
             raise CombatTurnPaused(
                 "Code-issued roll is waiting for the player",
-                player_message=record.get("lead") or None, card=record.get("card"),
+                player_message=record.get("lead") or None, card=record.get("cardShown") or record.get("card"),
                 card_id=record.get("cardId") if record.get("lead") else None,
             )
         record["lead"] = lead
@@ -2357,7 +2375,7 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
             is_open = True
     if not is_open:
         record["ready"] = True
-        for key in ("prompt", "dice", "lead", "card", "cardId"):
+        for key in ("prompt", "dice", "lead", "card", "cardShown", "cardId"):
             record.pop(key, None)
     # The player's own words are the answer; a game roll is typed beside them.
     pending = write_weapon_attack(
@@ -2371,6 +2389,8 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
     )
     if game_card is not None:
         _show_check_receipt(game_card)
+    elif phase == "damage":
+        _show_check_receipt(_damage_receipt(record, entry, values, count, sides))
     return pending, (record if is_open else None)
 
 
