@@ -1399,6 +1399,70 @@ def _validate_flat_damage_request(batch, encounter, characters):
         )
 
 
+def _damage_is_dice(intent, sheet, actor_id):
+    """#1606 (D-652b-2): whether typed data says the intent's damage is dice,
+    and the name to give the player. A cast's spell (ability, then spellName)
+    is dice when its roll contract lists evidence dice (every no_player_roll
+    contract lists none); a weapon row the abilityRow names is dice unless it
+    is flat (#1337). Neither typed: not dice."""
+    if intent.get("action") == "cast":
+        try:
+            from core.ai import srd_roll_contracts
+
+            contracts = srd_roll_contracts.load_spell_roll_contracts().get("contracts") or {}
+        except Exception:
+            contracts = {}
+        for field in ("ability", "spellName"):
+            name = intent.get(field)
+            if not isinstance(name, str) or not name.strip():
+                continue
+            contract = contracts.get(srd_roll_contracts._canonical_key(name)) if contracts else None
+            if isinstance(contract, dict):
+                return bool(contract.get("evidenceDice")), name.strip()
+    entry = attack_row(sheet, intent.get("abilityRow"), actor_id) if intent.get("abilityRow") else None
+    if isinstance(entry, dict):
+        return not is_flat_attack(entry), entry.get("name") or intent.get("ability")
+    return False, None
+
+
+def _validate_unrolled_player_damage(batch, encounter, characters, pending, kept=None):
+    """#1606 (D-652b-1 A): the player's adjudicated intent that states damage
+    (a target's hpDelta below 0) from dice nobody rolled this turn goes back
+    to the model as a correction asking for them, when typed data says the
+    damage is dice (_damage_is_dice). An answered damage roll this turn (the
+    player's faces, unknown faces or the game's roll) lets it stand. Runs
+    before the last attempt only: there the ruling passes as today."""
+    answered = _answered_rolls(pending, kept)
+    for intent in (batch or {}).get("intents", []) or []:
+        if not isinstance(intent, dict) or intent.get("mode") != "adjudicated":
+            continue
+        actor = combatant_by_id(encounter, intent.get("actorId"))
+        if (
+            not isinstance(actor, dict)
+            or not _is_human_controlled(encounter, actor)
+            or intent.get("requiresPlayerInput")
+            or _stated_hit(intent) is None
+        ):
+            continue
+        spell = next((intent[f].strip() for f in ("spellName", "ability")
+                      if intent.get("action") == "cast" and isinstance(intent.get(f), str) and intent[f].strip()), "")
+        if any(_roll_request_purpose({"phase": item["phase"], "spellName": spell}) == "damage" for item in answered):
+            continue
+        dice, name = _damage_is_dice(intent, (characters or {}).get(actor.get("name")), actor.get("combatantId"))
+        if not dice:
+            continue
+        raise CombatIntentError(
+            (
+                "%s's %s deals damage from dice nobody rolled this turn. Ask for them: set "
+                "requiresPlayerInput {kind: roll, phase: damage, the die, and spellName for a spell}, "
+                "and state targets once the roll comes back."
+            )
+            % (actor.get("name") or intent.get("actorId"), name),
+            intent.get("actorId"),
+            {"retryable": True, "issue": "1606"},
+        )
+
+
 def _validate_feature_names(batch, encounter, characters):
     """8b: a heal paid with a class feature's pooled use (POOL_HEALS) names
     its option in the typed featureName, exactly as the actor's featureNames
@@ -3348,6 +3412,7 @@ def execute_agentic_turn(
                 # leave the player's turn without an answer.
                 _validate_player_weapon_question(batch, encounter, characters)
                 _validate_flat_damage_request(batch, encounter, characters)
+                _validate_unrolled_player_damage(batch, encounter, characters, pending, accepted_faces)
                 _validate_feature_names(batch, encounter, characters)
             _validate_roll_request_phase(batch, encounter)
             for kept_roll in _keep_answered_roll(batch, encounter, pending, accepted_faces):

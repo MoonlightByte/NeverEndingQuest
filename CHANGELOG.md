@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In combat, a player's damaging spell or attack no longer lands from the model's own numbers: the game asks for the damage dice first (#1606).
 - The rules check no longer rejects a companion drawing or readying a weapon they carry as part of an attack; a weapon the character does not carry is still rejected (#1740).
 - The Map tab no longer counts a room with an empty id as undiscovered, so its undiscovered count matches the rooms it can show (#1707).
 - Companions no longer treat their own private guess that something is unknown as fact for the DM, so the scene's real details can come through: a scout can point to the river crossing below, and a leader who says no names what would change her mind (#1724).
