@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A weapon hit you roll the damage for now shows the damage it did once the hit is scored: the dice, your bonus and the total, and any resistance, in one line instead of the dice alone (#1721).
 - The DM now asks for one roll at a time, asks again in words for a roll still waiting, and gives each part of a player's line a word in its reply, such as a spell cast before a move (#1722).
 - In a hosted game, a refused AI key, quota or model during character creation no longer locks the input or points to Settings the player does not have: the message says the problem is on the host's side, setup choices are kept, and the next message tries again (#1711).
+- Right after a fight, the DM can now wake or heal a hero who was knocked out (hit points regained, back from unconscious, stabilised); a change the fight itself already made, such as its damage or spent resources, is still not applied twice (#1730).
 - With no game started yet, the Load list now shows the saves of every adventure, each with its adventure, and loading or deleting one uses that adventure's save folder; before, it showed only an old shared folder, which is normally empty (#1715).
 
 ## [1.1.1] - 2026-11-02

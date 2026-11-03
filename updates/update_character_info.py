@@ -1816,6 +1816,58 @@ class EngineRefusedChange(Exception):
         self.reason = reason
 
 
+class PostCombatReplayRefused(EngineRefusedChange):
+    """#1730: a change in the automatic post-combat pass that is not a recovery;
+    nothing was written and the pass reports it as not applied (#841)."""
+
+
+# #1730: in the automatic post-combat pass (no player action) only recovery is
+# new: hit points regained and the unconscious / stable / dying states.
+_POST_COMBAT_RECOVERY_CONDITIONS = frozenset({"unconscious", "stable", "dying"})
+
+
+def _condition_set(sheet):
+    listed = sheet.get("condition_affected")
+    found = {str(c).lower() for c in listed} if isinstance(listed, list) else set()
+    single = sheet.get("condition")
+    if isinstance(single, str) and single.lower() not in ("", "none"):
+        found.add(single.lower())
+    return found
+
+
+def post_combat_recovery_refusal(character_data, updates, effect_operation=None):
+    """The reason a typed post-combat delta is not a recovery, or None (#1730).
+
+    Read from the T079 delta keys and the sheet, never from the change's
+    wording: hpDelta must be a gain; a condition change may only remove
+    unconscious, stable or dying, or add stable; death saves may only reset
+    to zero; a status the engine sets from hit points is allowed. Anything
+    else, an effect included, needs the player's next action.
+    """
+    if effect_operation:
+        return "a new effect"
+    others = sorted(key for key in updates
+                    if key not in ("hpDelta", "status", "condition", "condition_affected", "deathSaves"))
+    if others:
+        return "a change to %s" % ", ".join(others)
+    hp = updates.get("hpDelta")
+    if "hpDelta" in updates and not (type(hp) is int and hp > 0):
+        return "a hit point loss"
+    if "status" in updates and updates.get("status") not in ("unconscious", "alive"):
+        return "a status change"
+    if "deathSaves" in updates and updates.get("deathSaves") != {"successes": 0, "failures": 0}:
+        return "a death save change"
+    if "condition" in updates or "condition_affected" in updates:
+        merged = dict(character_data)
+        for key in ("condition", "condition_affected"):
+            if key in updates:
+                merged[key] = updates[key]
+        before, after = _condition_set(character_data), _condition_set(merged)
+        if not (before - after) <= _POST_COMBAT_RECOVERY_CONDITIONS or not (after - before) <= {"stable"}:
+            return "a condition change"
+    return None
+
+
 class CharacterSnapshotChanged(ValueError):
     """A prepared proposal consumed different canonical values (#323)."""
 
@@ -2253,6 +2305,7 @@ def update_character_info(
     commit_guard=None,
     affects=None,
     casting_resource=None,
+    post_combat=None,
 ):
     """Run one complete character update transaction under a per-file lock."""
     lock = _get_character_update_lock(character_name, character_role)
@@ -2285,6 +2338,7 @@ def update_character_info(
                     commit_guard=commit_guard,
                     affects=affects,
                     casting_resource=casting_resource,
+                    post_combat=post_combat,
                 )
             return _update_character_info_unlocked(
                 character_name,
@@ -2296,6 +2350,7 @@ def update_character_info(
                 commit_guard=commit_guard,
                 affects=affects,
                 casting_resource=casting_resource,
+                post_combat=post_combat,
             )
 
 
@@ -2313,6 +2368,7 @@ def _update_character_info_unlocked(
     casting_resource=None,
     base_sheet=None,
     reserved_ids=None,
+    post_combat=None,
 ):
     """
     Unified function to update character information for both players and NPCs
@@ -3110,6 +3166,13 @@ Character Role: {character_role}
             if dropped_non_party:
                 info(f"NONPARTY: {character_name}: dropped {dropped_non_party}; a sheet outside the party takes hit points and status only",
                      category="character_updates")
+            if post_combat is not None:
+                # #1730: the automatic post-combat pass commits recovery only.
+                refused = post_combat_recovery_refusal(
+                    character_data, updates, getattr(managed_effect_operation, "operation", None))
+                if refused:
+                    raise PostCombatReplayRefused(
+                        "%s after the fight needs the player's next action" % refused)
             updates, updated_data, preparation_checks = prepare_character_delta(
                 character_data, updates, character_role, schema, character_name,
                 managed_effect_operation if declarative_effects else None,
