@@ -4856,6 +4856,13 @@ This is narration only. Do not advance the round or apply any combat action."""
                    % (current_round_number, bool(down_table_talk)),
                    category="combat_events",
                )
+               # #1756: the boundary line is a player input, so each downed
+               # round spends its own generation ceiling (#1468).
+               from utils.capture.live_provider_call import get_live_turn_scope
+
+               boundary_scope = get_live_turn_scope()
+               if boundary_scope is not None:
+                   boundary_scope.renew_generation_budget("down_boundary")
            agentic_actor_ids, automatic_initiative_step = _agentic_actor_window(
                encounter_data
            )
