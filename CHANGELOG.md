@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - A generated image, or its failure notice, that finishes while no browser tab is connected now shows when a tab connects again, and an image failure that arrives during a reconnect is no longer dropped (#1640, #1387).
+- A check's roll panel now reaches the screen before the command box opens, so the box never opens on a turn that asks for a roll while the panel is still on its way (#1630).
+- The combat dice tray sends its dice to the game as typed values beside the sentence it writes, and the game reads those values instead of the sentence; older clients that send only the sentence keep working (#1750).
+- Travel shows your arrival as soon as it is narrated; the record of the place you left is written afterwards, before your next turn, instead of before the arrival (#1633).
 - A companion's memories from older saves now load when the party list and the character sheet name them differently, such as "Kira" and "Scout Kira" (#1346).
 - Travel no longer waits for a second location-update call when the first leaves out a required field such as a location's coordinates; the field is taken from the location as it was (#1633).
 - A turn the reviewer keeps rejecting ends less often in "I wasn't able to do that": each review keeps the demands already made, lists everything to fix at once, and accepts reading something the world data gives no details for in general terms (#1727).

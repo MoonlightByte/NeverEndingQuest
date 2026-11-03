@@ -71,7 +71,8 @@ export interface RulesRollPrompt {
 
 export interface ClientEvents {
   submit_check_roll: { id: string; faces: number[] | null };
-  user_input: { input: string };
+  // #1750: dice is the tray's typed faces, sent only beside its unchanged sentence.
+  user_input: { input: string; dice?: { sides: number; face: number }[] };
   action: {
     action: 'listSaves' | 'saveGame' | 'restoreGame' | 'deleteSave' | 'nuclearReset' | 'recover_startup_handoff';
     parameters?: Record<string, unknown>;

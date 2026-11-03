@@ -2849,7 +2849,13 @@ def _resume_v2_location_transition(operation_id, *, publish=True, publication=No
         if outcome == "blocked_conflict":
             return {"status": "blocked", "reason": "origin reconciliation conflict"}
     checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
-    if checkpoint["departure_commit"].get("status") != "committed":
+    # #1633: in-module travel shows the arrival first. Its departure (T016,
+    # T015 and the one area + journal commit), T108, the compaction and the
+    # chronicle run after the publish below, inside the same turn. A module
+    # handoff keeps today's order: its departure reads the origin module from
+    # the party tracker, which the handoff replaces.
+    arrival_first = checkpoint.get("module_handoff") is None
+    if not arrival_first and checkpoint["departure_commit"].get("status") != "committed":
         action_handler.resolve_current_transition_departure(operation_id, context)
     checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
 
@@ -2897,140 +2903,146 @@ def _resume_v2_location_transition(operation_id, *, publish=True, publication=No
         checkpoint["phase"] = "narration_retained"
         action_handler._write_location_transition_checkpoint(checkpoint)
 
-    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
-    episode = checkpoint["episode"]
-    if episode.get("status") == "pending":
-        try:
-            from core.npc.episode_capture import (
-                boundary_turn_id_for_position,
-                capture_location_episode,
-            )
-
-            boundary_turn_id = boundary_turn_id_for_position(
-                sum(
-                    1
-                    for message in (load_json_file(json_file) or [])
-                    if isinstance(message, dict)
-                    and hm.is_marker(message, hm.LOCATION_TRANSITION)
-                )
-                + 1
-            )
-            episode["boundary_turn_id"] = boundary_turn_id
-            episode_id = capture_location_episode(
-                leaving_location_name=checkpoint["origin_location_name"],
-                leaving_location_id=checkpoint["origin_location_id"],
-                segment_messages=episode["source_entries_before"],
-                party_tracker_data=party,
-                path_manager=ModulePathManager(checkpoint["module_name"]),
-                boundary_turn_id=boundary_turn_id,
-                player_name=(party.get("partyMembers") or [""])[0],
-            )
-            _check_live_authority(scope)
-            episode["episode_id"] = episode_id
-            episode["status"] = "committed" if episode_id else "attempted_unavailable"
-        except (LiveProviderSuperseded, InvocationSupersededError):
-            raise
-        except Exception as exc:
-            episode["status"] = "attempted_unavailable"
-            warning(
-                "T108 episode unavailable during transition resume: %s"
-                % type(exc).__name__,
-                category="conversation_management",
-            )
-        _check_live_authority(scope)
-        action_handler._write_location_transition_checkpoint(checkpoint)
-
-    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
-    compaction = checkpoint["conversation_compaction"]
-    if compaction.get("status") != "committed":
-        from core.ai.cumulative_summary import compact_with_accepted_departure_summary
-
-        current_history = load_json_file(json_file) or []
-        summary_message_id = compaction.get("summary_message_id") or str(uuid4())
-        compacted, summary_entry = compact_with_accepted_departure_summary(
-            current_history,
-            source_index=checkpoint["origin_history_boundary"],
-            source_entries_before=checkpoint["origin_segment_before"],
-            leaving_location_name=checkpoint["origin_location_name"],
-            summary=checkpoint["departure_summary"]["text"],
-            summary_message_id=summary_message_id,
-        )
-        marker = hm.marker(
-            "user",
-            "Location transition: %s (%s) to %s (%s)"
-            % (
-                checkpoint["origin_location_name"],
-                checkpoint["origin_location_id"],
-                world.get("currentLocation"),
-                world.get("currentLocationId"),
-            ),
-            hm.LOCATION_TRANSITION,
-        )
-        summary_index = next(
-            i
-            for i, message in enumerate(compacted)
-            if isinstance(message, dict)
-            and message.get("message_id") == summary_message_id
-        )
-        if summary_index + 1 >= len(compacted) or not hm.same_message(
-            compacted[summary_index + 1], marker
-        ):
-            compacted.insert(summary_index + 1, marker)
-        compaction.update(
-            {
-                "status": "pending",
-                "source_index": checkpoint["origin_history_boundary"],
-                "source_entries_before": checkpoint["origin_segment_before"],
-                "result_entries_after": [summary_entry, marker],
-                "summary_message_id": summary_message_id,
-            }
-        )
-        action_handler._write_location_transition_checkpoint(checkpoint)
-        save_conversation_history(compacted, strict=True, allow_compression=False)
+    def departure_records():
+        """T108, the compaction with the accepted departure summary, and the
+        chronicle, each once by its checkpoint status."""
         checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
-        checkpoint["conversation_compaction"]["status"] = "committed"
-        checkpoint["phase"] = "history_compacted"
-        action_handler._write_location_transition_checkpoint(checkpoint)
+        episode = checkpoint["episode"]
+        if episode.get("status") == "pending":
+            try:
+                from core.npc.episode_capture import (
+                    boundary_turn_id_for_position,
+                    capture_location_episode,
+                )
 
-    checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
-    chronicle = checkpoint["chunked_chronicle"]
-    if chronicle.get("status") == "pending":
-        from core.ai.chunked_compression_integration import (
-            check_and_perform_chunked_compression,
-        )
-
-        history_before = load_json_file(json_file) or []
-        chronicle.update(
-            {
-                "source_index": 0,
-                "source_entries_before": history_before,
-                "result_entries_after": None,
-            }
-        )
-        action_handler._write_location_transition_checkpoint(checkpoint)
-        try:
-            changed = check_and_perform_chunked_compression()
+                boundary_turn_id = boundary_turn_id_for_position(
+                    sum(
+                        1
+                        for message in (load_json_file(json_file) or [])
+                        if isinstance(message, dict)
+                        and hm.is_marker(message, hm.LOCATION_TRANSITION)
+                    )
+                    + 1
+                )
+                episode["boundary_turn_id"] = boundary_turn_id
+                episode_id = capture_location_episode(
+                    leaving_location_name=checkpoint["origin_location_name"],
+                    leaving_location_id=checkpoint["origin_location_id"],
+                    segment_messages=episode["source_entries_before"],
+                    party_tracker_data=party,
+                    path_manager=ModulePathManager(checkpoint["module_name"]),
+                    boundary_turn_id=boundary_turn_id,
+                    player_name=(party.get("partyMembers") or [""])[0],
+                )
+                _check_live_authority(scope)
+                episode["episode_id"] = episode_id
+                episode["status"] = "committed" if episode_id else "attempted_unavailable"
+            except (LiveProviderSuperseded, InvocationSupersededError):
+                raise
+            except Exception as exc:
+                episode["status"] = "attempted_unavailable"
+                warning(
+                    "T108 episode unavailable during transition resume: %s"
+                    % type(exc).__name__,
+                    category="conversation_management",
+                )
             _check_live_authority(scope)
-            history_after = load_json_file(json_file) or []
-            checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
-            checkpoint["chunked_chronicle"].update(
+            action_handler._write_location_transition_checkpoint(checkpoint)
+
+        checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+        compaction = checkpoint["conversation_compaction"]
+        if compaction.get("status") != "committed":
+            from core.ai.cumulative_summary import compact_with_accepted_departure_summary
+
+            current_history = load_json_file(json_file) or []
+            summary_message_id = compaction.get("summary_message_id") or str(uuid4())
+            compacted, summary_entry = compact_with_accepted_departure_summary(
+                current_history,
+                source_index=checkpoint["origin_history_boundary"],
+                source_entries_before=checkpoint["origin_segment_before"],
+                leaving_location_name=checkpoint["origin_location_name"],
+                summary=checkpoint["departure_summary"]["text"],
+                summary_message_id=summary_message_id,
+            )
+            marker = hm.marker(
+                "user",
+                "Location transition: %s (%s) to %s (%s)"
+                % (
+                    checkpoint["origin_location_name"],
+                    checkpoint["origin_location_id"],
+                    world.get("currentLocation"),
+                    world.get("currentLocationId"),
+                ),
+                hm.LOCATION_TRANSITION,
+            )
+            summary_index = next(
+                i
+                for i, message in enumerate(compacted)
+                if isinstance(message, dict)
+                and message.get("message_id") == summary_message_id
+            )
+            if summary_index + 1 >= len(compacted) or not hm.same_message(
+                compacted[summary_index + 1], marker
+            ):
+                compacted.insert(summary_index + 1, marker)
+            compaction.update(
                 {
-                    "status": "committed" if changed else "not_due",
-                    "result_entries_after": history_after,
+                    "status": "pending",
+                    "source_index": checkpoint["origin_history_boundary"],
+                    "source_entries_before": checkpoint["origin_segment_before"],
+                    "result_entries_after": [summary_entry, marker],
+                    "summary_message_id": summary_message_id,
                 }
             )
-        except (LiveProviderSuperseded, InvocationSupersededError):
-            raise
-        except Exception as exc:
+            action_handler._write_location_transition_checkpoint(checkpoint)
+            save_conversation_history(compacted, strict=True, allow_compression=False)
             checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
-            checkpoint["chunked_chronicle"]["status"] = "attempted_unavailable"
-            warning(
-                "T027 chronicle remained unavailable during resume: %s"
-                % type(exc).__name__,
-                category="conversation_management",
+            checkpoint["conversation_compaction"]["status"] = "committed"
+            checkpoint["phase"] = "history_compacted"
+            action_handler._write_location_transition_checkpoint(checkpoint)
+
+        checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+        chronicle = checkpoint["chunked_chronicle"]
+        if chronicle.get("status") == "pending":
+            from core.ai.chunked_compression_integration import (
+                check_and_perform_chunked_compression,
             )
-        _check_live_authority(scope)
-        action_handler._write_location_transition_checkpoint(checkpoint)
+
+            history_before = load_json_file(json_file) or []
+            chronicle.update(
+                {
+                    "source_index": 0,
+                    "source_entries_before": history_before,
+                    "result_entries_after": None,
+                }
+            )
+            action_handler._write_location_transition_checkpoint(checkpoint)
+            try:
+                changed = check_and_perform_chunked_compression()
+                _check_live_authority(scope)
+                history_after = load_json_file(json_file) or []
+                checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+                checkpoint["chunked_chronicle"].update(
+                    {
+                        "status": "committed" if changed else "not_due",
+                        "result_entries_after": history_after,
+                    }
+                )
+            except (LiveProviderSuperseded, InvocationSupersededError):
+                raise
+            except Exception as exc:
+                checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+                checkpoint["chunked_chronicle"]["status"] = "attempted_unavailable"
+                warning(
+                    "T027 chronicle remained unavailable during resume: %s"
+                    % type(exc).__name__,
+                    category="conversation_management",
+                )
+            _check_live_authority(scope)
+            action_handler._write_location_transition_checkpoint(checkpoint)
+
+    if not arrival_first:
+        departure_records()
 
     checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
     memory = checkpoint["legacy_memory"]
@@ -3114,6 +3126,12 @@ def _resume_v2_location_transition(operation_id, *, publish=True, publication=No
             publication["published_here"] = True
         checkpoint["narration"]["status"] = "published"
         action_handler._write_location_transition_checkpoint(checkpoint)
+
+    if arrival_first:
+        checkpoint = action_handler.load_current_transition_checkpoint(operation_id)
+        if checkpoint["departure_commit"].get("status") != "committed":
+            action_handler.resolve_current_transition_departure(operation_id, context)
+        departure_records()
 
     final_history = load_json_file(json_file) or []
     final_party = load_json_file("party_tracker.json") or {}
@@ -10138,11 +10156,11 @@ def _main_game_loop(startup_authority, turn_authority):
         if startup_ready_pending:
             emit_startup_marker("startup_loop_ready", source="main_loop", result="ready")
             startup_ready_pending = False
-        status_ready()
 
         # #1118 item 4: a check waiting for the player's roll is answered by this
         # line (the settle below takes it); its web panel is published only while
-        # one of these reads waits.
+        # one of these reads waits. #1630: read_player_line opens the input after
+        # publishing that panel, so no ready status is sent here.
         from core.managers.checks_runtime import read_player_line
 
         if player_data_current:

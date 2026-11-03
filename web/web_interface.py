@@ -3229,6 +3229,10 @@ def handle_user_input(data):
     user_input = data.get('input', '') if isinstance(data, dict) else ''
     if not isinstance(user_input, str):
         return
+    # #1750: the dice tray's faces, sent as typed data beside its unchanged
+    # sentence, are held for this line; any other line clears the slot.
+    from core.managers import tray_roll
+    tray_roll.put(user_input, data.get('dice') if isinstance(data, dict) else None)
     pending_roll = rules_roll_prompt.current()
     if pending_roll is not None:
         # #1118 item 4: while a check panel is published, a line of bare
