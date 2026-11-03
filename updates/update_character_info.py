@@ -1868,6 +1868,22 @@ def post_combat_recovery_refusal(character_data, updates, effect_operation=None)
     return None
 
 
+def item_recovery_charge_spent(choice, character_name, action_context):
+    """#1680: an item slot recovery is paid by an earlier expendCharges of that
+    item for the same character in this reply; read from the typed actions."""
+    actions = (action_context or {}).get("actions") if isinstance(action_context, dict) else None
+    index = (action_context or {}).get("current_index") if isinstance(action_context, dict) else None
+    if not isinstance(actions, list) or type(index) is not int:
+        return False
+    for action in actions[:index]:
+        parameters = action.get("parameters") if isinstance(action, dict) else None
+        if (isinstance(parameters, dict) and action.get("action") == "expendCharges"
+                and parameters.get("characterName") == character_name
+                and parameters.get("itemName") == choice.get("itemName")):
+            return True
+    return False
+
+
 class CharacterSnapshotChanged(ValueError):
     """A prepared proposal consumed different canonical values (#323)."""
 
@@ -2396,6 +2412,11 @@ def _update_character_info_unlocked(
             payment = casting_resource_delta(casting_resource)
         except ValueError as exc:
             raise EngineRefusedChange(str(exc)) from exc
+        if casting_resource.get("kind") == "item" and not item_recovery_charge_spent(
+                casting_resource, character_name, action_context):
+            raise EngineRefusedChange(
+                "an item slot recovery needs the item's charge spent first: an earlier expendCharges "
+                "of %s for %s in this response" % (casting_resource.get("itemName"), character_name))
 
     original_name = character_name
     character_name, character_role = resolve_character_target(character_name, character_role)
@@ -2859,7 +2880,9 @@ Character Role: {character_role}
     if payment is not None:
         messages.insert(-1, {"role": "user", "content":
             "Typed castingResource: " + json.dumps(casting_resource) +
-            ". The host owns this payment; return the spell effect and other changes, "
+            ". The host owns this payment" + (" and the spell slots it regains" if "regainsSlots" in casting_resource
+                                               else "") +
+            "; return the spell effect and other changes, "
             "never resource totals. The host supplies exactly one selected payment delta."})
 
     # Add conversation history for context (last 10 messages)
@@ -3104,6 +3127,13 @@ Character Role: {character_role}
                 updates.pop("spellSlotDelta", None)
                 updates.pop("featureUseDelta", None)
                 updates.update(payment)
+            elif isinstance(updates.get("spellSlotDelta"), dict) and any(
+                    type(amount) is int and amount > 0 for amount in updates["spellSlotDelta"].values()):
+                # #1680: outside a rest a slot comes back only through what
+                # regains it, typed: a feature use or an item charge.
+                raise EngineRefusedChange(
+                    "a regained spell slot is paid by what regains it: castingResource with regainsSlots "
+                    "(kind feature with featureName, or kind item after its expendCharges)")
 
             is_complete, missing_fields = validate_requested_character_update_completeness(
                 affects,
