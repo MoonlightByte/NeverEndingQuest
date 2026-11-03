@@ -123,8 +123,9 @@ def project_map_payload(area_json, revealed_set, current_loc):
     ``locations[]`` entry (the map rooms may carry placeholder names).
     """
     rooms_source = ((area_json.get("map") or {}).get("rooms")) or []
-    known_room_ids = {room.get("id") for room in rooms_source if isinstance(room, dict)}
-    known_room_ids.discard(None)
+    # Only truthy ids, as the projection loop below keeps (#1707).
+    known_room_ids = {room.get("id") for room in rooms_source
+                      if isinstance(room, dict) and room.get("id")}
 
     locations_by_id = {
         loc.get("locationId"): loc
