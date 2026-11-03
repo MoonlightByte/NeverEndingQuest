@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When you ask someone else in the scene a question, a companion no longer repeats it for you; the person you asked answers (#1729).
 - Companions no longer treat their own private guess that something is unknown as fact for the DM, so the scene's real details can come through: a scout can point to the river crossing below, and a leader who says no names what would change her mind (#1724).
 - The roll reader now takes "I roll Persuasion" with no number as a request for the game to roll, and a question about a waiting roll (such as "Does the lock give?") no longer gives the roll up (#1728).
 - In The Thornwood Watch, Scout Neris is back at Scout's Watch at the East Tower, where the location's own text places her, so the DM can have her speak there. Games already started keep their copy of the area; a new game or Reset has her (#1733).
