@@ -200,6 +200,10 @@ def _active_combat_snapshot_lease(timeout_seconds=30.0, wait_callback=None):
             raise RuntimeError("Combat is currently committing; retry this operation")
         yield
 
+# get_save_directory/_resolve_save_target default: this manager's own module.
+_CURRENT_MODULE = object()
+
+
 class SaveGameManager:
     """Manages save and restore operations for the Dungeon Master system"""
     
@@ -796,16 +800,60 @@ class SaveGameManager:
         
         return False
     
-    def get_save_directory(self) -> str:
-        """Get the save directory for the current module"""
-        if not self.current_module:
+    def get_save_directory(self, module=_CURRENT_MODULE) -> str:
+        """Get the save directory for the current module (or ``module``)"""
+        if module is _CURRENT_MODULE:
+            module = self.current_module
+        if not module:
             # Fallback to root saved_games directory
             return "saved_games"
         
-        return f"modules/{self.current_module}/saved_games"
+        return f"modules/{module}/saved_games"
+
+    @staticmethod
+    def _installed_module(name):
+        """``name`` when it is exactly an installed modules/<dir> entry whose
+        real folder is inside modules/, else None (#1715). Never a path."""
+        if not isinstance(name, str) or not name or name in (".", "..") or "/" in name or "\\" in name:
+            return None
+        if ntpath.splitdrive(name)[0] or not os.path.isdir("modules"):
+            return None
+        try:
+            if name not in os.listdir("modules"):
+                return None
+        except OSError:
+            return None
+        folder = os.path.join("modules", name)
+        if not os.path.isdir(folder) or os.path.dirname(os.path.realpath(folder)) != os.path.realpath("modules"):
+            return None
+        return name
+
+    def _installed_modules(self):
+        try:
+            names = sorted(os.listdir("modules")) if os.path.isdir("modules") else []
+        except OSError:
+            return []
+        return [name for name in names if self._installed_module(name) is not None]
+
+    def select_save_module(self, module) -> bool:
+        """#1715: the module whose saves a Load or Delete names, typed by the
+        list (``save_module``). None keeps this manager's own folder. With no
+        module context an installed module becomes the context for the
+        operation, so a restore resolves and clears that module's folders as a
+        party restore of it does; with a context only that module is accepted."""
+        if module is None:
+            return True
+        if self.current_module:
+            return module == self.current_module
+        if self._installed_module(module) is None:
+            return False
+        self.current_module = module
+        self.path_manager = ModulePathManager(module)
+        return True
 
     def _resolve_save_target(
-        self, target: str, *, allow_missing: bool = False, receipt_path: bool = False
+        self, target: str, *, allow_missing: bool = False, receipt_path: bool = False,
+        module=_CURRENT_MODULE,
     ) -> str:
         """Resolve an owned save artifact, including native junction identity.
 
@@ -840,7 +888,7 @@ class SaveGameManager:
                     missing.append(name)
                     path = parent
 
-        root = os.path.abspath(self.get_save_directory())
+        root = os.path.abspath(self.get_save_directory(module))
         candidate = os.path.abspath(
             target if receipt_path else os.path.join(root, target)
         )
@@ -1381,29 +1429,33 @@ class SaveGameManager:
     
     def list_save_games(self) -> List[Dict[str, Any]]:
         """List all available save games with metadata"""
-        save_dir = self.get_save_directory()
         save_games = []
-        
-        if not os.path.exists(save_dir):
-            return save_games
-        
-        try:
-            for item in os.listdir(save_dir):
-                try:
-                    item_path = self._resolve_save_target(item)
-                except (ValueError, FileNotFoundError):
-                    continue
-                if item.startswith("save_"):
-                    metadata_path = os.path.join(item_path, "save_metadata.json")
-                    if os.path.exists(metadata_path):
-                        metadata = safe_read_json(metadata_path)
-                        # A save that did not finish is never offered (#1003).
-                        if metadata and metadata.get("save_incomplete") is not True:
-                            metadata["save_folder"] = item
-                            metadata["save_path"] = item_path
-                            save_games.append(metadata)
-        except Exception as e:
-            error(f"FAILURE: Error listing save games", exception=e, category="save_game")
+        # #1715: with no module context, the root folder and every installed
+        # module's folder, each save typed with the module it was found in.
+        scopes = [_CURRENT_MODULE] if self.current_module else [None] + self._installed_modules()
+        for module in scopes:
+            save_dir = self.get_save_directory(module)
+            if not os.path.exists(save_dir):
+                continue
+            try:
+                for item in os.listdir(save_dir):
+                    try:
+                        item_path = self._resolve_save_target(item, module=module)
+                    except (ValueError, FileNotFoundError):
+                        continue
+                    if item.startswith("save_"):
+                        metadata_path = os.path.join(item_path, "save_metadata.json")
+                        if os.path.exists(metadata_path):
+                            metadata = safe_read_json(metadata_path)
+                            # A save that did not finish is never offered (#1003).
+                            if metadata and metadata.get("save_incomplete") is not True:
+                                metadata["save_folder"] = item
+                                metadata["save_path"] = item_path
+                                if module is not _CURRENT_MODULE:
+                                    metadata["save_module"] = module
+                                save_games.append(metadata)
+            except Exception as e:
+                error(f"FAILURE: Error listing save games", exception=e, category="save_game")
         
         # Sort by timestamp, newest first
         save_games.sort(key=lambda x: x.get("save_timestamp", ""), reverse=True)
