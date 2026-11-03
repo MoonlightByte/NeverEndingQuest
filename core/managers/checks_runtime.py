@@ -398,8 +398,10 @@ def pending_roll_note(settle_result: Optional[Dict[str, Any]] = None) -> str:
         check = pending[0]
         name, faces = check.get("characterName"), check.get("faces")
         note = (f"\nPENDING ROLL: {name}'s {checks.label(check.get('stat'))} waits for the player's d20 answer. You "
-                "cannot roll it or state a result. If the player's words are not that answer, answer them and ask for "
-                "the roll again in your own words.")
+                "cannot roll it or state a result. If the player's words are not that answer, answer every part of them and "
+                "ask for this roll again in your narration, in your own words (the rollCheck is already open; do "
+                "not issue it again); if their line gave a number for this roll beside another answer, say it was "
+                "not taken and ask for it on its own.")
         if settle_result.get("kind") == "check":
             note += _last_answer_tail(settle_result, f"{faces}d20")
         return note + "\n"
@@ -458,7 +460,7 @@ def check_results_note(turn_marker=None) -> str:
         LAST_NOTE = ""
         return ""
     LAST_NOTE = ("\nCHECK RESULTS (the rules engine settled the rolls and actions you left open last turn; open this response by "
-                 "narrating each outcome in story terms, then answer the new input; never re-roll or re-add; the player already "
+                 "narrating each outcome in story terms, then answer every part of the new input; never re-roll or re-add; the player already "
                  "sees these numbers on the dice receipt, so do not restate dice, bonus, total, DC or margin; a not-resolved, "
                  "declined or Rest line has no success or failure: tell the player what happened): "
                  + " | ".join(lines) + "\n" + "".join(read_note(line) for line in lines))
