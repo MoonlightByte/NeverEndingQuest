@@ -2,7 +2,7 @@
 
 ## Windows: download the app
 
-Download `NeverEndingQuest-Setup-1.1.0.exe` from the
+Download `NeverEndingQuest-Setup-1.1.1.exe` from the
 [latest release](https://github.com/MoonlightByte/NeverEndingQuest/releases/latest) and run it.
 It installs for your user only (no admin prompt) and keeps your saves in `%APPDATA%\NeverEndingQuest`,
 also when you uninstall it.

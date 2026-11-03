@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-11-02
+
 - A game with a separate data folder now keeps its lock files there instead of in the install folder, so it can save when the install folder is read-only; without a data folder nothing changes (#1708).
 - The README download steps now follow what Edge shows for the unsigned installer (More actions, Keep, then Keep anyway) and say the Windows "protected your PC" box may not appear (#1704).
 - In a fight, the damage roll you still have to make now reads "Damage to roll: 1d10, as one total" instead of looking like a result with a missing number, and the damage you rolled is shown as its own line (for example "Fire Bolt damage on Skeleton 2: 1d10 = 6."); what the game tells the AI is unchanged (#1706).

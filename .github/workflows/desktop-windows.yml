@@ -269,7 +269,9 @@ jobs:
               sys.exit(f"CHANGELOG.md has no [{version}] section")
           notes = match.group(1).strip()
           notes += ("\n\nWindows: download NeverEndingQuest-Setup-" + version + ".exe below. The installer is not"
-                    " code-signed yet, so Windows may show \"Windows protected your PC\": choose More info, then Run anyway.")
+                    " code-signed yet, so Edge may hold the download: choose More actions (...), then Keep, then"
+                    " Keep anyway. When you open it, Windows may show \"Windows protected your PC\": choose More"
+                    " info, then Run anyway.")
           open("notes.md", "w", encoding="utf-8").write(notes + "\n")
           PY
 
