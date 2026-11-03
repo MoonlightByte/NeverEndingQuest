@@ -121,11 +121,18 @@ def _show_check_receipt(content: str, message_id: Optional[str] = None) -> None:
 
 def read_player_line(read: Callable[[str], str], prompt: str) -> str:
     """The free-command read (#1118 item 4). While a check heads the queue its panel is published for this
-    read and cleared once the read returns or raises; the line read is the answer (the settle takes it)."""
+    read and cleared once the read returns or raises; the line read is the answer (the settle takes it).
+    #1630: the input opens (status ready) only after the panel is published, so a client never sees an open
+    input without the waiting check's panel; a failed publish still opens it."""
+    from core.managers.status_manager import status_ready
+
     pending = checks_state.pending_checks()
     try:
-        if pending:
-            roll_prompt.publish({**pending[0], "label": checks.label(pending[0]["stat"])})
+        try:
+            if pending:
+                roll_prompt.publish({**pending[0], "label": checks.label(pending[0]["stat"])})
+        finally:
+            status_ready()
         return read(prompt)
     finally:
         if pending:
