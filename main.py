@@ -10138,11 +10138,11 @@ def _main_game_loop(startup_authority, turn_authority):
         if startup_ready_pending:
             emit_startup_marker("startup_loop_ready", source="main_loop", result="ready")
             startup_ready_pending = False
-        status_ready()
 
         # #1118 item 4: a check waiting for the player's roll is answered by this
         # line (the settle below takes it); its web panel is published only while
-        # one of these reads waits.
+        # one of these reads waits. #1630: read_player_line opens the input after
+        # publishing that panel, so no ready status is sent here.
         from core.managers.checks_runtime import read_player_line
 
         if player_data_current:

@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A check's roll panel now reaches the screen before the command box opens, so the box never opens on a turn that asks for a roll while the panel is still on its way (#1630).
 - Travel no longer waits for a second location-update call when the first leaves out a required field such as a location's coordinates; the field is taken from the location as it was (#1633).
 - A turn the reviewer keeps rejecting ends less often in "I wasn't able to do that": each review keeps the demands already made, lists everything to fix at once, and accepts reading something the world data gives no details for in general terms (#1727).
 - When you ask someone else in the scene a question, a companion no longer repeats it for you; the person you asked answers (#1729).
