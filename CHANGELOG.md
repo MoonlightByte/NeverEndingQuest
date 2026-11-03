@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A turn the reviewer keeps rejecting ends less often in "I wasn't able to do that": each review keeps the demands already made, lists everything to fix at once, and accepts reading something the world data gives no details for in general terms (#1727).
 - In a hosted game, a refused AI key, quota or model during character creation no longer locks the input or points to Settings the player does not have: the message says the problem is on the host's side, setup choices are kept, and the next message tries again (#1711).
 
 ## [1.1.1] - 2026-11-02
