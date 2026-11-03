@@ -157,15 +157,19 @@ def _publish_react_build(built, dist):
         raise
 
 
-def _react_build_is_current(frontend_dir):
-    """Return True when the compiled React entry point is newer than its inputs."""
+def _react_build_is_current(frontend_dir, shipped=False):
+    """Return True when the compiled React entry point is newer than its inputs.
+
+    ``shipped`` (#1710, the operator's --shipped-frontend) trusts a usable
+    dist as a frozen build does."""
     frontend_dir = Path(frontend_dir)
     index = frontend_dir / "dist" / "index.html"
     if not _react_bundle_is_usable(frontend_dir / "dist"):
         return False
-    if getattr(sys, "frozen", False):
+    if getattr(sys, "frozen", False) or shipped:
         # #1681: a packaged build ships dist without its sources, and copying
         # or installing it resets file times; the shipped dist is the build.
+        # #1710: so does a hosted install started with --shipped-frontend.
         return True
 
     build_time = index.stat().st_mtime
@@ -217,13 +221,20 @@ def check_frontend_tools(repo_root=None):
         return False
 
 
-def ensure_react_frontend(repo_root=None, npm_command=_AUTO_NPM, runner=subprocess.run):
-    """Build the React player when missing/stale; return whether it is usable."""
+def ensure_react_frontend(repo_root=None, npm_command=_AUTO_NPM, runner=subprocess.run, shipped=False):
+    """Build the React player when missing/stale; return whether it is usable.
+
+    With ``shipped`` (#1710) the shipped dist is the player: it is never built,
+    so nothing is written into a read-only install."""
     repo_root = Path(repo_root or Path(__file__).resolve().parent)
     frontend_dir = repo_root / "web" / "frontend"
-    if _react_build_is_current(frontend_dir):
+    if _react_build_is_current(frontend_dir, shipped=shipped):
         print("[OK] React player is already built")
         return True
+    if shipped:
+        print("\n[WARNING] The shipped web player (web/frontend/dist) is missing or incomplete;")
+        print("--shipped-frontend never builds it. Ship a complete dist with this install.\n")
+        return False
 
     if npm_command is _AUTO_NPM:
         npm_command = shutil.which("npm")
@@ -285,6 +296,9 @@ def parse_args(argv=None):
     parser.add_argument("--prepare-frontend", action="store_true", help="prepare React assets without starting a game")
     parser.add_argument("--check-frontend-tools", action="store_true", help="check Node/npm against locked dependencies without installing")
     parser.add_argument("--frontend-ready", action="store_true", help="check current React assets without requiring Node/npm")
+    parser.add_argument("--shipped-frontend", action="store_true",
+                        help="trust the web player shipped in web/frontend/dist: no file-time check, never build it "
+                             "(hosted installs)")
     parser.add_argument("--data-dir", default=None,
                         help="keep saves, modules and settings in this folder (same as env NEQ_DATA_DIR)")
     parser.add_argument("--no-browser", action="store_true", help="do not open a browser window")
@@ -420,7 +434,8 @@ def main(ui="react", toolkit=False, args=None, bound_socket=None):
             os.makedirs(dir_path, exist_ok=True)
 
     # An explicit legacy launch must not require Node.js or spend time building React.
-    react_available = False if ui == "legacy" or toolkit else ensure_react_frontend()
+    shipped = args is not None and args.shipped_frontend
+    react_available = False if ui == "legacy" or toolkit else ensure_react_frontend(shipped=shipped)
     selected_ui = "react" if toolkit else select_ui(ui, react_available)
     if selected_ui is None:
         print("[SETUP] React is not ready. No game was started; your saves are unchanged.")
@@ -461,6 +476,9 @@ def main(ui="react", toolkit=False, args=None, bound_socket=None):
                     command += ["--port", str(args.port)]
                 if args.port_or_free is not None:
                     command += ["--port-or-free", str(args.port_or_free)]
+                if args.shipped_frontend:
+                    # #1710: the child checks the player again at boot.
+                    command.append("--shipped-frontend")
             from utils.provider_gateway import child_argv
             result = subprocess.run(child_argv(command), env=child_env)  # #1682
             
@@ -485,11 +503,12 @@ def main(ui="react", toolkit=False, args=None, bound_socket=None):
 if __name__ == "__main__":
     args = parse_args()
     if args.frontend_ready:
-        sys.exit(0 if _react_build_is_current(Path(__file__).resolve().parent / "web/frontend") else 1)
+        sys.exit(0 if _react_build_is_current(Path(__file__).resolve().parent / "web/frontend",
+                                              shipped=args.shipped_frontend) else 1)
     if args.check_frontend_tools:
         sys.exit(0 if check_frontend_tools() else 1)
     if args.prepare_frontend:
-        sys.exit(0 if ensure_react_frontend() else 1)
+        sys.exit(0 if ensure_react_frontend(shipped=args.shipped_frontend) else 1)
     # #1681/#1682: a data root (--data-dir or NEQ_DATA_DIR) holds this player's
     # state; seed or refresh it, then run from it. Unset: nothing changes.
     from utils.data_root import enter_data_root, prepare_data_root, resolve_data_root

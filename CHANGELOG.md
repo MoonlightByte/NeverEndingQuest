@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The README download steps now follow what Edge shows for the unsigned installer (More actions, Keep, then Keep anyway) and say the Windows "protected your PC" box may not appear (#1704).
 - In a fight, the damage roll you still have to make now reads "Damage to roll: 1d10, as one total" instead of looking like a result with a missing number, and the damage you rolled is shown as its own line (for example "Fire Bolt damage on Skeleton 2: 1d10 = 6."); what the game tells the AI is unchanged (#1706).
 - Load now works from the start screen, so you can load a save before starting a game and without any AI call; after a load with no on-screen transcript, the notice says to press Start Game (or New Game) to resume (#1705).
+- A hosted server operator can start the game with --shipped-frontend to use the web player shipped in web/frontend/dist as it is: no file-time check and never a build, so an install without Node.js and with a read-only install folder starts the web player; it is read only from the command line, and without it nothing changes (#1710).
 
 ## [1.1.0] - 2026-11-01
 
