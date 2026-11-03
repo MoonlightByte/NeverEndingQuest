@@ -61,6 +61,29 @@ set_script_name(__name__)
 # and maintainable while supporting seamless legacy migration.
 # ============================================================================
 
+def character_sheet_path(character_name):
+    """characters/<stem>.json; a pre-#894 sheet at characters/.json keeps its file.
+
+    The one sheet-path rule; it needs no active module, so the relationship store
+    can resolve a legacy memory file to a companion's identity seed (#1346)."""
+    from updates.update_character_info import normalize_character_name
+    stem = normalize_character_name(character_name)
+    path = f"characters/{stem}.json"
+    if stem.isascii() or os.path.exists(path):
+        return path
+    legacy = "characters/.json"
+    if not os.path.exists(legacy):
+        return path
+    try:
+        with open(legacy, "r", encoding="utf-8") as handle:
+            legacy_name = json.load(handle).get("name")
+    except (OSError, ValueError, AttributeError):
+        return legacy  # never fork an existing sheet on a failed read
+    if isinstance(legacy_name, str) and normalize_character_name(legacy_name) == stem:
+        return legacy
+    return path
+
+
 class ActiveModuleUnavailable(RuntimeError):
     """The active module could not be read; no other module is substituted (#448).
 
@@ -234,21 +257,7 @@ class ModulePathManager:
     
     def _character_file(self, character_name):
         """characters/<stem>.json; a pre-#894 sheet at characters/.json keeps its file."""
-        stem = self.format_filename(character_name)
-        path = f"characters/{stem}.json"
-        if stem.isascii() or os.path.exists(path):
-            return path
-        legacy = "characters/.json"
-        if not os.path.exists(legacy):
-            return path
-        try:
-            with open(legacy, "r", encoding="utf-8") as handle:
-                legacy_name = json.load(handle).get("name")
-        except (OSError, ValueError, AttributeError):
-            return legacy  # never fork an existing sheet on a failed read
-        if isinstance(legacy_name, str) and self.format_filename(legacy_name) == stem:
-            return legacy
-        return path
+        return character_sheet_path(character_name)
 
     # Unified character paths with fallback support
     def get_character_path(self, character_name):
