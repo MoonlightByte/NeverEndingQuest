@@ -1,6 +1,7 @@
 import { isTransientNotice, useConnectionNotice } from '../stores/connectionNotices'
 import { useRulesRoll } from '../stores/rulesRoll'
 import { useInputSuggestion } from '../stores/inputSuggestion'
+import { useUnsentLine } from '../stores/unsentLine'
 /**
  * services/socket.ts -- the ONLY module in src/ allowed to import socket.io-client.
  * It owns the connection to the Flask-SocketIO server (:8357, default /socket.io
@@ -63,6 +64,23 @@ const hydration = new HydrationCoordinator((event, payload, arity) => {
   else socket.emit(event, payload ?? {})
 })
 
+// #1732: the server acknowledges a line as soon as it is queued. A line with no
+// acknowledgement goes back to the composer; it is never sent again by itself,
+// since the server may already have it.
+export const LINE_ACK_MS = 10_000
+
+function sendPlayerLine(payload: ClientEvents['user_input']): void {
+  // Nothing enters socket.io's send buffer while disconnected: it would be
+  // replayed after the player was told the line was not sent.
+  if (!socket.connected) {
+    useUnsentLine.getState().report(payload.input)
+    return
+  }
+  socket.timeout(LINE_ACK_MS).emit('user_input', payload, (err: Error | null) => {
+    if (err) useUnsentLine.getState().report(payload.input)
+  })
+}
+
 function requestKey(event: string): string | null {
   if (event === 'generate_image') return event
   return null
@@ -81,6 +99,10 @@ export function emitC<K extends keyof ClientEvents>(ev: K, payload: ClientEvents
     return hydration.request(ev as HydrationEvent, payload as HydrationPayload)
   }
   if (ev === 'submit_check_roll' && !socket.connected) return
+  if (ev === 'user_input') {
+    sendPlayerLine(payload as ClientEvents['user_input'])
+    return
+  }
   const identified = withRequestIdentity(String(ev), payload)
   if (CLIENT_EVENT_ARITY[ev] === 0) {
     socket.emit(ev)

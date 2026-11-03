@@ -1,5 +1,6 @@
 import { useRulesRoll } from '../../stores/rulesRoll'
 import { useInputSuggestion } from '../../stores/inputSuggestion'
+import { useUnsentLine } from '../../stores/unsentLine'
 import { RulesRollPanel } from '../log/RulesRollPanel'
 /**
  * InputBar -- player text input + Send button (plan Task 4.4b).
@@ -7,6 +8,8 @@ import { RulesRollPanel } from '../log/RulesRollPanel'
  * game_output type user-input (web_interface.py handle_user_input), so
  * there is no local echo. Locked while session.isProcessing, with the
  * progress presented above the input, leaving its prompt and draft stable.
+ * #1732: a line the server never acknowledged comes back to the box with a
+ * note (stores/unsentLine); it is not sent again by itself.
  */
 import { useEffect, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
@@ -29,6 +32,8 @@ export function InputBar({ rollInsertion }: { rollInsertion?: { id: number; text
   const inputRef = useRef<HTMLInputElement>(null)
   const insertedRoll = useRef<number | null>(null)
   const suggestion = useInputSuggestion((s) => s.suggestion)
+  const unsentLine = useUnsentLine((s) => s.line)
+  const [unsent, setUnsent] = useState(false)
   useEffect(() => {
     if (!rollInsertion || insertedRoll.current === rollInsertion.id) return
     insertedRoll.current = rollInsertion.id
@@ -41,6 +46,15 @@ export function InputBar({ rollInsertion }: { rollInsertion?: { id: number; text
     const text = useInputSuggestion.getState().take()
     if (text) setDraft((previous) => previous.trim() ? previous : text)
   }, [suggestion])
+
+  // #1732: the unacknowledged line goes back in front of anything typed since.
+  useEffect(() => {
+    if (unsentLine === null) return
+    const text = useUnsentLine.getState().take()
+    if (!text) return
+    setDraft((typed) => typed.trim() ? `${text} ${typed.trimStart()}` : text)
+    setUnsent(true)
+  }, [unsentLine])
 
   // The legacy client places focus in the command field as soon as a live
   // game becomes interactive. Preserve that initial keyboard-ready state.
@@ -56,6 +70,7 @@ export function InputBar({ rollInsertion }: { rollInsertion?: { id: number; text
     // game is actually running. Keep that failure-safe behavioral gate even
     // when the visual controls are enabled for exact surface parity.
     if (!input || !gating.canSend) return
+    setUnsent(false)
     emitC('user_input', { input })
     setDraft('')
   }
@@ -66,6 +81,7 @@ export function InputBar({ rollInsertion }: { rollInsertion?: { id: number; text
     <>
     {rulesRoll && <RulesRollPanel key={rulesRoll.id} prompt={rulesRoll} />}
     <div className="neq-input-container shrink-0 border-t border-card bg-[#333] p-[10px]">
+      {unsent && <p className="neq-turn-status neq-input-unsent" role="alert">Not sent: the connection to the game dropped. Your line is back in the box; press Send to try again.</p>}
       {turnStatus && <p className={dmBusy ? 'neq-turn-status neq-turn-status--busy' : 'neq-turn-status'} role="status"><ThinkingMist />{turnStatus}</p>}
       <div className="flex items-center">
         <input
