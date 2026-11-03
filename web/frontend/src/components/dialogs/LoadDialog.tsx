@@ -13,6 +13,8 @@ import {
 
 interface SaveEntry {
   folder: string
+  /** #1715: the module folder the list found the save in (typed by the server); null = the default folder. */
+  saveModule: string | null
   mode: string
   date: string
   module: string
@@ -38,27 +40,41 @@ function toSaveEntry(raw: Record<string, unknown>): SaveEntry {
       : {}
   return {
     folder: asString(raw['save_folder']),
+    saveModule: typeof raw['save_module'] === 'string' ? raw['save_module'] : null,
     mode: asString(raw['save_mode']),
     date: asString(raw['save_date_readable']) || 'Unknown',
-    module: asString(raw['module']) || 'Unknown Module',
+    module: asString(raw['module']) || (typeof raw['save_module'] === 'string' ? raw['save_module'] : '') || 'Unknown Module',
     location: asString(gameState['current_location']) || 'Unknown Location',
     description: asString(raw['description']),
     autoBackup: asString(raw['auto_backup']),
   }
 }
 
-const saveExists = (folder: string) => useDialogs.getState().saveList?.some(entry => asString(entry['save_folder']) === folder) === true
+/** One save in the list: its folder and the module folder it was listed from (#1715). */
+interface SavePick {
+  folder: string
+  saveModule: string | null
+}
+
+const samePick = (a: SavePick | null, b: SavePick | null) =>
+  a !== null && b !== null && a.folder === b.folder && a.saveModule === b.saveModule
+
+/** The action parameters for a pick; saveModule only when the list typed one, so the default folder's payload is unchanged. */
+const pickParameters = (pick: SavePick) =>
+  pick.saveModule === null ? { saveFolder: pick.folder } : { saveFolder: pick.folder, saveModule: pick.saveModule }
+
+const saveExists = (pick: SavePick) => useDialogs.getState().saveList?.some(entry => samePick(toSaveEntry(entry), pick)) === true
 
 function LoadDialogBody() {
   const ember = useEmberViewport()
   const closeDialog = useDialogs((s) => s.closeDialog)
   const saveList = useDialogs((s) => s.saveList)
   const recoveryRequired = useSession((s) => s.restoreRecoveryRequired)
-  const [selected, setSelected] = useState<string | null>(null)
+  const [selected, setSelected] = useState<SavePick | null>(null)
   const [restoring, setRestoring] = useState(false)
   const [restoreError, setRestoreError] = useState('')
   const connected = useSession((s) => s.connected)
-  const [confirmation, setConfirmation] = useState<{ kind: 'load' | 'delete'; folder: string } | null>(null)
+  const [confirmation, setConfirmation] = useState<{ kind: 'load' | 'delete'; pick: SavePick } | null>(null)
   const operation = useRef(0)
   const busy = useRef(false)
   const cancelConfirmation = () => {
@@ -73,7 +89,7 @@ function LoadDialogBody() {
   }, [connected])
   useEffect(() => {
     if (selected && !saveExists(selected)) setSelected(null)
-    if (confirmation && !saveExists(confirmation.folder)) cancelConfirmation()
+    if (confirmation && !saveExists(confirmation.pick)) cancelConfirmation()
   }, [saveList, selected, confirmation])
   const refreshTimer = useRef<number | null>(null)
 
@@ -85,18 +101,18 @@ function LoadDialogBody() {
     }
   }, [])
 
-  const performLoad = async (folder: string) => {
-    if (busy.current || !useSession.getState().connected || !saveExists(folder)) return
+  const performLoad = async (pick: SavePick) => {
+    if (busy.current || !useSession.getState().connected || !saveExists(pick)) return
     const ticket = ++operation.current
     busy.current = true
     setRestoring(true)
     setRestoreError('')
     try {
-      await prepareForServerRestart(() => ticket === operation.current && useSession.getState().connected && saveExists(folder))
-      if (ticket !== operation.current || !useSession.getState().connected || !saveExists(folder)) {
+      await prepareForServerRestart(() => ticket === operation.current && useSession.getState().connected && saveExists(pick))
+      if (ticket !== operation.current || !useSession.getState().connected || !saveExists(pick)) {
         return
       }
-      emitC('action', { action: 'restoreGame', parameters: { saveFolder: folder } })
+      emitC('action', { action: 'restoreGame', parameters: pickParameters(pick) })
       closeDialog()
       // restore_complete triggers the page reload (see LoadDialog effect below).
     } catch (error) {
@@ -111,11 +127,11 @@ function LoadDialogBody() {
     }
   }
 
-  const deleteSelected = (folder: string) => {
+  const deleteSelected = (pick: SavePick) => {
     if (busy.current || restoring || useSession.getState().restoreRecoveryRequired
-      || !useSession.getState().connected || !saveExists(folder)) return
+      || !useSession.getState().connected || !saveExists(pick)) return
     busy.current = true
-    emitC('action', { action: 'deleteSave', parameters: { saveFolder: folder } })
+    emitC('action', { action: 'deleteSave', parameters: pickParameters(pick) })
     setConfirmation(null)
     setSelected(null)
     // Legacy parity: refresh the list shortly after the delete lands.
@@ -129,7 +145,7 @@ function LoadDialogBody() {
   const requestConfirmation = (kind: 'load' | 'delete') => {
     if (!selected || busy.current || !useSession.getState().connected || !saveExists(selected)) return
     setRestoreError('')
-    if (ember) setConfirmation({ kind, folder: selected })
+    if (ember) setConfirmation({ kind, pick: selected })
     else if (window.confirm(kind === 'load' ? 'Load this save point? Anything that happened after it was saved will be lost.' : 'Delete this save? This cannot be undone.')) {
       if (kind === 'load') void performLoad(selected)
       else deleteSelected(selected)
@@ -146,12 +162,12 @@ function LoadDialogBody() {
             <p className="neq-save-list-empty-parity">No save games found.</p>
           ) : (
             entries.map((entry) => {
-              const isSelected = entry.folder === selected
+              const isSelected = samePick(entry, selected)
               return (
                 <button
-                  key={entry.folder}
+                  key={`${entry.saveModule ?? ''}/${entry.folder}`}
                   type="button"
-                  onClick={() => setSelected(entry.folder)}
+                  onClick={() => setSelected({ folder: entry.folder, saveModule: entry.saveModule })}
                   aria-pressed={isSelected}
                   className="neq-save-item-parity"
                 >
@@ -215,7 +231,7 @@ function LoadDialogBody() {
           message={confirmation.kind === 'load' ? 'Load this save point? Anything that happened after it was saved will be lost.' : 'Delete this save? This cannot be undone.'}
           confirmLabel={confirmation.kind === 'load' ? 'Restore Game' : 'Delete Save'}
           pending={restoring} error={restoreError} disabled={!connected} onCancel={cancelConfirmation}
-          onConfirm={() => confirmation.kind === 'load' ? void performLoad(confirmation.folder) : deleteSelected(confirmation.folder)}
+          onConfirm={() => confirmation.kind === 'load' ? void performLoad(confirmation.pick) : deleteSelected(confirmation.pick)}
         />}
       </div>
     </DialogShell>
