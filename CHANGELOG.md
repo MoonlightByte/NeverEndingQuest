@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - The DM now sees which quest is next and the places and story of its side quests, so the story moves on when the party reaches the next objective, and a side quest is offered when the main line is blocked (#1723).
+- The DM now asks for one roll at a time, asks again in words for a roll still waiting, and gives each part of a player's line a word in its reply, such as a spell cast before a move (#1722).
 - In a hosted game, a refused AI key, quota or model during character creation no longer locks the input or points to Settings the player does not have: the message says the problem is on the host's side, setup choices are kept, and the next message tries again (#1711).
 
 ## [1.1.1] - 2026-11-02
