@@ -10344,14 +10344,10 @@ def _main_game_loop(startup_authority, turn_authority):
             else:
                 debug("FILE_OP: No plot data loaded - plot_data_for_note is None", category="module_management") 
             # C3: the plot status block owns every quest fact; the note names
-            # only the ids of the open points whose location is this area.
-            plot_here_ids = []
-            if plot_data_for_note and "plotPoints" in plot_data_for_note:
-                plot_here_ids = [
-                    point["id"] for point in plot_data_for_note["plotPoints"]
-                    if isinstance(point, dict) and point.get("location") == current_area_id
-                    and not quest_record.is_closed(point) and point.get("id")
-                ]
+            # only the ids of the open points whose location is this area
+            # (#1723: the next objective and active points, by the engine's record).
+            from utils.plot_formatting import plot_points_here
+            plot_here_ids = plot_points_here(plot_data_for_note, current_area_id)
             plot_here_str = ", ".join(plot_here_ids) if plot_here_ids else "none"
 
             # C3: traps and hostile occupants are told once, by the Current Location block.
