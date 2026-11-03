@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The roll reader now takes "I roll Persuasion" with no number as a request for the game to roll, and a question about a waiting roll (such as "Does the lock give?") no longer gives the roll up (#1728).
 - In The Thornwood Watch, Scout Neris is back at Scout's Watch at the East Tower, where the location's own text places her, so the DM can have her speak there. Games already started keep their copy of the area; a new game or Reset has her (#1733).
 - The DM now sees which quest is next and the places and story of its side quests, so the story moves on when the party reaches the next objective, and a side quest is offered when the main line is blocked (#1723).
 - A line you send while the game's connection drops is no longer lost without a word: it comes back to the input box with a note to send it again (#1732).

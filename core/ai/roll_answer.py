@@ -30,7 +30,7 @@ from utils.capture.multi_model_capture import capture_and_fanout, register_calls
 from utils.enhanced_logger import warning
 
 TASK_ID = "T126"
-register_callsite(TASK_ID, "core/ai/roll_answer.py", 122)
+register_callsite(TASK_ID, "core/ai/roll_answer.py", 127)
 
 KINDS = ("let_game_roll", "faces", "decline", "other")
 
@@ -49,12 +49,17 @@ SCHEMA = {
 _SYSTEM = """You read one line a player typed while the game is waiting for a dice roll in a tabletop roleplaying game. You are shown the roll the game asked for, the ask the player saw, and the player's whole line. Read the line as a person at the table would, and say what it means for this roll.
 
 Return exactly one JSON object {"kind": ..., "values": [...]} where kind is one of:
-- "let_game_roll": the player asks the game to roll it. The player asks the game to roll when they ask the DM or the game to make this roll for them.
+- "let_game_roll": the player asks the game to roll it. The player asks the game to roll when they ask the DM or the game to make this roll for them. A line that says the character rolls or makes this roll without giving a number ("I roll Persuasion", "I make the check") also asks the game to roll it.
 - "faces": the player says what they rolled for this roll. Put the numbers in values, one list per dice term in the order the request lists its dice, exactly as the player gave them, even a number the die cannot show or fewer numbers than dice. When eachDie is false and the phase is not "attack", the roll takes one total: when the player states that total, values is [[total]], not the dice that made it.
-- "decline": the player gives this roll up: they take the action back, change their mind, say they would rather do something else, or name a different action to take instead of this one, even before they say what it is.
-- "other": anything else: a question, a remark, an unclear line, or something the player does before rolling while still meaning to make this roll.
+- "decline": the player gives this roll up: they take the action back, change their mind, say they would rather do something else, or name a different action to take instead of this one, even before they say what it is. A question about this roll or how it turns out is not a decline, even when it says what the player will do if it fails. Giving up a different, earlier attempt while still making this roll is not a decline of this one.
+- "other": anything else: a question (including one about this roll: whether it is needed, whether it worked), a remark, an unclear line, or something the player does before rolling while still meaning to make this roll.
 
-Numbers meant for a later die or for something else are not this roll's faces. A line that mentions dice but does not ask the game to roll is not "let_game_roll". values is [] unless kind is "faces"."""
+Numbers meant for a later die or for something else are not this roll's faces. A line that mentions dice but does not ask the game to roll is not "let_game_roll". values is [] unless kind is "faces".
+
+Examples, each while the game waits for the roll it asked for:
+- "I'm throwing for Acrobatics." while Acrobatics is asked: "let_game_roll".
+- "Will that knot last? Otherwise I swim." while the knot check is asked: "other".
+- "Scratch that, I'd rather swim." while the knot check is asked: "decline"."""
 
 
 class RollAnswerError(ValueError):
