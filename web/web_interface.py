@@ -7522,15 +7522,16 @@ if __name__ == '__main__':
     if boot_args.frontend_ready:
         from pathlib import Path
         from run_web import _react_build_is_current
-        sys.exit(0 if _react_build_is_current(Path(__file__).resolve().parent / 'frontend') else 1)
+        sys.exit(0 if _react_build_is_current(Path(__file__).resolve().parent / 'frontend',
+                                              shipped=boot_args.shipped_frontend) else 1)
     if boot_args.check_frontend_tools:
         sys.exit(0 if check_frontend_tools() else 1)
     if boot_args.prepare_frontend:
-        sys.exit(0 if ensure_react_frontend() else 1)
+        sys.exit(0 if ensure_react_frontend(shipped=boot_args.shipped_frontend) else 1)
     if boot_args.toolkit:
         selected_ui = 'react'
     else:
-        available = False if boot_args.ui == 'legacy' else ensure_react_frontend()
+        available = False if boot_args.ui == 'legacy' else ensure_react_frontend(shipped=boot_args.shipped_frontend)
         selected_ui = select_ui(boot_args.ui, available)
         if selected_ui is None:
             print('[SETUP] React is not ready. No game was started; retry setup or use --ui legacy.')
