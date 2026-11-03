@@ -338,7 +338,13 @@
       ],
       "areaConnectivity": [],
       "areaConnectivityId": [],
-      "npcs": [],
+      "npcs": [
+        {
+          "name": "Scout Neris",
+          "description": "A keen-eyed human ranger with wind-tousled hair and calloused hands from years of frontier duty. Neris has an encyclopedic knowledge of the surrounding wilderness and can spot trouble from miles away. She's recently returned from investigating strange phenomena in the northern woods.",
+          "attitude": "Alert and professional, eager to share intelligence about wilderness threats but cautious about venturing too far from her watch post."
+        }
+      ],
       "monsters": [
         {
           "name": "Twig Blight",
