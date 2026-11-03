@@ -4946,10 +4946,14 @@ def process_action(
     action_context=None,
     level_up_context=None,
     turn_roster=None,
+    post_combat_encounter=None,
     encounter_payments=None,
 ):
     """Process an action based on its type
 
+    ``post_combat_encounter`` (#1730) is set only by the turn loop, for an
+    updateCharacterInfo of the automatic post-combat pass: only recovery
+    commits, and a refused change returns ``post_combat_refused``.
     ``encounter_payments`` (#1731, createEncounter only) holds the reply's
     staged castingResource payments from ``stage_encounter_payments``.
     
@@ -5844,7 +5848,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             debug(f"STATE_CHANGE: Updating character info for {character_name}", category="character_updates")
             try:
                 from core.managers.effects_runtime import update_character_with_effects
-                from updates.update_character_info import EngineRefusedChange
+                from updates.update_character_info import EngineRefusedChange, PostCombatReplayRefused
 
                 debug(f"STATE_CHANGE: Calling effects-aware character update for {character_name}", category="character_updates")
                 success = update_character_with_effects(
@@ -5854,6 +5858,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     action_context=action_context,
                     affects=parameters.get("affects"),
                     casting_resource=parameters.get("castingResource"),
+                    post_combat=post_combat_encounter,
                 )
                 debug(f"STATE_CHANGE: effects-aware character update returned {success}", category="character_updates")
                 if success:
@@ -5871,6 +5876,12 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
                 # #1253: a Load, Reset, Quit or read-only save stop ends the turn (#654).
                 raise
+            except PostCombatReplayRefused as refusal:
+                # #1730: nothing was written; the turn loop reports it as not
+                # applied (#841) instead of asking the DM again.
+                info(f"STATE_CHANGE: post-combat update for {character_name} not applied: {refusal.reason}",
+                     category="character_updates")
+                return create_return(status="continue", response_data={"post_combat_refused": refusal.reason})
             except EngineRefusedChange as refusal:
                 # The rules engine refused the change (coins, hit points, spell
                 # slots or feature uses). Nothing was written; the model hears
