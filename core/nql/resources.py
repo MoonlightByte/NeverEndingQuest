@@ -76,13 +76,60 @@ if not SPELL_LEVELS:
             % SPELL_REPOSITORY_PATH, category="character_updates")
 
 
+SLOT_LEVEL_KEYS = frozenset("level%d" % level for level in range(1, 10))
+
+
+def is_slot_recovery(choice: Any) -> bool:
+    """#1680: a castingResource that regains spell slots (``regainsSlots``)."""
+    return isinstance(choice, dict) and "regainsSlots" in choice
+
+
+def _slot_recovery_problem(choice: Dict[str, Any], sheet: Any) -> Optional[Tuple[str, str]]:
+    """#1680: (code, reason) when a typed slot recovery is malformed or names a
+    slot level the sheet lacks, else None. Only typed fields are read."""
+    regains = choice.get("regainsSlots")
+    if not isinstance(regains, dict) or not regains or not all(
+            key in SLOT_LEVEL_KEYS and type(amount) is int and amount > 0 for key, amount in regains.items()):
+        return ("recovery_shape", "castingResource regainsSlots must be {\"levelN\": positive whole number}, N 1..9")
+    if choice.get("spell") is not None:
+        return ("recovery_spell", "a slot recovery (regainsSlots) casts no spell; leave spell out")
+    if choice.get("kind") == "feature":
+        uses = choice.get("uses", 1)
+        if not (isinstance(choice.get("featureName"), str) and choice["featureName"].strip()):
+            return ("recovery_shape", "a feature slot recovery requires featureName")
+        if not (type(uses) is int and uses > 0):
+            return ("recovery_shape", "castingResource uses must be a positive whole number")
+    elif choice.get("kind") == "item":
+        if not (isinstance(choice.get("itemName"), str) and choice["itemName"].strip()):
+            return ("recovery_shape", "an item slot recovery requires itemName")
+    else:
+        return ("recovery_shape", "a slot recovery is paid by kind feature or kind item")
+    if isinstance(sheet, dict):
+        casting = sheet.get("spellcasting")
+        known = casting.get("spellSlots") if isinstance(casting, dict) else None
+        for key, amount in regains.items():
+            pool = known.get(key) if isinstance(known, dict) else None
+            if not isinstance(pool, dict):
+                return ("recovery_level", "spell slot level %r is not on the sheet" % key)
+            current, maximum = pool.get("current"), pool.get("max")
+            if type(current) is int and type(maximum) is int and current + amount > maximum:
+                # The price is never paid for a slot that is not expended.
+                return ("recovery_full", "only %d expended %s spell slot(s) to regain (%d/%d)"
+                        % (max(maximum - current, 0), key, current, maximum))
+    return None
+
+
 def casting_resource_problem(choice: Any, sheet: Any) -> Optional[Tuple[str, str]]:
     """#1329 (D-1329-1): (code, reason) when a typed castingResource cannot pay
     for its typed ``spell``, else None. Only the choice's kind, featureName,
     level and spell key are read, against the sheet's feats[].grantedSpells
-    binding and the spell_repository level; availability stays with the pool."""
+    binding and the spell_repository level; availability stays with the pool.
+    A slot recovery (#1680, ``regainsSlots``) names no spell and is checked
+    by its own shape."""
     if not isinstance(choice, dict):
         return None
+    if is_slot_recovery(choice):
+        return _slot_recovery_problem(choice, sheet)
     spell = choice.get("spell")
     if not isinstance(spell, str) or not spell:
         return ("missing_spell", "castingResource needs spell, the spell's repository key "
@@ -114,7 +161,7 @@ def casting_resource_delta(choice: Any, sheet: Any = None) -> Dict[str, Any]:
     With ``sheet``, a choice that names its spell must also be able to pay for it
     (#1329); one without spell keeps the shape-only check (D-1329-1 last attempt)."""
     delta = _casting_resource_shape(choice)
-    if sheet is not None and choice.get("spell") is not None:
+    if sheet is not None and (choice.get("spell") is not None or is_slot_recovery(choice)):
         problem = casting_resource_problem(choice, sheet)
         if problem is not None:
             raise ValueError(problem[1])
@@ -124,6 +171,16 @@ def casting_resource_delta(choice: Any, sheet: Any = None) -> Dict[str, Any]:
 def _casting_resource_shape(choice: Any) -> Dict[str, Any]:
     if not isinstance(choice, dict):
         raise ValueError("castingResource must be an object")
+    if is_slot_recovery(choice):
+        # #1680: the regained slots and their price, one typed delta. An item's
+        # charge is spent by its own expendCharges action, never here.
+        problem = _slot_recovery_problem(choice, None)
+        if problem is not None:
+            raise ValueError(problem[1])
+        delta = {SLOT_DELTA: dict(choice["regainsSlots"])}
+        if choice["kind"] == "feature":
+            delta[USE_DELTA] = {choice["featureName"]: -choice.get("uses", 1)}
+        return delta
     if choice.get("kind") == "feature":
         name = choice.get("featureName")
         if isinstance(name, str) and name.strip():

@@ -281,6 +281,17 @@ def preserve_author_location_fields(updated_location, location_before):
     return updated_location
 
 
+def restore_omitted_required_fields(updated_location, location_before, schema):
+    """Copy back each schema-required field T015 left out, from the location as
+    it was before T015 (#1633). A field the reply returned is kept as returned;
+    one absent on both sides stays absent, so validation still fails and retries."""
+    restored = [field for field in schema.get("required", [])
+                if field not in updated_location and field in location_before]
+    for field in restored:
+        updated_location[field] = copy.deepcopy(location_before[field])
+    return restored
+
+
 def update_location_json(adventure_summary, location_info, current_area_id_from_main):
     debug_print(f"Updating location JSON for {location_info['name']} with all changes")
 
@@ -437,6 +448,10 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
             # so establish it deterministically before schema validation and
             # before the area/journal transaction commits.
             updated_location["explorationState"] = {"status": "visited"}
+            restored = restore_omitted_required_fields(
+                updated_location, location_info, loca_single_item_schema)
+            if restored:
+                debug_print(f"T015 omitted required fields; restored from the location before the update: {', '.join(restored)}")
             validate_location_json(updated_location, loca_single_item_schema)
 
             # T015 only stages a validated location object. Journal and area
