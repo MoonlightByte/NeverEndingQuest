@@ -6292,13 +6292,14 @@ def _agentic_post_combat_xp_echo(action, xp_receipt):
     return False
 
 
-def _agentic_post_combat_engine_echo(action):
-    """Block character mutations in the historical post-combat narration pass.
+def _agentic_post_combat_update(action):
+    """A character update in the historical post-combat narration pass (#1730).
 
-    Agentic combat has already committed HP, effects, resources, and rewards.
-    This automatic provider response is based only on that historical summary,
-    never on a new player action, so every character update it emits is an
-    unsafe replay regardless of how the model phrases or combines the changes.
+    Agentic combat has already committed HP, effects, resources, and rewards,
+    and this automatic response follows no new player action. Such an update
+    runs with the fight's encounter id: the engine commits it only when its
+    typed delta is a recovery (hit points regained, waking, stabilising) and
+    otherwise reports it as not applied; its wording is never read.
     """
     return (
         isinstance(action, dict)
@@ -7000,19 +7001,20 @@ def process_ai_response(
         
         # Filter committed combat echoes without changing accepted action order.
         post_combat_encounter = None
+        post_combat_id = None
+        post_combat_notice_shown = False
         if any(
             action.get("action") in ("updateCharacterInfo", "awardExperience")
             for action in actions
         ):
             post_combat_encounter = _agentic_post_combat_encounter(party_tracker_data)
         if post_combat_encounter is not None:
+            post_combat_id = str(post_combat_encounter.get("encounterId") or "post-combat")
             xp_receipt = _agentic_post_combat_xp_receipt(post_combat_encounter)
             retained_actions = []
             dropped_actions = []
             for action in actions:
-                if _agentic_post_combat_engine_echo(action) or _agentic_post_combat_xp_echo(
-                    action, xp_receipt
-                ):
+                if _agentic_post_combat_xp_echo(action, xp_receipt):
                     dropped_actions.append(action)
                     debug(
                         "STATE_CHANGE: Ignoring an agentic post-combat "
@@ -7041,6 +7043,7 @@ def process_ai_response(
                     _AGENTIC_POST_COMBAT_DROP_NOTICE,
                     color="yellow",
                 )
+                post_combat_notice_shown = True
                 _record_agentic_post_combat_updates_dropped(
                     dropped_update_count
                 )
@@ -7057,6 +7060,7 @@ def process_ai_response(
         # Track pending archive info for delayed processing
         pending_archive_info = None
         
+        post_combat_refused = []
         # Execute accepted actions once, in the order the DM and referee approved.
         for action_index, action in enumerate(actions):
             # Snapshot the history length BEFORE the handler runs: needs_response
@@ -7080,6 +7084,9 @@ def process_ai_response(
                     },
                     level_up_context=level_up_context,
                     turn_roster=turn_roster,
+                    post_combat_encounter=(
+                        post_combat_id if _agentic_post_combat_update(action) else None
+                    ),
                 )
             except (LiveProviderSuperseded, InvocationSupersededError):
                 return {
@@ -7105,6 +7112,26 @@ def process_ai_response(
             if _is_restore_request(result):
                 return result
             actions_processed = True
+            if isinstance(result, dict) and (result.get("response_data") or {}).get("post_combat_refused"):
+                # #1730: the engine refused a non-recovery change; it is
+                # recorded as not applied, as the #841 filter records a drop.
+                post_combat_refused.append(action)
+                stored_reply = dict(parsed_response)
+                stored_reply["actions"] = [
+                    copy.deepcopy(kept) for kept in actions if not any(kept is gone for gone in post_combat_refused)
+                ]
+                response = json.dumps(stored_reply)
+                conversation_history.append({
+                    "role": "system",
+                    "content": _agentic_post_combat_drop_record([action]),
+                    "post_combat_drop": True,
+                })
+                save_conversation_history(conversation_history)
+                if not post_combat_notice_shown:
+                    show_player_notice(_AGENTIC_POST_COMBAT_DROP_NOTICE, color="yellow")
+                    post_combat_notice_shown = True
+                _record_agentic_post_combat_updates_dropped(1)
+                continue
 
             # Standard action failures are terminal for this response. The
             # narration has already been displayed, so persist it exactly once
