@@ -12,13 +12,22 @@ the AI DM.
 """
 
 
-def _sq_lines(point, status, label):
+def _sq_lines(point, status, label, detail=False):
+    """detail (#1723): side quests of an active or next objective carry their
+    authored places and description, so the DM can surface one in play."""
     out = ""
     quests = [sq for sq in point.get('sideQuests', []) or [] if isinstance(sq, dict) and sq.get('status') == status]
     if quests:
         out += f"  - {label}:\n"
         for sq in quests:
-            out += f"    * {sq.get('title', 'Untitled')} ({sq.get('id', 'Unknown')})\n"
+            out += f"    * {sq.get('title', 'Untitled')} ({sq.get('id', 'Unknown')})"
+            if detail:
+                places = [str(x) for x in sq.get('involvedLocations') or [] if x]
+                if places:
+                    out += " @" + ", ".join(places)
+                if sq.get('description'):
+                    out += f": {sq['description']}"
+            out += "\n"
     return out
 
 
@@ -33,6 +42,27 @@ def _requires(point, titles):
         return "  - Still requires: " + ", ".join(
             f"{x} ({titles.get(x, 'Unknown')})" for x in point['open']) + "\n"
     return ""
+
+
+def plot_points_here(plot_data, area_id):
+    """The DM Note's open plot points in this area (C3: ids only). #1723: with
+    the engine's record, a not-started point is named only once its
+    requirements are complete, as the next objective; a started one is
+    active. Without an engine view (no ready field) the ids are listed as
+    before."""
+    from utils import quest_record
+    out = []
+    for point in (plot_data or {}).get("plotPoints") or []:
+        if not (isinstance(point, dict) and point.get("location") == area_id
+                and not quest_record.is_closed(point) and point.get("id")):
+            continue
+        if "ready" not in point:
+            out.append(point["id"])
+        elif point.get("status") == "in progress":
+            out.append(f"{point['id']} (active)")
+        elif point.get("ready"):
+            out.append(f"{point['id']} (next objective, not started)")
+    return out
 
 
 def format_plot_for_ai(plot_data):
@@ -110,21 +140,31 @@ def format_plot_for_ai(plot_data):
         if point.get('plotImpact'):
             output += f"  - Current situation: {point['plotImpact']}\n"
         output += _requires(point, titles)
-        output += _sq_lines(point, 'in progress', "Side quests in progress")
-        output += _sq_lines(point, 'not started', "Side quests not started")
+        output += _sq_lines(point, 'in progress', "Side quests in progress", detail=True)
+        output += _sq_lines(point, 'not started', "Side quests not started", detail=True)
         output += _sq_lines(point, 'completed', "Side quests completed")
         output += _sq_lines(point, 'failed', "Side quests failed")
         output += "\n"
 
     # Upcoming objectives (C3: with their area, open requirements and side
-    # quests, so the DM Note need not repeat them)
-    if upcoming_points:
-        output += "UPCOMING OBJECTIVES:\n"
-        for point in upcoming_points:
+    # quests, so the DM Note need not repeat them). #1723: with the engine's
+    # record, the ones whose requirements are complete come first as NEXT.
+    if any('ready' in p for p in upcoming_points):
+        groups = [("NEXT OBJECTIVES (requirements complete; start one with updatePlot \"in progress\" "
+                   "when the party takes it up or pursues it in its area):",
+                   [p for p in upcoming_points if p.get('ready')], True),
+                  ("LATER OBJECTIVES:", [p for p in upcoming_points if not p.get('ready')], False)]
+    else:
+        groups = [("UPCOMING OBJECTIVES:", upcoming_points, False)]
+    for heading, group, detail in groups:
+        if not group:
+            continue
+        output += heading + "\n"
+        for point in group:
             output += f"- {point.get('title', 'Untitled')} ({point.get('id', 'Unknown')}){_at(point)}: {point.get('description', 'No description')}\n"
             output += _requires(point, titles)
-            output += _sq_lines(point, 'in progress', "Side quests in progress")
-            output += _sq_lines(point, 'not started', "Side quests not started")
+            output += _sq_lines(point, 'in progress', "Side quests in progress", detail=detail)
+            output += _sq_lines(point, 'not started', "Side quests not started", detail=detail)
         output += "\n"
 
     return output
