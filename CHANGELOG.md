@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Modules built with the story-first builder now start with the opening weather and political climate the builder wrote, so their first game no longer asks for them (#1481).
 - A check's roll panel now reaches the screen before the command box opens, so the box never opens on a turn that asks for a roll while the panel is still on its way (#1630).
 - The combat dice tray sends its dice to the game as typed values beside the sentence it writes, and the game reads those values instead of the sentence; older clients that send only the sentence keep working (#1750).
 - Travel shows your arrival as soon as it is narrated; the record of the place you left is written afterwards, before your next turn, instead of before the arrival (#1633).

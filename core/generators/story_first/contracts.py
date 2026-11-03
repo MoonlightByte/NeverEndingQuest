@@ -304,6 +304,11 @@ def outline_schema() -> Dict[str, Any]:
                 "type": "array",
                 "items": {"type": "string", "minLength": 5},
             },
+            # #1481: the party tracker's opening conditions where the entry beat
+            # opens, as T028 authors them; an empty value is not authored and
+            # the first run asks T093 (#1478).
+            "openingWeather": {"type": "string"},
+            "openingPoliticalClimate": {"type": "string"},
         }
     )
 
