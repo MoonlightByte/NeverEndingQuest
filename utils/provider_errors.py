@@ -82,6 +82,14 @@ _ACCOUNT_REFUSALS = {
     },
 }
 
+# #1711: with the operator's --provider-gateway the host holds the account,
+# so a refused key, quota or model is never the player's to fix.
+_HOSTED_ACCOUNT_REFUSAL = {
+    "reason": "The game's AI service refused the request",
+    "fix": "This is on the host's side, not yours: let the host know, or wait a few minutes",
+}
+_HOSTED_ACCOUNT_CATEGORIES = ("authentication_failed", "insufficient_quota", "model_access_denied")
+
 _ACCOUNT_REFUSAL_MOMENTS = {
     # The turn loop's DM call: nothing from the turn has run yet.
     "turn": "%s. Nothing in your game was changed. %s, then try that action again.",
@@ -108,7 +116,12 @@ def account_refusal_message(category, provider, moment):
     template = _ACCOUNT_REFUSAL_MOMENTS.get(moment)
     if entry is None or template is None:
         return None
-    entry = entry.get("overrides", {}).get(str(provider or "").lower(), entry)
+    from utils.provider_gateway import gateway
+
+    if category in _HOSTED_ACCOUNT_CATEGORIES and gateway() is not None:
+        entry = _HOSTED_ACCOUNT_REFUSAL
+    else:
+        entry = entry.get("overrides", {}).get(str(provider or "").lower(), entry)
     reason = entry["reason"] % {"name": provider_display_name(provider)}
     return _sentence(template % (reason, entry["fix"]))
 
