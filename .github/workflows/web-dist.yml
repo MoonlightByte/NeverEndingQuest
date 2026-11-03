@@ -1,0 +1,77 @@
+# Web player build per commit (#1710, O3): every push to main, or a manual run,
+# builds web/frontend/dist on Linux from the lockfile and uploads the artifact
+# neq-web-dist-<sha>: neq-web-dist-<sha>.zip (it holds dist/) and
+# neq-web-dist-<sha>.zip.sha256. A hosted install ships this dist and starts the
+# game with --shipped-frontend (#1710), so the host never needs Node.js.
+# No cache, no secrets, no release. 0 model calls.
+#
+# Install step, on an operator machine with a logged-in gh (no token is stored
+# on the host or anywhere else):
+#   gh run list -R MoonlightByte/NeverEndingQuest -w web-dist.yml -L 100 --json databaseId,headSha,conclusion \
+#     --jq '[.[] | select(.headSha == "<sha>" and .conclusion == "success")][0].databaseId'
+#   gh run download <run id> -R MoonlightByte/NeverEndingQuest -n neq-web-dist-<sha> -D web-dist-<sha>
+#   (cd web-dist-<sha> && sha256sum -c neq-web-dist-<sha>.zip.sha256)
+#   unzip -q web-dist-<sha>/neq-web-dist-<sha>.zip -d <install>/web/frontend
+# then make the install read-only. Artifacts are kept 30 days; for an older
+# commit, run this workflow by hand on it.
+name: web-dist
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-dist-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  web-dist:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # No dependency cache: the dist is built from the lockfile alone.
+      - name: Node.js 20.19.6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "20.19.6"
+          package-manager-cache: false
+
+      - name: Build the web player
+        working-directory: web/frontend
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+
+      - name: Check the web player
+        run: python3 run_web.py --frontend-ready --shipped-frontend
+
+      - name: Package
+        env:
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          name="neq-web-dist-${SOURCE_SHA}"
+          mkdir -p out
+          (cd web/frontend && zip -X -r -q "../../out/${name}.zip" dist)
+          (cd out && sha256sum "${name}.zip" > "${name}.zip.sha256")
+          cat "out/${name}.zip.sha256"
+
+      - name: Upload neq-web-dist
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: neq-web-dist-${{ github.sha }}
+          path: |
+            out/neq-web-dist-${{ github.sha }}.zip
+            out/neq-web-dist-${{ github.sha }}.zip.sha256
+          retention-days: 30
+          if-no-files-found: error
