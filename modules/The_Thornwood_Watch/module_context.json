@@ -271,7 +271,9 @@
     "RO04": {
       "name": "Scout's Watch at the East Tower",
       "area": "RO001",
-      "npcs": [],
+      "npcs": [
+        "Scout Neris"
+      ],
       "connections": [
         "RO01",
         "RO02"
