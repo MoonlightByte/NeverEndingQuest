@@ -44,6 +44,27 @@ def _requires(point, titles):
     return ""
 
 
+def plot_points_here(plot_data, area_id):
+    """The DM Note's open plot points in this area (C3: ids only). #1723: with
+    the engine's record, a not-started point is named only once its
+    requirements are complete, as the next objective; a started one is
+    active. Without an engine view (no ready field) the ids are listed as
+    before."""
+    from utils import quest_record
+    out = []
+    for point in (plot_data or {}).get("plotPoints") or []:
+        if not (isinstance(point, dict) and point.get("location") == area_id
+                and not quest_record.is_closed(point) and point.get("id")):
+            continue
+        if "ready" not in point:
+            out.append(point["id"])
+        elif point.get("status") == "in progress":
+            out.append(f"{point['id']} (active)")
+        elif point.get("ready"):
+            out.append(f"{point['id']} (next objective, not started)")
+    return out
+
+
 def format_plot_for_ai(plot_data):
     """
     Format plot data into readable text for AI DM
