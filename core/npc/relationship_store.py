@@ -251,7 +251,7 @@ def _identities_for_legacy_seed(snapshot: Mapping[str, Any], legacy_name: str) -
         from utils.module_path_manager import character_sheet_path
 
         seed = normalize_identity_seed(character_sheet_path(legacy_name))
-    except Exception:
+    except (AttributeError, TypeError, ValueError, OSError):
         return []
     return [
         identity_id
