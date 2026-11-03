@@ -108,8 +108,13 @@ def update_character_with_effects(
     action_context=None,
     affects=None,
     casting_resource=None,
+    post_combat=None,
 ):
-    """Classifier-first T078 -> T079 character update for a migrated campaign."""
+    """Classifier-first T078 -> T079 character update for a migrated campaign.
+
+    ``post_combat`` (#1730): the completed fight's encounter id when this
+    update comes from the automatic post-combat pass; only recovery commits.
+    """
     if not campaign_effects_migrated():
         # Explicit recovery fallback for campaigns whose automatic conversion
         # was blocked.  Normal converted campaigns never execute this path.
@@ -117,8 +122,10 @@ def update_character_with_effects(
             character_name, changes, action_context=action_context,
             affects=affects,
             casting_resource=casting_resource,
+            post_combat=post_combat,
         )
-        if success:
+        # #1730: a post-combat recovery adds no effect.
+        if success and post_combat is None:
             from updates.update_character_effects import update_character_effects
 
             update_character_effects(character_name, changes)
@@ -140,6 +147,7 @@ def update_character_with_effects(
                 action_context=action_context,
                 affects=affects,
                 casting_resource=casting_resource,
+                post_combat=post_combat,
             )
     if success and classifier.cast:
         from core.managers.concentration_runtime import record_cast
