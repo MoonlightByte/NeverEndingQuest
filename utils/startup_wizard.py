@@ -2558,7 +2558,12 @@ def _startup_configuration_handback(exc, provider, revision, scope):
         wait_for_configuration,
     )
     from utils.capture.live_provider_call import LiveProviderSuperseded, _safe_emit
+    from utils.provider_gateway import gateway
 
+    # #1711: with the operator's gateway there is no Settings to save; the
+    # bounded pause keeps the input and the next message retries.
+    if gateway() is not None:
+        return False
     message = configuration_required_message(exc)
     if message is None:
         return False

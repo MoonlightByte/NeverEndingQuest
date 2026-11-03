@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - A weapon hit you roll the damage for now shows the damage it did once the hit is scored: the dice, your bonus and the total, and any resistance, in one line instead of the dice alone (#1721).
+- In a hosted game, a refused AI key, quota or model during character creation no longer locks the input or points to Settings the player does not have: the message says the problem is on the host's side, setup choices are kept, and the next message tries again (#1711).
 
 ## [1.1.1] - 2026-11-02
 
