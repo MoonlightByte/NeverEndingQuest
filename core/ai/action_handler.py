@@ -4769,7 +4769,97 @@ COMBAT_START_REASONS = {
 }
 
 
-def _combat_start_failed(reason, conversation_history, invocation_claim):
+def stage_encounter_payments(actions):
+    """#1731: the actions before a reply's fight start, or None when none.
+
+    Read from the typed actions only. ``staged``: every updateCharacterInfo
+    with a castingResource object before the reply's first createEncounter;
+    the turn loop skips them and the encounter runs them after its fight is
+    built, before play, so a failed setup spends nothing. ``committed``:
+    every other earlier action, which runs in order as before.
+    """
+    if not isinstance(actions, list):
+        return None
+    encounter_index = next((
+        index for index, action in enumerate(actions)
+        if isinstance(action, dict) and action.get("action") == ACTION_CREATE_ENCOUNTER), None)
+    if encounter_index is None:
+        return None
+    staged = [
+        index for index, action in enumerate(actions[:encounter_index])
+        if isinstance(action, dict) and action.get("action") == ACTION_UPDATE_CHARACTER_INFO
+        and isinstance(action.get("parameters"), dict)
+        and isinstance(action["parameters"].get("castingResource"), dict)
+    ]
+    if encounter_index == 0:
+        return None
+    return {
+        "actions": copy.deepcopy(actions),
+        "encounter_index": encounter_index,
+        "staged": staged,
+        "committed": [index for index in range(encounter_index) if index not in staged],
+        "paid": False,
+    }
+
+
+def _payment_label(action):
+    """A staged payment as the notice names it, from its typed fields (#1731)."""
+    parameters = action.get("parameters") or {}
+    choice = parameters.get("castingResource") or {}
+    if choice.get("kind") == "slot" and type(choice.get("level")) is int:
+        resource = "level %d spell slot" % choice["level"]
+    elif choice.get("kind") == "feature" and isinstance(choice.get("featureName"), str):
+        resource = "%s use" % choice["featureName"]
+    else:
+        resource = "casting resource"
+    spell = choice.get("spell")
+    return "%s's %s%s" % (parameters.get("characterName") or "the caster", resource,
+                          " for %s" % spell if isinstance(spell, str) and spell else "")
+
+
+def _action_label(action):
+    parameters = action.get("parameters") if isinstance(action, dict) else None
+    name = parameters.get("characterName") if isinstance(parameters, dict) else None
+    kind = str(action.get("action")) if isinstance(action, dict) else "action"
+    return "%s for %s" % (kind, name) if isinstance(name, str) and name else kind
+
+
+def _encounter_payment_lines(payments):
+    """The exact outcome of a failed fight start's earlier actions (#1731)."""
+    staged = [_payment_label(payments["actions"][index]) for index in payments["staged"]]
+    committed = [_action_label(payments["actions"][index]) for index in payments["committed"]]
+    if payments["paid"]:
+        committed, staged = committed + staged, []
+    lines = []
+    if staged:
+        lines.append("Not spent: %s (the payment waits for the fight)." % "; ".join(staged))
+    lines.append("Committed earlier in this reply: %s." % ("; ".join(committed) if committed else "none"))
+    return " ".join(lines)
+
+
+def _pay_encounter(payments, party_tracker_data, location_data, conversation_history,
+                   invocation_claim, turn_roster):
+    """Commit the staged payments of a built fight, in reply order (#1731).
+
+    Returns None once all are paid, else the first payment's own result (a
+    Rules Error or a failure), which ends the turn before the fight starts.
+    """
+    for index in payments["staged"]:
+        result = process_action(
+            payments["actions"][index], party_tracker_data, location_data, conversation_history,
+            invocation_claim=invocation_claim,
+            action_context={"actions": copy.deepcopy(payments["actions"]), "current_index": index},
+            turn_roster=turn_roster,
+        )
+        if not isinstance(result, dict) or result.get("status") != "continue":
+            return result
+        payments["committed"].append(index)
+        payments["staged"] = [later for later in payments["staged"] if later != index]
+    payments["paid"] = True
+    return None
+
+
+def _combat_start_failed(reason, conversation_history, invocation_claim, payments=None):
     """Close a createEncounter that ended without a finished fight (#444).
 
     The tracker decides. A fight still active there stays saved and resumes
@@ -4795,15 +4885,22 @@ def _combat_start_failed(reason, conversation_history, invocation_claim):
     ):
         return {"status": "error", "needs_update": False}
     _last_failed_combat_turn = turn_id
-    conversation_history.append({
-        "role": "user",
-        "content": (
+    if payments is None:
+        content = (
             "Combat Error: the encounter you requested could not be set up "
             "(%s), so no fight has started and nothing changed. Answer the "
             "player's last action again without this fight; request it again "
             "only if it still fits." % COMBAT_START_REASONS[reason]
-        ),
-    })
+        )
+    else:
+        # #1731: say exactly what this reply spent and what it did not.
+        content = (
+            "Combat Error: the encounter you requested could not be set up "
+            "(%s), so no fight has started. %s Answer the player's last action "
+            "again without this fight; request it again only if it still fits."
+            % (COMBAT_START_REASONS[reason], _encounter_payment_lines(payments))
+        )
+    conversation_history.append({"role": "user", "content": content})
     return {"status": "needs_response", "needs_update": True}
 
 
@@ -4849,8 +4946,12 @@ def process_action(
     action_context=None,
     level_up_context=None,
     turn_roster=None,
+    encounter_payments=None,
 ):
     """Process an action based on its type
+
+    ``encounter_payments`` (#1731, createEncounter only) holds the reply's
+    staged castingResource payments from ``stage_encounter_payments``.
     
     Returns:
         RestoreRequest for model-requested Load, before any restore mutation;
@@ -5058,7 +5159,8 @@ def process_action(
                 if reloaded_location_data is None:
                     print(f"ERROR: Failed to load location data for {current_location_id}")
                     return _combat_start_failed(
-                        "location_unreadable", conversation_history, invocation_claim
+                        "location_unreadable", conversation_history, invocation_claim,
+                        payments=encounter_payments,
                     )
 
                 # #1118 item 3: combat interrupts a short rest still held for the player's hit die.
@@ -5075,6 +5177,13 @@ def process_action(
                 for check in checks_state.close_pending_checks():
                     conversation_history.append({"role": "user", "content": (
                         f"{check.get('characterName')} {checks.label(check.get('stat'))}: not resolved (combat began)")})
+
+                if encounter_payments:
+                    # #1731: the fight is built; its opening payment commits now.
+                    refused = _pay_encounter(encounter_payments, party_tracker_data, location_data,
+                                             conversation_history, invocation_claim, turn_roster)
+                    if refused is not None:
+                        return refused
 
                 print(f"[DEBUG ACTION_HANDLER] About to call run_combat_simulation with encounter: {encounter_id}")
                 print("[DEBUG ACTION_HANDLER] This should start INTERACTIVE turn-based combat...")
@@ -5167,7 +5276,8 @@ def process_action(
                     and combat_result[0]
                 ):
                     return _combat_start_failed(
-                        "combat_not_started", conversation_history, invocation_claim
+                        "combat_not_started", conversation_history, invocation_claim,
+                        payments=encounter_payments,
                     )
                 dialogue_summary, updated_player_info = combat_result
                 fight_finished = True
@@ -5235,7 +5345,8 @@ def process_action(
                 print(f"[DEBUG ACTION_HANDLER] Full stderr: {result.stderr}")
                 print("[DEBUG ACTION_HANDLER] ========== CREATE ENCOUNTER END WITH FAILURE ==========\n")
                 return _combat_start_failed(
-                    build_failure, conversation_history, invocation_claim
+                    build_failure, conversation_history, invocation_claim,
+                    payments=encounter_payments,
                 )
 
         except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
@@ -5247,7 +5358,8 @@ def process_action(
             print("Error output:", e.stderr)
             print("Standard output:", e.stdout)
             return _combat_start_failed(
-                "builder_failed", conversation_history, invocation_claim
+                "builder_failed", conversation_history, invocation_claim,
+                payments=encounter_payments,
             )
         except Exception as e:
             print(f"Unexpected error occurred: {e}")
@@ -5259,7 +5371,8 @@ def process_action(
             if fight_finished:
                 return create_return(status="error", needs_update=False)
             return _combat_start_failed(
-                "combat_not_started", conversation_history, invocation_claim
+                "combat_not_started", conversation_history, invocation_claim,
+                payments=encounter_payments,
             )
 
     elif action_type == ACTION_UPDATE_TIME:
