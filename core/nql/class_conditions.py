@@ -21,6 +21,9 @@ the Condition instances a character holds:
   by slot (``unless slot``, NQL 7316e58), so the instance does not depend on
   what the sheet wears. A sheet with two such classes keeps its primary
   class's only (SRD: Unarmored Defense cannot be gained twice), with a note;
+- the Attack action's attack count (#1762): Extra Attack and the Fighter's
+  Two and Three Extra Attacks in progression.json's ``features_by_level`` at
+  the sheet's typed single-class level (``attack_action_count``);
 - ``feature:ac-formula:<class>:<feature>`` (#1433): any other ``ac_formulas``
   entry (a subclass or later-level base AC such as the Draconic Sorcerer's
   Draconic Resilience), when the sheet's primary class is that class at a
@@ -224,6 +227,32 @@ def _monk_level(sheet: Dict[str, Any], names: List[str], notes: List[str], cid: 
         return None
     level = sheet.get("level")
     return level if type(level) is int and 1 <= level <= 20 else None
+
+
+# #1762: the attacks one Attack action makes, by the exact feature names
+# progression.json lists in features_by_level (authored data, not prose).
+_ATTACK_ACTION_FEATURES = {"Extra Attack": 2, "Two Extra Attacks": 3, "Three Extra Attacks": 4}
+
+
+def attack_action_count(sheet: Dict[str, Any]) -> int:
+    """#1762: the attacks the sheet's Attack action makes: the largest count
+    its class's features_by_level gives at or below the sheet's typed level,
+    else 1. A multiclass sheet has no typed per-class level, so it keeps 1
+    (the SRD's Extra Attack features never add up across classes anyway)."""
+    names = class_names(sheet) if isinstance(sheet, dict) else []
+    level = sheet.get("level") if isinstance(sheet, dict) else None
+    if len(names) != 1 or type(level) is not int or not 1 <= level <= 20:
+        return 1
+    record = _classes(_load(PROGRESSION_PATH), "classes").get(names[0])
+    by_level = record.get("features_by_level") if isinstance(record, dict) else None
+    count = 1
+    for key, features in (by_level.items() if isinstance(by_level, dict) else ()):
+        if not (isinstance(key, str) and key.isdigit() and int(key) <= level and isinstance(features, list)):
+            continue
+        for feature in features:
+            if isinstance(feature, str):
+                count = max(count, _ATTACK_ACTION_FEATURES.get(feature, 1))
+    return count
 
 
 def _proficient_weapons(sheet: Dict[str, Any], primary: Optional[str], notes: List[str], cid: str) -> List[str]:
