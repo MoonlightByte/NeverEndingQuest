@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - A game with a separate data folder now keeps its lock files there instead of in the install folder, so it can save when the install folder is read-only; without a data folder nothing changes (#1708).
+- The README download steps now follow what Edge shows for the unsigned installer (More actions, Keep, then Keep anyway) and say the Windows "protected your PC" box may not appear (#1704).
 
 ## [1.1.0] - 2026-11-01
 

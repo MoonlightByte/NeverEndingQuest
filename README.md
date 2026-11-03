@@ -7,9 +7,18 @@ Download `NeverEndingQuest-Setup-1.1.0.exe` from the
 It installs for your user only (no admin prompt) and keeps your saves in `%APPDATA%\NeverEndingQuest`,
 also when you uninstall it.
 
-**Why Windows warns you:** the installer is not code-signed yet, so Microsoft Defender SmartScreen does not
-recognise it and shows a purple "Windows protected your PC" box ("Microsoft Defender SmartScreen prevented an
-unrecognized app from starting..."). To install:
+**Why you see warnings:** the installer is not code-signed yet, so Microsoft Defender SmartScreen does not
+recognise it. In Edge, the download is held first:
+
+1. Edge's downloads list says the file "isn't commonly downloaded". Choose **More actions** (**...**), then **Keep**.
+2. Edge then shows a second box, "Microsoft Defender SmartScreen couldn't verify if this file is safe". Open the
+   arrow next to **Delete** and choose **Keep anyway**.
+
+Other browsers may hold the download with their own warning; choose their option to keep the file.
+
+When you open the downloaded file, Setup may start straight away, or Windows may first show a purple "Windows
+protected your PC" box ("Microsoft Defender SmartScreen prevented an unrecognized app from starting..."). If
+that box appears:
 
 1. Choose **More info**. The box now shows the file name you downloaded and "Publisher: Unknown publisher".
 2. Choose **Run anyway**.
