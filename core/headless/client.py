@@ -10,7 +10,7 @@ for harnesses and agents:
     from core.headless.client import HeadlessClient
 
     with HeadlessClient(module="The_Thornwood_Watch",
-                        character="pc.json",
+                        character="/tmp/pc.json",
                         game_dir="/tmp/neq-test") as game:
         opening = game.opening          # TurnResult for the startup kickoff
         turn = game.play("I look around the room")
