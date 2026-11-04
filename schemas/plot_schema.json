@@ -38,6 +38,67 @@
             },
             "description": "Array of plot point IDs that could follow this one"
           },
+          "completion": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "version",
+              "impact"
+            ],
+            "anyOf": [
+              {
+                "required": [
+                  "visited"
+                ]
+              },
+              {
+                "required": [
+                  "resolved"
+                ]
+              }
+            ],
+            "description": "Optional typed condition (#1122): the rules engine closes this entry when it is met.",
+            "properties": {
+              "version": {
+                "type": "integer",
+                "const": 1
+              },
+              "visited": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "pattern": "^[A-Z]{1,3}[0-9]{2}$"
+                }
+              },
+              "resolved": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "locationId",
+                    "occupant"
+                  ],
+                  "properties": {
+                    "locationId": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{1,3}[0-9]{2}$"
+                    },
+                    "occupant": {
+                      "type": "string",
+                      "pattern": "^[a-z0-9_-]+$"
+                    }
+                  }
+                }
+              },
+              "impact": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
           "status": {
             "type": "string",
             "description": "Current status of the plot point",
@@ -70,6 +131,67 @@
                     "type": "string"
                   },
                   "description": "Array of locationIds involved in the side quest"
+                },
+                "completion": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "version",
+                    "impact"
+                  ],
+                  "anyOf": [
+                    {
+                      "required": [
+                        "visited"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "resolved"
+                      ]
+                    }
+                  ],
+                  "description": "Optional typed condition (#1122): the rules engine closes this entry when it is met.",
+                  "properties": {
+                    "version": {
+                      "type": "integer",
+                      "const": 1
+                    },
+                    "visited": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[A-Z]{1,3}[0-9]{2}$"
+                      }
+                    },
+                    "resolved": {
+                      "type": "array",
+                      "minItems": 1,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "locationId",
+                          "occupant"
+                        ],
+                        "properties": {
+                          "locationId": {
+                            "type": "string",
+                            "pattern": "^[A-Z]{1,3}[0-9]{2}$"
+                          },
+                          "occupant": {
+                            "type": "string",
+                            "pattern": "^[a-z0-9_-]+$"
+                          }
+                        }
+                      }
+                    },
+                    "impact": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
                 },
                 "status": {
                   "type": "string",
