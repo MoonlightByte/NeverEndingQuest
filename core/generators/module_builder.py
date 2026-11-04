@@ -1080,6 +1080,8 @@ MODULE INDEPENDENCE RULES:
                 raise OSError(f"Could not save story-first monster {monster['name']}")
 
         entry = mutable_copy(result.entry)
+        # The outline's opening conditions, as T028's on the classic path (#1481).
+        self.opening_conditions = _opening_conditions(mutable_copy(result.outline))
         self.create_party_tracker(
             start_area_id=entry["entryAreaId"],
             start_location_id=entry["entryLocationId"],
