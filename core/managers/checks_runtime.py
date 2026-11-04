@@ -128,26 +128,38 @@ def _roll_prompt_line(entry: Dict[str, Any]) -> str:
     return f'[{what}. {dice}, or "roll"] '
 
 
+def _hit_die_roll(entry: Dict[str, Any]) -> Dict[str, Any]:
+    """The typed roll of a held rest (#1811): the hit dice the read's settle takes."""
+    return {"kind": "hitDie", "label": f"Hit die for {entry.get('characterName')}",
+            "dice": [{"count": entry.get("count"), "sides": entry.get("die")}], "eachDie": entry.get("count") != 1}
+
+
 def read_player_line(read: Callable[[str], str], prompt: str) -> str:
     """The free-command read (#1118 item 4). While a check heads the queue its panel is published for this
     read and cleared once the read returns or raises; the line read is the answer (the settle takes it).
     #1630: the input opens (status ready) only after the panel is published, so a client never sees an open
     input without the waiting check's panel; a failed publish still opens it. #1734: the panel is the request,
-    whether or not the narration asked; with no frontend to show it, the read prompt carries it."""
+    whether or not the narration asked; with no frontend to show it, the read prompt carries it. #1811: a held
+    rest, which the same settle takes after any check, opens its typed roll for this read too."""
     from core.managers.status_manager import status_ready
     from web.shared_state import has_player_output_sink
 
     pending = checks_state.pending_checks()
+    rest = None if pending else checks_state.pending_rest()
     try:
         try:
             if pending:
                 roll_prompt.publish({**pending[0], "label": checks.label(pending[0]["stat"])})
+            elif rest:
+                roll_prompt.open_line(_hit_die_roll(rest))
         finally:
             status_ready()
         return read(_roll_prompt_line(pending[0]) + prompt if pending and not has_player_output_sink() else prompt)
     finally:
         if pending:
             roll_prompt.publish(None)
+        elif rest:
+            roll_prompt.open_line(None)
 
 
 def _last_dm_narration(conversation_history: Any) -> str:

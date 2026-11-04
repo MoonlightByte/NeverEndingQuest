@@ -2,13 +2,20 @@
 
     A prompt token changes on each input attempt. Web clients may submit it
     once; the engine owns the dice and never accepts client-authored totals.
+
+    #1811: line_roll() is the typed roll the line being read answers, for a
+    client with no panel. A check's is built from the panel's own record; a
+    hit die or a combat roll has no panel, so its read opens one with
+    open_line, which no listener hears: the web panel stays the check's alone.
 """
+from contextlib import contextmanager
 from copy import deepcopy
 import threading
 import uuid
 
 _lock = threading.RLock()
 _active = None
+_open_roll = None
 _listener = None
 
 
@@ -30,6 +37,43 @@ def publish(entry):
         snapshot = deepcopy(_active)
     if _listener is not None:
         _listener(snapshot)
+
+
+def _check_roll(entry):
+    """The typed roll of a published check: what its panel shows, from the same record."""
+    roll = {"kind": "check", "label": "%s for %s" % (entry.get("label"), entry.get("characterName")),
+            "mode": entry.get("netMode"), "dice": [{"count": entry.get("faces"), "sides": 20}],
+            "eachDie": entry.get("faces") != 1}
+    if entry.get("reason"):
+        roll["reason"] = entry["reason"]
+    if entry.get("dc") is not None:
+        roll["dc"] = entry["dc"]
+    if entry.get("dice"):
+        roll["addedDice"] = deepcopy(entry["dice"])
+    return roll
+
+
+def open_line(request):
+    """Hold the typed roll of a read with no panel; None clears it."""
+    global _open_roll
+    with _lock:
+        _open_roll = deepcopy(request)
+
+
+@contextmanager
+def reading_line(request):
+    """The typed roll stays open only while its line is read."""
+    open_line(request)
+    try:
+        yield
+    finally:
+        open_line(None)
+
+
+def line_roll():
+    """The typed roll the line being read answers, or None."""
+    with _lock:
+        return _check_roll(_active) if _active else deepcopy(_open_roll)
 
 
 def submit(token, faces, enqueue):

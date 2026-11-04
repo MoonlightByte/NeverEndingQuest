@@ -2738,6 +2738,55 @@ def _phase_request(record, entry):
             "eachDie": _wants_each_die(record, count)}
 
 
+def _open_phase_roll(record):
+    """#1811: the typed roll of an open code phase, from the record's own dice."""
+    terms = _roll_die_terms(record.get("dice"))
+    if not terms:
+        return None
+    count, attack = terms[0][0], record.get("phase") == "attack"
+    roll = {"kind": "phase", "label": _phase_weapon(record, None), "phase": record.get("phase"),
+            "dice": [{"count": term[0], "sides": term[1]} for term in terms],
+            "eachDie": bool(_wants_each_die(record, count) or _rider_terms(record) or (attack and count > 1))}
+    for die, rider in zip(roll["dice"][1:], record.get("damageRiders") or []):
+        die["name"] = rider.get("label")
+    if record.get("targetName"):
+        roll["target"] = _spoken_name(record["targetName"])
+    if attack and count > 1 and record.get("mode"):
+        roll["mode"] = record["mode"]
+    return roll
+
+
+def _open_ask_roll(last):
+    """#1811: the typed roll of the model's open ask, its riders after the main dice. Each die is a face
+    T096 must copy or a rider code splits off, so a line takes one number for each."""
+    terms = _roll_die_terms(last.get("requestedRoll"))
+    if not terms:
+        return None
+    offer = last.get("riderOffer") if isinstance(last.get("riderOffer"), dict) else {}
+    riders = offer.get("riders") or []
+    dice = [{"count": term[0], "sides": term[1]} for term in terms]
+    for rider in riders:
+        count, sides = _roll_die_terms(rider["die"])[0]
+        dice.append({"count": count, "sides": sides, "name": rider["label"]})
+    phase = last.get("requestedPhase")
+    roll = {"kind": "ask", "label": offer.get("mainName") or phase or "roll", "phase": phase, "dice": dice,
+            "eachDie": sum(die["count"] for die in dice) > 1}
+    if last.get("requestedDc") is not None:
+        roll["dc"] = last["requestedDc"]
+    return roll
+
+
+def open_roll_request(pending):
+    """The typed roll the next combat line answers, or None (#1811): the open code
+    phase, else the model's ask on the last live exchange. A question is no roll."""
+    record = pending.get("weaponAttack") if isinstance(pending, dict) else None
+    if isinstance(record, dict) and record.get("ready") is not True and isinstance(record.get("dice"), str):
+        return _open_phase_roll(record)
+    exchanges = live_exchanges(pending)
+    last = exchanges[-1] if exchanges else None
+    return _open_ask_roll(last) if isinstance(last, dict) and last.get("dmRequest") else None
+
+
 def _main_swing_facts(record):
     """R3: the Action's scored, uncommitted swing at the off-hand phase, as typed facts."""
     main = record.get("mainSwing") if record.get("bonusAttack") is True else None

@@ -177,7 +177,8 @@ from core.combat.down_scene import (
     from_encounter as down_scene_rules_from_encounter,
     is_go_on,
 )
-from core.managers.combat_orchestrator import CombatTurnPaused, execute_agentic_turn
+from core.managers import roll_prompt
+from core.managers.combat_orchestrator import CombatTurnPaused, execute_agentic_turn, open_roll_request
 from core.combat.invocation import InvocationSupersededError
 from utils.capture.live_provider_call import LiveProviderCompletedError, LiveProviderSuperseded
 
@@ -1626,6 +1627,15 @@ def _open_weapon_roll_prompt(json_file_path):
             if record.get("phase") == "damage" else "",
         )
     return None
+
+
+def _open_line_roll(json_file_path):
+    """#1811: the typed roll the next combat line answers, or None."""
+    try:
+        state = (safe_json_load(json_file_path) or {}).get("combatState") or {}
+        return open_roll_request(state.get("pendingTurn"))
+    except Exception:
+        return None
 
 
 def _agentic_combat_context(encounter_data, path_manager, monster_templates):
@@ -5022,9 +5032,12 @@ This is narration only. Do not advance the round or apply any combat action."""
                )
                if opening_action:
                    _offer_opening_action(opening_action)
-               user_input_text = input(
-                   weapon_roll_prompt or f"{stats_display} {player_name_display}: "
-               )
+               with roll_prompt.reading_line(
+                   _open_line_roll(json_file_path) if agentic_mode else None
+               ):
+                   user_input_text = input(
+                       weapon_roll_prompt or f"{stats_display} {player_name_display}: "
+                   )
                if weapon_roll_prompt:
                    weapon_roll_answer = user_input_text
                    if not user_input_text.strip():

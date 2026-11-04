@@ -88,7 +88,7 @@ and `ts` (unix seconds).
 | `narration` | `channel` (`main`/`combat`/`levelup`/`system`), `content`, `source` (`sink` or `stdout_scrape`) | DM output for the player. `source: "sink"` is the structured path all engine narration uses; `stdout_scrape` marks a fallback recovery from raw stdout and normally never appears |
 | `status` | `message`, `is_processing`, `recovery_required` | engine busy/idle heartbeat. While `recovery_required` is true, an idle status reads "Gameplay is paused. Choose a save to Load, Reset, or Quit." and only list-saves, Load, Reset or Quit are accepted |
 | `welcome_progress` | `message`, `kind?` (`opening_scene`/`resume`) | background progress of a new game's opening scene (`opening_scene`, e.g. "The DM is setting the opening scene...") or a resumed game's welcome (`resume`, "The DM is recalling your journey..."). Presentational only: it is not a `status` event and never locks input. An empty `message` clears it |
-| `prompt` | `kind` (`main`/`combat`/`levelup`/`roll`/`wizard`/`unknown`), `raw_prompt`, `stats` (`hp`, `max_hp`, `xp`, `next_level_xp`, `time`, `time_context` when available), `pendingRoll` (only while the game holds a roll for the player: `{kind: "check" | "hitDie", label, dice: [{count, sides}]}`; a waiting check comes first) | **the engine is waiting for input; the turn boundary** |
+| `prompt` | `kind` (`main`/`combat`/`levelup`/`roll`/`wizard`/`unknown`), `raw_prompt`, `stats` (`hp`, `max_hp`, `xp`, `next_level_xp`, `time`, `time_context` when available), `roll` (only when the next line answers a roll; see "The `roll` object"), `pendingRoll` (the same roll as `{kind: "check" | "hitDie", label, dice: [{count, sides}]}`, only for a check or a short rest's hit dice this line answers; a waiting check comes first) | **the engine is waiting for input; the turn boundary** |
 | `state` | see below | snapshot taken right after `prompt` |
 | `system` | `content` | structured system messages (module transitions, safe-action failures, bootstrap notes) |
 | `debug` | `content`, `is_error` | raw engine chatter; only emitted with `--debug`, except engine-crash tracebacks, which are always emitted |
@@ -132,13 +132,11 @@ Rules (live-accepted on 2026-10-24 by the L12 headless save, load and resume run
 - Restart ends this process's ephemeral queue. A command known to be undispatched
   must be resubmitted; a missing result alone is not proof it never executed.
   Never blindly resend gameplay input merely because it had no command result.
-- A `prompt {kind: "roll"}` asks for a die result in combat (its prompt
-  carries `[ROLL]`): send the face as `input`, or an empty line to let the
-  game roll. A check outside combat and a short rest's hit dice raise no such
-  prompt: the DM asks for them in the story, the next ordinary `prompt`
-  carries `pendingRoll {kind: "check"}` or `{kind: "hitDie"}`, and the player
-  answers in an ordinary `input` (the faces, a request to roll, a question, or
-  a change of mind).
+- A `prompt` with a `roll` field means the next line answers that roll,
+  whatever its `kind`: send the numbers as `input`, or the word `roll` to let
+  the game roll. A question or a change of mind is an ordinary line. With no
+  `roll` field, the line is not read as a roll, even if a check is waiting:
+  a check held during a fight stays held until a prompt carries it.
 - Reset requires `args.confirmed: true` (otherwise the result is
   `reset requires args.confirmed=true`). Like a clean restore, it ends with
   `exit {reason: "restart"}`; relaunch to play the reset campaign.
@@ -157,6 +155,31 @@ Rules (live-accepted on 2026-10-24 by the L12 headless save, load and resume run
   elapsed)..." during the interview.
 - NPC-initiative combat turns can produce narration with no intervening
   `prompt` -- do not assume strict prompt/narration alternation.
+
+### The `roll` object
+
+Built from the game's typed records, never from `raw_prompt` or narration. It
+is on the prompt only while that line is being read:
+
+```json
+{"kind": "phase", "label": "Dagger (Dexterity)", "phase": "damage", "target": "Trader Sila",
+ "dice": [{"count": 1, "sides": 4}, {"count": 1, "sides": 6, "name": "Hex"}], "eachDie": true}
+```
+
+| field | meaning |
+|---|---|
+| `kind` | `check`, `hitDie`, `phase` (the game's own combat roll; `prompt.kind` is `roll`), or `ask` (the DM asked for this roll in combat; `prompt.kind` is `combat`) |
+| `label` | what the roll is for: "Dexterity check for Mira Willowmere", a weapon or spell as the sheet names it, or the phase of a DM's ask |
+| `dice` | what the player rolls, main dice first; a die added by a spell such as Hex has a `name` |
+| `eachDie` | `true`: one number for each die, in `dice` order. `false`: one total |
+| `phase` | combat only: `attack`, `damage`, or the DM's typed phase |
+| `target` | a `phase` roll's target |
+| `mode` | `normal`, `advantage` or `disadvantage`, where the game holds it. With two d20s, send both: the game keeps the right one |
+| `reason`, `dc` | why the roll is asked, and its DC, when set |
+| `addedDice` | `[{name, count, sides}]`: dice the game adds to a check itself (Guidance, Bless). Do not roll these |
+
+A blank line also lets the game roll at a `check`, `hitDie` or `phase` roll. At
+an `ask` it does nothing, and the prompt comes back.
 
 ### The `state` snapshot
 
