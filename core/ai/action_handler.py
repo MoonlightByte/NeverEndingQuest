@@ -1726,7 +1726,14 @@ def apply_current_transition_action(operation_id, action_index):
             record["receipt"] = receipt
             _write_location_transition_checkpoint(checkpoint)
         if receipt.get("quest_status") == "prepared":
+            # #1733: a typed point this arrival meets closes first, so the
+            # DM's update behind the same move is not refused for it.
+            typed_closed = _quest_record.apply_typed_completions(
+                str(receipt.get("module") or ""), journal=False
+            )
             quest_outcome = _quest_record.apply_travel_receipt(receipt)
+            if typed_closed and quest_outcome != "committed":
+                _quest_record.owe_journal(str(receipt.get("module") or ""))
             _write_location_transition_checkpoint(checkpoint)
         else:
             # refused before movement, or already committed / attempted on
