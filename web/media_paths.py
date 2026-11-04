@@ -8,8 +8,12 @@ route: the current module, every other module, then the static fallback.
 """
 import os
 import posixpath
+import re
 
 MEDIA_TYPES = ("monsters", "npcs", "environment")
+# The name generated scene images are saved under (#1755); anything else in the
+# images folder (image_metadata.json) is never served.
+GENERATED_IMAGE_NAME = re.compile(r"img_[A-Za-z0-9_.-]+\.png")
 
 
 def _safe_relative(filename):
@@ -90,3 +94,16 @@ def resolve_media_path(media_type, filename, current_module, modules_dir,
         return resolve_media_path("monsters", filename, current_module,
                                   modules_dir, static_media_dir)
     return None
+
+
+def resolve_generated_image(module, filename, modules_dir):
+    """A saved scene image in modules/<module>/images, or None (#1755).
+
+    The module is the one the image was saved under, named in the URL, so
+    there is no lookup across modules or into static media.
+    """
+    if not _safe_component(module) or not os.path.isdir(os.path.join(modules_dir, module)):
+        return None
+    if not _safe_component(filename) or not GENERATED_IMAGE_NAME.fullmatch(filename):
+        return None
+    return resolve_file_within(os.path.join(modules_dir, module, "images"), filename)

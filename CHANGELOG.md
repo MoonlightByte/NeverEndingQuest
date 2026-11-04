@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Modules built with the story-first builder now start with the opening weather and political climate the builder wrote, so their first game no longer asks for them (#1481).
+- A generated scene image now shows from the game's own saved copy, so it keeps showing after a reconnect or later in the session instead of breaking when the image service's link expires (#1755).
 - After a fight, a spell slot the game's summary tries to give back is noted as not applied, and the rest of that turn's healing still happens (#1763).
 - A party character's Attack action makes as many attacks as its class gives at its level (Extra Attack at level 5; a Fighter's two and three extra attacks at 11 and 20), so a stated second attack is no longer refused; a multiclass sheet keeps one (#1762).
 - A generated image, or its failure notice, that finishes while no browser tab is connected now shows when a tab connects again, and an image failure that arrives during a reconnect is no longer dropped (#1640, #1387).

@@ -243,7 +243,7 @@ export interface ServerEvents {
   };
   gemini_key_status: { has_key: boolean };
   local_endpoint_test_result: { ok: boolean; detail: string };
-  image_generated: { image_url: string; prompt: string; request_id?: string; source_message_id?: string };
+  image_generated: { image_url: string; local_url?: string; prompt: string; request_id?: string; source_message_id?: string };
   image_generation_error: { message: string; request_id?: string; source_message_id?: string };
   token_update: {
     tpm: number; rpm: number; total_tokens: number;
