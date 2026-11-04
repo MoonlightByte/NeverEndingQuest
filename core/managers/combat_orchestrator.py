@@ -47,6 +47,7 @@ from core.combat.resolver import (
     player_ammunition_refusal,
     player_weapon_attack_entry,
     player_weapon_attack_score,
+    attack_damage_riders,
     spell_attack_violations,
     attack_row,
     sent_row_lists,
@@ -1745,9 +1746,18 @@ def _tray_faces(text, record, entry):
         dice = [(int(face), int(die)) for face, die in re.findall(_TRAY_DIE, text, re.IGNORECASE)]
     count, sides = player_weapon_attack_dice(record, entry)
     wanted = 20 if record.get("phase") == "attack" else sides
+    totals = []
+    for rider_count, rider_sides in reversed(_rider_terms(record)):
+        # #1666: dice are matched to their terms by size; of two dice of one
+        # size the first is the weapon's, so a rider takes the last of its size.
+        taken = [index for index, (_face, die) in enumerate(dice) if die == rider_sides][-rider_count:]
+        if len(taken) != rider_count or any(not 1 <= dice[index][0] <= rider_sides for index in taken):
+            return "invalid"
+        totals.insert(0, sum(dice[index][0] for index in taken))
+        dice = [item for index, item in enumerate(dice) if index not in taken]
     if len(dice) != count or any(die != wanted or not 1 <= face <= die for face, die in dice):
         return "invalid"
-    return [face for face, _die in dice]
+    return [face for face, _die in dice] + totals
 
 
 _DUPLICATE_SUFFIX_RE = re.compile(r"_(\d+)\b")
@@ -1773,6 +1783,27 @@ def _spoken_weapon(record, entry):
     return name
 
 
+def _rider_terms(record):
+    """#1666: the (count, sides) of each damage rider the open damage phase
+    asks for, in order; none at any other phase."""
+    if record.get("phase") != "damage":
+        return []
+    return [_roll_die_terms(rider.get("die"))[0] for rider in record.get("damageRiders") or []]
+
+
+def _rider_ask(record, entry, count, sides, each_die):
+    """#1666: the ask for the weapon's dice and each rider's, as the DM says it."""
+    extras = ["%s for %s" % (rider["die"], rider["label"]) for rider in record["damageRiders"]]
+    return "Roll %dd%d for your %s and %s, one number for each%s." % (
+        count, sides, _phase_weapon(record, entry), " and ".join(extras), " die" if each_die else "")
+
+
+def _rider_tail(riders):
+    """#1666: the riders' dice as the receipt shows them."""
+    return "".join("; %s %s = %d %s" % (rider["label"], rider["die"], sum(rider["faces"]), rider["damageType"])
+                   for rider in riders if rider.get("faces"))
+
+
 def _wants_each_die(record, count):
     """#879 (owner D-879-1): a Great Weapon Fighting damage roll of two or more
     dice asks for each die; the flag was read when the damage was asked for."""
@@ -1786,7 +1817,7 @@ def _roll_card(record, entry):
     lead asks). Also stores record["dice"] and, for a damage roll, the card as
     the player is shown it, record["cardShown"] (#1706)."""
     count, sides = player_weapon_attack_dice(record, entry)
-    record["dice"] = "%dd%d" % (count, sides)
+    record["dice"] = "+".join("%dd%d" % term for term in [(count, sides)] + _rider_terms(record))
     record.pop("cardShown", None)
     if record.get("phase") == "attack":
         why = (
@@ -1826,6 +1857,9 @@ def _roll_card(record, entry):
     )
     each_die = _wants_each_die(record, count)
     head = "%s %s on %s." % (_phase_weapon(record, entry), hit, _spoken_name(record.get("targetName")))
+    if _rider_terms(record):
+        record["cardShown"] = "%s %s" % (head, _rider_ask(record, entry, count, sides, each_die))
+        return record["cardShown"]
     record["cardShown"] = "%s Damage to roll: %dd%d, %s" % (head, count, sides, "each die" if each_die else "as one total")
     return "%s Damage: %dd%d, %s" % (head, count, sides, "each die" if each_die else "the total")
 
@@ -1866,7 +1900,8 @@ def _damage_receipt(record, entry, values, count, sides):
         rolled = "%dd%d = %s = %d" % (count, sides, " + ".join(str(value) for value in values), sum(values))
     spell = record.get("spell") if isinstance(record.get("spell"), dict) else {}
     target = "" if spell.get("type") == "save" else " on %s" % _spoken_name(record.get("targetName"))
-    return "%s damage%s: %s." % (_phase_weapon(record, entry), target, rolled)
+    return "%s damage%s: %s%s." % (_phase_weapon(record, entry), target, rolled,
+                                   _rider_tail(record.get("damageRiders") or []))
 
 
 _TRAIT_WORDS = {"resistance": "resistant", "vulnerability": "vulnerable", "immunity": "immune"}
@@ -1878,7 +1913,8 @@ def _scored_damage_line(scored, target_id, encounter, characters, off_hand=False
     rawDamage, damageTraits). The bonus is the swing's raw damage less the
     dice; it is never worked out here. None when no player damage was rolled."""
     row = next((roll for roll in scored.get("rolls") or []
-                if isinstance(roll, dict) and roll.get("purpose") == "damage" and "source" in roll), None)
+                if isinstance(roll, dict) and roll.get("purpose") == "damage" and "source" in roll
+                and "damageRider" not in roll), None)
     swing = next((swing for swing in (scored.get("outcome") or {}).get("swings") or []
                   if isinstance(swing, dict) and swing.get("hit") is True), None)
     if row is None or swing is None or type(row.get("value")) is not int:
@@ -1903,6 +1939,11 @@ def _scored_damage_line(scored, target_id, encounter, characters, off_hand=False
     weapon = _spoken_weapon({"ability": name}, entry)
     target = combatant_by_id(encounter, target_id)
     on = " on %s" % _spoken_name(target.get("name")) if isinstance(target, dict) else ""
+    for rider in swing.get("damageRiders") or []:
+        text += "; %s %s = %d %s" % (rider["label"], rider["die"], rider["rolled"], rider["damageType"])
+        words = [_TRAIT_WORDS.get(trait, trait) for trait in rider.get("damageTraits") or []]
+        if words:
+            text += ", %s: %d" % (", ".join(words), rider["damage"])
     return "%s%s damage%s%s: %s." % ("Off-hand " if off_hand else "", weapon, on,
                                      " (critical)" if swing.get("critical") is True else "", text)
 
@@ -1965,13 +2006,35 @@ def _fitting_values(values, record, entry):
     each d20, or one total (#879). The one fit compare for typed numbers and
     T126's faces."""
     count, sides = player_weapon_attack_dice(record, entry)
-    if _wants_each_die(record, count):
+    riders = _rider_terms(record)
+    if riders:
+        # #1666: one number per term: the weapon's total (or its dice), then
+        # each rider's. Great Weapon Fighting still needs the weapon's dice.
+        main, extra = values[:-len(riders)], values[-len(riders):]
+        each = len(main) == count and all(1 <= value <= sides for value in main)
+        total = len(main) == 1 and count <= main[0] <= count * sides
+        fits = ((each or (total and not _wants_each_die(record, count))) and len(extra) == len(riders)
+                and all(term[0] <= value <= term[0] * term[1] for value, term in zip(extra, riders)))
+    elif _wants_each_die(record, count):
         fits = len(values) == count and all(1 <= value <= sides for value in values)
     elif record.get("phase") == "attack":
         fits = len(values) == count and all(1 <= value <= 20 for value in values)
     else:
         fits = len(values) == 1 and count <= values[0] <= count * sides
     return list(values) if fits else "invalid"
+
+
+def _term_values(faces, record, entry):
+    """T126's faces, one list per dice term, as the values of the open phase,
+    else "invalid". #1666: a rider's term is one more list."""
+    riders = _rider_terms(record)
+    if len(faces) == 1:
+        return _fitting_values(faces[0], record, entry)
+    if not riders or len(faces) != 1 + len(riders):
+        return "invalid"
+    count, _sides = player_weapon_attack_dice(record, entry)
+    main = list(faces[0]) if _wants_each_die(record, count) else [sum(faces[0])]
+    return _fitting_values(main + [sum(term) for term in faces[1:]], record, entry)
 
 
 def _parse_weapon_roll(text, record, entry):
@@ -1983,7 +2046,7 @@ def _parse_weapon_roll(text, record, entry):
     if not text.strip() or _lets_the_game_roll(text):
         return []
     count, _sides = player_weapon_attack_dice(record, entry)
-    if _wants_each_die(record, count):
+    if _wants_each_die(record, count) or _rider_terms(record):
         if not _FACE_LIST.match(text):
             return _tray_faces(text, record, entry)
         return _fitting_values([int(value) for value in re.findall(r"\d+", text)], record, entry)
@@ -2220,7 +2283,8 @@ def _phase_request(record, entry):
     count, sides = player_weapon_attack_dice(record, entry)
     phase = record.get("phase")
     return {"label": _phase_weapon(record, entry), "phase": phase,
-            "dice": [{"count": count, "sides": 20 if phase == "attack" else sides}],
+            "dice": [{"count": count, "sides": 20 if phase == "attack" else sides}]
+            + [{"count": term[0], "sides": term[1]} for term in _rider_terms(record)],
             "eachDie": _wants_each_die(record, count)}
 
 
@@ -2363,7 +2427,7 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
             values = []
         elif kind == "faces":
             faces = answer.get("values") or []
-            values = _fitting_values(faces[0], record, entry) if len(faces) == 1 else "invalid"
+            values = _term_values(faces, record, entry)
         elif off_hand:
             # R3, D-1118-9 D: the off-hand dice stay open on any other line.
             values = "other"
@@ -2414,16 +2478,24 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
         raise _phase_paused("Code-issued roll is waiting for the player", record)
     phase = record["phase"]
     count, sides = player_weapon_attack_dice(record, entry)
+    riders = _rider_terms(record)
     rolled = None
     game_card = None
     if values:
         source = "player"
+        rider_faces = [[value] for value in values[-len(riders):]] if riders else []
+        values = values[:-len(riders)] if riders else values
     else:
         die = 20 if phase == "attack" else sides
-        values = _roll_terms([(count, die)])[0]
-        source, rolled = "game", [list(values)]
-        game_card = "Game roll for your %s %s: %s on %dd%d." % (
-            _phase_weapon(record, entry), phase, " and ".join(str(value) for value in values), count, die)
+        terms = _roll_terms([(count, die)] + riders)
+        values, rider_faces = terms[0], terms[1:]
+        source, rolled = "game", [list(term) for term in terms]
+        said = "".join(" and %s on %s for %s" % (" and ".join(str(face) for face in faces), rider["die"], rider["label"])
+                       for faces, rider in zip(rider_faces, record.get("damageRiders") or []))
+        game_card = "Game roll for your %s %s: %s on %dd%d%s." % (
+            _phase_weapon(record, entry), phase, " and ".join(str(value) for value in values), count, die, said)
+    for faces, rider in zip(rider_faces, record.get("damageRiders") or []):
+        rider["faces"], rider["source"] = list(faces), source
     if phase == "attack":
         record["faces"][phase] = values
     else:
@@ -2438,7 +2510,15 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
         hit, critical, kept, total, ac = player_weapon_attack_score(encounter, characters, record, entry)
         record.update({"hit": hit, "critical": critical, "attackKept": kept,
                        "attackTotal": total, "targetAC": ac})
+        marked = attack_damage_riders(encounter, characters, record.get("actorId"),
+                                      combatant_by_id(encounter, record.get("targetId"))) if hit else []
+        if marked:
+            record["damageRiders"] = marked
         # #1350: a flat row has no damage die; its hit is ready for the engine.
+        if hit and is_flat_attack(entry):
+            # #1666: no damage phase to join, so the game rolls the rider.
+            for rider, faces in zip(marked, _roll_terms([_roll_die_terms(rider["die"])[0] for rider in marked])):
+                rider["faces"], rider["source"] = list(faces), "game"
         if hit and not is_flat_attack(entry):
             record["phase"] = "damage"
             if not isinstance(record.get("spell"), dict):

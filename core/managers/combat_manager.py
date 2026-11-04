@@ -1620,7 +1620,8 @@ def _open_weapon_roll_prompt(json_file_path):
     ):
         return "[ROLL] %s%s (Enter: the game rolls): " % (
             record["dice"],
-            " damage total" if record.get("phase") == "damage" else "",
+            (" damage, one number for each" if record.get("damageRiders") else " damage total")
+            if record.get("phase") == "damage" else "",
         )
     return None
 

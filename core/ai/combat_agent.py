@@ -581,7 +581,27 @@ and enemies, choose tactically appropriate actions from their actual sheets.
 If an action has no HP/resource/effect change, use empty arrays."""
 
 
-def _packet_creatures(encounter):
+def _rider_note(encounter, characters, creature):
+    """#1666: what T096 is told on a marked creature's row: the game adds the
+    rider, so it stays out of hpDelta. None without a rider, so a row with no
+    mark reads as it always has and the cached system prompt never changes."""
+    from core.combat.resolver import _raw_combatant_sheet
+    from core.effects.effective import live_damage_riders
+
+    notes = []
+    for rider in live_damage_riders(_raw_combatant_sheet(encounter, characters, creature)):
+        source = combatant_by_id(encounter, rider["sourceCombatantId"]) or {}
+        name = source.get("name") or rider["sourceCombatantId"]
+        note = "The game adds %s %s to %s's hits on this creature; leave it out of hpDelta." % (
+            rider["die"], rider["damageType"], name)
+        if resolve_creature_controller(source, encounter.get("combatState") or {}) == "human":
+            note += " If you ask %s for damage dice, join it after the main die with + (for example '1d8+%s')." % (
+                name, rider["die"])
+        notes.append(note)
+    return " ".join(notes) or None
+
+
+def _packet_creatures(encounter, characters=None):
     """#1483: the encounter's creature rows for T096, each a copy with its
     typed ``participation`` when known; the stored rows are not changed."""
     rows = []
@@ -593,6 +613,9 @@ def _packet_creatures(encounter):
         participation = participation_of(encounter, creature.get("combatantId"))
         if participation:
             row["participation"] = participation
+        note = _rider_note(encounter, characters, creature)
+        if note:
+            row["gameAddsOnHit"] = note
         rows.append(row)
     return rows
 
@@ -621,7 +644,7 @@ def request_intent_batch(
         "requiredActorIds": pending_turn.get("actorIds", []),
         "playerInput": player_input,
         # #1483: copies carrying each creature's typed participation.
-        "creatures": _packet_creatures(encounter),
+        "creatures": _packet_creatures(encounter, characters),
         # K1: each listed row carries its rowRef (on copies; P-2), which the
         # reply returns as abilityRow.
         "sheets": with_row_refs({

@@ -1,0 +1,9 @@
+{
+  "_metadata": {
+    "description": "Spells whose target takes an extra die from the caster's hits with an attack roll (#1666). Keyed by data/spell_repository.json's canonical key. holder target: the effect sits on the marked creature."
+  },
+  "riders": {
+    "hunter_s_mark": {"label": "Hunter's Mark", "die": "1d6", "damageType": "force", "holder": "target"},
+    "hex": {"label": "Hex", "die": "1d6", "damageType": "necrotic", "holder": "target"}
+  }
+}
