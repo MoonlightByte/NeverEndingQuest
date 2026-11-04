@@ -128,6 +128,31 @@ def preserve_engine_effects(current_effects, proposed_effects):
 _MODIFIER_DIE = re.compile(r"[1-4]d(?:4|6|8|10|12)")
 
 
+# #1666: a damage rider, the extra die an effect's holder takes from its caster's
+# hits. Its typed shape; the caster is the effect's own sourceCombatantId.
+DAMAGE_TYPES = frozenset((
+    "acid", "bludgeoning", "cold", "fire", "force", "lightning", "necrotic",
+    "piercing", "poison", "psychic", "radiant", "slashing", "thunder",
+))
+DAMAGE_RIDER_ON = "attack_hit"
+
+
+def normalize_damage_rider(rider):
+    if not isinstance(rider, dict) or set(rider) != {"die", "damageType", "on", "label"}:
+        raise ValueError('effect damageRider must be {"die", "damageType", "on", "label"}')
+    die = rider["die"]
+    if not isinstance(die, str) or not _MODIFIER_DIE.fullmatch(die):
+        raise ValueError("effect damageRider die must be a die such as 1d6")
+    if rider["damageType"] not in DAMAGE_TYPES:
+        raise ValueError("effect damageRider damageType must be a damage type")
+    if rider["on"] != DAMAGE_RIDER_ON:
+        raise ValueError('effect damageRider on must be "%s"' % DAMAGE_RIDER_ON)
+    label = rider["label"]
+    if not isinstance(label, str) or not label.strip():
+        raise ValueError("effect damageRider label must be useful text")
+    return {"die": die, "damageType": rider["damageType"], "on": DAMAGE_RIDER_ON, "label": label}
+
+
 def _die_stat(stat):
     """The stats an added die may name (#889): attack rolls and saves (Bless),
     every ability check, or one skill's checks (Guidance)."""
@@ -237,6 +262,8 @@ def normalize_effect(effect, *, default_author=None):
         if not isinstance(result["modifiers"], list):
             raise ValueError("effect modifiers must be an array")
         result["modifiers"] = [normalize_modifier(item) for item in result["modifiers"]]
+    if "damageRider" in result:
+        result["damageRider"] = normalize_damage_rider(result["damageRider"])
     if "conditions" in result:
         if not isinstance(result["conditions"], list):
             raise ValueError("effect conditions must be an array")
@@ -284,6 +311,11 @@ def validate_effect(effect, *, require_managed=False):
                 normalize_modifier(modifier)
             except ValueError as exc:
                 problems.append(str(exc))
+    if "damageRider" in effect:
+        try:
+            normalize_damage_rider(effect["damageRider"])
+        except ValueError as exc:
+            problems.append(str(exc))
     conditions = effect.get("conditions", [])
     if not isinstance(conditions, list) or not all(
         isinstance(item, str) and item.strip() for item in conditions
