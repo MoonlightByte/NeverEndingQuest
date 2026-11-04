@@ -175,6 +175,34 @@
   "notes": "The forest's paths are treacherous and seem to shift. Players should make Survival checks when navigating between locations. The whispers of spirits can be heard throughout the forest, growing louder as one nears the keep.",
   "locations": [
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Marker inscription",
+            "summary": "'Walk with light, for shadows hunger in the wood.'"
+          },
+          {
+            "name": "Tattered journal page",
+            "summary": "The writer heard 'whispers that know your name' deeper in the woods."
+          },
+          {
+            "name": "Half-Burned Map",
+            "summary": "The surviving corner shows the trail north to the Withered Shrine and a side path to the Abandoned Ranger Outpost. The rest is ash."
+          }
+        ],
+        "leads": [
+          {
+            "name": "Smaller footprints",
+            "summary": "Purposeful footprints head north to the Withered Shrine, with disturbed moss where she paused.",
+            "check": {
+              "stat": "skill:survival",
+              "dc": 15
+            },
+            "destinationLocationId": "B03"
+          }
+        ]
+      },
       "locationId": "B01",
       "name": "Witchlight Trailhead",
       "type": "trail",
@@ -295,6 +323,59 @@
       "doors": []
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Ranger's journal",
+            "summary": "The last patrol's journal records rising forest dangers and a 'shadow knight' seen near the keep, matching descriptions of Sir Garran Vael. Studied with the wall maps, it gives a clearer path to the keep.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 14
+            }
+          },
+          {
+            "name": "Map Wall",
+            "summary": "The Lost Ward Circle is marked with the note 'failing--needs ritual renewal'."
+          },
+          {
+            "name": "Scratched table",
+            "summary": "'The whispers are coming from the cottage. DO NOT TRUST THE KEEPER.'"
+          },
+          {
+            "name": "Faded parchment map",
+            "summary": "Locked in the Small Locked Chest: it cannot be read until the chest is open. A secret trail runs from the outpost to the keep. An X marks a hidden entrance, and 'Dusk' is scrawled in the margin."
+          }
+        ],
+        "leads": [
+          {
+            "name": "Elen's supplies",
+            "summary": "Someone took supplies here recently. Small tracks leave by a barely visible trail in the densest part of the wood.",
+            "check": {
+              "stat": "skill:survival",
+              "dc": 12
+            },
+            "destinationLocationId": "B08"
+          },
+          {
+            "name": "Marked ward circle",
+            "summary": "The journal and wall maps together give the way to the failing Lost Ward Circle.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 14
+            },
+            "destinationLocationId": "B04"
+          }
+        ],
+        "locks": [
+          {
+            "name": "Small Locked Chest",
+            "lockDC": 12,
+            "breakDC": 14,
+            "contents": "A potion of healing, 15 gp and the faded parchment map."
+          }
+        ]
+      },
       "locationId": "B02",
       "name": "Abandoned Ranger Outpost",
       "type": "outpost",
@@ -401,6 +482,39 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Ancient Trail Markers",
+            "summary": "The carved symbols match those on the parchment map and confirm the way.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 14
+            }
+          }
+        ],
+        "leads": [
+          {
+            "name": "The way with the map",
+            "summary": "With the parchment map the path is clear to the hidden entrance.",
+            "check": {
+              "stat": "skill:survival",
+              "dc": 12
+            },
+            "destinationLocationId": "B09"
+          },
+          {
+            "name": "The way without the map",
+            "summary": "Without the map it takes real woodcraft, but the path can be followed to the hidden entrance.",
+            "check": {
+              "stat": "skill:survival",
+              "dc": 18
+            },
+            "destinationLocationId": "B09"
+          }
+        ]
+      },
       "locationId": "B08",
       "name": "Secret Forest Path",
       "type": "trail",
@@ -475,6 +589,23 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Carved Warning",
+            "summary": "'May those who enter with pure intent find what was lost.'"
+          },
+          {
+            "name": "Warding Runes",
+            "summary": "The runes warn of the curse within and hint at a way to break it. They brighten until the password is spoken.",
+            "check": {
+              "stat": "skill:arcana",
+              "dc": 13
+            }
+          }
+        ]
+      },
       "locationId": "B09",
       "name": "Hidden Keep Entrance",
       "type": "entrance",
@@ -555,6 +686,34 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Altar carvings",
+            "summary": "A rough map points north to the Spectral Clearing and the Lost Ward Circle. Faded instructions describe a binding ritual needing offerings of earth, flame and living memory.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 15
+            }
+          },
+          {
+            "name": "Stone tablet fragment",
+            "summary": "A broken piece of the same binding ritual: offerings of earth and flame. The line after them breaks off."
+          }
+        ],
+        "leads": [
+          {
+            "name": "Altar map",
+            "summary": "The map carved in the altar points north to the Spectral Clearing and, past it, the Lost Ward Circle.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 15
+            },
+            "destinationLocationId": "B06"
+          }
+        ]
+      },
       "locationId": "B03",
       "name": "The Withered Shrine",
       "type": "shrine",
@@ -623,6 +782,19 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Tattered ritual book",
+            "summary": "Instructions for renewing the ward: a ward stone, runestones, and either blood or powerful magic, worked at the central dais."
+          },
+          {
+            "name": "Etched stone",
+            "summary": "'The knight's heart remains, buried beneath his hatred.'"
+          }
+        ]
+      },
       "locationId": "B04",
       "name": "Lost Ward Circle",
       "type": "ritual",
@@ -675,6 +847,38 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Rowboat journal page",
+            "summary": "A water-stained page describes sensing 'the knight's sorrow' coming from the keep."
+          },
+          {
+            "name": "Hidden runes",
+            "summary": "Runes cut into certain trees mark a safe path across the marsh.",
+            "check": {
+              "stat": "skill:perception",
+              "dc": 15
+            }
+          },
+          {
+            "name": "Water-damaged map",
+            "summary": "Most of the ink has run. Stone foundations can still be traced under the marsh, older than the keep."
+          }
+        ],
+        "leads": [
+          {
+            "name": "Turned-back tracks",
+            "summary": "Elen tried the marsh and turned back toward the Spectral Clearing.",
+            "check": {
+              "stat": "skill:survival",
+              "dc": 14
+            },
+            "destinationLocationId": "B06"
+          }
+        ]
+      },
       "locationId": "B05",
       "name": "Boggard Marsh",
       "type": "marsh",
@@ -770,6 +974,30 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Faerie circle runes",
+            "summary": "The runes are a partial ritual. Scattering dust of disappearance and leaving a token of the lost renews the circle's warding.",
+            "check": {
+              "stat": "skill:arcana",
+              "dc": 16
+            }
+          }
+        ],
+        "leads": [
+          {
+            "name": "Footprints north",
+            "summary": "Footprints and bent foliage lead north to the Keeper's Cottage.",
+            "check": {
+              "stat": "skill:perception",
+              "dc": 13
+            },
+            "destinationLocationId": "B07"
+          }
+        ]
+      },
       "locationId": "B06",
       "name": "Spectral Clearing",
       "type": "clearing",
@@ -852,6 +1080,39 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Scout Elen's journal",
+            "summary": "Elen's notes on the keep and Sir Garran: she believes something of the knight still fights the thing that took him. Her last line says the Keeper sent her on toward the keep.",
+            "check": {
+              "stat": "skill:perception",
+              "dc": 15
+            }
+          }
+        ],
+        "leads": [
+          {
+            "name": "Morvath's riddles: the keep",
+            "summary": "Stripped of its riddles, his counsel is plain: he sent Elen on toward the keep and fears for her. The way runs from the cottage to the keep's outer courtyard.",
+            "check": {
+              "stat": "skill:insight",
+              "dc": 14
+            },
+            "destinationLocationId": "C01"
+          },
+          {
+            "name": "Morvath's riddles: the ward",
+            "summary": "He needs the Lost Ward Circle restored, the last ward holding the keep's influence back, and it lies along the path north-east.",
+            "check": {
+              "stat": "skill:insight",
+              "dc": 14
+            },
+            "destinationLocationId": "B04"
+          }
+        ]
+      },
       "locationId": "B07",
       "name": "Keeper's Cottage",
       "type": "cottage",

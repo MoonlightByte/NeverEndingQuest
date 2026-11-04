@@ -98,6 +98,23 @@
   },
   "locations": [
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Command Table maps and dispatches",
+            "summary": "All three massacred caravans were hit on routes and days named in the rangers' own dispatches. Every raid falls within a night's march of the Thornwood, and the marks run back toward the North Tower.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 10
+            }
+          },
+          {
+            "name": "Ranger's field guide to local threats",
+            "summary": "A worn patrol handbook on wolves, thorn thickets and bandit signs. A fresh pencil note warns of blights that lie as still as dead branches until disturbed."
+          }
+        ]
+      },
       "locationId": "RO01",
       "name": "Rangers' Command Post",
       "type": "crossroads",
@@ -184,6 +201,19 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Inventory Ledgers and supply manifests",
+            "summary": "Iron and silver vanish first, always from the same few barges, and always soon after merchants ask for those goods by name.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 11
+            }
+          }
+        ]
+      },
       "locationId": "RO02",
       "name": "Supply Depot",
       "type": "riverside",
@@ -256,6 +286,43 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Merchant's ledger",
+            "summary": "Sila's ledger lists the three lost caravans with dates and cargo, all bound through the Thornwood road. The last entry records her own cart and iron-banded chest stolen in a raid."
+          },
+          {
+            "name": "Map of regional trade routes",
+            "summary": "Red danger marks ring the Thornwood road. The river route to the south is still clean."
+          },
+          {
+            "name": "Parchment with Malarok's sigil",
+            "summary": "A scrap bearing a twisted tree wreathed in dark energy, the same mark the bandits' corrupted supplies carry."
+          }
+        ],
+        "leads": [
+          {
+            "name": "Fresh trail from the stalls",
+            "summary": "Fresh prints and the scrape of something heavy leave the stalls and run toward the Forgotten Waystation at the West Tower.",
+            "check": {
+              "stat": "skill:survival",
+              "dc": 13
+            },
+            "destinationLocationId": "RO05"
+          }
+        ],
+        "locks": [
+          {
+            "name": "Locked Chest",
+            "lockDC": 14,
+            "breakDC": 16,
+            "keyname": "Sila's key",
+            "contents": "Merchant valuables and supplies under Sila's care. Opening it without her leave is theft from an ally."
+          }
+        ]
+      },
       "locationId": "RO03",
       "name": "Trader's Rest",
       "type": "ruins",
@@ -327,6 +394,23 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Observation Logs",
+            "summary": "Neris records wildlife fleeing south, figures moving by night toward the Thornwood, and each northern patrol post falling silent in turn."
+          },
+          {
+            "name": "Neris's annotated maps",
+            "summary": "Plotted together, the strange sightings form a widening ring centred on the northern forest beyond the Thornwood.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 11
+            }
+          }
+        ]
+      },
       "locationId": "RO04",
       "name": "Scout's Watch at the East Tower",
       "type": "riverside",
@@ -400,6 +484,55 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Coded correspondence",
+            "summary": "Decoded, these are Crow's Hand orders: silence the bells one tower at a time, then strike Scout's Watch at the East Tower next.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 15
+            }
+          },
+          {
+            "name": "Maps of the silver bell network",
+            "summary": "Each tower is inked with its weak point: the North Tower's clapper, the East Tower's bell, the West Tower's harmonic crystal."
+          },
+          {
+            "name": "Caravan and ritual schedule",
+            "summary": "Caravan dates sit beside a second column counting down the nights to a single marked date. The raids were timed to feed Malarok's ritual."
+          },
+          {
+            "name": "Fragment of Malarok's spellbook",
+            "summary": "Cramped notes on binding a shard of fallen star to living wood. Malarok is drawing his power from a Voidstone, and it spreads through whatever he binds to it.",
+            "check": {
+              "stat": "skill:arcana",
+              "dc": 14
+            }
+          }
+        ],
+        "leads": [
+          {
+            "name": "The next target",
+            "summary": "The decoded orders name Scout's Watch at the East Tower as the next target.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 15
+            },
+            "destinationLocationId": "RO04"
+          }
+        ],
+        "locks": [
+          {
+            "name": "Sila's iron-banded chest",
+            "lockDC": 13,
+            "breakDC": 15,
+            "keyname": "Sila's key",
+            "contents": "The rare alchemical supplies from Sila's stolen cart."
+          }
+        ]
+      },
       "locationId": "RO05",
       "name": "Forgotten Waystation at the West Tower",
       "type": "ruins",
@@ -472,6 +605,26 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Bandit surveillance notes",
+            "summary": "Ranger patrol hours, shift changes and bell signals, copied with an exactness no casual watcher could manage."
+          }
+        ],
+        "leads": [
+          {
+            "name": "Bandits' escape routes",
+            "summary": "The watchers come and go by one path down the far side of the hill, into the Thornwood at the Ambush Site.",
+            "check": {
+              "stat": "skill:survival",
+              "dc": 11
+            },
+            "destinationLocationId": "TW01"
+          }
+        ]
+      },
       "locationId": "RO06",
       "name": "North Tower Overlook",
       "type": "ruins",

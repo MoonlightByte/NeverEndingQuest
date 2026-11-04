@@ -148,6 +148,34 @@
   "notes": "The shadow relic's influence is strongest here, causing mental and physical strain on all who enter. Characters experience unsettling visions of their own fears and may have difficulty distinguishing reality from illusion in the deepest chambers.",
   "locations": [
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Prisoner ledger",
+            "summary": "Entries for people not yet born. A recent one notes 'Scout E' brought in by 'shadows that walk like men' and taken to 'the chamber below all chambers'.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 13
+            }
+          },
+          {
+            "name": "Scratched warning",
+            "summary": "'The relic feeds on suffering. Do not react to what you see or hear.' A reader has advantage on the first save against fear or madness in the dungeon."
+          }
+        ],
+        "leads": [
+          {
+            "name": "The chamber below all chambers",
+            "summary": "The ledger sends Elen to 'the chamber below all chambers', the lowest place in the dungeon.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 13
+            },
+            "destinationLocationId": "E07"
+          }
+        ]
+      },
       "locationId": "E01",
       "name": "Dungeon Entrance",
       "type": "entrance",
@@ -255,6 +283,15 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Prisoner's journal",
+            "summary": "The keep's fall from a cell: guards vanishing from their posts, then the jailers, then the lord's voice in the dark, still giving orders."
+          }
+        ]
+      },
       "locationId": "E02",
       "name": "The Gaol",
       "type": "prison",
@@ -366,6 +403,23 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Torturer's journal",
+            "summary": "Rebels who opposed the relic claimed the real Sir Garran 'trapped his soul in his heart' for safekeeping before the shadow claimed him."
+          },
+          {
+            "name": "Project Umbral Shield report",
+            "summary": "Sir Garran meant to make a defensive weapon against rival necromancers. It turned on its creator.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 15
+            }
+          }
+        ]
+      },
       "locationId": "E03",
       "name": "Torture Chamber",
       "type": "chamber",
@@ -460,6 +514,38 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Duty roster",
+            "summary": "Guards were rotated often to keep 'the whispering darkness' from reaching them too deeply. The 'special prisoner' in the lowest chamber is the relic."
+          },
+          {
+            "name": "Sir Garran's letter",
+            "summary": "He orders the guard captain to 'end him' should he ever lose control completely. He feared his own corruption and planned for it.",
+            "check": {
+              "stat": "skill:insight",
+              "dc": 14
+            }
+          },
+          {
+            "name": "Scratched map",
+            "summary": "A crude map shows a hidden escape tunnel from here to the Forgotten Ossuary, past some of the dungeon's dangers."
+          }
+        ],
+        "leads": [
+          {
+            "name": "Passage behind the rack",
+            "summary": "Behind a weapons rack is the hidden tunnel to the Forgotten Ossuary.",
+            "check": {
+              "stat": "skill:perception",
+              "dc": 15
+            },
+            "destinationLocationId": "E06"
+          }
+        ]
+      },
       "locationId": "E04",
       "name": "Guard Post",
       "type": "garrison",
@@ -567,6 +653,19 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Experimental journal",
+            "summary": "Attempts to turn the relic to protection. Its substance is vulnerable to certain frequencies of light, and using that gives advantage in the final confrontation."
+          },
+          {
+            "name": "Partially burned letter",
+            "summary": "Sir Garran asks a trusted mage for help containing the relic: 'It speaks to me now, even in daylight.'"
+          }
+        ]
+      },
       "locationId": "E05",
       "name": "Storage Vaults",
       "type": "storage",
@@ -667,6 +766,27 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Cryptic map",
+            "summary": "It marks the seven pillars and the dais of the Relic Chamber, and notes that the relic can be destroyed, contained or cleansed there, each at a price.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 15
+            }
+          },
+          {
+            "name": "Ritual Platform",
+            "summary": "The markings show how to approach the relic and bind it using 'the heart's resonance'.",
+            "check": {
+              "stat": "skill:religion",
+              "dc": 14
+            }
+          }
+        ]
+      },
       "locationId": "E06",
       "name": "Forgotten Ossuary",
       "type": "crypt",
@@ -767,6 +887,19 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "History Pillars",
+            "summary": "A rival lord turns shadow magic on innocent villages, which is why Sir Garran sought such power at all."
+          },
+          {
+            "name": "Ancient scrolls",
+            "summary": "The relic was made to defend the region against necromantic invasion, a protective tool that became corrupted."
+          }
+        ]
+      },
       "locationId": "E07",
       "name": "Relic Chamber",
       "type": "ritual",
