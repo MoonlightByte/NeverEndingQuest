@@ -1763,8 +1763,8 @@ def _game_roll_line(request, faces):
     """The record of the game's roll for a DM request, from typed fields only
     (the request exchange's requestedRoll, or a code phase's requestedDie, and
     requestedPhase; its prose is never read): "Game roll for the DM's request (damage): 4 and 2 on the
-    2d6." T096 reads it beside the player's words and the player sees it as
-    a system card (#1118)."""
+    2d6." T096 reads it beside the player's words (#1118); the player's card is
+    _game_roll_card (#1777)."""
     terms = _roll_die_terms((request or {}).get("requestedRoll") or (request or {}).get("requestedDie")) or []
     if len(terms) != len(faces):
         terms = [None] * len(faces)
@@ -1780,11 +1780,58 @@ def _game_roll_line(request, faces):
     return "Game roll for the DM's request%s: %s." % (asked, " and ".join(parts))
 
 
+# #1777: what a DM says a die was for, by typed phase. requestedPhase is stored as given and the
+# model can supply it, so a phase outside this list is left off and its words never reach the card.
+_GAME_ROLL_PURPOSE = {"attack": "to hit", "damage": "for damage", "healing": "for healing",
+                      "save": "for your save", "check": "for your check"}
+_DICE_WORDS = ("two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve")
+
+
+def _spoken_dice(count, sides):
+    """Dice as a DM says them: "d8", "three d4s"; past twelve the count stays a number."""
+    if count == 1:
+        return "d%d" % sides
+    return "%s d%ds" % (_DICE_WORDS[count - 2] if count - 2 < len(_DICE_WORDS) else count, sides)
+
+
+def _spoken_faces(faces):
+    """Faces as a DM reads them out: "5", "3 and 2", "3, 4 and 1"."""
+    faces = [str(face) for face in faces]
+    return " and ".join(faces) if len(faces) < 3 else "%s and %s" % (", ".join(faces[:-1]), faces[-1])
+
+
+def _game_roll_card(request, faces):
+    """The player's card for the game's roll (#1777), in the DM's words, from the typed fields
+    _game_roll_line reads: "I rolled your three d4s for damage: 3, 4 and 1." T096 reads that line and
+    never this. It gives no total: the faces are not the damage until the ruling adds the rest."""
+    request = request or {}
+    terms = _roll_die_terms(request.get("requestedRoll") or request.get("requestedDie")) or []
+    if len(terms) != len(faces) or any(len(group) != term[0] for group, term in zip(faces, terms)):
+        return "I rolled that for you: %s." % _spoken_faces([face for group in faces for face in group])
+    phase = str(request.get("requestedPhase") or "").strip().casefold()
+    if len(terms) > 1:
+        rolled = " and ".join("%s on the %s" % (_spoken_faces(group), _spoken_dice(*term))
+                              for group, term in zip(faces, terms))
+        return "I rolled your %sdice: %s." % (phase + " " if phase in _GAME_ROLL_PURPOSE else "", rolled)
+    purpose = _GAME_ROLL_PURPOSE.get(phase)
+    return "I rolled your %s%s: %s." % (_spoken_dice(*terms[0]), " " + purpose if purpose else "",
+                                        _spoken_faces(faces[0]))
+
+
+def _weapon_game_card(weapon, phase, values, count, die):
+    """The player's card for the game's roll of a code phase (#1777), in _game_roll_card's voice:
+    "I rolled your d20 to hit with your Longsword: 14.", "I rolled your d8 for Longsword damage: 5.\""""
+    dice, rolled = _spoken_dice(count, die), _spoken_faces(values)
+    if phase == "attack":
+        return "I rolled your %s to hit with your %s: %s." % (dice, weapon, rolled)
+    return "I rolled your %s for %s %s: %s." % (dice, weapon, phase, rolled)
+
+
 def _show_game_roll(request, faces):
     """Show the player the game's roll at once, as a system card (#1118)."""
     from core.managers.checks_runtime import _show_check_receipt
 
-    _show_check_receipt(_game_roll_line(request, faces))
+    _show_check_receipt(_game_roll_card(request, faces))
 
 
 def _game_roll_answer(pending, text):
@@ -2505,8 +2552,7 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
         die = 20 if phase == "attack" else sides
         values = _roll_terms([(count, die)])[0]
         source, rolled = "game", [list(values)]
-        game_card = "Game roll for your %s %s: %s on %dd%d." % (
-            _phase_weapon(record, entry), phase, " and ".join(str(value) for value in values), count, die)
+        game_card = _weapon_game_card(_phase_weapon(record, entry), phase, values, count, die)
     if phase == "attack":
         record["faces"][phase] = values
     else:
@@ -2550,20 +2596,57 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
     return pending, (record if is_open else None)
 
 
+def _defend_intent(encounter, actor_id):
+    """#146: the typed Defend of a held actor. Its description is only shown
+    if the narration call fails, so it reads as the DM's line."""
+    name = (combatant_by_id(encounter, actor_id) or {}).get("name")
+    who = name.strip() if isinstance(name, str) and name.strip() else "The enemy"
+    return {
+        "actorId": actor_id,
+        "mode": "known",
+        "action": "defend",
+        "description": "%s hangs back, guard raised." % who,
+    }
+
+
 def _defend_batch(encounter, pending):
     revision = (encounter.get("combatState") or {}).get("revision")
     return {
         "stateVersion": revision,
-        "intents": [
-            {
-                "actorId": actor_id,
-                "mode": "known",
-                "action": "defend",
-                "description": "The combatant takes a defensive stance.",
-            }
-            for actor_id in pending.get("actorIds", [])
-        ],
+        "intents": [_defend_intent(encounter, actor_id) for actor_id in pending.get("actorIds", [])],
     }
+
+
+def _actors_to_hold(exc, encounter, pending, held_actors):
+    """#146: who a refusal at the bound holds to a Defend: the automatic actor
+    it names, or, naming none, every actor of an all-automatic window. A human
+    is never held, and an actor already held is not held again, so a Defend
+    that is itself refused takes the normal path."""
+    actor_ids = pending.get("actorIds") or []
+    actor_id = getattr(exc, "actor_id", None)
+    if actor_id is None:
+        named = list(actor_ids) if _all_non_player(encounter, actor_ids) else []
+    else:
+        actor = combatant_by_id(encounter, actor_id)
+        named = [actor_id] if actor_id in actor_ids and actor and not _is_human_controlled(encounter, actor) else []
+    return [held for held in named if held not in held_actors]
+
+
+def _hold_actors(batch, held_actors, encounter, pending):
+    """#146: each held actor's intents give way to one typed Defend at its
+    place in the pending order, so what it declared is neither spent nor
+    applied. Every other actor keeps its intent."""
+    intents = batch.get("intents") if isinstance(batch, dict) else None
+    if not held_actors or not isinstance(intents, list):
+        return batch
+    kept = [intent for intent in intents
+            if not (isinstance(intent, dict) and intent.get("actorId") in held_actors)]
+    for index, actor_id in enumerate(pending.get("actorIds") or []):
+        if actor_id in held_actors:
+            kept.insert(min(index, len(kept)), _defend_intent(encounter, actor_id))
+    batch = dict(batch)
+    batch["intents"] = kept
+    return batch
 
 
 def _deterministic_narration(events):
@@ -2914,9 +2997,12 @@ def execute_agentic_turn(
     """Choose, resolve, commit, then narrate one persisted actor window.
 
     The call is restart-safe. A staged turn is replayed without any provider;
-    an un-staged claim regenerates intents against the same revision. Provider
-    rejected/provider-failed results visibly continue the same logical turn;
-    they never consume the player's turn or invent an NPC fallback action.
+    an un-staged claim regenerates intents against the same revision. A
+    provider failure visibly continues the same logical turn; it never consumes
+    the player's turn or invents an NPC action. A reply the rules refuse earns
+    corrections up to a bound; past it, the refused automatic actor alone takes
+    a typed Defend so the fight moves (#146). The player's intent is never
+    replaced.
     """
     immutable_voice_intents = _immutable_voice_intents(npc_voice_intents)
     from core.combat.invocation import InvocationSupersededError
@@ -3239,16 +3325,24 @@ def execute_agentic_turn(
     attempt_number = 0
     game_roll_rerule = False
     # #1251: the provider's own batches rejected in this window, compared by
-    # typed value; one returned again ends the window as the ceiling does.
+    # typed value; one returned again ends the window as the ceiling does,
+    # unless #146 holds the actor it names.
     rejected_batches = []
+    # #146: replies the rules refused this window (not provider failures, not
+    # #1606's ask), the actors held to a Defend, and the batch the next pass
+    # reuses with no provider call.
+    refused_replies = 0
+    held_actors = set()
+    held_batch = None
     # #1111: the player's faces 3b accepted this window, by answer index.
     accepted_faces = {}
     while events is None:
+        reused_batch, held_batch = held_batch, None
         if game_roll_rerule:
             # #1118: T096 rules again with the game's roll; that pass is not
             # a failed attempt and shows no "checking the ruling" status.
             game_roll_rerule = False
-        else:
+        elif reused_batch is None:
             attempt_number += 1
             if attempt_number > 1:
                 _set_combat_retry_status()
@@ -3270,13 +3364,17 @@ def execute_agentic_turn(
             # sent sheets may be their effective views, same positions), kept
             # for the reply's value check.
             sent_rows = sent_row_lists(encounter, characters)
-            batch = intent_provider(
-                encounter,
-                provider_characters,
-                pending,
-                provider_player_input,
-                **intent_kwargs,
-            )
+            if reused_batch is not None:
+                # #146: the pass after a hold: the same reply, no provider call.
+                batch = deepcopy(reused_batch)
+            else:
+                batch = intent_provider(
+                    encounter,
+                    provider_characters,
+                    pending,
+                    provider_player_input,
+                    **intent_kwargs,
+                )
             provider_batch = deepcopy(batch) if isinstance(batch, dict) else None
             _require_current_invocation(invocation_claim)
             batch = _apply_trusted_spell_durations(
@@ -3285,6 +3383,8 @@ def execute_agentic_turn(
                 now_scalar=combat_now_scalar,
             )
             batch = _reconcile_validated_prefix(batch, correction)
+            # #146: before the checks below, which would refuse the old intent.
+            batch = _hold_actors(batch, held_actors, encounter, pending)
         except (InvocationSupersededError, ReadOnlySaveStop, LiveProviderCompletedError):
             # A completed refusal cannot heal by re-sending: it ends the fight
             # window and the pending turn is kept for resume (#1087).
@@ -3379,6 +3479,7 @@ def execute_agentic_turn(
                 game_roll_rerule = True
                 # The re-rule answers a new input (the game's roll).
                 rejected_batches = []
+                refused_replies = 0
                 continue
             _keep_accepted_faces(pending, batch, accepted_faces)
             # Item 10 (r2): the answered save keeps the DC it was asked at.
@@ -3678,8 +3779,39 @@ def execute_agentic_turn(
                 rules_contract_version=rules_drift.get("version"),
             )
             # #1606: its ask is not a rejection, so #1251 never counts that batch.
-            if provider_batch is not None and not unrolled_damage:
-                if provider_batch in rejected_batches:
+            # A reused batch is already logged: only a provider's reply is new.
+            logged = provider_batch is not None and not unrolled_damage and reused_batch is None
+            repeated = logged and provider_batch in rejected_batches
+            refused_replies += 0 if unrolled_damage else 1
+            # #146 (D-146-3 A): past the bound a refused automatic actor Defends
+            # and the fight moves. A refusal of a reused batch is already past it.
+            past_bound = not unrolled_damage and (
+                repeated or reused_batch is not None
+                or refused_replies >= max(2, int(max_intent_attempts or 3))
+            )
+            hold = _actors_to_hold(exc, encounter, pending, held_actors) if past_bound else []
+            if hold:
+                held_actors.update(hold)
+                held_batch = provider_batch if getattr(exc, "actor_id", None) else _defend_batch(encounter, pending)
+                record_combat_diagnostic(
+                    record_type="window_outcome",
+                    callsite="T096",
+                    outcome="automatic_actor_held",
+                    provider=intent_provider_name,
+                    model=intent_model_name,
+                    encounter_id=encounter.get("encounterId"),
+                    turn_id=pending.get("turnId"),
+                    revision=(encounter.get("combatState") or {}).get("revision"),
+                    round_number=(encounter.get("combatState") or {}).get("round"),
+                    window_kind=window_kind,
+                    actor_count=len(hold),
+                    attempt=attempt_number,
+                    failure_class=failure_class,
+                    error_code=exc.__class__.__name__,
+                )
+                continue
+            if logged:
+                if repeated:
                     # #1251: T096 returned a batch it was already refused for.
                     # No further call: the window ends on the ceiling's path,
                     # with the ceiling's line (#1342), and the turn is kept.
