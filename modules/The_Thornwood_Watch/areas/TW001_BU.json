@@ -95,6 +95,29 @@
   },
   "locations": [
     {
+      "typedFacts": {
+        "version": 1,
+        "leads": [
+          {
+            "name": "Drag Marks",
+            "summary": "Two sets of prints break from the drag trail and run north with blood on the briars and wolf tracks closing behind them, toward the Wolf's Den Cave.",
+            "check": {
+              "stat": "skill:survival",
+              "dc": 11
+            },
+            "destinationLocationId": "TW06"
+          },
+          {
+            "name": "Bandit tracks",
+            "summary": "Boot prints and cart ruts head for the Bandit Trail and Malarok's stronghold beyond it.",
+            "check": {
+              "stat": "skill:survival",
+              "dc": 13
+            },
+            "destinationLocationId": "TW05"
+          }
+        ]
+      },
       "locationId": "TW01",
       "name": "Ambush Site",
       "type": "clearing",
@@ -156,6 +179,20 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "leads": [
+          {
+            "name": "Tracking Signs",
+            "summary": "The trail holds firm through the thornbushes and leads straight to the stronghold.",
+            "check": {
+              "stat": "skill:survival",
+              "dc": 11
+            },
+            "destinationLocationId": "TW05"
+          }
+        ]
+      },
       "locationId": "TW02",
       "name": "Bandit Trail",
       "type": "path",
@@ -205,6 +242,50 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Half-burned bandit journal",
+            "summary": "The legible pages speak of Malarok's growing power and his need for tribute. Captives were held here until a rite failed and the ash took the men who watched it; the rest were marched to the stronghold."
+          },
+          {
+            "name": "Torn map showing bandit patrol routes",
+            "summary": "Patrol loops run between the Ambush Site and the stronghold along the Bandit Trail."
+          },
+          {
+            "name": "Map fragment",
+            "summary": "The Bandit Trail runs on past the stronghold to a grove inked in black."
+          },
+          {
+            "name": "Bandit's Mad Shelter scribblings",
+            "summary": "The same line, over and over: the stone must be fed. The ritual notes around it match Malarok's corruption magic.",
+            "check": {
+              "stat": "skill:arcana",
+              "dc": 12
+            }
+          },
+          {
+            "name": "Prisoner Belongings",
+            "summary": "A ranger's token and a merchant's seal name Gareth and Kael, two captives who are not among the dead here.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 10
+            }
+          }
+        ],
+        "leads": [
+          {
+            "name": "Where the captives went",
+            "summary": "Rope burns and fresh ruts show the captives were moved deeper into the forest, to the bandits' permanent base.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 12
+            },
+            "destinationLocationId": "TW05"
+          }
+        ]
+      },
       "locationId": "TW03",
       "name": "Abandoned Camp",
       "type": "clearing",
@@ -298,6 +379,23 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Ancient tome",
+            "summary": "Old lore on the corruption from the north: a shard of fallen star can be bound and fed, and cold iron and purified water weaken its hold."
+          },
+          {
+            "name": "Ward Stones",
+            "summary": "Druidic warding runes name this grove a sanctuary, and warn that the wards hold only while the spring runs clean.",
+            "check": {
+              "stat": "skill:religion",
+              "dc": 11
+            }
+          }
+        ]
+      },
       "locationId": "TW04",
       "name": "Hermit's Refuge",
       "type": "grove",
@@ -367,6 +465,39 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Gorvek's papers",
+            "summary": "Orders in a cramped hand under a twisted-tree sigil, signed only M.: hold the road, take captives alive, and send them north as tribute. A later page sets a night assault on the Rangers' Outpost once the silver bells are silent."
+          },
+          {
+            "name": "Gorvek's map",
+            "summary": "A hide map of the caravan road with each ambush inked in and the three bell towers crossed through. A red line leaves the north palisade and ends at a cave mouth in the black-needled woods, marked 'tribute road'."
+          }
+        ],
+        "leads": [
+          {
+            "name": "The tribute road",
+            "summary": "Gorvek's map and the wheel ruts behind the palisade agree: captives go north to a cave in the corrupted woods.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 12
+            },
+            "destinationLocationId": "NC01"
+          }
+        ],
+        "locks": [
+          {
+            "name": "Gorvek's strongbox",
+            "lockDC": 15,
+            "breakDC": 17,
+            "keyname": "Strongbox key (on Gorvek)",
+            "contents": "The letter that matches his orders, under the same twisted-tree sigil, promising gold and equipment for each tribute sent north, and 30 gold pieces in mixed coin."
+          }
+        ]
+      },
       "locationId": "TW05",
       "name": "Bandit Stronghold",
       "type": "stronghold",
@@ -488,6 +619,26 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Partial map of bandit patrols",
+            "summary": "Gareth's sketch shows the sentry posts around the stronghold and the gaps in their rounds, enough to pass them unseen."
+          }
+        ],
+        "leads": [
+          {
+            "name": "Gareth's map",
+            "summary": "With Gareth's map, the best approach to the stronghold is plain, and it passes between the sentries.",
+            "check": {
+              "stat": "skill:survival",
+              "dc": 10
+            },
+            "destinationLocationId": "TW05"
+          }
+        ]
+      },
       "locationId": "TW06",
       "name": "Wolf's Den Cave",
       "type": "cave",
