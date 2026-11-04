@@ -53,12 +53,13 @@ with HeadlessClient(module="The_Thornwood_Watch", character="pc.json",
 ```
 
 `play()` returns a `TurnResult` (`narration`, `state`, `prompt`, `events`,
-`ended`). The old `core/ai/dm_wrapper.py` / `enhanced_dm_wrapper.py`
+`ended`, `recovery_required`). The old `core/ai/dm_wrapper.py` / `enhanced_dm_wrapper.py`
 subprocess scrapers are deprecated in favor of this client.
 
-Exit codes: `0` clean end (player exit, engine stop, or post-restore
-restart), `2` engine error, `3` per-turn silence timeout (script mode),
-`4` bootstrap/usage error.
+Exit codes: `0` clean end (player exit or post-restore restart), `2` engine
+error, `3` per-turn silence timeout (script mode), `4` bootstrap/usage error,
+`5` the game stopped (`engine_stop`). A run that ends `5` did not finish: read
+it as a stop, not as a played session.
 
 ## How it works
 
@@ -86,9 +87,9 @@ and `ts` (unix seconds).
 | `hello` | `protocol`, `game_dir`, `pid` | session started |
 | `startup` | `phase`, ... | startup readiness marker; `startup_kickoff_done` (or `startup_kickoff_skipped` with `result: "already_done"`) means the game is live |
 | `narration` | `channel` (`main`/`combat`/`levelup`/`system`), `content`, `source` (`sink` or `stdout_scrape`) | DM output for the player. `source: "sink"` is the structured path all engine narration uses; `stdout_scrape` marks a fallback recovery from raw stdout and normally never appears |
-| `status` | `message`, `is_processing`, `recovery_required` | engine busy/idle heartbeat. While `recovery_required` is true, an idle status reads "Gameplay is paused. Choose a save to Load, Reset, or Quit." and only list-saves, Load, Reset or Quit are accepted |
+| `status` | `message`, `is_processing`, `recovery_required` | engine busy/idle heartbeat. While `recovery_required` is true, an idle status reads "Gameplay is paused. Choose a save to Load, Reset, or Quit.", no `prompt` follows, and only list-saves, Load, Reset or Quit are accepted |
 | `welcome_progress` | `message`, `kind?` (`opening_scene`/`resume`) | background progress of a new game's opening scene (`opening_scene`, e.g. "The DM is setting the opening scene...") or a resumed game's welcome (`resume`, "The DM is recalling your journey..."). Presentational only: it is not a `status` event and never locks input. An empty `message` clears it |
-| `prompt` | `kind` (`main`/`combat`/`levelup`/`roll`/`wizard`/`unknown`), `raw_prompt`, `stats` (`hp`, `max_hp`, `xp`, `next_level_xp`, `time`, `time_context` when available), `roll` (only when the next line answers a roll; see "The `roll` object"), `pendingRoll` (the same roll as `{kind: "check" | "hitDie", label, dice: [{count, sides}]}`, only for a check or a short rest's hit dice this line answers; a waiting check comes first) | **the engine is waiting for input; the turn boundary** |
+| `prompt` | `kind` (`main`/`combat`/`levelup`/`roll`/`wizard`/`resume`/`unknown`), `raw_prompt`, `stats` (`hp`, `max_hp`, `xp`, `next_level_xp`, `time`, `time_context` when available), `roll` (only when the next line answers a roll; see "The `roll` object"), `pendingRoll` (the same roll as `{kind: "check" | "hitDie", label, dice: [{count, sides}]}`, only for a check or a short rest's hit dice this line answers; a waiting check comes first) | **the engine is waiting for input; the turn boundary** |
 | `state` | see below | snapshot taken right after `prompt` |
 | `system` | `content` | structured system messages (module transitions, safe-action failures, bootstrap notes) |
 | `debug` | `content`, `is_error` | raw engine chatter; only emitted with `--debug`, except engine-crash tracebacks, which are always emitted |
@@ -96,7 +97,7 @@ and `ts` (unix seconds).
 | `module_progress` | build progress fields | in-game module creation progress |
 | `operation` | `name`, `status`, `id?`, `operation_id?`, `message?`, `waiting_for_current_operation?` | a transport receipt or deferral for a command or input, e.g. `status: "accepted_deferred"` with "Your action is queued for after travel recovery.". Never proof of execution; wait for the correlated `result` |
 | `result` | `id`, `ok`, `data`/`error` | reply to a `command` |
-| `exit` | `reason` (`player_exit`/`engine_stop`/`restart`/`error`), `detail?` | session over |
+| `exit` | `reason` (`player_exit`/`engine_stop`/`restart`/`error`), `detail?` | session over. `engine_stop` means the game stopped with no player exit (exit code `5`): a start with nothing to play, a read-only save, or a Quit from a stopped game, whose `detail` says what stopped |
 
 ### Agent -> server lines
 
@@ -120,6 +121,14 @@ Rules (live-accepted on 2026-10-24 by the L12 headless save, load and resume run
   result emits `exit {reason: "restart"}`; relaunch to use the clean state.
   `recovery_required` does not start gameplay or advertise a normal prompt:
   command intake remains for list-saves, Load, Reset or Quit.
+- `recovery_required` is also how a stopped fight reads: the party has fallen,
+  a fight is paused on disk (`state.combat.recovery` says so, with its
+  `reason`), or a resumed fight stopped again. A line sent then is refused.
+- `prompt {kind: "resume"}` means a turn stopped and the fight did not go on.
+  The next line re-enters the fight and is **not played**, so send it knowing
+  it costs nothing but the re-entry; a Quit here ends `engine_stop`. In script
+  mode the run ends there, exit code `5`, since the next script line would be
+  spent.
 - `operation {status: "received"}` acknowledges command transport only. The
   existing runner executes commands FIFO; wait for the correlated `result`.
   Receipt alone never proves execution or success. Input retains its existing
@@ -201,7 +210,9 @@ when the engine is idle at a prompt, i.e. after its post-turn saves:
 ```
 
 `combat` becomes `{"active": true, "encounter_id": "...", "round": N}` while
-an encounter is live.
+an encounter is live. A fight that needs Load or Reset adds
+`"recovery": {"required": true, "message": "...", "actions": ["load", "reset"]}`,
+with `reason` (for example `party_defeated`) when the fight is paused on disk.
 
 ## Character seeding (skipping the wizard)
 

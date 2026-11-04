@@ -1634,7 +1634,9 @@ def _open_line_roll(json_file_path):
     try:
         state = (safe_json_load(json_file_path) or {}).get("combatState") or {}
         return open_roll_request(state.get("pendingTurn"))
-    except Exception:
+    except Exception as exc:
+        debug("COMBAT_LOOP: the open roll could not be read: %s: %s" % (type(exc).__name__, exc),
+              category="combat_events")
         return None
 
 

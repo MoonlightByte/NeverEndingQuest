@@ -49,6 +49,10 @@ class TurnResult:
             (e for e in reversed(events) if e.get("type") == "state"), None)
         self.exit = next(
             (e for e in events if e.get("type") == "exit"), None)
+        # #1811: play stopped; only list-saves, Load, Reset or Quit are taken.
+        self.recovery_required = any(
+            e.get("type") == "status" and e.get("recovery_required")
+            for e in events)
 
     @property
     def ended(self):
@@ -208,6 +212,10 @@ class HeadlessClient:
             event = self._next_event(timeout)
             events.append(event)
             if event.get("type") == "exit":
+                return TurnResult(events)
+            if (event.get("type") == "status" and event.get("recovery_required")
+                    and not event.get("is_processing")):
+                # #1811: play stopped; no prompt comes until Load or Reset.
                 return TurnResult(events)
             if event.get("type") == "state" and any(
                     e.get("type") == "prompt" for e in events):

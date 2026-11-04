@@ -1602,10 +1602,15 @@ def recover_startup_handoff():
             "player_message": result.get("player_message")}
 
 
+# #1811: the DM's exitGame ends the loop with a plain return, as a stop does.
+farewell_taken = threading.Event()
+
+
 # Add this new function near the top of the file
 def exit_game():
     from core.combat.invocation import supersede_invocations
 
+    farewell_taken.set()
     supersede_invocations("exit")
     print("Fond farewell until we meet again!")
     exit()
@@ -3165,6 +3170,7 @@ def _resume_v2_location_transition(operation_id, *, publish=True, publication=No
         last_family = checkpoint["deferred_actions"]["actions"][-1].get("family")
         if last_family == "exitGame":
             terminal_action = "exit"
+            farewell_taken.set()
     final_narration = checkpoint["narration"].get("text", "")
     action_handler.complete_location_transition_checkpoint(operation_id)
     return {
