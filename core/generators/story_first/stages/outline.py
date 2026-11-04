@@ -55,7 +55,9 @@ only when the creature's role still depends on that; a true flag returns the bri
 redesign. Give every beat a sceneScale: area_mass for a scene spanning a city, district,
 village, army, evacuation, or mass battle; site for a scene that fills one building, camp,
 square, bridge, gate, or similar place; confined for a private meeting or a scene with a single
-captive, patient, prisoner, or witness; unclassified when none of these fits. Use ASCII
+captive, patient, prisoner, or witness; unclassified when none of these fits. Set
+openingWeather and openingPoliticalClimate to the weather and the political mood where the
+entry beat opens, each in one short phrase. Use ASCII
 canonical text. Avoid
 these overused priors unless the seed explicitly contains them:
 {avoid}. Return only JSON matching the response contract."""

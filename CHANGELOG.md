@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - A generated image now leaves the log with its narration instead of dropping to the bottom below the newest turn, and an old game's image no longer stays on the log after setup resets that game's save (#1395, #1768).
+- Modules built with the story-first builder now start with the opening weather and political climate the builder wrote, so their first game no longer asks for them (#1481).
+- A new game no longer announces a temporary-effects upgrade or writes a pre-conversion save before the first turn when it has no effects to convert; a save with effects to convert still gets both (#1678).
 - A generated scene image now shows from the game's own saved copy, so it keeps showing after a reconnect or later in the session instead of breaking when the image service's link expires (#1755).
 - After a fight, a spell slot the game's summary tries to give back is noted as not applied, and the rest of that turn's healing still happens (#1763).
 - A party character's Attack action makes as many attacks as its class gives at its level (Extra Attack at level 5; a Fighter's two and three extra attacks at 11 and 20), so a stated second attack is no longer refused; a multiclass sheet keeps one (#1762).
