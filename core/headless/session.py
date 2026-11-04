@@ -56,26 +56,19 @@ RAW_LOG_PATH = os.path.join("modules", "logs", "headless_raw.log")
 
 
 
-def _pending_roll():
-    """The roll the game is holding for the player (D-1118-5 A, #1118 items 3 and 4), typed, from checks_state:
-    {kind: "check" or "hitDie", label, dice}; a waiting check comes before a held rest, as the settle takes
-    them. None when nothing is held. A harness never reads DM prose to find it."""
-    try:
-        from core.managers import checks_state
-        from core.nql import checks
+def _prompt_rolls():
+    """The prompt's typed roll fields (#1811): roll, the roll this line answers, on any prompt whose line does;
+    pendingRoll, its {kind, label, dice} (D-1118-5 A, #1118 items 3 and 4), only for a check or a held rest.
+    A roll the line does not answer is not shown. A harness never reads DM prose to find one."""
+    from core.managers import roll_prompt
 
-        pending = checks_state.pending_checks()
-        if pending:
-            check = pending[0]
-            return {"kind": "check", "label": f"{checks.label(check.get('stat'))} for {check.get('characterName')}",
-                    "dice": [{"count": check.get("faces"), "sides": 20}]}
-        entry = checks_state.pending_rest()
-    except Exception:
-        return None
-    if not entry:
-        return None
-    return {"kind": "hitDie", "label": f"Hit die for {entry.get('characterName')}",
-            "dice": [{"count": entry.get("count"), "sides": entry.get("die")}]}
+    roll = roll_prompt.line_roll()
+    if roll is None:
+        return {}
+    fields = {"roll": roll}
+    if roll["kind"] in ("check", "hitDie"):
+        fields["pendingRoll"] = {key: roll[key] for key in ("kind", "label", "dice")}
+    return fields
 
 class HeadlessSession:
     def __init__(self, repo_root, game_dir=None, debug=False, writer=None):
@@ -443,16 +436,12 @@ class HeadlessSession:
         # would leave the flag stuck set for the whole following turn,
         # defeating the save/restore busy-guard.
         self.prompt_pending.set()
-        extra = {}
-        pending_roll = _pending_roll()
-        if pending_roll is not None:
-            extra["pendingRoll"] = pending_roll
         self.writer.emit(
             "prompt",
             kind=kind,
             raw_prompt=clean_prompt,
             stats=self._parse_prompt_stats(clean_prompt),
-            **extra)
+            **_prompt_rolls())
         self.writer.emit("state", **snapshot)
 
     # -- runner-side API ---------------------------------------------------

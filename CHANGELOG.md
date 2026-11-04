@@ -55,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A line of story now always has its message id when it reaches the page, so the page can match it to its picture and to the same line after a reload (#1769).
 - Hunter's Mark and Hex now add their extra die on a hit. The damage ask names it ("Roll 1d8 for your Longsword and 1d6 for Hunter's Mark, one number for each."), it works from the dice tray, and the damage line shows it (#1666).
 - In combat, a spell attack whose roll was answered no longer ends with nothing done: the DM rules it and asks for the damage (#1781).
+- Headless mode's prompt now says in typed fields when the next line answers a roll, in combat too: the dice, a total or one number for each, and a check's reason, DC and advantage. A waiting check no longer shows on a prompt that does not read it (#1811).
 
 ## [1.1.1] - 2026-11-02
 
