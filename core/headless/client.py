@@ -43,6 +43,11 @@ class TurnResult:
         self.narration = "\n\n".join(
             e.get("content", "") for e in events
             if e.get("type") == "narration" and e.get("content"))
+        # #1811: all the player read, in order. A roll's result and a damage
+        # card are `system` lines, so `narration` alone never shows them.
+        self.text = "\n\n".join(
+            e.get("content", "") for e in events
+            if e.get("type") in ("narration", "system") and e.get("content"))
         self.prompt = next(
             (e for e in reversed(events) if e.get("type") == "prompt"), None)
         self.state = next(
@@ -100,8 +105,7 @@ class HeadlessClient:
         reader = threading.Thread(
             target=self._read_loop, name="headless-client-reader", daemon=True)
         reader.start()
-        # The engine narrates the startup kickoff before the first prompt.
-        self.opening = self._collect_until_prompt()
+        self.opening = self._collect_opening()
         return self
 
     def close(self):
@@ -205,6 +209,21 @@ class HeadlessClient:
         if event is None:
             raise HeadlessProtocolError("serve process closed its stream")
         return event
+
+    def _collect_opening(self):
+        """Up to the first prompt, then on until a new game's opening scene is in
+        (#1811): the prompt can come first, and input is held behind that scene
+        anyway. A relaunch's welcome back is not waited for: an early line
+        cancels it."""
+        opening = self._collect_until_prompt()
+        events = opening.events
+        while not (opening.ended or opening.recovery_required):
+            shown = [e for e in events if e.get("type") == "welcome_progress"]
+            if not shown or not shown[-1].get("message") or shown[-1].get("kind") != "opening_scene":
+                break
+            events.append(self._next_event())
+            opening = TurnResult(events)
+        return opening
 
     def _collect_until_prompt(self, timeout=None):
         events = []

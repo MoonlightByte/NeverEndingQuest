@@ -45,15 +45,18 @@ from core.headless.client import HeadlessClient
 
 with HeadlessClient(module="The_Thornwood_Watch", character="pc.json",
                     game_dir="/tmp/neq-test") as game:
-    print(game.opening.narration)        # startup kickoff narration
+    print(game.opening.narration)        # a new game's opening scene
     turn = game.play("I look around")    # blocks until the next prompt
-    print(turn.narration, turn.state["player"])
+    print(turn.text, turn.state["player"])
     game.save("checkpoint")
     print(game.list_saves())
 ```
 
-`play()` returns a `TurnResult` (`narration`, `state`, `prompt`, `events`,
-`ended`, `recovery_required`). The old `core/ai/dm_wrapper.py` / `enhanced_dm_wrapper.py`
+`play()` returns a `TurnResult` (`narration`, `text`, `state`, `prompt`,
+`events`, `ended`, `recovery_required`). `narration` is the DM's words only;
+`text` is all the player read, in order, with roll results and damage cards.
+`start()` waits for a new game's opening scene, so `opening` holds it; a
+relaunch's welcome back is not waited for. The old `core/ai/dm_wrapper.py` / `enhanced_dm_wrapper.py`
 subprocess scrapers are deprecated in favor of this client.
 
 Exit codes: `0` clean end (player exit or post-restore restart), `2` engine
@@ -91,7 +94,7 @@ and `ts` (unix seconds).
 | `welcome_progress` | `message`, `kind?` (`opening_scene`/`resume`) | background progress of a new game's opening scene (`opening_scene`, e.g. "The DM is setting the opening scene...") or a resumed game's welcome (`resume`, "The DM is recalling your journey..."). Presentational only: it is not a `status` event and never locks input. An empty `message` clears it |
 | `prompt` | `kind` (`main`/`combat`/`levelup`/`roll`/`wizard`/`resume`/`unknown`), `raw_prompt`, `stats` (`hp`, `max_hp`, `xp`, `next_level_xp`, `time`, `time_context` when available), `roll` (only when the next line answers a roll; see "The `roll` object"), `pendingRoll` (the same roll as `{kind: "check" | "hitDie", label, dice: [{count, sides}]}`, only for a check or a short rest's hit dice this line answers; a waiting check comes first) | **the engine is waiting for input; the turn boundary** |
 | `state` | see below | snapshot taken right after `prompt` |
-| `system` | `content` | structured system messages (module transitions, safe-action failures, bootstrap notes) |
+| `system` | `content` | structured system messages (roll results, damage cards, module transitions, safe-action failures, bootstrap notes) |
 | `debug` | `content`, `is_error` | raw engine chatter; only emitted with `--debug`, except engine-crash tracebacks, which are always emitted |
 | `compression` | `event`, ... | history-compression progress |
 | `module_progress` | build progress fields | in-game module creation progress |
@@ -149,6 +152,9 @@ Rules (live-accepted on 2026-10-24 by the L12 headless save, load and resume run
 - Reset requires `args.confirmed: true` (otherwise the result is
   `reset requires args.confirmed=true`). Like a clean restore, it ends with
   `exit {reason: "restart"}`; relaunch to play the reset campaign.
+- A new game's first `prompt` can come before its opening scene. To read the
+  scene first, wait for the `welcome_progress {kind: "opening_scene"}` with an
+  empty `message`.
 - A new game's opening scene (`welcome_progress {kind: "opening_scene"}`) is
   never discarded by early input. An `input` sent before the scene's
   `narration` arrives is held and answered after the scene: expect the
@@ -224,6 +230,11 @@ check pass and skips the interactive wizard entirely. The file must satisfy
 validation chain first, so a bad seed fails fast with a clear error. Any
 existing valid player character file (e.g. from `characters/` in a live
 game) works as a template.
+
+Relaunching `serve` or `script` with the same flags is safe: when the folder's
+party already holds that hero in that module, the saved sheet stands and the
+file is not applied, and a `system` line says so. `new-game` still refuses a
+sheet that differs from the saved one.
 
 ## Isolated game directories
 

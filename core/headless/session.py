@@ -181,12 +181,20 @@ class HeadlessSession:
         bootstrap_mod.run_engine_prechecks()
         set_status_callback(self._on_status)
         if self._seed_character_file:
-            name = bootstrap_mod.seed_character(
+            kept = bootstrap_mod.kept_character(
                 self._seed_character_file, self._seed_module)
-            self.writer.emit(
-                "system",
-                content="Seeded character %r into module %r; startup wizard "
-                        "will be skipped." % (name, self._seed_module))
+            if kept:
+                self.writer.emit(
+                    "system",
+                    content="Kept the saved sheet for %r; the character file "
+                            "was not applied." % kept)
+            else:
+                name = bootstrap_mod.seed_character(
+                    self._seed_character_file, self._seed_module)
+                self.writer.emit(
+                    "system",
+                    content="Seeded character %r into module %r; startup wizard "
+                            "will be skipped." % (name, self._seed_module))
 
         # Import main AFTER the shims: enhanced_logger's console handler
         # binds sys.stdout at import time. This also lets main.py's

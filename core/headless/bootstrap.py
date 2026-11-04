@@ -206,6 +206,28 @@ def run_engine_prechecks():
     run_calendar_migration()
 
 
+def kept_character(character_file, module_name):
+    """The hero's name when this folder's game already holds them, else None (#1811).
+
+    A relaunch repeats the flags that started the game, and the saved sheet has
+    moved on from the file. It stands: `seed_character` would refuse it as a
+    different character. Read from typed fields only.
+    """
+    import json
+    from utils.encoding_utils import safe_json_load
+    from utils.module_path_manager import ModulePathManager
+
+    try:
+        with open(character_file, "r", encoding="utf-8") as handle:
+            name = json.load(handle).get("name")
+    except (OSError, ValueError, AttributeError):
+        return None  # seed_character words this failure
+    party = safe_json_load("party_tracker.json") or {}
+    if party.get("module") != module_name or name not in (party.get("partyMembers") or []):
+        return None
+    return name if os.path.exists(ModulePathManager(module_name).get_character_unified_path(name)) else None
+
+
 def seed_character(character_file, module_name):
     """Install a pre-made character and point party_tracker at it.
 
