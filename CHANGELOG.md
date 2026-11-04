@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - In combat, a player's damaging spell or attack no longer lands from the model's own numbers: the game asks for the damage dice first (#1606).
+- A generated image now leaves the log with its narration instead of dropping to the bottom below the newest turn, and an old game's image no longer stays on the log after setup resets that game's save (#1395, #1768).
 - Modules built with the story-first builder now start with the opening weather and political climate the builder wrote, so their first game no longer asks for them (#1481).
 - A new game no longer announces a temporary-effects upgrade or writes a pre-conversion save before the first turn when it has no effects to convert; a save with effects to convert still gets both (#1678).
 - A generated scene image now shows from the game's own saved copy, so it keeps showing after a reconnect or later in the session instead of breaking when the image service's link expires (#1755).
@@ -36,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Right after a fight, the DM can now wake or heal a hero who was knocked out (hit points regained, back from unconscious, stabilised); a change the fight itself already made, such as its damage or spent resources, is still not applied twice (#1730).
 - With no game started yet, the Load list now shows the saves of every adventure, each with its adventure, and loading or deleting one uses that adventure's save folder; before, it showed only an old shared folder, which is normally empty (#1715).
 - Arcane Recovery and other features or items that bring back spell slots (Natural Recovery, Harness Divine Power, Font of Magic, Eldritch Master, a Pearl of Power) now spend their use and return the slot together; a slot can no longer come back for free, and a use is never spent when there is no empty slot to regain (#1680).
+- A line of story now always has its message id when it reaches the page, so the page can match it to its picture and to the same line after a reload (#1769).
 
 ## [1.1.1] - 2026-11-02
 

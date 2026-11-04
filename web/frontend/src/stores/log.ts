@@ -38,6 +38,12 @@ export interface LogState {
   clear: () => void
 }
 
+/** An image whose narration left the log would render as an orphan below the newest turn (#1373, #1395). */
+const withNarration = (images: GeneratedImage[], messages: GameMessage[]) => {
+  const keptIds = new Set(messages.map((message) => message.message_id).filter(Boolean))
+  return images.filter((image) => !image.source_message_id || keptIds.has(image.source_message_id))
+}
+
 export const useLog = create<LogState>((set, get) => ({
   messages: [],
   previousSessionCount: 0,
@@ -57,10 +63,12 @@ export const useLog = create<LogState>((set, get) => ({
         return {}
       }
       const dropped = Math.max(0, s.messages.length + 1 - MESSAGE_RING_LIMIT)
+      const messages = [...s.messages, message].slice(-MESSAGE_RING_LIMIT)
       return {
-        messages: [...s.messages, message].slice(-MESSAGE_RING_LIMIT),
+        messages,
         previousSessionCount: Math.max(0, s.previousSessionCount - dropped),
         historyPending: s.historyPending === null ? null : [...s.historyPending, message].slice(-MESSAGE_RING_LIMIT),
+        images: dropped > 0 ? withNarration(s.images, messages) : s.images,
       }
     }),
   // Reconnect history is authoritative. Only output received DURING this
@@ -83,14 +91,12 @@ export const useLog = create<LogState>((set, get) => ({
       }
       const trimmed = merged.slice(-MESSAGE_RING_LIMIT)
       const retainedCached = trimmed.filter((entry) => entry.cached).length
-      // An image whose narration left the log would render as an orphan
-      // below the newest turn (#1373).
-      const keptIds = new Set(trimmed.map((entry) => entry.message.message_id).filter(Boolean))
+      const messages = trimmed.map((entry) => entry.message)
       return {
-        messages: trimmed.map((entry) => entry.message),
+        messages,
         previousSessionCount: retainedCached,
         historyPending: null,
-        images: s.images.filter((image) => !image.source_message_id || keptIds.has(image.source_message_id)),
+        images: withNarration(s.images, messages),
       }
     }),
   appendDebug: (message) =>
@@ -111,5 +117,5 @@ export const useLog = create<LogState>((set, get) => ({
       content: failure.message,
       message_id: failure.request_id ? `image-error-${failure.request_id}` : undefined,
     }),
-  clear: () => set({ messages: [], previousSessionCount: 0, historyPending: null, debug: [] }),
+  clear: () => set({ messages: [], previousSessionCount: 0, historyPending: null, debug: [], images: [] }),
 }))
