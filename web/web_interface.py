@@ -1009,7 +1009,7 @@ class WebOutputCapture:
         self.dm_section_is_startup = False
 
     def _publish_dm_content(self, content, *, commit_guard=None):
-        message = {"type": "narration", "content": content}
+        message = {"type": "narration", "content": content, "message_id": f"msg-{uuid4().hex}"}
         with commit_guard() if commit_guard is not None else nullcontext():
             game_output_queue.put_nowait(message)
         add_to_message_cache(message, commit_guard=commit_guard)
@@ -1257,12 +1257,7 @@ class WebOutputCapture:
                                     combined_content = '\n'.join(self.dm_buffer)
                                     combined_content = combined_content.replace('Dungeon Master:', '', 1).strip()
                                     if combined_content.strip():
-                                        message = {
-                                            'type': 'narration',
-                                            'content': combined_content
-                                        }
-                                        game_output_queue.put(message)
-                                        add_to_message_cache(message)
+                                        self._publish_dm_content(combined_content)
                                 except Exception:
                                     # If DM content processing fails, just continue
                                     pass
