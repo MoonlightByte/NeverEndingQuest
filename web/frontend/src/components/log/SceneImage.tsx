@@ -12,6 +12,19 @@ const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y)
 const midpoint = (a: Point, b: Point) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
 const clamp = (value: number, limit: number) => Math.max(-limit, Math.min(limit, value))
 
+/** The game's local copy first, then once the provider URL, then failed (#1755). */
+function useSceneSource(image: GeneratedImage) {
+  const [fallback, setFallback] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const local = Boolean(image.local_url) && !fallback
+  return {
+    src: local ? image.local_url : image.image_url,
+    failed,
+    onError: () => (local ? setFallback(true) : setFailed(true)),
+    retry: () => { setFallback(false); setFailed(false) },
+  }
+}
+
 export function ScenePreview({ image, onClose }: { image: GeneratedImage; onClose: () => void }) {
   const modal = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
@@ -20,7 +33,7 @@ export function ScenePreview({ image, onClose }: { image: GeneratedImage; onClos
   const current = useRef<View>(FIT)
   const pointers = useRef(new Map<number, Point>())
   const gesture = useRef<{ view: View; points: Point[] }>({ view: FIT, points: [] })
-  const [failed, setFailed] = useState(false)
+  const { src, failed, onError } = useSceneSource(image)
   useModalLayer(modal, onClose)
 
   function update(next: View) {
@@ -100,8 +113,8 @@ export function ScenePreview({ image, onClose }: { image: GeneratedImage; onClos
         onPointerCancel={pointerEnd} onLostPointerCapture={pointerEnd}
         onDoubleClick={(event) => zoom(current.current.scale > 1 ? 1 : 2, localPoint(event.clientX, event.clientY))}>
         {failed ? <p role="status">This scene could not be loaded. Close the preview and try again.</p> :
-          <img ref={picture} src={image.image_url} alt={`Generated scene: ${image.prompt.slice(0, 80)}`} draggable={false}
-            onError={() => setFailed(true)} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }} />}
+          <img ref={picture} src={src} alt={`Generated scene: ${image.prompt.slice(0, 80)}`} draggable={false}
+            onError={onError} style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.scale})` }} />}
       </div>
       <footer><div className="neq-scene-tools" role="group" aria-label="Image zoom">
         <button type="button" aria-label="Zoom out" disabled={view.scale <= 1} onClick={() => zoom(view.scale - .5)}>−</button>
@@ -116,11 +129,11 @@ export function ScenePreview({ image, onClose }: { image: GeneratedImage; onClos
 /** Shared by attached and orphan scenes on both game layouts. */
 export function SceneImage({ image, className = '' }: { image: GeneratedImage; className?: string }) {
   const [open, setOpen] = useState(false)
-  const [failed, setFailed] = useState(false)
+  const { src, failed, onError, retry } = useSceneSource(image)
   return <>
-    {failed ? <div className="ember-image-error" role="status">Scene image unavailable. <button type="button" onClick={() => setFailed(false)}>Retry image</button></div> :
+    {failed ? <div className="ember-image-error" role="status">Scene image unavailable. <button type="button" onClick={retry}>Retry image</button></div> :
       <button type="button" className="neq-scene-thumbnail" aria-label={`Open scene preview: ${image.prompt.slice(0, 80)}`} onClick={() => setOpen(true)}>
-        <img src={image.image_url} alt={`Generated scene: ${image.prompt.slice(0, 80)}`} className={className} onError={() => setFailed(true)} />
+        <img src={src} alt={`Generated scene: ${image.prompt.slice(0, 80)}`} className={className} onError={onError} />
         <span className="neq-scene-open-hint" aria-hidden="true">View scene ↗</span>
       </button>}
     {open && <ScenePreview image={image} onClose={() => setOpen(false)} />}

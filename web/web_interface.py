@@ -1501,6 +1501,16 @@ def serve_module_media(media_type, filename):
     from utils.file_operations import safe_read_json
     from web.media_paths import resolve_media_path
 
+    # #1755: a saved scene image, served only from the module the URL names.
+    if media_type == 'images':
+        from web.media_paths import resolve_generated_image
+        parts = filename.split('/')
+        resolved = resolve_generated_image(parts[0], parts[1], 'modules') if len(parts) == 2 else None
+        if resolved is None:
+            warning(f"Generated image not found or refused: {filename}")
+            return "Media not found", 404
+        return send_file(resolved, mimetype='image/png')
+
     # Determine current module from party tracker
     current_module = None
     party_data = safe_read_json('party_tracker.json')
@@ -5104,6 +5114,7 @@ def handle_generate_image(data):
         from utils.session_spend import record_other
         record_other("portrait")  # #1388: billed per image, counted, not priced
         
+        local_url = None  # #1755: set once the local copy is written
         # Save the image locally with metadata
         try:
             # Get current module and game state
@@ -5135,6 +5146,10 @@ def handle_generate_image(data):
                 with open(filepath, 'wb') as f:
                     f.write(img_response.content)
                 print(f"Saved image to: {filepath}")
+                from urllib.parse import quote
+                from web.media_paths import GENERATED_IMAGE_NAME
+                if GENERATED_IMAGE_NAME.fullmatch(filename):
+                    local_url = f"/media/images/{quote(current_module, safe='')}/{quote(filename, safe='')}"
                 
                 # Save metadata
                 metadata_file = os.path.join(images_dir, "image_metadata.json")
@@ -5168,12 +5183,15 @@ def handle_generate_image(data):
             print(f"Warning: Failed to save image locally: {save_error}")
         
         # Sent to every connection: a reconnect during the image call gets a new sid (#1396)
-        _emit_late_image_answer('image_generated', {
+        answer = {
             'image_url': image_url,
             'prompt': prompt,
             'request_id': data.get('request_id'),
             'source_message_id': data.get('source_message_id')
-        })
+        }
+        if local_url:
+            answer['local_url'] = local_url
+        _emit_late_image_answer('image_generated', answer)
         
     except Exception as e:
         error_msg = f"Image generation failed: {str(e)}"
