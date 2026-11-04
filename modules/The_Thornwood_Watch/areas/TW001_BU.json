@@ -142,16 +142,16 @@
         "Trail rations and medical supplies from overturned wagon"
       ],
       "plotHooks": [
-        "The wounded scout witnessed bandits taking captives to Malarok's camp at the Bandit Stronghold",
+        "Tracks at the site show bandits taking captives to Malarok's camp at the Bandit Stronghold",
         "Bandit equipment shows signs of magical enhancement, suggesting Malarok's influence",
         "Fresh tracks lead toward the Bandit Stronghold where Malarok has established his base",
-        "The scout mentions seeing dark energy and hearing the sorcerer's voice commanding the bandits"
+        "Survivors who fled north may have seen dark energy and heard the sorcerer's voice commanding the bandits"
       ],
-      "dmInstructions": "This location serves as the entry point into the Thornwood investigation. The wounded scout provides crucial intelligence about Malarok's operations and the location of his base at the Bandit Stronghold. Use this to drive the party toward it.",
+      "dmInstructions": "This location serves as the entry point into the Thornwood investigation. The tracks here point to Malarok's base at the Bandit Stronghold and to survivors who fled toward the Wolf's Den Cave. Use them to drive the party onward.",
       "doors": [],
       "traps": [],
       "dcChecks": [
-        "Medicine DC 12: Treat the wounded scout's injuries effectively",
+        "Medicine DC 12: Examine Ranger Corwin's body and learn how he fell",
         "Investigation DC 11: Study the ambush site to find evidence of Malarok's magical corruption affecting the bandits",
         "Survival DC 13: Follow the tracks leading toward Malarok's Bandit Stronghold"
       ],
@@ -454,7 +454,7 @@
         },
         {
           "name": "Healing Springs",
-          "description": "A small spring with pure water that glows faintly with restorative magic, providing sanctuary to injured creatures. Once corrupted by Malarok's influence, now cleansed and protected by the hermit's ritual work."
+          "description": "A small spring that once ran pure and glowed faintly with restorative magic, a sanctuary for injured creatures. Malarok's influence has tainted it, and Maelo cannot scry in its waters until it is cleansed."
         },
         {
           "name": "Ward Stones",

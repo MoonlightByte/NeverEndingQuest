@@ -912,11 +912,6 @@
       "areaConnectivityId": [],
       "npcs": [
         {
-          "name": "Sir Garran Vael",
-          "description": "Once a noble knight and lord of the keep, now a tragic figure corrupted by the shadow relic. He appears as a tall figure in ancient armor fused with shadow substance, his face occasionally shifting between noble human features and a skull-like visage. Though largely consumed by the relic's influence, a spark of his original self remains, creating inner conflict.",
-          "attitude": "Hostile but conflicted, capable of recognition if reminded of his humanity"
-        },
-        {
           "name": "Scout Elen",
           "description": "Suspended in a cage of shadows near the ceiling, barely conscious but still alive. Her rescue is possible if Sir Garran is defeated or his humanity is restored.",
           "attitude": "Weakened but determined, will aid if freed"
@@ -924,7 +919,9 @@
       ],
       "monsters": [
         {
-          "name": "Lord Thaddeus Greymont",
+          "name": "Sir Garran Vael",
+          "description": "Once a noble knight and lord of the keep, now a tragic figure corrupted by the shadow relic. He appears as a tall figure in ancient armor fused with shadow substance, his face occasionally shifting between noble human features and a skull-like visage. Though largely consumed by the relic's influence, a spark of his original self remains, creating inner conflict.",
+          "attitude": "Hostile but conflicted, capable of recognition if reminded of his humanity",
           "monsterType": "wight_lord",
           "quantity": {
 
@@ -965,7 +962,7 @@
           "name": "Shadow Manifestation",
           "quantity": {"min": 2, "max": 4},
           "disposition": "protective",
-          "strategy": "These shadows are spawned by the relic and will defend it and Lord Thaddeus, prioritizing attackers who are dealing the most damage."
+          "strategy": "These shadows are spawned by the relic and will defend it and Sir Garran, prioritizing attackers who are dealing the most damage."
         }
       ],
       "lootTable": [
@@ -980,7 +977,7 @@
         "The pillars show scenes of a rival lord using similar shadow magic against innocent villages, explaining why Sir Garran sought such power in the first place.",
         "Scout Elen made it this far and actually managed to partially awaken Sir Garran's humanity before being captured, explaining his current conflicted state."
       ],
-      "dmInstructions": "This is the campaign's climactic encounter with multiple possible resolutions. COMBAT BALANCE for Level 4 Party: Lord Thaddeus (wight lord) is the main threat with moderate HP (around 45-60). The Shadow Cage has AC 15, 20 HP, vulnerable to radiant damage. The Shadow Relic should have AC 17, 30-40 HP, resistance to non-magical damage. Start with only 1-2 Shadow Manifestations and spawn more gradually. Consider reducing damage if party is struggling - this should be challenging but winnable. Sir Garran attacks when players approach the relic, commanding shadow manifestations to aid him. The Knight's Heart Amulet is crucial - when presented and accompanied by words calling to his humanity (referencing his love, duty, or original purpose), it forces a DC 15 Wisdom save from Sir Garran. Success means he briefly regains control, allowing negotiation or providing advantage against him for 1d4 rounds. The shadow relic attempts to influence party members with whispered offers (DC 14 Wisdom saves to resist). Players can choose to destroy the relic (requiring specific light-based attacks discovered earlier), contain it using the ritual markings (requiring Arcana DC 16), or attempt to cleanse it of corruption (requiring the Knight's Heart and a major sacrifice). Each choice has different consequences for Sir Garran, Scout Elen, and the keep's future.",
+      "dmInstructions": "This is the campaign's climactic encounter with multiple possible resolutions. COMBAT BALANCE for Level 4 Party: Sir Garran (wight lord) is the main threat with moderate HP (around 45-60). The Shadow Cage has AC 15, 20 HP, vulnerable to radiant damage. The Shadow Relic should have AC 17, 30-40 HP, resistance to non-magical damage. Start with only 1-2 Shadow Manifestations and spawn more gradually. Consider reducing damage if party is struggling - this should be challenging but winnable. Sir Garran attacks when players approach the relic, commanding shadow manifestations to aid him. The Knight's Heart Amulet is crucial - when presented and accompanied by words calling to his humanity (referencing his love, duty, or original purpose), it forces a DC 15 Wisdom save from Sir Garran. Success means he briefly regains control, allowing negotiation or providing advantage against him for 1d4 rounds. The shadow relic attempts to influence party members with whispered offers (DC 14 Wisdom saves to resist). Players can choose to destroy the relic (requiring specific light-based attacks discovered earlier), contain it using the ritual markings (requiring Arcana DC 16), or attempt to cleanse it of corruption (requiring the Knight's Heart and a major sacrifice). Each choice has different consequences for Sir Garran, Scout Elen, and the keep's future.",
       "doors": [
         {
           "name": "Chamber Entrance",

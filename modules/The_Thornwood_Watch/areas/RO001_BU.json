@@ -172,7 +172,7 @@
       "dcChecks": [
         "Insight DC 12: Notice Elen's concern about reports from distant regions, hinting at larger threats",
         "Investigation DC 10: Study the tactical maps to understand bandit movement patterns",
-        "Perception DC 8: Hear the subtle signals from the silver bell network warning of approaching activity",
+        "Perception DC 8: Notice that the silver bell network has fallen silent, leaving the outpost without its early warning",
         "Investigation DC 15: Detect signs of magical corruption in the sabotaged silver bell network, indicating Malarok's agents used supernatural means"
       ],
       "accessibility": "Central hub with clear sight lines to all outpost approaches; currently partially impaired by sabotage and ongoing repairs",
@@ -338,8 +338,8 @@
       "npcs": [
         {
           "name": "Trader Sila",
-          "description": "A wary woman in a patched green cloak who stands watch by a locked chest. Though guarded, she shows a cautious hope and trust towards the party after their assistance. She coordinates the merchant community and warns others to stay vigilant after dark.",
-          "attitude": "Guarded but appreciative, cautiously hopeful and eager to spread warnings among the merchants. Should only approach the party with her quest when they're actively preparing for expeditions or gathering supplies - not during the initial crisis assessment phase."
+          "description": "A wary woman in a patched green cloak who stands watch by a locked chest. Though guarded, she shows a cautious hope that someone will stand against the raiders. She coordinates the merchant community and warns others to stay vigilant after dark.",
+          "attitude": "Guarded but courteous, cautiously hopeful and eager to spread warnings among the merchants. Should only approach the party with her quest when they're actively preparing for expeditions or gathering supplies - not during the initial crisis assessment phase."
         },
         {
           "name": "Merchant Gareth",

@@ -53,12 +53,6 @@
       "disposition": "indifferent"
     },
     {
-      "location": "B01",
-      "name": "Harrow's Hollow East Gate Guards",
-      "index": 0,
-      "disposition": "indifferent"
-    },
-    {
       "location": "B03",
       "name": "The Lingering Spirit",
       "index": 0,
@@ -213,12 +207,6 @@
       "name": "The Bone Speaker",
       "index": 0,
       "disposition": "indifferent"
-    },
-    {
-      "location": "E07",
-      "name": "Sir Garran Vael",
-      "index": 0,
-      "disposition": "hostile"
     },
     {
       "location": "E07",
