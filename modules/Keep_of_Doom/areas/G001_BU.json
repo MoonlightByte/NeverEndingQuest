@@ -207,7 +207,7 @@
       "name": "Witchlight Trailhead",
       "type": "trail",
       "description": "The Witchlight Trailhead is enveloped in a cold mist curling around the muddy earth and pale grass beneath the party's feet. Ancient standing stones loom close, their runes flickering faintly as ethereal blue witchlights hover softly above, guiding the way through the shadowed forest. Disturbed ground with fallen twigs, scuffed earth, and a scrap of blue fabric caught on a thorny bush mark the hurried passage of Scout Elen northward. Beneath twisted boughs, the air holds a heavy anticipation, touched by faint fluttering whispers carried on a chill breeze. The lingering dread of the haunted woods presses ever onward. The trail continues north toward the Withered Shrine, while paths back to Harrow's Hollow East Gate and nearby locations like the Abandoned Ranger Outpost remain accessible.",
-      "dmInstructions": "This location marks the party's cautious advance along the Witchlight Trailhead, retracing Scout Elen's desperate flight through the ancient forest. The runes on standing stones flicker faintly, functioning as ethereal guides along the trail. The party finds clear signs of Elen's passage including disturbed earth, snapped twigs, and a scrap of blue fabric. A chill breeze carries faint whispering sounds, enhancing the tense atmosphere. Shadows lurk among the standing stones, and twig blights hide in the undergrowth around the trail markers. From here the party can pursue the trail northward toward the Withered Shrine or explore adjacent locations such as the Abandoned Ranger Outpost or Harrow's Hollow East Gate. Watch for environmental cues and mysterious influences during travel.",
+      "dmInstructions": "This location serves as the transition from Harrow's Hollow to the Gloamwood. The runes on standing stones flicker faintly, functioning as ethereal guides along the trail. The party finds clear signs of Elen's passage including disturbed earth, snapped twigs, and a scrap of blue fabric. A chill breeze carries faint whispering sounds, enhancing the tense atmosphere. Shadows lurk among the standing stones, and twig blights hide in the undergrowth around the trail markers. From here the party can pursue the trail northward toward the Withered Shrine or explore adjacent locations such as the Abandoned Ranger Outpost or Harrow's Hollow East Gate. Watch for environmental cues and mysterious influences during travel.",
       "coordinates": "X2Y1",
       "accessibility": "Narrow trail with occasional rough terrain; reasonable for most travelers.",
       "npcs": [
@@ -279,7 +279,7 @@
         },
         {
           "name": "Witchlights",
-          "description": "Soft blue-green lights that hover just above the path, glowing gently."
+          "description": "Soft blue-green lights that hover just above the path, providing minimal illumination."
         },
         {
           "name": "Offering Shrine",
@@ -802,7 +802,7 @@
       "locationId": "B04",
       "name": "Lost Ward Circle",
       "type": "ritual",
-      "description": "An ancient ritual site consisting of seven stone monoliths arranged in a perfect circle. Each stone bears worn carvings of protective symbols and runes that once glowed with powerful magic. Several stones are cracked and moss-covered, though none have recently toppled. The center contains a raised dais with a shallow bowl-like depression. The ward's protective magic has all but failed, and only a faint blue flicker stirs in the carvings. The ground inside the circle remains barren of plant life. The oppressive darkness presses close, and the silence between the stones feels watchful rather than peaceful.",
+      "description": "An ancient ritual site consisting of seven stone monoliths arranged in a perfect circle. Each stone bears worn carvings of protective symbols and runes that once glowed with powerful magic. Now, several stones have toppled, and the remaining ones are cracked and covered in moss. The center of the circle contains a raised dais with a shallow bowl-like depression. Ghostly blue energy occasionally flickers between the stones like dying lightning, and the ground within the circle is barren of all plant life. The boundary between worlds feels thin here, with whispers and distant wails drifting on the wind.",
       "coordinates": "X3Y2",
       "connectivity": [
         "B02",
@@ -835,6 +835,7 @@
         "Ward stone fragment (key component for potential ritual)",
         "Spell Scroll of Protection from Evil and Good (level 1; only a reader who has the spell on their spell list can use it; read it to cast the spell without Material components; the scroll crumbles to dust once cast)",
         "Pouch containing 5 runestones (focus items for ritual magic)",
+        "Silver ritual dagger with moonstone pommel (25 gp value)",
         "Tattered ritual book with instructions for renewing the wards"
       ],
       "plotHooks": [
@@ -864,8 +865,8 @@
           "description": "A raised stone platform with a bowl-like depression, possibly for offerings or ritual components."
         },
         {
-          "name": "Failing Ward Energy",
-          "description": "Faint blue energy that gutters in the carvings. Once the ritual is completed it will cast a gentle light, providing protection against undead."
+          "name": "Ward Energy",
+          "description": "Faint blue energy that occasionally arcs between the stones, remnants of once-powerful protection magic."
         }
       ],
       "encounters": [],
@@ -1141,7 +1142,7 @@
       "locationId": "B07",
       "name": "Keeper's Cottage",
       "type": "cottage",
-      "description": "A stone cottage nearly swallowed by the forest, its walls covered in thick ivy and moss that seem to pulse with slow vitality. Smoke drifts from a crooked chimney, and strange charms--bones, crystals, and dried herbs--hang from the eaves and windows. The cottage appears both welcoming and foreboding, with warm light spilling from the windows but shadows that move independently within. The garden surrounding the structure contains plants both medicinal and poisonous, some of which are unknown to conventional herbalism. A path of smooth stones leads to the wooden door, each stone etched with a different protective rune. Two awakened shrubs stand vigil outside the cottage, their awareness shifting subtly with the forest's arcane energies. Disturbed earth and small bootprints near the stoop betray recent activity, yet no signs of violence mar the clearing. The air is thick with the forest's restless energy.",
+      "description": "A stone cottage nearly swallowed by the forest, its walls covered in thick ivy and moss that seem to pulse with slow vitality. Smoke drifts from a crooked chimney, and strange charms--bones, crystals, and dried herbs--hang from the eaves and windows. The cottage appears both welcoming and foreboding, with warm light spilling from the windows but shadows that move independently within. The garden surrounding the structure contains plants both medicinal and poisonous, some of which are unknown to conventional herbalism. A path of smooth stones leads to the wooden door, each stone etched with a different protective rune. Three awakened shrubs stand vigil outside the cottage, their awareness shifting subtly with the forest's arcane energies. Disturbed earth and small bootprints near the stoop betray recent activity, yet no signs of violence mar the clearing. The air is thick with the forest's restless energy.",
       "coordinates": "X3Y3",
       "connectivity": [
         "B04",
@@ -1166,9 +1167,11 @@
         {
           "name": "Awakened Shrub",
           "quantity": {
-            "min": 2,
-            "max": 2
-          }
+            "min": 3,
+            "max": 3
+          },
+          "disposition": "protective",
+          "strategy": "These animated plants guard the cottage and respond to Morvath's will, attacking only if the Keeper is threatened or his hospitality abused."
         }
       ],
       "lootTable": [
@@ -1179,14 +1182,16 @@
         "Potion of Healing (a potent herbal concoction brewed by Morvath; restores 2d4 + 2 hit points)"
       ],
       "plotHooks": [
-        "Morvath guided Scout Elen toward the keep and fears for her safety.",
+        "Morvath reveals he guided Scout Elen toward the keep after she helped him gather rare herbs, and he fears for her safety.",
+        "The Keeper offers to create a protective charm against the keep's influence, but requires a personal sacrifice from each party member.",
+        "Among Morvath's possessions is a portrait of a younger Sir Garran Vael, suggesting the Keeper knew him before his corruption.",
         "The Keeper requires aid in restoring the Lost Ward Circle, the final protective ward weakened by the keep's dark influence.",
         "Restoration of the ward demands a ward stone, runestones, and either blood or powerful magic, as the ritual book at the circle sets out.",
         "Morvath's knowledge is crucial to countering the forest's curse tied to the keep.",
         "A path leads northeast toward the Lost Ward Circle, where the party's fate may entwine with Scout Elen and the shadowed curse.",
         "Entry to Shadowfall Keep may require an old key or the forest's blessing as cautioned by Morvath."
       ],
-      "dmInstructions": "Keeper Morvath serves as both guide and gatekeeper to the keep. He offers hospitality (food, rest, and information) but tests the party through cryptic conversations. Players who show respect, offer assistance, or demonstrate genuine concern for Scout Elen earn his favor (and gifts), including a potent healing concoction. Those who threaten or dismiss him face hostility. Morvath can provide directions to the keep and warnings about specific dangers, but he speaks in riddles that require Insight checks (DC 14) to fully understand. The two awakened shrubs are vigilant, reacting only if the party threatens the Keeper or abuses his hospitality. Morvath can apply a healing herbal paste to a wounded party, restoring vitality.",
+      "dmInstructions": "Keeper Morvath serves as both guide and gatekeeper to the keep. He offers hospitality (food, rest, and information) but tests the party through cryptic conversations. Players who show respect, offer assistance, or demonstrate genuine concern for Scout Elen earn his favor (and gifts), including a potent healing concoction. Those who threaten or dismiss him face hostility. Morvath can provide directions to the keep and warnings about specific dangers, but he speaks in riddles that require Insight checks (DC 14) to fully understand. The three awakened shrubs are vigilant, reacting only if the party threatens the Keeper or abuses his hospitality. Morvath can apply a healing herbal paste to a wounded party, restoring vitality.",
       "doors": [
         {
           "name": "Cottage Door",
