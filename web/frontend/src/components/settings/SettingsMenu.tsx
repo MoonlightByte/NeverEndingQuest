@@ -11,6 +11,10 @@ import { claimAudio, finishAudio, stopAudio } from '../../services/audioCoordina
 import { useModalLayer } from '../dialogs/useModalLayer'
 import './settings-parity.css'
 
+// #1786: a refused preview gets the DM's line, not an error card.
+class VoiceRefused extends Error {}
+const VOICE_REFUSED = "I can't use that voice right now. Try another one."
+
 const OPENAI_VOICES = [
   ['fable', 'Fable (Storyteller)'], ['onyx', 'Onyx (Deep)'], ['nova', 'Nova (Warm)'],
   ['alloy', 'Alloy (Neutral)'], ['echo', 'Echo (Soft)'], ['shimmer', 'Shimmer (Clear)'],
@@ -102,7 +106,7 @@ function VoiceSettings() {
         window.speechSynthesis.speak(utterance)
       } else {
         const response = await fetch('/api/tts', { signal: controller.signal, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, voice: voice || 'fable', model: engine === 'openai-hd' ? 'tts-1-hd' : 'tts-1' }) })
-        if (!response.ok) throw new Error('TTS preview failed.')
+        if (!response.ok) throw new VoiceRefused()
         const blob = await response.blob()
         if (current !== generation.current) return
         const url = URL.createObjectURL(blob)
@@ -120,7 +124,8 @@ function VoiceSettings() {
       audioUrlRef.current = null
       setPreviewing(false)
       finishAudio(playbackOwner, () => undefined)
-      useLog.getState().append({ type: 'error', content: error instanceof Error ? error.message : String(error) })
+      useLog.getState().append(error instanceof VoiceRefused ? { type: 'system', content: VOICE_REFUSED }
+        : { type: 'error', content: error instanceof Error ? error.message : String(error) })
     }
   }
 

@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- If the DM's online voice stops working, the log now says so once in the DM's own words and the story carries on in text, instead of showing an error on every narration (#1786).
 - The browser now keeps what the server advertised when it connects, so state refreshes carry their request ids and a late answer from an earlier request is dropped instead of applied (#1389).
 - Enemies still standing when a fight ends now stay in the location's record, so a party that flees from three wolves and comes back meets those wolves, not an empty room (#1783).
 - When the game rolls for the player, the card in the log now reads the way a DM would say it, such as "I rolled your three d4s for damage: 3, 4 and 1." (#1777).
