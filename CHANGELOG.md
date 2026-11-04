@@ -8,9 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - The Thornwood Watch and Keep of Doom now give real results when a character reads a document, follows a trail or opens a lock, so a success finds what the adventure wrote for it. The early quest steps also close on their own once the party gets there; the final steps stay with the DM. Games already started keep their copy; a new game or Reset has these (#1733).
+- Enemies still standing when a fight ends now stay in the location's record, so a party that flees from three wolves and comes back meets those wolves, not an empty room (#1783).
 - When the game rolls for the player, the card in the log now reads the way a DM would say it, such as "I rolled your three d4s for damage: 3, 4 and 1." (#1777).
 - Adventure modules can now hold authored results for what a character reads, tracks or unlocks, and can close a quest once the party reaches the place or ends the threat. Nothing changes until a module uses them (#1733).
 - In combat, a player's damaging spell or attack with no roll behind it now prompts the DM to ask for the damage dice, once (#1606).
+- In combat, a monster whose action the rules keep refusing now takes the Defend action and the fight goes on, instead of the turn stopping (#146).
 - The roll panel now leads with what a roll is for and the input box answers to it, the console shows the same request at its prompt, and a screen reader announces it, so a roll is always asked for even when the narration does not ask (#1734).
 - A very long turn keeps its last AI calls for the DM: optional extras, such as companion voices, stop first (#1587).
 - A generated image now leaves the log with its narration instead of dropping to the bottom below the newest turn, and an old game's image no longer stays on the log after setup resets that game's save (#1395, #1768).
