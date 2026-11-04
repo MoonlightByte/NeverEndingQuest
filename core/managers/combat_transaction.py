@@ -885,13 +885,28 @@ def claim_turn(
         return deepcopy(encounter), deepcopy(pending)
 
 
+def _answer_exchange(rendered, spoken=None, rider_answers=None):
+    """A new answer exchange; #1666's rider fields only when there are any."""
+    exchange = {"playerInput": rendered}
+    if isinstance(spoken, str) and spoken.strip():
+        exchange["spokenInput"] = _player_text(spoken)
+    if rider_answers:
+        exchange["riderAnswers"] = deepcopy(rider_answers)
+    return exchange
+
+
 def append_pending_player_input(
     encounter_path,
     turn_id,
     player_input,
     timeout_seconds=5.0,
+    spoken=None,
+    rider_answers=None,
 ):
-    """Durably add one clarification/roll to an unresolved player turn."""
+    """Durably add one clarification/roll to an unresolved player turn.
+    #1666: a split rider answer stores the main faces as ``player_input``, the
+    player's whole line as ``spoken`` and the rider's dice as ``rider_answers``;
+    T096 reads only ``playerInput``."""
     rendered = _player_text(player_input)
     if not rendered:
         return
@@ -916,8 +931,8 @@ def append_pending_player_input(
         # A retried line is not appended twice; an answer to a new DM
         # request is always its own exchange, even when its text repeats (#1118).
         if (not exchanges or exchanges[-1].get("dmRequest") or exchanges[-1].get("withdrawn") is True
-                or exchanges[-1].get("playerInput") != rendered):
-            exchanges.append({"playerInput": rendered})
+                or rendered not in (exchanges[-1].get("playerInput"), exchanges[-1].get("spokenInput"))):
+            exchanges.append(_answer_exchange(rendered, spoken, rider_answers))
         pending["playerExchanges"] = exchanges
         _write_object(encounter_path, encounter, "pending player clarification")
 
@@ -928,6 +943,8 @@ def mark_pending_game_roll(
     player_input,
     faces,
     timeout_seconds=None,
+    spoken=None,
+    rider_answers=None,
 ):
     """#1118: the writer of the game's roll for an open typed roll
     request: ``rolledBy`` "game" and the faces per die term, beside the
@@ -956,7 +973,8 @@ def mark_pending_game_roll(
         exchanges = [item for item in exchanges if isinstance(item, dict)] if isinstance(exchanges, list) else []
         last = exchanges[-1] if exchanges and exchanges[-1].get("withdrawn") is not True else None
         if last is not None and last.get("dmRequest"):
-            exchanges.append({"playerInput": rendered, "rolledBy": "game", "rolledFaces": deepcopy(faces)})
+            exchanges.append(dict(_answer_exchange(rendered, spoken, rider_answers),
+                                  rolledBy="game", rolledFaces=deepcopy(faces)))
             branch = "appended"
         elif last is not None and _player_text(last.get("playerInput")) == rendered and "rolledBy" not in last:
             last["rolledBy"] = "game"
@@ -967,6 +985,26 @@ def mark_pending_game_roll(
         pending["playerExchanges"] = exchanges
         _write_object(encounter_path, encounter, "pending game roll")
         return branch
+
+
+def mark_rider_reask(encounter_path, turn_id, timeout_seconds=None):
+    """#1666: an answer to the open rider ask could not be read and the player
+    was asked again; the next unread answer is not asked again."""
+    with path_transaction_lock(
+        encounter_path,
+        suffix=".combat.lock",
+        timeout_seconds=timeout_seconds,
+    ) as acquired:
+        if acquired is None:
+            raise CombatLeaseBusy("Combat state is busy; retry the preserved action")
+        encounter = _load_object(encounter_path, "encounter")
+        pending = ensure_combat_state(encounter).get("pendingTurn")
+        if not isinstance(pending, dict) or pending.get("turnId") != turn_id:
+            raise CombatTransactionError("The pending player turn changed")
+        exchanges = live_exchanges(pending)
+        if exchanges and exchanges[-1].get("dmRequest"):
+            exchanges[-1]["riderReasked"] = True
+            _write_object(encounter_path, encounter, "rider re-ask")
 
 
 def record_pending_player_request(
@@ -980,11 +1018,14 @@ def record_pending_player_request(
     requested_roll=None,
     requested_slot_level=None,
     requested_dc=None,
+    rider_offer=None,
 ):
     """Persist the DM's complete question beside the action it clarifies,
     with the typed die and (#853) the typed phase of a roll request,
     (#877) its full typed dice, (#942) the slot level its dice are
-    asked at, and (r2 item 10) the DC a save is asked at."""
+    asked at, (r2 item 10) the DC a save is asked at, and (#1666) the
+    rider dice code asks beside it, which stay out of the request's own
+    fields because T096 reads those."""
     rendered = _player_text(player_message)
     with path_transaction_lock(
         encounter_path,
@@ -1017,6 +1058,10 @@ def record_pending_player_request(
             exchanges[-1]["requestedSlotLevel"] = requested_slot_level
         if type(requested_dc) is int and requested_dc > 0:
             exchanges[-1]["requestedDc"] = requested_dc
+        exchanges[-1].pop("riderOffer", None)
+        exchanges[-1].pop("riderReasked", None)
+        if rider_offer:
+            exchanges[-1]["riderOffer"] = deepcopy(rider_offer)
         pending["playerExchanges"] = exchanges
         existing_voice_envelope = normalize_npc_voice_intents(
             pending.get("npcVoiceIntents")
