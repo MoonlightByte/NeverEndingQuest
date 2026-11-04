@@ -447,6 +447,12 @@ class HeadlessSession:
         pending_roll = _pending_roll()
         if pending_roll is not None:
             extra["pendingRoll"] = pending_roll
+        # #1129: a closed menu's options, typed; `input` with the number answers it.
+        from core.managers import menu_prompt
+
+        menu = menu_prompt.current()
+        if menu is not None:
+            extra["options"] = menu["options"]
         self.writer.emit(
             "prompt",
             kind=kind,

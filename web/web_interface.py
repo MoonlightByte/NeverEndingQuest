@@ -3090,6 +3090,7 @@ def handle_ui_snapshot_request(data=None):
         'startup': _startup_ui_projection(running),
         'operations': operations,
         'roll_prompt': rules_roll_prompt.current() if running else None,
+        'menu_prompt': startup_menu_prompt.current() if running else None,
     }))
 
 
@@ -3184,6 +3185,10 @@ def handle_connect():
 
 from core.managers import roll_prompt as rules_roll_prompt
 rules_roll_prompt.set_listener(lambda prompt: socketio.emit('roll_prompt', {'prompt': prompt}))
+from core.managers import menu_prompt as startup_menu_prompt
+# #1129: the React client draws a closed menu as buttons; the legacy page has no panel.
+startup_menu_prompt.set_listener(lambda prompt: socketio.emit('menu_prompt', {'prompt': prompt}),
+                                 draws_options=lambda: app.config['PLAYER_UI'] == 'react')
 
 
 def _post_player_line(content):
@@ -3219,6 +3224,28 @@ def handle_check_roll(data):
     except ValueError as exc:
         emit('error', {'message': str(exc)})
         emit('roll_prompt', {'prompt': rules_roll_prompt.current()})
+
+
+@socketio.on('submit_menu_choice')
+def handle_menu_choice(data):
+    """#1129: a click on a closed menu. The label is the player's line and the
+    number goes to the game, so the read takes it as if it had been typed."""
+    activity.touch()
+    if _shutdown_requested.is_set() or _web_gameplay_paused() or not (game_thread and game_thread.is_alive()):
+        emit('error', {'message': 'Your game is not waiting for that choice.'})
+        return
+
+    def enqueue(line, label):
+        _post_player_line(label)
+        user_input_queue.put(line)
+
+    try:
+        if not isinstance(data, dict):
+            raise ValueError('That choice is no longer open.')
+        startup_menu_prompt.submit(data.get('id'), data.get('number'), enqueue)
+    except ValueError as exc:
+        emit('error', {'message': str(exc)})
+        emit('menu_prompt', {'prompt': startup_menu_prompt.current()})
 
 
 @socketio.on('user_input')
@@ -3278,6 +3305,7 @@ def handle_user_input(data):
         pass
     # Commit the player-visible ledger entry before releasing the command to
     # the game thread, so a fast local response cannot appear above its input.
+    startup_menu_prompt.spend()
     _post_player_line(user_input)
     user_input_queue.put(user_input)
     if opening_scene:

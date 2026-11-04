@@ -88,7 +88,7 @@ and `ts` (unix seconds).
 | `narration` | `channel` (`main`/`combat`/`levelup`/`system`), `content`, `source` (`sink` or `stdout_scrape`) | DM output for the player. `source: "sink"` is the structured path all engine narration uses; `stdout_scrape` marks a fallback recovery from raw stdout and normally never appears |
 | `status` | `message`, `is_processing`, `recovery_required` | engine busy/idle heartbeat. While `recovery_required` is true, an idle status reads "Gameplay is paused. Choose a save to Load, Reset, or Quit." and only list-saves, Load, Reset or Quit are accepted |
 | `welcome_progress` | `message`, `kind?` (`opening_scene`/`resume`) | background progress of a new game's opening scene (`opening_scene`, e.g. "The DM is setting the opening scene...") or a resumed game's welcome (`resume`, "The DM is recalling your journey..."). Presentational only: it is not a `status` event and never locks input. An empty `message` clears it |
-| `prompt` | `kind` (`main`/`combat`/`levelup`/`roll`/`wizard`/`unknown`), `raw_prompt`, `stats` (`hp`, `max_hp`, `xp`, `next_level_xp`, `time`, `time_context` when available), `pendingRoll` (only while the game holds a roll for the player: `{kind: "check" | "hitDie", label, dice: [{count, sides}]}`; a waiting check comes first) | **the engine is waiting for input; the turn boundary** |
+| `prompt` | `kind` (`main`/`combat`/`levelup`/`roll`/`wizard`/`unknown`), `raw_prompt`, `stats` (`hp`, `max_hp`, `xp`, `next_level_xp`, `time`, `time_context` when available), `pendingRoll` (only while the game holds a roll for the player: `{kind: "check" | "hitDie", label, dice: [{count, sides}]}`; a waiting check comes first), `options` (only at the adventure and character menus: `[{number, label, detail?, disabled?}]`) | **the engine is waiting for input; the turn boundary** |
 | `state` | see below | snapshot taken right after `prompt` |
 | `system` | `content` | structured system messages (module transitions, safe-action failures, bootstrap notes) |
 | `debug` | `content`, `is_error` | raw engine chatter; only emitted with `--debug`, except engine-crash tracebacks, which are always emitted |
@@ -139,6 +139,8 @@ Rules (live-accepted on 2026-10-24 by the L12 headless save, load and resume run
   carries `pendingRoll {kind: "check"}` or `{kind: "hitDie"}`, and the player
   answers in an ordinary `input` (the faces, a request to roll, a question, or
   a change of mind).
+- At the adventure and character menus the `prompt` carries `options`. Answer
+  with an ordinary `input`: the option's number, its exact label, or a sentence.
 - Reset requires `args.confirmed: true` (otherwise the result is
   `reset requires args.confirmed=true`). Like a clean restore, it ends with
   `exit {reason: "restart"}`; relaunch to play the reset campaign.

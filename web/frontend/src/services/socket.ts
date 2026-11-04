@@ -1,5 +1,6 @@
 import { isTransientNotice, useConnectionNotice } from '../stores/connectionNotices'
 import { useRulesRoll } from '../stores/rulesRoll'
+import { useMenuPrompt } from '../stores/menuPrompt'
 import { useInputSuggestion } from '../stores/inputSuggestion'
 import { useUnsentLine } from '../stores/unsentLine'
 /**
@@ -168,6 +169,7 @@ socket.on('connect', () => {
 socket.on('disconnect', () => {
   connectionLive = false
   useRulesRoll.getState().setPrompt(null)
+  useMenuPrompt.getState().setPrompt(null)
   useSession.getState().setConnected(false)
   // #214 F10: a welcome clear emitted while disconnected is lost; drop the
   // placeholder now - a still-active welcome's next heartbeat restores it.
@@ -215,6 +217,7 @@ on('game_resumed', (p) => {
 })
 on('startup_recovery_response', (p) => useSession.getState().setRecovery(p))
 on('roll_prompt', (p) => useRulesRoll.getState().setPrompt(p.prompt))
+on('menu_prompt', (p) => useMenuPrompt.getState().setPrompt(p.prompt))
 on('ui_state_snapshot', (p) => {
   if (!hydration.accept('request_ui_snapshot', p)) return
   const session = useSession.getState()
@@ -227,6 +230,7 @@ on('ui_state_snapshot', (p) => {
     () => session.applySnapshot(p),
   )
   useRulesRoll.getState().setPrompt(p.roll_prompt ?? null)
+  useMenuPrompt.getState().setPrompt(p.menu_prompt ?? null)
   if (p.operations) {
     if (p.operations.restore?.can_resume === false || p.operations.restore?.restart_required === false) cancelPendingRestart()
     useDialogs.getState().applyOperationSnapshot(p.operations)

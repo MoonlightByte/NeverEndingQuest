@@ -2,6 +2,8 @@ import { useRulesRoll } from '../../stores/rulesRoll'
 import { useInputSuggestion } from '../../stores/inputSuggestion'
 import { useUnsentLine } from '../../stores/unsentLine'
 import { RulesRollPanel } from '../log/RulesRollPanel'
+import { MenuPanel } from '../log/MenuPanel'
+import { useMenuPrompt } from '../../stores/menuPrompt'
 /**
  * InputBar -- player text input + Send button (plan Task 4.4b).
  * Emits user_input via the socket service; the server echoes it back as
@@ -29,6 +31,7 @@ export function InputBar({ rollInsertion }: { rollInsertion?: RollInsertion } = 
   const dmBusy = useDmBusy()
   const gating = useComposerGating()
   const rulesRoll = useRulesRoll((s) => s.prompt)
+  const menu = useMenuPrompt((s) => s.prompt)
   // #214: background welcome liveness - presentational, never locks input.
   // (The lock/canSend gate itself lives in useComposerGating, which already
   // folds in destructiveAction + the #214 startup lifecycle -- see useUiMode.)
@@ -94,8 +97,9 @@ export function InputBar({ rollInsertion }: { rollInsertion?: RollInsertion } = 
   // it without naming the check, and the live line, always rendered, announces it.
   return (
     <>
-    <p className="sr-only" aria-live="polite">{rulesRoll ? [`${rulesRoll.label} for ${rulesRoll.characterName}`, rulesRoll.reason].filter(Boolean).join(': ') : ''}</p>
+    <p className="sr-only" aria-live="polite">{rulesRoll ? [`${rulesRoll.label} for ${rulesRoll.characterName}`, rulesRoll.reason].filter(Boolean).join(': ') : menu?.title ?? ''}</p>
     {rulesRoll && <RulesRollPanel key={rulesRoll.id} prompt={rulesRoll} />}
+    {menu && <MenuPanel key={menu.id} prompt={menu} />}
     <div className="neq-input-container shrink-0 border-t border-card bg-[#333] p-[10px]">
       {unsent && <p className="neq-turn-status neq-input-unsent" role="alert">Not sent: the connection to the game dropped. Your line is back in the box; press Send to try again.</p>}
       {turnStatus && <p className={dmBusy ? 'neq-turn-status neq-turn-status--busy' : 'neq-turn-status'} role="status"><ThinkingMist />{turnStatus}</p>}
@@ -109,7 +113,7 @@ export function InputBar({ rollInsertion }: { rollInsertion?: RollInsertion } = 
             if (e.key === 'Enter') send()
           }}
           disabled={gating.locked}
-          placeholder={rulesRoll ? `${rulesRoll.faces === 2 ? 'Your rolls' : 'Your roll'}, or what you do next...` : 'Enter your command...'}
+          placeholder={menu ? "Or tell me what you'd like..." : rulesRoll ? `${rulesRoll.faces === 2 ? 'Your rolls' : 'Your roll'}, or what you do next...` : 'Enter your command...'}
           aria-label="Player input"
           className="neq-input-field min-w-0 flex-1 rounded border border-card bg-page px-3 py-2 font-log text-sm text-primary"
         />
