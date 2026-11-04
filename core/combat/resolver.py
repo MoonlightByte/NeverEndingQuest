@@ -3319,7 +3319,8 @@ def resolve_player_spell_auto_hit(encounter, characters, intent, record, event_i
     faces = (record.get("faces") or {}).get("damageFaces")
     count, _sides, _flat = parse_dice(spell.get("damageDice"))
     if not isinstance(faces, list) or len(faces) != count or combatant_by_id(encounter, spell.get("targetId")) is None:
-        # Fail forward: the model rules the window from the exchanges.
+        # A completed phase always holds its dice. Without them nothing is
+        # applied: the window ends on the ceiling's line and the turn is kept.
         raise ValueError("the auto-hit cast has no dice to apply")
     raw, damage, traits = auto_hit_damage(encounter, characters, record, faces)
     resolution = resolve_adjudicated(
@@ -3327,9 +3328,11 @@ def resolve_player_spell_auto_hit(encounter, characters, intent, record, event_i
     )
     event = resolution["event"]
     event["intent"] = deepcopy(intent)
+    # An ask may list the target at hpDelta 0; T097 must not read that as stated damage.
+    event["intent"]["targets"] = []
     if not event["intent"].get("description"):
-        # T096 writes no ruling for this cast, so no line comes from it: the
-        # round summary and the last-resort narration read this one.
+        # The ruling's own description is never read, as it could state another
+        # total. The round summary (T042) is the only reader of this line.
         caster = combatant_by_id(encounter, record.get("actorId")) or {}
         event["intent"]["description"] = "%s's darts strike %s." % (caster.get("name") or "The caster", record.get("targetName"))
     event["rolls"] = [{"die": spell.get("damageDice"), "value": sum(faces), "faces": list(faces), "purpose": "damage",

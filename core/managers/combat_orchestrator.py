@@ -2139,6 +2139,46 @@ def _is_auto_hit(record):
     return isinstance(spell, dict) and spell.get("type") == "auto_hit"
 
 
+def _scored_cast(pending):
+    """#652: the completed roll phase of an auto-hit spell, or None. Code holds
+    that cast and its dice, so T096's ruling decides the other actors only."""
+    record = (pending or {}).get("weaponAttack")
+    return record if isinstance(record, dict) and record.get("ready") is True and _is_auto_hit(record) else None
+
+
+def _scored_cast_line(encounter, characters, record):
+    """#652: the game's total beside the dice in T096's input, so the later
+    actors fit what the darts really did. Typed fields only."""
+    spell = record["spell"]
+    damage = auto_hit_damage(encounter, characters, record, record["faces"]["damageFaces"])[1]
+    return "Game scored %s: %d %s damage to %s. That cast is settled; rule the other actors from it." % (
+        spell.get("name"), damage, spell.get("damageType"), record.get("targetName"))
+
+
+def _without_scored_caster(batch, pending):
+    """#652: the reply's intent for the caster is dropped unread, so no damage,
+    new ask or description it states can reach the player or the event."""
+    record = _scored_cast(pending)
+    intents = batch.get("intents") if isinstance(batch, dict) else None
+    if record is None or not isinstance(intents, list):
+        return batch
+    batch = dict(batch)
+    batch["intents"] = [intent for intent in intents
+                        if not (isinstance(intent, dict) and intent.get("actorId") == record.get("actorId"))]
+    return batch
+
+
+def _with_scored_caster(batch, pending):
+    """#652: the cast the phase opened on goes back at the head of the order,
+    where the takeover found it, once the other actors have passed the checks."""
+    record = _scored_cast(pending)
+    if record is None or not isinstance(batch, dict) or not isinstance(batch.get("intents"), list):
+        return batch
+    batch = dict(batch)
+    batch["intents"] = [deepcopy(record["batch"]["intents"][0])] + batch["intents"]
+    return batch
+
+
 def _wants_each_die(record, count):
     """#879 (owner D-879-1): a Great Weapon Fighting damage roll of two or more
     dice asks for each die; the flag was read when the damage was asked for.
@@ -3623,13 +3663,19 @@ def execute_agentic_turn(
     roll_consumption = None
     _preview_characters = None
     ready_attack = pending.get("weaponAttack")
-    if isinstance(ready_attack, dict) and ready_attack.get("ready") is True:
+    scored_cast = _scored_cast(pending)
+    if isinstance(ready_attack, dict) and ready_attack.get("ready") is True and scored_cast is None:
         # Item 3: the swing's dice are in; resolve the window with the batch
         # the model gave when the roll phase opened (no second T096 pass).
         pending, events, roll_consumption, _preview_characters = _resolve_ready_phase(
             encounter_path, encounter, characters, pending, character_paths,
         )
     provider_player_input = _composed_player_input(pending, player_input)
+    if scored_cast is not None:
+        # #652: darts always land, so T096 rules the rest of the window after
+        # the dice, knowing what they did (the owner's call-cut rule).
+        provider_player_input = "%s\n%s" % (
+            provider_player_input, _scored_cast_line(encounter, characters, scored_cast))
     if events is None and not _all_non_player(encounter, pending.get("actorIds", [])):
         try:
             from core.ai.combat_agent import build_contextual_spell_payload
@@ -3717,6 +3763,7 @@ def execute_agentic_turn(
             batch = _reconcile_validated_prefix(batch, correction)
             # #146: before the checks below, which would refuse the old intent.
             batch = _hold_actors(batch, held_actors, encounter, pending)
+            batch = _without_scored_caster(batch, pending)
         except (InvocationSupersededError, ReadOnlySaveStop, LiveProviderCompletedError):
             # A completed refusal cannot heal by re-sending: it ends the fight
             # window and the pending turn is kept for resume (#1087).
@@ -3946,6 +3993,7 @@ def execute_agentic_turn(
                         rules_contract_version=audit.get("version"),
                     )
             _attach_answered_rolls(batch, encounter, pending, accepted_faces)
+            batch = _with_scored_caster(batch, pending)
             rolls = _fresh_rolls(encounter)
             events, _preview_encounter, _preview_characters = resolve_claimed_window(
                 encounter,
