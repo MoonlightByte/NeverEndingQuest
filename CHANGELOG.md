@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - The browser now keeps what the server advertised when it connects, so state refreshes carry their request ids and a late answer from an earlier request is dropped instead of applied (#1389).
+- When the game rolls for the player, the card in the log now reads the way a DM would say it, such as "I rolled your three d4s for damage: 3, 4 and 1." (#1777).
 - Adventure modules can now hold authored results for what a character reads, tracks or unlocks, and can close a quest once the party reaches the place or ends the threat. Nothing changes until a module uses them (#1733).
 - In combat, a player's damaging spell or attack with no roll behind it now prompts the DM to ask for the damage dice, once (#1606).
 - The roll panel now leads with what a roll is for and the input box answers to it, the console shows the same request at its prompt, and a screen reader announces it, so a roll is always asked for even when the narration does not ask (#1734).
