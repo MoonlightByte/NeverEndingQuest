@@ -90,8 +90,11 @@ export function InputBar({ rollInsertion }: { rollInsertion?: RollInsertion } = 
 
   // #1118 item 4: a waiting check's panel sits above the text input, which stays:
   // the player can answer the check in words, ask a question first, or move on.
+  // #1734: the panel is the ask, whether or not the narration asked. The box answers to
+  // it without naming the check, and the live line, always rendered, announces it.
   return (
     <>
+    <p className="sr-only" aria-live="polite">{rulesRoll ? [`${rulesRoll.label} for ${rulesRoll.characterName}`, rulesRoll.reason].filter(Boolean).join(': ') : ''}</p>
     {rulesRoll && <RulesRollPanel key={rulesRoll.id} prompt={rulesRoll} />}
     <div className="neq-input-container shrink-0 border-t border-card bg-[#333] p-[10px]">
       {unsent && <p className="neq-turn-status neq-input-unsent" role="alert">Not sent: the connection to the game dropped. Your line is back in the box; press Send to try again.</p>}
@@ -106,7 +109,7 @@ export function InputBar({ rollInsertion }: { rollInsertion?: RollInsertion } = 
             if (e.key === 'Enter') send()
           }}
           disabled={gating.locked}
-          placeholder="Enter your command..."
+          placeholder={rulesRoll ? `${rulesRoll.faces === 2 ? 'Your rolls' : 'Your roll'}, or what you do next...` : 'Enter your command...'}
           aria-label="Player input"
           className="neq-input-field min-w-0 flex-1 rounded border border-card bg-page px-3 py-2 font-log text-sm text-primary"
         />
