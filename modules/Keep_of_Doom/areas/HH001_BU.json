@@ -153,6 +153,31 @@
   "notes": "NPCs should have daily routines. Political factions create roleplay opportunities.",
   "locations": [
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Notice Board",
+            "summary": "A plea about the missing Scout Elen among missing-pet posters, cryptic local warnings and a reward for news of livestock thefts."
+          },
+          {
+            "name": "Counter and Ledger",
+            "summary": "Elen's last entry is rope and rations, bought the evening before she vanished. Nobody at the East Gate saw her leave."
+          },
+          {
+            "name": "Handwritten map of local trails",
+            "summary": "The Witchlight Trail runs east of town. A small cross beyond it marks a ruin, with 'lights at dusk, keep away' beside it."
+          },
+          {
+            "name": "Crest on the bronze key",
+            "summary": "The faded crest is the Vael family's, the lords of the keep.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 14
+            }
+          }
+        ]
+      },
       "locationId": "A01",
       "name": "Harrow's Hollow General Store",
       "type": "shop",
@@ -248,6 +273,15 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Knight's Statue inscription",
+            "summary": "Almost everything is worn away. One word can still be read: Vael."
+          }
+        ]
+      },
       "locationId": "A02",
       "name": "Harrow's Hollow Town Square",
       "type": "square",
@@ -318,6 +352,30 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Patrol Roster",
+            "summary": "Elen's name is circled in chalk beside her last shift, a patrol of the Witchlight Trailhead."
+          },
+          {
+            "name": "Town patrol schedule",
+            "summary": "Shift notes record ghostly lights on the east road and disturbances near the keep on the nights before Elen vanished."
+          }
+        ],
+        "leads": [
+          {
+            "name": "Tracks beyond the gate",
+            "summary": "Faint footprints and broken brush lead through the trees to the Witchlight Trailhead.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 14
+            },
+            "destinationLocationId": "B01"
+          }
+        ]
+      },
       "locationId": "A03",
       "name": "East Gate and Guardhouse",
       "type": "gate",
@@ -408,6 +466,30 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Map of local wilds",
+            "summary": "Branik's annotations show hunting blinds and hidden routes around the worst of the Gloamwood.",
+            "check": {
+              "stat": "skill:survival",
+              "dc": 12
+            }
+          }
+        ],
+        "leads": [
+          {
+            "name": "Branik's hidden routes",
+            "summary": "His annotated map shows an old ranger way-station off the Witchlight Trail, the safest first stop in the Gloamwood.",
+            "check": {
+              "stat": "skill:survival",
+              "dc": 12
+            },
+            "destinationLocationId": "B02"
+          }
+        ]
+      },
       "locationId": "A04",
       "name": "Militia Barracks",
       "type": "barracks",
@@ -488,6 +570,20 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "leads": [
+          {
+            "name": "Cira's clue",
+            "summary": "Cira tells this only once the cellar spirit is calmed: she saw Elen go down to the cellar and not come back up. Behind a false wall there is an old smuggler's tunnel.",
+            "check": {
+              "stat": "skill:persuasion",
+              "dc": 10
+            },
+            "destinationLocationId": "A06"
+          }
+        ]
+      },
       "locationId": "A05",
       "name": "The Wyrd Lantern Inn",
       "type": "tavern",
@@ -598,6 +694,34 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Old smuggler markings",
+            "summary": "The marks point to a hidden cache behind loose stones in the wall.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 12
+            }
+          },
+          {
+            "name": "Scratches on the wall",
+            "summary": "Crude arrows point toward the East Gate exit."
+          }
+        ],
+        "leads": [
+          {
+            "name": "Elen's tracks",
+            "summary": "Her tracks run through the tunnel to the concealed grate near the East Gate.",
+            "check": {
+              "stat": "skill:survival",
+              "dc": 10
+            },
+            "destinationLocationId": "A03"
+          }
+        ]
+      },
       "locationId": "A06",
       "name": "Smuggler's Tunnel",
       "type": "tunnel",

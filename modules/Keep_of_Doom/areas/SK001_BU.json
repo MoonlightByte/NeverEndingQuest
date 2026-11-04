@@ -163,6 +163,20 @@
   "notes": "The keep's architecture often seems to shift subtly when not directly observed. Time flows strangely within the walls, and compasses spin uselessly. The shadow relic's influence grows stronger as one moves deeper into the structure.",
   "locations": [
     {
+      "typedFacts": {
+        "version": 1,
+        "leads": [
+          {
+            "name": "Bootprints to the chapel",
+            "summary": "Elen's bootprints cross the courtyard toward the chapel.",
+            "check": {
+              "stat": "skill:perception",
+              "dc": 13
+            },
+            "destinationLocationId": "C03"
+          }
+        ]
+      },
       "locationId": "C01",
       "name": "Outer Courtyard",
       "type": "courtyard",
@@ -252,6 +266,27 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Guard's logbook",
+            "summary": "The last days record 'shadows moving against the light' and 'the lord's disturbing new relic'. The watch challenge on every page is 'Honor and Shadow are One.'",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 15
+            }
+          },
+          {
+            "name": "Message near the portcullis",
+            "summary": "'The heart! The heart is the key!'"
+          },
+          {
+            "name": "Folded love letter",
+            "summary": "Unsigned, in a soldier's careful hand: he begs her to leave the vale before the next moon, because the men who stand near the lord's study no longer cast true shadows."
+          }
+        ]
+      },
       "locationId": "C02",
       "name": "Gatehouse Ruins",
       "type": "gatehouse",
@@ -351,6 +386,19 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Chaplain's journal",
+            "summary": "The relic's arrival and early influence. Sir Garran ordered an amulet made with a drop of his blood as a safeguard against corruption, hidden where light once shone brightest."
+          },
+          {
+            "name": "Elen's note",
+            "summary": "She learned of the knight's heart and went looking for it as protection."
+          }
+        ]
+      },
       "locationId": "C03",
       "name": "The Ruined Chapel",
       "type": "chapel",
@@ -453,6 +501,42 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Scattered letters",
+            "summary": "Soldiers write of 'the lord's new power' and 'men disappearing into their own shadows'."
+          },
+          {
+            "name": "Half-written order",
+            "summary": "It warns of 'something imprisoned beneath the study' that must never be released."
+          },
+          {
+            "name": "Map of the keep",
+            "summary": "The keep's secret passages, some inked over as collapsed. The one from the courtyard wall to the forest is still open."
+          }
+        ],
+        "leads": [
+          {
+            "name": "Elen's fighting trail",
+            "summary": "She was injured but fighting well, and went on toward the tower.",
+            "check": {
+              "stat": "skill:survival",
+              "dc": 13
+            },
+            "destinationLocationId": "C06"
+          }
+        ],
+        "locks": [
+          {
+            "name": "Soldier's lockbox",
+            "lockDC": 13,
+            "breakDC": 15,
+            "contents": "4d10 gp and a silver ring worth 25 gp."
+          }
+        ]
+      },
       "locationId": "C04",
       "name": "Fallen Barracks",
       "type": "barracks",
@@ -553,6 +637,31 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Family chronicle",
+            "summary": "The Vael lineage and Sir Garran's early life. He took up the relic to protect his people from a rival lord's necromancy."
+          },
+          {
+            "name": "Tapestries",
+            "summary": "They show the Vael family's rise, and end with a knight among his fallen men, his shadow standing apart from him.",
+            "check": {
+              "stat": "skill:history",
+              "dc": 15
+            }
+          },
+          {
+            "name": "Scribe's journal pages",
+            "summary": "The recovered pages hint that something in 'the lowest chamber beneath the study' holds the key to Sir Garran's salvation or destruction.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 16
+            }
+          }
+        ]
+      },
       "locationId": "C05",
       "name": "Great Hall",
       "type": "hall",
@@ -656,6 +765,38 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Guard captain's journal",
+            "summary": "Strange stellar alignments came before Sir Garran's corruption, with diagrams matching symbols on the relic."
+          },
+          {
+            "name": "Celestial map",
+            "summary": "Locked in the Observatory Cabinet: it cannot be read until the cabinet is open. It shows the best times to confront the relic: under the right stellar alignment the party has advantage on saves against its powers in the final confrontation.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 15
+            }
+          },
+          {
+            "name": "Elen's final journal entry",
+            "summary": "She means to confront Sir Garran directly after finding 'the heart that remembers love.'"
+          }
+        ],
+        "leads": [
+          {
+            "name": "Ritual site from the observatory",
+            "summary": "From the platform an ancient ritual site shows in the forest: the Lost Ward Circle.",
+            "check": {
+              "stat": "skill:perception",
+              "dc": 14
+            },
+            "destinationLocationId": "B04"
+          }
+        ]
+      },
       "locationId": "C06",
       "name": "Broken Tower",
       "type": "tower",
@@ -750,6 +891,34 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Sir Garran's journal",
+            "summary": "He was first a victim of the corruption, not its cause, and he still fights the relic's influence from within his cursed form."
+          },
+          {
+            "name": "Half-written letter",
+            "summary": "He begs forgiveness from 'my beloved Elara' and mentions a failsafe he made should the darkness ever claim him completely."
+          },
+          {
+            "name": "Diagrams and notes",
+            "summary": "A hidden chamber lies beneath the study, where the relic was first stored and sealed. The way down is under the central rug and needs the ornate key."
+          }
+        ],
+        "leads": [
+          {
+            "name": "The way down",
+            "summary": "A trapdoor beneath the central rug leads to the dungeons. It is sealed until the ornate key opens it.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 16
+            },
+            "destinationLocationId": "E01"
+          }
+        ]
+      },
       "locationId": "C07",
       "name": "Lord's Study",
       "type": "study",
@@ -852,6 +1021,30 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Scout's Marks",
+            "summary": "Elen's chalk navigation notes end in a hasty warning: 'Shadows move on their own within--trust nothing that lacks substance.'"
+          },
+          {
+            "name": "Weathered map fragment",
+            "summary": "Two hidden ways are still legible: this passage, and a path from the Keeper's Cottage to the courtyard. The rest cannot be read."
+          }
+        ],
+        "leads": [
+          {
+            "name": "Elen's trail",
+            "summary": "Fresh scuffs and her chalk marks lead on through the stone door into the courtyard.",
+            "check": {
+              "stat": "skill:survival",
+              "dc": 12
+            },
+            "destinationLocationId": "C01"
+          }
+        ]
+      },
       "locationId": "C08",
       "name": "Secret Passage",
       "type": "passage",
