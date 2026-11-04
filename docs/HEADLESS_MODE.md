@@ -60,9 +60,20 @@ relaunch's welcome back is not waited for. The old `core/ai/dm_wrapper.py` / `en
 subprocess scrapers are deprecated in favor of this client.
 
 Exit codes: `0` clean end (player exit or post-restore restart), `2` engine
-error, `3` per-turn silence timeout (script mode), `4` bootstrap/usage error,
-`5` the game stopped (`engine_stop`). A run that ends `5` did not finish: read
-it as a stop, not as a played session.
+error, `4` bootstrap/usage error, `5` the game stopped (`engine_stop`). A run
+that ends `5` did not finish: read it as a stop, not as a played session.
+
+## Script mode
+
+`script FILE` answers each `prompt` with the file's next line, and quits at the
+next prompt once the lines run out, whatever kind of prompt that is.
+
+- One input per line. Blank lines and `#` lines are skipped.
+- A line holding only `<enter>` sends an empty line.
+- `--max-turns N` (default 50) sends at most N lines.
+- `--timeout-per-turn SECONDS` (default 300) sets how long the engine can stay
+  silent before a `status` notice. It never ends a run.
+- A stopped turn or a recovery ends the run with exit code `5`.
 
 ## How it works
 

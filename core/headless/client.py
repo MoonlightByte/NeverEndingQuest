@@ -201,7 +201,7 @@ class HeadlessClient:
             interval = timeout if timeout is not None else self.turn_timeout
             return {
                 "type": "status",
-                "content": "The headless operation is still running.",
+                "message": "The headless operation is still running.",
                 "is_processing": True,
                 "waiting_seconds": interval,
                 "source": "headless_client_wait",
