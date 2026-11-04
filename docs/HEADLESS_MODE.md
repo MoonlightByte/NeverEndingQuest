@@ -125,10 +125,10 @@ Rules (live-accepted on 2026-10-24 by the L12 headless save, load and resume run
   a fight is paused on disk (`state.combat.recovery` says so, with its
   `reason`), or a resumed fight stopped again. A line sent then is refused.
 - `prompt {kind: "resume"}` means a turn stopped and the fight did not go on.
-  The next line re-enters the fight and is **not played**, so send it knowing
-  it costs nothing but the re-entry; a Quit here ends `engine_stop`. In script
-  mode the run ends there, exit code `5`, since the next script line would be
-  spent.
+  The next line re-enters the fight and is **not played**: any line will do,
+  and your real action goes to the combat prompt that follows. A Quit here ends
+  `engine_stop`. In script mode the run ends there, exit code `5`, since the
+  next script line would be spent.
 - `operation {status: "received"}` acknowledges command transport only. The
   existing runner executes commands FIFO; wait for the correlated `result`.
   Receipt alone never proves execution or success. Input retains its existing
