@@ -56,6 +56,9 @@ RAW_LOG_PATH = os.path.join("modules", "logs", "headless_raw.log")
 
 
 
+_STOP_DETAIL = "The game stopped without a player exit."
+
+
 def _prompt_rolls():
     """The prompt's typed roll fields (#1811): roll, the roll this line answers, on any prompt whose line does;
     pendingRoll, its {kind, label, dice} (D-1118-5 A, #1118 items 3 and 4), only for a check or a held rest.
@@ -86,6 +89,8 @@ class HeadlessSession:
         self._exit_emitted = False
         self._restart_in_progress = threading.Event()
         self._recovery_required = False
+        # #1811: why play is stopped, while it is; a Quit then is no clean end.
+        self._stop_cause = None
         self._restore_manager = None
         self._preflight_guard = threading.Lock()
         self._received_quit_id = None
@@ -228,9 +233,14 @@ class HeadlessSession:
     def _run_engine(self):
         reason = "engine_stop"
         detail = None
+        paused = False
         try:
             from updates.save_game_manager import RestoreRequest
             handoff = self._dm_main.main_game_loop()
+            if isinstance(handoff, self._dm_main.WebRecoveryPause) and not self._quitting:
+                # #1811: the web holds its page on Load / Reset / Exit here.
+                paused = True
+                self._enter_recovery(handoff.message)
             if isinstance(handoff, RestoreRequest):
                 from utils.capture.live_provider_call import (
                     model_restore_owner_id,
@@ -268,7 +278,7 @@ class HeadlessSession:
                 self.writer.emit(
                     "debug", content=traceback.format_exc(), is_error=True)
         else:
-            if self._quitting:
+            if self._quitting or self._dm_main.farewell_taken.is_set():
                 reason = "player_exit"
         finally:
             try:
@@ -291,8 +301,35 @@ class HeadlessSession:
             # Restore/Reset own the terminal restart event.  Suppress the
             # engine thread's ordinary player_exit while one of those
             # lifecycle operations is deliberately unwinding the prompt.
-            if not self._restart_in_progress.is_set():
-                self.emit_exit(reason, detail)
+            if not paused and not self._restart_in_progress.is_set():
+                self.emit_exit(reason, detail or (_STOP_DETAIL if reason == "engine_stop" else None))
+
+    def _enter_recovery(self, cause):
+        """Play has stopped (#1811): no prompt, and commands stay open for list-saves, Load, Reset and Quit."""
+        self._stop_cause = cause
+        self._recovery_required = True
+        self.writer.emit("state", **build_snapshot())
+        self._on_status(cause, False)
+
+    def _line_stop(self):
+        """What this read is when a fight did not finish (#1811), from typed records: ("recovery", cause) while
+        it is paused on disk; ("resume", cause) while it is live at the free-command read, where the next line
+        re-enters it and is not played (#230); else (None, None)."""
+        from core.managers import roll_prompt
+
+        if not roll_prompt.free_read():
+            return None, None
+        try:
+            tracker = self._dm_main.safe_json_load("party_tracker.json")
+            recovery = self._dm_main._active_combat_recovery(tracker)
+            if recovery:
+                return "recovery", recovery.get("message") or "Combat is paused: %s." % recovery.get("reason")
+            if self._dm_main._live_active_encounter(tracker):
+                return "resume", "The turn stopped and the fight has not gone on."
+        except Exception:
+            # The readline shim swallows this, and no prompt would ever come.
+            self.writer.emit("debug", content=traceback.format_exc(), is_error=True)
+        return None, None
 
     def _pump_module_progress(self):
         from web.shared_state import module_progress_queue
@@ -426,8 +463,12 @@ class HeadlessSession:
         if self._stdout_shim is not None:
             pending = self._stdout_shim.consume_pending()
         clean_prompt = strip_ansi(pending).strip()
+        stop, self._stop_cause = self._line_stop()
+        if stop == "recovery":
+            self._enter_recovery(self._stop_cause)
+            return
         snapshot = build_snapshot()
-        kind = self._classify_prompt(clean_prompt, snapshot)
+        kind = stop or self._classify_prompt(clean_prompt, snapshot)
         if kind in ("main", "combat", "levelup"):
             self._channel = kind
         # Set BEFORE emitting: the prompt event's observers may dispatch an
@@ -456,6 +497,10 @@ class HeadlessSession:
                     "Load or Reset is in progress; wait for its result before continuing."
                 ),
             )
+            if self._recovery_required:
+                # #1811: no prompt comes, so this status ends the client's play().
+                self._last_status = None
+                self._on_status("", False)
             return
         # #1436: the web's notice for input held behind a new game's opening
         # scene, read before the queue as the web reads it.
@@ -1246,6 +1291,9 @@ class HeadlessSession:
             )
         except Exception:
             pass
+        if reason == "player_exit" and (self._stop_cause or self._recovery_required):
+            # #1811: a Quit from a stopped game is no clean end.
+            reason, detail = "engine_stop", self._stop_cause or detail
         payload = {"reason": reason}
         if detail:
             payload["detail"] = detail

@@ -57,6 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Hunter's Mark and Hex now add their extra die on a hit. The damage ask names it ("Roll 1d8 for your Longsword and 1d6 for Hunter's Mark, one number for each."), it works from the dice tray, and the damage line shows it (#1666).
 - In combat, a spell attack whose roll was answered no longer ends with nothing done: the DM rules it and asks for the damage (#1781).
 - Headless mode's prompt now says in typed fields when the next line answers a roll, in combat too: the dice, a total or one number for each, and a check's reason, DC and advantage. A waiting check no longer shows on a prompt that does not read it (#1811).
+- Headless mode says when the game stopped: a fallen party or a paused fight reads `recovery_required`, a stopped turn prompts `resume`, and a stopped game exits `5`, never `0` (#1811).
 
 ## [1.1.1] - 2026-11-02
 

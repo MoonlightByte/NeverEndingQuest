@@ -146,6 +146,7 @@ def read_player_line(read: Callable[[str], str], prompt: str) -> str:
 
     pending = checks_state.pending_checks()
     rest = None if pending else checks_state.pending_rest()
+    roll_prompt.mark_free_read(True)
     try:
         try:
             if pending:
@@ -156,6 +157,7 @@ def read_player_line(read: Callable[[str], str], prompt: str) -> str:
             status_ready()
         return read(_roll_prompt_line(pending[0]) + prompt if pending and not has_player_output_sink() else prompt)
     finally:
+        roll_prompt.mark_free_read(False)
         if pending:
             roll_prompt.publish(None)
         elif rest:

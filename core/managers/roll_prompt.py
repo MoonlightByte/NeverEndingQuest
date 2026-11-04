@@ -16,6 +16,7 @@ import uuid
 _lock = threading.RLock()
 _active = None
 _open_roll = None
+_free_read = False
 _listener = None
 
 
@@ -51,6 +52,19 @@ def _check_roll(entry):
     if entry.get("dice"):
         roll["addedDice"] = deepcopy(entry["dice"])
     return roll
+
+
+def mark_free_read(reading):
+    """#1811: main.py's free-command read is open, or has closed."""
+    global _free_read
+    with _lock:
+        _free_read = bool(reading)
+
+
+def free_read():
+    """True while the free-command read waits, the only read a stopped fight can reach."""
+    with _lock:
+        return _free_read
 
 
 def open_line(request):

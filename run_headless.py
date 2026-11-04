@@ -18,8 +18,9 @@ No-engine utilities:
     python run_headless.py new-game --module NAME --character FILE [--game-dir DIR]
     python run_headless.py saves    {list|create|restore|delete} [...]
 
-Exit codes: 0 clean (player_exit / engine_stop / restart), 2 engine error,
-4 bootstrap/usage error. A live operation is never ended for silence alone.
+Exit codes: 0 clean (player_exit / restart), 2 engine error, 4 bootstrap/usage
+error, 5 the game stopped (engine_stop). A live operation is never ended for
+silence alone.
 """
 
 import argparse
@@ -45,10 +46,11 @@ EXIT_OK = 0
 EXIT_ENGINE_ERROR = 2
 EXIT_TIMEOUT = 3
 EXIT_BOOTSTRAP = 4
+EXIT_STOPPED = 5
 
 _EXIT_CODE_BY_REASON = {
     "player_exit": EXIT_OK,
-    "engine_stop": EXIT_OK,
+    "engine_stop": EXIT_STOPPED,
     "restart": EXIT_OK,
     "error": EXIT_ENGINE_ERROR,
 }
@@ -155,11 +157,17 @@ class ScriptDriver:
         self._finished = False
 
     def on_event(self, event):
+        if (event.get("type") == "status" and event.get("recovery_required")
+                and not event.get("is_processing") and self._session is not None):
+            # #1811: no prompt comes, and a script cannot choose a save.
+            self._session.emit_exit("engine_stop", event.get("message"))
+            return
         if event.get("type") != "prompt" or self._session is None:
             return
         if self._finished:
             return
-        if not self._inputs or self._sent >= self._max_turns:
+        # #1811: at `resume` the next line would re-enter a stopped fight unplayed.
+        if not self._inputs or self._sent >= self._max_turns or event.get("kind") == "resume":
             self._finished = True
             self._session.request_quit()
             return

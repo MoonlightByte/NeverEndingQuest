@@ -132,15 +132,19 @@ def build_snapshot():
                     break
             combat_state = encounter.get("combatState") or {}
             conflict = combat_state.get("recoveryConflict")
-            if isinstance(conflict, dict) and conflict.get("status") == "pending":
+            pending = isinstance(conflict, dict) and conflict.get("status") == "pending"
+            paused = combat_state.get("phase") == "recovery_required" and combat_state.get("pauseReason")
+            if pending or paused:
                 combat["recovery"] = {
                     "required": True,
                     "message": str(
-                        conflict.get("playerMessage")
+                        (pending and conflict.get("playerMessage"))
                         or "Combat recovery needs attention -- Load or Reset"
                     ),
                     "actions": ["load", "reset"],
                 }
+                if paused:
+                    combat["recovery"]["reason"] = combat_state["pauseReason"]
         snapshot["combat"] = combat
 
     return snapshot
