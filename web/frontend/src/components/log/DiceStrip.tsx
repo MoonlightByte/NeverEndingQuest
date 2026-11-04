@@ -46,6 +46,20 @@ export function formatFreeRolls(d20Rolls: number[], damageRolls: DamageRoll[]): 
   return `I rolled ${rolls}.${damageRolls.length > 1 ? ` My damage dice add up to ${total}.` : ''}`
 }
 
+/** #1750: one tray die as typed data, sent beside the sentence it fills in. */
+export interface TrayDie {
+  sides: number
+  face: number
+}
+
+/** The same faces as formatFreeRolls, in its order (d20s first), as typed dice. */
+export function freeRollDice(d20Rolls: number[], damageRolls: DamageRoll[]): TrayDie[] {
+  return [
+    ...d20Rolls.map((face) => ({ sides: 20, face })),
+    ...damageRolls.map((r) => ({ sides: r.sides, face: r.result })),
+  ]
+}
+
 const diceButtonClass =
   'relative min-w-[50px] cursor-pointer overflow-hidden rounded-md border border-white/50 px-3 py-1.5 ' +
   'font-chrome text-[13px] font-bold text-white/90 shadow-[0_4px_6px_rgba(0,0,0,.2),inset_0_1px_0_rgba(255,255,255,.6)] ' +
@@ -60,7 +74,7 @@ export function useDiceRolls() {
   return { d20Rolls, setD20Rolls, damageRolls, setDamageRolls }
 }
 
-export function DiceStrip({ state, onInsertRoll }: { state?: ReturnType<typeof useDiceRolls>; onInsertRoll?: (text: string) => void }) {
+export function DiceStrip({ state, onInsertRoll }: { state?: ReturnType<typeof useDiceRolls>; onInsertRoll?: (text: string, dice: TrayDie[]) => void }) {
   const gating = useComposerGating()
   const requestedCheck = useRulesRoll((s) => s.prompt)
   const ember = useEmberDesktop()
@@ -108,7 +122,7 @@ export function DiceStrip({ state, onInsertRoll }: { state?: ReturnType<typeof u
 
   const insertRoll = () => {
     if (!gating.canSend || requestedCheck || !onInsertRoll) return
-    onInsertRoll(formatFreeRolls(d20Rolls, damageRolls))
+    onInsertRoll(formatFreeRolls(d20Rolls, damageRolls), freeRollDice(d20Rolls, damageRolls))
   }
 
   const results = hasResults ? (

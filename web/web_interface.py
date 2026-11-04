@@ -296,6 +296,17 @@ message_cache = deque(maxlen=MESSAGE_CACHE_SIZE)
 # serves what the player saw, until a write succeeds or a Load/Reset.
 _unpersisted_messages = []
 
+# #1640: the late image answers sent to every connection (#1396), newest last. A tab
+# that connects later is sent those whose narration is in the cached messages it gets.
+# Guarded by message_cache_lock; process-local, so a restart drops them.
+_late_image_answers = deque(maxlen=MESSAGE_CACHE_SIZE)
+
+def _emit_late_image_answer(event, payload):
+    """Send a late image answer to every connection and keep it for a later connect (#1640)."""
+    with message_cache_lock:
+        _late_image_answers.append((event, dict(payload)))
+    socketio.emit(event, payload)
+
 def _ui_response(request_data, payload):
     """Add optional correlation and a monotonic response revision.
 
@@ -1489,6 +1500,16 @@ def serve_module_media(media_type, filename):
     from flask import send_file
     from utils.file_operations import safe_read_json
     from web.media_paths import resolve_media_path
+
+    # #1755: a saved scene image, served only from the module the URL names.
+    if media_type == 'images':
+        from web.media_paths import resolve_generated_image
+        parts = filename.split('/')
+        resolved = resolve_generated_image(parts[0], parts[1], 'modules') if len(parts) == 2 else None
+        if resolved is None:
+            warning(f"Generated image not found or refused: {filename}")
+            return "Media not found", 404
+        return send_file(resolved, mimetype='image/png')
 
     # Determine current module from party tracker
     current_module = None
@@ -3142,6 +3163,12 @@ def handle_connect():
     with message_cache_lock:
         cached_messages = [] if _web_gameplay_paused() else list(message_cache)
         emit('cached_messages', cached_messages)
+        # #1640: late image answers whose narration is in this cache, to this client only.
+        cached_ids = {m.get('message_id') for m in cached_messages
+                      if isinstance(m, dict) and m.get('message_id')}
+        for event, payload in list(_late_image_answers):
+            if payload.get('source_message_id') in cached_ids:
+                emit(event, payload)
 
     # If a game is already running, tell THIS client to reattach (issue #122).
     if game_thread and game_thread.is_alive() and not _web_gameplay_paused():
@@ -3212,6 +3239,10 @@ def handle_user_input(data):
     user_input = data.get('input', '') if isinstance(data, dict) else ''
     if not isinstance(user_input, str):
         return
+    # #1750: the dice tray's faces, sent as typed data beside its unchanged
+    # sentence, are held for this line; any other line clears the slot.
+    from core.managers import tray_roll
+    tray_roll.put(user_input, data.get('dice') if isinstance(data, dict) else None)
     pending_roll = rules_roll_prompt.current()
     if pending_roll is not None:
         # #1118 item 4: while a check panel is published, a line of bare
@@ -5061,7 +5092,7 @@ def handle_generate_image(data):
                 from utils.prompt_sanitizer import sanitize_prompt
                 sanitized_prompt = sanitize_prompt(prompt)
                 if sanitized_prompt is None:
-                    socketio.emit('image_generation_error', {
+                    _emit_late_image_answer('image_generation_error', {
                         'message': ("The image could not be made: the image service refused this "
                                     "scene and no safer description could be written."),
                         'request_id': data.get('request_id'),
@@ -5083,6 +5114,7 @@ def handle_generate_image(data):
         from utils.session_spend import record_other
         record_other("portrait")  # #1388: billed per image, counted, not priced
         
+        local_url = None  # #1755: set once the local copy is written
         # Save the image locally with metadata
         try:
             # Get current module and game state
@@ -5114,6 +5146,10 @@ def handle_generate_image(data):
                 with open(filepath, 'wb') as f:
                     f.write(img_response.content)
                 print(f"Saved image to: {filepath}")
+                from urllib.parse import quote
+                from web.media_paths import GENERATED_IMAGE_NAME
+                if GENERATED_IMAGE_NAME.fullmatch(filename):
+                    local_url = f"/media/images/{quote(current_module, safe='')}/{quote(filename, safe='')}"
                 
                 # Save metadata
                 metadata_file = os.path.join(images_dir, "image_metadata.json")
@@ -5147,17 +5183,20 @@ def handle_generate_image(data):
             print(f"Warning: Failed to save image locally: {save_error}")
         
         # Sent to every connection: a reconnect during the image call gets a new sid (#1396)
-        socketio.emit('image_generated', {
+        answer = {
             'image_url': image_url,
             'prompt': prompt,
             'request_id': data.get('request_id'),
             'source_message_id': data.get('source_message_id')
-        })
+        }
+        if local_url:
+            answer['local_url'] = local_url
+        _emit_late_image_answer('image_generated', answer)
         
     except Exception as e:
         error_msg = f"Image generation failed: {str(e)}"
         print(f"ERROR: {error_msg}")
-        socketio.emit('image_generation_error', {
+        _emit_late_image_answer('image_generation_error', {
             'message': error_msg,
             'request_id': data.get('request_id') if isinstance(data, dict) else None,
             'source_message_id': data.get('source_message_id') if isinstance(data, dict) else None,

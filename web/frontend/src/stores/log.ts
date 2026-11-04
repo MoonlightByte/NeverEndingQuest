@@ -7,6 +7,8 @@ const DEBUG_RING_LIMIT = 200
 
 export interface GeneratedImage {
   image_url: string
+  /** The game-served local copy (#1755); preferred over the provider's expiring image_url. */
+  local_url?: string
   prompt: string
   request_id?: string
   source_message_id?: string
@@ -36,7 +38,7 @@ export interface LogState {
   clear: () => void
 }
 
-export const useLog = create<LogState>((set) => ({
+export const useLog = create<LogState>((set, get) => ({
   messages: [],
   previousSessionCount: 0,
   historyPending: null,
@@ -101,13 +103,13 @@ export const useLog = create<LogState>((set) => ({
       if (image.source_message_id && !s.messages.some((message) => message.message_id === image.source_message_id)) return {}
       return { images: [...s.images, image] }
     }),
+  // #1387: through append, so a failure during a reconnect history sync is kept, and a
+  // replayed one (#1640) shows once.
   imageFailed: (failure) =>
-    set((s) => ({
-      messages: [...s.messages, {
-        type: 'error' as const,
-        content: failure.message,
-        message_id: failure.request_id ? `image-error-${failure.request_id}` : undefined,
-      }].slice(-MESSAGE_RING_LIMIT),
-    })),
+    get().append({
+      type: 'error' as const,
+      content: failure.message,
+      message_id: failure.request_id ? `image-error-${failure.request_id}` : undefined,
+    }),
   clear: () => set({ messages: [], previousSessionCount: 0, historyPending: null, debug: [] }),
 }))

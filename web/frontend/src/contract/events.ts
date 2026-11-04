@@ -71,7 +71,8 @@ export interface RulesRollPrompt {
 
 export interface ClientEvents {
   submit_check_roll: { id: string; faces: number[] | null };
-  user_input: { input: string };
+  // #1750: dice is the tray's typed faces, sent only beside its unchanged sentence.
+  user_input: { input: string; dice?: { sides: number; face: number }[] };
   action: {
     action: 'listSaves' | 'saveGame' | 'restoreGame' | 'deleteSave' | 'nuclearReset' | 'recover_startup_handoff';
     parameters?: Record<string, unknown>;
@@ -242,7 +243,7 @@ export interface ServerEvents {
   };
   gemini_key_status: { has_key: boolean };
   local_endpoint_test_result: { ok: boolean; detail: string };
-  image_generated: { image_url: string; prompt: string; request_id?: string; source_message_id?: string };
+  image_generated: { image_url: string; local_url?: string; prompt: string; request_id?: string; source_message_id?: string };
   image_generation_error: { message: string; request_id?: string; source_message_id?: string };
   token_update: {
     tpm: number; rpm: number; total_tokens: number;

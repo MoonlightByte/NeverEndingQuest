@@ -1530,8 +1530,10 @@ def _check_sent_rows(batch, sent_rows, encounter, characters):
 def _validate_attack_count(batch, encounter, characters):
     """R3 (F3): the player's attack states no more attacks than the sheet's
     Attack action makes with that weapon (attack_sequence: Extra Attack, a
-    typed count). A second weapon's swing is the Off-hand Attack bonusAction,
-    not a second attack of the Action."""
+    typed count; #1762: a party character's count from its class and level).
+    A second weapon's swing is the Off-hand Attack bonusAction, not a second
+    attack of the Action."""
+    from core.nql.class_conditions import attack_action_count
     for intent in (batch or {}).get("intents", []) or []:
         if not isinstance(intent, dict) or intent.get("action") != "attack":
             continue
@@ -1543,6 +1545,7 @@ def _validate_attack_count(batch, encounter, characters):
         allowed = len(attack_sequence(sheet or {},
                                       selected=attack_row(sheet, intent.get("abilityRow"), actor.get("combatantId")),
                                       num_attacks=actor.get("numAttacks"), sequence=actor.get("multiattackSequence")))
+        allowed = max(allowed, attack_action_count(sheet or {}))
         if attacks <= allowed:
             continue
         problem = "%s's Attack action makes %d attack%s this turn; attacks %d is more." % (
@@ -1792,12 +1795,18 @@ _TRAY_SENTENCE = re.compile(
 
 
 def _tray_faces(text, record, entry):
-    """The typed values a dice-tray sentence carries for the open phase,
-    "invalid" when its dice are not the ones asked for, None when the text is
-    not a tray sentence."""
-    if not _TRAY_SENTENCE.match(text):
-        return None
-    dice = [(int(face), int(die)) for face, die in re.findall(_TRAY_DIE, text, re.IGNORECASE)]
+    """The values the dice tray sent for the open phase, "invalid" when its
+    dice are not the ones asked for, None when the line is not a tray answer.
+    #1750: the typed dice sent with the line (tray_roll) come first; a client
+    that sends only the tray sentence is still read from it until the hosted
+    client ships the typed payload."""
+    from core.managers import tray_roll
+
+    dice = tray_roll.take(text)
+    if dice is None:
+        if not _TRAY_SENTENCE.match(text):
+            return None
+        dice = [(int(face), int(die)) for face, die in re.findall(_TRAY_DIE, text, re.IGNORECASE)]
     count, sides = player_weapon_attack_dice(record, entry)
     wanted = 20 if record.get("phase") == "attack" else sides
     if len(dice) != count or any(die != wanted or not 1 <= face <= die for face, die in dice):

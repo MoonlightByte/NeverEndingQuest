@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - In combat, a player's damaging spell or attack no longer lands from the model's own numbers: the game asks for the damage dice first (#1606).
+- Modules built with the story-first builder now start with the opening weather and political climate the builder wrote, so their first game no longer asks for them (#1481).
+- A new game no longer announces a temporary-effects upgrade or writes a pre-conversion save before the first turn when it has no effects to convert; a save with effects to convert still gets both (#1678).
+- A generated scene image now shows from the game's own saved copy, so it keeps showing after a reconnect or later in the session instead of breaking when the image service's link expires (#1755).
+- After a fight, a spell slot the game's summary tries to give back is noted as not applied, and the rest of that turn's healing still happens (#1763).
+- A party character's Attack action makes as many attacks as its class gives at its level (Extra Attack at level 5; a Fighter's two and three extra attacks at 11 and 20), so a stated second attack is no longer refused; a multiclass sheet keeps one (#1762).
+- A generated image, or its failure notice, that finishes while no browser tab is connected now shows when a tab connects again, and an image failure that arrives during a reconnect is no longer dropped (#1640, #1387).
+- A long fight with your hero down no longer stops partway: each downed round gets its own budget of model calls, as your other combat turns do (#1756).
+- A check's roll panel now reaches the screen before the command box opens, so the box never opens on a turn that asks for a roll while the panel is still on its way (#1630).
+- The combat dice tray sends its dice to the game as typed values beside the sentence it writes, and the game reads those values instead of the sentence; older clients that send only the sentence keep working (#1750).
+- Travel shows your arrival as soon as it is narrated; the record of the place you left is written afterwards, before your next turn, instead of before the arrival (#1633).
+- A companion's memories from older saves now load when the party list and the character sheet name them differently, such as "Kira" and "Scout Kira" (#1346).
+- Travel no longer waits for a second location-update call when the first leaves out a required field such as a location's coordinates; the field is taken from the location as it was (#1633).
+- A turn the reviewer keeps rejecting ends less often in "I wasn't able to do that": each review keeps the demands already made, lists everything to fix at once, and accepts reading something the world data gives no details for in general terms (#1727).
 - When you ask someone else in the scene a question, a companion no longer repeats it for you; the person you asked answers (#1729).
 - The rules check no longer rejects a companion drawing or readying a weapon they carry as part of an attack; a weapon the character does not carry is still rejected (#1740).
 - The Map tab no longer counts a room with an empty id as undiscovered, so its undiscovered count matches the rooms it can show (#1707).
@@ -22,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A spell slot or feature use paid for the spell that opens a fight is now spent only once the fight is ready to start; if the fight cannot be set up, nothing is spent, and the DM is told exactly what was and was not spent (#1731).
 - Right after a fight, the DM can now wake or heal a hero who was knocked out (hit points regained, back from unconscious, stabilised); a change the fight itself already made, such as its damage or spent resources, is still not applied twice (#1730).
 - With no game started yet, the Load list now shows the saves of every adventure, each with its adventure, and loading or deleting one uses that adventure's save folder; before, it showed only an old shared folder, which is normally empty (#1715).
+- Arcane Recovery and other features or items that bring back spell slots (Natural Recovery, Harness Divine Power, Font of Magic, Eldritch Master, a Pearl of Power) now spend their use and return the slot together; a slot can no longer come back for free, and a use is never spent when there is no empty slot to regain (#1680).
 
 ## [1.1.1] - 2026-11-02
 
