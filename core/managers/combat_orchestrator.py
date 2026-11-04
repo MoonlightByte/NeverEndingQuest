@@ -1466,8 +1466,10 @@ def _check_sent_rows(batch, sent_rows, encounter, characters):
 def _validate_attack_count(batch, encounter, characters):
     """R3 (F3): the player's attack states no more attacks than the sheet's
     Attack action makes with that weapon (attack_sequence: Extra Attack, a
-    typed count). A second weapon's swing is the Off-hand Attack bonusAction,
-    not a second attack of the Action."""
+    typed count; #1762: a party character's count from its class and level).
+    A second weapon's swing is the Off-hand Attack bonusAction, not a second
+    attack of the Action."""
+    from core.nql.class_conditions import attack_action_count
     for intent in (batch or {}).get("intents", []) or []:
         if not isinstance(intent, dict) or intent.get("action") != "attack":
             continue
@@ -1479,6 +1481,7 @@ def _validate_attack_count(batch, encounter, characters):
         allowed = len(attack_sequence(sheet or {},
                                       selected=attack_row(sheet, intent.get("abilityRow"), actor.get("combatantId")),
                                       num_attacks=actor.get("numAttacks"), sequence=actor.get("multiattackSequence")))
+        allowed = max(allowed, attack_action_count(sheet or {}))
         if attacks <= allowed:
             continue
         problem = "%s's Attack action makes %d attack%s this turn; attacks %d is more." % (
