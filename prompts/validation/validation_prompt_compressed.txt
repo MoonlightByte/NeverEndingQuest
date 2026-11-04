@@ -98,7 +98,7 @@ NARRATIVE ELABORATION: Location descriptions and NPC sketches are starting seeds
 @VERDICT_DEMANDS={
   all_defects: an invalid verdict names every defect in the candidate in its one reason, most important first, not only the first one found
   settled: a prior demand to complete an action settles that action's entry and permission for this turn; a later verdict never reopens them (entry, whether a place is empty, whether the action may start) and judges only how the action is completed
-  passable: a demand must be one the DM can meet from the supplied records. When the records author no contents for something the player reads or examines (papers, a map, an inscription), reading it in general terms without inventing facts, or a grounded obstacle, is VALID; never demand specifics the records do not hold, and name the passable path in the reason
+  passable: a demand must be one the DM can meet from the supplied records. When the records author no contents for something the player reads or examines (papers, a map, an inscription), reading it in general terms without inventing facts, or a grounded obstacle, is VALID; never demand specifics the records do not hold, and name the passable path in the reason A typedFacts entry in the records is authored: a reading, lead or lock result that uses it is grounded, and a rollCheck dc that equals it is not invented.
 }
 
 @TRANSITION_ACTION_ORDER={

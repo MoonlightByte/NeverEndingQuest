@@ -559,6 +559,8 @@ def module_plot(module, *, root=".") -> Optional[Dict[str, Any]]:
     data = played_plot(root, module)
     if not data:
         return None
+    for _, _, record in entries(data):
+        record.pop("completion", None)  # #1733: the engine's input, not a reader's
     view = quest_view(module, root=root)
     if view is None:
         # No document yet (before the first DM turn) is silent: the headless
@@ -859,3 +861,125 @@ def journal_after_change(module):
         raise
     except Exception as exc:  # fail forward
         warning("QUESTS: player journal not refreshed (%s)" % exc, category="plot_updates")
+
+
+# Typed completion (#1122, #1733) ------------------------------------------
+# A plot point or side quest may carry an authored `completion` block. The
+# engine closes the entry at the turn boundary, from state: the places the
+# party has visited and how occupants ended. The block is read from the
+# played file only, so a save made before a module gained it sees nothing.
+
+COMPLETION_VERSION = 1
+_COMPLETION_WARNED = set()
+_JOURNAL_OWED = set()
+
+
+def _typed_blocks(plot, module) -> List[Tuple[str, Dict[str, Any]]]:
+    """[(ident, block)] in authored order. A block of another version is
+    skipped with one warning: that entry stays the DM's, as today."""
+    out = []
+    for ident, _, record in entries(plot):
+        block = record.get("completion")
+        if block is None:
+            continue
+        if isinstance(block, dict) and block.get("version") == COMPLETION_VERSION:
+            out.append((ident, block))
+        elif (module, ident) not in _COMPLETION_WARNED:
+            _COMPLETION_WARNED.add((module, ident))
+            warning("QUESTS: %s/%s has a completion block this game does not read; it stays the DM's"
+                    % (module, ident), category="plot_updates")
+    return out
+
+
+def typed_open_ids(module, *, root=".") -> List[str]:
+    """The typed entries the engine has not closed yet (T065 is told of them)."""
+    module = (module or "").replace(" ", "_")
+    blocks = _typed_blocks(played_plot(root, module), module)
+    if not blocks:
+        return []
+    records = {ident: record for ident, _, record in entries(module_plot(module, root=root) or {})}
+    return [ident for ident, _ in blocks if not is_closed(records.get(ident))]
+
+
+def _completion_places(blocks, module) -> Tuple[str, ...]:
+    from core.nql import occupants
+    ids = set()
+    for _, block in blocks:
+        ids.update(block.get("visited") or [])
+        ids.update(item.get("locationId") for item in block.get("resolved") or [])
+    return tuple(sorted(occupants.place_id(module, i) for i in ids))
+
+
+def _completion_met(block, module, places) -> bool:
+    """True when any visited place is on the engine's map as visited, or any
+    named occupant has ended, none of it left, by an outcome other than
+    fleeing (who fled can come back)."""
+    from core.nql import occupants
+    for location_id in block.get("visited") or []:
+        if (places.get(occupants.place_id(module, location_id)) or {}).get("visited") is True:
+            return True
+    for item in block.get("resolved") or []:
+        place = places.get(occupants.place_id(module, item.get("locationId"))) or {}
+        ident = "occ:%s/%s/%s" % (module, item.get("locationId"), item.get("occupant"))
+        if any(o.get("id") == ident for o in place.get("present") or []):
+            continue
+        for occupant in place.get("resolved") or []:
+            tally = occupant.get("tally") or []
+            if occupant.get("id") == ident and any(t.get("outcome") != "fled" for t in tally):
+                return True
+    return False
+
+
+def owe_journal(module, *, root=".") -> None:
+    """The next turn boundary refreshes the journal (a close whose travel
+    update did not commit: the travel journal step did not run)."""
+    _JOURNAL_OWED.add((os.path.abspath(root), (module or "").replace(" ", "_")))
+
+
+def apply_typed_completions(module, *, root=".", journal=True) -> List[str]:
+    """Close every ready entry whose typed condition is met, in authored
+    order, so a chain closes in one pass. Each entry fires once: a quest the
+    DM reopens stays open. The DM hears of it in the next DM Note; the player
+    hears only what the DM tells them. Returns the closed ids. With
+    journal=False the caller owns the journal step."""
+    from core.managers import checks_state
+    from core.nql import occupants
+    module = (module or "").replace(" ", "_")
+    closed: List[str] = []
+    try:
+        blocks = _typed_blocks(played_plot(root, module), module)
+        response = occupants.request(view=_completion_places(blocks, module), root=root) if blocks else None
+        if response and response.get("ok"):
+            places = {}
+            for place in response.get("locations") or []:
+                ref = place.get("location")
+                places[ref.get("id") if isinstance(ref, dict) else ref] = place
+            live = response.get("live_state") or {}
+            done = {r.get("id") for r in live.get("requests") or [] if isinstance(r, dict)}
+            for ident, block in blocks:
+                request_id = "typed:%s:%s" % (module, ident)
+                if request_id in done or not _completion_met(block, module, places):
+                    continue
+                records = {i: r for i, _, r in entries(module_plot(module, root=root) or {})}
+                record = records.get(ident)
+                if not record or is_closed(record) or not record.get("ready"):
+                    continue
+                impact, _ = clean(block.get("impact"))
+                line = "complete quest %s impact %s;" % (q(quest_id(module, ident)), q(impact or ""))
+                answer = occupants.request(line, request_id, root=root)
+                if not answer or not answer.get("ok"):
+                    warning("QUESTS: typed completion of %s not recorded (%s)"
+                            % (ident, (answer or {}).get("fault")), category="plot_updates")
+                    continue
+                closed.append(ident)
+                info("QUESTS: typed completion %s: %s" % (request_id, line), category="plot_updates")
+                checks_state.add_quest_note(request_id, (
+                    "QUEST: %s is complete in the quest record, its authored condition met (%s). Do not send an "
+                    "updatePlot for it; tell the player only what the scene shows." % (ident, impact)))
+    except Exception as exc:  # fail forward: the next turn looks again
+        warning("QUESTS: typed completion skipped (%s)" % exc, category="plot_updates")
+    key = (os.path.abspath(root), module)
+    if journal and (closed or key in _JOURNAL_OWED):
+        _JOURNAL_OWED.discard(key)
+        journal_after_change(module)
+    return closed

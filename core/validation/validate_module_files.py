@@ -834,6 +834,91 @@ class ModuleValidator:
         self.run_all_validations(strict=strict)
         return self.results
     
+    def validate_typed_facts(self):
+        """#1733: every `typedFacts` and `completion` block has a version this
+        game reads and points at real places and occupants. Authored `_BU`
+        data wins over a played copy. A module with no block counts nothing."""
+        from utils.roster_conversion import slug
+
+        files = {}
+        for path in sorted((self.module_path / "areas").glob("*.json")):
+            stem = path.stem[:-3] if path.stem.endswith("_BU") else path.stem
+            if path.stem.endswith("_BU"):
+                files[stem] = path
+            else:
+                files.setdefault(stem, path)
+        locations = {}
+        for path in files.values():
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue  # validate_area_files reports it
+            for location in data.get("locations") or [] if isinstance(data, dict) else []:
+                if isinstance(location, dict) and location.get("locationId"):
+                    locations[location["locationId"]] = location
+
+        def occupants_at(location):
+            used, out = defaultdict(int), set()
+            for field in ("monsters", "npcs"):
+                for entry in location.get(field) or []:
+                    name = entry.get("name") if isinstance(entry, dict) else None
+                    if name and name.strip():
+                        used[slug(name)] += 1
+                        count = used[slug(name)]
+                        out.add(slug(name) + ("" if count == 1 else "-%d" % count))
+            return out
+
+        errors, blocks = [], 0
+        for location_id, location in locations.items():
+            facts = location.get("typedFacts")
+            if facts is None:
+                continue
+            blocks += 1
+            if not isinstance(facts, dict) or facts.get("version") != 1:
+                errors.append("%s: typedFacts version is not 1" % location_id)
+                continue
+            for lead in facts.get("leads") or []:
+                target = lead.get("destinationLocationId") if isinstance(lead, dict) else None
+                if target not in locations:
+                    errors.append("%s: lead destination %r is not a location" % (location_id, target))
+            for kind in ("readables", "leads", "locks"):
+                names = [e.get("name") for e in facts.get(kind) or [] if isinstance(e, dict)]
+                for name in sorted({n for n in names if names.count(n) > 1}):
+                    errors.append("%s: two %s are named %r" % (location_id, kind, name))
+        plot_path = self.module_path / "module_plot_BU.json"
+        plot_path = plot_path if plot_path.exists() else self.module_path / "module_plot.json"
+        try:
+            plot = json.loads(plot_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            plot = {}  # validate_plot_files reports it
+        records = []
+        for point in plot.get("plotPoints") or [] if isinstance(plot, dict) else []:
+            if isinstance(point, dict):
+                records.append(point)
+                records += [s for s in point.get("sideQuests") or [] if isinstance(s, dict)]
+        for record in records:
+            block, ident = record.get("completion"), record.get("id")
+            if block is None:
+                continue
+            blocks += 1
+            if not isinstance(block, dict) or block.get("version") != 1:
+                errors.append("%s: completion version is not 1" % ident)
+                continue
+            for location_id in block.get("visited") or []:
+                if location_id not in locations:
+                    errors.append("%s: completion place %r is not a location" % (ident, location_id))
+            for item in block.get("resolved") or []:
+                item = item if isinstance(item, dict) else {}
+                location = locations.get(item.get("locationId"))
+                if location is None:
+                    errors.append("%s: completion place %r is not a location" % (ident, item.get("locationId")))
+                elif item.get("occupant") not in occupants_at(location):
+                    errors.append("%s: %r is not an occupant of %s"
+                                  % (ident, item.get("occupant"), item.get("locationId")))
+        if blocks:
+            self.results["typed_facts"]["passed" if not errors else "failed"] = 1
+            self.results["typed_facts"]["errors"] = errors
+
     def get_success_rate(self):
         """Get overall validation success rate"""
         total_passed = sum(r["passed"] for r in self.results.values())
@@ -863,6 +948,7 @@ class ModuleValidator:
         self.validate_module_context()
         self.validate_encounter_files()
         self.validate_legacy_content_advisories()
+        self.validate_typed_facts()
 
         # Run connectivity validation
         success, errors = self.validate_area_connectivity()
