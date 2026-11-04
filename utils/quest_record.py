@@ -942,8 +942,11 @@ def apply_typed_completions(module, *, root=".", journal=True) -> List[str]:
     DM reopens stays open. The DM hears of it in the next DM Note; the player
     hears only what the DM tells them. Returns the closed ids. With
     journal=False the caller owns the journal step."""
+    from core.combat.invocation import InvocationSupersededError
     from core.managers import checks_state
     from core.nql import occupants
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.transient_filesystem import ReadOnlySaveStop
     module = (module or "").replace(" ", "_")
     closed: List[str] = []
     try:
@@ -976,6 +979,9 @@ def apply_typed_completions(module, *, root=".", journal=True) -> List[str]:
                 checks_state.add_quest_note(request_id, (
                     "QUEST: %s is complete in the quest record, its authored condition met (%s). Do not send an "
                     "updatePlot for it; tell the player only what the scene shows." % (ident, impact)))
+    except (InvocationSupersededError, LiveProviderSuperseded, ReadOnlySaveStop):
+        # A superseded turn or a save stop ends the turn, not just the close (#1108).
+        raise
     except Exception as exc:  # fail forward: the next turn looks again
         warning("QUESTS: typed completion skipped (%s)" % exc, category="plot_updates")
     key = (os.path.abspath(root), module)
