@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In combat, Magic Missile is now asked for and scored by the game: you roll the darts' dice and the game adds 1 per dart, so the damage always matches your roll (#652).
 - If the DM's online voice stops working, the log now says so once in the DM's own words and the story carries on in text, instead of showing an error on every narration (#1786).
 - The browser now keeps what the server advertised when it connects, so state refreshes carry their request ids and a late answer from an earlier request is dropped instead of applied (#1389).
 - Enemies still standing when a fight ends now stay in the location's record, so a party that flees from three wolves and comes back meets those wolves, not an empty room (#1783).

@@ -36,6 +36,7 @@ from core.combat.resolver import (
     resolve_adjudicated,
     resolve_intent,
     resolve_player_spell_attack,
+    resolve_player_spell_auto_hit,
     resolve_player_spell_save,
     resolve_player_weapon_attack,
     stage_dodge,
@@ -628,9 +629,18 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             # Item 3: the player's swing, scored by code from the faces the
             # completed roll phase holds (never from a model-written field);
             # #672: a recorded spell attack, the same way; #723: a recorded
-            # save spell, save first.
+            # save spell, save first; #652: an auto-hit spell, at its damage.
             if isinstance(weapon_attack.get("spell"), dict) and weapon_attack["spell"].get("type") == "save":
                 resolution = resolve_player_spell_save(
+                    next_encounter,
+                    next_characters,
+                    intent,
+                    weapon_attack,
+                    event_id,
+                    roll_source,
+                )
+            elif isinstance(weapon_attack.get("spell"), dict) and weapon_attack["spell"].get("type") == "auto_hit":
+                resolution = resolve_player_spell_auto_hit(
                     next_encounter,
                     next_characters,
                     intent,
