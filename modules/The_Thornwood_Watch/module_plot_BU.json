@@ -90,6 +90,16 @@
             "TW001",
             "TW06"
           ],
+          "completion": {
+            "version": 1,
+            "resolved": [
+              {
+                "locationId": "TW06",
+                "occupant": "corrupted_wolf"
+              }
+            ],
+            "impact": "The corrupted wolves are dealt with."
+          },
           "status": "not started",
           "plotImpact": ""
         }
