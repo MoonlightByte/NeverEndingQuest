@@ -42,8 +42,8 @@ export function RulesRollPanel({ prompt }: { prompt: RulesRollPrompt }) {
   }
   return <section className="neq-rules-roll" aria-label="Requested check">
     <div className="neq-rules-roll-title"><strong>{prompt.label}</strong><span>{prompt.characterName}</span></div>
-    <p>{prompt.faces === 2 ? `Two d20s · ${prompt.netMode}` : 'One d20'}{addedDice(prompt)}{prompt.dc != null ? ` · Difficulty ${prompt.dc}` : ''}</p>
     {prompt.reason && <p className="neq-rules-roll-reason">{prompt.reason}</p>}
+    <p>{prompt.faces === 2 ? `Two d20s · ${prompt.netMode}` : 'One d20'}{addedDice(prompt)}{prompt.dc != null ? ` · Difficulty ${prompt.dc}` : ''}</p>
     <div className="neq-rules-roll-actions">
       {!ember && <RulesRollActions prompt={prompt} />}
       <details><summary>Use my own dice</summary><form onSubmit={(e) => { e.preventDefault(); if (valid) send(faces.map(Number)) }}>

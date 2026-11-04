@@ -119,12 +119,23 @@ def _show_check_receipt(content: str, message_id: Optional[str] = None) -> None:
         print(content)
 
 
+def _roll_prompt_line(entry: Dict[str, Any]) -> str:
+    """The console's roll panel (#1734): the waiting check for the read prompt, from typed fields only."""
+    reason = str(entry.get("reason") or "").rstrip(". ")
+    what = f"{checks.label(entry['stat'])} for {entry.get('characterName')}" + (f": {reason}" if reason else "")
+    two = entry.get("faces") == 2
+    dice = f"Two d20s, {entry.get('netMode')}: type them" if two else "One d20: type it"
+    return f'[{what}. {dice}, or "roll"] '
+
+
 def read_player_line(read: Callable[[str], str], prompt: str) -> str:
     """The free-command read (#1118 item 4). While a check heads the queue its panel is published for this
     read and cleared once the read returns or raises; the line read is the answer (the settle takes it).
     #1630: the input opens (status ready) only after the panel is published, so a client never sees an open
-    input without the waiting check's panel; a failed publish still opens it."""
+    input without the waiting check's panel; a failed publish still opens it. #1734: the panel is the request,
+    whether or not the narration asked; with no frontend to show it, the read prompt carries it."""
     from core.managers.status_manager import status_ready
+    from web.shared_state import has_player_output_sink
 
     pending = checks_state.pending_checks()
     try:
@@ -133,7 +144,7 @@ def read_player_line(read: Callable[[str], str], prompt: str) -> str:
                 roll_prompt.publish({**pending[0], "label": checks.label(pending[0]["stat"])})
         finally:
             status_ready()
-        return read(prompt)
+        return read(_roll_prompt_line(pending[0]) + prompt if pending and not has_player_output_sink() else prompt)
     finally:
         if pending:
             roll_prompt.publish(None)
