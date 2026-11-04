@@ -493,6 +493,18 @@ def _process_backfill_entry(
         return {"completed": False, "committed": False, "failure": failure}
 
 
+def _renew_entry_budget(scope: Any) -> None:
+    """#1775: each finished entry starts a fresh generation ceiling (#1468), so
+    one launch finishes a long journal. An entry with no episode counts: nobody
+    was present, and the cursor moved on. A failed entry stops the run first, and
+    an entry still running renews nothing, so the ceiling still bounds all spend
+    between two finished entries. Only a maintenance scope renews here; a player
+    turn keeps its own budget."""
+    parent = getattr(scope, "parent", None)
+    if parent is not None and parent.purpose == "maintenance":
+        parent.renew_generation_budget("backfill_entry")
+
+
 def backfill_from_journal(
     journal: Mapping[str, Any],
     party_tracker_data: Mapping[str, Any],
@@ -655,6 +667,7 @@ def backfill_from_journal(
                 committed += 1
             if checkpoint_cb:
                 checkpoint_cb(index, committed)
+            _renew_entry_budget(scopes[0])
         else:
             completed_all = True
     finally:
@@ -763,6 +776,7 @@ def backfill_from_summaries(
             committed += 1
         if checkpoint_cb:
             checkpoint_cb(index, committed)
+        _renew_entry_budget(advisory_scope)
     return {
         "committed": committed,
         "processed": processed,
