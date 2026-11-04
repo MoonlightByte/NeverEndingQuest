@@ -839,16 +839,18 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             next_characters,
             resolution,
         )
-        _record_character_state_after(
-            resolution["event"],
-            before_characters,
-            next_characters,
-        )
         _record_draw_applied(resolution["event"], next_characters)
         if off_hand:
             resolution["event"]["bonusAction"], next_encounter, next_characters = _resolve_off_hand(
                 next_encounter, next_characters, actor, controller, bonus, event_id, roll_source, off_hand_phase,
             )
+        # #1806: after the Off-hand Attack, or this snapshot writes over its
+        # damage at commit and a replay matches neither staged value.
+        _record_character_state_after(
+            resolution["event"],
+            before_characters,
+            next_characters,
+        )
         snapshot_problems = validate_event(resolution.get("event"))
         if snapshot_problems:
             raise CombatIntentError(
