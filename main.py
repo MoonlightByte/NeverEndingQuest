@@ -12112,6 +12112,9 @@ def _review_dm_candidate(
                         "reason_code": route_outcome.reason_code,
                         **dict(route_outcome.facts or {}),
                     }
+                    # #1724: T065 requires toward on a stop short of the player's goal.
+                    route_goal = (route_outcome.facts or {}).get("player_goal_id")
+                    with_goal = f" with toward = {route_goal}" if route_goal else ""
                     if route_outcome.reason_code == "intermediate_stop":
                         retry_correction = (
                             "Revise the complete response using the accepted "
@@ -12119,7 +12122,7 @@ def _review_dm_candidate(
                             "player's original goal, but transition only to "
                             f"{route_outcome.intermediate_destination_id} "
                             f"({route_outcome.intermediate_destination_name}). "
-                            "Use that transitionLocation first and do not "
+                            f"Use that transitionLocation first{with_goal} and do not "
                             "transition to the original final destination in "
                             "this turn."
                         )
@@ -12143,7 +12146,7 @@ def _review_dm_candidate(
                                 "the first unvisited place on the way, or to another "
                                 f"unvisited place reachable now ({fresh}) if the "
                                 "player's intent fits it better. Use that "
-                                "transitionLocation first and do not transition to "
+                                f"transitionLocation first{with_goal} and do not transition to "
                                 "the original final destination in this turn."
                             )
                         else:
