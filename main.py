@@ -9126,6 +9126,10 @@ def _report_effects_migration(result):
     routine and clears on its own, so it is not shown.
     """
     status = result.get("status") if isinstance(result, dict) else None
+    if status == "migrated" and result.get("nothingToConvert") is True:
+        # #1678: a new game had nothing to convert and no save was made.
+        debug(f"EFFECTS: Effects V2 stamped with nothing to convert: {result}", category="effects_tracking")
+        return
     if status == "migrated":
         show_player_notice(
             "Temporary effects were upgraded safely. "
@@ -9669,17 +9673,20 @@ def _main_game_loop(startup_authority, turn_authority):
                 category="effects_tracking",
             )
             backup_folder = None
+            nothing_to_convert = False
             try:
                 from core.managers.effects_state import load_effects_state
 
-                backup_folder = (
-                    (load_effects_state().get("migration") or {}).get("backupFolder")
-                )
+                migration = load_effects_state().get("migration") or {}
+                backup_folder = migration.get("backupFolder")
+                # #1678: a run with nothing to convert made no save to restore.
+                nothing_to_convert = migration.get("nothingToConvert") is True
             except Exception:
                 pass
             recovery = (
                 f" Restore save '{backup_folder}' before retrying."
                 if backup_folder
+                else " Retry startup." if nothing_to_convert
                 else " Retry startup; if it repeats, restore the automatic pre-conversion save."
             )
             show_player_notice(
