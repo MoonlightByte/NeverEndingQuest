@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Reset no longer changes your saved games. It used to put the areas inside every save of an adventure back to their unplayed state, so loading one afterwards brought back a world you had already changed (#1813).
 - In combat, an Off-hand Attack's damage now lands. When your main attack and your Off-hand Attack both hit the same target with a character sheet, the off-hand damage showed on the card and then vanished, and an Off-hand kill of a creature yet to act stopped the game. A game stopped that way goes on at your next line, which finishes the turn you already rolled rather than starting a new action. If the game stopped while the old version was saving such a turn, that hit keeps its old result, or the game asks you to Load or Reset (#1806).
 - In combat, when the game asks for Magic Missile's dice itself, you roll each die, it adds 1 per dart, and the damage on the card is the damage dealt. Split darts and casts from items stay with the DM (#652).
 - Keep of Doom and The Thornwood Watch now start as stories nobody has played: places no longer remember a past party's visit, the creatures that party killed are back at the shrine, the ward circle and the Keeper's cottage, the ward has one recipe, with its stone and runestones found at the circle, the keep's villain has one name, Sir Garran Vael, and one record, and the Thornwood's scout and spring match their quests (#1776).

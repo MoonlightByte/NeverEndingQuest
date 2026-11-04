@@ -218,6 +218,9 @@ def reset_module(module_name):
     # Find all _BU.json files
     bu_files = []
     for root, dirs, files in os.walk(module_path):
+        # A save holds its own played files and their _BU copies; Reset leaves
+        # them alone, as startup hydration does (#1813).
+        dirs[:] = [name for name in dirs if name != "saved_games"]
         for file in files:
             if file.endswith("_BU.json"):
                 bu_files.append(os.path.join(root, file))
