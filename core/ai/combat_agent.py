@@ -218,7 +218,9 @@ def _spell_attack_prompt():
         "A later attack of a spell that persists (Spiritual Weapon on later\n"
         "turns) is declared the same way and spends no slot: send slotLevel,\n"
         "the level it was cast at.\n"
-        "Every other spell attack keeps requiresPlayerInput as below.\n\n" % listed
+        "Every other spell attack keeps requiresPlayerInput as below: code asks for\n"
+        "none of its rolls, so after its d20 a hit sets requiresPlayerInput for the\n"
+        "damage dice. A lead never asks on its own.\n\n" % listed
     )
 
 
