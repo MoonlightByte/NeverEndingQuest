@@ -10,6 +10,13 @@
       "nextPoints": [
         "PP002"
       ],
+      "completion": {
+        "version": 1,
+        "visited": [
+          "TW01"
+        ],
+        "impact": "The party left the outpost and reached the Thornwood."
+      },
       "status": "not started",
       "plotImpact": "",
       "sideQuests": [
@@ -45,6 +52,23 @@
       "nextPoints": [
         "PP003"
       ],
+      "completion": {
+        "version": 1,
+        "visited": [
+          "NC01"
+        ],
+        "resolved": [
+          {
+            "locationId": "TW05",
+            "occupant": "bandit_captain_gorvek"
+          },
+          {
+            "locationId": "TW05",
+            "occupant": "bandit_captain_gorvek-2"
+          }
+        ],
+        "impact": "The party made it through the bandit lands to the stronghold."
+      },
       "status": "not started",
       "plotImpact": "",
       "sideQuests": [
@@ -66,6 +90,16 @@
             "TW001",
             "TW06"
           ],
+          "completion": {
+            "version": 1,
+            "resolved": [
+              {
+                "locationId": "TW06",
+                "occupant": "corrupted_wolf"
+              }
+            ],
+            "impact": "The corrupted wolves are dealt with."
+          },
           "status": "not started",
           "plotImpact": ""
         }
@@ -79,6 +113,13 @@
       "nextPoints": [
         "PP004"
       ],
+      "completion": {
+        "version": 1,
+        "visited": [
+          "NC05"
+        ],
+        "impact": "The party crossed the corrupted grove and reached the source of the sorcerer's power."
+      },
       "status": "not started",
       "plotImpact": "",
       "sideQuests": [
@@ -89,6 +130,16 @@
           "involvedLocations": [
             "NCW001"
           ],
+          "completion": {
+            "version": 1,
+            "resolved": [
+              {
+                "locationId": "NC03",
+                "occupant": "the_withered_hart"
+              }
+            ],
+            "impact": "The Withered Hart's fate is settled."
+          },
           "status": "not started",
           "plotImpact": ""
         }

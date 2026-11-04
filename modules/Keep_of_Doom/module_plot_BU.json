@@ -10,6 +10,13 @@
       "nextPoints": [
         "PP002"
       ],
+      "completion": {
+        "version": 1,
+        "visited": [
+          "B01"
+        ],
+        "impact": "The party left Harrow's Hollow and reached the Gloamwood."
+      },
       "status": "not started",
       "plotImpact": "",
       "sideQuests": [
@@ -43,6 +50,14 @@
       "nextPoints": [
         "PP003"
       ],
+      "completion": {
+        "version": 1,
+        "visited": [
+          "C01",
+          "C08"
+        ],
+        "impact": "The party crossed the haunted forest and reached the Keep of Doom."
+      },
       "status": "not started",
       "plotImpact": "",
       "sideQuests": [
@@ -76,6 +91,15 @@
       "nextPoints": [
         "PP004"
       ],
+      "completion": {
+        "version": 1,
+        "visited": [
+          "C02",
+          "C03",
+          "C08"
+        ],
+        "impact": "The party entered Shadowfall Keep."
+      },
       "status": "not started",
       "plotImpact": "",
       "sideQuests": [
