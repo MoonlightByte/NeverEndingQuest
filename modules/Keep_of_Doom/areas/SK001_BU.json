@@ -774,7 +774,7 @@
           },
           {
             "name": "Celestial map",
-            "summary": "It shows the best times to confront the relic: under the right stellar alignment the party has advantage on saves against its powers in the final confrontation.",
+            "summary": "Locked in the Observatory Cabinet: it cannot be read until the cabinet is open. It shows the best times to confront the relic: under the right stellar alignment the party has advantage on saves against its powers in the final confrontation.",
             "check": {
               "stat": "skill:investigation",
               "dc": 15

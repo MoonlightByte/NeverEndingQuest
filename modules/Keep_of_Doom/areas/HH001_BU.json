@@ -575,7 +575,7 @@
         "leads": [
           {
             "name": "Cira's clue",
-            "summary": "Cira saw Elen go down to the cellar and not come back up. Behind a false wall there is an old smuggler's tunnel.",
+            "summary": "Cira tells this only once the cellar spirit is calmed: she saw Elen go down to the cellar and not come back up. Behind a false wall there is an old smuggler's tunnel.",
             "check": {
               "stat": "skill:persuasion",
               "dc": 10
