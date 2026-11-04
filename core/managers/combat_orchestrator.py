@@ -1414,19 +1414,22 @@ def _damage_is_dice(intent, sheet, actor_id):
     and the name to give the player. A cast's spell (ability, then spellName)
     is dice when its roll contract lists evidence dice (every no_player_roll
     contract lists none); a weapon row the abilityRow names is dice unless it
-    is flat (#1337). Neither typed: not dice."""
+    is flat (#1337). Neither typed: not dice. A contract table that cannot be
+    read logs once and reads as not dice: the check stays off for casts and
+    the turn goes on."""
     if intent.get("action") == "cast":
-        try:
-            from core.ai import srd_roll_contracts
+        from core.ai import srd_roll_contracts
 
+        try:
             contracts = srd_roll_contracts.load_spell_roll_contracts().get("contracts") or {}
-        except Exception:
-            contracts = {}
+        except (OSError, TypeError, ValueError, srd_roll_contracts.SpellRollContractError) as exc:
+            srd_roll_contracts.log_unavailable("srd_spell_roll_contracts", exc)
+            return False, None
         for field in ("ability", "spellName"):
             name = intent.get(field)
             if not isinstance(name, str) or not name.strip():
                 continue
-            contract = contracts.get(srd_roll_contracts._canonical_key(name)) if contracts else None
+            contract = contracts.get(srd_roll_contracts._canonical_key(name))
             if isinstance(contract, dict):
                 return bool(contract.get("evidenceDice")), name.strip()
     entry = attack_row(sheet, intent.get("abilityRow"), actor_id) if intent.get("abilityRow") else None
