@@ -82,6 +82,26 @@
   },
   "locations": [
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Ancient warning tablets",
+            "summary": "In Common and Sylvan: the corruption spreads outward from the ruins deeper in the woods, and it follows every ritual done there. Those who can still leave should."
+          }
+        ],
+        "leads": [
+          {
+            "name": "Strange magical emanations",
+            "summary": "The emanations pull toward the hilltop ruins deeper in the grove: Malarok's ritual site.",
+            "check": {
+              "stat": "skill:arcana",
+              "dc": 15
+            },
+            "destinationLocationId": "NC05"
+          }
+        ]
+      },
       "locationId": "NC01",
       "name": "Corrupted Entry Cave",
       "type": "cave",
@@ -166,6 +186,23 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Ancient druidic tome",
+            "summary": "The grove was the first place the corruption took hold. Dryad tears and uncorrupted heartwood are named as the old means of cleansing it."
+          },
+          {
+            "name": "Desecrated Stone Circle",
+            "summary": "The runes were a purification rite turned inside out. Purifying the stones would weaken the taint in this grove.",
+            "check": {
+              "stat": "skill:religion",
+              "dc": 14
+            }
+          }
+        ]
+      },
       "locationId": "NC02",
       "name": "Blighted Thornbriar Grove",
       "type": "grove",
@@ -267,6 +304,34 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Ancient Petroglyphs",
+            "summary": "The carvings show the forest's guardians passing their burden from one to the next, and the last of them standing alone against the dark.",
+            "check": {
+              "stat": "skill:religion",
+              "dc": 14
+            }
+          },
+          {
+            "name": "Map carved in ancient stone",
+            "summary": "The woods in low relief, with one deep notch on the hilltop ruins: the source of the corruption."
+          }
+        ],
+        "leads": [
+          {
+            "name": "The Hart's guidance",
+            "summary": "Calmed, the Hart turns toward the hilltop and will lead the way to the source of the corruption.",
+            "check": {
+              "stat": "skill:animal-handling",
+              "dc": 15
+            },
+            "destinationLocationId": "NC05"
+          }
+        ]
+      },
       "locationId": "NC03",
       "name": "Hollow of the Withered Hart",
       "type": "cave",
@@ -350,6 +415,34 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Torn Research Notes",
+            "summary": "Thane timed the corruption pools and found them growing faster each day. His last pages record his own first symptoms.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 12
+            }
+          },
+          {
+            "name": "Ranger's journal",
+            "summary": "Thane was sent by a distant outpost. His entries shorten as he changes, and he concludes the corruption is being spread on purpose and is growing more intelligent."
+          }
+        ],
+        "leads": [
+          {
+            "name": "Map marking the epicenter",
+            "summary": "Thane's map marks the epicenter of the corruption on the hilltop ruins.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 12
+            },
+            "destinationLocationId": "NC05"
+          }
+        ]
+      },
       "locationId": "NC04",
       "name": "Doomed Explorer's Camp",
       "type": "campsite",

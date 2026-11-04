@@ -135,6 +135,27 @@
   "notes": "The Blighted Marches represent the extension of the shadow relic's influence beyond the keep itself. Areas closer to standing stones or the barrow are particularly warped. Direction-finding is nearly impossible without special preparation, and those who die here often rise as undead or merge with the landscape itself.",
   "locations": [
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Ruined guardpost writing",
+            "summary": "The ancient watchword is 'Shadow shields us all.' Spoken aloud, it appeases the spectral soldiers.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 13
+            }
+          },
+          {
+            "name": "Fallen pillar warning",
+            "summary": "'The barrow calls to the relic; they must never meet.'"
+          },
+          {
+            "name": "Preserved maps",
+            "summary": "A settlement once stood where the Black Banner Encampment is now, suggesting the cultists chose a site of former power."
+          }
+        ]
+      },
       "locationId": "D01",
       "name": "The Sundered Causeway",
       "type": "ruins",
@@ -215,6 +236,19 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Preserved journal",
+            "summary": "It names the stepping stones that hold and the bog lights to follow. Some of its paths have since sunk."
+          },
+          {
+            "name": "Marked Dead Trees",
+            "summary": "Seen from above, the carvings form a map of the standing stones as they were first built."
+          }
+        ]
+      },
       "locationId": "D02",
       "name": "The Mire of Echoes",
       "type": "bog",
@@ -306,6 +340,23 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Tower commander's journal",
+            "summary": "It records the spread of the shadow, and 'the ritual of seven stones' that could bind or destroy the relic during specific lunar alignments."
+          },
+          {
+            "name": "Astronomical Charts",
+            "summary": "The charts track the relic's activity against the stars and show when the standing stones are strongest.",
+            "check": {
+              "stat": "skill:arcana",
+              "dc": 14
+            }
+          }
+        ]
+      },
       "locationId": "D03",
       "name": "Abandoned Watchtower",
       "type": "tower",
@@ -411,6 +462,42 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Black Banner research journal",
+            "summary": "Locked in Valen's private chest: it cannot be read until the chest is open. The cult has studied Sir Garran and the relic for decades, and believes the coming lunar alignment will let them take its power without its corruption."
+          },
+          {
+            "name": "Map of Black Banner operations",
+            "summary": "Watch posts on the keep, the barrow and the standing stones, with a note that the barrow must be reached before the alignment."
+          },
+          {
+            "name": "Magister Valen's ancient text",
+            "summary": "The barrow was first made to imprison a different entity, one the relic might awaken if brought there."
+          }
+        ],
+        "leads": [
+          {
+            "name": "Therin's secret path",
+            "summary": "Acolyte Therin knows a secret way to the barrow, unseen and past the worst of the marches.",
+            "check": {
+              "stat": "skill:persuasion",
+              "dc": 13
+            },
+            "destinationLocationId": "D06"
+          }
+        ],
+        "locks": [
+          {
+            "name": "Valen's private chest",
+            "lockDC": 15,
+            "breakDC": 17,
+            "contents": "The Black Banner research journal."
+          }
+        ]
+      },
       "locationId": "D04",
       "name": "Black Banner Encampment",
       "type": "camp",
@@ -521,6 +608,19 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Ritual manual",
+            "summary": "The stones were made to counter the shadow magic in the relic. Followed exactly, the ceremony strengthens magic cast in the circle and offers a way to cleanse or destroy the relic.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 14
+            }
+          }
+        ]
+      },
       "locationId": "D05",
       "name": "Ancient Standing Stones",
       "type": "ritual",
@@ -589,6 +689,23 @@
       "adventureSummary": ""
     },
     {
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Wall Carvings",
+            "summary": "The barrow could contain the relic, but bringing it here risks fully awakening the Entity.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 13
+            }
+          },
+          {
+            "name": "Containment ritual scroll",
+            "summary": "The barrow was built to imprison an ancient entity of pure shadow, older than the keep, the same one the relic drew power from."
+          }
+        ]
+      },
       "locationId": "D06",
       "name": "The Cursed Barrow",
       "type": "tomb",
