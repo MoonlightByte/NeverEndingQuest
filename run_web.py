@@ -530,6 +530,8 @@ if __name__ == "__main__":
     if data_root is not None:
         prepare_data_root(data_root)
         enter_data_root(data_root)
+        from utils.shipped_modules import launch_reset
+        launch_reset()
         print(f"[SETUP] Data folder: {data_root}")
     # Check for updates before starting
     try:

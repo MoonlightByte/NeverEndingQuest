@@ -313,7 +313,16 @@ def reset_global_state():
         return _reset_global_state_locked()
 
 
-def _reset_global_state_locked(*, reset_prepared=False):
+def _write_party_tracker(value):
+    """Whole-file tracker write for a Reset that replaces shipped files (#1810)."""
+    from utils.file_operations import ON_READ_ONLY_FAIL, safe_write_json
+
+    if not safe_write_json("party_tracker.json", value, create_backup=False,
+                           on_read_only=ON_READ_ONLY_FAIL):
+        raise OSError("The party tracker could not be saved")
+
+
+def _reset_global_state_locked(*, reset_prepared=False, keep_tracker=False):
     """Phase 3: Create fresh game state"""
     print(f"\n{CYAN}PHASE 3: Creating fresh game state...{RESET}")
 
@@ -329,9 +338,10 @@ def _reset_global_state_locked(*, reset_prepared=False):
         _bump_campaign_lifecycle_epoch(campaign_file)
     
     # Reset party tracker to empty object (matches installer behavior)
-    with open("party_tracker.json", 'w') as f:
-        f.write("{}")
-    print("  [OK] Reset party_tracker.json to {}")
+    if not keep_tracker:
+        with open("party_tracker.json", 'w') as f:
+            f.write("{}")
+        print("  [OK] Reset party_tracker.json to {}")
     
     # Delete existing player storage - let game create fresh one
     if os.path.exists("player_storage.json"):
@@ -531,8 +541,11 @@ def clear_all_files():
         os.makedirs("modules/campaign_summaries")
         print("  [OK] Cleared campaign_summaries")
 
-def perform_reset_logic():
-    """Run the full reset under the shared campaign lifecycle boundary."""
+def perform_reset_logic(only_if=None):
+    """Run the full reset under the shared campaign lifecycle boundary.
+
+    ``only_if`` is checked again inside the lock; False returns None, unchanged.
+    """
     from core.combat.invocation import (
         begin_invocation_supersession,
         end_invocation_supersession,
@@ -540,6 +553,8 @@ def perform_reset_logic():
     invocation_barrier = begin_invocation_supersession("reset")
     try:
         with _reset_reconciled_boundary():
+            if only_if is not None and not only_if():
+                return None
             return _perform_reset_logic_locked()
     finally:
         # The reset roster numbers its own [slot] rows; the old turn's pair
@@ -562,6 +577,18 @@ def _perform_reset_logic_locked():
 
     _bump_campaign_lifecycle_epoch("modules/campaign.json")
     
+    # #1810: replacing shipped files is marked first and cleared last, so a stop
+    # anywhere between makes the next launch run this Reset again. That holds
+    # only if no new game commits first: commit empties the tracker (#1284),
+    # marker included, and no launch runs it then.
+    from utils.shipped_modules import (
+        RESET_UNFINISHED, refresh_shipped_files, reset_unfinished, stale_files,
+    )
+    replacing = reset_unfinished() or bool(stale_files())
+    if replacing:
+        _write_party_tracker(RESET_UNFINISHED)
+        refresh_shipped_files()
+
     # Phase 2: Reset all modules
     print(f"\n{CYAN}PHASE 2: Resetting all modules from backups...{RESET}")
     modules = discover_modules()
@@ -571,10 +598,13 @@ def _perform_reset_logic_locked():
         reset_module(module)
     
     # Phase 3: Reset global state
-    _reset_global_state_locked(reset_prepared=True)
+    _reset_global_state_locked(reset_prepared=True, keep_tracker=replacing)
     
     # Phase 4: Clear all generated files
     clear_all_files()
+
+    if replacing:
+        _write_party_tracker({})
     
     return backup_dir
 
