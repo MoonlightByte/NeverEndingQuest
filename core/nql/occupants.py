@@ -18,8 +18,10 @@ Three entry points for the host:
 - ``resolve_combat(encounter_id)`` after a fight: every enemy of the
   encounter file that is down, fled or yielded is resolved on its occupant,
   by the typed fields the combat engine wrote (``status``, ``resolution``),
-  never by prose. One deterministic request per completed fight, so a retry
-  after a crash is answered as already applied.
+  never by prose. An uncounted group is counted from everyone the fight
+  held, so the enemies still standing stay in the record. One deterministic
+  request per completed fight, so a retry after a crash is answered as
+  already applied.
 - ``location_record(location_id)`` for the DM context: what became of each
   group at the place (the engine's tally) in place of the per-fight
   encounter entries, and the module's groups at large (fled or departed)
@@ -459,11 +461,40 @@ def _type_slug(creature: Dict[str, Any]) -> str:
     return ""
 
 
-def combat_actions(live: Dict[str, Any], place: str, creatures: List[Dict[str, Any]]) -> Tuple[str, List[str]]:
+def _standing(live: Dict[str, Any], creatures: List[Dict[str, Any]], by_id: Dict[str, Dict[str, Any]],
+              by_type: Dict[str, List[Dict[str, Any]]], tallies: Dict[str, Dict[str, int]],
+              departed: Any) -> Dict[str, int]:
+    """How many members of each present group the fight ended with on their
+    feet (#1783), matched as the fallen are. Not one who left the scene
+    (``departed``), nor a person: ``joined_person_actions`` keeps their end."""
+    from core.managers.combat_state import is_combatant_targetable
+
+    people = {o.get("id") for o in live.get("occupants") or [] if o.get("kind") == "person"}
+    standing: Dict[str, int] = {}
+    for creature in creatures:
+        if creature.get("type") != "enemy" or creature.get("combatantId") in departed:
+            continue
+        if creature.get("occupantId") in people:
+            continue
+        if creature_outcome(creature) is not None or not is_combatant_targetable(creature):
+            continue
+        occupant = by_id.get(creature.get("occupantId"))
+        if occupant is None:
+            candidates = by_type.get(_type_slug(creature)) or []
+            occupant = next((g for g in candidates if _room(
+                g, {**tallies.get(g["id"], {}), "standing": standing.get(g["id"], 0)})), None)
+        if occupant is not None:
+            standing[occupant["id"]] = standing.get(occupant["id"], 0) + 1
+    return standing
+
+
+def combat_actions(live: Dict[str, Any], place: str, creatures: List[Dict[str, Any]],
+                   departed: Any = ()) -> Tuple[str, List[str]]:
     """The typed actions that record this fight's enemies on their occupants,
     and the enemies no occupant matched. An enemy names its occupant by
     ``occupantId`` or by its typed slug equal to a present group's type at
-    the place (value equality, never a name match)."""
+    the place (value equality, never a name match). ``departed`` holds the
+    combatant IDs that left the scene."""
     groups = _present_groups(live, place)
     by_id = {g["id"]: g for g in groups}
     by_type: Dict[str, List[Dict[str, Any]]] = {}
@@ -493,17 +524,20 @@ def combat_actions(live: Dict[str, Any], place: str, creatures: List[Dict[str, A
             continue
         tally = tallies.setdefault(occupant["id"], {})
         tally[outcome] = tally.get(outcome, 0) + 1
+    standing = _standing(live, creatures, by_id, by_type, tallies, departed)
     lines: List[str] = []
-    for oid, tally in tallies.items():
+    for oid in list(tallies) + [oid for oid in standing if oid not in tallies]:
         occupant = by_id[oid]
-        total = sum(tally.values())
+        tally = tallies.get(oid, {})
         if "count" not in occupant:
             # An uncounted group is counted first, within its range, by what
-            # the fight showed; the engine refuses a resolve on an uncounted group.
+            # the fight showed, fallen and standing (#1783), even if none of
+            # it fell; the engine refuses a resolve on an uncounted group.
+            seen = sum(tally.values()) + standing.get(oid, 0)
             rng = occupant.get("range") or {}
-            size = total
+            size = seen
             if isinstance(rng.get("min"), int) and isinstance(rng.get("max"), int):
-                size = min(max(total, rng["min"]), rng["max"])
+                size = min(max(seen, rng["min"]), rng["max"])
             lines.append('count occupant "%s" as %d;' % (oid, size))
             present = size
         else:
@@ -592,7 +626,9 @@ def resolve_combat(encounter_id: str, *, root: str = ".") -> Optional[Dict[str, 
         if not current or not current.get("ok"):
             return current
         live = current.get("live_state") or _load(root) or {}
-        actions, unmatched = combat_actions(live, place, encounter.get("creatures") or [])
+        departed = {row.get("combatantId") for row in (encounter.get("sceneFacts") or {}).get("participants") or []
+                    if isinstance(row, dict) and row.get("participation") == "departed"}
+        actions, unmatched = combat_actions(live, place, encounter.get("creatures") or [], departed)
         joined = joined_person_actions(live, place, encounter)
         actions = "\n".join(part for part in (actions, joined) if part)
         if unmatched:

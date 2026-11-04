@@ -138,6 +138,15 @@ function refreshAuthoritativeState(): void {
 }
 
 // ---------- transport-level ----------
+// #1389: Socket.IO delivers `connected` before it fires `connect`, so the reset in the connect handler would
+// undo it. What `connected` said for this connection is applied again after that reset.
+let connectionLive = false
+let advertisedBeforeConnect: ServerEvents['connected'] | null = null
+function applyAdvertisement(payload: ServerEvents['connected']): void {
+  hydration.advertise(payload.capabilities, payload.server_instance_id)
+  useWorld.getState().bindServerInstance(hydration.currentEpoch(), payload.server_instance_id)
+  usePlayer.getState().bindServerInstance(hydration.currentEpoch(), payload.server_instance_id)
+}
 socket.on('connect', () => {
   useConnectionNotice.getState().clear()
   void reloadIfRestartPending()
@@ -145,6 +154,9 @@ socket.on('connect', () => {
   useSession.getState().beginConnection()
   useWorld.getState().beginConnection(connectionEpoch)
   usePlayer.getState().beginConnection(connectionEpoch)
+  connectionLive = true
+  if (advertisedBeforeConnect) applyAdvertisement(advertisedBeforeConnect)
+  advertisedBeforeConnect = null
   useSession.getState().setConnected(true)
   // These values can change while a tab is asleep or disconnected. Components
   // remain mounted across reconnects, so their mount effects will not run again.
@@ -152,6 +164,7 @@ socket.on('connect', () => {
   refreshAuthoritativeState()
 })
 socket.on('disconnect', () => {
+  connectionLive = false
   useRulesRoll.getState().setPrompt(null)
   useSession.getState().setConnected(false)
   // #214 F10: a welcome clear emitted while disconnected is lost; drop the
@@ -170,9 +183,8 @@ on('connected', (payload) => {
   // The server sends `connected` and `cached_messages` before Socket.IO
   // delivers `connect`, so the history window must open here (#1373).
   useLog.getState().beginHistorySync()
-  hydration.advertise(payload.capabilities, payload.server_instance_id)
-  useWorld.getState().bindServerInstance(hydration.currentEpoch(), payload.server_instance_id)
-  usePlayer.getState().bindServerInstance(hydration.currentEpoch(), payload.server_instance_id)
+  if (!connectionLive) advertisedBeforeConnect = payload
+  applyAdvertisement(payload)
   useSession.getState().setConnected(true)
 })
 on('version_status', (v) => useSession.getState().setVersion(v))
