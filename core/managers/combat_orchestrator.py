@@ -1680,8 +1680,8 @@ def _game_roll_line(request, faces):
     """The record of the game's roll for a DM request, from typed fields only
     (the request exchange's requestedRoll, or a code phase's requestedDie, and
     requestedPhase; its prose is never read): "Game roll for the DM's request (damage): 4 and 2 on the
-    2d6." T096 reads it beside the player's words and the player sees it as
-    a system card (#1118)."""
+    2d6." T096 reads it beside the player's words (#1118); the player's card is
+    _game_roll_card (#1777)."""
     terms = _roll_die_terms((request or {}).get("requestedRoll") or (request or {}).get("requestedDie")) or []
     if len(terms) != len(faces):
         terms = [None] * len(faces)
@@ -1697,11 +1697,49 @@ def _game_roll_line(request, faces):
     return "Game roll for the DM's request%s: %s." % (asked, " and ".join(parts))
 
 
+# #1777: what a DM says a die was for, by typed phase. requestedPhase is stored as given and the
+# model can supply it, so a phase outside this list is left off and its words never reach the card.
+_GAME_ROLL_PURPOSE = {"attack": "to hit", "damage": "for damage", "healing": "for healing",
+                      "save": "for your save", "check": "for your check"}
+_DICE_WORDS = ("two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve")
+
+
+def _spoken_dice(count, sides):
+    """Dice as a DM says them: "d8", "three d4s"; past twelve the count stays a number."""
+    if count == 1:
+        return "d%d" % sides
+    return "%s d%ds" % (_DICE_WORDS[count - 2] if count - 2 < len(_DICE_WORDS) else count, sides)
+
+
+def _spoken_faces(faces):
+    """Faces as a DM reads them out: "5", "3 and 2", "3, 4 and 1"."""
+    faces = [str(face) for face in faces]
+    return " and ".join(faces) if len(faces) < 3 else "%s and %s" % (", ".join(faces[:-1]), faces[-1])
+
+
+def _game_roll_card(request, faces):
+    """The player's card for the game's roll (#1777), in the DM's words, from the typed fields
+    _game_roll_line reads: "I rolled your three d4s for damage: 3, 4 and 1." T096 reads that line and
+    never this. It gives no total: the faces are not the damage until the ruling adds the rest."""
+    request = request or {}
+    terms = _roll_die_terms(request.get("requestedRoll") or request.get("requestedDie")) or []
+    if len(terms) != len(faces) or any(len(group) != term[0] for group, term in zip(faces, terms)):
+        return "I rolled that for you: %s." % _spoken_faces([face for group in faces for face in group])
+    phase = str(request.get("requestedPhase") or "").strip().casefold()
+    if len(terms) > 1:
+        rolled = " and ".join("%s on the %s" % (_spoken_faces(group), _spoken_dice(*term))
+                              for group, term in zip(faces, terms))
+        return "I rolled your %sdice: %s." % (phase + " " if phase in _GAME_ROLL_PURPOSE else "", rolled)
+    purpose = _GAME_ROLL_PURPOSE.get(phase)
+    return "I rolled your %s%s: %s." % (_spoken_dice(*terms[0]), " " + purpose if purpose else "",
+                                        _spoken_faces(faces[0]))
+
+
 def _show_game_roll(request, faces):
     """Show the player the game's roll at once, as a system card (#1118)."""
     from core.managers.checks_runtime import _show_check_receipt
 
-    _show_check_receipt(_game_roll_line(request, faces))
+    _show_check_receipt(_game_roll_card(request, faces))
 
 
 def _game_roll_answer(pending, text):

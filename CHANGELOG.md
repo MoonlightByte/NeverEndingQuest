@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the game rolls for the player, the card in the log now reads the way a DM would say it, such as "I rolled your three d4s for damage: 3, 4 and 1." (#1777).
 - The roll panel now leads with what a roll is for and the input box answers to it, the console shows the same request at its prompt, and a screen reader announces it, so a roll is always asked for even when the narration does not ask (#1734).
 - A very long turn keeps its last AI calls for the DM: optional extras, such as companion voices, stop first (#1587).
 - A generated image now leaves the log with its narration instead of dropping to the bottom below the newest turn, and an old game's image no longer stays on the log after setup resets that game's save (#1395, #1768).
