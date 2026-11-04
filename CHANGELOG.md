@@ -52,6 +52,7 @@ Keep of Doom and The Thornwood Watch now start as stories nobody has played: pla
 - Arcane Recovery and other features or items that bring back spell slots (Natural Recovery, Harness Divine Power, Font of Magic, Eldritch Master, a Pearl of Power) now spend their use and return the slot together; a slot can no longer come back for free, and a use is never spent when there is no empty slot to regain (#1680).
 - A line of story now always has its message id when it reaches the page, so the page can match it to its picture and to the same line after a reload (#1769).
 - Hunter's Mark and Hex now add their extra die on a hit. The damage ask names it ("Roll 1d8 for your Longsword and 1d6 for Hunter's Mark, one number for each."), it works from the dice tray, and the damage line shows it (#1666).
+- In combat, a spell attack whose roll was answered no longer ends with nothing done: the DM rules it and asks for the damage (#1781).
 
 ## [1.1.1] - 2026-11-02
 
