@@ -148,7 +148,7 @@
     {
       "id": "PP004",
       "title": "Confronting the Corruptor",
-      "description": "Deep within the ruins, the party finds Malarok the Corruptor. He is performing a dark ritual to absorb the power of a large, pulsating Voidstone Shard set upon an altar. He is a formidable spellcaster, protected by elite bodyguards and the stone's foul energy. The party must defeat Malarok and destroy the Voidstone to end his threat. The purified water in the Rune-etched Ritual Vial from Maelo may be crucial for cleansing the Voidstone's corruption.",
+      "description": "Deep within the ruins, the party finds Malarok the Corruptor. He is performing a dark ritual to absorb the power of a large, pulsating Voidstone Shard set upon an altar. He is a formidable spellcaster, protected by elite bodyguards and the stone's foul energy. The party must defeat Malarok and destroy the Voidstone to end his threat. Purified water from Maelo's spring may be crucial for cleansing the Voidstone's corruption.",
       "location": "NCW001",
       "nextPoints": [
         "PP005"
@@ -160,7 +160,7 @@
     {
       "id": "PP005",
       "title": "Report to Commander Elen (but she's gone!)",
-      "description": "When the party reports their success to Ranger Marcus at the Rangers' Command Post, they discover Ranger Elen has vanished! Ranger Marcus explains that Elen received an urgent message about Scout Elen's disappearance in Harrow's Hollow and departed immediately, leaving only a hastily scrawled note: 'Scout Elen missing in Harrow's Hollow - same signs as here. Must go now. Tell Eirik to follow if he can. -E'. As the outpost's reward, Ranger Marcus pays each member of the party fifty gold pieces, but he is clearly worried about Elen. DM NOTE: In the response that narrates the report, record Ranger Elen's departure from the outpost with resolveOccupant, outcome departed, and its reason (an urgent message calling her to Harrow's Hollow), and pay each party member the fifty gold pieces. This is a plot hook to the Keep of Doom module. After giving rewards and wrapping up this module's storylines, inform players that they can travel to Harrow's Hollow to find Elen and investigate the mysterious disappearances.",
+      "description": "When the party reports their success to Ranger Marcus at the Rangers' Command Post, they discover Ranger Elen has vanished! Ranger Marcus explains that Elen received an urgent message about Scout Elen's disappearance in Harrow's Hollow and departed immediately, leaving only a hastily scrawled note: 'Scout Elen missing in Harrow's Hollow - same signs as here. Must go now. Tell our allies to follow if they can. -E'. As the outpost's reward, Ranger Marcus pays each member of the party fifty gold pieces, but he is clearly worried about Elen. DM NOTE: In the response that narrates the report, record Ranger Elen's departure from the outpost with resolveOccupant, outcome departed, and its reason (an urgent message calling her to Harrow's Hollow), and pay each party member the fifty gold pieces. This is a plot hook to the Keep of Doom module. After giving rewards and wrapping up this module's storylines, inform players that they can travel to Harrow's Hollow to find Elen and investigate the mysterious disappearances.",
       "location": "RO001",
       "nextPoints": [],
       "prerequisites": ["PP001", "PP002", "PP003", "PP004"],
