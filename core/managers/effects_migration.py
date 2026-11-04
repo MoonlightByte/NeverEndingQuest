@@ -512,9 +512,12 @@ def preflight_effects_migration():
     migration_id = uuid.uuid4().hex
     conversions = []
     refusals = []
+    carried = False
     world = party.get("worldConditions") or {}
     for owner, path in sorted(files.items()):
         original = safe_json_load(path)
+        if not isinstance(original, dict) or original.get("temporaryEffects"):
+            carried = True
         modifiers = ((tracker.get("characters") or {}).get(owner) or {}).get("modifiers", [])
         try:
             converted, sheet_report = _convert_sheet(
@@ -534,8 +537,17 @@ def preflight_effects_migration():
             refusals.append("%s: %s" % (owner, exc))
     missing = sorted(set((tracker.get("characters") or {})) - set(files))
     reports.extend("tracker entry without a sheet dropped: %s" % item for item in missing)
+    # #1678: no sheet effect, no tracker modifier and a clean preflight leave
+    # nothing to convert (a new game): the conversion only stamps the sheets,
+    # so no pre-conversion save is needed and nothing is announced.
+    nothing_to_convert = (
+        not carried and not refusals and not reports
+        and all(isinstance(entry, dict) and not entry.get("modifiers")
+                for entry in (tracker.get("characters") or {}).values())
+    )
     return {
         "status": "ready" if not refusals else "blocked",
+        "nothingToConvert": nothing_to_convert,
         "migrationId": migration_id,
         "party": party,
         "tracker": tracker,
@@ -626,6 +638,7 @@ def _resume_applying_migration(state):
         "convertedSheets": len(plan),
         "reports": migration.get("reports", []),
         "backupFolder": migration.get("backupFolder"),
+        "nothingToConvert": migration.get("nothingToConvert") is True,
         "recovered": True,
     }
 
@@ -659,7 +672,8 @@ def run_effects_migration(create_backup=True):
             return preflight
 
         backup_folder = backup_path = None
-        if create_backup:
+        nothing_to_convert = preflight.get("nothingToConvert") is True
+        if create_backup and not nothing_to_convert:
             backup_folder, backup_path = _create_backup()
         migration_id = preflight["migrationId"]
         with effects_state_transaction() as state:
@@ -669,6 +683,7 @@ def run_effects_migration(create_backup=True):
                 "status": "applying",
                 "backupFolder": backup_folder,
                 "backupPath": backup_path,
+                "nothingToConvert": nothing_to_convert,
                 "reports": preflight.get("reports", []),
                 "receipts": [],
                 "plan": [
@@ -721,4 +736,5 @@ def run_effects_migration(create_backup=True):
             "convertedSheets": len(preflight["conversions"]),
             "reports": preflight.get("reports", []),
             "backupFolder": backup_folder,
+            "nothingToConvert": nothing_to_convert,
         }
