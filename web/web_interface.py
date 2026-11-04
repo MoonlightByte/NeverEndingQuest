@@ -5200,6 +5200,13 @@ def handle_generate_image(data):
 # REMOVED - Duplicate handler was here (lines 2725-2940)
 # The actual working implementation is in the second handle_generate_unified_assets function at line 4157
 
+def _speech_refused_for_good(exc):
+    """#1786: whether the provider will keep refusing, from the SDK's typed fields: the model is gone
+    or the key is refused. Anything else may pass."""
+    return (getattr(exc, "status_code", None) in (401, 403, 404)
+            or getattr(exc, "code", None) == "model_not_found" or getattr(exc, "param", None) == "model")
+
+
 @app.route('/api/tts', methods=['POST'])
 def generate_tts():
     """Generate text-to-speech audio using OpenAI TTS API"""
@@ -5212,7 +5219,7 @@ def generate_tts():
         if not text:
             return jsonify({'error': 'No text provided'}), 400
         
-        # Limit text length to avoid excessive API costs
+        # The provider's limit on one request; text past it is not spoken (#296)
         if len(text) > 4096:
             text = text[:4096]
         
@@ -5261,7 +5268,9 @@ def generate_tts():
     except Exception as e:
         error_msg = f"TTS generation failed: {str(e)}"
         print(f"ERROR: {error_msg}")
-        return jsonify({'error': error_msg}), 500
+        # #1786: the provider's words stay in this log; the player gets the DM's notice.
+        return jsonify({'error': 'Speech is unavailable.', 'code': 'speech_unavailable',
+                        'permanent': _speech_refused_for_good(e)}), 500
 
 """ BEGIN COMMENTED OUT DUPLICATE CODE
                                 bestiary_data = safe_read_json(bestiary_path) or {}

@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- If the DM's online voice stops working, the log now says so once in the DM's own words and the story carries on in text, instead of showing an error on every narration (#1786).
 - When the game rolls for the player, the card in the log now reads the way a DM would say it, such as "I rolled your three d4s for damage: 3, 4 and 1." (#1777).
 - Adventure modules can now hold authored results for what a character reads, tracks or unlocks, and can close a quest once the party reaches the place or ends the threat. Nothing changes until a module uses them (#1733).
 - In combat, a player's damaging spell or attack with no roll behind it now prompts the DM to ask for the damage dice, once (#1606).
