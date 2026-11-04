@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Heading for a place further off now gets you there in one turn when you know the way. In The Thornwood Watch, the prisoner at the Rangers' Command Post no longer stops every trip passing through it (#1724).
+- The browser no longer asks the server for its state twice when it connects, which saves about one read in nine (#1782).
 - Repairing companion memories on an older save now finishes in one launch, however long the journal (#1775).
 - If the DM's online voice stops working, the log now says so once in the DM's own words and the story carries on in text, instead of showing an error on every narration (#1786).
 - The browser now keeps what the server advertised when it connects, so state refreshes carry their request ids and a late answer from an earlier request is dropped instead of applied (#1389).
