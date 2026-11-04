@@ -115,4 +115,5 @@ def parse_command_line(line):
         if "args" in data and not isinstance(data["args"], dict):
             return None, "command 'args' must be an object"
         return data, None
-    return None, "unknown message type %r (expected 'input' or 'command')"
+    return None, "unknown message type %r (expected 'input' or 'command')" % (
+        msg_type,)

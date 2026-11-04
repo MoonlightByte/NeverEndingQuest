@@ -60,6 +60,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Headless mode says when the game stopped: a fallen party or a paused fight reads `recovery_required`, a stopped turn prompts `resume`, and a stopped game exits `5`, never `0` (#1811).
 - Headless clients read the whole game: `start()` waits for a new game's opening scene, `TurnResult.text` carries roll results and damage cards, and relaunching with the same `--character` keeps the saved sheet (#1811).
 - Headless script mode ends cleanly at any prompt, can send an empty line with `<enter>`, and no longer documents an exit code it never returned; `new-game` refuses a changed sheet with a typed error (#1811).
+- The headless doc matches the code again: event fields, game directories, a resume's cost, and which commands print clean JSON. An unknown message type now names itself in the error (#1811).
 
 ## [1.1.1] - 2026-11-02
 
