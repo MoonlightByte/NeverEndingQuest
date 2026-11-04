@@ -1441,10 +1441,11 @@ def _validate_unrolled_player_damage(batch, encounter, characters, pending, kept
     to the model as a correction asking for them, when typed data says the
     damage is dice (_damage_is_dice). An answered damage roll this turn (the
     player's faces, unknown faces or the game's roll) lets it stand. Runs
-    before the last attempt only: there the ruling passes as today. A batch
-    the model returns unchanged after this correction stands too (the caller
-    skips this check): dice in the player's own line leave no typed record,
-    so they are never asked for twice and this check never ends a turn."""
+    before the last attempt only: there the ruling passes as today. The
+    attempt loop runs it until it fires once (damage_asked): the next batch
+    stands, whatever it looks like. Dice in the player's own line leave no
+    typed record, so they are never asked for twice, and this check never
+    ends a turn."""
     answered = _answered_rolls(pending, kept)
     for intent in (batch or {}).get("intents", []) or []:
         if not isinstance(intent, dict) or intent.get("mode") != "adjudicated":
@@ -1467,7 +1468,7 @@ def _validate_unrolled_player_damage(batch, encounter, characters, pending, kept
         raise CombatIntentError(
             (
                 "%s's %s states damage, and no damage roll was answered this turn. If the player's "
-                "own words gave these dice, return this same batch unchanged. If not, ask for them: "
+                "own words gave these dice, keep the hit. If not, ask for them: "
                 "set requiresPlayerInput {kind: roll, phase: damage, the die, spellName for a spell, "
                 "and prompt: the one line the DM says to the player at the table, naming the dice "
                 "and offering to roll them}, and state targets once the roll comes back."
@@ -3229,6 +3230,7 @@ def execute_agentic_turn(
     feature_heal_player = False
     removal_refused_actors = set()
     asked_dc_corrected = set()
+    damage_asked = False
     window_kind = _window_kind(encounter, pending.get("actorIds", []))
     capability_count, rule_count = _diagnostic_context_counts(spell_references)
     attempt_number = 0
@@ -3436,7 +3438,7 @@ def execute_agentic_turn(
                 # leave the player's turn without an answer.
                 _validate_player_weapon_question(batch, encounter, characters)
                 _validate_flat_damage_request(batch, encounter, characters)
-                if provider_batch not in rejected_batches:
+                if not damage_asked:
                     _validate_unrolled_player_damage(batch, encounter, characters, pending, accepted_faces)
                 _validate_feature_names(batch, encounter, characters)
             _validate_roll_request_phase(batch, encounter)
@@ -3636,6 +3638,10 @@ def execute_agentic_turn(
                     else {}).get("askedSaveDc") is not None and isinstance(getattr(exc, "actor_id", None), str):
                 # Item 10: one correction per actor; then the engine scores the asked DC.
                 asked_dc_corrected.add(exc.actor_id)
+            unrolled_damage = isinstance(getattr(exc, "feedback", None), dict) and exc.feedback.get("issue") == "1606"
+            if unrolled_damage:
+                # #1606: one correction per attempt loop; the next batch stands.
+                damage_asked = True
             correction = _intent_correction(exc, batch=batch)
             failure_class = _resolution_failure_class(exc)
             rules_drift = (
@@ -3668,7 +3674,8 @@ def execute_agentic_turn(
                 rules_contract_key=rules_drift.get("contractKey"),
                 rules_contract_version=rules_drift.get("version"),
             )
-            if provider_batch is not None:
+            # #1606: its ask is not a rejection, so #1251 never counts that batch.
+            if provider_batch is not None and not unrolled_damage:
                 if provider_batch in rejected_batches:
                     # #1251: T096 returned a batch it was already refused for.
                     # No further call: the window ends on the ceiling's path,
