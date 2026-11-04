@@ -1209,6 +1209,16 @@ def _request_text(request):
         return "Please roll %s for %s." % (die.strip(), reason.strip())
     if isinstance(reason, str) and reason.strip():
         return "I need one more choice before resolving that action: %s." % reason.strip()
+    typed = _typed_roll(request)
+    if typed:
+        # #1606: a roll asked with no words of its own still reads as the DM
+        # asking for dice; the line comes from the request's typed fields.
+        named = next((request[field].strip() for field in ("spellName", "weaponName")
+                      if isinstance(request.get(field), str) and request[field].strip()), "")
+        phase = request.get("phase")
+        phase = phase.strip() if isinstance(phase, str) else ""
+        rolled_for = " ".join(part for part in (named, phase) if part)
+        return "Roll %s%s, or I can roll it for you." % (typed, " for your %s" % rolled_for if rolled_for else "")
     return "I need one more detail before resolving that action. What do you do?"
 
 
@@ -1396,6 +1406,79 @@ def _validate_flat_damage_request(batch, encounter, characters):
             % (entry.get("name") or "This attack"),
             intent.get("actorId"),
             {"retryable": True, "issue": "1337", "abilityRow": intent.get("abilityRow")},
+        )
+
+
+def _damage_is_dice(intent, sheet, actor_id):
+    """#1606 (D-652b-2): whether typed data says the intent's damage is dice,
+    and the name to give the player. A cast's spell (ability, then spellName)
+    is dice when its roll contract lists evidence dice (every no_player_roll
+    contract lists none); a weapon row the abilityRow names is dice unless it
+    is flat (#1337). Neither typed: not dice. A contract table that cannot be
+    read logs once and reads as not dice: the check stays off for casts and
+    the turn goes on."""
+    if intent.get("action") == "cast":
+        from core.ai import srd_roll_contracts
+
+        try:
+            contracts = srd_roll_contracts.load_spell_roll_contracts().get("contracts") or {}
+        except (OSError, TypeError, ValueError, srd_roll_contracts.SpellRollContractError) as exc:
+            srd_roll_contracts.log_unavailable("srd_spell_roll_contracts", exc)
+            return False, None
+        for field in ("ability", "spellName"):
+            name = intent.get(field)
+            if not isinstance(name, str) or not name.strip():
+                continue
+            contract = contracts.get(srd_roll_contracts._canonical_key(name))
+            if isinstance(contract, dict):
+                return bool(contract.get("evidenceDice")), name.strip()
+    entry = attack_row(sheet, intent.get("abilityRow"), actor_id) if intent.get("abilityRow") else None
+    if isinstance(entry, dict):
+        return not is_flat_attack(entry), entry.get("name") or intent.get("ability")
+    return False, None
+
+
+def _validate_unrolled_player_damage(batch, encounter, characters, pending, kept=None):
+    """#1606 (D-652b-1 A): the player's adjudicated intent that states damage
+    (a target's hpDelta below 0) from dice nobody rolled this turn goes back
+    to the model as a correction asking for them, when typed data says the
+    damage is dice (_damage_is_dice). An answered damage roll this turn (the
+    player's faces, unknown faces or the game's roll) lets it stand. Runs
+    before the last attempt only: there the ruling passes as today. The
+    attempt loop runs it until it fires once (damage_asked): the next batch
+    stands, whatever it looks like. Dice in the player's own line leave no
+    typed record, so they are never asked for twice, and this check never
+    ends a turn."""
+    answered = _answered_rolls(pending, kept)
+    for intent in (batch or {}).get("intents", []) or []:
+        if not isinstance(intent, dict) or intent.get("mode") != "adjudicated":
+            continue
+        actor = combatant_by_id(encounter, intent.get("actorId"))
+        if (
+            not isinstance(actor, dict)
+            or not _is_human_controlled(encounter, actor)
+            or intent.get("requiresPlayerInput")
+            or _stated_hit(intent) is None
+        ):
+            continue
+        spell = next((intent[f].strip() for f in ("spellName", "ability")
+                      if intent.get("action") == "cast" and isinstance(intent.get(f), str) and intent[f].strip()), "")
+        if any(_roll_request_purpose({"phase": item["phase"], "spellName": spell}) == "damage" for item in answered):
+            continue
+        dice, name = _damage_is_dice(intent, (characters or {}).get(actor.get("name")), actor.get("combatantId"))
+        if not dice:
+            continue
+        raise CombatIntentError(
+            (
+                "%s's %s states damage, and no damage roll was answered this turn. If the player's "
+                "own words gave these dice, keep the hit. If not, ask for them: "
+                "set requiresPlayerInput {kind: roll, phase: damage, the die, spellName for a spell, "
+                "and prompt: the one line the DM says to the player at the table, naming the dice "
+                "and offering to roll them}, and state targets once the roll comes back."
+            )
+            % (actor.get("name") or intent.get("actorId"), name),
+            intent.get("actorId"),
+            {"retryable": True, "issue": "1606"},
         )
 
 
@@ -3196,6 +3279,7 @@ def execute_agentic_turn(
     feature_heal_player = False
     removal_refused_actors = set()
     asked_dc_corrected = set()
+    damage_asked = False
     window_kind = _window_kind(encounter, pending.get("actorIds", []))
     capability_count, rule_count = _diagnostic_context_counts(spell_references)
     attempt_number = 0
@@ -3403,6 +3487,8 @@ def execute_agentic_turn(
                 # leave the player's turn without an answer.
                 _validate_player_weapon_question(batch, encounter, characters)
                 _validate_flat_damage_request(batch, encounter, characters)
+                if not damage_asked:
+                    _validate_unrolled_player_damage(batch, encounter, characters, pending, accepted_faces)
                 _validate_feature_names(batch, encounter, characters)
             _validate_roll_request_phase(batch, encounter)
             for kept_roll in _keep_answered_roll(batch, encounter, pending, accepted_faces):
@@ -3601,6 +3687,10 @@ def execute_agentic_turn(
                     else {}).get("askedSaveDc") is not None and isinstance(getattr(exc, "actor_id", None), str):
                 # Item 10: one correction per actor; then the engine scores the asked DC.
                 asked_dc_corrected.add(exc.actor_id)
+            unrolled_damage = isinstance(getattr(exc, "feedback", None), dict) and exc.feedback.get("issue") == "1606"
+            if unrolled_damage:
+                # #1606: one correction per attempt loop; the next batch stands.
+                damage_asked = True
             correction = _intent_correction(exc, batch=batch)
             failure_class = _resolution_failure_class(exc)
             rules_drift = (
@@ -3633,7 +3723,8 @@ def execute_agentic_turn(
                 rules_contract_key=rules_drift.get("contractKey"),
                 rules_contract_version=rules_drift.get("version"),
             )
-            if provider_batch is not None:
+            # #1606: its ask is not a rejection, so #1251 never counts that batch.
+            if provider_batch is not None and not unrolled_damage:
                 if provider_batch in rejected_batches:
                     # #1251: T096 returned a batch it was already refused for.
                     # No further call: the window ends on the ceiling's path,
