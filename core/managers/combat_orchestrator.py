@@ -1209,6 +1209,16 @@ def _request_text(request):
         return "Please roll %s for %s." % (die.strip(), reason.strip())
     if isinstance(reason, str) and reason.strip():
         return "I need one more choice before resolving that action: %s." % reason.strip()
+    typed = _typed_roll(request)
+    if typed:
+        # #1606: a roll asked with no words of its own still reads as the DM
+        # asking for dice; the line comes from the request's typed fields.
+        named = next((request[field].strip() for field in ("spellName", "weaponName")
+                      if isinstance(request.get(field), str) and request[field].strip()), "")
+        phase = request.get("phase")
+        phase = phase.strip() if isinstance(phase, str) else ""
+        rolled_for = " ".join(part for part in (named, phase) if part)
+        return "Roll %s%s, or I can roll it for you." % (typed, " for your %s" % rolled_for if rolled_for else "")
     return "I need one more detail before resolving that action. What do you do?"
 
 
@@ -1431,7 +1441,10 @@ def _validate_unrolled_player_damage(batch, encounter, characters, pending, kept
     to the model as a correction asking for them, when typed data says the
     damage is dice (_damage_is_dice). An answered damage roll this turn (the
     player's faces, unknown faces or the game's roll) lets it stand. Runs
-    before the last attempt only: there the ruling passes as today."""
+    before the last attempt only: there the ruling passes as today. A batch
+    the model returns unchanged after this correction stands too (the caller
+    skips this check): dice in the player's own line leave no typed record,
+    so they are never asked for twice and this check never ends a turn."""
     answered = _answered_rolls(pending, kept)
     for intent in (batch or {}).get("intents", []) or []:
         if not isinstance(intent, dict) or intent.get("mode") != "adjudicated":
@@ -1453,9 +1466,11 @@ def _validate_unrolled_player_damage(batch, encounter, characters, pending, kept
             continue
         raise CombatIntentError(
             (
-                "%s's %s deals damage from dice nobody rolled this turn. Ask for them: set "
-                "requiresPlayerInput {kind: roll, phase: damage, the die, and spellName for a spell}, "
-                "and state targets once the roll comes back."
+                "%s's %s states damage, and no damage roll was answered this turn. If the player's "
+                "own words gave these dice, return this same batch unchanged. If not, ask for them: "
+                "set requiresPlayerInput {kind: roll, phase: damage, the die, spellName for a spell, "
+                "and prompt: the one line the DM says to the player at the table, naming the dice "
+                "and offering to roll them}, and state targets once the roll comes back."
             )
             % (actor.get("name") or intent.get("actorId"), name),
             intent.get("actorId"),
@@ -3421,7 +3436,8 @@ def execute_agentic_turn(
                 # leave the player's turn without an answer.
                 _validate_player_weapon_question(batch, encounter, characters)
                 _validate_flat_damage_request(batch, encounter, characters)
-                _validate_unrolled_player_damage(batch, encounter, characters, pending, accepted_faces)
+                if provider_batch not in rejected_batches:
+                    _validate_unrolled_player_damage(batch, encounter, characters, pending, accepted_faces)
                 _validate_feature_names(batch, encounter, characters)
             _validate_roll_request_phase(batch, encounter)
             for kept_roll in _keep_answered_roll(batch, encounter, pending, accepted_faces):
