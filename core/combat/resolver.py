@@ -31,7 +31,7 @@ from core.combat.attacks import (
     is_executable_attack,
 )
 from core.combat.handover import apply_hand_over
-from core.effects.effective import effective_sheet, modifier_dice, modifier_total
+from core.effects.effective import effective_sheet, live_damage_riders, modifier_dice, modifier_total
 from core.effects.lifecycle import (
     INCAPACITATING_CONDITIONS,
     apply_effect_ops,
@@ -39,6 +39,7 @@ from core.effects.lifecycle import (
     sync_condition_states,
 )
 from core.effects.model import normalize_effect, validate_effect
+from core.effects.riders import rider_for
 from core.managers.combat_state import (
     combatant_by_id,
     has_left_fight,
@@ -1852,12 +1853,60 @@ def _opened_faces(encounter, characters, actor, rolls):
     return {"bonusDice": added} if added else {}
 
 
-def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override=None, great_weapon=None, bonus_dice=None):
+def attack_damage_riders(encounter, characters, actor_id, target):
+    """#1666: the damage riders the actor's hit on ``target`` carries: the live
+    effects the target holds from that actor. A rider's caster is the effect's
+    own sourceCombatantId."""
+    if not isinstance(target, dict) or not actor_id:
+        return []
+    return live_damage_riders(_raw_combatant_sheet(encounter, characters, target), actor_id)
+
+
+def _rider_row(rider, faces, target, source=None):
+    """#1666: the journal row of a rider's dice."""
+    row = {"die": rider["die"], "value": sum(faces), "faces": list(faces), "purpose": "damage",
+           "combatantId": target["combatantId"], "damageRider": rider["label"],
+           "damageType": rider["damageType"]}
+    if source:
+        row["source"] = source
+    return row
+
+
+def _rolled_rider_faces(rider, rolls, actor_id, target_id):
+    """#1666: the rider's dice from the persisted prerolls."""
+    count, sides, _flat = parse_dice(rider["die"])
+    return [_take_roll(rolls, "d%d" % sides, "damage", actor_id=actor_id, target_id=target_id)
+            for _ in range(count)]
+
+
+def _apply_damage_rider(working, trait_sheet, hp_after, kind, amount, event, focus):
+    """#1666: a rider's dice meet the target's typed traits like the swing's
+    damage. Returns (damage, traits, working, hp_after, engine used or None)."""
+    treated, applied, _reason = _engine_rider(working, trait_sheet, hp_after, kind, amount, event, focus)
+    if treated is not None:
+        damage, traits = treated
+    else:
+        damage, traits = _typed_damage(trait_sheet, kind, amount)
+        applied = _engine_hit_points(working, -damage, event, focus) if working is not None and damage else None
+    if applied is not None:
+        return damage, traits, applied, int(applied["hitPoints"]), True
+    hp_after = max(0, hp_after - damage)
+    if working is None:
+        return damage, traits, None, hp_after, None
+    working["hitPoints"] = hp_after
+    return damage, traits, working, hp_after, False if damage else None
+
+
+def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override=None, great_weapon=None, bonus_dice=None,
+                   riders=None):
     """Resolve a validated attack intent into an event + deltas.
 
     Only 'attack' (and the no-op stances) resolve mechanically here;
     adjudicated player actions arrive as pre-shaped outcome proposals via
     resolve_adjudicated. Inputs are not mutated.
+
+    #1666: ``riders`` holds the typed rider rows of the player's roll phase,
+    their faces already rolled; with None code rolls the target's live riders.
     """
     actor = combatant_by_id(encounter, intent.get("actorId"))
     sheet = _raw_combatant_sheet(encounter, characters, actor)
@@ -2174,6 +2223,26 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
                 "engine": rider_engine,
             }
             rider_result.update(rider_typed)
+        swing_riders = []
+        if hit:
+            # #1666: the marked target's extra die, on every hit by the caster.
+            # Its own journal row and damage, never folded into the swing's.
+            given = riders if riders is not None else attack_damage_riders(
+                encounter, characters, intent.get("actorId"), target)
+            for rider in given:
+                faces = rider.get("faces") if riders is not None else _rolled_rider_faces(
+                    rider, rolls, intent.get("actorId"), intent.get("targetId"))
+                event["rolls"].append(_rider_row(rider, faces, target, rider.get("source")))
+                dealt, traits = 0, []
+                if hp_after > 0:
+                    dealt, traits, working, hp_after, engine = _apply_damage_rider(
+                        working, trait_sheet, hp_after, rider["damageType"], sum(faces), event, focus)
+                    if engine is not None:
+                        engine_used = engine
+                    total_damage += dealt
+                swing_riders.append({"label": rider["label"], "die": rider["die"], "rolled": sum(faces),
+                                     "damage": dealt, "damageType": rider["damageType"],
+                                     "damageTraits": list(traits)})
         swing = {
             "number": swing_number,
             "ability": entry.get("name"),
@@ -2202,6 +2271,8 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
             swing["damageTraits"] = list(damage_traits)
         if rider_result is not None:
             swing["rider"] = rider_result
+        if swing_riders:
+            swing["damageRiders"] = swing_riders
         swings.append(swing)
         if _spends_ammunition(entry):
             ranged_swings += 1
@@ -2584,6 +2655,8 @@ def resolve_player_weapon_attack(encounter, characters, intent, record, event_id
         mode_override=(record.get("mode"), list(record.get("modeSources") or [])),
         great_weapon=great_weapon,
         bonus_dice=added,
+        # #1666: a phase saved before riders has none; nothing is rolled for it.
+        riders=[dict(rider) for rider in record.get("damageRiders") or [] if rider.get("faces")],
     )
     event = resolution["event"]
     event["intent"] = deepcopy(intent if isinstance(intent, dict) else scored)
@@ -2601,6 +2674,7 @@ def resolve_player_weapon_attack(encounter, characters, intent, record, event_id
                 row["value"] = sum(row["facesTreated"])
                 row["rule"] = GREAT_WEAPON_RULE
         rolls.append(row)
+    rolls += [dict(r) for r in event["rolls"] if r.get("damageRider")]
     event["rolls"] = rolls
     event["outcome"]["scoredBy"] = "code"
     return resolution
@@ -2754,7 +2828,7 @@ def spell_attack_violations(encounter, characters, intent, spell):
     try:
         resolution = resolve_adjudicated(
             deepcopy(encounter), deepcopy(characters), spell_attack_proposal(intent, spell["targetId"], 0),
-            DeterministicRollSource({}), "spell-attack-check", attack_hits={spell["targetId"]: True},
+            DeterministicRollSource({}), "spell-attack-check", attack_hits={spell["targetId"]: True}, riders=[],
         )
     except (IndexError, KeyError, TypeError, ValueError) as exc:
         return [str(exc)]
@@ -2824,6 +2898,7 @@ def resolve_player_spell_attack(encounter, characters, intent, record, event_id,
     resolution = resolve_adjudicated(
         encounter, characters, spell_attack_proposal(intent, target["combatantId"], damage), rolls, event_id,
         attack_hits={target["combatantId"]: hit},
+        riders=[dict(rider) for rider in record.get("damageRiders") or [] if rider.get("faces")],
     )
     event = resolution["event"]
     event["intent"] = deepcopy(intent)
@@ -3570,7 +3645,7 @@ def _refuse_removal(resolution, event, refusal, violation, drop):
 
 
 def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_feature_heals=False,
-                        attack_hits=None, drop_refused_removals=False):
+                        attack_hits=None, drop_refused_removals=False, riders=None):
     """General adjudicated-outcome contract for anything beyond weapon attacks.
 
     The DM model (or player-facing DM turn) proposes MECHANICS, not state:
@@ -3987,6 +4062,7 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
             )
             if actor.get("combatantId"):
                 op["effect"]["sourceCombatantId"] = actor.get("combatantId")
+            _stamp_damage_rider(op, proposal, actor)
             if op["effect"].get("concentration"):
                 op["effect"]["concentrationId"] = event_id
                 op["effect"]["source"] = actor.get(
@@ -4352,6 +4428,8 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
                 % target["combatantId"]
             )
             continue
+        if _hit_with_attack_roll(proposal, target, hp_delta, attack_hits):
+            hp_delta -= _adjudicated_riders(encounter, characters, proposal, target, rolls, event, riders)
         if heal_refusal is not None and hp_delta > 0:
             # F1: the spent pool pays for no heal named here; nothing is healed.
             continue
@@ -4747,6 +4825,78 @@ def _effect_destination(encounter, characters, op):
     if not isinstance(sheet, dict):
         return None
     return sheet.setdefault("temporaryEffects", [])
+
+
+def _stamp_damage_rider(op, proposal, actor):
+    """#1666: the typed rider of the cast's spell, stamped on the effect the
+    target holds; what the model wrote there is never kept. An effect the
+    model put on the caster is not the target's, so it carries none."""
+    op["effect"].pop("damageRider", None)
+    rider = rider_for(proposal, op["effect"])
+    if rider is None:
+        return
+    caster = {actor.get("combatantId"), actor.get("name")}
+    if op.get("combatantId") in caster or op.get("owner") in caster:
+        try:
+            from utils.enhanced_logger import warning as _warning
+            _warning("%s sits on its caster, so it adds no damage" % rider["label"], category="combat_events")
+        except Exception:
+            pass
+        return
+    op["effect"]["damageRider"] = rider
+
+
+def _hit_with_attack_roll(proposal, target, hp_delta, attack_hits):
+    """#1666: the adjudicated outcome is a hit with an attack roll on ``target``:
+    code's own verdict on a typed spell attack, else a stated hit from an attack
+    or from a spell whose contract lists a spell attack. A stated save is not."""
+    if attack_hits is not None:
+        return attack_hits.get(target["combatantId"]) is True
+    return hp_delta < 0 and is_attack_roll_action(proposal)
+
+
+def is_attack_roll_action(proposal):
+    """#1666: the intent is an attack, or a cast whose contract lists a spell
+    attack, and states no save. Typed fields only."""
+    if proposal.get("save"):
+        return False
+    if proposal.get("action") == "attack":
+        return True
+    if proposal.get("action") != "cast":
+        return False
+    from core.ai import srd_roll_contracts
+
+    return srd_roll_contracts.is_spell_attack(proposal)
+
+
+def _adjudicated_riders(encounter, characters, proposal, target, rolls, event, given):
+    """#1666: the damage the source's riders add to an adjudicated hit, each on
+    its own journal row; T096 is told to leave them out of hpDelta. The dice:
+    ``given`` (a code phase's faces), else the typed riderRolls code split from
+    the player's answer before T096 ran, else the game's."""
+    actor_id = proposal.get("actorId")
+    trait_sheet = _raw_combatant_sheet(encounter, characters, target)
+    answered = [item for item in proposal.get("riderRolls") or []
+                if isinstance(item, dict) and item.get("combatantId") == target["combatantId"]]
+    total = 0
+    for rider in (given if given is not None else attack_damage_riders(encounter, characters, actor_id, target)):
+        source = rider.get("source")
+        faces = rider.get("faces") if given is not None else None
+        if faces is None:
+            found = next((item for item in answered
+                          if item.get("label") == rider["label"] and item.get("die") == rider["die"]), None)
+            if found is not None:
+                answered.remove(found)
+            faces, source = (list(found["faces"]), found.get("source") or "player") if found else (
+                _rolled_rider_faces(rider, rolls, actor_id, target["combatantId"]), "game")
+        event.setdefault("rolls", []).append(_rider_row(rider, faces, target, source))
+        dealt, traits = _typed_damage(trait_sheet, rider["damageType"], sum(faces))
+        event["outcome"].setdefault("damageRiders", []).append({
+            "label": rider["label"], "die": rider["die"], "rolled": sum(faces), "damage": dealt,
+            "damageType": rider["damageType"], "damageTraits": list(traits),
+            "combatantId": target["combatantId"]})
+        total += dealt
+    return total
 
 
 def _apply_encounter_effect_operation(creature, operation):

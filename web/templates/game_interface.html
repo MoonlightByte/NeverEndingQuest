@@ -5266,7 +5266,7 @@
                 // Auto-play TTS if enabled
                 const isTTSEnabled = document.getElementById('tts-toggle').checked;
                 const isAutoplayEnabled = document.getElementById('tts-autoplay-toggle').checked;
-                if (isTTSEnabled && isAutoplayEnabled) {
+                if (isTTSEnabled && isAutoplayEnabled && !voiceLost) {
                     // Small delay to let the message render first
                     setTimeout(() => {
                         playTTS(message.content, ttsButton);
@@ -5443,6 +5443,20 @@
             speechSynthesis.speak(utterance);
         }
         
+        // #1786: a failed online voice is told once, in the DM's voice; a refusal that will stay rests autoplay.
+        var voiceLost = false;
+        var voiceNoticed = false;
+        function tellVoiceLost(permanent) {
+            voiceLost = voiceLost || permanent;
+            if (voiceNoticed) return;
+            voiceNoticed = true;
+            addMessage('game-output', { type: 'system', content: "I've lost my voice for now, so I'll carry on in text. You can choose another voice in Settings." });
+        }
+        function clearVoiceLost() {
+            voiceLost = false;
+            voiceNoticed = false;
+        }
+
         // Play using OpenAI TTS API (paid, with caching)
         async function playOpenAITTS(text, selectedVoice, engine, button) {
             const model = engine === 'openai-hd' ? 'tts-1-hd' : 'tts-1';
@@ -5472,7 +5486,10 @@
                 
                 if (!response.ok) {
                     const error = await response.json();
-                    throw new Error(error.error || 'TTS generation failed');
+                    const failed = new Error(error.error || 'TTS generation failed');
+                    failed.speechUnavailable = error.code === 'speech_unavailable';
+                    failed.permanent = error.permanent === true;
+                    throw failed;
                 }
                 
                 const audioBlob = await response.blob();
@@ -5486,6 +5503,7 @@
                 button.classList.remove('loading-tts');
                 
                 playAudioFromUrl(audioUrl, button);
+                voiceLost = false;
                 
             } catch (error) {
                 console.error('OpenAI TTS Error:', error);
@@ -5493,6 +5511,11 @@
                 button.classList.remove('loading-tts');
                 button.textContent = '▶';
                 button.title = 'Play DM Voice';
+                if (error.speechUnavailable) {
+                    tellVoiceLost(error.permanent);
+                    if (voiceLost) button.title = 'DM Voice unavailable. Press to try again.';
+                    return;
+                }
                 addMessage('game-output', { type: 'error', content: `Voice generation failed: ${error.message}` });
             }
         }
@@ -7362,6 +7385,7 @@
             // Handle engine selection changes
             engineSelect.addEventListener('change', function() {
                 localStorage.setItem('ttsEngine', this.value);
+                clearVoiceLost();
                 populateTTSVoices(this.value);
                 // Clear TTS cache when engine changes
                 ttsCache.clear();
@@ -7372,6 +7396,7 @@
             // Handle voice selection changes
             voiceSelect.addEventListener('change', function() {
                 localStorage.setItem('ttsVoice_' + engineSelect.value, this.value);
+                clearVoiceLost();
                 // Stop any preview playing when voice changes
                 stopPreview();
             });
@@ -7829,7 +7854,11 @@
                         body: JSON.stringify({ text: sampleText, voice: voice, model: model })
                     });
                     
-                    if (!response.ok) throw new Error('TTS failed');
+                    if (!response.ok) {
+                        addMessage('game-output', { type: 'system', content: "I can't use that voice right now. Try another one." });
+                        resetPreviewBtn(btn);
+                        return;
+                    }
                     
                     const audioBlob = await response.blob();
                     const audioUrl = URL.createObjectURL(audioBlob);

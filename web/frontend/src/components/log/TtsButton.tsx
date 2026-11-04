@@ -8,6 +8,26 @@ const buttonClass =
   'mr-1.5 inline-flex h-[22px] w-[22px] min-w-[22px] cursor-pointer items-center justify-center rounded ' +
   'border-0 bg-[#4a4a4a] p-0 font-chrome text-xs leading-none hover:bg-[#666] disabled:cursor-not-allowed disabled:bg-[#666]'
 
+const VOICE_LOST = "I've lost my voice for now, so I'll carry on in text. You can choose another voice in Settings."
+
+// #1786: the server's word that the online voice failed; the provider's own text stays in the server log.
+class SpeechUnavailable extends Error {
+  permanent: boolean
+  constructor(permanent: boolean) {
+    super('Speech unavailable')
+    this.permanent = permanent
+  }
+}
+
+// Told once, however many narrations fail; a refusal that will stay also rests autoplay.
+function tellVoiceLost(permanent: boolean): void {
+  const settings = useSettings.getState()
+  if (permanent) settings.setVoiceLost(true)
+  if (settings.voiceNoticed) return
+  settings.setVoiceNoticed(true)
+  useLog.getState().append({ type: 'system', content: VOICE_LOST })
+}
+
 const audioCache = new Map<string, string>()
 export function resetNarrationAudio() {
   stopActive()
@@ -26,9 +46,10 @@ async function createOpenAiAudio(text: string, voice: string, engine: 'openai' |
     signal,
   })
   if (!response.ok) {
-    let detail = 'TTS generation failed'
-    try { detail = (await response.json() as { error?: string }).error ?? detail } catch { /* non-JSON */ }
-    throw new Error(detail)
+    let failure: { error?: string; code?: string; permanent?: boolean } = {}
+    try { failure = await response.json() as typeof failure } catch { /* non-JSON */ }
+    if (failure.code === 'speech_unavailable') throw new SpeechUnavailable(failure.permanent === true)
+    throw new Error(failure.error ?? 'TTS generation failed')
   }
   const blob = await response.blob()
   if (signal.aborted) throw new DOMException('Cancelled', 'AbortError')
@@ -46,6 +67,8 @@ export function TtsButton({ content, autoplay = false }: { content: string; auto
   const enabled = useSettings((s) => s.ttsEnabled)
   const engine = useSettings((s) => s.engine)
   const voice = useSettings((s) => s.voices[s.engine])
+  const voiceLost = useSettings((s) => s.voiceLost)
+  const idleTitle = voiceLost ? 'DM Voice unavailable. Press to try again.' : 'Play DM Voice'
   const [state, setState] = useState<'idle' | 'loading' | 'playing'>('idle')
   const mounted = useRef(true)
   const playGeneration = useRef(0)
@@ -108,22 +131,24 @@ export function TtsButton({ content, autoplay = false }: { content: string; auto
         claimAudio(owner, () => { audio.onended = null; audio.onerror = null; audio.pause(); audio.currentTime = 0; if (mounted.current) setState('idle') })
         setState('playing')
         await audio.play()
+        useSettings.getState().setVoiceLost(false)
       }
     } catch (error) {
       if (generation !== playGeneration.current || !ownsAudio(owner)) return
       finishPlayback(owner, () => { if (mounted.current) setState('idle') })
       if (error instanceof DOMException && error.name === 'AbortError') return
+      if (error instanceof SpeechUnavailable) { tellVoiceLost(error.permanent); return }
       useLog.getState().append({ type: 'error', content: `Voice generation failed: ${error instanceof Error ? error.message : String(error)}` })
     }
   }
 
   useEffect(() => {
-    if (autoplay && enabled) { const timer = window.setTimeout(() => void play(), 100); return () => window.clearTimeout(timer) }
+    if (autoplay && enabled && !useSettings.getState().voiceLost) { const timer = window.setTimeout(() => void play(), 100); return () => window.clearTimeout(timer) }
     return undefined
     // Only run once for a newly mounted narration.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  if (ember) return <button type="button" onClick={() => void play()} title={state === 'playing' ? 'Stop playback' : 'Play DM Voice'} className="ember-message-action"><EmberIcon name="sound" />{state === 'loading' ? 'Loading…' : state === 'playing' ? 'Stop' : 'Listen'}</button>
-  return <button type="button" onClick={() => void play()} title={state === 'playing' ? 'Stop playback' : 'Play DM Voice'} className={buttonClass} style={{ backgroundColor: state === 'playing' ? '#e74c3c' : state === 'loading' ? '#ffa500' : autoplay ? '#27ae60' : '#4a4a4a', color: '#ddd' }}>{state === 'loading' ? '...' : state === 'playing' ? '■' : '▶'}</button>
+  if (ember) return <button type="button" onClick={() => void play()} title={state === 'playing' ? 'Stop playback' : idleTitle} className="ember-message-action"><EmberIcon name="sound" />{state === 'loading' ? 'Loading…' : state === 'playing' ? 'Stop' : 'Listen'}</button>
+  return <button type="button" onClick={() => void play()} title={state === 'playing' ? 'Stop playback' : idleTitle} className={buttonClass} style={{ backgroundColor: state === 'playing' ? '#e74c3c' : state === 'loading' ? '#ffa500' : autoplay ? '#27ae60' : '#4a4a4a', color: '#ddd' }}>{state === 'loading' ? '...' : state === 'playing' ? '■' : '▶'}</button>
 }

@@ -1,0 +1,27 @@
+{
+  "_metadata": {
+    "schemaVersion": 1,
+    "created": "2026-11-04",
+    "description": "Typed SRD 5.2.1 damage riders (#1666): spells whose target takes an extra die from the caster's hits with an attack roll, keyed by the repository's canonical key; hand-authored and reviewed against the SRD text. holder target: the effect sits on the marked creature.",
+    "source": "System Reference Document 5.2.1, CC BY 4.0",
+    "sourceRepository": "data/spell_repository.json"
+  },
+  "riders": {
+    "hunter_s_mark": {
+      "label": "Hunter's Mark",
+      "die": "1d6",
+      "damageType": "force",
+      "holder": "target",
+      "source": "SRD 5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    },
+    "hex": {
+      "label": "Hex",
+      "die": "1d6",
+      "damageType": "necrotic",
+      "holder": "target",
+      "source": "SRD 5.2.1",
+      "_srd_attribution": "Portions derived from SRD 5.2.1, CC BY 4.0"
+    }
+  }
+}
