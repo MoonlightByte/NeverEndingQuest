@@ -1195,7 +1195,12 @@ def stage_turn_events(encounter, turn_id, events):
         ):
             event = normalized[event_index]
             event_index += 1
-            for target in (event.get("outcome") or {}).get("targets", []) or []:
+            # #1806: a bonus action's target can fall too, the Off-hand Attack's.
+            bonus = event.get("bonusAction") if isinstance(event.get("bonusAction"), dict) else {}
+            for target in (
+                ((event.get("outcome") or {}).get("targets", []) or [])
+                + ((bonus.get("outcome") or {}).get("targets", []) or [])
+            ):
                 if (
                     target.get("hpAfter") == 0
                     or normalize_status(target.get("statusAfter"))
