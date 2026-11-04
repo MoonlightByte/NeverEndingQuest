@@ -1735,6 +1735,15 @@ def _game_roll_card(request, faces):
                                         _spoken_faces(faces[0]))
 
 
+def _weapon_game_card(weapon, phase, values, count, die):
+    """The player's card for the game's roll of a code phase (#1777), in _game_roll_card's voice:
+    "I rolled your d20 to hit with your Longsword: 14.", "I rolled your d8 for Longsword damage: 5.\""""
+    dice, rolled = _spoken_dice(count, die), _spoken_faces(values)
+    if phase == "attack":
+        return "I rolled your %s to hit with your %s: %s." % (dice, weapon, rolled)
+    return "I rolled your %s for %s %s: %s." % (dice, weapon, phase, rolled)
+
+
 def _show_game_roll(request, faces):
     """Show the player the game's roll at once, as a system card (#1118)."""
     from core.managers.checks_runtime import _show_check_receipt
@@ -2460,8 +2469,7 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
         die = 20 if phase == "attack" else sides
         values = _roll_terms([(count, die)])[0]
         source, rolled = "game", [list(values)]
-        game_card = "Game roll for your %s %s: %s on %dd%d." % (
-            _phase_weapon(record, entry), phase, " and ".join(str(value) for value in values), count, die)
+        game_card = _weapon_game_card(_phase_weapon(record, entry), phase, values, count, die)
     if phase == "attack":
         record["faces"][phase] = values
     else:
