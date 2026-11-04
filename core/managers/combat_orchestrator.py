@@ -1794,8 +1794,10 @@ def _rider_terms(record):
 def _rider_ask(record, entry, count, sides, each_die):
     """#1666: the ask for the weapon's dice and each rider's, as the DM says it."""
     extras = ["%s for %s" % (rider["die"], rider["label"]) for rider in record["damageRiders"]]
-    return "Roll %dd%d for your %s and %s, one number for each%s." % (
-        count, sides, _phase_weapon(record, entry), " and ".join(extras), " die" if each_die else "")
+    weapon = _spoken_weapon(record, entry)
+    return "Roll %dd%d for your %s%s and %s, one number for each%s." % (
+        count, sides, "off-hand " if record.get("bonusAttack") is True else "", weapon, " and ".join(extras),
+        " die" if each_die else "")
 
 
 def _rider_tail(riders):
