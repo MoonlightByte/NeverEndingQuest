@@ -38,9 +38,12 @@ from core.combat.resolver import (
     pool_heal_options,
     spent_heal_pool,
     open_player_spell_attack,
+    auto_hit_damage,
+    open_player_spell_auto_hit,
     open_player_spell_save,
     open_player_weapon_attack,
     player_spell_attack_entry,
+    player_spell_auto_hit_entry,
     player_spell_save_entry,
     player_great_weapon,
     player_weapon_attack_dice,
@@ -1834,11 +1837,16 @@ _GAME_ROLL_PURPOSE = {"attack": "to hit", "damage": "for damage", "healing": "fo
 _DICE_WORDS = ("two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve")
 
 
+def _spoken_count(count):
+    """Two or more as a DM says it: "three"; past twelve the count stays a number."""
+    return _DICE_WORDS[count - 2] if count - 2 < len(_DICE_WORDS) else str(count)
+
+
 def _spoken_dice(count, sides):
     """Dice as a DM says them: "d8", "three d4s"; past twelve the count stays a number."""
     if count == 1:
         return "d%d" % sides
-    return "%s d%ds" % (_DICE_WORDS[count - 2] if count - 2 < len(_DICE_WORDS) else count, sides)
+    return "%s d%ds" % (_spoken_count(count), sides)
 
 
 def _spoken_faces(faces):
@@ -2163,9 +2171,62 @@ def _rider_tail(riders):
                    for rider in riders if rider.get("faces"))
 
 
+def _is_auto_hit(record):
+    """#652: the open phase is an auto-hit spell's (Magic Missile)."""
+    spell = record.get("spell")
+    return isinstance(spell, dict) and spell.get("type") == "auto_hit"
+
+
+def _scored_cast(pending):
+    """#652: the completed roll phase of an auto-hit spell, or None. Code holds
+    that cast and its dice, so T096's ruling decides the other actors only."""
+    record = (pending or {}).get("weaponAttack")
+    return record if isinstance(record, dict) and record.get("ready") is True and _is_auto_hit(record) else None
+
+
+def _scored_cast_line(encounter, characters, record):
+    """#652: the game's total beside the dice in T096's input, so the later
+    actors fit what the darts really did. Typed fields only. T096's reply check
+    refuses a batch without the caster, so the line asks for that row too,
+    though code drops it."""
+    spell = record["spell"]
+    damage = auto_hit_damage(encounter, characters, record, record["faces"]["damageFaces"])[1]
+    return ("Game scored %s: %d %s damage to %s. Return every required actor as usual: the caster's intent "
+            "with hpDelta %d and no new roll request, and the other actors ruled from that result." % (
+                spell.get("name"), damage, spell.get("damageType"), record.get("targetName"), -damage))
+
+
+def _without_scored_caster(batch, pending):
+    """#652: the reply's intent for the caster is dropped unread, so no damage,
+    new ask or description it states can reach the player or the event."""
+    record = _scored_cast(pending)
+    intents = batch.get("intents") if isinstance(batch, dict) else None
+    if record is None or not isinstance(intents, list):
+        return batch
+    batch = dict(batch)
+    batch["intents"] = [intent for intent in intents
+                        if not (isinstance(intent, dict) and intent.get("actorId") == record.get("actorId"))]
+    return batch
+
+
+def _with_scored_caster(batch, pending):
+    """#652: the cast the phase opened on goes back at the head of the order,
+    where the takeover found it, once the other actors have passed the checks."""
+    record = _scored_cast(pending)
+    if record is None or not isinstance(batch, dict) or not isinstance(batch.get("intents"), list):
+        return batch
+    batch = dict(batch)
+    batch["intents"] = [deepcopy(record["batch"]["intents"][0])] + batch["intents"]
+    return batch
+
+
 def _wants_each_die(record, count):
     """#879 (owner D-879-1): a Great Weapon Fighting damage roll of two or more
-    dice asks for each die; the flag was read when the damage was asked for."""
+    dice asks for each die; the flag was read when the damage was asked for.
+    #652: an auto-hit spell asks for each die, as the game adds per die: a lone
+    total is refused, since it could already hold the bonus."""
+    if _is_auto_hit(record):
+        return True
     return (record.get("phase") == "damage" and record.get("greatWeapon") is True
             and not isinstance(record.get("spell"), dict) and count >= 2)
 
@@ -2210,6 +2271,12 @@ def _roll_card(record, entry):
         # itself (joined into the ask) keeps its words.
         record["cardShown"] = "%s Damage to roll: %dd%d, as one total" % (head, count, sides)
         return "%s Damage: %dd%d, the total" % (head, count, sides)
+    if _is_auto_hit(record):
+        # #652: every dart hits, so there is no attack to state.
+        record["cardShown"] = "%s on %s: %d darts. Damage to roll: %dd%d, each die; the game adds %d per dart" % (
+            _phase_weapon(record, entry), _spoken_name(record.get("targetName")), count, count, sides,
+            spell.get("perDieBonus"))
+        return record["cardShown"]
     hit = (
         "critical hit" if record.get("critical")
         else "hit, %s vs AC %s," % (record.get("attackTotal"), record.get("targetAC"))
@@ -2246,11 +2313,25 @@ def _phase_lead(record):
     if record.get("bonusAttack") is True:
         return ""
     spell = record.get("spell") if isinstance(record.get("spell"), dict) else {}
+    if _is_auto_hit(record):
+        # #652: the game's own words, as T096's could tell the player to add
+        # what the game adds; hitLead and rollLead are never read here.
+        count, sides = _roll_die_terms(spell.get("damageDice"))[0]
+        return "Your %s darts streak toward %s. Roll %s, or I can roll them for you." % (
+            _spoken_count(count), _spoken_name(record.get("targetName")), _spoken_dice(count, sides))
     key = "hitLead" if record.get("phase") == "damage" and spell.get("type") != "save" else "rollLead"
     return _roll_lead(record, key)
 
 
-def _damage_receipt(record, entry, values, count, sides):
+def _auto_hit_sum(encounter, characters, record, values):
+    """#652: (per die bonus, what the dice come to) as the player's cards say it,
+    from the one sum the event also uses."""
+    raw, damage, traits = auto_hit_damage(encounter, characters, record, values)
+    words = [_TRAIT_WORDS.get(trait, trait) for trait in traits]
+    return record["spell"].get("perDieBonus"), "%d%s" % (raw, ", %s: %d" % (", ".join(words), damage) if words else "")
+
+
+def _damage_receipt(record, entry, values, count, sides, added=""):
     """#1706: the player's scored spell damage roll, shown as a system record
     (player output only, as the game roll's own line); the DM narrates it
     without the numbers. A weapon's damage is shown once scored (#1721)."""
@@ -2259,8 +2340,8 @@ def _damage_receipt(record, entry, values, count, sides):
         rolled = "%dd%d = %s = %d" % (count, sides, " + ".join(str(value) for value in values), sum(values))
     spell = record.get("spell") if isinstance(record.get("spell"), dict) else {}
     target = "" if spell.get("type") == "save" else " on %s" % _spoken_name(record.get("targetName"))
-    return "%s damage%s: %s%s." % (_phase_weapon(record, entry), target, rolled,
-                                   _rider_tail(record.get("damageRiders") or []))
+    return "%s damage%s: %s%s%s." % (_phase_weapon(record, entry), target, rolled, added,
+                                     _rider_tail(record.get("damageRiders") or []))
 
 
 _TRAIT_WORDS = {"resistance": "resistant", "vulnerability": "vulnerable", "immunity": "immune"}
@@ -2453,8 +2534,8 @@ def _request_is_the_swings(request):
 
 def _player_weapon_takeover(encounter, characters, pending, batch):
     """(record, entry) when the window opens with the human player's plain
-    melee weapon swing or ammunition shot (D-HC-1), a cast of a recorded spell attack (#672) or of a
-    recorded save spell, save first (#723); None keeps today's path. The other
+    melee weapon swing or ammunition shot (D-HC-1), a cast of a recorded spell attack (#672), of a
+    recorded save spell, save first (#723), or of an auto-hit spell (#652); None keeps today's path. The other
     intents are checked the way resolution checks them, so a bad one still
     goes to the normal correction before any roll is asked for."""
     actor_ids = pending.get("actorIds") or []
@@ -2500,6 +2581,10 @@ def _player_weapon_takeover(encounter, characters, pending, batch):
             record = (open_player_spell_save(encounter, characters, intent, save_spell, _fresh_rolls(encounter))
                       if save_spell is not None else None)
             if record is None:
+                auto_hit = player_spell_auto_hit_entry(encounter, characters, intent)
+                record = (open_player_spell_auto_hit(encounter, characters, intent, auto_hit)
+                          if auto_hit is not None else None)
+            if record is None:
                 return None
         elif spell_attack_violations(encounter, characters, intent, spell):
             # A cast whose slot or effects would not resolve keeps today's
@@ -2539,7 +2624,7 @@ def _phase_kind(record):
     """The diagnostics name of a code-issued roll phase."""
     spell = record.get("spell") if isinstance(record, dict) else None
     if isinstance(spell, dict):
-        return "spell_save" if spell.get("type") == "save" else "spell_attack"
+        return {"save": "spell_save", "auto_hit": "spell_auto_hit"}.get(spell.get("type"), "spell_attack")
     if isinstance(record, dict) and record.get("bonusAttack") is True:
         return "off_hand_attack"
     return "weapon_attack"
@@ -2809,6 +2894,12 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
         write_weapon_attack(encounter_path, pending.get("turnId"), None, timeout_seconds=None,
                             withdraw=kind == "decline")
         return None, None
+    if values == "invalid" and _is_auto_hit(record):
+        # #652: code's own re-ask, at no call: T096's could say to add the bonus.
+        count, sides = player_weapon_attack_dice(record, entry)
+        raise CombatTurnPaused("Code-issued roll is waiting for the player",
+                               player_message="One number for each die, please: %s, or I can roll them."
+                               % _spoken_dice(count, sides))
     if values in ("invalid", "other"):
         lead = _open_roll_reply(
             encounter, pending, text or "", request, reply, follow_up=True,
@@ -2860,6 +2951,8 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
         game_card = (_game_roll_card({"requestedRoll": "+".join("%dd%d" % term for term in [(count, die)] + riders),
                                       "requestedPhase": phase}, terms)
                      if riders else _weapon_game_card(_phase_weapon(record, entry), phase, values, count, die))
+        if _is_auto_hit(record):
+            game_card += " With %d per dart, that makes %s." % _auto_hit_sum(encounter, characters, record, values)
     for faces, rider in zip(rider_faces, record.get("damageRiders") or []):
         rider["faces"], rider["source"] = list(faces), source
     if phase == "attack":
@@ -2909,7 +3002,8 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
         _show_check_receipt(game_card)
     elif phase == "damage" and isinstance(record.get("spell"), dict):
         # #1721: a weapon's damage is shown once the hit is scored.
-        _show_check_receipt(_damage_receipt(record, entry, values, count, sides))
+        added = ", plus %d per dart = %s" % _auto_hit_sum(encounter, characters, record, values) if _is_auto_hit(record) else ""
+        _show_check_receipt(_damage_receipt(record, entry, values, count, sides, added))
     return pending, (record if is_open else None)
 
 
@@ -3610,13 +3704,19 @@ def execute_agentic_turn(
     roll_consumption = None
     _preview_characters = None
     ready_attack = pending.get("weaponAttack")
-    if isinstance(ready_attack, dict) and ready_attack.get("ready") is True:
+    scored_cast = _scored_cast(pending)
+    if isinstance(ready_attack, dict) and ready_attack.get("ready") is True and scored_cast is None:
         # Item 3: the swing's dice are in; resolve the window with the batch
         # the model gave when the roll phase opened (no second T096 pass).
         pending, events, roll_consumption, _preview_characters = _resolve_ready_phase(
             encounter_path, encounter, characters, pending, character_paths,
         )
     provider_player_input = _composed_player_input(pending, player_input)
+    if scored_cast is not None:
+        # #652: darts always land, so T096 rules the rest of the window after
+        # the dice, knowing what they did (the owner's call-cut rule).
+        provider_player_input = "%s\n%s" % (
+            provider_player_input, _scored_cast_line(encounter, characters, scored_cast))
     if events is None and not _all_non_player(encounter, pending.get("actorIds", [])):
         try:
             from core.ai.combat_agent import build_contextual_spell_payload
@@ -3705,6 +3805,7 @@ def execute_agentic_turn(
             batch = _reconcile_validated_prefix(batch, correction)
             # #146: before the checks below, which would refuse the old intent.
             batch = _hold_actors(batch, held_actors, encounter, pending)
+            batch = _without_scored_caster(batch, pending)
         except (InvocationSupersededError, ReadOnlySaveStop, LiveProviderCompletedError):
             # A completed refusal cannot heal by re-sending: it ends the fight
             # window and the pending turn is kept for resume (#1087).
@@ -3936,6 +4037,7 @@ def execute_agentic_turn(
                         rules_contract_version=audit.get("version"),
                     )
             _attach_answered_rolls(batch, encounter, pending, accepted_faces)
+            batch = _with_scored_caster(batch, pending)
             rolls = _fresh_rolls(encounter)
             events, _preview_encounter, _preview_characters = resolve_claimed_window(
                 encounter,

@@ -3181,6 +3181,173 @@ def resolve_player_spell_save(encounter, characters, intent, record, event_id, r
     return resolution
 
 
+# #652: the player's cast of a spell whose contract phase has trigger auto_hit
+# (Magic Missile) takes the same code-issued roll phase, opened at damage: there
+# is no attack roll and no save, so the game asks for the dice and adds the rest.
+def _declared_spend_level(intent, owner, base_level):
+    """The level the cast's own declared spend fixes, or None: an own spell
+    slot sets it; a feature use with no slot is a casting at the spell's base
+    level (a free casting, #652)."""
+    from core.ai import srd_roll_contracts
+
+    spent = srd_roll_contracts._spent_slot_level(intent, owner)
+    if spent is not None:
+        return spent
+    resources = [item for item in intent.get("resources") or [] if isinstance(item, dict)]
+    if any(item.get("kind") == "spellSlot" for item in resources):
+        return None
+    free = any(item.get("kind") == "featureUse" and item.get("owner") == owner
+               and type(item.get("delta")) is int and item["delta"] < 0 for item in resources)
+    typed = srd_roll_contracts._typed_slot_level(intent, intent.get("requiresPlayerInput"))
+    return base_level if free and typed in (None, base_level) else None
+
+
+def player_spell_auto_hit_entry(encounter, characters, intent):
+    """The roll phase's spell entry when the intent is a cast of a spell whose
+    verified contract has an auto_hit phase, at one targetable creature (its
+    hpDelta 0; a typed targetId with no targets listed is that one target),
+    with no effects, by a caster whose sheet lists the spell and with a declared
+    spend; None otherwise (today's path). The entry fixes the dice now."""
+    if not isinstance(intent, dict) or intent.get("action") != "cast":
+        return None
+    attacks = intent.get("attacks")
+    if attacks is not None and not (type(attacks) is int and attacks == 1):
+        return None
+    request = intent.get("requiresPlayerInput")
+    if request is not None and not (isinstance(request, dict) and request.get("kind") == "roll"):
+        return None
+    targets = intent.get("targets")
+    if targets in (None, []) and isinstance(intent.get("targetId"), str):
+        targets = [{"combatantId": intent["targetId"], "hpDelta": 0}]
+    if not isinstance(targets, list) or len(targets) != 1 or not isinstance(targets[0], dict):
+        return None
+    if type(targets[0].get("hpDelta", 0)) is not int or targets[0].get("hpDelta", 0) != 0:
+        return None
+    target_id = targets[0].get("combatantId")
+    target = combatant_by_id(encounter, target_id) if isinstance(target_id, str) else None
+    if target is None or not is_combatant_targetable(target):
+        return None
+    if intent.get("targetId") is not None and intent.get("targetId") != target_id:
+        return None
+    if intent.get("effects"):
+        return None
+    actor = combatant_by_id(encounter, intent.get("actorId"))
+    if actor is None:
+        return None
+    sheet = _raw_combatant_sheet(encounter, characters, actor)
+    casting = sheet.get("spellcasting") if isinstance(sheet, dict) else None
+    if not isinstance(casting, dict):
+        return None
+    from core.ai import srd_roll_contracts
+
+    try:
+        contracts = srd_roll_contracts.load_spell_roll_contracts().get("contracts") or {}
+    except (OSError, TypeError, ValueError) as exc:
+        srd_roll_contracts.log_unavailable("srd_spell_roll_contracts", exc)
+        return None
+    contract = contracts.get(srd_roll_contracts._canonical_key(intent.get("ability")))
+    if not isinstance(contract, dict) or contract.get("classification") != "verified":
+        return None
+    phase = next((item for item in contract.get("phases") or []
+                  if isinstance(item, dict) and item.get("trigger") == "auto_hit"), None)
+    if phase is None or not _sheet_lists_spell(casting, contract["name"]):
+        return None
+    if (srd_roll_contracts.slot_level_mismatch(intent, actor.get("name"))
+            or srd_roll_contracts.slot_below_spell_level(intent, actor.get("name"))):
+        return None
+    base_level = phase["scaling"]["baseLevel"]
+    slot_level = _declared_spend_level(intent, actor.get("name"), base_level)
+    if slot_level is None:
+        return None
+    dice = srd_roll_contracts._scaled_dice(phase, slot_level)
+    return {
+        "name": contract["name"],
+        "type": "auto_hit",
+        "damageDice": "%dd%d" % (dice["count"], dice["sides"]),
+        "damageType": phase["damageKind"],
+        "perDieBonus": phase["perDieBonus"],
+        "slotLevel": slot_level,
+        "targetId": target["combatantId"],
+    }
+
+
+def open_player_spell_auto_hit(encounter, characters, intent, spell):
+    """The roll-phase record for an auto-hit cast, or None (today's path). The
+    stored intent is resolved on copies with no damage: any violation (an
+    overspent slot) keeps today's path, where the normal correction answers it."""
+    try:
+        preview = resolve_adjudicated(
+            deepcopy(encounter), deepcopy(characters), spell_attack_proposal(intent, spell["targetId"], 0),
+            DeterministicRollSource({}), "spell-auto-hit-check",
+        )
+    except (IndexError, KeyError, TypeError, ValueError):
+        return None
+    if preview["violations"]:
+        return None
+    target = combatant_by_id(encounter, spell["targetId"])
+    return {
+        "actorId": intent.get("actorId"),
+        "ability": spell["name"],
+        "targetId": spell["targetId"],
+        "targetName": target.get("name") or spell["targetId"],
+        "mode": None,
+        "modeSources": [],
+        "phase": "damage",
+        "faces": {},
+        "sources": {},
+        "spell": dict(spell),
+    }
+
+
+def auto_hit_damage(encounter, characters, record, faces):
+    """(raw, damage, traits) of an auto-hit cast's dice: each die plus the
+    contract's bonus, then the target's typed traits, once, on the total. The
+    one sum: the card the player reads and the event both come from it."""
+    spell = record.get("spell") or {}
+    target = combatant_by_id(encounter, spell.get("targetId"))
+    raw = sum(faces) + int(spell.get("perDieBonus") or 0) * len(faces)
+    damage, traits = _typed_damage(_raw_combatant_sheet(encounter, characters, target), spell.get("damageType"), raw)
+    return raw, damage, traits
+
+
+def resolve_player_spell_auto_hit(encounter, characters, intent, record, event_id, rolls):
+    """Resolve an auto-hit cast from the completed roll phase: the stored intent
+    goes through resolve_adjudicated with the scored damage on its one target,
+    so its slot is spent once. No engine call: every dart hits, so there is only
+    arithmetic and the target's traits."""
+    spell = record.get("spell") or {}
+    faces = (record.get("faces") or {}).get("damageFaces")
+    count, _sides, _flat = parse_dice(spell.get("damageDice"))
+    if not isinstance(faces, list) or len(faces) != count or combatant_by_id(encounter, spell.get("targetId")) is None:
+        # A completed phase always holds its dice. Without them nothing is
+        # applied: the window ends on the ceiling's line and the turn is kept.
+        raise ValueError("the auto-hit cast has no dice to apply")
+    raw, damage, traits = auto_hit_damage(encounter, characters, record, faces)
+    resolution = resolve_adjudicated(
+        encounter, characters, spell_attack_proposal(intent, spell["targetId"], damage), rolls, event_id,
+    )
+    event = resolution["event"]
+    event["intent"] = deepcopy(intent)
+    # An ask may list the target at hpDelta 0; T097 must not read that as stated damage.
+    event["intent"]["targets"] = []
+    if not event["intent"].get("description"):
+        # The ruling's own description is never read, as it could state another
+        # total. The round summary (T042) is the only reader of this line.
+        caster = combatant_by_id(encounter, record.get("actorId")) or {}
+        event["intent"]["description"] = "%s's darts strike %s." % (caster.get("name") or "The caster", record.get("targetName"))
+    event["rolls"] = [{"die": spell.get("damageDice"), "value": sum(faces), "faces": list(faces), "purpose": "damage",
+                       "source": (record.get("sources") or {}).get("damage", "player")}] + list(event.get("rolls") or [])
+    spell_record = {
+        "spell": spell.get("name"), "damageDice": spell.get("damageDice"), "damageType": spell.get("damageType"),
+        "perDieBonus": spell.get("perDieBonus"), "slotLevel": spell.get("slotLevel"), "damageRolled": sum(faces),
+        "rawDamage": raw, "damage": damage,
+    }
+    if traits:
+        spell_record["damageTraits"] = traits
+    event["outcome"].update({"damage": damage, "scoredBy": "code", "spellAutoHit": spell_record})
+    return resolution
+
+
 def _resource_snapshot(sheet, kind, name):
     """Return (before, max_or_None) for a resource, or None if unresolvable."""
     if kind == "ammunition":

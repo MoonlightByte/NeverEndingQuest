@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In combat, when the game asks for Magic Missile's dice itself, you roll each die, it adds 1 per dart, and the damage on the card is the damage dealt. Split darts and casts from items stay with the DM (#652).
 - Keep of Doom and The Thornwood Watch now start as stories nobody has played: places no longer remember a past party's visit, the creatures that party killed are back at the shrine, the ward circle and the Keeper's cottage, the ward has one recipe, with its stone and runestones found at the circle, the keep's villain has one name, Sir Garran Vael, and one record, and the Thornwood's scout and spring match their quests (#1776).
 - The Thornwood Watch and Keep of Doom now give real results when a character reads a document, follows a trail or opens a lock, so a success finds what the adventure wrote for it. The early quest steps also close on their own once the party gets there; the final steps stay with the DM. Games already started keep their copy; a new game or Reset has these (#1733).
 - Heading for a place further off now gets you there in one turn when you know the way. In The Thornwood Watch, the prisoner at the Rangers' Command Post no longer stops every trip passing through it (#1724).
