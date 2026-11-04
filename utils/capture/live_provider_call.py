@@ -118,11 +118,9 @@ _BILLED_PHASES = frozenset({"acknowledged", "working", "receiving", "done"})
 # #1342: provider generations one live turn scope may spend, reissues
 # included. Every scope (play turn, combat round, wizard) has the same bound.
 _TURN_GENERATION_CEILING = 24
-# #204: module-build advisories (NPC coherence, module typing, route timing)
-# leave the turn's last generations to its required follow-up (the module
-# creation narration): a first try plus the billed reissues it may spend.
-_BUILD_ADVISORY_TASK_IDS = frozenset({"T104", "T122", "T123"})
-_BUILD_ADVISORY_RESERVE = 1 + _BILLED_REISSUE_LIMIT
+# #1587 (#204): advisory calls leave a budget's last generations to the required
+# calls after them: a first try plus the billed reissues one call may spend.
+_REQUIRED_RESERVE = 1 + _BILLED_REISSUE_LIMIT
 # Transport phases the child reports, in the order a healthy generation
 # passes through them (#409 plan section 4). Evidence only: never authority.
 _PHASE_NAMES = (
@@ -1807,9 +1805,13 @@ def _call_live_provider(
         )
     failure_count = 0
     runaway_trips = 0
-    # #204: every claim of a build advisory, reissues included, keeps the reserve.
-    build_reserve = (
-        _BUILD_ADVISORY_RESERVE if task_id in _BUILD_ADVISORY_TASK_IDS else 0
+    # #1587: every claim of an advisory, reissues included, keeps the reserve. A
+    # maintenance scope runs no required call, so it has nothing to keep.
+    reserve = (
+        _REQUIRED_RESERVE
+        if policy == "advisory"
+        and getattr(getattr(scope, "parent", scope), "purpose", None) != "maintenance"
+        else 0
     )
     billed_reissues = 0
     free_reissues = 0
@@ -1935,14 +1937,20 @@ def _call_live_provider(
             continue
         claim = getattr(scope, "claim_provider_generation", None)
         if claim is not None and not (
-            claim(reserve=build_reserve) if build_reserve else claim()
+            claim(reserve=reserve) if reserve else claim()
         ):
             # #1342: the turn spent its provider generations. Nothing is sent;
             # the caller's completed-refusal path ends the turn with one line.
             _provider_debug(
                 "LIVE_PROVIDER_TURN_CEILING task=%s generations=%d reserve=%d operation=%s"
-                % (task_id, _TURN_GENERATION_CEILING, build_reserve, operation_id)
+                % (task_id, _TURN_GENERATION_CEILING, reserve, operation_id)
             )
+            if reserve:
+                # #1587: the turn goes on without this advisory.
+                raise LiveProviderUnavailable(
+                    task_id,
+                    _limit_envelope("advisory_reserve", task_id, frozen_kwargs),
+                )
             raise LiveProviderCompletedError(
                 task_id,
                 _limit_envelope("turn_call_ceiling", task_id, frozen_kwargs),

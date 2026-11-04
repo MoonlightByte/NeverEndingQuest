@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A very long turn keeps its last AI calls for the DM: optional extras, such as companion voices, stop first (#1587).
 - A generated scene image now shows from the game's own saved copy, so it keeps showing after a reconnect or later in the session instead of breaking when the image service's link expires (#1755).
 - After a fight, a spell slot the game's summary tries to give back is noted as not applied, and the rest of that turn's healing still happens (#1763).
 - A party character's Attack action makes as many attacks as its class gives at its level (Extra Attack at level 5; a Fighter's two and three extra attacks at 11 and 20), so a stated second attack is no longer refused; a multiclass sheet keeps one (#1762).
