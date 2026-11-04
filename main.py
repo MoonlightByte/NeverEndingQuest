@@ -4560,6 +4560,12 @@ def validate_ai_response(
             "the existence of an ID alone does not authorize a progression update.\n"
             + json.dumps({"module": module_name, "plot": canonical_plot_data}, ensure_ascii=True)
         )
+        typed_open = quest_record.typed_open_ids(module_name)
+        if typed_open:
+            plot_context += (
+                "\nThese plot points are closed by the rules engine when their typed condition "
+                "is met, so do not require an updatePlot for them: %s." % ", ".join(typed_open)
+            )
     validation_messages_to_send = list(validation_messages_to_send) + [{
         "role": "system", "content": plot_context,
     }]
@@ -10404,6 +10410,9 @@ def _main_game_loop(startup_authority, turn_authority):
             # Use current module from party tracker for plot data
             current_module_for_plot = party_tracker_data.get("module", "").replace(" ", "_")
             current_plot_manager = ModulePathManager(current_module_for_plot)
+            # #1733: a typed plot condition met since the last turn closes here,
+            # so this turn's note and quest log already show it.
+            quest_record.apply_typed_completions(current_module_for_plot)
             plot_data_for_note = quest_record.module_plot(current_module_for_plot)
             debug(f"FILE_OP: Plot file path: {current_plot_manager.get_plot_path()}", category="module_management")
             debug(f"FILE_OP: Plot data loaded: {plot_data_for_note is not None}", category="module_management")

@@ -451,6 +451,22 @@ def standardize_location_ids(module_name):
         for file_path in glob.glob(f"modules/{module_name}/**/*.json", recursive=True):
             update_location_references(file_path, id_mappings)
 
+def _update_completion_ids(record, id_mappings):
+    """Rewrite the location ids in a plot entry's typed completion (#1733)."""
+    block = record.get("completion") or {}
+    visited = block.get("visited") or []
+    changed = False
+    for i, loc in enumerate(visited):
+        if loc in id_mappings:
+            visited[i] = id_mappings[loc]
+            changed = True
+    for item in block.get("resolved") or []:
+        if item.get("locationId") in id_mappings:
+            item["locationId"] = id_mappings[item["locationId"]]
+            changed = True
+    return changed
+
+
 def update_location_references(file_path, id_mappings):
     """Update all location ID references in a file"""
     try:
@@ -467,6 +483,10 @@ def update_location_references(file_path, id_mappings):
                 if location.get("locationId") in id_mappings:
                     location["locationId"] = id_mappings[location["locationId"]]
                     modified = True
+                for lead in (location.get("typedFacts") or {}).get("leads") or []:
+                    if lead.get("destinationLocationId") in id_mappings:
+                        lead["destinationLocationId"] = id_mappings[lead["destinationLocationId"]]
+                        modified = True
             
             # Update map data if present
             if "map" in data and "rooms" in data["map"]:
@@ -481,10 +501,12 @@ def update_location_references(file_path, id_mappings):
                 if plot_point.get("location") in id_mappings:
                     plot_point["location"] = id_mappings[plot_point["location"]]
                     modified = True
+                modified = _update_completion_ids(plot_point, id_mappings) or modified
                     
                 # Update side quests
                 if "sideQuests" in plot_point:
                     for side_quest in plot_point["sideQuests"]:
+                        modified = _update_completion_ids(side_quest, id_mappings) or modified
                         if "involvedLocations" in side_quest:
                             for i, loc in enumerate(side_quest["involvedLocations"]):
                                 if loc in id_mappings:
