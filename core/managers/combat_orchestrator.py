@@ -1494,6 +1494,44 @@ def _validate_unrolled_player_damage(batch, encounter, characters, pending, kept
         )
 
 
+def _validate_attack_outcome(batch, encounter, characters, pending, kept=None):
+    """#1781: the player's adjudicated attack whose d20 was answered this turn
+    goes back to the model when the reply states no outcome and asks for
+    nothing: no target with an hpDelta, no effect, no request. hitLead is a lead
+    for later and is never read. Same bound as #1606's: one correction per
+    attempt loop, the next batch stands, and this check never ends a turn."""
+    answered = _answered_rolls(pending, kept)
+    for intent in (batch or {}).get("intents", []) or []:
+        if not isinstance(intent, dict) or intent.get("mode") != "adjudicated":
+            continue
+        actor = combatant_by_id(encounter, intent.get("actorId"))
+        targets = intent.get("targets") if isinstance(intent.get("targets"), list) else []
+        if (
+            not isinstance(actor, dict)
+            or not _is_human_controlled(encounter, actor)
+            or intent.get("requiresPlayerInput")
+            or intent.get("effects")
+            or any(isinstance(target, dict) and type(target.get("hpDelta")) is int for target in targets)
+            or not is_attack_roll_action(intent)
+        ):
+            continue
+        spell = next((intent[f].strip() for f in ("spellName", "ability")
+                      if intent.get("action") == "cast" and isinstance(intent.get(f), str) and intent[f].strip()), "")
+        if not any(_roll_request_purpose({"phase": item["phase"], "spellName": spell}) == "attack" for item in answered):
+            continue
+        raise CombatIntentError(
+            (
+                "%s's attack roll is answered, and this reply neither states its outcome nor asks for the "
+                "next roll. Rule it from the roll. On a hit, set requiresPlayerInput {kind: roll, phase: damage, "
+                "the die, spellName for a spell, and prompt: the one line the DM says to the player at the table, "
+                "naming the dice and offering to roll them}. On a miss, list the target with hpDelta 0."
+            )
+            % (actor.get("name") or intent.get("actorId")),
+            intent.get("actorId"),
+            {"retryable": True, "issue": "1781"},
+        )
+
+
 def _validate_feature_names(batch, encounter, characters):
     """8b: a heal paid with a class feature's pooled use (POOL_HEALS) names
     its option in the typed featureName, exactly as the actor's featureNames
@@ -3698,6 +3736,7 @@ def execute_agentic_turn(
     removal_refused_actors = set()
     asked_dc_corrected = set()
     damage_asked = False
+    outcome_asked = False
     window_kind = _window_kind(encounter, pending.get("actorIds", []))
     capability_count, rule_count = _diagnostic_context_counts(spell_references)
     attempt_number = 0
@@ -3923,6 +3962,8 @@ def execute_agentic_turn(
                 _validate_flat_damage_request(batch, encounter, characters)
                 if not damage_asked:
                     _validate_unrolled_player_damage(batch, encounter, characters, pending, accepted_faces)
+                if not outcome_asked:
+                    _validate_attack_outcome(batch, encounter, characters, pending, accepted_faces)
                 _validate_feature_names(batch, encounter, characters)
             _validate_roll_request_phase(batch, encounter)
             for kept_roll in _keep_answered_roll(batch, encounter, pending, accepted_faces):
@@ -4126,10 +4167,13 @@ def execute_agentic_turn(
                     else {}).get("askedSaveDc") is not None and isinstance(getattr(exc, "actor_id", None), str):
                 # Item 10: one correction per actor; then the engine scores the asked DC.
                 asked_dc_corrected.add(exc.actor_id)
-            unrolled_damage = isinstance(getattr(exc, "feedback", None), dict) and exc.feedback.get("issue") == "1606"
-            if unrolled_damage:
+            asked_issue = exc.feedback.get("issue") if isinstance(getattr(exc, "feedback", None), dict) else None
+            asked_again = asked_issue in ("1606", "1781")
+            if asked_issue == "1606":
                 # #1606: one correction per attempt loop; the next batch stands.
                 damage_asked = True
+            elif asked_issue == "1781":
+                outcome_asked = True
             correction = _intent_correction(exc, batch=batch)
             failure_class = _resolution_failure_class(exc)
             rules_drift = (
@@ -4162,14 +4206,14 @@ def execute_agentic_turn(
                 rules_contract_key=rules_drift.get("contractKey"),
                 rules_contract_version=rules_drift.get("version"),
             )
-            # #1606: its ask is not a rejection, so #1251 never counts that batch.
+            # #1606, #1781: their ask is not a rejection, so #1251 never counts that batch.
             # A reused batch is already logged: only a provider's reply is new.
-            logged = provider_batch is not None and not unrolled_damage and reused_batch is None
+            logged = provider_batch is not None and not asked_again and reused_batch is None
             repeated = logged and provider_batch in rejected_batches
-            refused_replies += 0 if unrolled_damage else 1
+            refused_replies += 0 if asked_again else 1
             # #146 (D-146-3 A): past the bound a refused automatic actor Defends
             # and the fight moves. A refusal of a reused batch is already past it.
-            past_bound = not unrolled_damage and (
+            past_bound = not asked_again and (
                 repeated or reused_batch is not None
                 or refused_replies >= max(2, int(max_intent_attempts or 3))
             )
