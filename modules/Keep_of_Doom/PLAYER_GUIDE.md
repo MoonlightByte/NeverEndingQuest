@@ -6,19 +6,19 @@ Welcome, adventurers. This guide provides a detailed walkthrough of the "Keep of
 
 The journey to Shadowfall Keep is not a simple trek; it is a test of the party's resolve and awareness. The Gloamwood is a character in itself, and interacting with its secrets is key to success.
 
-### The Challenge: The Lost Ward Circle (B06)
+### The Challenge: The Lost Ward Circle (B04)
 
-The path to the keep is plagued by an unnatural darkness because the forest's ancient protective wards are failing. Keeper Morvath (B07) tasks the party with restoring the central ward circle. A direct path to the keep without this step is possible but significantly more dangerous, leading to more frequent and difficult spectral encounters.
+The path to the keep is plagued by an unnatural darkness because the forest's ancient protective wards are failing. Keeper Morvath (B07) tasks the party with restoring the central ward circle. A direct path to the keep without this step is possible, but the forest's undead stay at full strength.
 
-**The Clever Solution: A Ritual of Sacrifice**
+**The Clever Solution: The Ritual in the Book**
 
-This is a multi-stage environmental puzzle, not a combat encounter. To restore the ward, players must follow the instructions in a ritual tome found at the site.
+Two specters and a will-o'-wisp haunt the circle, so expect a fight before the ritual can begin. To restore the ward, players must follow the instructions in the ritual book found at the site.
 
-- **Item-Based Interaction**: The party must use the Carved Bone Talisman and Gloamwood Roots provided by Keeper Morvath.
-- **Personal Cost**: The ritual requires a blood sacrifice. The Cleric can offer a drop of their own blood, taking a small amount of damage but demonstrating a personal connection to the land.
-- **Resource Expenditure**: The final step requires an offering of value. Placing gold coins upon the central menhir completes the rite.
+- **Item-Based Interaction**: The ritual needs a ward stone and runestones. The party finds a ward stone fragment and a pouch of five runestones at the circle itself.
+- **Personal Cost**: The ritual also needs either blood or powerful magic, offered at the central dais.
+- **Skill Check**: Completing the rite takes a successful Arcana check (DC 15). Failure attracts additional specters.
 
-**Developer Insight**: This encounter is designed to reward players who engage with NPCs and explore. It shows that solutions can involve roleplaying, resource management, and interacting with the environment, not just combat. Successfully restoring the ward grants the party a tangible buff (Strengthened Lost Ward Circle), reducing the threat level in the surrounding area.
+**Developer Insight**: This encounter is designed to reward players who engage with NPCs and explore. It shows that solutions can involve roleplaying, resource management, and interacting with the environment, not just combat. Successfully restoring the ward weakens the forest's undead for 24 hours (they have disadvantage on attacks) and reveals a clearer path to the keep.
 
 ## Part 2: Breaching the Keep - A Fortress of Sorrow
 

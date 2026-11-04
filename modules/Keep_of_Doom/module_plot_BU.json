@@ -118,7 +118,7 @@
     {
       "id": "PP004",
       "title": "The Heart of Darkness",
-      "description": "Within the keep's depths lies the source of the curse: the vengeful spirit of Lord Thaddeus Greymont, corrupted by dark magic. The party must confront him, either by combat, exorcism, or fulfilling his final wish to find peace.",
+      "description": "Within the keep's depths lies the source of the curse: the vengeful spirit of Sir Garran Vael, corrupted by dark magic. The party must confront him, either by combat, exorcism, or fulfilling his final wish to find peace.",
       "location": "TCD001",
       "nextPoints": [
         "PP005"
