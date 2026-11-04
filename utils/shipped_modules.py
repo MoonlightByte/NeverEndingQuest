@@ -15,7 +15,9 @@ a plain compare with the install's file.
 
 A Reset that replaces files writes {"resetInProgress": true} to the tracker
 first and {} last, so a stop anywhere between makes the next launch run it
-again. Every other Reset writes {} as it always did.
+again. That holds only if no new game commits first: commit empties the tracker,
+marker included, and no launch runs it then. Every other Reset writes {} as it
+always did.
 """
 
 import filecmp

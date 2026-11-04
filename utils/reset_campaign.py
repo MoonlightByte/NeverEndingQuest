@@ -578,7 +578,9 @@ def _perform_reset_logic_locked():
     _bump_campaign_lifecycle_epoch("modules/campaign.json")
     
     # #1810: replacing shipped files is marked first and cleared last, so a stop
-    # anywhere between makes the next launch run this Reset again.
+    # anywhere between makes the next launch run this Reset again. That holds
+    # only if no new game commits first: commit empties the tracker (#1284),
+    # marker included, and no launch runs it then.
     from utils.shipped_modules import (
         RESET_UNFINISHED, refresh_shipped_files, reset_unfinished, stale_files,
     )

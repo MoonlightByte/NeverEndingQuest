@@ -206,7 +206,9 @@ def reset_foreign_save(module_name):
     module's save (#1285, D-1285-1). True when it ran. A reset that does not
     finish is reported and setup goes on (B1); the tracker is still emptied at
     commit (#1284). Once it has begun replacing shipped files, setup stops
-    instead, so no game starts on a part-new module (#1810)."""
+    there instead. A later Start in the same launch goes on: the marker has no
+    module, so it is not a foreign save, and that game begins on a part-new
+    module (#1810)."""
     if not _foreign_save(module_name):
         return False
     from utils.reset_campaign import perform_reset_logic
