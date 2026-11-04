@@ -121,6 +121,8 @@ function on<K extends keyof ServerEvents>(
 }
 
 function refreshAuthoritativeState(): void {
+  // #1782: `connect` refreshes in the same tick as the events Socket.IO delivers before it, so a refresh before it is only sent twice.
+  if (!connectionLive) return
   emitC('request_location_data', undefined)
   emitC('request_party_data', undefined)
   emitC('request_initiative_data', undefined)

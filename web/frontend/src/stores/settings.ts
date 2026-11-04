@@ -27,6 +27,11 @@ export interface SettingsState {
   setAutoplay: (value: boolean) => void
   setEngine: (value: TtsEngine) => void
   setVoice: (engine: TtsEngine, value: string) => void
+  // #1786, this session only: the online voice was refused for good, and the player has been told it failed.
+  voiceLost: boolean
+  voiceNoticed: boolean
+  setVoiceLost: (voiceLost: boolean) => void
+  setVoiceNoticed: (voiceNoticed: boolean) => void
   setMapTheme: (value: MapTheme) => void
 }
 
@@ -44,10 +49,14 @@ export const useSettings = create<SettingsState>((set) => ({
   setAiImages: (aiImages) => { persist('imageGenerationEnabled', aiImages); set({ aiImages }) },
   setTtsEnabled: (ttsEnabled) => { persist('ttsEnabled', ttsEnabled); set({ ttsEnabled }) },
   setAutoplay: (autoplay) => { persist('ttsAutoplayEnabled', autoplay); set({ autoplay }) },
-  setEngine: (engine) => { persist('ttsEngine', engine); set({ engine }) },
+  setEngine: (engine) => { persist('ttsEngine', engine); set({ engine, voiceLost: false, voiceNoticed: false }) },
   setVoice: (engine, voice) => {
     persist(`ttsVoice_${engine}`, voice)
-    set((state) => ({ voices: { ...state.voices, [engine]: voice } }))
+    set((state) => ({ voices: { ...state.voices, [engine]: voice }, voiceLost: false, voiceNoticed: false }))
   },
+  voiceLost: false,
+  voiceNoticed: false,
+  setVoiceLost: (voiceLost) => set({ voiceLost }),
+  setVoiceNoticed: (voiceNoticed) => set({ voiceNoticed }),
   setMapTheme: (mapTheme) => { persist('mapTheme', mapTheme); set({ mapTheme }) },
 }))
