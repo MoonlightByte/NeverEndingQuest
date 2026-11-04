@@ -300,7 +300,11 @@ def seed_character(character_file, module_name):
     # The loader's own form (#1288): the seed reads back equal after the save.
     from utils.encoding_utils import sanitize_dict
     character_data = sanitize_dict(character_data)
-    if not save_character_to_module(character_data, module_name):
+    try:
+        saved = save_character_to_module(character_data, module_name)
+    except FileExistsError as exc:
+        raise BootstrapError(str(exc))
+    if not saved:
         raise BootstrapError(
             "failed to save character %r into module %r"
             % (character_data.get("name"), module_name))

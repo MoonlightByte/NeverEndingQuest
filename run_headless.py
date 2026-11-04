@@ -44,9 +44,9 @@ from core.headless.protocol import ProtocolWriter, parse_command_line
 
 EXIT_OK = 0
 EXIT_ENGINE_ERROR = 2
-EXIT_TIMEOUT = 3
 EXIT_BOOTSTRAP = 4
 EXIT_STOPPED = 5
+SCRIPT_ENTER = "<enter>"  # a script line that sends an empty line (#1811)
 
 _EXIT_CODE_BY_REASON = {
     "player_exit": EXIT_OK,
@@ -143,7 +143,6 @@ class ServeDriver:
                 self._session.request_quit()
                 done.wait()
                 break
-        return None  # exit code comes from the exit event reason
 
 
 class ScriptDriver:
@@ -155,6 +154,7 @@ class ScriptDriver:
         self._sent = 0
         self._session = None
         self._finished = False
+        self._quit_due = threading.Event()
 
     def on_event(self, event):
         if (event.get("type") == "status" and event.get("recovery_required")
@@ -169,7 +169,9 @@ class ScriptDriver:
         # #1811: at `resume` the next line would re-enter a stopped fight unplayed.
         if not self._inputs or self._sent >= self._max_turns or event.get("kind") == "resume":
             self._finished = True
-            self._session.request_quit()
+            # #1811: this runs on the engine thread, and Quit waits for the turn
+            # that thread is holding open. wait() quits from the runner thread.
+            self._quit_due.set()
             return
         self._sent += 1
         self._session.dispatch_input(self._inputs.pop(0))
@@ -184,18 +186,21 @@ class ScriptDriver:
 
     def wait(self, done, last_activity, timeout_per_turn=None):
         while not done.wait(0.5):
-            if timeout_per_turn and \
+            if self._quit_due.is_set():
+                self._quit_due.clear()
+                self._session.request_quit()
+            elif timeout_per_turn and \
                     time.time() - last_activity[0] > timeout_per_turn:
                 self._session.writer.emit(
                     "status",
-                    content=(
+                    message=(
                         "The scripted headless turn is still running after "
                         "%ss of silence." % timeout_per_turn
                     ),
                     is_processing=True,
+                    recovery_required=False,
                     source="script_wait",
                 )
-        return None
 
 
 def _run_session(args, driver, timeout_per_turn=None):
@@ -242,9 +247,7 @@ def _run_session(args, driver, timeout_per_turn=None):
             session.emit_exit(
                 "error", "%s: %s" % (type(exc).__name__, exc))
             return EXIT_ENGINE_ERROR
-        forced_code = driver.wait(done, last_activity, timeout_per_turn)
-        if forced_code is not None:
-            return forced_code
+        driver.wait(done, last_activity, timeout_per_turn)
         return _EXIT_CODE_BY_REASON.get(exit_reason[0], EXIT_ENGINE_ERROR)
     finally:
         session.restore_streams()
@@ -257,7 +260,8 @@ def cmd_serve(args):
 def cmd_script(args):
     try:
         with open(args.inputs, "r", encoding="utf-8") as handle:
-            inputs = [line.rstrip("\n") for line in handle
+            inputs = ["" if line.strip() == SCRIPT_ENTER else line.rstrip("\n")
+                      for line in handle
                       if line.strip() and not line.lstrip().startswith("#")]
     except OSError as exc:
         print(json.dumps({"type": "exit", "reason": "error",
@@ -450,8 +454,11 @@ def build_parser():
 
     script = subparsers.add_parser(
         "script", help="feed newline-separated inputs, then exit")
-    script.add_argument("inputs", help="text file: one player input per line")
-    script.add_argument("--max-turns", type=int, default=50)
+    script.add_argument(
+        "inputs", help="text file: one player input per line; blank and # lines "
+                       "are skipped, and a line of %s sends an empty line" % SCRIPT_ENTER)
+    script.add_argument("--max-turns", type=int, default=50,
+                        help="send at most this many lines, then quit")
     script.add_argument("--timeout-per-turn", type=float, default=300.0,
                         help="seconds of engine silence between wait notices")
     add_common(script)
