@@ -2186,11 +2186,14 @@ def _scored_cast(pending):
 
 def _scored_cast_line(encounter, characters, record):
     """#652: the game's total beside the dice in T096's input, so the later
-    actors fit what the darts really did. Typed fields only."""
+    actors fit what the darts really did. Typed fields only. T096's reply check
+    refuses a batch without the caster, so the line asks for that row too,
+    though code drops it."""
     spell = record["spell"]
     damage = auto_hit_damage(encounter, characters, record, record["faces"]["damageFaces"])[1]
-    return "Game scored %s: %d %s damage to %s. That cast is settled; rule the other actors from it." % (
-        spell.get("name"), damage, spell.get("damageType"), record.get("targetName"))
+    return ("Game scored %s: %d %s damage to %s. Return every required actor as usual: the caster's intent "
+            "with hpDelta %d and no new roll request, and the other actors ruled from that result." % (
+                spell.get("name"), damage, spell.get("damageType"), record.get("targetName"), -damage))
 
 
 def _without_scored_caster(batch, pending):

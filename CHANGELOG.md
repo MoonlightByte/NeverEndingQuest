@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- In combat, Magic Missile is now asked for and scored by the game: you roll the darts' dice and the game adds 1 per dart, so the damage always matches your roll (#652).
+- In combat, when the game asks for Magic Missile's dice itself, you roll each die, it adds 1 per dart, and the damage on the card is the damage dealt. Split darts and casts from items stay with the DM (#652).
 - The Thornwood Watch and Keep of Doom now give real results when a character reads a document, follows a trail or opens a lock, so a success finds what the adventure wrote for it. The early quest steps also close on their own once the party gets there; the final steps stay with the DM. Games already started keep their copy; a new game or Reset has these (#1733).
 - Heading for a place further off now gets you there in one turn when you know the way. In The Thornwood Watch, the prisoner at the Rangers' Command Post no longer stops every trip passing through it (#1724).
 - The browser no longer asks the server for its state twice when it connects, which saves about one read in nine (#1782).
