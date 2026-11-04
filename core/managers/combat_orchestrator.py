@@ -48,6 +48,7 @@ from core.combat.resolver import (
     player_weapon_attack_entry,
     player_weapon_attack_score,
     attack_damage_riders,
+    is_attack_roll_action,
     spell_attack_violations,
     attack_row,
     sent_row_lists,
@@ -66,6 +67,7 @@ from core.managers.combat_state import (
 from core.managers.combat_transaction import (
     CombatPreconditionChanged,
     append_pending_player_input,
+    mark_rider_reask,
     live_exchanges,
     mark_pending_game_roll,
     apply_staged_turn,
@@ -847,19 +849,25 @@ def _keep_answered_roll(batch, encounter, pending, kept=None):
 def _attach_answered_rolls(batch, encounter, pending, kept=None):
     """#1111: the human intent carries this turn's answered dice with faces as
     a typed record (answeredRolls), so its adjudicated event records the dice
-    the ruling used. A save is left out: a scored save records its own."""
+    the ruling used. A save is left out: a scored save records its own.
+    #1666: riderRolls, the rider dice split from the answer, come only from
+    here; a model-written one is dropped."""
     answered = [item for item in _answered_rolls(pending, kept)
                 if item["faces"] is not None and item["phase"] != "save"]
-    if not answered:
-        return
+    riders = _rider_answers(pending)
     for intent in (batch or {}).get("intents", []) or []:
+        if isinstance(intent, dict):
+            intent.pop("riderRolls", None)
         actor = combatant_by_id(encounter, intent.get("actorId")) if isinstance(intent, dict) else None
         if isinstance(actor, dict) and _is_human_controlled(encounter, actor) and intent.get("mode") == "adjudicated":
-            intent["answeredRolls"] = [
-                {"purpose": _roll_request_purpose({"phase": item["phase"]}) or item["phase"],
-                 "terms": deepcopy(item["terms"]), "faces": deepcopy(item["faces"]), "source": item["source"]}
-                for item in answered
-            ]
+            if answered:
+                intent["answeredRolls"] = [
+                    {"purpose": _roll_request_purpose({"phase": item["phase"]}) or item["phase"],
+                     "terms": deepcopy(item["terms"]), "faces": deepcopy(item["faces"]), "source": item["source"]}
+                    for item in answered
+                ]
+            if riders:
+                intent["riderRolls"] = deepcopy(riders)
 
 
 def _stated_hit(intent):
@@ -1874,6 +1882,190 @@ def _rider_terms(record):
     return [_roll_die_terms(rider.get("die"))[0] for rider in record.get("damageRiders") or []]
 
 
+def _rider_answers(pending):
+    """#1666: the rider dice answered this turn, oldest first."""
+    return [deepcopy(answer) for exchange in live_exchanges(pending)
+            for answer in exchange.get("riderAnswers") or [] if isinstance(answer, dict)]
+
+
+def _rider_offer(encounter, characters, pending, batch, actor_id, request):
+    """#1666: the riders code asks for beside T096's damage ask, or None. T096
+    never gets the rider's die in an ask or its face in an answer: its ask is
+    the main die, code adds its own sentence when showing it, and the answer is
+    split before T096 runs. Typed fields only. With no single typed target the
+    game rolls the rider when the hit is ruled."""
+    actor = combatant_by_id(encounter, actor_id)
+    if (not isinstance(actor, dict) or not _is_human_controlled(encounter, actor)
+            or not isinstance(request, dict) or request.get("kind") != "roll"
+            or _roll_request_purpose(request) != "damage" or not _typed_roll(request)):
+        return None
+    intent = next((item for item in (batch or {}).get("intents", []) or []
+                   if isinstance(item, dict) and item.get("actorId") == actor_id
+                   and isinstance(item.get("requiresPlayerInput"), dict)), None)
+    if intent is None or not is_attack_roll_action(intent):
+        return None
+    aimed = {entry.get("combatantId") for entry in intent.get("targets") or [] if isinstance(entry, dict)}
+    if isinstance(intent.get("targetId"), str):
+        aimed.add(intent["targetId"])
+    target = combatant_by_id(encounter, next(iter(aimed))) if len(aimed) == 1 else None
+    if not isinstance(target, dict):
+        return None
+    held = _rider_answers(pending)
+    riders = [{"label": rider["label"], "die": rider["die"], "combatantId": target.get("combatantId")}
+              for rider in attack_damage_riders(encounter, characters, actor_id, target)
+              if not any(item.get("label") == rider["label"] and item.get("combatantId") == target.get("combatantId")
+                         for item in held)]
+    if not riders:
+        return None
+    named = next((request[field].strip() for field in ("spellName", "weaponName")
+                  if isinstance(request.get(field), str) and request[field].strip()), None)
+    return {"riders": riders, "mainName": named}
+
+
+def _rider_each(terms, riders):
+    """" die" when a term has two or more dice: the ask then wants every die."""
+    all_terms = list(terms) + [_roll_die_terms(rider["die"])[0] for rider in riders]
+    return " die" if any(count > 1 for count, _sides in all_terms) else ""
+
+
+def _rider_sentence(offer, terms):
+    """#1666: code's own sentence after T096's ask, whose words it never edits."""
+    riders = offer["riders"]
+    return "Roll %s too, one number for each%s." % (
+        " and ".join("%s for %s" % (rider["die"], rider["label"]) for rider in riders), _rider_each(terms, riders))
+
+
+def _rider_reask(offer, terms):
+    """#1666: code's ask again when the answer does not fit. T096 is not called:
+    a bare total cannot be split, and taking it as the main die would add the
+    rider to a sum that may already hold it."""
+    riders = offer["riders"]
+    name = offer.get("mainName")
+    parts = ["%s for %s" % ("+".join("%dd%d" % term for term in terms), "your %s" % name if name else "the damage")]
+    parts += ["%s for %s" % (rider["die"], rider["label"]) for rider in riders]
+    return "One number for each%s, please: %s, or I can roll them." % (_rider_each(terms, riders), " and ".join(parts))
+
+
+def _open_rider_offer(pending):
+    """#1666: (request exchange, offer, main terms) of the open rider ask, or None."""
+    exchanges = live_exchanges(pending)
+    last = exchanges[-1] if exchanges else None
+    if not isinstance(last, dict) or not last.get("dmRequest") or not isinstance(last.get("riderOffer"), dict):
+        return None
+    terms = _roll_die_terms(last.get("requestedRoll"))
+    return (last, last["riderOffer"], terms) if terms else None
+
+
+def _faces_by_term(numbers, terms):
+    """One list of faces per term from numbers in term order, else "invalid":
+    exactly one number per die, each one the die can show."""
+    if len(numbers) != sum(count for count, _sides in terms):
+        return "invalid"
+    faces, start = [], 0
+    for count, sides in terms:
+        group = numbers[start:start + count]
+        if any(type(face) is not int or not 1 <= face <= sides for face in group):
+            return "invalid"
+        faces.append(group)
+        start += count
+    return faces
+
+
+def _tray_term_faces(text, terms):
+    """The dice tray's answer as one list of faces per term, "invalid" when its
+    dice are not the ones asked for, None when the line is not a tray answer.
+    Dice match their terms by size, and of two of one size the first is the main
+    die's, so a rider takes the last of its size, as in _tray_faces."""
+    from core.managers import tray_roll
+
+    dice = tray_roll.take(text)
+    if dice is None:
+        if not _TRAY_SENTENCE.match(text):
+            return None
+        dice = [(int(face), int(die)) for face, die in re.findall(_TRAY_DIE, text, re.IGNORECASE)]
+    faces = []
+    for count, sides in reversed(terms):
+        taken = [index for index, (_face, die) in enumerate(dice) if die == sides][-count:]
+        if len(taken) != count or any(not 1 <= dice[index][0] <= sides for index in taken):
+            return "invalid"
+        faces.insert(0, [dice[index][0] for index in taken])
+        dice = [item for index, item in enumerate(dice) if index not in taken]
+    return "invalid" if dice else faces
+
+
+def _rider_game_rolls(encounter_path, pending, last, offer, terms, line, spoken=None):
+    """The game rolls the open rider ask's dice, main and rider, and says so."""
+    from core.managers.checks_runtime import _show_check_receipt
+
+    riders = offer["riders"]
+    main = _roll_terms(terms)
+    rolled = _roll_terms([_roll_die_terms(rider["die"])[0] for rider in riders])
+    answers = [dict(rider, faces=faces, source="game") for rider, faces in zip(riders, rolled)]
+    if mark_pending_game_roll(encounter_path, pending.get("turnId"), line, main, spoken=spoken, rider_answers=answers):
+        _show_game_roll(last, main)
+        for rider, faces in zip(riders, rolled):
+            _show_check_receipt("Game roll for %s: %s on the %s." % (
+                rider["label"], " and ".join(str(face) for face in faces), rider["die"].lstrip("1")))
+
+
+def _answer_rider_offer(encounter_path, encounter, pending, text):
+    """#1666: take the answer to an open rider ask before T096 runs, so T096 gets
+    the main faces and never the rider's. True when the line is answered, False
+    when there is no open offer or the line goes to T096 as today; a line that
+    does not fit is asked again by code, at no call. With T126 down, the first
+    unread line is asked again and the second is rolled by the game, which says
+    so: the player is never left at the ask, and the unread words stay away from
+    T096, which could read the rider's face in them."""
+    from core.ai.roll_answer import read_roll_answer, request_payload
+    from core.managers.checks_runtime import _show_check_receipt
+
+    opened = _open_rider_offer(pending)
+    if opened is None:
+        return False
+    last, offer, terms = opened
+    riders = offer["riders"]
+    all_terms = list(terms) + [_roll_die_terms(rider["die"])[0] for rider in riders]
+    text = text if isinstance(text, str) else ""
+    if not text.strip() or _lets_the_game_roll(text):
+        _rider_game_rolls(encounter_path, pending, last, offer, terms, text)
+        return True
+    if _FACE_LIST.match(text):
+        faces = _faces_by_term([int(value) for value in re.findall(r"\d+", text)], all_terms)
+    else:
+        faces = _tray_term_faces(text, all_terms)
+    if faces is None:
+        answer = read_roll_answer(request_payload(
+            offer.get("mainName") or "damage", last.get("requestedPhase") or "damage",
+            [{"count": count, "sides": sides} for count, sides in all_terms], True,
+            _join_ask(last.get("dmRequest"), _rider_sentence(offer, terms)), text))
+        if answer.get("readerUnavailable"):
+            _phase_diagnostic(encounter, pending, "T126", answer["readerUnavailable"])
+            if last.get("riderReasked") is True:
+                _show_check_receipt("I couldn't read your roll, so the game rolled it.")
+                _rider_game_rolls(encounter_path, pending, last, offer, terms, "", spoken=text)
+                return True
+            mark_rider_reask(encounter_path, pending.get("turnId"))
+            faces = "invalid"
+        elif answer.get("kind") == "let_game_roll":
+            _rider_game_rolls(encounter_path, pending, last, offer, terms, text)
+            return True
+        elif answer.get("kind") == "faces":
+            values = answer.get("values") or []
+            flat = [face for group in values for face in group]
+            faces = _faces_by_term(flat, all_terms)
+        else:
+            return False
+    if faces == "invalid":
+        raise CombatTurnPaused("The rider roll is waiting for the player", player_message=_rider_reask(offer, terms))
+    answers = [dict(rider, faces=group, source="player") for rider, group in zip(riders, faces[len(terms):])]
+    append_pending_player_input(
+        encounter_path, pending.get("turnId"),
+        " ".join(str(face) for group in faces[:len(terms)] for face in group),
+        timeout_seconds=None, spoken=text, rider_answers=answers,
+    )
+    return True
+
+
 def _rider_ask(record, entry, count, sides, each_die):
     """#1666: the ask for the weapon's dice and each rider's, as the DM says it."""
     extras = ["%s for %s" % (rider["die"], rider["label"]) for rider in record["damageRiders"]]
@@ -2035,7 +2227,8 @@ def _scored_damage_line(scored, target_id, encounter, characters, off_hand=False
 
 def _scored_damage_lines(events, encounter, characters):
     """#1721: one line per player weapon hit in the committed events; spells
-    keep their own lines. Reads the events only."""
+    keep their own lines. #1666: a hit T096 ruled gets one line per rider, so
+    its dice never change HP with nothing on screen. Reads the events only."""
     lines = []
     for event in events or []:
         if not isinstance(event, dict):
@@ -2049,6 +2242,11 @@ def _scored_damage_lines(events, encounter, characters):
         if isinstance(bonus, dict) and bonus.get("featureName") == OFF_HAND_ATTACK:
             scored = dict(bonus, actorId=event.get("actorId"))
             lines.append(_scored_damage_line(scored, bonus.get("targetId"), encounter, characters, off_hand=True))
+        if outcome.get("scoredBy") != "code":
+            for rider in outcome.get("damageRiders") or []:
+                target = combatant_by_id(encounter, rider.get("combatantId")) or {}
+                lines.append("%s %s = %d %s on %s." % (rider["label"], rider["die"], rider["rolled"],
+                                                       rider["damageType"], _spoken_name(target.get("name"))))
     return [line for line in lines if line]
 
 
@@ -3187,20 +3385,22 @@ def execute_agentic_turn(
             encounter = safe_json_load(encounter_path)
             pending = deepcopy((encounter.get("combatState") or {}).get("pendingTurn"))
         if not weapon_answered and not _all_non_player(encounter, pending.get("actorIds", [])):
-            game_roll = _game_roll_answer(pending, player_input)
-            if isinstance(game_roll, list):
-                # #877: the open typed request decides that this line
-                # answers it; the game rolls its full dice.
-                if mark_pending_game_roll(encounter_path, pending.get("turnId"), player_input, game_roll):
-                    asked = live_exchanges(pending)[-1]
-                    _show_game_roll(asked, game_roll)
-            elif game_roll is None:
-                append_pending_player_input(
-                    encounter_path,
-                    pending.get("turnId"),
-                    player_input,
-                    timeout_seconds=None,
-                )
+            rider_line = weapon_roll_text if weapon_roll_text is not None else player_input
+            if not _answer_rider_offer(encounter_path, encounter, pending, rider_line):
+                game_roll = _game_roll_answer(pending, player_input)
+                if isinstance(game_roll, list):
+                    # #877: the open typed request decides that this line
+                    # answers it; the game rolls its full dice.
+                    if mark_pending_game_roll(encounter_path, pending.get("turnId"), player_input, game_roll):
+                        asked = live_exchanges(pending)[-1]
+                        _show_game_roll(asked, game_roll)
+                elif game_roll is None:
+                    append_pending_player_input(
+                        encounter_path,
+                        pending.get("turnId"),
+                        player_input,
+                        timeout_seconds=None,
+                    )
             encounter = safe_json_load(encounter_path)
             pending = deepcopy((encounter.get("combatState") or {}).get("pendingTurn"))
         persisted_voice_intents = normalize_npc_voice_intents(
@@ -3677,6 +3877,8 @@ def execute_agentic_turn(
             typed_roll = _typed_roll(request)
             # #1118: the model's own request carries the offer to roll for the player.
             player_message = _request_text(request)
+            # #1666: dmRequest stays T096's own; only the shown line has code's sentence.
+            offer = _rider_offer(encounter, characters, pending, batch, exc.actor_id, request)
             record_pending_player_request(
                 encounter_path,
                 pending.get("turnId"),
@@ -3687,10 +3889,12 @@ def execute_agentic_turn(
                 requested_roll=typed_roll,
                 requested_slot_level=_asked_slot_level(encounter, batch, exc.actor_id, request),
                 requested_dc=_asked_save_dc(request),
+                rider_offer=offer,
             )
             raise CombatTurnPaused(
                 "Combat resolution requires more player input",
-                player_message=player_message,
+                player_message=(_join_ask(player_message, _rider_sentence(offer, _roll_die_terms(typed_roll)))
+                                if offer else player_message),
             ) from exc
         except (CombatIntentError, IndexError, TypeError, ValueError) as exc:
             refused = (getattr(exc, "feedback", None) or {}).get("playerChargeRefusal") \

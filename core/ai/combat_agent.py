@@ -592,12 +592,8 @@ def _rider_note(encounter, characters, creature):
     for rider in live_damage_riders(_raw_combatant_sheet(encounter, characters, creature)):
         source = combatant_by_id(encounter, rider["sourceCombatantId"]) or {}
         name = source.get("name") or rider["sourceCombatantId"]
-        note = "The game adds %s %s to %s's hits on this creature; leave it out of hpDelta." % (
-            rider["die"], rider["damageType"], name)
-        if resolve_creature_controller(source, encounter.get("combatState") or {}) == "human":
-            note += " If you ask %s for damage dice, join it after the main die with + (for example '1d8+%s')." % (
-                name, rider["die"])
-        notes.append(note)
+        notes.append("The game adds %s %s to %s's hits on this creature; leave it out of hpDelta." % (
+            rider["die"], rider["damageType"], name))
     return " ".join(notes) or None
 
 

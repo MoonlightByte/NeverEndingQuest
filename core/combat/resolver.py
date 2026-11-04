@@ -4852,7 +4852,13 @@ def _hit_with_attack_roll(proposal, target, hp_delta, attack_hits):
     or from a spell whose contract lists a spell attack. A stated save is not."""
     if attack_hits is not None:
         return attack_hits.get(target["combatantId"]) is True
-    if hp_delta >= 0 or proposal.get("save"):
+    return hp_delta < 0 and is_attack_roll_action(proposal)
+
+
+def is_attack_roll_action(proposal):
+    """#1666: the intent is an attack, or a cast whose contract lists a spell
+    attack, and states no save. Typed fields only."""
+    if proposal.get("save"):
         return False
     if proposal.get("action") == "attack":
         return True
@@ -4863,36 +4869,25 @@ def _hit_with_attack_roll(proposal, target, hp_delta, attack_hits):
     return srd_roll_contracts.is_spell_attack(proposal)
 
 
-def _answered_rider_faces(rider, answered):
-    """#1666: the rider's own term of the player's answered damage roll
-    (one list of faces per term, the main die first), taken once, or None."""
-    count, sides, _flat = parse_dice(rider["die"])
-    for roll in answered:
-        terms, faces = roll.get("terms") or [], roll.get("faces") or []
-        if roll.get("purpose") != "damage" or len(terms) != len(faces):
-            continue
-        for index in range(len(terms) - 1, 0, -1):
-            if list(terms[index]) == [count, sides] and len(faces[index]) == count:
-                del terms[index]
-                return faces.pop(index), roll.get("source") or "player"
-    return None
-
-
 def _adjudicated_riders(encounter, characters, proposal, target, rolls, event, given):
     """#1666: the damage the source's riders add to an adjudicated hit, each on
     its own journal row; T096 is told to leave them out of hpDelta. The dice:
-    ``given`` (a code phase's faces), else the rider's term of the player's
-    answered roll, else the game's."""
+    ``given`` (a code phase's faces), else the typed riderRolls code split from
+    the player's answer before T096 ran, else the game's."""
     actor_id = proposal.get("actorId")
     trait_sheet = _raw_combatant_sheet(encounter, characters, target)
-    answered = deepcopy(proposal.get("answeredRolls") or [])
+    answered = [item for item in proposal.get("riderRolls") or []
+                if isinstance(item, dict) and item.get("combatantId") == target["combatantId"]]
     total = 0
     for rider in (given if given is not None else attack_damage_riders(encounter, characters, actor_id, target)):
         source = rider.get("source")
         faces = rider.get("faces") if given is not None else None
         if faces is None:
-            found = _answered_rider_faces(rider, answered)
-            faces, source = found if found else (
+            found = next((item for item in answered
+                          if item.get("label") == rider["label"] and item.get("die") == rider["die"]), None)
+            if found is not None:
+                answered.remove(found)
+            faces, source = (list(found["faces"]), found.get("source") or "player") if found else (
                 _rolled_rider_faces(rider, rolls, actor_id, target["combatantId"]), "game")
         event.setdefault("rolls", []).append(_rider_row(rider, faces, target, source))
         dealt, traits = _typed_damage(trait_sheet, rider["damageType"], sum(faces))
