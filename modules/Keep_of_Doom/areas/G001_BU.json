@@ -215,11 +215,6 @@
           "name": "The Keeper",
           "description": "A reclusive hermit rumored to possess vital information about the keep's curse. Travelers say he can be met along the trail.",
           "attitude": "Unknown"
-        },
-        {
-          "name": "Harrow's Hollow East Gate Guards",
-          "description": "The guards stationed at the east gate of Harrow's Hollow, alert and holding their position.",
-          "attitude": "Neutral"
         }
       ],
       "monsters": [
@@ -265,7 +260,7 @@
         "Half-burned map showing part of the forest trail",
         "Small silver coin found beneath cairn near trail fork"
       ],
-      "dangerLevel": "Low",
+      "dangerLevel": "Medium",
       "connectivity": [
         "B02",
         "B03"
@@ -315,8 +310,7 @@
         "Perception DC 12: Notice fresh bootprints and signs of recent passage, likely Scout Elen's.",
         "Religion DC 14: Recognize the markers as ancient wards against spirits, now weakened.",
         "Survival DC 15: Track the smaller footprints toward the Withered Shrine and interpret disturbed foliage as signs of a brief stop.",
-        "Investigation DC 16: Identify ritual offerings and differentiate between tokens of protection and items dropped in haste.",
-        "Insight DC 13: Assess the condition and morale of the guards at Harrow's Hollow East Gate."
+        "Investigation DC 16: Identify ritual offerings and differentiate between tokens of protection and items dropped in haste."
       ],
       "encounters": [],
       "adventureSummary": "",
@@ -733,7 +727,17 @@
           "attitude": "Neutral, urgent and seeking aid to restore protections"
         }
       ],
-      "monsters": [],
+      "monsters": [
+        {
+          "name": "Twig Blight",
+          "quantity": {
+            "min": 2,
+            "max": 4
+          },
+          "disposition": "hostile",
+          "strategy": "These corrupted plant creatures hide among the dead vegetation, attacking in synchronized ambushes when victims approach the altar."
+        }
+      ],
       "lootTable": [
         "Tarnished silver amulet (once used in blessing rituals, 10 gp value)",
         "Ceremonial dagger with wooden handle (potential focus for ward rituals)",
@@ -759,7 +763,7 @@
         "Investigation DC 15: Discover the map carved into the altar's base and faded ritual instructions."
       ],
       "accessibility": "Open clearing with soft, uneven ground; altar has several steps leading up to it.",
-      "dangerLevel": "Low",
+      "dangerLevel": "Medium",
       "features": [
         {
           "name": "Cracked Altar",
@@ -807,9 +811,30 @@
       "areaConnectivity": [],
       "areaConnectivityId": [],
       "npcs": [],
-      "monsters": [],
+      "monsters": [
+        {
+          "name": "Specter",
+          "quantity": {
+            "min": 2,
+            "max": 2
+          },
+          "disposition": "hostile",
+          "strategy": "These are the spirits of failed guardians who now attack anyone attempting to repair the ward circle. They phase through stones for cover and target spellcasters first."
+        },
+        {
+          "name": "Will-o'-Wisp",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          },
+          "disposition": "neutral, then hostile",
+          "strategy": "Initially appears helpful, trying to lure party members away from the group before attacking the isolated target."
+        }
+      ],
       "lootTable": [
+        "Ward stone fragment (key component for potential ritual)",
         "Spell Scroll of Protection from Evil and Good (level 1; only a reader who has the spell on their spell list can use it; read it to cast the spell without Material components; the scroll crumbles to dust once cast)",
+        "Pouch containing 5 runestones (focus items for ritual magic)",
         "Tattered ritual book with instructions for renewing the wards"
       ],
       "plotHooks": [
@@ -828,7 +853,7 @@
         "Insight DC 14: Sense the will-o'-wisp's malicious intent despite its seemingly helpful appearance."
       ],
       "accessibility": "Relatively flat clearing with seven large standing stones; one must step over fallen stones to reach the center.",
-      "dangerLevel": "Low",
+      "dangerLevel": "High",
       "features": [
         {
           "name": "Standing Monoliths",
@@ -1151,20 +1176,17 @@
         "Wand of secrets (hidden on a shelf amongst curious trinkets)",
         "Scout Elen's journal (containing her observations about the keep and Sir Garran)",
         "Ancient key with skull motif (opens a specific door in the keep)",
-        "Carved bone talisman (ritual component provided by Morvath)",
-        "Pouch of dried Gloamwood roots (ritual component provided by Morvath)",
         "Potion of Healing (a potent herbal concoction brewed by Morvath; restores 2d4 + 2 hit points)"
       ],
       "plotHooks": [
         "Morvath guided Scout Elen toward the keep and fears for her safety.",
         "The Keeper requires aid in restoring the Lost Ward Circle, the final protective ward weakened by the keep's dark influence.",
-        "Restoration of the ward demands placing a living token of earth, binding intent with the bone talisman, and a meaningful personal sacrifice.",
-        "Morvath's knowledge and ritual components are crucial to countering the forest's curse tied to the keep.",
+        "Restoration of the ward demands a ward stone, runestones, and either blood or powerful magic, as the ritual book at the circle sets out.",
+        "Morvath's knowledge is crucial to countering the forest's curse tied to the keep.",
         "A path leads northeast toward the Lost Ward Circle, where the party's fate may entwine with Scout Elen and the shadowed curse.",
-        "Entry to Shadowfall Keep may require an old key or the forest's blessing as cautioned by Morvath.",
-        "A party without the bronze key with the raven sigil must return to Harrow's Hollow to obtain it before proceeding."
+        "Entry to Shadowfall Keep may require an old key or the forest's blessing as cautioned by Morvath."
       ],
-      "dmInstructions": "Keeper Morvath serves as both guide and gatekeeper to the keep. He offers hospitality (food, rest, and information) but tests the party through cryptic conversations. Players who show respect, offer assistance, or demonstrate genuine concern for Scout Elen earn his favor (and gifts), including ritual components and a potent healing concoction. Those who threaten or dismiss him face hostility. Morvath can provide directions to the keep and warnings about specific dangers, but he speaks in riddles that require Insight checks (DC 14) to fully understand. The two awakened shrubs are vigilant, reacting only if the party threatens the Keeper or abuses his hospitality. Morvath can apply a healing herbal paste to a wounded party, restoring vitality.",
+      "dmInstructions": "Keeper Morvath serves as both guide and gatekeeper to the keep. He offers hospitality (food, rest, and information) but tests the party through cryptic conversations. Players who show respect, offer assistance, or demonstrate genuine concern for Scout Elen earn his favor (and gifts), including a potent healing concoction. Those who threaten or dismiss him face hostility. Morvath can provide directions to the keep and warnings about specific dangers, but he speaks in riddles that require Insight checks (DC 14) to fully understand. The two awakened shrubs are vigilant, reacting only if the party threatens the Keeper or abuses his hospitality. Morvath can apply a healing herbal paste to a wounded party, restoring vitality.",
       "doors": [
         {
           "name": "Cottage Door",
