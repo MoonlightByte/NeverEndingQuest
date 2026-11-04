@@ -2041,18 +2041,15 @@ def _tray_term_faces(text, terms):
 
 
 def _rider_game_rolls(encounter_path, pending, last, offer, terms, line, spoken=None):
-    """The game rolls the open rider ask's dice, main and rider, and says so."""
-    from core.managers.checks_runtime import _show_check_receipt
-
+    """The game rolls the open rider ask's dice, main and rider. The player's card
+    shows all of them; the stored request, which T096 reads, keeps the main dice."""
     riders = offer["riders"]
     main = _roll_terms(terms)
     rolled = _roll_terms([_roll_die_terms(rider["die"])[0] for rider in riders])
     answers = [dict(rider, faces=faces, source="game") for rider, faces in zip(riders, rolled)]
     if mark_pending_game_roll(encounter_path, pending.get("turnId"), line, main, spoken=spoken, rider_answers=answers):
-        _show_game_roll(last, main)
-        for rider, faces in zip(riders, rolled):
-            _show_check_receipt("Game roll for %s: %s on the %s." % (
-                rider["label"], " and ".join(str(face) for face in faces), rider["die"].lstrip("1")))
+        dice = ["%dd%d" % term for term in terms] + [rider["die"] for rider in riders]
+        _show_game_roll(dict(last, requestedRoll="+".join(dice)), main + rolled)
 
 
 def _answer_rider_offer(encounter_path, encounter, pending, text):
@@ -2088,7 +2085,7 @@ def _answer_rider_offer(encounter_path, encounter, pending, text):
         if answer.get("readerUnavailable"):
             _phase_diagnostic(encounter, pending, "T126", answer["readerUnavailable"])
             if last.get("riderReasked") is True:
-                _show_check_receipt("I couldn't read your roll, so the game rolled it.")
+                _show_check_receipt("I couldn't read your roll, so I rolled it for you.")
                 _rider_game_rolls(encounter_path, pending, last, offer, terms, "", spoken=text)
                 return True
             mark_rider_reask(encounter_path, pending.get("turnId"))
