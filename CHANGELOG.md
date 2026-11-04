@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Right after a fight, the DM can now wake or heal a hero who was knocked out (hit points regained, back from unconscious, stabilised); a change the fight itself already made, such as its damage or spent resources, is still not applied twice (#1730).
 - With no game started yet, the Load list now shows the saves of every adventure, each with its adventure, and loading or deleting one uses that adventure's save folder; before, it showed only an old shared folder, which is normally empty (#1715).
 - Arcane Recovery and other features or items that bring back spell slots (Natural Recovery, Harness Divine Power, Font of Magic, Eldritch Master, a Pearl of Power) now spend their use and return the slot together; a slot can no longer come back for free, and a use is never spent when there is no empty slot to regain (#1680).
+- A line of story now always has its message id when it reaches the page, so the page can match it to its picture and to the same line after a reload (#1769).
 
 ## [1.1.1] - 2026-11-02
 
