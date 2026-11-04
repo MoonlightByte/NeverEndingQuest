@@ -7,7 +7,8 @@
 A data root keeps its own copy of each shipped module, so an update never
 reached it and a new game or Reset read the old files. Reset now replaces those
 files from the install, and a launch with no game on disk runs Reset when one
-is out of date. Nothing is deleted, and a game in progress is left alone.
+is out of date. The refresh deletes nothing, and a game in progress is left
+alone.
 
 A folder counts as shipped by typed values only: its name is in the install's
 modules/ and its declaration names the same module and start. "Out of date" is
