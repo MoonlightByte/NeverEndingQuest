@@ -2316,8 +2316,7 @@ def _scored_damage_lines(events, encounter, characters):
         if not isinstance(event, dict):
             continue
         outcome = event.get("outcome") or {}
-        if (outcome.get("scoredBy") == "code" and "spellAttack" not in outcome and "spellSave" not in outcome
-                and "spellAutoHit" not in outcome):
+        if outcome.get("scoredBy") == "code" and "spellAttack" not in outcome and "spellSave" not in outcome:
             scored = dict(event, outcome=outcome)
             lines.append(_scored_damage_line(scored, (event.get("intent") or {}).get("targetId"),
                                              encounter, characters))
