@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the game rolls for the player, the card in the log now reads the way a DM would say it, such as "I rolled your three d4s for damage: 3, 4 and 1." (#1777).
 - Adventure modules can now hold authored results for what a character reads, tracks or unlocks, and can close a quest once the party reaches the place or ends the threat. Nothing changes until a module uses them (#1733).
 - In combat, a player's damaging spell or attack with no roll behind it now prompts the DM to ask for the damage dice, once (#1606).
 - In combat, a monster whose action the rules keep refusing now takes the Defend action and the fight goes on, instead of the turn stopping (#146).
