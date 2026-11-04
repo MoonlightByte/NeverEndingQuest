@@ -268,7 +268,7 @@ def compare_and_update(original, updates):
 # summary records what happened in adventureSummary and the encounter log;
 # it never rewrites these, so a past status is never served later as an
 # instruction.
-AUTHOR_OWNED_LOCATION_FIELDS = ("locationId", "name", "dmInstructions", "dcChecks", "lootItems")
+AUTHOR_OWNED_LOCATION_FIELDS = ("locationId", "name", "dmInstructions", "dcChecks", "lootItems", "typedFacts")
 
 
 def preserve_author_location_fields(updated_location, location_before):
@@ -355,6 +355,9 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
     
     # If we get here, all checks passed
     loca_single_item_schema = loca_schema_full['properties']['locations']['items']
+    # #1733: typedFacts is author-owned and restored after T015, so T015 is not offered it.
+    printed_location_schema = copy.deepcopy(loca_single_item_schema)
+    printed_location_schema.get('properties', {}).pop('typedFacts', None)
     debug_print("Schema structure validation passed")
     debug_print(f"Single item schema extracted, keys: {list(loca_single_item_schema.keys()) if isinstance(loca_single_item_schema, dict) else 'Not a dict'}")
     # --- END OF DETAILED SCHEMA ACCESS DEBUGGING ---
@@ -380,7 +383,7 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
         Your output must strictly adhere to the provided JSON structure for a single location, containing no text or information before or after the JSON document.
 
         Location Schema (return only a single location object, not the entire schema):
-        {json.dumps(loca_single_item_schema, indent=2)}
+        {json.dumps(printed_location_schema, indent=2)}
 
         Adventure Summary:
         {adventure_summary}
@@ -448,6 +451,11 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
             # so establish it deterministically before schema validation and
             # before the area/journal transaction commits.
             updated_location["explorationState"] = {"status": "visited"}
+            # #1733: typedFacts is the author's. T015's copy is dropped here, so
+            # a slip in it never costs a retry.
+            updated_location.pop("typedFacts", None)
+            if "typedFacts" in location_info:
+                updated_location["typedFacts"] = copy.deepcopy(location_info["typedFacts"])
             restored = restore_omitted_required_fields(
                 updated_location, location_info, loca_single_item_schema)
             if restored:
