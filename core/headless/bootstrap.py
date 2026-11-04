@@ -294,9 +294,12 @@ def seed_character(character_file, module_name):
     # (#1285). Its lines go to stderr: new-game's stdout is one JSON result.
     import contextlib
     import sys
-    from utils.startup_wizard import reset_foreign_save
-    with contextlib.redirect_stdout(sys.stderr):
-        reset_foreign_save(module_name)
+    from utils.startup_wizard import StartupCancelled, reset_foreign_save
+    try:
+        with contextlib.redirect_stdout(sys.stderr):
+            reset_foreign_save(module_name)
+    except StartupCancelled:
+        raise BootstrapError("Reset did not finish, so no game was started")
     # The loader's own form (#1288): the seed reads back equal after the save.
     from utils.encoding_utils import sanitize_dict
     character_data = sanitize_dict(character_data)

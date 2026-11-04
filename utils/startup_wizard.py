@@ -205,7 +205,8 @@ def reset_foreign_save(module_name):
     """Run the whole Reset, backup first, before a new game starts over another
     module's save (#1285, D-1285-1). True when it ran. A reset that does not
     finish is reported and setup goes on (B1); the tracker is still emptied at
-    commit (#1284)."""
+    commit (#1284). Once it has begun replacing shipped files, setup stops
+    instead, so no game starts on a part-new module (#1810)."""
     if not _foreign_save(module_name):
         return False
     from utils.reset_campaign import perform_reset_logic
@@ -215,6 +216,10 @@ def reset_foreign_save(module_name):
         from utils.player_notice import show_reset_failed
 
         show_reset_failed(exc)
+        from utils.shipped_modules import reset_unfinished
+
+        if reset_unfinished():
+            raise StartupCancelled() from None
         return False
     from web.shared_state import message_log_reset
     message_log_reset()
@@ -274,7 +279,9 @@ def run_startup_sequence():
     except (StartupCancelled, KeyboardInterrupt, EOFError):
         # #341: a headless Reset ends input the same way as Quit, then removes
         # the unfinished interview; it must not be told its choices are kept.
-        if _input_control_kind() != "reset":
+        from utils.shipped_modules import reset_unfinished
+
+        if _input_control_kind() != "reset" and not reset_unfinished():
             _say("Dungeon Master: Setup paused. Your choices are retained.")
         raise StartupCancelled() from None
 

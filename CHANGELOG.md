@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- After an update, a new game or Reset now uses the new version of the shipped adventures. A game in progress and your saved games stay as they are. Reset backs up first, then replaces the shipped files, so a hand change to one of those files goes back to the shipped version and stays in the backup (#1810).
 - Reset no longer changes your saved games. It used to put the areas inside every save of an adventure back to their unplayed state, so loading one afterwards brought back a world you had already changed (#1813).
 - In combat, an Off-hand Attack's damage now lands. When your main attack and your Off-hand Attack both hit the same target with a character sheet, the off-hand damage showed on the card and then vanished, and an Off-hand kill of a creature yet to act stopped the game. A game stopped that way goes on at your next line, which finishes the turn you already rolled rather than starting a new action. If the game stopped while the old version was saving such a turn, that hit keeps its old result, or the game asks you to Load or Reset (#1806).
 - In combat, when the game asks for Magic Missile's dice itself, you roll each die, it adds 1 per dart, and the damage on the card is the damage dealt. Split darts and casts from items stay with the DM (#652).

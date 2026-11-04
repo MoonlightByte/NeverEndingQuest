@@ -95,6 +95,10 @@ Neither the installer nor the uninstaller ever closes a running game: if NeverEn
 you to quit it with Game > Quit (which saves first) and press Retry. Cancel stops them. Uninstalling also removes
 the update download cache (`%LOCALAPPDATA%\neverendingquest-desktop-updater`).
 
+An update leaves a game in progress alone. The shipped adventures in your data folder change at your next Reset, or
+at the next launch when no game exists. Reset backs up first, so a hand change to a shipped adventure's files is
+kept in `modules\backups\campaign_backup_<date and time>\modules\<adventure>`.
+
 ## Running from a checkout (developers)
 
 From the repository root, with the game's Python environment set up:
