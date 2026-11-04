@@ -8,6 +8,7 @@
  */
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLog } from '../../stores'
+import { useMenuPrompt } from '../../stores/menuPrompt'
 import type { GeneratedImage } from '../../stores'
 import { SceneImage } from './SceneImage'
 import { firstNewNarration, revealStoryStart, softenStoryArrival } from './storyReading'
@@ -84,6 +85,15 @@ export function GameLog() {
     if (unreadRef.current && !el?.contains(unreadRef.current)) {
       unreadRef.current = null
       setHasNew(false)
+    }
+    // #1129: a menu click answers from below the log, often before the card above is read to its end.
+    // The player's line comes into view, and the log follows on from it.
+    if (el && messages.at(-1)?.type === 'user-input' && useMenuPrompt.getState().takeAnswered()) {
+      pinnedRef.current = true
+      unreadRef.current = null
+      setHasNew(false)
+      el.scrollTop = el.scrollHeight
+      return
     }
     const message = el?.querySelector<HTMLElement>(`[data-story-index="${index}"]`)
     if (message) {

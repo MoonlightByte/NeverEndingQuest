@@ -520,7 +520,12 @@ def _say(text, flush=False):
 
 
 def _print_startup_choices(labels):
-    """Print the exact numbered choices under the presented menu."""
+    """Print the exact numbered choices under the presented menu. A client that
+    draws them as buttons (#1129) has them there, so the list is not shown twice."""
+    from core.managers import menu_prompt
+
+    if menu_prompt.draws_options():
+        return
     _say("\n".join(f"{i}. {label}" for i, label in enumerate(labels, 1)))
 
 
@@ -535,6 +540,40 @@ def _module_builder_coming_soon(labels):
     _say("Dungeon Master: Creating a new adventure with the module builder is coming soon. "
           "For now, please choose one of the installed adventures.")
     _print_startup_choices(labels)
+
+
+def _publish_menu(entry):
+    """A failed publish still opens the input (#1630): typing answers the menu."""
+    from core.managers import menu_prompt
+
+    try:
+        menu_prompt.publish(entry)
+    except Exception as exc:
+        warning(f"STARTUP: menu options not published: {exc}", category="startup")
+
+
+def _read_menu_choice(title, labels, details, disabled=()):
+    """One read of a closed menu (#1129). Its options go to any client that draws
+    them, for this read only; a click arrives here as the number typed."""
+    options = []
+    for number, (label, detail) in enumerate(zip(labels, details), 1):
+        option = {"number": number, "label": label}
+        if detail:
+            option["detail"] = detail
+        if number in disabled:
+            option["disabled"] = True
+        options.append(option)
+    _publish_menu({"title": title, "options": options})
+    try:
+        return input("\nYour choice: ").strip()
+    finally:
+        _publish_menu(None)
+
+
+def _module_level_label(module):
+    level_range = module['level_range']
+    return (f"Levels {level_range['min']}-{level_range['max']}"
+            if 'min' in level_range and 'max' in level_range else 'Level range unknown')
 
 
 def _read_menu_sentence(menu, labels, details, line):
@@ -556,9 +595,7 @@ def present_module_options(conversation, modules):
     # Build module list for AI
     module_list = []
     for i, module in enumerate(modules, 1):
-        level_range = module['level_range']
-        level_label = (f"Levels {level_range['min']}-{level_range['max']}"
-                       if 'min' in level_range and 'max' in level_range else 'Level range unknown')
+        level_label = _module_level_label(module)
         module_list.append(
             f"{i}. **{module['display_name']}** ({level_label})\n"
             f"   {module['description']}\n"
@@ -628,7 +665,11 @@ def select_module(conversation):
     # Get player choice
     while True:
         try:
-            user_input = input("\nYour choice: ").strip()
+            user_input = _read_menu_choice(
+                "Which adventure?",
+                [module['display_name'] for module in modules] + [MODULE_BUILDER_OPTION],
+                [_module_level_label(module) for module in modules] + ['Coming soon'],
+                disabled=(len(modules) + 1,))
             
             # Skip empty inputs
             if not user_input:
@@ -778,7 +819,10 @@ def select_or_create_character(conversation, module):
     # Get player choice
     while True:
         try:
-            user_input = input("\nYour choice: ").strip()
+            user_input = _read_menu_choice(
+                "Which character?",
+                [char['name'] for char in characters] + ['Create a new character'],
+                [f"Level {char['level']} {char['race']} {char['class']}" for char in characters] + [None])
             
             # Skip empty inputs
             if not user_input:

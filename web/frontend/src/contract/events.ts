@@ -62,7 +62,10 @@ export type PlayerDataResponse =
       server_instance_id?: string;
     };
 
-// ---------- client -> server (31) ----------
+// ---------- client -> server (32) ----------
+export interface MenuOption { number: number; label: string; detail?: string; disabled?: boolean }
+export interface MenuPrompt { id: string; title: string; options: MenuOption[]; submitted: boolean }
+
 export interface RulesRollPrompt {
   id: string; characterName: string; label: string; faces: number;
   netMode: string; reason: string; submitted: boolean; dc?: number | null;
@@ -71,6 +74,7 @@ export interface RulesRollPrompt {
 
 export interface ClientEvents {
   submit_check_roll: { id: string; faces: number[] | null };
+  submit_menu_choice: { id: string; number: number };
   // #1750: dice is the tray's typed faces, sent only beside its unchanged sentence.
   user_input: { input: string; dice?: { sides: number; face: number }[] };
   action: {
@@ -119,6 +123,7 @@ export interface ClientEvents {
  */
 export const CLIENT_EVENT_ARITY = {
   submit_check_roll: 1,
+  submit_menu_choice: 1,
   user_input: 1,
   action: 1,
   start_game: 0,
@@ -184,6 +189,7 @@ export interface WaitRecord {
 
 export interface ServerEvents {
   roll_prompt: { prompt: RulesRollPrompt | null };
+  menu_prompt: { prompt: MenuPrompt | null };
   connected: {
     data: string;
     capabilities?: UiProtocolCapabilities;
@@ -200,6 +206,7 @@ export interface ServerEvents {
   startup_recovery_response: { status: string; error?: string; retryAfterSeconds?: number; expectedStartupAttemptId?: string; playerMessage?: string };
   ui_state_snapshot: {
     roll_prompt?: RulesRollPrompt | null;
+    menu_prompt?: MenuPrompt | null;
     request_id?: string;
     revision: number;
     server_instance_id: string;

@@ -1,0 +1,3 @@
+.neq-menu-options { display: grid; gap: .5rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); margin-top: .35rem; }
+.neq-menu-options button { display: flex; flex-direction: column; align-items: flex-start; gap: .1rem; text-align: left; }
+.neq-menu-options small { color: #c5bda9; }
