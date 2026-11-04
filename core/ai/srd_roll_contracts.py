@@ -236,6 +236,18 @@ def spell_base_level(intent):
     return None
 
 
+def is_spell_attack(intent):
+    """#1666: True when the cast's spell (ability, then spellName) has a roll
+    contract listing a spell attack in its typed evidenceRollCues."""
+    contracts = load_spell_roll_contracts().get("contracts") or {}
+    for field in ("ability", "spellName"):
+        name = intent.get(field)
+        contract = contracts.get(_canonical_key(name)) if isinstance(name, str) and name.strip() else None
+        if isinstance(contract, dict):
+            return "spell attack" in (contract.get("evidenceRollCues") or [])
+    return False
+
+
 def slot_below_spell_level(intent, owner):
     """#942: the correction when the own slot a cast spends is below the
     spell's level (spell_base_level), or None. An unknown spell is never

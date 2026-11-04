@@ -141,6 +141,27 @@ def modifier_dice(sheet, stat):
     return out
 
 
+def live_damage_riders(sheet, source_id=None):
+    """#1666: the damage riders of the sheet's live effects, each with its
+    caster (the effect's own sourceCombatantId), from one caster when
+    ``source_id`` is given. The same spell from one caster does not combine."""
+    out = []
+    seen = set()
+    for effect in _live_effects(sheet):
+        rider = effect.get("damageRider")
+        source = effect.get("sourceCombatantId")
+        if not isinstance(rider, dict) or not isinstance(source, str) or not source:
+            continue
+        if source_id is not None and source != source_id:
+            continue
+        key = (rider.get("label"), source)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(dict(rider, sourceCombatantId=source))
+    return out
+
+
 def _get_path(data, path):
     current = data
     parts = path.split(".")
