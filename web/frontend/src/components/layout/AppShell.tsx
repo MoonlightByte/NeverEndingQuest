@@ -47,6 +47,8 @@ function FirstRunBanner() {
   const sessionMode = useSession((s) => s.mode)
   const [dismissed, setDismissed] = useState(true)
   useEffect(() => setDismissed(Boolean(localStorage.getItem('neq_bannerDismissed'))), [])
+  // #1808: once a game has run on this page, a stop is not a first run, so the banner stays away.
+  useEffect(() => { if (sessionMode !== 'disconnected') setDismissed(true) }, [sessionMode])
   // Legacy only exposes this first-run guidance before a game starts. A
   // resumed game must not gain a React-only row that shifts the entire log.
   if (dismissed || sessionMode !== 'disconnected') return null

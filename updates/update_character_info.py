@@ -2385,6 +2385,7 @@ def _update_character_info_unlocked(
     base_sheet=None,
     reserved_ids=None,
     post_combat=None,
+    opening_hold=None,
 ):
     """
     Unified function to update character information for both players and NPCs
@@ -3166,7 +3167,23 @@ Character Role: {character_role}
                 bounded_failure_count += 1
                 attempt += 1
                 continue
-            
+
+            if opening_hold is not None:
+                # #1827: a declared opening cast pays at the cast, by its own
+                # turn's resource row, as any in-fight cast does. Held only when
+                # the payment bought nothing yet: no other change, no effect.
+                opening_hold["held"] = (bool(casting_resource.get("spell")) and updates == payment
+                                        and not managed_effect_operation)
+                if opening_hold["held"]:
+                    # A payment the pool cannot cover still stops the fight (#1731).
+                    refusal = prepare_character_delta(
+                        character_data, updates, character_role, schema, character_name,
+                        model_authored=True, reserved_ids=reserved_ids,
+                    )[2].get("engine_refusal")
+                    if refusal:
+                        raise EngineRefusedChange(refusal)
+                    updates = {}
+
             # Update debug data with parsed updates
             debug_data["parsed_updates"] = updates
             

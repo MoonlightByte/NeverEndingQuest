@@ -213,6 +213,8 @@ on('game_resumed', (p) => {
   else useLog.getState().append({ type: 'system', content: p.message })
   refreshAuthoritativeState()
 })
+// #1808: the game thread has ended; the snapshot brings Start back and locks the input.
+on('game_loop_ended', refreshAuthoritativeState)
 on('startup_recovery_response', (p) => useSession.getState().setRecovery(p))
 on('roll_prompt', (p) => useRulesRoll.getState().setPrompt(p.prompt))
 on('ui_state_snapshot', (p) => {

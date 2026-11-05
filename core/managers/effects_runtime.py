@@ -109,11 +109,14 @@ def update_character_with_effects(
     affects=None,
     casting_resource=None,
     post_combat=None,
+    opening_hold=None,
 ):
     """Classifier-first T078 -> T079 character update for a migrated campaign.
 
     ``post_combat`` (#1730): the completed fight's encounter id when this
     update comes from the automatic post-combat pass; only recovery commits.
+    ``opening_hold`` (#1827): a dict that records whether a declared opening
+    cast's payment was held for the cast; a campaign not yet converted pays.
     """
     if not campaign_effects_migrated():
         # Explicit recovery fallback for campaigns whose automatic conversion
@@ -148,6 +151,7 @@ def update_character_with_effects(
                 affects=affects,
                 casting_resource=casting_resource,
                 post_combat=post_combat,
+                opening_hold=opening_hold,
             )
     if success and classifier.cast:
         from core.managers.concentration_runtime import record_cast
