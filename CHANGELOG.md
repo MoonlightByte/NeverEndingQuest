@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - If something stops the game mid-turn, the Dungeon Master now says so and Start Game comes back at once, so you can carry on without reloading the page (#1808).
+- In Keep of Doom, the Witchlight Trailhead, the Withered Shrine and the Spectral Clearing read as first written again, in a new game or after a Reset. They no longer carry a past party's wording. The shrine's map and the clearing's clasp are there to find, and the clearing's warding ritual has its dust and clasp in the loot (#1805).
 - A Reset's backup now also keeps the items you put in storage (#1815).
 - After an update, a new game or Reset now uses the new version of the shipped adventures. A game in progress and your saved games stay as they are. Reset backs up first, then replaces the shipped files, so a hand change to one of those files goes back to the shipped version and stays in the backup (#1810).
 - Reset no longer changes your saved games. It used to put the areas inside every save of an adventure back to their unplayed state, so loading one afterwards brought back a world you had already changed (#1813).

@@ -206,8 +206,8 @@
       "locationId": "B01",
       "name": "Witchlight Trailhead",
       "type": "trail",
-      "description": "The Witchlight Trailhead is enveloped in a cold mist curling around the muddy earth and pale grass beneath the party's feet. Ancient standing stones loom close, their runes flickering faintly as ethereal blue witchlights hover softly above, guiding the way through the shadowed forest. Disturbed ground with fallen twigs, scuffed earth, and a scrap of blue fabric caught on a thorny bush mark the hurried passage of Scout Elen northward. Beneath twisted boughs, the air holds a heavy anticipation, touched by faint fluttering whispers carried on a chill breeze. The lingering dread of the haunted woods presses ever onward. The trail continues north toward the Withered Shrine, while paths back to Harrow's Hollow East Gate and nearby locations like the Abandoned Ranger Outpost remain accessible.",
-      "dmInstructions": "This location serves as the transition from Harrow's Hollow to the Gloamwood. The runes on standing stones flicker faintly, functioning as ethereal guides along the trail. The party finds clear signs of Elen's passage including disturbed earth, snapped twigs, and a scrap of blue fabric. A chill breeze carries faint whispering sounds, enhancing the tense atmosphere. Shadows lurk among the standing stones, and twig blights hide in the undergrowth around the trail markers. From here the party can pursue the trail northward toward the Withered Shrine or explore adjacent locations such as the Abandoned Ranger Outpost or Harrow's Hollow East Gate. Watch for environmental cues and mysterious influences during travel.",
+      "description": "The narrow path leading from Harrow's Hollow into the Gloamwood is marked by weathered stone pillars inscribed with faded warnings. Pale blue lights--part natural phosphorescence, part otherworldly illumination--drift along the trail. The air is thick with mist and the smell of damp earth and decay. Small offerings--coins, trinkets, and dried flowers--have been placed at the base of the markers by superstitious villagers seeking safe passage.",
+      "dmInstructions": "This location serves as the transition from Harrow's Hollow to the Gloamwood. As night falls, the shadows become active (if the party hasn't moved on). A DC 12 Perception check reveals fresh bootprints matching Scout Elen's description (small, with a distinctive star pattern on the heel). Players who make offerings at the markers gain advantage on their first saving throw in the forest. The runes on standing stones flicker faintly, functioning as ethereal guides along the trail. The party finds clear signs of Elen's passage including disturbed earth, snapped twigs, and a scrap of blue fabric. A chill breeze carries faint whispering sounds, enhancing the tense atmosphere. Shadows lurk among the standing stones, and twig blights hide in the undergrowth around the trail markers. From here the party can pursue the trail northward toward the Withered Shrine or explore adjacent locations such as the Abandoned Ranger Outpost or Harrow's Hollow East Gate. Watch for environmental cues and mysterious influences during travel.",
       "coordinates": "X2Y1",
       "accessibility": "Narrow trail with occasional rough terrain; reasonable for most travelers.",
       "npcs": [
@@ -711,7 +711,7 @@
       "locationId": "B03",
       "name": "The Withered Shrine",
       "type": "shrine",
-      "description": "A moss-covered clearing featuring a cracked stone altar etched with faded runes and surrounded by twisted undergrowth. The altar holds remnants of past offerings and a roughly scratched map pointing north toward the Spectral Clearing and Lost Ward Circle. The air is thick with a faint spiritual energy, and an oppressive feeling of being watched hangs over the clearing. Scattered near the altar are clues to Scout Elen's recent passage: a torn scrap of blue cloth, fresh bootprints, a ration wrapper, and a battered silver amulet partially buried in the soil. The shrine's protective ward is failing, and only a weak blue witchlight still flickers over the clearing.",
+      "description": "A clearing dominated by a crumbling stone altar surrounded by a circle of withered trees that seem frozen in torment. Once dedicated to forest guardians, the shrine now emanates a sense of abandonment and corruption. The altar stone is cracked down the middle, and dark stains spread across its surface. Tattered prayer ribbons hang limply from skeletal branches, and the ground is covered with dead leaves regardless of season. The air here is unnaturally still, and whispers seem to echo just at the edge of hearing.",
       "coordinates": "X1Y2",
       "connectivity": [
         "B01",
@@ -723,8 +723,8 @@
       "npcs": [
         {
           "name": "The Lingering Spirit",
-          "description": "A translucent, flickering spirit appearing as a hooded forest guardian. It conveys a grave warning about failing wards and escaping shadows, urging restoration of the rites to prevent darkness from overwhelming the forest. It gestures toward the altar, offerings, and a faint trail heading north, signaling the next direction of the party's quest.",
-          "attitude": "Neutral, urgent and seeking aid to restore protections"
+          "description": "A translucent, shifting figure that appears as a hooded forest guardian. Its form is unstable, flickering between a serene protector and a tormented wraith. It seeks to warn travelers about the forest's dangers but struggles to communicate clearly through its corrupted state.",
+          "attitude": "Neutral, trying to help but corrupted by the keep's influence"
         }
       ],
       "monsters": [
@@ -747,35 +747,36 @@
         "Strip of blue cloth torn from Elen's uniform"
       ],
       "plotHooks": [
-        "The Lingering Spirit warns that the shrine's binding is failing and shadows are escaping their chains.",
+        "The spirit tries to convey information about 'the binding failing' and 'shadows escaping their chains'.",
         "Recent bootprints and a scrap of blue fabric belonging to Scout Elen indicate her recent passage and link the party's quest to her disappearance.",
         "Map etched into the altar points north to the Spectral Clearing and Lost Ward Circle, locations key to restoring the wards.",
         "Ritual carvings on the altar provide faded instructions for a binding ritual requiring offerings of earth, flame, and living memory.",
-        "Restoring the shrine's protective ward would lift the oppressive atmosphere and strengthen the party against fear effects."
+        "Restoring the shrine's protective ward would lift the oppressive atmosphere and strengthen the party against fear effects.",
+        "An echo of blood sacrifice lingers around the altar, suggesting darker rituals have been performed recently."
       ],
-      "dmInstructions": "The Lingering Spirit appears after players investigate the altar and reveals the failing ward. It communicates through fragmented phrases, gestures, and emotional impressions. A DC 13 Religion check helps interpret the spirit's warnings about the failing ward ritual. Players who offer respect or perform minor restorative actions may receive a blessing granting advantage on saves against fear for 24 hours. Emphasize the urgency conveyed by the spirit and the importance of investigating the northern trail.",
+      "dmInstructions": "The Lingering Spirit appears after players investigate the altar. It communicates through fragmented phrases, gestures, and emotional impressions rather than clear speech. A DC 13 Religion check helps interpret its warnings about the ward circle failing. Players who show respect (offering items, repairing damage, or expressing reverence) might receive a blessing granting advantage on saves against fear for 24 hours. Emphasize the urgency conveyed by the spirit and the importance of investigating the northern trail.",
       "doors": [],
       "traps": [],
       "dcChecks": [
-        "Religion DC 13: Interpret the spirit's warnings and understand the shrine's original purpose and failing ward.",
+        "Religion DC 13: Interpret the spirit's warnings and understand the shrine's original purpose.",
         "Arcana DC 14: Identify traces of recent dark magic performed at the altar.",
         "Perception DC 12: Notice the twig blights before they attack.",
         "Investigation DC 15: Discover the map carved into the altar's base and faded ritual instructions."
       ],
-      "accessibility": "Open clearing with soft, uneven ground; altar has several steps leading up to it.",
+      "accessibility": "Open clearing with uneven ground; altar has several steps.",
       "dangerLevel": "Medium",
       "features": [
         {
           "name": "Cracked Altar",
-          "description": "A massive stone altar split down the middle, stained with fresh blood and etched with a rough map pointing toward key ritual sites."
+          "description": "A massive stone altar split down the middle, stained with what might be old blood or corruption."
         },
         {
-          "name": "Circle of Moss-Covered Stone Pillars",
-          "description": "Ancient pillars inscribed with faded prayers, surrounding the clearing and emanating faint magical energy."
+          "name": "Circle of Withered Trees",
+          "description": "Dead trees surrounding the clearing, their branches twisted in unnatural poses."
         },
         {
           "name": "Offering Bowls",
-          "description": "Stone bowls at the altar's base, some containing old offerings, others stagnant water."
+          "description": "Stone bowls at the base of the altar, some containing old offerings, others filled with stagnant water."
         },
         {
           "name": "Discarded Items",
@@ -1027,7 +1028,7 @@
       "locationId": "B06",
       "name": "Spectral Clearing",
       "type": "clearing",
-      "description": "An unnaturally still circular clearing shrouded in pale mist, dominated by a luminous faerie circle formed by glowing mushrooms. The ground is marked with flattened grass in unusual patterns, bootprints hesitating near the mushroom ring, and a torn cloak clasp engraved with \"E.R.\" lies nearby, hinting at a recent struggle. A mournful ghostly figure hovers just beyond the circle, its sorrowful presence communicating cryptic messages about a knight's heart, a scribe's betrayal, and a lost relic essential to breaking a lingering curse.",
+      "description": "An unnaturally perfect circular clearing where no trees grow and the sky above seems perpetually twilit regardless of the actual time of day. The ground is covered with pale, luminescent grass that sways even when no wind blows. At the clearing's center stands a ring of mushrooms--a faerie circle--within which the air shimmers like heat waves. Translucent figures occasionally manifest around the perimeter: lost travelers, forest guardians, and more sinister entities from the keep. Their whispers create a constant, unsettling background murmur that sometimes coalesces into recognizable warnings or pleas.",
       "coordinates": "X2Y3",
       "connectivity": [
         "B03",
@@ -1039,8 +1040,8 @@
       "npcs": [
         {
           "name": "Echo of Scout Elen",
-          "description": "A spectral reflection of Scout Elen created by her passage through this supernaturally charged area. The echo repeats fragments of Elen's experiences and fears, providing clues to her fate.",
-          "attitude": "Neutral, reactive to questions related to Elen's journey"
+          "description": "A spectral reflection of Scout Elen--not her ghost, but an echo created by her passage through this supernaturally charged area. The echo repeats fragments of Elen's experiences and fears, providing clues to her fate.",
+          "attitude": "Neutral, not truly sentient but reactive to questions related to Elen's journey"
         },
         {
           "name": "Mournful Ghost",
@@ -1050,16 +1051,18 @@
       ],
       "monsters": [],
       "plotHooks": [
-        "The Echo of Scout Elen hints at the knight's heart needed to break the curse.",
+        "The Echo of Scout Elen mentions seeking 'the knight's heart' to break his curse and free him from the relic's control.",
         "The mournful ghost reveals a scribe's betrayal within the keep and the need to recover a lost relic.",
         "The faerie circle's protective wards can be renewed to weaken the spectral curse.",
         "Footprints and disturbed foliage lead north toward the Keeper's Cottage, suggesting the next phase of the quest."
       ],
       "lootTable": [
         "Spectral lens (allows viewing invisible creatures, 3 charges)",
-        "Silver flute that calms spirits when played (requires Performance check DC 12)"
+        "Silver flute that calms spirits when played (requires Performance check DC 12)",
+        "Scout Elen's torn cloak clasp (recognizable to villagers)",
+        "Dust of disappearance (partial, enough for one use; scatter it at the faerie circle with a token of the lost to renew the circle's warding)"
       ],
-      "dmInstructions": "This clearing serves as a key information hub. The Echo of Scout Elen appears when players mention Elen or the keep, repeating her experiences. The mournful ghost offers cryptic guidance after players offer healing. The faerie circle can be investigated to discover arcane runes and remnants of a partial ritual. Players may perform the ancient warding ritual by scattering dust of disappearance and placing Elen's clasp as a token, renewing protective magic and weakening the spectral curse. Afterward, footprints leading north provide a clear path toward the Keeper's Cottage.",
+      "dmInstructions": "This clearing serves as an information hub where players can learn crucial details about the keep and Scout Elen's mission. The Echo appears when players mention Elen or the keep, repeating phrases she spoke when passing through. The mournful ghost offers cryptic guidance after players offer healing. The faerie circle can be investigated to discover arcane runes and remnants of a partial ritual. Players may perform the ancient warding ritual by scattering dust of disappearance and placing Elen's clasp as a token, renewing protective magic and weakening the spectral curse. Afterward, footprints leading north provide a clear path toward the Keeper's Cottage.",
       "doors": [],
       "traps": [
         {
@@ -1068,7 +1071,7 @@
           "detectDC": 15,
           "disableDC": 15,
           "triggerDC": 15,
-          "damage": "No direct damage; causes trance effect on failed save."
+          "damage": "Target must make DC 15 Wisdom save or enter trance. While entranced, they perceive only one minute passing while one hour passes outside. The trance breaks if they take damage or someone physically pulls them out."
         }
       ],
       "dcChecks": [
@@ -1087,11 +1090,11 @@
         },
         {
           "name": "Luminescent Grass",
-          "description": "Pale, glowing grass that sways to unseen movements and forms patterns pointing north towards the Keeper's Cottage."
+          "description": "Pale, glowing grass that sways to unseen movements and sometimes forms patterns or arrows."
         },
         {
           "name": "Spectral Manifestations",
-          "description": "Translucent figures including the Echo of Scout Elen and a mournful ghost that offer clues and guidance."
+          "description": "Translucent figures that appear and disappear around the clearing, whispering fragments of memory and warning."
         },
         {
           "name": "Scout Elen's Torn Cloak Clasp",
