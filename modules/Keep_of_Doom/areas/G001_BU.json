@@ -1060,7 +1060,7 @@
         "Spectral lens (allows viewing invisible creatures, 3 charges)",
         "Silver flute that calms spirits when played (requires Performance check DC 12)",
         "Scout Elen's torn cloak clasp (recognizable to villagers)",
-        "Dust of disappearance (partial, enough for one use; thrown into the air, it makes you and each creature and object within 10 feet Invisible for 2d4 minutes, ending for any creature that attacks or casts a spell)"
+        "Dust of disappearance (partial, enough for one use; scatter it at the faerie circle with a token of the lost to renew the circle's warding)"
       ],
       "dmInstructions": "This clearing serves as an information hub where players can learn crucial details about the keep and Scout Elen's mission. The Echo appears when players mention Elen or the keep, repeating phrases she spoke when passing through. The mournful ghost offers cryptic guidance after players offer healing. The faerie circle can be investigated to discover arcane runes and remnants of a partial ritual. Players may perform the ancient warding ritual by scattering dust of disappearance and placing Elen's clasp as a token, renewing protective magic and weakening the spectral curse. Afterward, footprints leading north provide a clear path toward the Keeper's Cottage.",
       "doors": [],
