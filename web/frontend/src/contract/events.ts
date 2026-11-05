@@ -192,6 +192,7 @@ export interface ServerEvents {
   version_status: { update_available: boolean; local_version: string; remote_version: string; message: string };
   cached_messages: GameMessage[];
   game_resumed: { is_processing: boolean; message: string };
+  game_loop_ended: Record<string, never>;
   game_output: GameMessage;
   debug_output: { type: 'debug'; content: string; timestamp: string };
   status_update: { message: string; is_processing: boolean; recovery_required?: boolean; wait?: WaitRecord | null };
