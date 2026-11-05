@@ -109,7 +109,7 @@ def create_backup():
     
     # Backup all root game files
     root_files = [
-        "party_tracker.json", "campaign.json", "world_registry.json",
+        "party_tracker.json", "campaign.json", "world_registry.json", "player_storage.json",
         "modules/conversation_history/conversation_history.json", "modules/conversation_history/chat_history.json", "modules/conversation_history/combat_conversation_history.json",
         "modules/conversation_history/conversation_history.json", "current_location.json", "journal.json",
         "live_state.json", "live_state.json.bak",
