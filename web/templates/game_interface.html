@@ -6022,6 +6022,18 @@
             if (restoreRecoveryRequired) applyRestoreRecovery(data);
         });
 
+        // #1808: the game thread has ended. Start is the way on, and Load stays open.
+        socket.on('game_loop_ended', () => {
+            if (restoreRecoveryRequired || restorePending) return;
+            gameStarted = false;
+            startupInputEnabled = false;
+            document.getElementById('start-button').textContent = 'Start Game';
+            document.getElementById('start-button').disabled = false;
+            document.getElementById('save-button').disabled = true;
+            document.getElementById('user-input').disabled = true;
+            document.getElementById('send-button').disabled = true;
+        });
+
         function applyRestoreRecovery(data) {
             restorePending = data.pending === true;
             restoreRecoveryRequired = data.can_resume === false || data.restore_outcome === 'recovery_required' || data.recovery_required === true;

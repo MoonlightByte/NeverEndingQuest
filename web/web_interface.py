@@ -252,7 +252,6 @@ log.setLevel(logging.ERROR)  # Only show errors, not every HTTP request
 
 # Import shared state
 from web.shared_state import (
-    SAFE_ACTION_FAILURE_MESSAGE,
     message_cache_lock,
     module_progress_queue,
     set_message_log_reset_listener,
@@ -5490,14 +5489,34 @@ def extract_module_context_for_monsters(module_name):
         error(f"Failed to extract monster context: {e}")
         return f"Module: {module_name}"
 
+GAME_LOOP_STOP_LINE = (
+    "Forgive me, I've lost my place in the story. Press Start Game and we'll pick up "
+    "where we left off. If I stumble again, Load will take us back to your last save."
+)
+
+
+def _announce_game_loop_end(loop_thread):
+    """Tell the browser the game loop has ended, once its thread really has, so
+    a snapshot reads game_running false and Start comes back (#1808). A Load or
+    Reset that stopped it, a pause, or a newer game already say what happens next."""
+    loop_thread.join()
+    if game_thread is not loop_thread or _web_gameplay_paused():
+        return
+    from core.managers.status_manager import status_ready
+
+    status_ready()
+    socketio.emit('game_loop_ended', {})
+
+
 def _queue_game_loop_stop_line():
     """The game loop has ended on an error: one stop line, cached so a reload
     still shows it (#1392). A paused web (a Load or Reset in progress) does not
     cache, and a sink that fails is not trusted: either way the line is shown
     live only, as before."""
     payload = {
-        'type': 'error',
-        'content': SAFE_ACTION_FAILURE_MESSAGE,
+        'type': 'narration',
+        'channel': 'main',
+        'content': GAME_LOOP_STOP_LINE,
         'message_id': f"msg-{uuid4().hex}",
         'timestamp': datetime.now().isoformat(),
     }
@@ -5604,6 +5623,7 @@ def run_game_loop():
                 sys.stdout = original_stdout
             except Exception:
                 pass
+        threading.Thread(target=_announce_game_loop_end, args=(threading.current_thread(),), daemon=True).start()
 
 def send_output_to_clients():
     """Send queued output to all connected clients"""
