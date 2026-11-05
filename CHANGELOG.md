@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Arrivals now give the time of day in plain words instead of reading the clock out, and when something you asked for has to wait, the DM offers it as part of the story instead of reporting that it has not happened yet (#1794, #1822).
 - A Reset's backup now also keeps the items you put in storage (#1815).
 - After an update, a new game or Reset now uses the new version of the shipped adventures. A game in progress and your saved games stay as they are. Reset backs up first, then replaces the shipped files, so a hand change to one of those files goes back to the shipped version and stays in the backup (#1810).
 - Reset no longer changes your saved games. It used to put the areas inside every save of an adventure back to their unplayed state, so loading one afterwards brought back a world you had already changed (#1813).
