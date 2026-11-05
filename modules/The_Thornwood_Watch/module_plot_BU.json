@@ -61,10 +61,6 @@
           {
             "locationId": "TW05",
             "occupant": "bandit_captain_gorvek"
-          },
-          {
-            "locationId": "TW05",
-            "occupant": "bandit_captain_gorvek-2"
           }
         ],
         "impact": "The party made it through the bandit lands to the stronghold."
