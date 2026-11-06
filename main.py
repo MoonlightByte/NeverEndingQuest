@@ -2011,9 +2011,10 @@ def generate_seamless_transition_narration(departure_narration, arrival_narratio
     dm_text = str(dm_text or "").strip()
     dm_block = (
         "\nTHE DM'S ACCEPTED NARRATION OF THIS TURN (use it only for this: if it "
-        "tells the player that something they asked for has not happened yet and "
-        "waits for their next turn, say so plainly in the closing invitation, in "
-        "its own terms; take nothing else from it):\n---\n" + dm_text + "\n---\n"
+        "leaves something the player asked for to their next turn, the closing "
+        "invitation must name that action and offer it in story words, as what "
+        "they can do now or what lies ahead, never as something that has not "
+        "happened; take nothing else from it):\n---\n" + dm_text + "\n---\n"
     ) if dm_text else ""
     roster_block = ""
     if isinstance(party, dict):
@@ -2052,6 +2053,7 @@ Your task is to rewrite them into a single, cohesive, and cinematic narration.
 - Address the sole player character only in second person (you/your), never as a third-person protagonist.
 {closing}
 - When both blocks state the same fact, keep it once.
+- Say the time of day in words; never keep a clock figure from the source blocks.
 {roster_block}{down_block}
 DEPARTURE NARRATION:
 ---
@@ -2516,10 +2518,11 @@ def _transition_arrival_facts(party, checkpoint=None):
     ) or _transition_arrival_time(party)
     if arrival_time:
         block += (
-            "\n    ARRIVAL TIME: %s, %s. Describe the scene as it is at this "
-            "time of day; an authored detail tied to another time (dusk, "
-            "night, dawn) is not happening now.\n"
-            % (arrival_time["clock"], arrival_time["timeOfDay"])
+            "\n    ARRIVAL TIME: %s. Describe the scene as it is at this "
+            "time of day, in words a person would use; never state an hour "
+            "or a clock figure (the game shows them). An authored detail tied "
+            "to another time (dusk, night, dawn) is not happening now.\n"
+            % arrival_time["timeOfDay"]
         )
     if not _transition_companions(party):
         block += (
@@ -11296,7 +11299,8 @@ _TRAVEL_ORDER_FACT = (
     "nearest step now, without transitionLocation, and leave the move for "
     "the player's next turn, or return the travel alone. Narrate only what "
     "the returned actions record: a step this response does not take is "
-    "acknowledged as still to come, never told as done."
+    "offered in story words as something the player can still do, never "
+    "told as done."
 )
 
 
