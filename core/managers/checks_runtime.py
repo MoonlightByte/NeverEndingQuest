@@ -494,7 +494,8 @@ def check_results_note(turn_marker=None) -> str:
     LAST_NOTE = ("\nCHECK RESULTS (the rules engine settled the rolls and actions you left open last turn; open this response by "
                  "narrating each outcome in story terms, then answer every part of the new input; never re-roll or re-add; the player already "
                  "sees these numbers on the dice receipt, so do not restate dice, bonus, total, DC or margin; a not-resolved, "
-                 "declined or Rest line has no success or failure: tell the player what happened): "
+                 "declined or Rest line has no success or failure: show in the scene what became of it (the character lets it go, moves on, "
+                 "is cut off, rests), in story words, never the line's words): "
                  + " | ".join(lines) + "\n" + "".join(read_note(line) for line in lines))
     return LAST_NOTE
 
