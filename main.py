@@ -2011,10 +2011,10 @@ def generate_seamless_transition_narration(departure_narration, arrival_narratio
     dm_text = str(dm_text or "").strip()
     dm_block = (
         "\nTHE DM'S ACCEPTED NARRATION OF THIS TURN (use it only for this: if it "
-        "leaves something the player asked for to their next turn, offer that in "
-        "the closing invitation in story words, as what they can do now or what "
-        "lies ahead, never as something that has not happened; take nothing else "
-        "from it):\n---\n" + dm_text + "\n---\n"
+        "leaves something the player asked for to their next turn, the closing "
+        "invitation must name that action and offer it in story words, as what "
+        "they can do now or what lies ahead, never as something that has not "
+        "happened; take nothing else from it):\n---\n" + dm_text + "\n---\n"
     ) if dm_text else ""
     roster_block = ""
     if isinstance(party, dict):
@@ -11299,7 +11299,8 @@ _TRAVEL_ORDER_FACT = (
     "nearest step now, without transitionLocation, and leave the move for "
     "the player's next turn, or return the travel alone. Narrate only what "
     "the returned actions record: a step this response does not take is "
-    "acknowledged as still to come, never told as done."
+    "offered in story words as something the player can still do, never "
+    "told as done."
 )
 
 
