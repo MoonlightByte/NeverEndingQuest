@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In The Thornwood Watch, Bandit Captain Gorvek and Malarok the Corruptor are now one figure each. When one of them falls, no second copy of him stays behind, and the way through the bandit stronghold opens once its fighters are down (#1800).
 - If something stops the game mid-turn, the Dungeon Master now says so and Start Game comes back at once, so you can carry on without reloading the page (#1808).
 - A spell you declare as your opening action now costs its slot once, when you cast it. It no longer also costs a slot as the fight starts, and on your last slot the cast now resolves. If you do something else at the offer, you keep the slot (#1827).
 - In Keep of Doom, the Witchlight Trailhead, the Withered Shrine and the Spectral Clearing read as first written again, in a new game or after a Reset. They no longer carry a past party's wording. The shrine's map and the clearing's clasp are there to find, and the clearing's warding ritual has its dust and clasp in the loot (#1805).
