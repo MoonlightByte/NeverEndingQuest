@@ -29,12 +29,6 @@
       "disposition": "indifferent"
     },
     {
-      "location": "NC05",
-      "name": "Malarok the Corruptor",
-      "index": 0,
-      "disposition": "hostile"
-    },
-    {
       "location": "RO01",
       "name": "Ranger Elen",
       "index": 0,
@@ -117,12 +111,6 @@
       "name": "Spirit-Touched Hermit Maelo",
       "index": 0,
       "disposition": "friendly"
-    },
-    {
-      "location": "TW05",
-      "name": "Bandit Captain Gorvek",
-      "index": 0,
-      "disposition": "hostile"
     },
     {
       "location": "TW06",

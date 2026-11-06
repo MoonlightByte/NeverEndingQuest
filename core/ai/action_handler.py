@@ -4808,6 +4808,7 @@ def stage_encounter_payments(actions):
         "encounter_index": encounter_index,
         "staged": staged,
         "committed": [index for index in range(encounter_index) if index not in staged],
+        "held": [],
         "paid": False,
     }
 
@@ -4840,6 +4841,7 @@ def _encounter_payment_lines(payments):
     committed = [_action_label(payments["actions"][index]) for index in payments["committed"]]
     if payments["paid"]:
         committed, staged = committed + staged, []
+    staged += [_payment_label(payments["actions"][index]) for index in payments["held"]]
     lines = []
     if staged:
         lines.append("Not spent: %s (the payment waits for the fight)." % "; ".join(staged))
@@ -4847,23 +4849,40 @@ def _encounter_payment_lines(payments):
     return " ".join(lines)
 
 
+def _offers_opening_action(payments):
+    """Whether the fight offers a declared first action, by copy_opening_action's
+    rule (#1827). Typed fields only: the text's presence, never its words."""
+    parameters = payments["actions"][payments["encounter_index"]].get("parameters")
+    parameters = parameters if isinstance(parameters, dict) else {}
+    opening_action = parameters.get("openingAction")
+    return (isinstance(opening_action, str) and bool(opening_action.strip())
+            and parameters.get("openingActionSource") != "earlier_turn")
+
+
 def _pay_encounter(payments, party_tracker_data, location_data, conversation_history,
                    invocation_claim, turn_roster):
     """Commit the staged payments of a built fight, in reply order (#1731).
 
+    #1827: a payment for a declared opening cast that bought nothing yet is
+    held, not spent: the cast pays when it happens, as any in-fight cast does.
+
     Returns None once all are paid, else the first payment's own result (a
     Rules Error or a failure), which ends the turn before the fight starts.
     """
+    offers_opening = _offers_opening_action(payments)
     for index in payments["staged"]:
+        opening_hold = {} if offers_opening else None
         result = process_action(
             payments["actions"][index], party_tracker_data, location_data, conversation_history,
             invocation_claim=invocation_claim,
             action_context={"actions": copy.deepcopy(payments["actions"]), "current_index": index},
             turn_roster=turn_roster,
+            opening_hold=opening_hold,
         )
         if not isinstance(result, dict) or result.get("status") != "continue":
             return result
-        payments["committed"].append(index)
+        held = bool(opening_hold and opening_hold.get("held"))
+        payments["held" if held else "committed"].append(index)
         payments["staged"] = [later for later in payments["staged"] if later != index]
     payments["paid"] = True
     return None
@@ -4958,12 +4977,17 @@ def process_action(
     turn_roster=None,
     post_combat_encounter=None,
     encounter_payments=None,
+    opening_hold=None,
 ):
     """Process an action based on its type
 
     ``post_combat_encounter`` (#1730) is set only by the turn loop, for an
     updateCharacterInfo of the automatic post-combat pass: only recovery
     commits, and a refused change returns ``post_combat_refused``.
+    ``opening_hold`` (#1827) is set only by _pay_encounter, for the payment
+    of a fight that offers a declared opening action; the update records
+    whether it held the payment for the cast.
+
     ``encounter_payments`` (#1731, createEncounter only) holds the reply's
     staged castingResource payments from ``stage_encounter_payments``.
     
@@ -5193,7 +5217,8 @@ def process_action(
                         f"{check.get('characterName')} {checks.label(check.get('stat'))}: not resolved (combat began)")})
 
                 if encounter_payments:
-                    # #1731: the fight is built; its opening payment commits now.
+                    # #1731: the fight is built; its opening payment commits now,
+                    # unless it waits for a declared opening cast (#1827).
                     refused = _pay_encounter(encounter_payments, party_tracker_data, location_data,
                                              conversation_history, invocation_claim, turn_roster)
                     if refused is not None:
@@ -5873,6 +5898,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     affects=parameters.get("affects"),
                     casting_resource=parameters.get("castingResource"),
                     post_combat=post_combat_encounter,
+                    opening_hold=opening_hold,
                 )
                 debug(f"STATE_CHANGE: effects-aware character update returned {success}", category="character_updates")
                 if success:
