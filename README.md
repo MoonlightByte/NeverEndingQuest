@@ -2,7 +2,7 @@
 
 ## Windows: download the app
 
-Download `NeverEndingQuest-Setup-1.1.1.exe` from the
+Download `NeverEndingQuest-Setup-1.2.0.exe` from the
 [latest release](https://github.com/MoonlightByte/NeverEndingQuest/releases/latest) and run it.
 It installs for your user only (no admin prompt) and keeps your saves in `%APPDATA%\NeverEndingQuest`,
 also when you uninstall it.
@@ -95,7 +95,7 @@ setup or repair, follow the launcher's instructions, or explicitly run legacy.
 Node.js/npm are needed to build or rebuild React, not to run an already-current
 build or the legacy player. See [Quick Start](#quick-start) for installation.
 
-**Version 0.3.5 (Alpha)**
+**Version 1.2.0**
 
 An AI-powered Dungeon Master for running SRD 5.2.1 compatible tabletop RPG campaigns with infinite adventure potential. Experience the world's most popular roleplaying game with an intelligent AI that remembers every decision, adapts to your playstyle, and creates endless adventures tailored to your party.
 
