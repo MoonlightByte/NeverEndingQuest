@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-05
+
 - Arrivals now give the time of day in plain words instead of reading the clock out, and when something you asked for has to wait, the DM offers it as part of the story instead of reporting that it has not happened yet (#1794, #1822).
 - In The Thornwood Watch, Bandit Captain Gorvek and Malarok the Corruptor are now one figure each. When one of them falls, no second copy of him stays behind, and the way through the bandit stronghold opens once its fighters are down (#1800).
 - If something stops the game mid-turn, the Dungeon Master now says so and Start Game comes back at once, so you can carry on without reloading the page (#1808).
@@ -68,9 +70,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Headless clients read the whole game: `start()` waits for a new game's opening scene, `TurnResult.text` carries roll results and damage cards, and relaunching with the same `--character` keeps the saved sheet (#1811).
 - Headless script mode ends cleanly at any prompt, can send an empty line with `<enter>`, and no longer documents an exit code it never returned; `new-game` refuses a changed sheet with a typed error (#1811).
 - The headless doc matches the code again: event fields, game directories, a resume's cost, and which commands print clean JSON. An unknown message type now names itself in the error (#1811).
-
-## [1.1.1] - 2026-11-02
-
 - A game with a separate data folder now keeps its lock files there instead of in the install folder, so it can save when the install folder is read-only; without a data folder nothing changes (#1708).
 - The README download steps now follow what Edge shows for the unsigned installer (More actions, Keep, then Keep anyway) and say the Windows "protected your PC" box may not appear (#1704).
 - In a fight, the damage roll you still have to make now reads "Damage to roll: 1d10, as one total" instead of looking like a result with a missing number, and the damage you rolled is shown as its own line (for example "Fire Bolt damage on Skeleton 2: 1d10 = 6."); what the game tells the AI is unchanged (#1706).
