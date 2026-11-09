@@ -122,33 +122,45 @@ _PRESENT_TEMPLATE = (
     "the scene allows), never a narrated claim. They are not party members: the "
     "party's down-scene rules do not apply to them."
 )
+# #1837: a person a fight left at 0 HP who has no sheet (a creature the area
+# data marks a person) cannot be woken by the sheet action above.
+_NO_SHEET_SENTENCE = (
+    " One listed without a sheet cannot be healed awake; what becomes of them is "
+    "the DM's to narrate and record."
+)
 
 
-def present_from_sheets(sheets):
+def present_from_sheets(sheets, sheetless=()):
     """The present-persons element for the down sheets among these (a dead
-    one is not down: nobody can wake them), or None."""
+    one is not down: nobody can wake them), and for ``sheetless`` names of
+    marked creatures a fight left at 0 HP (#1837), or None."""
     down = [
         (str(sheet.get("name") or "Unknown"), sheet.get("hitPoints"), _status_text(sheet.get("status")))
         for sheet in sheets or [] if isinstance(sheet, dict) and sheet_is_down(sheet)
         and _status_text(sheet.get("status")) != "dead"
     ]
+    down += [(str(name), 0, "unconscious") for name in sheetless or () if name]
     if not down:
         return None
-    return _PRESENT_TEMPLATE.format(marker=PRESENT_DOWN_MARKER, members=_members_text(down, None))
+    text = _PRESENT_TEMPLATE.format(marker=PRESENT_DOWN_MARKER, members=_members_text(down, None))
+    return text + _NO_SHEET_SENTENCE if any(name for name in sheetless or ()) else text
 
 
 def present_down_text(party_tracker_data, path_manager):
-    """The element for the person occupants present now at the party's place
-    who are outside the party and have a sheet at 0 HP, or None. A person
-    with no sheet is skipped; no sheet is ever created here."""
+    """The element for the person occupants at the party's place, present or
+    recorded defeated there (#1837), who are outside the party and have a
+    sheet at 0 HP, and for the creatures the area marks a person that a
+    fight left defeated there, or None. A person with no sheet is skipped;
+    no sheet is ever created here."""
     import json
     import os
 
-    from core.nql.occupants import id_stem, present_people
+    from core.nql.occupants import downed_at_place, id_stem
     from utils.npc_name_normalizer import normalize_npc_name_for_action
 
     sheets = []
-    for person in present_people(party_tracker_data or {}):
+    persons, marked = downed_at_place(party_tracker_data or {})
+    for person in persons:
         name = person.get("name")
         if not isinstance(name, str) or not name.strip():
             continue
@@ -165,7 +177,7 @@ def present_down_text(party_tracker_data, path_manager):
                 sheet = None
             if isinstance(sheet, dict):
                 sheets.append(sheet)
-    return present_from_sheets(sheets)
+    return present_from_sheets(sheets, [str(o.get("name") or "") for o in marked])
 
 
 def _render(down_members, round_number=None):

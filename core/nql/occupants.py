@@ -789,6 +789,34 @@ def present_people(tracker: Dict[str, Any], *, root: str = ".") -> List[Dict[str
     ]
 
 
+def _recorded_defeated(occupant: Dict[str, Any]) -> bool:
+    return any(isinstance(e, dict) and e.get("outcome") == "defeated" for e in occupant.get("tally") or [])
+
+
+def downed_at_place(tracker: Dict[str, Any], *, root: str = ".") -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """#1837: who may lie at 0 HP at the party's current place, from the
+    engine view: (persons, marked creatures). Persons are the person
+    occupants present (count above 0) or recorded defeated there; marked
+    creatures are creature occupants the area data marks a person
+    (``authored_person``) that a fight recorded defeated there. Empty when
+    the engine or the document is unavailable."""
+    location_id = (tracker.get("worldConditions") or {}).get("currentLocationId") or ""
+    if not location_id:
+        return [], []
+    module = tracker.get("module") or ""
+    place = place_id(module, location_id)
+    response = request(view=(place,), root=root, create=False)
+    if not response or not response.get("ok"):
+        return [], []
+    here = [o for o in (response.get("live_state") or {}).get("occupants") or []
+            if isinstance(o, dict) and o.get("location") == place]
+    persons = [o for o in here if o.get("kind") == "person" and (
+        (isinstance(o.get("count", 1), int) and o.get("count", 1) > 0) or _recorded_defeated(o))]
+    marked = [o for o in here if o.get("kind") == "creatures" and _recorded_defeated(o)
+              and authored_person(module, location_id, str(o.get("id") or ""), root=root)]
+    return persons, marked
+
+
 def id_stem(occupant: Dict[str, Any]) -> str:
     """The last segment of an occupant id: the sheet stem it is linked to (#1450)."""
     return str(occupant.get("id") or "").rsplit("/", 1)[-1]
@@ -1377,6 +1405,15 @@ def _authored_entry(location: Optional[Dict[str, Any]], occupant_id: str) -> Opt
                 if seen == nth:
                     return entry
     return None
+
+
+def authored_person(module: str, location_id: str, occupant_id: str, *, root: str = ".") -> bool:
+    """#1837: whether the area data marks this occupant a person (``"person":
+    true`` on its authored entry), found by its id, never by a name. A
+    creature so marked falls unconscious at 0 HP, as a person does."""
+    location = _authored(root).get((module or "").replace(" ", "_"), {}).get(location_id)
+    entry = _authored_entry(location, occupant_id)
+    return isinstance(entry, dict) and entry.get("person") is True
 
 
 def describe(present: List[Dict[str, Any]], module: str, location_id: str, *, root: str = ".") -> None:

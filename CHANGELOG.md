@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Bandits, their captains and every other hostile person now fall unconscious at 0 HP instead of dying, as party members do; monsters still die. After the fight the Dungeon Master knows who lies unconscious and tells you (#1837).
 - Travel narration now counts an escort who comes with you, so it no longer says you travel alone, and the Wolf's Den Cave's description no longer tells you who is cornered inside before you go in (#1842).
 - After a fight, a person recorded as having surrendered or been defeated can join the party in one step from the DM, and the DM now sees that person's id in the place's record. Someone whose fate stands, such as a person who died, is no longer suggested as a new companion under the same name (#1837).
 - Someone you ask to travel with you no longer stays behind without a word. If the DM names them wrongly, the game has it fix the name before the scene is shown, and if it still cannot, the journey says they stayed behind (#1841).
