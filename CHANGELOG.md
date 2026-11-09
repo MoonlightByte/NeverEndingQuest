@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Someone you ask to travel with you no longer stays behind without a word. If the DM names them wrongly, the game has it fix the name before the scene is shown, and if it still cannot, the journey says they stayed behind (#1841).
 - The module validator's command line now checks typed facts too, so a module with a broken one no longer passes there (#1828).
 - Arrivals now give the time of day in plain words instead of reading the clock out, and when something you asked for has to wait, the DM offers it as part of the story instead of reporting that it has not happened yet (#1794, #1822).
 - In The Thornwood Watch, Bandit Captain Gorvek and Malarok the Corruptor are now one figure each. When one of them falls, no second copy of him stays behind, and the way through the bandit stronghold opens once its fighters are down (#1800).

@@ -2205,14 +2205,26 @@ def _transition_narration_action_context(checkpoint):
             "setOccupantAttitude",
             "returnOccupant",
         ):
-            # P4-g: only a staged or committed escort is a fact of the
-            # arrival; a refused occupant action changed nothing.
-            if not (receipt.get("escort") and receipt.get("status") in ("staged", "committed")):
+            # P4-g: a staged or committed escort comes along; any other
+            # refused occupant action changed nothing.
+            if receipt.get("escort") and receipt.get("status") in ("staged", "committed"):
+                fact["receiptResult"] = {
+                    "escort": receipt.get("occupant_name") or receipt.get("occupant_id"),
+                    "arrivesWithParty": True,
+                }
+            elif (
+                family == "moveOccupant"
+                and receipt.get("status") == "refused"
+                and str((action.get("parameters") or {}).get("locationId") or "").strip()
+                == str(receipt.get("destination_location_id") or "").strip()
+            ):
+                # #1841: a refused escort stayed behind; the narrator says so.
+                fact["receiptResult"] = {
+                    "escort": receipt.get("occupant_name") or receipt.get("occupant_id"),
+                    "arrivesWithParty": False,
+                }
+            else:
                 continue
-            fact["receiptResult"] = {
-                "escort": receipt.get("occupant_name") or receipt.get("occupant_id"),
-                "arrivesWithParty": True,
-            }
         public_actions.append(fact)
     if not public_actions:
         return ""
@@ -11304,6 +11316,43 @@ _TRAVEL_ORDER_FACT = (
 )
 
 
+def _escort_refusal(actions, module, origin_location_id, last_attempt):
+    """#1841: the engine's reason a travel escort (a moveOccupant to the
+    destination after a within-module transitionLocation) cannot come along,
+    as an Occupant Error naming the present ids, or None. Read before review,
+    so the DM corrects the id in the same turn. An unavailable engine passes
+    (the apply decides), and so does the last attempt, so the turn never
+    fails on it: the travel receipt then records the refusal and the arrival
+    facts say the escort stayed behind."""
+    from core.nql import occupants as _occupants
+
+    if not actions or not isinstance(actions[0], dict) or actions[0].get("action") != "transitionLocation":
+        return None
+    destination = str((actions[0].get("parameters") or {}).get("newLocation") or "").strip()
+    for item in actions[1:]:
+        if not isinstance(item, dict) or item.get("action") != "moveOccupant":
+            continue
+        parameters = item.get("parameters")
+        parameters = parameters if isinstance(parameters, dict) else {}
+        if str(parameters.get("locationId") or "").strip() != destination:
+            continue  # not an escort: _travel_unsupported_siblings owns it
+        try:
+            problem = _occupants.escort_problem(parameters, module, origin_location_id, destination)
+        except Exception as exc:  # fail forward: the travel receipt decides
+            warning("VALIDATION: travel escort not checked (%s)" % exc, category="ai_validation")
+            continue
+        if not problem:
+            continue
+        if last_attempt:
+            info("VALIDATION: travel escort refused on the last attempt; passed, its receipt "
+                 "records the refusal (#1841)", category="ai_validation")
+            continue
+        return ("Occupant Error: moveOccupant was refused: %s. Nothing changed in the roster "
+                "record. Correct only that moveOccupant's occupantId with an id from the location "
+                "data's occupants list, or drop it and narrate that they stay behind." % problem)
+    return None
+
+
 def _casting_resource_refusal(actions, last_attempt):
     """#1329 (D-1329-1): the engine's reason a draft's castingResource cannot pay
     for its typed spell, before anything is shown, or None. Only the action's
@@ -12010,6 +12059,29 @@ def _review_dm_candidate(
                             "The previous structured response was rejected. "
                             + contract_error
                             + " Return the complete corrected JSON."
+                        )
+                        review_retry_status(retry_count)
+                    escort_refusal = (
+                        _escort_refusal(
+                            actions,
+                            str(party_tracker_data.get("module") or ""),
+                            str((party_tracker_data.get("worldConditions") or {}).get("currentLocationId") or ""),
+                            rejected_drafts >= _DM_REVIEW_REJECTION_LIMIT - 1,
+                        )
+                        if transition_check_passed else None
+                    )
+                    if escort_refusal:
+                        retry_count += 1
+                        transition_check_passed = False
+                        rejected_candidate = ai_response_content
+                        retry_correction = (
+                            "The previous structured response was rejected before "
+                            "anything was shown: " + escort_refusal + " Return the "
+                            "complete corrected JSON."
+                        )
+                        info(
+                            f"VALIDATION: travel escort refused before review; retry {retry_count}",
+                            category="ai_validation",
                         )
                         review_retry_status(retry_count)
 
