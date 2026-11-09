@@ -489,7 +489,7 @@ def _standing(live: Dict[str, Any], creatures: List[Dict[str, Any]], by_id: Dict
 
 
 def combat_actions(live: Dict[str, Any], place: str, creatures: List[Dict[str, Any]],
-                   departed: Any = ()) -> Tuple[str, List[str]]:
+                   departed: Any = (), marked: Any = ()) -> Tuple[str, List[str]]:
     """The typed actions that record this fight's enemies on their occupants,
     and the enemies no occupant matched. An enemy names its occupant by
     ``occupantId`` or by its typed slug equal to a present group's type at
@@ -522,6 +522,11 @@ def combat_actions(live: Dict[str, Any], place: str, creatures: List[Dict[str, A
                 continue
             unmatched.append(str(creature.get("name")))
             continue
+        if occupant["id"] in marked and str(creature.get("status") or "").strip().lower() == "dead":
+            # #1837: a person the area marks (``marked``) falls unconscious at
+            # 0, so "defeated" there means alive; a dead one (a slot not
+            # declared by id fights unmarked) is recorded as having died.
+            outcome = "died"
         tally = tallies.setdefault(occupant["id"], {})
         tally[outcome] = tally.get(outcome, 0) + 1
     standing = _standing(live, creatures, by_id, by_type, tallies, departed)
@@ -543,7 +548,7 @@ def combat_actions(live: Dict[str, Any], place: str, creatures: List[Dict[str, A
         else:
             present = int(occupant.get("count") or 0)
         left = present
-        for outcome in ("defeated", "surrendered", "fled"):
+        for outcome in ("defeated", "surrendered", "fled", "died"):
             n = min(tally.get(outcome, 0), left)
             if n <= 0:
                 continue
@@ -628,7 +633,11 @@ def resolve_combat(encounter_id: str, *, root: str = ".") -> Optional[Dict[str, 
         live = current.get("live_state") or _load(root) or {}
         departed = {row.get("combatantId") for row in (encounter.get("sceneFacts") or {}).get("participants") or []
                     if isinstance(row, dict) and row.get("participation") == "departed"}
-        actions, unmatched = combat_actions(live, place, encounter.get("creatures") or [], departed)
+        # #1837: the creature groups here the area marks a person, by id.
+        marked = {o.get("id") for o in live.get("occupants") or []
+                  if isinstance(o, dict) and o.get("location") == place and o.get("kind") == "creatures"
+                  and authored_person(module, location_id, str(o.get("id") or ""), root=root)}
+        actions, unmatched = combat_actions(live, place, encounter.get("creatures") or [], departed, marked=marked)
         joined = joined_person_actions(live, place, encounter)
         actions = "\n".join(part for part in (actions, joined) if part)
         if unmatched:
@@ -787,6 +796,34 @@ def present_people(tracker: Dict[str, Any], *, root: str = ".") -> List[Dict[str
         if isinstance(o, dict) and o.get("location") == place and o.get("kind") == "person"
         and isinstance(o.get("count", 1), int) and o.get("count", 1) > 0
     ]
+
+
+def _recorded_defeated(occupant: Dict[str, Any]) -> bool:
+    return any(isinstance(e, dict) and e.get("outcome") == "defeated" for e in occupant.get("tally") or [])
+
+
+def downed_at_place(tracker: Dict[str, Any], *, root: str = ".") -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """#1837: who may lie at 0 HP at the party's current place, from the
+    engine view: (persons, marked creatures). Persons are the person
+    occupants present (count above 0) or recorded defeated there; marked
+    creatures are creature occupants the area data marks a person
+    (``authored_person``) that a fight recorded defeated there. Empty when
+    the engine or the document is unavailable."""
+    location_id = (tracker.get("worldConditions") or {}).get("currentLocationId") or ""
+    if not location_id:
+        return [], []
+    module = tracker.get("module") or ""
+    place = place_id(module, location_id)
+    response = request(view=(place,), root=root, create=False)
+    if not response or not response.get("ok"):
+        return [], []
+    here = [o for o in (response.get("live_state") or {}).get("occupants") or []
+            if isinstance(o, dict) and o.get("location") == place]
+    persons = [o for o in here if o.get("kind") == "person" and (
+        (isinstance(o.get("count", 1), int) and o.get("count", 1) > 0) or _recorded_defeated(o))]
+    marked = [o for o in here if o.get("kind") == "creatures" and _recorded_defeated(o)
+              and authored_person(module, location_id, str(o.get("id") or ""), root=root)]
+    return persons, marked
 
 
 def id_stem(occupant: Dict[str, Any]) -> str:
@@ -951,6 +988,46 @@ def dm_action_line(action_type: str, parameters: Any, module: str) -> Tuple[str,
     return "", "unknown occupant action %s" % action_type
 
 
+# #1837: the outcomes code brings a person back from before the DM's action on
+# them (an add by id, a resolve), so the DM names a person who yielded or was
+# beaten in one action, by the id on their rosterRecord line.
+RETURNABLE_OUTCOMES = ("surrendered", "defeated")
+
+
+def returnable_entry(occupant: Any, place: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """The one tally entry code returns first (#1837): a person with none
+    left (count 0) and exactly one entry, of one member, recorded
+    surrendered or defeated; at ``place`` when one is given. None otherwise."""
+    if not isinstance(occupant, dict) or occupant.get("kind") != "person" or occupant.get("count") != 0:
+        return None
+    if place is not None and occupant.get("location") != place:
+        return None
+    tally = [e for e in occupant.get("tally") or [] if isinstance(e, dict)]
+    if len(tally) != 1 or tally[0].get("outcome") not in RETURNABLE_OUTCOMES or tally[0].get("count") != 1:
+        return None
+    return tally[0]
+
+
+def return_line(occupant_id: str, entry: Dict[str, Any]) -> str:
+    """The engine line that brings back the member ``entry`` records, under
+    the entry's own reason (#1837)."""
+    from utils.roster_conversion import q
+    return "return occupant %s from %s%s;" % (
+        q(occupant_id), entry["outcome"], " %s" % q(entry["reason"]) if entry.get("reason") else "")
+
+
+def _resolved_as(occupant: Any, place: str, parameters: Any) -> bool:
+    """The record already shows this resolve of a person here (#1837): none
+    left, and a tally entry with its outcome and reason."""
+    if not isinstance(occupant, dict) or occupant.get("kind") != "person" or occupant.get("count") != 0 \
+            or occupant.get("location") != place:
+        return False
+    p = parameters if isinstance(parameters, dict) else {}
+    outcome, reason = str(p.get("outcome") or "").strip().lower(), _reason(p.get("reason"))
+    return any(isinstance(e, dict) and e.get("outcome") == outcome and _reason(e.get("reason")) == reason
+               for e in occupant.get("tally") or [])
+
+
 def _present_lines(here: Optional[Dict[str, Any]]) -> str:
     entries = present_roster(here or {})
     if not entries:
@@ -959,14 +1036,19 @@ def _present_lines(here: Optional[Dict[str, Any]]) -> str:
                      for e in entries)
 
 
-def correction(action_type: str, problem: str, here: Optional[Dict[str, Any]]) -> str:
-    """The message that sends a refused occupant action back to the DM."""
+def correction(action_type: str, problem: str, here: Optional[Dict[str, Any]], *,
+               recorded: Optional[str] = None) -> str:
+    """The message that sends a refused occupant action back to the DM.
+    ``recorded`` (#1837) is the rosterRecord line of the person the action
+    named, shown in place of the present list: they are not present."""
+    listing = ("Recorded at this location: %s" % recorded if recorded is not None
+               else "Present occupants at this location: %s" % _present_lines(here))
     return (
         "Occupant Error: %s was refused: %s. Nothing changed in the roster record. "
-        "Present occupants at this location: %s. Later actions from this response have not "
+        "%s. Later actions from this response have not "
         "executed. Do not repeat earlier completed actions; issue the action again with an id "
         "and values from this list, or narrate the outcome without it."
-        % (action_type, problem, _present_lines(here))
+        % (action_type, problem, listing)
     )
 
 
@@ -996,6 +1078,27 @@ def apply_dm_action(action_type: str, parameters: Any, request_id: str, module: 
                 "%s is a party companion. To part ways, use updatePartyNPCs remove. If they "
                 "travel with the party but are not shown as joined, add them again by this id" % oid,
                 _here(root, place))}
+        recorded = occupant = None
+        if action_type == "resolveOccupant":
+            # #1837: a person recorded here as one who yielded or was beaten
+            # is not present; code brings them back first, under the entry's
+            # own reason, then the DM's resolve: one request. A join goes
+            # through updatePartyNPCs; they are one member.
+            current = request(view=(place,), root=root)
+            occupant = world_occupant((current or {}).get("live_state"), oid) if current and current.get("ok") else None
+            entry = returnable_entry(occupant, place)
+            if entry is not None:
+                recorded = "%s [%s]: %s" % (occupant.get("name"), oid, _tally_text(occupant))
+                p = parameters if isinstance(parameters, dict) else {}
+                if str(p.get("outcome") or "").strip().lower() == "joined":
+                    return {"ok": False, "correction": correction(action_type, (
+                        "%s is not present; they join the party only through updatePartyNPCs add with "
+                        "this id (the engine brings them back first)" % oid), None, recorded=recorded)}
+                if _members(p.get("count"))[0] not in (None, 1):
+                    return {"ok": False, "correction": correction(action_type, (
+                        "%s is one person, not present; resolve this id with no count (the engine "
+                        "brings them back first)" % oid), None, recorded=recorded)}
+                line = return_line(oid, entry) + line
         if action_type == "moveOccupant":
             current = request(view=(place,), root=root)
             if not current or not current.get("ok"):
@@ -1020,9 +1123,18 @@ def apply_dm_action(action_type: str, parameters: Any, request_id: str, module: 
             info("OCCUPANTS: %s changes nothing (%s); taken as applied" % (request_id, line),
                  category="location_transitions")
             return {"ok": True, "correction": None}
+        if fault.get("code") == "E_REQUEST_REUSE" and recorded is None \
+                and _resolved_as(occupant, place, parameters):
+            # #1837: a retried turn's resolve that returned the person first
+            # was sent with its return; the record already shows it.
+            info("OCCUPANTS: %s already applied with its return (%s)" % (request_id, line),
+                 category="location_transitions")
+            return {"ok": True, "correction": None}
         problem = str(fault.get("message") or response.get("error") or "the engine refused it")
         warning("OCCUPANTS: %s refused: %s (%s)" % (request_id, problem, line),
                 category="location_transitions")
+        if recorded is not None:
+            return {"ok": False, "correction": correction(action_type, problem, None, recorded=recorded)}
         return {"ok": False, "correction": correction(action_type, problem, _here(root, place))}
     except Exception as exc:  # fail forward
         warning("OCCUPANTS: %s skipped (%s)" % (action_type, exc), category="location_transitions")
@@ -1377,6 +1489,15 @@ def _authored_entry(location: Optional[Dict[str, Any]], occupant_id: str) -> Opt
                 if seen == nth:
                     return entry
     return None
+
+
+def authored_person(module: str, location_id: str, occupant_id: str, *, root: str = ".") -> bool:
+    """#1837: whether the area data marks this occupant a person (``"person":
+    true`` on its authored entry), found by its id, never by a name. A
+    creature so marked falls unconscious at 0 HP, as a person does."""
+    location = _authored(root).get((module or "").replace(" ", "_"), {}).get(location_id)
+    entry = _authored_entry(location, occupant_id)
+    return isinstance(entry, dict) and entry.get("person") is True
 
 
 def describe(present: List[Dict[str, Any]], module: str, location_id: str, *, root: str = ".") -> None:

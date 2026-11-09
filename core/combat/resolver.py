@@ -42,11 +42,11 @@ from core.effects.model import normalize_effect, validate_effect
 from core.effects.riders import rider_for
 from core.managers.combat_state import (
     combatant_by_id,
+    falls_unconscious,
     has_left_fight,
     initiative_eligible_ids,
     is_combatant_targetable,
     is_hostile,
-    is_party_member,
     is_turn_eligible,
     normalize_status,
 )
@@ -2293,11 +2293,12 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
     if target is not None and swings:
         status_after = target.get("status", "alive")
         if hp_after == 0:
-            # D-242-1: party members (player and companions) fall unconscious;
-            # only hostiles die at 0. Party-ness is the roster value.
+            # D-242-1 as amended (#1403, #1837): party members and every
+            # person (an npc row, or a row marked person) fall unconscious;
+            # only monsters die at 0. Typed row values, never a name.
             status_after = (
                 PLAYER_UNCONSCIOUS
-                if is_party_member(target)
+                if falls_unconscious(target)
                 else NONPLAYER_DEAD
             )
         record = {
@@ -4775,7 +4776,7 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
         status_after = normalize_status(target.get("status"))
         if hp_after == 0 and hp_delta < 0:
             # D-242-1: same rule as the attack path above.
-            status_after = (PLAYER_UNCONSCIOUS if is_party_member(target)
+            status_after = (PLAYER_UNCONSCIOUS if falls_unconscious(target)
                             else NONPLAYER_DEAD)
         elif target["combatantId"] in canonical_wake_targets:
             status_after = "alive"
@@ -5107,7 +5108,7 @@ def _apply_encounter_effect_operation(creature, operation):
     ):
         # #1550: the same status a hit that reaches 0 records (D-242-1).
         creature["status"] = (
-            PLAYER_UNCONSCIOUS if is_party_member(creature) else NONPLAYER_DEAD
+            PLAYER_UNCONSCIOUS if falls_unconscious(creature) else NONPLAYER_DEAD
         )
     if not creature["activeEffects"]:
         creature.pop("effectBaseStats", None)
@@ -5176,8 +5177,11 @@ def settle_effect_zero_status(encounter, before, characters):
     """#1550: give a sheet that an effect took to 0 the status a hit records.
 
     The lifecycle marks such a sheet unconscious without context; here the
-    encounter row decides by D-242-1: a party member stays unconscious, any
-    other combatant is dead. The row then shows the sheet's down status.
+    encounter row decides by D-242-1 as amended (#1837): a combatant that
+    falls unconscious (``falls_unconscious``: a party member or any person)
+    stays unconscious, any other is dead. A row with a sheet is a player or
+    a person, so its sheet keeps the unconscious status. The row then shows
+    the sheet's down status.
     Only a sheet that had hit points in ``before`` changes, and a row or
     sheet already dead or defeated is never overwritten.
     """
@@ -5193,7 +5197,7 @@ def settle_effect_zero_status(encounter, before, characters):
             type(old_hp) is int
             and old_hp > 0
             and normalize_status(sheet.get("status")) == PLAYER_UNCONSCIOUS
-            and not is_party_member(creature)
+            and not falls_unconscious(creature)
         ):
             sheet["status"] = NONPLAYER_DEAD
         down = normalize_status(sheet.get("status"))

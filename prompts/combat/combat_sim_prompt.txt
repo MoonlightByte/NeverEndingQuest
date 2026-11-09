@@ -942,7 +942,7 @@ Remember:
 
 ALWAYS:
 1. Respond in the JSON format for all of your responses
-2. Update the status of all creatures in the actions before exiting the encounter, using 'Dead' for monsters at 0 HP, and 'Unconscious' for PCs and party NPCs at 0 HP unless specified otherwise by game rules
+2. Update the status of all creatures in the actions before exiting the encounter, using 'Dead' for monsters at 0 HP, and 'Unconscious' for PCs, party NPCs and any person (a creature with type 'npc' or 'person': true) at 0 HP unless specified otherwise by game rules
 3. Exit the encounter ONLY when ALL enemies are defeated (dead, unconscious, or fled/escaped with status "defeated"), the player escapes, or combat is otherwise completely resolved. Do NOT exit if any enemies still have status "alive"
 4. Respond with a single narration field in your JSON response
 5. Ensure your actions include all changes listed in your narration - especially if you're calling exit as an action

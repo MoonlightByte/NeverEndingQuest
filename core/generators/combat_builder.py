@@ -510,12 +510,20 @@ def _place_occupants(location_id):
         response = occupants.request(view=(place,), create=False)
         if not response or not response.get("ok"):
             return {}
-        return {
-            occupant["id"]: occupant
+        found = {
+            occupant["id"]: dict(occupant)
             for occupant in (response.get("live_state") or {}).get("occupants") or []
             if isinstance(occupant, dict) and occupant.get("location") == place
             and isinstance(occupant.get("id"), str)
         }
+        # #1837: a creature the area data marks a person ("person": true on
+        # its authored entry, by id) falls unconscious at 0 like any person.
+        # Set on this host view only; the engine document never holds it.
+        for occupant in found.values():
+            if occupant.get("kind") == "creatures" and occupants.authored_person(
+                    tracker.get("module") or "", location_id, occupant["id"]):
+                occupant["person"] = True
+        return found
     except Exception as exc:  # fail forward: the fight still starts
         warning(f"MONSTER_KEY: occupants at {location_id} unavailable ({exc})", category="combat_builder")
         return {}
@@ -895,6 +903,10 @@ def generate_encounter(encounter_data):
         declared_id = (encounter_data.get("occupantIds") or {}).get(f"monster:{monster_index}")
         if isinstance(declared_id, str) and declared_id.startswith("occ:"):
             monster["occupantId"] = declared_id
+            # #1837: a declared occupant the area marks a person falls
+            # unconscious at 0 (combat_state.falls_unconscious).
+            if (place_occupants.get(declared_id) or {}).get("person") is True:
+                monster["person"] = True
         encounter["creatures"].append(monster)
         scene_sources.append(
             {
