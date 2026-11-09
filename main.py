@@ -2627,8 +2627,6 @@ def _transition_outcome_lines(checkpoint, party):
     records = deferred.get("actions") if isinstance(deferred, dict) else None
     if not isinstance(records, list):
         return []
-    world = party.get("worldConditions") if isinstance(party, dict) else {}
-    destination = (world or {}).get("currentLocation") or "the destination"
     lines = []
     for record in records:
         if not isinstance(record, dict):
@@ -2649,21 +2647,19 @@ def _transition_outcome_lines(checkpoint, party):
                 continue  # a re-add of a companion already in the party
             if receipt.get("operation") == "add":
                 lines.append(
-                    "%s joins your traveling party at %s."
-                    % (receipt.get("npc_name"), destination)
+                    "%s joins your traveling party." % receipt.get("npc_name")
                 )
             elif receipt.get("operation") == "remove":
                 lines.append(
-                    "%s leaves your traveling party at %s."
-                    % (receipt.get("npc_name"), destination)
+                    "%s leaves your traveling party." % receipt.get("npc_name")
                 )
         elif family == "moveOccupant":
             # P4-g: a staged or committed escort comes along; a refused or
             # unavailable one is not claimed.
             if receipt.get("escort") and receipt.get("status") in ("staged", "committed"):
                 lines.append(
-                    "%s comes with you to %s."
-                    % (receipt.get("occupant_name") or receipt.get("occupant_id"), destination)
+                    "%s comes with you."
+                    % (receipt.get("occupant_name") or receipt.get("occupant_id"))
                 )
         elif family == "moveBackgroundNPC":
             proposal = receipt.get("proposal") or {}
