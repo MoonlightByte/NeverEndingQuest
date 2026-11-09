@@ -11537,6 +11537,63 @@ def _transfer_refusal(actions, party, last_attempt):
     return None
 
 
+# #1863: the actions an updatePartyNPCs may follow and still be checked
+# before review. Any other earlier action may move the party or change the
+# people present, so the commit decides that draft as before.
+_ROSTER_NEUTRAL_ACTIONS = frozenset(("rollCheck", "listSaves"))
+
+
+def _party_change_refusal(actions, party, turn_roster, last_attempt):
+    """#1863: the reason the commit would refuse a draft's updatePartyNPCs,
+    before anything is shown, or None. The commit's own planner
+    (plan_party_change) is asked on the party and the people present as they
+    stand, the world read without making a missing document. Only the first
+    roster action is checked, and only when no earlier action of the reply
+    could change the party or the people present. On the last attempt the
+    draft passes, so the turn never fails on it; a failed read leaves the
+    outcome to the commit, as #360 does."""
+    from core.managers.item_acquisition import _stops
+    from core.nql import occupants as _occupants
+
+    if last_attempt:
+        return None
+    for action in actions:
+        kind = action.get("action") if isinstance(action, dict) else None
+        if kind in _ROSTER_NEUTRAL_ACTIONS:
+            continue
+        if kind != action_handler.ACTION_UPDATE_PARTY_NPCS:
+            return None
+        parameters = action.get("parameters")
+        parameters = parameters if isinstance(parameters, dict) else {}
+        module = str(party.get("module") or "")
+        location = str((party.get("worldConditions") or {}).get("currentLocationId") or "")
+        roster = party.get("partyNPCs")
+        roster = roster if isinstance(roster, list) else []
+        try:
+            outcome = action_handler.plan_party_change(
+                roster, parameters,
+                _occupants.party_world(module, location, create=False),
+                turn_roster=turn_roster, module=module, location=location,
+                request_id=None,
+            )
+            name = action_handler.party_change_companion(parameters, roster, turn_roster)
+        except _stops():
+            raise
+        except Exception as exc:
+            info(f"VALIDATION: updatePartyNPCs pre-check unavailable ({type(exc).__name__}); left to the commit",
+                 category="ai_validation")
+            return None
+        if outcome.get("kind") != "correction":
+            return None
+        text = str(outcome.get("text") or "").strip()
+        if not text.endswith("."):
+            text += "."
+        operation = parameters.get("operation")
+        return "updatePartyNPCs %s for %s: %s" % (
+            operation if operation in ("add", "remove") else "change", name or "the companion", text)
+    return None
+
+
 # #1357: at most this many places are offered in a destination clarification.
 _CLARIFY_PLACE_LIMIT = 4
 
@@ -11858,6 +11915,30 @@ def _review_dm_candidate(
                     )
                     info(
                         f"VALIDATION: castingResource refused before review; retry {retry_count}",
+                        category="ai_validation",
+                    )
+                    review_retry_status(retry_count)
+
+                # #1863: a party change the commit would refuse is corrected
+                # here, so its narration is never shown and then retold.
+                party_refusal = (
+                    _party_change_refusal(
+                        actions, party, turn_roster,
+                        rejected_drafts >= _DM_REVIEW_REJECTION_LIMIT - 1)
+                    if transition_check_passed else None
+                )
+                if party_refusal:
+                    retry_count += 1
+                    transition_check_passed = False
+                    rejected_candidate = ai_response_content
+                    retry_correction = (
+                        "The previous structured response was rejected before "
+                        "anything was shown: " + party_refusal + " Correct that "
+                        "action from the people listed, or drop it and narrate "
+                        "why it cannot happen. Return the complete corrected JSON."
+                    )
+                    info(
+                        f"VALIDATION: updatePartyNPCs refused before review; retry {retry_count}",
                         category="ai_validation",
                     )
                     review_retry_status(retry_count)
