@@ -3898,6 +3898,18 @@ def validate_json_structure(response_text, *, party_tracker_data=None):
                 action.update({"action": "transitionLocation", "parameters": {"newLocation": destination}})
                 validated_response = json.dumps(parsed, ensure_ascii=True)
 
+        # #1853: a castingResource payment listed after createEncounter never
+        # runs (the fight ends the batch). Move it to just before the fight, so
+        # it is staged (#1731) and held for the opener (#1827) as one listed first.
+        reordered, moved = action_handler.move_encounter_payments_first(parsed["actions"])
+        if moved:
+            parsed["actions"] = reordered
+            validated_response = json.dumps(parsed, ensure_ascii=True)
+            structure_message += (
+                f"; moved {moved} castingResource payment(s) from after "
+                f"createEncounter to just before it (#1853)"
+            )
+
         try:
             from core.ai.module_creation_contract import (
                 validate_create_new_module_actions,

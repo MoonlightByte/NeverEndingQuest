@@ -4891,6 +4891,38 @@ COMBAT_START_REASONS = {
 }
 
 
+def is_encounter_payment(action):
+    """#1731: an updateCharacterInfo with a castingResource object, the payment
+    a reply's fight start stages (#1853 moves one listed after the fight)."""
+    return (
+        isinstance(action, dict) and action.get("action") == ACTION_UPDATE_CHARACTER_INFO
+        and isinstance(action.get("parameters"), dict)
+        and isinstance(action["parameters"].get("castingResource"), dict)
+    )
+
+
+def move_encounter_payments_first(actions):
+    """#1853: ``(actions, moved)``. Every encounter payment listed after the
+    reply's first createEncounter moves to just before it, in order; every other
+    action keeps its order. Nothing after createEncounter runs (the fight ends
+    the batch), so such a payment was dropped; moved, it is staged (#1731) and
+    held for a declared opener (#1827) exactly as one listed first. With nothing
+    to move, the list comes back as given and ``moved`` is 0."""
+    if not isinstance(actions, list):
+        return actions, 0
+    encounter_index = next((
+        index for index, action in enumerate(actions)
+        if isinstance(action, dict) and action.get("action") == ACTION_CREATE_ENCOUNTER), None)
+    if encounter_index is None:
+        return actions, 0
+    tail = actions[encounter_index + 1:]
+    late = [action for action in tail if is_encounter_payment(action)]
+    if not late:
+        return actions, 0
+    rest = [action for action in tail if not is_encounter_payment(action)]
+    return actions[:encounter_index] + late + [actions[encounter_index]] + rest, len(late)
+
+
 def stage_encounter_payments(actions):
     """#1731: the actions before a reply's fight start, or None when none.
 
@@ -4909,9 +4941,7 @@ def stage_encounter_payments(actions):
         return None
     staged = [
         index for index, action in enumerate(actions[:encounter_index])
-        if isinstance(action, dict) and action.get("action") == ACTION_UPDATE_CHARACTER_INFO
-        and isinstance(action.get("parameters"), dict)
-        and isinstance(action["parameters"].get("castingResource"), dict)
+        if is_encounter_payment(action)
     ]
     if encounter_index == 0:
         return None
