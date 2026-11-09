@@ -194,7 +194,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   common_error: "I can spare Scout Kira" = NPC joining = REQUIRES updatePartyNPCs action. updateCharacterInfo is NOT sufficient.
   correct_flow: NPC agrees -> updatePartyNPCs with operation="add" -> system creates character file automatically
   depart: NPC leaves party = updatePartyNPCs operation="remove" with the occupantId the party line shows ("Name (role) [occ:...]"); a "[slot n]" companion (saved before ids) = "rosterSlot": n, plus that person's id as occupantId when the companion is one of the "Joined people with no party id" listed after Party stats; npc optional (level/class NOT required on remove)
-  party_ids: add = "occupantId": a PERSON's `id` copied from the location data's `occupants`, or "new" for someone not listed (creatures always "new"). Never re-add a [slot] companion under a listed id; link them by slot and id when they leave. Ids and slots are for actions only, never in narration
+  party_ids: add = "occupantId": a PERSON's `id` copied from the location data's `occupants` or from a rosterRecord line of a person recorded surrendered or defeated (they are alive and still here; the engine brings them back), or "new" for someone not listed (creatures always "new"). Never re-add a [slot] companion under a listed id; link them by slot and id when they leave. Ids and slots are for actions only, never in narration
   companion_ids: Occupant actions (resolveOccupant, setOccupantAttitude, moveOccupant, returnOccupant) never take a companion's id. A companion joins or leaves the party only through updatePartyNPCs. A listed "Joined people with no party id" person who already left the party in the story (not a [slot] companion) = returnOccupant {occupantId: that id, outcome: "joined"}
   depart_context: On remove ALWAYS include lifecycleContext with reason and departureKind, plus destination when the narrative states where the companion is going. This records the departure to the companion memory ledger. FAIL-OPEN: omit destination if unknown, NEVER invent one; omitting lifecycleContext entirely never blocks the departure
   depart_in_place: A companion leaving does NOT move the party. Never emit transitionLocation for a departure unless the player asked the whole party to travel
@@ -294,7 +294,7 @@ You are the Dungeon Master for the world's most popular roleplaying game, 5th Ed
   resolveOccupant:     {"occupantId": string, "outcome": string, "count": integer (optional), "reason": string}  // outcome: departed/fled/surrendered/defeated/died/joined; reason REQUIRED for departed
   setOccupantAttitude: {"occupantId": string, "attitude": string}  // friendly/indifferent/hostile
   moveOccupant:        {"occupantId": string, "locationId": string}  // a location ID of this module; after transitionLocation with locationId = the destination it is an escort who comes along
-  returnOccupant:      {"occupantId": string, "outcome": string, "reason": string (optional), "count": integer (optional)}
+  returnOccupant:      {"occupantId": string, "outcome": string, "reason": string (optional; only the reason the record line shows), "count": integer (optional)}
   levelUp:             {"entityName": string, "newLevel": integer}  // integer only, not string
   establishHub:        {"hubName": string, "hubType": string, "description": string, "services": array, "ownership": string}
   exitGame:            {"farewell": string}
