@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Travel narration now counts an escort who comes with you, so it no longer says you travel alone, and the Wolf's Den Cave's description no longer tells you who is cornered inside before you go in (#1842).
+- After a fight, a person recorded as having surrendered or been defeated can join the party in one step from the DM, and the DM now sees that person's id in the place's record. Someone whose fate stands, such as a person who died, is no longer suggested as a new companion under the same name (#1837).
+- Someone you ask to travel with you no longer stays behind without a word. If the DM names them wrongly, the game has it fix the name before the scene is shown, and if it still cannot, the journey says they stayed behind (#1841).
 - When you cast a levelled spell, the Dungeon Master is now shown the exact name the game files that spell under, so it charges the spell right the first time. It no longer has to guess the spelling, which could end your turn with "I got that a little tangled" (#1840).
 
 ## [1.2.0] - 2026-11-09
