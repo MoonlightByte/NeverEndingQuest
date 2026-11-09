@@ -428,7 +428,7 @@
           },
           {
             "name": "Ranger's journal",
-            "summary": "Thane was sent by a distant outpost. His entries shorten as he changes, and he concludes the corruption is being spread on purpose and is growing more intelligent."
+            "summary": "Thane was sent by a distant outpost. His entries shorten as he changes, and he concludes the corruption is being spread on purpose and is growing more intelligent. Between the reports he writes to his daughter Lysa, whose likeness is in the locket, and repeats the oath he swore as a ranger: 'The wood first, the weak next, myself last.' His last clear line asks whoever finds the book to speak it to him if he is lost."
           }
         ],
         "leads": [
@@ -463,15 +463,6 @@
       ],
       "monsters": [
         {
-          "name": "Ranger Thane",
-          "quantity": {
-            "min": 1,
-            "max": 1
-          },
-          "disposition": "tormented",
-          "strategy": "A CR 2 veteran ranger with necrotic abilities, fighting with corrupted tactics while occasionally warning his foes in moments of lucidity."
-        },
-        {
           "name": "Corrupted Wolf",
           "quantity": {
             "min": 1,
@@ -493,7 +484,7 @@
         "Thane's transformation shows how the corruption affects those who linger too long",
         "Evidence suggests the corruption is being deliberately spread rather than occurring naturally"
       ],
-      "dmInstructions": "IMPORTANT: Start this encounter with Thane in a LUCID MOMENT, especially if any party members are down. Give the party a chance to speak before combat begins. Thane represents the tragic human cost of the corruption. His internal struggle should evoke sympathy while demonstrating the immediate danger. If approached with compassion (Persuasion DC 12), he may help stabilize downed party members before asking them to end his suffering. Only his corrupted wolf companion attacks immediately. If diplomacy fails or Thane loses control, combat begins. This encounter should emphasize the urgency of stopping the corruption's spread while providing a potential non-combat resolution.",
+      "dmInstructions": "Start with Thane in a lucid moment, especially if any party members are down, and give the party a chance to speak. Only his corrupted wolf attacks at once; it is the only immediate danger, and Thane holds back, fighting the corruption inside him. His struggle should evoke sympathy: he is the human cost of the corruption. Approached with compassion (Persuasion DC 12), he may help stabilize downed party members, and he may ask them to end his suffering. His journal and locket hold the touchstones that reach the man beneath, and a party that reaches him can attempt the cleansing rite. If it works, the corruption leaves him and he can join the party. If talk fails or he loses control, he fights the party as a person on the hostile side, never as a monster, with corrupted tactics and warnings in moments of lucidity. Beaten, he drops unconscious, not dead, as any person on the hostile side does, and can still be cleansed and join afterward. Ending his suffering at his own plea is also a true ending.",
       "doors": [],
       "traps": [
         {
@@ -509,7 +500,8 @@
         "Medicine DC 14: Understand the nature of Thane's corruption and potential treatments",
         "Investigation DC 12: Piece together the timeline of the camp's abandonment from scattered evidence",
         "Insight DC 15: Recognize when Thane is lucid versus when the corruption is controlling him",
-        "Persuasion DC 12: Reach Thane's humanity during his lucid moments and convince him to help before combat"
+        "Persuasion DC 12: Reach Thane's humanity during his lucid moments and convince him to help before combat",
+        "Medicine or Religion DC 14: With Thane reached in a lucid moment, perform the cleansing rite -- press his family locket to the blackened wound on his sword arm and speak his ranger's oath back to him as the taint is drawn out. Success frees him of the corruption."
       ],
       "accessibility": "Abandoned campsite in a small clearing, easily spotted but emanating obvious danger",
       "dangerLevel": "High",
