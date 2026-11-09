@@ -279,6 +279,11 @@ def format_flatlist(character: Dict[str, Any]) -> str:
     spellcast_out = f"{{ability:{ability},DC:{dc},ATK:+{atk_bonus}}}"
 
     spells = sc.get('spells') or {}
+    try:
+        # #1840: a levelled spell carries its repository key in brackets.
+        from core.nql.resources import keyed_spell_name
+    except ImportError:  # run as a script outside the repo root
+        keyed_spell_name = lambda name, shown=None: shown
     spells_parts = []
     for spell_lvl, lst in spells.items():
         if not lst:  # Skip empty spell levels
@@ -290,7 +295,7 @@ def format_flatlist(character: Dict[str, Any]) -> str:
             # Remove "the" and "of" then squish together
             spell_norm = re.sub(r'\bthe\b|\bof\b', '', spell, flags=re.IGNORECASE)
             spell_norm = ''.join(word.capitalize() for word in spell_norm.split())
-            spell_names.append(spell_norm)
+            spell_names.append(keyed_spell_name(spell, spell_norm))
         spells_parts.append(f"{key}:[{','.join(spell_names)}]")
     spells_out = '{' + ','.join(spells_parts) + '}'
 
