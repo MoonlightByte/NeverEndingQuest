@@ -57,7 +57,7 @@ The final section of the module shifts the focus from combat to compassion, pres
 
 ### The Challenge: Ranger Thane (NC04)
 
-The party finds Ranger Thane, but he is twisted by dark magic and initially hostile. He is a formidable opponent if engaged in combat.
+The party finds Ranger Thane, but he is twisted by dark magic. His corrupted wolf attacks on sight, and Thane himself is a formidable opponent if he loses control.
 
 **The Clever Solution: Redemption Through Lore**
 
@@ -65,6 +65,7 @@ The camp contains Thane's journal, which details his struggle and mentions perso
 
 - **Dialogue Options**: Instead of attacking, the player can choose to talk to Thane, using information from his journal to reach the man beneath the corruption.
 - **Ritual Cleansing**: A successful dialogue path opens the opportunity for a cleansing rite, requiring a successful Medicine or Religion check to break the curse.
+- **Mercy in a Fight**: beaten in combat, Thane falls unconscious, not dead, so the rite can still save him.
 
 **Developer Insight**: This is a major narrative choice with significant mechanical consequences. The "violent" path yields XP and loot. The "redemptive" path yields less immediate XP but rewards the party with a powerful, permanent NPC ally. This demonstrates that the most valuable rewards are not always material.
 

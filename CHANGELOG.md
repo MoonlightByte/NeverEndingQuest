@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In The Thornwood Watch, Ranger Thane is now one figure, a man the party can talk to, free from the corruption with a cleansing rite and bring into the party, or fight. His journal now holds the personal details that reach him, and the Player Guide no longer calls him hostile from the start (#1837).
+
 ## [1.2.0] - 2026-11-09
 
 - The module validator's command line now checks typed facts too, so a module with a broken one no longer passes there (#1828).
