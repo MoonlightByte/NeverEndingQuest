@@ -72,17 +72,22 @@ def _spell_levels(spells: Dict[str, Any]) -> Dict[str, int]:
 
 
 def _levelled_spell_keys(spells: Dict[str, Any]) -> Dict[str, str]:
-    """#1840: each levelled spell's repository name with its key, the key a
-    castingResource names. A name two entries share maps to neither."""
+    """#1840: each levelled spell's repository name and aliases with its key,
+    the key a castingResource names ("Hunter's Mark" is an alias of
+    hunter_s_mark, whose name has a curly apostrophe). A name or alias two
+    entries share maps to neither."""
     keys: Dict[str, str] = {}
     shared = set()
     for key, entry in spells.items():
-        if not (isinstance(entry, dict) and type(entry.get("level")) is int and entry["level"] > 0
-                and isinstance(entry.get("name"), str) and entry["name"]):
+        if not (isinstance(entry, dict) and type(entry.get("level")) is int and entry["level"] > 0):
             continue
-        if entry["name"] in keys:
-            shared.add(entry["name"])
-        keys[entry["name"]] = key
+        aliases = entry.get("aliases") if isinstance(entry.get("aliases"), list) else []
+        for label in [entry.get("name")] + aliases:
+            if not isinstance(label, str) or not label:
+                continue
+            if keys.get(label, key) != key:
+                shared.add(label)
+            keys[label] = key
     for name in shared:
         del keys[name]
     return keys
@@ -104,7 +109,8 @@ def keyed_spell_name(name: Any, shown: Any = None) -> Any:
     """#1840: ``shown`` (default ``name``) with the repository key of the
     sheet's stored spell ``name`` in brackets, "Magic Missile [magic_missile]",
     so the DM copies the key a castingResource names. An exact lookup of the
-    stored name; a cantrip or a name the repository lacks is shown alone."""
+    stored name among the repository's names and aliases; a cantrip or a name
+    the repository lacks is shown alone."""
     shown = name if shown is None else shown
     key = SPELL_KEYS_BY_NAME.get(name) if isinstance(name, str) else None
     return "%s [%s]" % (shown, key) if key else shown
