@@ -95,8 +95,9 @@ def _apply_resource_operations(sheet, operations):
         sheet[stat] = after
         # #1550: an effect that takes the last hit points records the same
         # status damage does on a sheet (the engine's sheet rule, D-242-1 for
-        # a party member). In a fight, the encounter row's side may make a
-        # hostile's sheet dead instead (resolver.settle_effect_zero_status).
+        # a party member). In a fight the encounter row decides
+        # (resolver.settle_effect_zero_status): a sheet-backed row is a party
+        # member or a person, and stays unconscious (#1837).
         if before > 0 and after == 0 and str(sheet.get("status") or "").strip().lower() == "alive":
             sheet["status"] = "unconscious"
 
