@@ -951,6 +951,46 @@ def dm_action_line(action_type: str, parameters: Any, module: str) -> Tuple[str,
     return "", "unknown occupant action %s" % action_type
 
 
+# #1837: the outcomes code brings a person back from before the DM's action on
+# them (an add by id, a resolve), so the DM names a person who yielded or was
+# beaten in one action, by the id on their rosterRecord line.
+RETURNABLE_OUTCOMES = ("surrendered", "defeated")
+
+
+def returnable_entry(occupant: Any, place: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    """The one tally entry code returns first (#1837): a person with none
+    left (count 0) and exactly one entry, of one member, recorded
+    surrendered or defeated; at ``place`` when one is given. None otherwise."""
+    if not isinstance(occupant, dict) or occupant.get("kind") != "person" or occupant.get("count") != 0:
+        return None
+    if place is not None and occupant.get("location") != place:
+        return None
+    tally = [e for e in occupant.get("tally") or [] if isinstance(e, dict)]
+    if len(tally) != 1 or tally[0].get("outcome") not in RETURNABLE_OUTCOMES or tally[0].get("count") != 1:
+        return None
+    return tally[0]
+
+
+def return_line(occupant_id: str, entry: Dict[str, Any]) -> str:
+    """The engine line that brings back the member ``entry`` records, under
+    the entry's own reason (#1837)."""
+    from utils.roster_conversion import q
+    return "return occupant %s from %s%s;" % (
+        q(occupant_id), entry["outcome"], " %s" % q(entry["reason"]) if entry.get("reason") else "")
+
+
+def _resolved_as(occupant: Any, place: str, parameters: Any) -> bool:
+    """The record already shows this resolve of a person here (#1837): none
+    left, and a tally entry with its outcome and reason."""
+    if not isinstance(occupant, dict) or occupant.get("kind") != "person" or occupant.get("count") != 0 \
+            or occupant.get("location") != place:
+        return False
+    p = parameters if isinstance(parameters, dict) else {}
+    outcome, reason = str(p.get("outcome") or "").strip().lower(), _reason(p.get("reason"))
+    return any(isinstance(e, dict) and e.get("outcome") == outcome and _reason(e.get("reason")) == reason
+               for e in occupant.get("tally") or [])
+
+
 def _present_lines(here: Optional[Dict[str, Any]]) -> str:
     entries = present_roster(here or {})
     if not entries:
@@ -959,14 +999,19 @@ def _present_lines(here: Optional[Dict[str, Any]]) -> str:
                      for e in entries)
 
 
-def correction(action_type: str, problem: str, here: Optional[Dict[str, Any]]) -> str:
-    """The message that sends a refused occupant action back to the DM."""
+def correction(action_type: str, problem: str, here: Optional[Dict[str, Any]], *,
+               recorded: Optional[str] = None) -> str:
+    """The message that sends a refused occupant action back to the DM.
+    ``recorded`` (#1837) is the rosterRecord line of the person the action
+    named, shown in place of the present list: they are not present."""
+    listing = ("Recorded at this location: %s" % recorded if recorded is not None
+               else "Present occupants at this location: %s" % _present_lines(here))
     return (
         "Occupant Error: %s was refused: %s. Nothing changed in the roster record. "
-        "Present occupants at this location: %s. Later actions from this response have not "
+        "%s. Later actions from this response have not "
         "executed. Do not repeat earlier completed actions; issue the action again with an id "
         "and values from this list, or narrate the outcome without it."
-        % (action_type, problem, _present_lines(here))
+        % (action_type, problem, listing)
     )
 
 
@@ -996,6 +1041,27 @@ def apply_dm_action(action_type: str, parameters: Any, request_id: str, module: 
                 "%s is a party companion. To part ways, use updatePartyNPCs remove. If they "
                 "travel with the party but are not shown as joined, add them again by this id" % oid,
                 _here(root, place))}
+        recorded = occupant = None
+        if action_type == "resolveOccupant":
+            # #1837: a person recorded here as one who yielded or was beaten
+            # is not present; code brings them back first, under the entry's
+            # own reason, then the DM's resolve: one request. A join goes
+            # through updatePartyNPCs; they are one member.
+            current = request(view=(place,), root=root)
+            occupant = world_occupant((current or {}).get("live_state"), oid) if current and current.get("ok") else None
+            entry = returnable_entry(occupant, place)
+            if entry is not None:
+                recorded = "%s [%s]: %s" % (occupant.get("name"), oid, _tally_text(occupant))
+                p = parameters if isinstance(parameters, dict) else {}
+                if str(p.get("outcome") or "").strip().lower() == "joined":
+                    return {"ok": False, "correction": correction(action_type, (
+                        "%s is not present; they join the party only through updatePartyNPCs add with "
+                        "this id (the engine brings them back first)" % oid), None, recorded=recorded)}
+                if _members(p.get("count"))[0] not in (None, 1):
+                    return {"ok": False, "correction": correction(action_type, (
+                        "%s is one person, not present; resolve this id with no count (the engine "
+                        "brings them back first)" % oid), None, recorded=recorded)}
+                line = return_line(oid, entry) + line
         if action_type == "moveOccupant":
             current = request(view=(place,), root=root)
             if not current or not current.get("ok"):
@@ -1020,9 +1086,18 @@ def apply_dm_action(action_type: str, parameters: Any, request_id: str, module: 
             info("OCCUPANTS: %s changes nothing (%s); taken as applied" % (request_id, line),
                  category="location_transitions")
             return {"ok": True, "correction": None}
+        if fault.get("code") == "E_REQUEST_REUSE" and recorded is None \
+                and _resolved_as(occupant, place, parameters):
+            # #1837: a retried turn's resolve that returned the person first
+            # was sent with its return; the record already shows it.
+            info("OCCUPANTS: %s already applied with its return (%s)" % (request_id, line),
+                 category="location_transitions")
+            return {"ok": True, "correction": None}
         problem = str(fault.get("message") or response.get("error") or "the engine refused it")
         warning("OCCUPANTS: %s refused: %s (%s)" % (request_id, problem, line),
                 category="location_transitions")
+        if recorded is not None:
+            return {"ok": False, "correction": correction(action_type, problem, None, recorded=recorded)}
         return {"ok": False, "correction": correction(action_type, problem, _here(root, place))}
     except Exception as exc:  # fail forward
         warning("OCCUPANTS: %s skipped (%s)" % (action_type, exc), category="location_transitions")
