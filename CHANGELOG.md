@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A fresh install from source with `pip install -r requirements.txt` works again. google-genai 3.0 (released 2026-11-06) stopped installing httpx, which the game uses for its AI calls, so the requirements now list httpx themselves and keep google-genai below 3.0. The Windows installer was not affected. Each release now also carries the installer under the fixed name NeverEndingQuest-Setup.exe, so one link always downloads the newest version (#1856).
 - Travel narration now counts an escort who comes with you, so it no longer says you travel alone, and the Wolf's Den Cave's description no longer tells you who is cornered inside before you go in (#1842).
 - After a fight, a person recorded as having surrendered or been defeated can join the party in one step from the DM, and the DM now sees that person's id in the place's record. Someone whose fate stands, such as a person who died, is no longer suggested as a new companion under the same name (#1837).
 - Someone you ask to travel with you no longer stays behind without a word. If the DM names them wrongly, the game has it fix the name before the scene is shown, and if it still cannot, the journey says they stayed behind (#1841).
