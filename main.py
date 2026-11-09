@@ -2410,6 +2410,30 @@ def _transition_companions(party):
     ]
 
 
+def _transition_escorts(checkpoint):
+    """#1842: the occupants who travel with the player on this move. The P4-g
+    predicate of the accepted turn facts: a staged or committed escort
+    arrives with the party. An escort is not a party NPC, but the player
+    does not travel alone ([]: no escort)."""
+    deferred = checkpoint.get("deferred_actions") if isinstance(checkpoint, dict) else None
+    records = deferred.get("actions") if isinstance(deferred, dict) else None
+    names = []
+    for record in records if isinstance(records, list) else []:
+        receipt = record.get("receipt") if isinstance(record, dict) else None
+        if not isinstance(receipt, dict) or record.get("family") not in (
+            "moveOccupant",
+            "resolveOccupant",
+            "setOccupantAttitude",
+            "returnOccupant",
+        ):
+            continue
+        if receipt.get("escort") and receipt.get("status") in ("staged", "committed"):
+            name = receipt.get("occupant_name") or receipt.get("occupant_id")
+            if name and str(name) not in names:
+                names.append(str(name))
+    return names
+
+
 def _transition_down_rules(party):
     """#1637: the down-scene rules string (D-242) for the party's sheets, or
     None when nobody is down. The same typed read as the DM turn and the
@@ -2465,7 +2489,10 @@ def _transition_departure_prompt(checkpoint, party, dm_text="", down_rules=None)
     arrival_time = _transition_trip_arrival_time(checkpoint) or _transition_arrival_time(party)
     if arrival_time:
         facts["arrivalTime"] = arrival_time
-    facts["companions"] = _transition_companions(party)
+    companions = _transition_companions(party)
+    facts["companions"] = companions + [
+        name for name in _transition_escorts(checkpoint) if name not in companions
+    ]
     facts["playerCharacters"] = _transition_roster(party)[0]
     prompt = (
         "Narrate the player leaving the origin and the journey to the "
@@ -2536,7 +2563,7 @@ def _transition_arrival_facts(party, checkpoint=None):
             "to another time (dusk, night, dawn) is not happening now.\n"
             % arrival_time["timeOfDay"]
         )
-    if not _transition_companions(party):
+    if not (_transition_companions(party) or _transition_escorts(checkpoint)):
         block += (
             "\n    The player arrives alone: never write 'the party'. The "
             "player is always 'you', never named in the third person.\n"
