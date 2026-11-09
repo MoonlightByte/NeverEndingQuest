@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - When you cast a levelled spell, the Dungeon Master is now shown the exact name the game files that spell under, so it charges the spell right the first time. It no longer has to guess the spelling, which could end your turn with "I got that a little tangled" (#1840).
+
 ## [1.2.0] - 2026-11-09
 
 - The module validator's command line now checks typed facts too, so a module with a broken one no longer passes there (#1828).
