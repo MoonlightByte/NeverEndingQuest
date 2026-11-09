@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When you open a fight with a spell, the Dungeon Master's reply is no longer sent back to be rewritten just because it lists the spell slot after the fight starts: the game moves the slot payment ahead of the fight itself, where it is checked and charged as before (#1853).
+
 ## [1.2.1] - 2026-11-09
 
 - A fresh install from source with `pip install -r requirements.txt` works again. google-genai 3.0 (released 2026-11-06) stopped installing httpx, which the game uses for its AI calls, so the requirements now list httpx themselves and keep google-genai below 3.0. The Windows installer was not affected. Each release now also carries the installer under the fixed name NeverEndingQuest-Setup.exe, so one link always downloads the newest version (#1856).
