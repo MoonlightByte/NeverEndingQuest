@@ -189,6 +189,7 @@
               "type": "object",
               "properties": {
                 "name": { "type": "string" },
+                "person": { "type": "boolean", "description": "Marks a creature entry as a person (#1837): on the hostile side they drop unconscious at 0 HP. Absent means a creature." },
                 "quantity": {
                   "type": "object",
                   "properties": {

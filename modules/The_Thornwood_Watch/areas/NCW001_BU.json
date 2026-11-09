@@ -542,6 +542,7 @@
       "monsters": [
         {
           "name": "Malarok the Corruptor",
+          "person": true,
           "description": "A powerful human sorcerer consumed by his lust for power, Malarok has bound himself to the Voidstone Shard to amplify his dark magic. Clad in robes that seem to absorb light, he conducts terrible rituals to corrupt the land and bend it to his will. His eyes burn with the same dark energy as the Voidstone, and his voice carries the authority of one who has tasted ultimate power.",
           "attitude": "Arrogant and megalomaniacal, convinced of his superiority. He will monologue about his plans for power and mock the party before engaging in deadly combat to protect his Voidstone.",
           "quantity": {
