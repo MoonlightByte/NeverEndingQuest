@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- After a fight, a person recorded as having surrendered or been defeated can join the party in one step from the DM, and the DM now sees that person's id in the place's record. Someone whose fate stands, such as a person who died, is no longer suggested as a new companion under the same name (#1837).
+
 ## [1.2.0] - 2026-11-09
 
 - The module validator's command line now checks typed facts too, so a module with a broken one no longer passes there (#1828).

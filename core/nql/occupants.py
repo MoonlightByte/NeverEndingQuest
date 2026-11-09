@@ -833,7 +833,11 @@ def location_record(location_id: str, module: str, *, root: str = ".") -> Option
     for occupant in list(here.get("resolved") or []) + list(here.get("present") or []):
         if occupant.get("tally"):
             left = occupant.get("count")
-            text = "%s: %s" % (occupant.get("name"), _tally_text(occupant))
+            name = occupant.get("name")
+            if occupant.get("kind") == "person" and occupant.get("id"):
+                # #1837: a person's line carries the id an add by id takes.
+                name = "%s [%s]" % (name, occupant["id"])
+            text = "%s: %s" % (name, _tally_text(occupant))
             if isinstance(left, int) and left > 0:
                 text += "; %d still here" % left
             record.append(text)
