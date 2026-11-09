@@ -3546,10 +3546,9 @@ def build_lines(kind, occupant_id, display_name, module, location, world, *, rea
         # #1837: a person who yielded or was beaten comes back first, with
         # the entry's own reason, then joins: one request. The planner checked
         # the place; a staged commit builds these lines after the party moved.
-        entry = _returnable_entry(occupant)
+        entry = _occupants.returnable_entry(occupant)
         if entry is not None:
-            return ["return occupant %s from %s%s;" % (
-                q(oid), entry["outcome"], " %s" % q(entry["reason"]) if entry.get("reason") else ""), join]
+            return [_occupants.return_line(oid, entry), join]
         return [join]
     if kind == "join_new":
         return [create(oid), join]
@@ -3661,7 +3660,7 @@ def plan_party_change(roster_before, parameters, world, *, turn_roster, module, 
         if occupant is not None and occupant.get("kind") == "person" and occupant.get("count") != 0 \
                 and str(occupant.get("location") or "").startswith("loc:%s/" % module_key):
             return joined("join", "join", oid, lines("join", oid, display_name))
-        if _returnable_entry(occupant, _occupants.place_id(module, location)) is not None:
+        if _occupants.returnable_entry(occupant, _occupants.place_id(module, location)) is not None:
             # #1837: yielded or beaten here; build_lines returns them first.
             return joined("join", "join", oid, lines("join", oid, display_name))
         if occupant is not None and any(o.get("id") == oid for o in _occupants.party_orphans(world, module, carried)):
@@ -3727,25 +3726,6 @@ def party_change_companion(parameters, roster, turn_roster):
         if isinstance(row, dict) and row.get("name"):
             return row["name"]
     return npc.get("name")
-
-
-# #1837: the outcomes an add by id brings back first (code writes the
-# return), so the DM adds a person who yielded or was beaten in one action.
-RETURNABLE_OUTCOMES = ("surrendered", "defeated")
-
-
-def _returnable_entry(occupant, place=None):
-    """The one tally entry an add by id returns first (#1837): a person with
-    none left (count 0) and exactly one entry, of one member, recorded
-    surrendered or defeated; at ``place`` when one is given. None otherwise."""
-    if not isinstance(occupant, dict) or occupant.get("kind") != "person" or occupant.get("count") != 0:
-        return None
-    if place is not None and occupant.get("location") != place:
-        return None
-    tally = [e for e in occupant.get("tally") or [] if isinstance(e, dict)]
-    if len(tally) != 1 or tally[0].get("outcome") not in RETURNABLE_OUTCOMES or tally[0].get("count") != 1:
-        return None
-    return tally[0]
 
 
 def _not_recruitable(oid, world, module, location):
