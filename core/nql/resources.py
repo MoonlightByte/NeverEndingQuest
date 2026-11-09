@@ -56,24 +56,58 @@ SPELL_REPOSITORY_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dir
                                      "data", "spell_repository.json")
 
 
-def _spell_levels(path: str) -> Dict[str, int]:
-    """#1329: each spell_repository key with its typed integer level."""
+def _spell_repository(path: str) -> Dict[str, Any]:
     try:
         with open(path, "r", encoding="utf-8") as handle:
             spells = json.load(handle)
     except (OSError, ValueError):
         spells = {}
-    return {key: entry["level"] for key, entry in (spells if isinstance(spells, dict) else {}).items()
+    return spells if isinstance(spells, dict) else {}
+
+
+def _spell_levels(spells: Dict[str, Any]) -> Dict[str, int]:
+    """#1329: each spell_repository key with its typed integer level."""
+    return {key: entry["level"] for key, entry in spells.items()
             if isinstance(entry, dict) and type(entry.get("level")) is int}
 
 
-SPELL_LEVELS = _spell_levels(SPELL_REPOSITORY_PATH)
+def _levelled_spell_keys(spells: Dict[str, Any]) -> Dict[str, str]:
+    """#1840: each levelled spell's repository name with its key, the key a
+    castingResource names. A name two entries share maps to neither."""
+    keys: Dict[str, str] = {}
+    shared = set()
+    for key, entry in spells.items():
+        if not (isinstance(entry, dict) and type(entry.get("level")) is int and entry["level"] > 0
+                and isinstance(entry.get("name"), str) and entry["name"]):
+            continue
+        if entry["name"] in keys:
+            shared.add(entry["name"])
+        keys[entry["name"]] = key
+    for name in shared:
+        del keys[name]
+    return keys
+
+
+_SPELL_REPOSITORY = _spell_repository(SPELL_REPOSITORY_PATH)
+SPELL_LEVELS = _spell_levels(_SPELL_REPOSITORY)
+SPELL_KEYS_BY_NAME = _levelled_spell_keys(_SPELL_REPOSITORY)
+del _SPELL_REPOSITORY
 if not SPELL_LEVELS:
     # Fail forward: without levels the spell-key and slot-level checks are skipped,
     # never every paid cast refused (the feat binding is still checked from the sheet).
     from utils.enhanced_logger import warning
     warning("SPELL_LEVELS is empty (%s unreadable): castingResource level checks skipped"
             % SPELL_REPOSITORY_PATH, category="character_updates")
+
+
+def keyed_spell_name(name: Any, shown: Any = None) -> Any:
+    """#1840: ``shown`` (default ``name``) with the repository key of the
+    sheet's stored spell ``name`` in brackets, "Magic Missile [magic_missile]",
+    so the DM copies the key a castingResource names. An exact lookup of the
+    stored name; a cantrip or a name the repository lacks is shown alone."""
+    shown = name if shown is None else shown
+    key = SPELL_KEYS_BY_NAME.get(name) if isinstance(name, str) else None
+    return "%s [%s]" % (shown, key) if key else shown
 
 
 SLOT_LEVEL_KEYS = frozenset("level%d" % level for level in range(1, 10))
