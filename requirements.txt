@@ -4,6 +4,9 @@
 # OpenAI API for AI model interactions
 openai>=1.0.0
 
+# HTTP client the provider connection is built on (utils/openai_client.py); google-genai 3 no longer installs it
+httpx>=0.28.1,<1
+
 # Web interface framework
 Flask>=3.1.0
 Flask-SocketIO>=5.3.0
@@ -54,4 +57,4 @@ Pillow>=10.0.0
 
 # Note: Make sure you have Python 3.9+ installed
 # Install with: pip install -r requirements.txt
-google-genai
+google-genai>=2.6.0,<3

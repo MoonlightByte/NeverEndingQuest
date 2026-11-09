@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A fresh install from source with `pip install -r requirements.txt` works again. google-genai 3.0 (released 2026-11-06) stopped installing httpx, which the game uses for its AI calls, so the requirements now list httpx themselves and keep google-genai below 3.0. The Windows installer was not affected. Each release now also carries the installer under the fixed name NeverEndingQuest-Setup.exe, so one link always downloads the newest version (#1856).
 - In The Thornwood Watch, Ranger Thane is now one figure, a man the party can talk to, free from the corruption with a cleansing rite and bring into the party, or fight. His journal now holds the personal details that reach him, and the Player Guide no longer calls him hostile from the start (#1837).
 - Bandits, their captains and every other hostile person now fall unconscious at 0 HP instead of dying, as party members do; monsters still die. After the fight the Dungeon Master knows who lies unconscious and tells you (#1837).
 - After a fight, the DM can now record in one step that a person who surrendered or was beaten later died or left. Before, that step was refused, the record still showed them alive, and they could later join the party (#1837).

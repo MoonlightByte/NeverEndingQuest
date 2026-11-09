@@ -281,6 +281,11 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           set -euo pipefail
+          # A fixed-name copy, so releases/latest/download/NeverEndingQuest-Setup.exe is always the newest
+          # installer. cp fails unless exactly one versioned installer matches. latest.yml is untouched and
+          # still names the versioned file, which is what the updater downloads.
+          cp out/NeverEndingQuest-Setup-*.exe out/NeverEndingQuest-Setup.exe
           gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "NeverEndingQuest ${TAG#v}" --notes-file notes.md \
-            out/NeverEndingQuest-Setup-*.exe out/NeverEndingQuest-Setup-*.exe.blockmap out/latest.yml
+            out/NeverEndingQuest-Setup-*.exe out/NeverEndingQuest-Setup-*.exe.blockmap out/latest.yml \
+            out/NeverEndingQuest-Setup.exe
