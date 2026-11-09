@@ -4413,15 +4413,21 @@ def validate_ai_response(
         party_npc_names = [npc.get('name') for npc in party_tracker_data.get('partyNPCs', [])]
         # The party line as the DM sees it: ids, this turn's [slot] numbers and
         # the joined people no row carries.
+        _validation_world = _validation_occupants.party_world(
+            str(party_tracker_data.get('module') or ''),
+            str(party_tracker_data.get('worldConditions', {}).get('currentLocationId') or ''),
+            create=False,
+        )
         party_span, orphan_sentence = action_handler.party_note_lines(
             party_tracker_data,
-            _validation_occupants.party_world(
-                str(party_tracker_data.get('module') or ''),
-                str(party_tracker_data.get('worldConditions', {}).get('currentLocationId') or ''),
-                create=False,
-            ),
+            _validation_world,
             turn_roster if turn_roster is not None
             else action_handler.TurnRoster.get(action_handler.turn_key(invocation_claim)),
+        )
+        # #1861: who came along on the last move and is still here, as the
+        # DM's note has it, on the same @PARTY line.
+        orphan_sentence += action_handler.last_move_escort_sentence(
+            party_tracker_data, _validation_world
         )
         
         # Build compressed NPC context
@@ -10559,15 +10565,22 @@ def _main_game_loop(startup_authority, turn_authority):
             # Party stats. The roster rendered here numbers this turn's slots.
             from core.nql import occupants as _note_occupants
 
+            _note_world = _note_occupants.party_world(
+                str(party_tracker_data.get("module") or ""),
+                str(world_conditions.get("currentLocationId") or ""),
+                create=False,
+            )
             party_npcs_span, party_orphan_sentence = action_handler.party_note_lines(
                 party_tracker_data,
-                _note_occupants.party_world(
-                    str(party_tracker_data.get("module") or ""),
-                    str(world_conditions.get("currentLocationId") or ""),
-                    create=False,
-                ),
+                _note_world,
                 party_tracker_data.get('partyNPCs', []),
                 record=True,
+            )
+            # #1861: who came along on the last move and is still here. After
+            # Party stats: the "Party NPCs: ... Party stats:" span is parsed
+            # (episode_capture, voice_context).
+            party_escort_sentence = action_handler.last_move_escort_sentence(
+                party_tracker_data, _note_world
             )
         
             # C3: hubs are told once, by WORLD STATE CONTEXT.
@@ -10584,7 +10597,7 @@ def _main_game_loop(startup_authority, turn_authority):
                 f"Party members: {party_members_str}. "
                 f"{player_character_str}"
                 f"{party_npcs_span} "
-                f"Party stats: {party_stats_str}.{party_orphan_sentence}")
+                f"Party stats: {party_stats_str}.{party_orphan_sentence}{party_escort_sentence}")
             if not should_inject_creation_prompt:
                 dm_note += f" Open plot points located in this area: {plot_here_str} (see ADVENTURE PLOT STATUS)."
             dm_note += f"{module_creation_prompt}"

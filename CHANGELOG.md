@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Someone who came along on your last journey is no longer left behind without a word on the next one. The DM is told who is still with you, and on a journey either brings them along or says they stay (#1861).
+
 ## [1.2.1] - 2026-11-09
 
 - A fresh install from source with `pip install -r requirements.txt` works again. google-genai 3.0 (released 2026-11-06) stopped installing httpx, which the game uses for its AI calls, so the requirements now list httpx themselves and keep google-genai below 3.0. The Windows installer was not affected. Each release now also carries the installer under the fixed name NeverEndingQuest-Setup.exe, so one link always downloads the newest version (#1856).

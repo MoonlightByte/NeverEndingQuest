@@ -1554,6 +1554,52 @@ def _remove_location_transition_checkpoint():
         return
 
 
+LAST_MOVE_ESCORTS_KEY = "lastMoveEscorts"
+
+
+def _last_move_escort_ids(checkpoint):
+    """#1861: the occupant ids this move's escorts brought along. The
+    _transition_escorts predicate (#1842, main.py), committed receipts only:
+    at completion the apply has run, so a staged, refused or unavailable
+    escort did not move anyone."""
+    deferred = checkpoint.get("deferred_actions") if isinstance(checkpoint, dict) else None
+    records = deferred.get("actions") if isinstance(deferred, dict) else None
+    ids = []
+    for record in records if isinstance(records, list) else []:
+        receipt = record.get("receipt") if isinstance(record, dict) else None
+        if record.get("family") != "moveOccupant" or not isinstance(receipt, dict):
+            continue
+        if receipt.get("escort") and receipt.get("status") == "committed":
+            occupant_id = str(receipt.get("occupant_id") or "").strip()
+            if occupant_id and occupant_id not in ids:
+                ids.append(occupant_id)
+    return ids
+
+
+def _record_last_move_escorts(checkpoint):
+    """#1861: carry this completed move's escorts one turn further on the
+    party tracker, since the checkpoint is removed at completion. Written on
+    every completed move ([] when nobody came along), so the key always means
+    the last move; the same value is written once (a resumed completion)."""
+    module = str(checkpoint.get("module_name") or "")
+    destination = str(checkpoint.get("destination_location_id") or "")
+    if not module or not destination:
+        return
+    value = {
+        "module": module,
+        "locationId": destination,
+        "occupantIds": _last_move_escort_ids(checkpoint),
+    }
+    from core.managers.campaign_manager import _party_module_transition_lock
+
+    with _party_module_transition_lock():
+        latest = safe_json_load("party_tracker.json")
+        if not isinstance(latest, dict) or latest.get(LAST_MOVE_ESCORTS_KEY) == value:
+            return
+        latest[LAST_MOVE_ESCORTS_KEY] = value
+        safe_json_dump(latest, "party_tracker.json")
+
+
 def complete_location_transition_checkpoint(transition_id):
     """Remove only the checkpoint correlated with durable final narration."""
     if not transition_id:
@@ -1564,6 +1610,12 @@ def complete_location_transition_checkpoint(transition_id):
     checkpoint_identity = checkpoint.get("operation_id") or checkpoint.get("transition_id")
     if checkpoint_identity != transition_id:
         return False
+    try:
+        _record_last_move_escorts(checkpoint)
+    except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+        raise
+    except Exception as exc:  # fail forward: the move completes; the next note has no sentence
+        warning("TRAVEL: last-move escorts not recorded (%s) (#1861)" % exc, category="location_transitions")
     checkpoint["phase"] = "completed"
     _write_location_transition_checkpoint(checkpoint)
     _remove_location_transition_checkpoint()
@@ -3426,6 +3478,51 @@ def party_rows(roster, turn_roster):
             text += " [slot %d]" % number
         rows.append(text)
     return rows
+
+
+def last_move_escort_sentence(party_tracker, world):
+    """#1861: the people who came along on the party's last move and are
+    still with the player, for the DM note and T065's @PARTY line, after
+    Party stats ("" when none). From the tracker's lastMoveEscorts, kept only
+    while the record is this module's and this place's, for each person
+    present here now (count above 0, as occupants.present_people) who is not
+    a party NPC. A tracker without the key reads as no escorts."""
+    from core.nql import occupants as _occupants
+
+    party = party_tracker if isinstance(party_tracker, dict) else {}
+    record = party.get(LAST_MOVE_ESCORTS_KEY)
+    if not isinstance(record, dict):
+        return ""
+    module = str(party.get("module") or "").replace(" ", "_")
+    world_conditions = party.get("worldConditions")
+    location = str(
+        (world_conditions if isinstance(world_conditions, dict) else {}).get("currentLocationId") or ""
+    )
+    if not module or not location:
+        return ""
+    if str(record.get("module") or "").replace(" ", "_") != module or str(record.get("locationId") or "") != location:
+        return ""
+    place = _occupants.place_id(module, location)
+    roster = party.get("partyNPCs")
+    companions = _roster_ids(roster if isinstance(roster, list) else [])
+    ids = record.get("occupantIds")
+    rows = []
+    for occupant_id in ids if isinstance(ids, list) else []:
+        occupant_id = str(occupant_id or "")
+        occupant = _occupants.world_occupant(world, occupant_id)
+        if (
+            not isinstance(occupant, dict)
+            or occupant_id in companions
+            or occupant.get("location") != place
+            or occupant.get("kind") != "person"
+            or not isinstance(occupant.get("count", 1), int)
+            or occupant.get("count", 1) <= 0
+        ):
+            continue
+        rows.append("%s (%s)" % (occupant_id, occupant.get("name") or occupant_id))
+    if not rows:
+        return ""
+    return " With you since your last move, not party members: %s." % "; ".join(rows)
 
 
 def party_note_lines(party_tracker, world, turn_roster, *, record=False):
