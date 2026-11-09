@@ -534,6 +534,7 @@
         },
         {
           "name": "Bandit Captain Gorvek",
+          "person": true,
           "description": "A scarred half-orc warrior who leads the bandit gang with brutal efficiency. His armor bears strange symbols that match those found on the corrupted supplies, and his eyes occasionally flash with an unnatural green light that hints at supernatural influence.",
           "attitude": "Aggressive and paranoid, suspicious of anyone approaching the stronghold. Will fight to defend the base but may attempt to flee if severely outmatched.",
           "quantity": {

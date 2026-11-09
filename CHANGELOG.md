@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - When you cast a levelled spell, the Dungeon Master is now shown the exact name the game files that spell under, so it charges the spell right the first time. It no longer has to guess the spelling, which could end your turn with "I got that a little tangled" (#1840).
+- In The Thornwood Watch, Bandit Captain Gorvek and Malarok the Corruptor are now marked in the module data as people, not beasts, ready for the rule that a beaten person on the hostile side is knocked out rather than killed (#1837).
 
 ## [1.2.0] - 2026-11-09
 
