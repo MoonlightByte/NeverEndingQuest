@@ -11324,7 +11324,10 @@ def _escort_refusal(actions, module, origin_location_id, last_attempt):
     (the apply decides), and so does the last attempt, so the turn never
     fails on it: the travel receipt then records the refusal and the arrival
     facts say the escort stayed behind."""
+    from core.combat.invocation import InvocationSupersededError
     from core.nql import occupants as _occupants
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.transient_filesystem import ReadOnlySaveStop
 
     if not actions or not isinstance(actions[0], dict) or actions[0].get("action") != "transitionLocation":
         return None
@@ -11338,6 +11341,8 @@ def _escort_refusal(actions, module, origin_location_id, last_attempt):
             continue  # not an escort: _travel_unsupported_siblings owns it
         try:
             problem = _occupants.escort_problem(parameters, module, origin_location_id, destination)
+        except (InvocationSupersededError, LiveProviderSuperseded, ReadOnlySaveStop):
+            raise
         except Exception as exc:  # fail forward: the travel receipt decides
             warning("VALIDATION: travel escort not checked (%s)" % exc, category="ai_validation")
             continue
