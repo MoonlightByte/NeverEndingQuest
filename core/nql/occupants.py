@@ -833,7 +833,11 @@ def location_record(location_id: str, module: str, *, root: str = ".") -> Option
     for occupant in list(here.get("resolved") or []) + list(here.get("present") or []):
         if occupant.get("tally"):
             left = occupant.get("count")
-            text = "%s: %s" % (occupant.get("name"), _tally_text(occupant))
+            name = occupant.get("name")
+            if occupant.get("kind") == "person" and occupant.get("id"):
+                # #1837: a person's line carries the id an add by id takes.
+                name = "%s [%s]" % (name, occupant["id"])
+            text = "%s: %s" % (name, _tally_text(occupant))
             if isinstance(left, int) and left > 0:
                 text += "; %d still here" % left
             record.append(text)
@@ -1227,28 +1231,13 @@ def prepare_travel_action(action_type: str, parameters: Any, request_id: str, mo
             receipt["reason"] = ("%s is not travel-owned; a travel turn carries only an escort "
                                  "(moveOccupant to the destination)" % action_type)
             return receipt
-        line, problem = dm_action_line(action_type, p, module)
+        line, problem, present = _escort(p, module, origin_location_id, destination_location_id, root)
+        receipt["line"] = line or None
         if problem:
             receipt["reason"] = problem
             return receipt
-        target = str(p.get("locationId") or "").strip()
-        if target != str(destination_location_id or "").strip():
-            receipt["reason"] = ("moveOccupant to %s is not the travel destination %s"
-                                 % (target, destination_location_id))
-            return receipt
-        receipt["line"] = line
-        here = _here(root, place_id(module, origin_location_id))
-        if here is None:
-            # The engine is unavailable now; the apply decides.
-            receipt["status"] = "staged"
-            receipt["escort"] = True
-            return receipt
-        present = next((o for o in present_roster(here) if o.get("id") == receipt["occupant_id"]), None)
-        if present is None:
-            receipt["reason"] = ("%s is not present at %s; present: %s"
-                                 % (receipt["occupant_id"], origin_location_id, _present_lines(here)))
-            return receipt
-        receipt["occupant_name"] = present.get("name")
+        if present is not None:
+            receipt["occupant_name"] = present.get("name")
         receipt["status"] = "staged"
         receipt["escort"] = True
         return receipt
@@ -1256,6 +1245,42 @@ def prepare_travel_action(action_type: str, parameters: Any, request_id: str, mo
         warning("OCCUPANTS: travel %s skipped (%s)" % (action_type, exc), category="location_transitions")
         receipt["reason"] = "could not be prepared (%s)" % exc
         return receipt
+
+
+def _escort(parameters: Any, module: str, origin_location_id: str, destination_location_id: str,
+            root: str) -> Tuple[str, str, Optional[Dict[str, Any]]]:
+    """#1841: the one check of a travel escort, shared by the review
+    (escort_problem) and the travel receipt: (line, problem, present). `line`
+    is the engine line once the action is well formed and goes to the
+    destination; `problem` is why the escort cannot come along ("" when it
+    can, or when the engine is unavailable and the apply decides); `present`
+    is the occupant's roster entry when the engine answered."""
+    p = parameters if isinstance(parameters, dict) else {}
+    line, problem = dm_action_line("moveOccupant", p, module)
+    if problem:
+        return "", problem, None
+    target = str(p.get("locationId") or "").strip()
+    if target != str(destination_location_id or "").strip():
+        return "", ("moveOccupant to %s is not the travel destination %s"
+                    % (target, destination_location_id)), None
+    here = _here(root, place_id(module, origin_location_id))
+    if here is None:
+        # The engine is unavailable now; the apply decides.
+        return line, "", None
+    oid = str(p.get("occupantId") or "").strip()
+    present = next((o for o in present_roster(here) if o.get("id") == oid), None)
+    if present is None:
+        return line, ("%s is not present at %s; present: %s"
+                      % (oid, origin_location_id, _present_lines(here))), None
+    return line, "", present
+
+
+def escort_problem(parameters: Any, module: str, origin_location_id: str,
+                   destination_location_id: str, *, root: str = ".") -> Optional[str]:
+    """#1841: why this travel escort cannot come along, or None (it can, or
+    the engine is unavailable and the apply decides). The review asks before
+    T065, so the DM can correct the id in the same turn."""
+    return _escort(parameters, module, origin_location_id, destination_location_id, root)[1] or None
 
 
 def apply_travel_receipt(receipt: Dict[str, Any], module: str, *, root: str = ".") -> str:
