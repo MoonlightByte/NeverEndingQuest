@@ -1000,6 +1000,7 @@ class ModuleValidator:
         self.validate_module_context()
         self.validate_encounter_files()
         self.validate_legacy_content_advisories()
+        self.validate_typed_facts()
 
         # VAL-H2 / MP-H4: bidirectional location-to-location connectivity
         bi_success, bi_errors = self.validate_bidirectional_connectivity()
@@ -1047,7 +1048,7 @@ class ModuleValidator:
         file_type_order = ["module", "area", "character", "monster", "map", "plot",
                           "party", "module_context", "encounter", "connectivity",
                           "bidirectional_connectivity", "encounter_creature_resolution",
-                          "content_advisories"]
+                          "typed_facts", "content_advisories"]
 
         for file_type in file_type_order:
             if file_type not in self.results:
@@ -1066,6 +1067,19 @@ class ModuleValidator:
                         print(f"    - {error}")
                 else:
                     print(f"  Status: [SKIPPED] No multi-area module")
+                continue
+
+            # Special handling for typed facts (no files list)
+            if file_type == "typed_facts":
+                result = self.results[file_type]
+                print(f"\nTYPED FACTS CHECK")
+                if result.get("failed", 0) > 0:
+                    print(f"  Status: [ERROR] TYPED FACTS DO NOT RESOLVE")
+                    print("  Errors:")
+                    for error in result.get("errors", []):
+                        print(f"    - {error}")
+                else:
+                    print(f"  Status: [OK] ALL TYPED FACTS RESOLVE")
                 continue
 
             # Special handling for bidirectional connectivity (no files list)
