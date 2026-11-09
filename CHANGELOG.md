@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Travel narration now counts an escort who comes with you, so it no longer says you travel alone, and the Wolf's Den Cave's description no longer tells you who is cornered inside before you go in (#1842).
+
 ## [1.2.0] - 2026-11-09
 
 - The module validator's command line now checks typed facts too, so a module with a broken one no longer passes there (#1828).
