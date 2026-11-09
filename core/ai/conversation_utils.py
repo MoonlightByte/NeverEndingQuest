@@ -1010,6 +1010,15 @@ def _feats_text(feats):
     return ", ".join(parts)
 
 
+def _spells_text(sheet):
+    """SPELLS: each level's spells; a levelled spell carries its repository
+    key in brackets, the key a castingResource names (#1840)."""
+    from core.nql.resources import keyed_spell_name
+
+    return ', '.join([f"{level}: {', '.join(keyed_spell_name(spell) for spell in spells)}"
+                      for level, spells in sheet.get('spellcasting', {}).get('spells', {}).items() if spells])
+
+
 def _spell_guidance_message(sheet):
     """r2 13b: the SRD entries of the spells on a player's sheet (never the words)."""
     try:
@@ -1130,7 +1139,7 @@ EQUIP: {equipment_str}
 AMMO: {', '.join([f"{ammo['name']} x{ammo['quantity']}" for ammo in member_data.get('ammunition', [])])}
 ATK: {', '.join([f"{atk['name']} ({atk['type']}, {atk['damageDice']} {atk['damageType']})" for atk in member_data['attacksAndSpellcasting']])}
 SPELLCASTING: {member_data.get('spellcasting', {}).get('ability', 'N/A')} | DC: {member_data.get('spellcasting', {}).get('spellSaveDC', 'N/A')} | ATK: +{member_data.get('spellcasting', {}).get('spellAttackBonus', 'N/A')}
-SPELLS: {', '.join([f"{level}: {', '.join(spells)}" for level, spells in member_data.get('spellcasting', {}).get('spells', {}).items() if spells])}
+SPELLS: {_spells_text(member_data)}
 CURRENCY: {member_data['currency']['gold']}G, {member_data['currency']['silver']}S, {member_data['currency']['copper']}C
 XP: {member_data['experience_points']}/{member_data.get('exp_required_for_next_level', 'N/A')}{_level_ups_text(member_data)}
 TRAITS: {member_data['personality_traits']}
@@ -1227,7 +1236,7 @@ EQUIP: {equipment_str}
 AMMO: {', '.join([f"{ammo['name']} x{ammo['quantity']}" for ammo in npc_data['ammunition']])}
 ATK: {', '.join([f"{atk['name']} ({atk['type']}, {atk['damageDice']} {atk['damageType']})" for atk in npc_data['attacksAndSpellcasting']])}
 SPELLCASTING: {npc_data.get('spellcasting', {}).get('ability', 'N/A')} | DC: {npc_data.get('spellcasting', {}).get('spellSaveDC', 'N/A')} | ATK: +{npc_data.get('spellcasting', {}).get('spellAttackBonus', 'N/A')}
-SPELLS: {', '.join([f"{level}: {', '.join(spells)}" for level, spells in npc_data.get('spellcasting', {}).get('spells', {}).items() if spells])}
+SPELLS: {_spells_text(npc_data)}
 CURRENCY: {npc_data['currency']['gold']}G, {npc_data['currency']['silver']}S, {npc_data['currency']['copper']}C
 XP: {npc_data['experience_points']}/{npc_data.get('exp_required_for_next_level', 'N/A')}{_level_ups_text(npc_data)}
 TRAITS: {npc_data['personality_traits']}
