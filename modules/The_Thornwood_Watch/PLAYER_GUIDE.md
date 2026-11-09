@@ -57,7 +57,7 @@ The final section of the module shifts the focus from combat to compassion, pres
 
 ### The Challenge: Ranger Thane (NC04)
 
-The party finds Ranger Thane, but he is twisted by dark magic and initially hostile. He is a formidable opponent if engaged in combat.
+The party finds Ranger Thane, but he is twisted by dark magic. His corrupted wolf attacks on sight, and Thane himself is a formidable opponent if he loses control.
 
 **The Clever Solution: Redemption Through Lore**
 

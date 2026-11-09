@@ -489,7 +489,7 @@ def _standing(live: Dict[str, Any], creatures: List[Dict[str, Any]], by_id: Dict
 
 
 def combat_actions(live: Dict[str, Any], place: str, creatures: List[Dict[str, Any]],
-                   departed: Any = ()) -> Tuple[str, List[str]]:
+                   departed: Any = (), marked: Any = ()) -> Tuple[str, List[str]]:
     """The typed actions that record this fight's enemies on their occupants,
     and the enemies no occupant matched. An enemy names its occupant by
     ``occupantId`` or by its typed slug equal to a present group's type at
@@ -522,6 +522,11 @@ def combat_actions(live: Dict[str, Any], place: str, creatures: List[Dict[str, A
                 continue
             unmatched.append(str(creature.get("name")))
             continue
+        if occupant["id"] in marked and str(creature.get("status") or "").strip().lower() == "dead":
+            # #1837: a person the area marks (``marked``) falls unconscious at
+            # 0, so "defeated" there means alive; a dead one (a slot not
+            # declared by id fights unmarked) is recorded as having died.
+            outcome = "died"
         tally = tallies.setdefault(occupant["id"], {})
         tally[outcome] = tally.get(outcome, 0) + 1
     standing = _standing(live, creatures, by_id, by_type, tallies, departed)
@@ -543,7 +548,7 @@ def combat_actions(live: Dict[str, Any], place: str, creatures: List[Dict[str, A
         else:
             present = int(occupant.get("count") or 0)
         left = present
-        for outcome in ("defeated", "surrendered", "fled"):
+        for outcome in ("defeated", "surrendered", "fled", "died"):
             n = min(tally.get(outcome, 0), left)
             if n <= 0:
                 continue
@@ -628,7 +633,11 @@ def resolve_combat(encounter_id: str, *, root: str = ".") -> Optional[Dict[str, 
         live = current.get("live_state") or _load(root) or {}
         departed = {row.get("combatantId") for row in (encounter.get("sceneFacts") or {}).get("participants") or []
                     if isinstance(row, dict) and row.get("participation") == "departed"}
-        actions, unmatched = combat_actions(live, place, encounter.get("creatures") or [], departed)
+        # #1837: the creature groups here the area marks a person, by id.
+        marked = {o.get("id") for o in live.get("occupants") or []
+                  if isinstance(o, dict) and o.get("location") == place and o.get("kind") == "creatures"
+                  and authored_person(module, location_id, str(o.get("id") or ""), root=root)}
+        actions, unmatched = combat_actions(live, place, encounter.get("creatures") or [], departed, marked=marked)
         joined = joined_person_actions(live, place, encounter)
         actions = "\n".join(part for part in (actions, joined) if part)
         if unmatched:
@@ -787,6 +796,34 @@ def present_people(tracker: Dict[str, Any], *, root: str = ".") -> List[Dict[str
         if isinstance(o, dict) and o.get("location") == place and o.get("kind") == "person"
         and isinstance(o.get("count", 1), int) and o.get("count", 1) > 0
     ]
+
+
+def _recorded_defeated(occupant: Dict[str, Any]) -> bool:
+    return any(isinstance(e, dict) and e.get("outcome") == "defeated" for e in occupant.get("tally") or [])
+
+
+def downed_at_place(tracker: Dict[str, Any], *, root: str = ".") -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """#1837: who may lie at 0 HP at the party's current place, from the
+    engine view: (persons, marked creatures). Persons are the person
+    occupants present (count above 0) or recorded defeated there; marked
+    creatures are creature occupants the area data marks a person
+    (``authored_person``) that a fight recorded defeated there. Empty when
+    the engine or the document is unavailable."""
+    location_id = (tracker.get("worldConditions") or {}).get("currentLocationId") or ""
+    if not location_id:
+        return [], []
+    module = tracker.get("module") or ""
+    place = place_id(module, location_id)
+    response = request(view=(place,), root=root, create=False)
+    if not response or not response.get("ok"):
+        return [], []
+    here = [o for o in (response.get("live_state") or {}).get("occupants") or []
+            if isinstance(o, dict) and o.get("location") == place]
+    persons = [o for o in here if o.get("kind") == "person" and (
+        (isinstance(o.get("count", 1), int) and o.get("count", 1) > 0) or _recorded_defeated(o))]
+    marked = [o for o in here if o.get("kind") == "creatures" and _recorded_defeated(o)
+              and authored_person(module, location_id, str(o.get("id") or ""), root=root)]
+    return persons, marked
 
 
 def id_stem(occupant: Dict[str, Any]) -> str:
@@ -1452,6 +1489,15 @@ def _authored_entry(location: Optional[Dict[str, Any]], occupant_id: str) -> Opt
                 if seen == nth:
                     return entry
     return None
+
+
+def authored_person(module: str, location_id: str, occupant_id: str, *, root: str = ".") -> bool:
+    """#1837: whether the area data marks this occupant a person (``"person":
+    true`` on its authored entry), found by its id, never by a name. A
+    creature so marked falls unconscious at 0 HP, as a person does."""
+    location = _authored(root).get((module or "").replace(" ", "_"), {}).get(location_id)
+    entry = _authored_entry(location, occupant_id)
+    return isinstance(entry, dict) and entry.get("person") is True
 
 
 def describe(present: List[Dict[str, Any]], module: str, location_id: str, *, root: str = ".") -> None:

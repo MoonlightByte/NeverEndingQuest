@@ -324,6 +324,24 @@ def is_party_member(creature):
     return creature.get("type") in ("player", "npc")
 
 
+def falls_unconscious(creature):
+    """Return whether a creature drops unconscious and stable at 0 HP instead
+    of dying (D-242-1 as amended on #1403 and #1837).
+
+    A party member, any person (an ``npc`` row: every hostile person
+    included), or a creature row the area data marks a person (``"person":
+    true``, copied from its occupant by id). Any other combatant, a monster,
+    dies at 0. Typed row values only, never a name.
+    """
+    if not isinstance(creature, dict):
+        return False
+    return (
+        is_party_member(creature)
+        or creature.get("type") == "npc"
+        or creature.get("person") is True
+    )
+
+
 def is_hostile(creature):
     return isinstance(creature, dict) and (
         creature.get("faction") == "hostile" or creature.get("type") == "enemy"
