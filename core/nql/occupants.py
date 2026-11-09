@@ -489,7 +489,7 @@ def _standing(live: Dict[str, Any], creatures: List[Dict[str, Any]], by_id: Dict
 
 
 def combat_actions(live: Dict[str, Any], place: str, creatures: List[Dict[str, Any]],
-                   departed: Any = ()) -> Tuple[str, List[str]]:
+                   departed: Any = (), marked: Any = ()) -> Tuple[str, List[str]]:
     """The typed actions that record this fight's enemies on their occupants,
     and the enemies no occupant matched. An enemy names its occupant by
     ``occupantId`` or by its typed slug equal to a present group's type at
@@ -522,6 +522,11 @@ def combat_actions(live: Dict[str, Any], place: str, creatures: List[Dict[str, A
                 continue
             unmatched.append(str(creature.get("name")))
             continue
+        if occupant["id"] in marked and str(creature.get("status") or "").strip().lower() == "dead":
+            # #1837: a person the area marks (``marked``) falls unconscious at
+            # 0, so "defeated" there means alive; a dead one (a slot not
+            # declared by id fights unmarked) is recorded as having died.
+            outcome = "died"
         tally = tallies.setdefault(occupant["id"], {})
         tally[outcome] = tally.get(outcome, 0) + 1
     standing = _standing(live, creatures, by_id, by_type, tallies, departed)
@@ -543,7 +548,7 @@ def combat_actions(live: Dict[str, Any], place: str, creatures: List[Dict[str, A
         else:
             present = int(occupant.get("count") or 0)
         left = present
-        for outcome in ("defeated", "surrendered", "fled"):
+        for outcome in ("defeated", "surrendered", "fled", "died"):
             n = min(tally.get(outcome, 0), left)
             if n <= 0:
                 continue
@@ -628,7 +633,11 @@ def resolve_combat(encounter_id: str, *, root: str = ".") -> Optional[Dict[str, 
         live = current.get("live_state") or _load(root) or {}
         departed = {row.get("combatantId") for row in (encounter.get("sceneFacts") or {}).get("participants") or []
                     if isinstance(row, dict) and row.get("participation") == "departed"}
-        actions, unmatched = combat_actions(live, place, encounter.get("creatures") or [], departed)
+        # #1837: the creature groups here the area marks a person, by id.
+        marked = {o.get("id") for o in live.get("occupants") or []
+                  if isinstance(o, dict) and o.get("location") == place and o.get("kind") == "creatures"
+                  and authored_person(module, location_id, str(o.get("id") or ""), root=root)}
+        actions, unmatched = combat_actions(live, place, encounter.get("creatures") or [], departed, marked=marked)
         joined = joined_person_actions(live, place, encounter)
         actions = "\n".join(part for part in (actions, joined) if part)
         if unmatched:
