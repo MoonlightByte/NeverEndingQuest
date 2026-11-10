@@ -1781,7 +1781,7 @@ def get_location_data_from_party_tracker(party_tracker_data):
     return sanitize_dict(location) if location is not None else None
 
 
-def generate_transition_narration(transition_prompt, party_tracker_data):
+def generate_transition_narration(transition_prompt, party_tracker_data, escorts=None, onward_goal=None):
     """Run layer 1/3 (T013) from committed, updated location context.
 
     Travel narration is deliberately a three-agent chain: T013 produces this
@@ -1860,10 +1860,32 @@ def generate_transition_narration(transition_prompt, party_tracker_data):
             % type(narration_error).__name__,
             category="narrative_generation",
         )
-        return "You complete the journey and arrive at %s." % destination
+        return _transition_fallback_line(destination, escorts, onward_goal)
+
+
+def _join_names(names):
+    """"A", "A and B", "A, B and C"."""
+    names = [str(name) for name in names]
+    if len(names) < 2:
+        return "".join(names)
+    return "%s and %s" % (", ".join(names[:-1]), names[-1])
+
+
+def _transition_fallback_line(destination, escorts=None, onward_goal=None):
+    """T013's fixed line when the model gives none (#1869): it names this
+    move's escorts, and an onward goal (#1863's trip_goal) as a second
+    sentence with the stored name and no article (#1868: no data says whether
+    a place takes "the"). With neither it is the historical line."""
+    if escorts:
+        line = "You complete the journey with %s and arrive at %s." % (_join_names(escorts), destination)
+    else:
+        line = "You complete the journey and arrive at %s." % destination
+    if onward_goal:
+        line += " Your road goes on: %s." % onward_goal["name"]
+    return line
 
 def generate_arrival_narration(
-    departure_narration, party_tracker_data, conversation_history, arrival_facts=""
+    departure_narration, party_tracker_data, conversation_history, arrival_facts="", escorts=None
 ):
     """
     Run layer 2/3 (T063) from T013 plus the committed target/roster projection.
@@ -1871,6 +1893,8 @@ def generate_arrival_narration(
     `arrival_facts` (#648) is the destination scene the arrival is grounded
     in: the code-filtered destination projection and who is present there
     (_transition_arrival_facts). Without it the prompt is the historical one.
+    `escorts` (#1869) are this move's escorts: travellers who are not party
+    NPCs, on their own roster line. None or [] leaves the prompt unchanged.
     """
     from utils.capture.live_provider_call import LiveProviderSuperseded
     debug("STATE_CHANGE: Generating cinematic arrival narration...", category="narrative_generation")
@@ -1879,6 +1903,10 @@ def generate_arrival_narration(
     new_location_name = party_tracker_data["worldConditions"]["currentLocation"]
     new_area_name = party_tracker_data["worldConditions"]["currentArea"]
     player_names, npc_names = _transition_roster(party_tracker_data)
+    escort_line = (
+        "    Escorts travelling with you (not party members): %s\n"
+        % json.dumps([str(name) for name in escorts], ensure_ascii=False)
+    ) if escorts else ""
 
     # Construct the special prompt
     arrival_prompt = f"""
@@ -1894,7 +1922,7 @@ def generate_arrival_narration(
     EXACT COMMITTED ROSTER:
     Player characters: {json.dumps(player_names, ensure_ascii=False)}
     Party NPCs: {json.dumps(npc_names, ensure_ascii=False)}
-    Do not add, imply, count, or describe any other companion.
+{escort_line}    Do not add, imply, count, or describe any other companion.
 {arrival_facts}
     DEPARTURE NARRATION (for context):
     ---
@@ -1988,7 +2016,8 @@ def generate_arrival_narration(
 
 # <--- NEW FUNCTION to blend the departure and arrival narrations --->
 def generate_seamless_transition_narration(departure_narration, arrival_narration, dm_text="", party=None,
-                                           down_rules=None, onward_goal=None):
+                                           down_rules=None, onward_goal=None, escorts=None, stayed=None,
+                                           origin_name=None):
     """
     Run layer 3/3 (T064), preserving both accepted layers as one seamless turn.
     dm_text is the DM's accepted narration of the turn (#670): the closing
@@ -1998,6 +2027,9 @@ def generate_seamless_transition_narration(departure_narration, arrival_narratio
     down_rules (#1637) is the down-scene rules string while a party member is
     down: the closing invitation becomes the down closing and the rules ride
     after the roster. None leaves the prompt unchanged.
+    escorts and stayed (#1869) ride in the roster block when party is given:
+    this move's escorts as travellers, and the people from the last move who
+    stay at origin_name. None or [] leaves the prompt unchanged.
     """
     from utils.capture.live_provider_call import LiveProviderSuperseded
     debug("STATE_CHANGE: Blending departure and arrival narrations into a seamless whole...", category="narrative_generation")
@@ -2023,7 +2055,9 @@ def generate_seamless_transition_narration(departure_narration, arrival_narratio
             "\nEXACT COMMITTED ROSTER:\n"
             f"Player characters: {json.dumps(player_names, ensure_ascii=False)}\n"
             f"Party NPCs: {json.dumps(npc_names, ensure_ascii=False)}\n"
-            "The travellers are exactly this roster; a player character is 'you', "
+            + _transition_escort_line(escorts)
+            + _transition_stay_line(stayed, origin_name)
+            + "The travellers are exactly this roster; a player character is 'you', "
             "never a separate companion. Others appear only as the arrival shows "
             "them present.\n"
         )
@@ -2472,10 +2506,57 @@ def _trip_goal(checkpoint):
     return {"location_id": location_id.strip(), "name": name.strip()}
 
 
-def _transition_departure_prompt(checkpoint, party, dm_text="", down_rules=None):
+def _transition_escort_line(escorts):
+    """#1869: T064's roster line for this move's escorts ("" when none)."""
+    if not escorts:
+        return ""
+    return "Escorts travelling with you (not party members): %s\n" % json.dumps(
+        [str(name) for name in escorts], ensure_ascii=False
+    )
+
+
+def _transition_stay_line(stayed, origin_name=None):
+    """#1869: T064's roster line for the people who stay at the origin ("" when none)."""
+    if not stayed:
+        return ""
+    where = " at %s" % origin_name if origin_name else ""
+    return (
+        "Stayed behind%s (identified here; not travellers): %s. If the departure "
+        "does not already say so, say once in plain words that they stayed behind; "
+        "never place them at the destination.\n"
+        % (where, json.dumps([str(name) for name in stayed], ensure_ascii=False))
+    )
+
+
+def _transition_stayed_behind(checkpoint, party):
+    """#1869: the people who came along on the last move and stay at this
+    move's origin (action_handler.last_move_stayed_behind), from the occupant
+    document as the DM note reads it. [] when there is no record or on any
+    fault: the chain then narrates as before."""
+    if not (isinstance(party, dict) and isinstance(checkpoint, dict)):
+        return []
+    if not isinstance(party.get(action_handler.LAST_MOVE_ESCORTS_KEY), dict):
+        return []
+    try:
+        from core.nql import occupants
+
+        world = occupants.party_world(
+            str(checkpoint.get("module_name") or ""),
+            str(checkpoint.get("origin_location_id") or ""),
+            create=False,
+        )
+        return action_handler.last_move_stayed_behind(party, world, checkpoint)
+    except Exception as exc:  # fail forward: no stay fact
+        debug("TRAVEL: stay fact unavailable (%s) (#1869)" % exc, category="narrative_generation")
+        return []
+
+
+def _transition_departure_prompt(checkpoint, party, dm_text="", down_rules=None, stayed=None):
     """Layer 1/3 (T013): the departure from the origin, the journey, and the
     return or first arrival, from the committed trip facts and the DM's
-    accepted narration of the turn. The arrival scene is T063's."""
+    accepted narration of the turn. The arrival scene is T063's. stayed
+    (#1869): the people from the last move who stay at the origin, as the
+    stayedBehind fact; None or [] leaves the prompt unchanged."""
     world = party.get("worldConditions", {}) if isinstance(party, dict) else {}
     destination_data = get_location_data_from_party_tracker(party) or {}
     destination = location_manager._transition_destination_facts(
@@ -2517,6 +2598,9 @@ def _transition_departure_prompt(checkpoint, party, dm_text="", down_rules=None)
     if goal:
         # #1863: the destination is a stop on the way to the player's goal.
         facts["onwardGoal"] = {"locationId": goal["location_id"], "name": goal["name"]}
+    if stayed:
+        # #1869: who came along last time and stays at the origin now.
+        facts["stayedBehind"] = [str(name) for name in stayed]
     prompt = (
         "Narrate the player leaving the origin and the journey to the "
         "destination, ending as the player reaches it. Another agent narrates "
@@ -2546,6 +2630,12 @@ def _transition_departure_prompt(checkpoint, party, dm_text="", down_rules=None)
         prompt += (
             "\nThe destination is a stop on the player's way to onwardGoal: say the "
             "journey goes on toward it, and never narrate reaching it."
+        )
+    if stayed:
+        prompt += (
+            "\nstayedBehind names people who came with the player on the last "
+            "move and stay at the origin: as the player leaves, say once that "
+            "they stay behind; they are not travellers."
         )
     dm_text = str(dm_text or "").strip()
     if dm_text:
@@ -2610,8 +2700,14 @@ def _transition_arrival_facts(party, checkpoint=None):
     place = travel_map.tracker_place(party)
     views = occupants.view([place]) if place else []
     present = []
+    # #1869: an escort already at the destination (a module handoff applies
+    # the deferred actions before the chain) is a traveller on the roster's
+    # escorts line, not a person present here. By occupant id only.
+    escort_ids = set(action_handler.transition_escort_ids(checkpoint))
     for occupant in (views[0].get("present") or []) if views else []:
         if occupant.get("kind") != "person" or occupant.get("attitude") == "hostile":
+            continue
+        if occupant.get("id") in escort_ids:
             continue
         entry = {"name": occupant.get("name")}
         if isinstance(occupant.get("count"), int) and occupant["count"] != 1:
@@ -2636,17 +2732,25 @@ def _run_transition_chain(checkpoint, party, history):
     dm_text = narration.get("departure_text") or narration.get("source_prompt")
     # #1637: while a party member is down, every layer gets the down-scene rules.
     down_rules = _transition_down_rules(party)
+    # #1869: this move's escorts travel; last move's escorts who are not
+    # coming stay at the origin.
+    escorts = _transition_escorts(checkpoint)
+    stayed = _transition_stayed_behind(checkpoint, party)
+    goal = _trip_goal(checkpoint)
     first = generate_transition_narration(
-        _transition_departure_prompt(checkpoint, party, dm_text, down_rules),
+        _transition_departure_prompt(checkpoint, party, dm_text, down_rules, stayed=stayed),
         party,
+        escorts=escorts,
+        onward_goal=goal,
     )
     arrival_facts = _transition_arrival_facts(party, checkpoint)
     if down_rules:
         arrival_facts += "\n    " + down_rules + "\n"
-    arrival = generate_arrival_narration(first, party, history, arrival_facts)
+    arrival = generate_arrival_narration(first, party, history, arrival_facts, escorts=escorts)
     return generate_seamless_transition_narration(
         first, arrival, dm_text, party=party, down_rules=down_rules,
-        onward_goal=_trip_goal(checkpoint),
+        onward_goal=goal, escorts=escorts, stayed=stayed,
+        origin_name=checkpoint.get("origin_location_name"),
     )
 
 
