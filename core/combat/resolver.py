@@ -1766,20 +1766,6 @@ def _apply_concentration_verdicts(new_encounter, new_characters, event):
             pass
 
 
-def _holds_effect_id(encounter, characters, op, effect_id):
-    """#1889: True when the op's target (an owner's sheet, else a combatant
-    row) already holds an effect with this effectId."""
-    if not effect_id:
-        return False
-    if op.get("owner"):
-        sheet = (characters or {}).get(op.get("owner"))
-        held = sheet.get("temporaryEffects") if isinstance(sheet, dict) else None
-    else:
-        creature = combatant_by_id(encounter, op.get("combatantId"))
-        held = creature.get("activeEffects") if isinstance(creature, dict) else None
-    return any(isinstance(effect, dict) and effect.get("effectId") == effect_id for effect in held or [])
-
-
 def _record_fight_cast(new_encounter, new_characters, event, op):
     """CC: a concentration effect added by a party caster writes the caster's record.
 
@@ -1790,6 +1776,13 @@ def _record_fight_cast(new_encounter, new_characters, event, op):
     """
     effect = op.get("effect") if isinstance(op, dict) else None
     if not (isinstance(effect, dict) and effect.get("concentration") and effect.get("concentrationId")):
+        return
+    # #1889: the caster of a cast is the event's actor (resolve_adjudicated
+    # stamps sourceCombatantId from it). An effect sourced from someone else
+    # is not this actor's cast: the stand-up re-adds a held effect under the
+    # holder's event, and the caster's record stays the caster's.
+    source = effect.get("sourceCombatantId")
+    if source and source != event.get("actorId"):
         return
     actor = combatant_by_id(new_encounter, event.get("actorId"))
     sheet = _sheet_backed_target(new_characters, actor)
@@ -5666,21 +5659,16 @@ def apply_resolution(encounter, characters, resolution):
     for op in (resolution.get("effectOps") or event.get("effects") or []):
         if op.get("op") == "add" and isinstance(op.get("effect"), dict):
             added_effect = op["effect"]
-            # #1889: an add under an effectId its target already holds is an
-            # upsert of that effect (the stand-up keeps a prone+X effect by its
-            # own id), not a new cast: the caster's concentration stays as it
-            # is, and no record is written onto this event's actor.
-            if not _holds_effect_id(new_encounter, new_characters, op, added_effect.get("effectId")):
-                if added_effect.get("concentration") and added_effect.get(
-                    "sourceCombatantId"
-                ):
-                    _drop_concentration(
-                        new_encounter,
-                        new_characters,
-                        added_effect.get("sourceCombatantId"),
-                        keep_id=added_effect.get("concentrationId"),
-                    )
-                _record_fight_cast(new_encounter, new_characters, event, op)
+            if added_effect.get("concentration") and added_effect.get(
+                "sourceCombatantId"
+            ):
+                _drop_concentration(
+                    new_encounter,
+                    new_characters,
+                    added_effect.get("sourceCombatantId"),
+                    keep_id=added_effect.get("concentrationId"),
+                )
+            _record_fight_cast(new_encounter, new_characters, event, op)
         if op.get("op") == "remove" and op.get("condition"):
             _end_stated_condition(new_encounter, new_characters, op)
             continue
