@@ -1988,7 +1988,7 @@ def generate_arrival_narration(
 
 # <--- NEW FUNCTION to blend the departure and arrival narrations --->
 def generate_seamless_transition_narration(departure_narration, arrival_narration, dm_text="", party=None,
-                                           down_rules=None):
+                                           down_rules=None, onward_goal=None):
     """
     Run layer 3/3 (T064), preserving both accepted layers as one seamless turn.
     dm_text is the DM's accepted narration of the turn (#670): the closing
@@ -2040,6 +2040,13 @@ def generate_seamless_transition_narration(departure_narration, arrival_narratio
             "or the moment of rescue; never ask what the downed character does."
         )
         down_block = "\n" + down_rules + "\n"
+    elif onward_goal:
+        # #1863: the player named a place beyond this stop; the closing offers
+        # the way on toward it.
+        closing += (
+            " The player is on the way to %s: the invitation offers the road on toward %s in "
+            "story words, as what lies ahead, never as reached." % (onward_goal["name"], onward_goal["name"])
+        )
 
     stitching_prompt = f"""
 You are a master storyteller and narrative editor. The following two text blocks describe a party's departure from one place and their subsequent arrival at another. The transition between them is abrupt because they were generated separately.
@@ -2453,6 +2460,18 @@ def _transition_down_rules(party):
         return None
 
 
+def _trip_goal(checkpoint):
+    """#1863: the checkpoint's onward goal {location_id, name}, or None when
+    the trip has none (an old checkpoint, no `toward`) or it is malformed."""
+    goal = checkpoint.get("trip_goal") if isinstance(checkpoint, dict) else None
+    if not isinstance(goal, dict):
+        return None
+    location_id, name = goal.get("location_id"), goal.get("name")
+    if not (isinstance(location_id, str) and location_id.strip() and isinstance(name, str) and name.strip()):
+        return None
+    return {"location_id": location_id.strip(), "name": name.strip()}
+
+
 def _transition_departure_prompt(checkpoint, party, dm_text="", down_rules=None):
     """Layer 1/3 (T013): the departure from the origin, the journey, and the
     return or first arrival, from the committed trip facts and the DM's
@@ -2494,6 +2513,10 @@ def _transition_departure_prompt(checkpoint, party, dm_text="", down_rules=None)
         name for name in _transition_escorts(checkpoint) if name not in companions
     ]
     facts["playerCharacters"] = _transition_roster(party)[0]
+    goal = _trip_goal(checkpoint)
+    if goal:
+        # #1863: the destination is a stop on the way to the player's goal.
+        facts["onwardGoal"] = {"locationId": goal["location_id"], "name": goal["name"]}
     prompt = (
         "Narrate the player leaving the origin and the journey to the "
         "destination, ending as the player reaches it. Another agent narrates "
@@ -2519,6 +2542,11 @@ def _transition_departure_prompt(checkpoint, party, dm_text="", down_rules=None)
         "\n\nTRIP FACTS:\n"
         + json.dumps(facts, ensure_ascii=False, sort_keys=True)
     )
+    if goal:
+        prompt += (
+            "\nThe destination is a stop on the player's way to onwardGoal: say the "
+            "journey goes on toward it, and never narrate reaching it."
+        )
     dm_text = str(dm_text or "").strip()
     if dm_text:
         prompt += (
@@ -2617,7 +2645,8 @@ def _run_transition_chain(checkpoint, party, history):
         arrival_facts += "\n    " + down_rules + "\n"
     arrival = generate_arrival_narration(first, party, history, arrival_facts)
     return generate_seamless_transition_narration(
-        first, arrival, dm_text, party=party, down_rules=down_rules
+        first, arrival, dm_text, party=party, down_rules=down_rules,
+        onward_goal=_trip_goal(checkpoint),
     )
 
 
