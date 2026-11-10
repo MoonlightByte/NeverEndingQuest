@@ -3869,6 +3869,10 @@ def plan_party_change(roster_before, parameters, world, *, turn_roster, module, 
                            engine_lines=engine_lines)
 
         if oid == "new":
+            recorded = _recorded_for_new(npc_path, display_name, world, module, location)
+            if recorded:
+                # #1902: "new" never makes a second person over a recorded fate.
+                return refused(recorded)
             ident = _new_party_id(name, module, location, world, carried, id_suffix)
             return joined("join", "join_new", ident, lines("join_new", ident, display_name))
         if world is None:
@@ -3945,6 +3949,38 @@ def party_change_companion(parameters, roster, turn_roster):
         if isinstance(row, dict) and row.get("name"):
             return row["name"]
     return npc.get("name")
+
+
+def _recorded_for_new(npc_path, name, world, module, location):
+    """Why an add "new" is refused (#1902), or "": the sheet's stem is the id
+    tail of a person record with a fate that stands. At this place: none
+    left, a tally, no joined entry (the condition _not_recruitable reads).
+    Elsewhere in the module: a died entry, and no person with that id tail
+    alive (a living holder makes the stem ambiguous, so it never refuses).
+    No world (an engine outage) checks nothing."""
+    from core.nql import occupants as _occupants
+
+    if not isinstance(world, dict):
+        return ""
+    stem = os.path.splitext(os.path.basename(str(npc_path)))[0]
+    prefix = "occ:%s/" % str(module or "").replace(" ", "_")
+    place = _occupants.place_id(module, location)
+    same = [o for o in world.get("occupants") or [] if isinstance(o, dict) and o.get("kind") == "person"
+            and str(o.get("id") or "").startswith(prefix) and _occupants.id_stem(o) == stem]
+    here = next((o for o in same if o.get("location") == place and o.get("count") == 0 and o.get("tally")
+                 and _occupants.joined_entry(o) is None), None)
+    if here is not None and _occupants.returnable_entry(here, place) is not None:
+        return ('%s is the person recorded here as %s ("%s"). To have them join, add them by that id '
+                '(updatePartyNPCs add with occupantId "%s"); "new" would make a second person with their '
+                'sheet.' % (name, here["id"], _occupants._tally_text(here), here["id"]))
+    if here is None and not any(o.get("count") != 0 for o in same):
+        here = next((o for o in same if any(isinstance(e, dict) and e.get("outcome") == "died"
+                                             for e in o.get("tally") or [])), None)
+    if here is None:
+        return ""
+    at = "here" if here.get("location") == place else "at %s" % str(here.get("location") or "").rsplit("/", 1)[-1]
+    return ('%s is the person recorded %s as %s ("%s"); that stands, so they cannot join, and "new" cannot '
+            'make another person with their name and sheet.' % (name, at, here["id"], _occupants._tally_text(here)))
 
 
 def _not_recruitable(oid, world, module, location):
@@ -5056,6 +5092,7 @@ COMBAT_START_REASONS = {
     "combat_not_started": "the combat could not start",
     "no_hostile_can_act": "no hostile in it can fight",
     "no_hostile_in_fight": "no one in it is against the party",
+    "recorded_dead": "it names someone recorded dead",
 }
 
 
@@ -5103,8 +5140,9 @@ def _no_hostile_lines(rows):
 
 
 def _refused_rows(result_path):
-    """The downHostiles of a builder result refused as no_hostile_can_act
-    (#1891), else None."""
+    """The refused rows of a builder result: downHostiles for
+    no_hostile_can_act (#1891), outsideRows for no_hostile_in_fight (#1899),
+    recordedDead for recorded_dead (#1902); else None."""
     try:
         with open(result_path, "r", encoding="utf-8") as result_file:
             result = json.load(result_file)
@@ -5114,6 +5152,8 @@ def _refused_rows(result_path):
         return result.get("downHostiles")
     if isinstance(result, dict) and result.get("status") == "no_hostile_in_fight":
         return result.get("outsideRows")
+    if isinstance(result, dict) and result.get("status") == "recorded_dead":
+        return result.get("recordedDead")
     return None
 
 
@@ -5147,6 +5187,28 @@ def _outside_lines(rows):
             sentence += " They are present here and were added as an observer; your request did not name them."
         sentences.append(sentence)
     return " ".join(sentences) or "No participant in it is against the party."
+
+
+def _dead_lines(rows, location_id):
+    """One clause per listed person a refused fight names who is recorded
+    dead (#1902), from the builder's typed rows; "" when they are unusable.
+    ``location_id`` is the party's current location: a record there reads
+    "here", one elsewhere "at <its location id>"."""
+    if not isinstance(rows, list) or not rows:
+        return ""
+    clauses = []
+    for row in rows:
+        if not isinstance(row, dict):
+            return ""
+        name = str(row.get("name") or "").strip()
+        occupant_id = str(row.get("occupantId") or "").strip()
+        record = str(row.get("record") or "").strip()
+        if not name or not occupant_id or not record:
+            return ""
+        place = str(row.get("location") or "").rsplit("/", 1)[-1]
+        at = "here" if not place or place == location_id else "at %s" % place
+        clauses.append('%s (occupantId "%s"), recorded %s as "%s"' % (name, occupant_id, at, record))
+    return "; ".join(clauses) + "."
 
 
 def is_encounter_payment(action):
@@ -5297,7 +5359,7 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
     again ("needs_response"). A second failure in the same turn, a turn with
     no identity, or an unreadable tracker ends with the failure line, so this
     can never loop. ``down_hostiles`` holds the builder's refused rows: its
-    downHostiles (#1891) or its outsideRows (#1899).
+    downHostiles (#1891), its outsideRows (#1899) or its recordedDead (#1902).
     """
     global _last_failed_combat_turn
     error(
@@ -5317,7 +5379,17 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
     _last_failed_combat_turn = turn_id
     rows = _no_hostile_lines(down_hostiles) if reason == "no_hostile_can_act" else ""
     outside = _outside_lines(down_hostiles) if reason == "no_hostile_in_fight" else ""
-    if outside:
+    dead = _dead_lines(down_hostiles, world.get("currentLocationId")) if reason == "recorded_dead" else ""
+    if dead:
+        # #1902: a death stands; the fight goes on only without the dead.
+        content = (
+            "Combat Error: the encounter you requested could not be set up, because it names someone "
+            "recorded dead: %s A death stands: they cannot fight, be healed or join. No fight has "
+            "started.%s If the fight still goes on against the others, send createEncounter again "
+            "without them in npcs or occupantIds; otherwise answer the player's last action again "
+            "without this fight." % (dead, "" if payments is None else " " + _encounter_payment_lines(payments))
+        )
+    elif outside:
         # #1899: who is outside the fight, and what a fight needs.
         content = (
             "Combat Error: the encounter you requested could not be set up, because no one in it "
@@ -5367,7 +5439,7 @@ def _built_encounter(result_path, returncode):
         return None, "builder_failed"
     if not isinstance(result, dict) or result.get("version") != 1:
         return None, "builder_failed"
-    if result.get("status") in ("no_hostile_can_act", "no_hostile_in_fight"):
+    if result.get("status") in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead"):
         return None, result["status"]
     if result.get("status") != "saved":
         return None, "builder_no_encounter"
@@ -5570,7 +5642,7 @@ def process_action(
                 encounter_id, build_failure = _built_encounter(
                     os.path.join(result_dir, "result.json"), result.returncode
                 )
-                if build_failure in ("no_hostile_can_act", "no_hostile_in_fight"):
+                if build_failure in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead"):
                     down_hostiles = _refused_rows(os.path.join(result_dir, "result.json"))
             finally:
                 shutil.rmtree(result_dir, ignore_errors=True)

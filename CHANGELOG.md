@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Someone recorded dead now stays dead: the Dungeon Master can no longer bring them back as if they had only left, start a fight that includes them, or add a new companion with their name and sheet, and is told why (#1902).
 - A fight you start where no one is actually against the party (everyone is only watching, hidden, or on your side) no longer opens as a fight that can never end: the Dungeon Master is told who is outside the fight and what a fight needs, and answers you again (#1899).
 - Someone outside your party who is asleep or otherwise unconscious above 0 HP is no longer described as at 0 HP, and the story no longer suggests healing them awake; someone who is neither at 0 HP nor unconscious, such as a captive, is never told they cannot answer (#1894).
 - Keep of Doom now ships stat blocks for its Animated Armor, Awakened Shrub, Gargoyle, Gelatinous Cube, Ghoul, Giant Rat, Giant Spider, Gibbering Mouther, Mimic, Shadow, Shambling Mound, Skeleton, Specter, Swarm of Spiders, Will-o'-Wisp and Zombie, taken from SRD 5.2.1, so these creatures no longer get stats made up by the AI at their first fight and are the same in every game. A game already in progress keeps the stats it made up until Reset; playing from source, a `git pull` between fights brings the new stats (#1885).
