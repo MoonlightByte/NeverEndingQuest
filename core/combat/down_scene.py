@@ -117,7 +117,11 @@ def _members_text(down_members, round_number):
 PRESENT_DOWN_MARKER = "Present persons at 0 HP:"
 _PRESENT_TEMPLATE = (
     "{marker} {members}. They are unconscious and stable and cannot act, speak, "
-    "or answer. Waking one is a real action on their own sheet (an "
+    "or answer. Others may speak to or about them; when the player does (a "
+    "question, a plea, a request for last words), the story shows that they "
+    "cannot answer: no spoken word or whisper is given to them, though a "
+    "wordless sign (a breath, a stir) may show. Waking one is a real action on "
+    "their own sheet (an "
     "updateCharacterInfo heal with hpDelta, a potion administered, or rest when "
     "the scene allows), never a narrated claim. They are not party members: the "
     "party's down-scene rules do not apply to them."
