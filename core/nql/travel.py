@@ -319,7 +319,8 @@ def _hostiles(place: str, root: str) -> List[str]:
 
 
 def engine_route(module: str, origin_id: str, destination_id: str, path: List[str], *,
-                 root: str = ".") -> Optional[Dict[str, Any]]:
+                 root: str = ".", goal_id: Optional[str] = None,
+                 goal_path: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
     """The engine's verdict on an in-module move (C10b). `path` is NEQ's
     snapshot route (origin to destination, bare location ids), used only to
     name the first unvisited place on the way. Returns None when the engine
@@ -333,9 +334,14 @@ def engine_route(module: str, origin_id: str, destination_id: str, path: List[st
       place the party has not visited; `stop` is the first such place on
       NEQ's route (None when the engine cannot reach it), `fresh` every
       unvisited place reachable now (bare ids).
+
+    #1862: with `goal_id` (the player's goal beyond this move, another place)
+    an approved verdict carries "goal_stop" when the engine would stop a trip
+    to the goal exactly at the destination: {"verdict": "halt", "hostiles"}
+    or {"verdict": "unvisited_stop"}. `goal_path` is NEQ's route to the goal.
     """
     try:
-        return _engine_route(module, origin_id, destination_id, path, root)
+        return _engine_route(module, origin_id, destination_id, path, root, goal_id, goal_path)
     except Exception as exc:  # fail forward: NEQ's own route check decides
         warning("TRAVEL: the engine route check failed (%s); the route check stays NEQ's" % exc,
                 category="location_transitions")
@@ -343,7 +349,8 @@ def engine_route(module: str, origin_id: str, destination_id: str, path: List[st
 
 
 def _engine_route(module: str, origin_id: str, destination_id: str, path: List[str],
-                  root: str) -> Optional[Dict[str, Any]]:
+                  root: str, goal_id: Optional[str] = None,
+                  goal_path: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
     module = (module or "").replace(" ", "_")
     if not module or origin_id == destination_id:
         return None
@@ -373,17 +380,43 @@ def _engine_route(module: str, origin_id: str, destination_id: str, path: List[s
         return {"verdict": "halt", "stop": bare(halt), "hostiles": _hostiles(halt, root)}
 
     target = full(destination_id)
+    visited = set((live.get("map") or {}).get("visited") or [])
+
+    def goal_stop() -> Optional[Dict[str, Any]]:
+        if not goal_id or goal_id == destination_id:
+            return None
+        goal = full(goal_id)
+        if goal in reach:
+            halt = _place_ref(reach[goal].get("halts_at"))
+            return {"verdict": "halt", "hostiles": _hostiles(halt, root)} if halt == target else None
+        first = next((loc for loc in list(goal_path or [])[1:] if full(loc) not in visited), None)
+        return {"verdict": "unvisited_stop"} if first == destination_id else None
+
     if target in reach:
         entry = reach[target]
-        return halt_or(target, {"verdict": "approved", "stops": entry.get("stops"), "ticks": entry.get("ticks"),
-                                "minutes": minutes(entry.get("ticks"))})
-    visited = set((live.get("map") or {}).get("visited") or [])
+        approved = {"verdict": "approved", "stops": entry.get("stops"), "ticks": entry.get("ticks"),
+                    "minutes": minutes(entry.get("ticks"))}
+        stop = goal_stop()
+        if stop is not None:
+            approved["goal_stop"] = stop
+        return halt_or(target, approved)
     fresh = [bare(p) for p, d in sorted(reach.items())
              if not d.get("visited") and p.startswith("loc:%s/" % module)]
     first = next((loc for loc in list(path)[1:] if full(loc) not in visited), None)
     if first is not None and full(first) in reach:
         return halt_or(full(first), {"verdict": "unvisited_stop", "stop": first, "fresh": fresh})
     return {"verdict": "unvisited_stop", "stop": None, "fresh": fresh}
+
+
+def stop_reason(verdict: Dict[str, Any]) -> str:
+    """The engine's reason for stopping a trip, as given (#1862): "unvisited"
+    for an unvisited stop, "hostile_presence" for a halt that names hostiles
+    present, else "route_halt" (a halt whose cause the engine does not say)."""
+    if verdict.get("verdict") == "unvisited_stop":
+        return "unvisited"
+    if verdict.get("verdict") == "halt" and verdict.get("hostiles"):
+        return "hostile_presence"
+    return "route_halt"
 
 
 def crossing(source_module: str, source_location: str, target_module: str, target_location: str,

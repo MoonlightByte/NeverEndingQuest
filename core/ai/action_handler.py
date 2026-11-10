@@ -2750,6 +2750,7 @@ def pre_validate_transition(
     # #1635: set once the typed goal (`toward`) is checked; every approval
     # carries it to T065.
     goal_facts = {}
+    goal_route = []  # #1862: NEQ's route to that goal, for the engine
 
     def finish(
         approved,
@@ -2911,6 +2912,7 @@ def pre_validate_transition(
                 goal_location_name=str(node_name(toward_id)),
                 on_shortest_path_to_goal=True,
             )
+            goal_route = list(goal_path)
 
         # Analyze path for encounters and blocking
         path_analysis = analyze_path_for_encounters(
@@ -2936,7 +2938,8 @@ def pre_validate_transition(
         from core.nql import travel as _travel
 
         engine = _travel.engine_route(
-            current_module, current_location_id, new_location_id, path
+            current_module, current_location_id, new_location_id, path,
+            goal_id=goal_facts.get("goal_location_id"), goal_path=goal_route,
         )
         if engine is not None:
             nodes = snapshot.get("nodes", {})
@@ -2968,7 +2971,7 @@ def pre_validate_transition(
                         "stop_location_id": str(stop),
                         "stop_location_name": str(stop_name),
                         "reason": reason,
-                        "stop_reason": "hostile_presence",
+                        "stop_reason": _travel.stop_reason(engine),
                         "authority": "engine",
                         "player_goal_id": goal_facts.get("goal_location_id") or str(new_location_id),
                     },
@@ -3045,6 +3048,24 @@ def pre_validate_transition(
                     # minutes (C10b live run). The trip time is given in
                     # game minutes (C11).
                     "engine_route": {"stops": engine.get("stops")},
+                    # #1862 (D-1862): the engine would stop the trip to the
+                    # player's goal here, so this arrival is a stop on the way.
+                    **(
+                        {
+                            "trip_stop": {
+                                "reason_code": (
+                                    "intermediate_stop"
+                                    if engine["goal_stop"]["verdict"] == "halt"
+                                    else "unvisited_stop"
+                                ),
+                                "stop_reason": _travel.stop_reason(engine["goal_stop"]),
+                                "stop_location_id": str(new_location_id),
+                                "trip_continues": True,
+                            }
+                        }
+                        if engine.get("goal_stop")
+                        else {}
+                    ),
                     **(
                         {
                             "travel_minutes": travel_minutes,
