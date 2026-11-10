@@ -5055,6 +5055,7 @@ COMBAT_START_REASONS = {
     "location_unreadable": "the current location could not be loaded",
     "combat_not_started": "the combat could not start",
     "no_hostile_can_act": "no hostile in it can fight",
+    "no_hostile_in_fight": "no one in it is against the party",
 }
 
 
@@ -5110,7 +5111,41 @@ def _refused_rows(result_path):
         return None
     if isinstance(result, dict) and result.get("status") == "no_hostile_can_act":
         return result.get("downHostiles")
+    if isinstance(result, dict) and result.get("status") == "no_hostile_in_fight":
+        return result.get("outsideRows")
     return None
+
+
+_OUTSIDE_PARTICIPATION = ("observer", "hidden", "unaware", "departed")
+
+# #1899: what a fight needs, in the createEncounter scene's own terms.
+_FIGHT_NEEDS = (
+    "A fight needs at least one participant against the party with participation active and "
+    "initiativeEligible true: a monster, or an npc with side: hostile (a monster that has not "
+    "noticed the party also has surprised: true). If no one is fighting the party, answer without a fight."
+)
+
+
+def _outside_lines(rows):
+    """One sentence per participant outside a refused fight's initiative
+    (#1899), from its typed values; one sentence when there is none (only the
+    party in it). "" when the rows are unusable."""
+    if not isinstance(rows, list):
+        return ""
+    sentences = []
+    for row in rows:
+        if not isinstance(row, dict):
+            return ""
+        name = str(row.get("name") or "").strip()
+        participation = row.get("participation")
+        if not name or participation not in _OUTSIDE_PARTICIPATION:
+            return ""
+        sentence = ("%s is participation %s with initiativeEligible false, so they take no turns and "
+                    "cannot be beaten in this fight." % (name, participation))
+        if row.get("requested") is False:
+            sentence += " They are present here and were added as an observer; your request did not name them."
+        sentences.append(sentence)
+    return " ".join(sentences) or "No participant in it is against the party."
 
 
 def is_encounter_payment(action):
@@ -5260,7 +5295,8 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
     When no fight was activated the DM is told once per turn and answers
     again ("needs_response"). A second failure in the same turn, a turn with
     no identity, or an unreadable tracker ends with the failure line, so this
-    can never loop.
+    can never loop. ``down_hostiles`` holds the builder's refused rows: its
+    downHostiles (#1891) or its outsideRows (#1899).
     """
     global _last_failed_combat_turn
     error(
@@ -5279,7 +5315,16 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
         return {"status": "error", "needs_update": False}
     _last_failed_combat_turn = turn_id
     rows = _no_hostile_lines(down_hostiles) if reason == "no_hostile_can_act" else ""
-    if rows:
+    outside = _outside_lines(down_hostiles) if reason == "no_hostile_in_fight" else ""
+    if outside:
+        # #1899: who is outside the fight, and what a fight needs.
+        content = (
+            "Combat Error: the encounter you requested could not be set up, because no one in it "
+            "is against the party: %s %s No fight has started.%s Answer the player's last action "
+            "again without this fight." % (
+                outside, _FIGHT_NEEDS, "" if payments is None else " " + _encounter_payment_lines(payments))
+        )
+    elif rows:
         # #1891: why, per row, and what the DM can do instead.
         content = (
             "Combat Error: the encounter you requested could not be set up, because no hostile "
@@ -5319,8 +5364,8 @@ def _built_encounter(result_path, returncode):
         return None, "builder_failed"
     if not isinstance(result, dict) or result.get("version") != 1:
         return None, "builder_failed"
-    if result.get("status") == "no_hostile_can_act":
-        return None, "no_hostile_can_act"
+    if result.get("status") in ("no_hostile_can_act", "no_hostile_in_fight"):
+        return None, result["status"]
     if result.get("status") != "saved":
         return None, "builder_no_encounter"
     encounter_id = result.get("encounterId")
@@ -5522,7 +5567,7 @@ def process_action(
                 encounter_id, build_failure = _built_encounter(
                     os.path.join(result_dir, "result.json"), result.returncode
                 )
-                if build_failure == "no_hostile_can_act":
+                if build_failure in ("no_hostile_can_act", "no_hostile_in_fight"):
                     down_hostiles = _refused_rows(os.path.join(result_dir, "result.json"))
             finally:
                 shutil.rmtree(result_dir, ignore_errors=True)
