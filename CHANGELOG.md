@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - A fight you start where no one is actually against the party (everyone is only watching, hidden, or on your side) no longer opens as a fight that can never end: the Dungeon Master is told who is outside the fight and what a fight needs, and answers you again (#1899).
+- When you leave a fight and the companions you leave behind have no one left to fight, the fight now ends and the game returns to exploration, instead of your companions taking turns on their own with no foe until the AI-call limit stops them (#1908).
 - A critical hit now doubles Hunter's Mark and Hex dice too: the extra 1d6 becomes 2d6, whether the game rolls it or you do, the way the weapon's own dice already doubled (#1890).
 - A condition that ends during a combat round on a party member or companion (an effect ending, a held spell dropping) no longer counts for the rest of that round, and the round summary shows the conditions as they are (#1895).
 - Monsters now add their proficiency to the saving throws their stat block lists, worked out from their challenge rating as the SRD does: a Keep of Doom zombie's Wisdom save is +0 instead of -2 and a giant rat's Dexterity save +5 instead of +3, and a generated monster that lists saves gets the same (#1906).

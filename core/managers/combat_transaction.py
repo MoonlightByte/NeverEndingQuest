@@ -37,6 +37,7 @@ from core.effects.lifecycle import apply_effect_ops, enter_combat_effect, exit_c
 from core.effects.effective import effective_sheet
 from core.managers.combat_state import (
     CombatStateConflict,
+    abandon_unstaged_turn,
     begin_turn,
     commit_turn,
     ensure_combat_state,
@@ -1558,7 +1559,23 @@ def exit_effect_clock(
     ):
         encounter = _load_object(encounter_path, "encounter")
         state = ensure_combat_state(encounter)
+        # #1908: completion starts in the state a resolving commit leaves: a
+        # claimed turn with nothing to resolve is dropped and the phase is
+        # complete (the after-fight turn reads it), in this same write. A
+        # turn that is kept leaves the phase as it was.
+        dropped = abandon_unstaged_turn(state)
+        if dropped:
+            _LOGGER.debug("Completion abandoned claimed combat turn %s", dropped)
+        settled = bool(dropped)
+        if state.get("pendingTurn") is None and state.get("phase") in (
+            "awaiting_actor",
+            "resolving_turn",
+        ):
+            state["phase"] = "complete"
+            settled = True
         if state.get("effectsClockExited"):
+            if settled:
+                _write_object(encounter_path, encounter, "completed combat state")
             return
         for name, path in (character_paths or {}).items():
             character = _load_object(path, "character %s" % name)

@@ -166,6 +166,7 @@ from core.managers.combat_state import (
     recovery_action,
     resolve_creature_controller,
     round_events,
+    turn_awaits_recovery,
     valid_pending_delivery,
 )
 from core.combat.down_scene import (
@@ -4306,6 +4307,7 @@ def _run_combat_simulation(
        is_resuming
        and combat_state.get("pipelineMode") == "agentic"
        and combat_state.get("pendingDelivery") is None
+       and not turn_awaits_recovery(encounter_data)
        and combat_resolved(encounter_data)
    )
    if (
@@ -4735,6 +4737,7 @@ This is narration only. Do not advance the round or apply any combat action."""
            and (encounter_data.get("combatState") or {}).get(
                "pendingDelivery"
            ) is None
+           and not turn_awaits_recovery(encounter_data)
            and combat_resolved(encounter_data)
        ):
            character_paths, _context_sheets = _agentic_combat_context(
