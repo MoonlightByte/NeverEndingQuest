@@ -1345,11 +1345,14 @@ def stand_up_ops(encounter, characters, actor):
             kept = deepcopy(effect)
             kept["conditions"] = others
             upserts.append(dict(where, op="add", effect=kept))
-        else:
+        elif effect.get("effectId") or effect.get("name"):
             removal = dict(where, op="remove", name=effect.get("name"))
             if effect.get("effectId"):
                 removal["effectId"] = effect["effectId"]
             removals.append(removal)
+        # A prone-only effect with neither effectId nor name cannot be named
+        # by a remove op (validate_event refuses one): the condition op below
+        # ends the stated name alone.
     return upserts + removals + [dict(where, op="remove", condition="prone")]
 
 
@@ -1502,7 +1505,8 @@ def _end_stated_condition(encounter, characters, op):
         # the row too, or every later actor of the window still reads it.
         for creature in encounter.get("creatures") or []:
             if (isinstance(creature, dict) and creature.get("type") in ("player", "npc")
-                    and creature.get("name") == op["owner"] and creature.get("conditions")):
+                    and str(creature.get("name") or "").strip().casefold() == str(op["owner"]).strip().casefold()
+                    and creature.get("conditions")):
                 creature["conditions"] = [
                     c for c in creature.get("conditions") or []
                     if not (isinstance(c, str) and c.strip().casefold() == name)
@@ -1760,6 +1764,20 @@ def _apply_concentration_verdicts(new_encounter, new_characters, event):
             )
         except Exception:
             pass
+
+
+def _holds_effect_id(encounter, characters, op, effect_id):
+    """#1889: True when the op's target (an owner's sheet, else a combatant
+    row) already holds an effect with this effectId."""
+    if not effect_id:
+        return False
+    if op.get("owner"):
+        sheet = (characters or {}).get(op.get("owner"))
+        held = sheet.get("temporaryEffects") if isinstance(sheet, dict) else None
+    else:
+        creature = combatant_by_id(encounter, op.get("combatantId"))
+        held = creature.get("activeEffects") if isinstance(creature, dict) else None
+    return any(isinstance(effect, dict) and effect.get("effectId") == effect_id for effect in held or [])
 
 
 def _record_fight_cast(new_encounter, new_characters, event, op):
@@ -2522,10 +2540,6 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
         riders = [swing["rider"] for swing in swings if swing.get("rider")]
         if riders:
             record["riders"] = riders
-        # #1889: the conditions the swings' onHit staged on this target.
-        on_hit_conditions = [name for swing in swings for name in (swing.get("onHit") or {}).get("conditions") or []]
-        if on_hit_conditions:
-            record["onHitConditions"] = on_hit_conditions
         if working is not None:
             if temp_before is not None:
                 record["tempHpBefore"] = temp_before
@@ -5652,16 +5666,21 @@ def apply_resolution(encounter, characters, resolution):
     for op in (resolution.get("effectOps") or event.get("effects") or []):
         if op.get("op") == "add" and isinstance(op.get("effect"), dict):
             added_effect = op["effect"]
-            if added_effect.get("concentration") and added_effect.get(
-                "sourceCombatantId"
-            ):
-                _drop_concentration(
-                    new_encounter,
-                    new_characters,
-                    added_effect.get("sourceCombatantId"),
-                    keep_id=added_effect.get("concentrationId"),
-                )
-            _record_fight_cast(new_encounter, new_characters, event, op)
+            # #1889: an add under an effectId its target already holds is an
+            # upsert of that effect (the stand-up keeps a prone+X effect by its
+            # own id), not a new cast: the caster's concentration stays as it
+            # is, and no record is written onto this event's actor.
+            if not _holds_effect_id(new_encounter, new_characters, op, added_effect.get("effectId")):
+                if added_effect.get("concentration") and added_effect.get(
+                    "sourceCombatantId"
+                ):
+                    _drop_concentration(
+                        new_encounter,
+                        new_characters,
+                        added_effect.get("sourceCombatantId"),
+                        keep_id=added_effect.get("concentrationId"),
+                    )
+                _record_fight_cast(new_encounter, new_characters, event, op)
         if op.get("op") == "remove" and op.get("condition"):
             _end_stated_condition(new_encounter, new_characters, op)
             continue

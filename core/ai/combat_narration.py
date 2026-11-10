@@ -68,6 +68,30 @@ def _public_copy(value):
     return deepcopy(value)
 
 
+def _on_hit_conditions(event, target):
+    """#1889: the conditions the swings' onHit staged, for the event's one target."""
+    outcome = (event or {}).get("outcome") or {}
+    targets = [t for t in outcome.get("targets") or [] if isinstance(t, dict)]
+    intended = ((event or {}).get("intent") or {}).get("targetId")
+    if not (len(targets) == 1 or (intended and target.get("combatantId") == intended)):
+        return None
+    names = [
+        name for swing in outcome.get("swings") or [] if isinstance(swing, dict)
+        for name in (swing.get("onHit") or {}).get("conditions") or [] if isinstance(name, str)
+    ]
+    return names or None
+
+
+def _on_hit_damage(outcome):
+    """#1889: the onHit damage parts, marked as already counted in the damage."""
+    parts = [
+        {"damageType": row.get("damageType"), "damage": row.get("damage")}
+        for swing in (outcome or {}).get("swings") or [] if isinstance(swing, dict)
+        for row in (swing.get("onHit") or {}).get("damage") or [] if isinstance(row, dict)
+    ]
+    return {"alreadyIncludedInDamage": True, "parts": parts} if parts else None
+
+
 def _own_effect_ops(event):
     """#1889: the event's effect ops without the stand-up's own, which lead the
     list (standUp.headOps of them) and are narrated from standUp instead."""
@@ -254,7 +278,8 @@ def _fact_event(event, creatures, presentation=None):
             # (K1's `engine` flag is bookkeeping, not part of the story.)
             "riders": _narrated_riders(target.get("riders")),
             # #1889: the no-save conditions a monster's onHit staged on this target
-            "onHitConditions": target.get("onHitConditions"),
+            # (read from the swings: an attack event has one target)
+            "onHitConditions": _on_hit_conditions(event, target),
             # #669: a class-feature heal clamped to its typed limit (supplied, allowed)
             "featureHeal": target.get("featureHeal"),
         }
@@ -280,12 +305,10 @@ def _fact_event(event, creatures, presentation=None):
         "rechargeRolls": _public_copy(event.get("rechargeRolls")) if event.get("rechargeRolls") else None,
         # #1889: the actor stood up from Prone at the start of this turn
         "stoodUp": True if isinstance(event.get("standUp"), dict) else None,
-        # #1889: each onHit damage component dealt (its type and amount) on top of the weapon's own
-        "onHitDamage": [
-            {"damageType": row.get("damageType"), "damage": row.get("damage")}
-            for swing in outcome.get("swings") or [] if isinstance(swing, dict)
-            for row in (swing.get("onHit") or {}).get("damage") or [] if isinstance(row, dict)
-        ] or None,
+        # #1889: each onHit damage component dealt (its type and amount); the
+        # fact says itself that the amounts are already inside "damage" and the
+        # target's hpDelta, so a narrator does not add them a second time
+        "onHitDamage": _on_hit_damage(outcome),
         # NUM-B2: a carried weapon drawn after this swing (item name)
         "drew": _drawn_item(event),
         # R2: the Bonus Action taken first (feature, option, its HP changes)
