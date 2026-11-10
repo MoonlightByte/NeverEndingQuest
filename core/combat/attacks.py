@@ -98,6 +98,103 @@ def typed_multiattack_issue(sheet):
     return None
 
 
+# #1889: a stat-block attack's typed on-hit record. Its dice carry no flat
+# part ("NdM"); a flat amount is damageBonus. Conditions are the SRD 5.2.1
+# condition names; targetMaxSize gates the conditions only.
+ON_HIT_DICE = re.compile(r"^\s*([1-9]\d*)d(4|6|8|10|12|20|100)\s*$", re.I)
+SRD_CONDITIONS = frozenset((
+    "blinded", "charmed", "deafened", "exhaustion", "frightened", "grappled",
+    "incapacitated", "invisible", "paralyzed", "petrified", "poisoned", "prone",
+    "restrained", "stunned", "unconscious",
+))
+CREATURE_SIZES = ("tiny", "small", "medium", "large", "huge", "gargantuan")
+
+
+def size_rank(value):
+    """The index of a size in CREATURE_SIZES, compared casefolded, or None."""
+    text = value.strip().casefold() if isinstance(value, str) else ""
+    return CREATURE_SIZES.index(text) if text in CREATURE_SIZES else None
+
+
+def on_hit_spec(entry):
+    """(spec, problem) for an attack row's ``onHit``: (None, None) when the
+    row has none, (None, reason) when it is malformed, else a spec of
+    {damage: [{damageDice, damageBonus, damageType, count, sides}],
+    conditions: [...], targetMaxSize: str or None}."""
+    if not isinstance(entry, dict) or "onHit" not in entry:
+        return None, None
+    record = entry.get("onHit")
+    name = entry.get("name")
+    if not isinstance(record, dict) or not record:
+        return None, "%r onHit must be a non-empty object" % (name,)
+    unknown = sorted(set(record) - {"damage", "conditions", "targetMaxSize"})
+    if unknown:
+        return None, "%r onHit has unknown keys %s" % (name, unknown)
+    if str(entry.get("kind") or "attack") != "attack" or not is_executable_attack(entry) \
+            or is_flat_attack(entry):
+        return None, "%r carries onHit but is not a dice attack row" % (name,)
+    if not isinstance(record.get("damage", []), list) or not isinstance(record.get("conditions", []), list):
+        return None, "%r onHit damage and conditions must be lists" % (name,)
+    damage = []
+    for index, item in enumerate(record.get("damage") or []):
+        if not isinstance(item, dict) or sorted(set(item) - {"damageDice", "damageBonus", "damageType"}):
+            return None, "%r onHit damage %d must be {damageDice, damageBonus?, damageType}" % (name, index)
+        match = ON_HIT_DICE.match(str(item.get("damageDice") or ""))
+        bonus = item.get("damageBonus", 0)
+        kind = item.get("damageType")
+        if match is None:
+            return None, "%r onHit damage %d dice must be NdM" % (name, index)
+        if type(bonus) is not int:
+            return None, "%r onHit damage %d damageBonus must be an integer" % (name, index)
+        if not isinstance(kind, str) or not kind.strip():
+            return None, "%r onHit damage %d needs a damageType" % (name, index)
+        damage.append({"damageDice": "%sd%s" % match.groups(), "damageBonus": bonus,
+                       "damageType": kind.strip().casefold(),
+                       "count": int(match.group(1)), "sides": int(match.group(2))})
+    conditions = []
+    for item in record.get("conditions") or []:
+        text = item.strip().casefold() if isinstance(item, str) else ""
+        if text not in SRD_CONDITIONS:
+            return None, "%r onHit condition %r is not an SRD condition" % (name, item)
+        if text not in conditions:
+            conditions.append(text)
+    size = record.get("targetMaxSize")
+    if size is not None:
+        if size_rank(size) is None:
+            return None, "%r onHit targetMaxSize %r is not a size" % (name, size)
+        if not conditions:
+            return None, "%r onHit targetMaxSize gates conditions, and there are none" % (name,)
+    if not damage and not conditions:
+        return None, "%r onHit has no damage and no conditions" % (name,)
+    return {"damage": damage, "conditions": conditions,
+            "targetMaxSize": size.strip().casefold() if isinstance(size, str) else None}, None
+
+
+def on_hit_issue(sheet):
+    """#1889: the reason a stat block's onHit is malformed, or None. Builders
+    refuse a block this names, as they refuse an untyped Multiattack."""
+    for family in ("actions", "specialAbilities"):
+        for entry in (sheet or {}).get(family) or []:
+            _spec, problem = on_hit_spec(entry)
+            if problem:
+                return problem
+    return None
+
+
+def schema_without_on_hit(schema):
+    """#1889: a copy of mon_schema with no onHit on attack rows, for the
+    contracts sent to models (T103's strict contract, Gemini's response
+    schema): generators never author the key, and those contracts stay
+    byte-identical to the ones sent before it existed."""
+    from copy import deepcopy
+    result = deepcopy(schema)
+    for family in ("actions", "specialAbilities"):
+        items = (((result or {}).get("properties") or {}).get(family) or {}).get("items")
+        if isinstance(items, dict):
+            (items.get("properties") or {}).pop("onHit", None)
+    return result
+
+
 def _explicit_sequence(sheet, marker, override):
     value = override
     if value is None:
