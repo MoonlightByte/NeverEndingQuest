@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Mapping, Tuple
 
 import jsonschema
 
-from core.combat.attacks import typed_multiattack_issue
+from core.combat.attacks import on_hit_issue, schema_without_on_hit, typed_multiattack_issue
 
 from ..compilers import safe_filename
 from ..contracts import (
@@ -158,7 +158,8 @@ def appearance_context(areas, creature_name: str) -> Dict[str, Any]:
 
 def _response_contract(production_schema: Mapping[str, Any]) -> Dict[str, Any]:
     """Make provider-safe transport fields and optional guidance explicit."""
-    contract = strict_internal_contract(mutable_copy(production_schema))
+    # #1889: generators never author onHit; the contract stays as before it.
+    contract = strict_internal_contract(schema_without_on_hit(mutable_copy(production_schema)))
     contract["properties"].pop("skills")
     contract["required"].remove("skills")
     # Typed Multiattack is optional in the production schema; the strict contract
@@ -285,7 +286,7 @@ def _validate_production_creature(
         for action in actions:
             if not action["damageDice"].strip() or not action["damageType"].strip():
                 raise ValueError(f"hollow {family} entry")
-    multiattack_issue = typed_multiattack_issue(normalized)
+    multiattack_issue = typed_multiattack_issue(normalized) or on_hit_issue(normalized)
     if multiattack_issue:
         raise ValueError(multiattack_issue)
     spellcasting = normalized.get("spellcasting")

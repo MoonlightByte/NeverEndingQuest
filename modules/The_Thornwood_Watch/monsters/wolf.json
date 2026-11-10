@@ -50,7 +50,11 @@
       "damageDice": "1d6",
       "damageBonus": 2,
       "damageType": "piercing",
-      "description": "Melee Attack Roll: +4, reach 5 ft. Hit: 5 (1d6 + 2) Piercing damage. If the target is a Medium or smaller creature, it has the Prone condition."
+      "description": "Melee Attack Roll: +4, reach 5 ft. Hit: 5 (1d6 + 2) Piercing damage. If the target is a Medium or smaller creature, it has the Prone condition.",
+      "onHit": {
+        "conditions": ["prone"],
+        "targetMaxSize": "Medium"
+      }
     }
   ],
   "legendaryActions": [],

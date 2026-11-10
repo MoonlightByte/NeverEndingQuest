@@ -67,7 +67,7 @@ apply_data_root_path()
 
 from core.ai import api_client
 from jsonschema import validate, ValidationError
-from core.combat.attacks import typed_multiattack_issue
+from core.combat.attacks import on_hit_issue, schema_without_on_hit, typed_multiattack_issue
 import config
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
@@ -228,7 +228,8 @@ Schema: {json.dumps(schema)}"""
     _extra = {k: v for k, v in monster_config.items() if k != "model"}
     if MODEL_PROVIDER == "gemini":
         from model_config import convert_to_gemini_schema
-        _extra["response_schema"] = convert_to_gemini_schema(schema)
+        # #1889: onHit is never offered to the model; the schema sent is as before it.
+        _extra["response_schema"] = convert_to_gemini_schema(schema_without_on_hit(schema))
 
     # CH-H1: Retry on JSON parse / schema validation failures. The AI
     # occasionally returns truncated or malformed JSON on the first try;
@@ -367,6 +368,10 @@ def require_typed_multiattack(monster_data):
     issue = typed_multiattack_issue(monster_data)
     if issue:
         raise ValidationError(issue, path=["multiattackSequence"])
+    # #1889: a malformed onHit is refused the same way.
+    issue = on_hit_issue(monster_data)
+    if issue:
+        raise ValidationError(issue, path=["actions"])
 
 
 # mon_schema types these as objects (a skill or sense name -> its number).

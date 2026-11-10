@@ -68,6 +68,15 @@ def _public_copy(value):
     return deepcopy(value)
 
 
+def _own_effect_ops(event):
+    """#1889: the event's effect ops without the stand-up's own, which lead the
+    list (standUp.headOps of them) and are narrated from standUp instead."""
+    effects = [op for op in (event or {}).get("effects") or []]
+    stand_up = (event or {}).get("standUp")
+    head = stand_up.get("headOps") if isinstance(stand_up, dict) else None
+    return effects[head:] if type(head) is int and head > 0 else effects
+
+
 def _narrated_riders(riders):
     """The riders records as T097 has always seen them: without the engine flag."""
     if not isinstance(riders, list):
@@ -244,6 +253,8 @@ def _fact_event(event, creatures, presentation=None):
             # MS-b: a hit's rider save (venom): ability, save, dc, saved, damage, conditions
             # (K1's `engine` flag is bookkeeping, not part of the story.)
             "riders": _narrated_riders(target.get("riders")),
+            # #1889: the no-save conditions a monster's onHit staged on this target
+            "onHitConditions": target.get("onHitConditions"),
             # #669: a class-feature heal clamped to its typed limit (supplied, allowed)
             "featureHeal": target.get("featureHeal"),
         }
@@ -262,11 +273,19 @@ def _fact_event(event, creatures, presentation=None):
         "totalAttack": outcome.get("totalAttack"),
         "targetAC": outcome.get("targetAC"),
         "resources": _public_copy(event.get("resources") or []),
-        "effects": _public_copy(event.get("effects") or []),
+        "effects": _public_copy(_own_effect_ops(event)),
         # MS-b: recharge abilities spent by this action, and the d6 draws made
         # at the start of the actor's turn (name, value, rechargesOn, recharged)
         "rechargeSpent": [spent.get("name") for spent in event.get("recharge") or [] if spent.get("name")] or None,
         "rechargeRolls": _public_copy(event.get("rechargeRolls")) if event.get("rechargeRolls") else None,
+        # #1889: the actor stood up from Prone at the start of this turn
+        "stoodUp": True if isinstance(event.get("standUp"), dict) else None,
+        # #1889: each onHit damage component dealt (its type and amount) on top of the weapon's own
+        "onHitDamage": [
+            {"damageType": row.get("damageType"), "damage": row.get("damage")}
+            for swing in outcome.get("swings") or [] if isinstance(swing, dict)
+            for row in (swing.get("onHit") or {}).get("damage") or [] if isinstance(row, dict)
+        ] or None,
         # NUM-B2: a carried weapon drawn after this swing (item name)
         "drew": _drawn_item(event),
         # R2: the Bonus Action taken first (feature, option, its HP changes)
@@ -550,7 +569,7 @@ def update_narration_activity(activity, events):
             if isinstance(resource, dict)
         ]
         effects = []
-        for operation in event.get("effects", []) or []:
+        for operation in _own_effect_ops(event):
             if not isinstance(operation, dict):
                 continue
             effect = operation.get("effect") or {}
