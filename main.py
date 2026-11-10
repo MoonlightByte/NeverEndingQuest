@@ -2537,6 +2537,10 @@ def _transition_stayed_behind(checkpoint, party):
         return []
     if not isinstance(party.get(action_handler.LAST_MOVE_ESCORTS_KEY), dict):
         return []
+    from core.combat.invocation import InvocationSupersededError
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+    from utils.transient_filesystem import ReadOnlySaveStop
+
     try:
         from core.nql import occupants
 
@@ -2546,6 +2550,8 @@ def _transition_stayed_behind(checkpoint, party):
             create=False,
         )
         return action_handler.last_move_stayed_behind(party, world, checkpoint)
+    except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+        raise  # #1600: a stop or a superseded turn is never swallowed here
     except Exception as exc:  # fail forward: no stay fact
         debug("TRAVEL: stay fact unavailable (%s) (#1869)" % exc, category="narrative_generation")
         return []

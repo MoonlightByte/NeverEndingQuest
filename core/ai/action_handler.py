@@ -3584,7 +3584,8 @@ def last_move_stayed_behind(party_tracker, world, checkpoint):
     rewritten for this move, as on a resumed completion, names the
     destination and gives []); minus this move's escorts and anyone a
     moveOccupant of this move takes away, and minus party NPCs; each still a
-    person present at the origin (count above 0) in the occupant document."""
+    person present at the origin (count above 0) in the occupant document,
+    with a name (a nameless record is skipped: an id never reaches prose)."""
     from core.nql import occupants as _occupants
 
     party = party_tracker if isinstance(party_tracker, dict) else {}
@@ -3618,8 +3619,9 @@ def last_move_stayed_behind(party_tracker, world, checkpoint):
             or occupant.get("count", 1) <= 0
         ):
             continue
-        name = str(occupant.get("name") or occupant_id)
-        if name not in names:
+        # An id never reaches prose: a record with no name is skipped.
+        name = str(occupant.get("name") or "").strip()
+        if name and name not in names:
             names.append(name)
     return names
 
