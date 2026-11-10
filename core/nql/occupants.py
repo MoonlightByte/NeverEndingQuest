@@ -1016,6 +1016,48 @@ def return_line(occupant_id: str, entry: Dict[str, Any]) -> str:
         q(occupant_id), entry["outcome"], " %s" % q(entry["reason"]) if entry.get("reason") else "")
 
 
+def wake_return(tracker: Dict[str, Any], name: Any, request_id: Optional[str], *,
+                root: str = ".") -> Optional[str]:
+    """#1875 (D-1875-1): a person outside the party whom a committed heal has
+    just brought above 0 HP is back in the record. The person downed_at_place
+    lists whose id stem is the name's slug (#1450), with a returnable record
+    at the party's place, is returned by #1837's own line. Returns the line
+    applied (or taken as applied), or None. A refusal or an unavailable
+    engine is a warning: the sheet stays committed, and a later join or
+    resolve still returns the person first."""
+    from utils.roster_conversion import slug
+    location_id = (tracker.get("worldConditions") or {}).get("currentLocationId") or ""
+    if not location_id or not isinstance(name, str) or not name.strip():
+        return None
+    place = place_id(tracker.get("module") or "", location_id)
+    persons, _marked = downed_at_place(tracker, root=root)
+    found = [o for o in persons if id_stem(o) == slug(name)]
+    if len(found) != 1:
+        return None
+    entry = returnable_entry(found[0], place)
+    if entry is None:
+        return None
+    line = return_line(str(found[0].get("id")), entry)
+    response = request(line, request_id, view=(place,), root=root)
+    if response is None:
+        warning("OCCUPANTS: %s not sent, the engine is unavailable (%s)" % (request_id, line),
+                category="location_transitions")
+        return None
+    if response.get("ok"):
+        info("OCCUPANTS: %s %s: %s" % (request_id, "already applied" if response.get("historical") else "applied",
+                                        line), category="location_transitions")
+        return line
+    fault = response.get("fault") or {}
+    if fault.get("code") in ("E_NO_CHANGE", "E_REQUEST_REUSE"):
+        info("OCCUPANTS: %s %s; taken as applied (%s)" % (request_id, fault.get("code"), line),
+             category="location_transitions")
+        return line
+    warning("OCCUPANTS: %s refused: %s (%s)" % (
+        request_id, str(fault.get("message") or response.get("error") or "the engine refused it"), line),
+        category="location_transitions")
+    return None
+
+
 def _resolved_as(occupant: Any, place: str, parameters: Any) -> bool:
     """The record already shows this resolve of a person here (#1837): none
     left, and a tally entry with its outcome and reason."""
