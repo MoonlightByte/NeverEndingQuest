@@ -1,0 +1,96 @@
+{
+  "_srd_attribution": "Portions of this monster data derived from SRD 5.2.1, licensed under CC BY 4.0",
+  "name": "Shadow",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Chaotic Evil",
+  "armorClass": 12,
+  "hitPoints": 27,
+  "maxHitPoints": 27,
+  "speed": 40,
+  "abilities": {
+    "strength": 6,
+    "dexterity": 14,
+    "constitution": 13,
+    "intelligence": 6,
+    "wisdom": 10,
+    "charisma": 8
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 6
+  },
+  "damageVulnerabilities": [
+    "radiant"
+  ],
+  "damageResistances": [
+    "acid",
+    "cold",
+    "fire",
+    "lightning",
+    "thunder"
+  ],
+  "damageImmunities": [
+    "necrotic",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "exhaustion",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "poisoned",
+    "prone",
+    "restrained",
+    "unconscious"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 10
+  },
+  "languages": "None",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Amorphous",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The shadow can move through a space as narrow as 1 inch without expending extra movement to do so."
+    },
+    {
+      "name": "Sunlight Weakness",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "While in sunlight, the shadow has Disadvantage on D20 Tests."
+    },
+    {
+      "name": "Shadow Stealth",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "Bonus Action. While in Dim Light or Darkness, the shadow takes the Hide action."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Draining Swipe",
+      "kind": "attack",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "necrotic",
+      "description": "Melee Attack Roll: +4, reach 5 ft. Hit: 5 (1d6 + 2) Necrotic damage, and the target's Strength score decreases by 1d4."
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

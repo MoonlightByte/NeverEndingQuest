@@ -1,0 +1,80 @@
+{
+  "_srd_attribution": "Portions of this monster data derived from SRD 5.2.1, licensed under CC BY 4.0",
+  "name": "Swarm of Spiders",
+  "size": "Medium",
+  "type": "Swarm of Tiny Beasts",
+  "alignment": "Unaligned",
+  "armorClass": 11,
+  "hitPoints": 19,
+  "maxHitPoints": 19,
+  "speed": 20,
+  "alternateSpeeds": {
+    "climb": 20
+  },
+  "abilities": {
+    "strength": 3,
+    "dexterity": 13,
+    "constitution": 14,
+    "intelligence": 1,
+    "wisdom": 7,
+    "charisma": 1
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "charmed",
+    "frightened",
+    "grappled",
+    "paralyzed",
+    "petrified",
+    "prone",
+    "restrained",
+    "stunned"
+  ],
+  "senses": {
+    "blindsight": 30,
+    "passivePerception": 8
+  },
+  "languages": "None",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Spider Climb",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "If the swarm has a Climb Speed, the swarm can climb difficult surfaces, including along ceilings, without needing to make an ability check."
+    },
+    {
+      "name": "Swarm",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The swarm can occupy another creature's space and vice versa, and the swarm can move through any opening large enough for a Tiny insect. The swarm can't regain Hit Points or gain Temporary Hit Points."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bites",
+      "kind": "attack",
+      "attackBonus": 3,
+      "damageDice": "2d4",
+      "damageBonus": 1,
+      "damageType": "poison",
+      "description": "Melee Attack Roll: +3, reach 5 ft. Hit: 6 (2d4 + 1) Poison damage, or 3 (1d4 + 1) Poison damage if the swarm is Bloodied."
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

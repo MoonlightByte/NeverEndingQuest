@@ -1,0 +1,117 @@
+{
+  "_srd_attribution": "Portions of this monster data derived from SRD 5.2.1, licensed under CC BY 4.0",
+  "name": "Shambling Mound",
+  "size": "Large",
+  "type": "Plant",
+  "alignment": "Unaligned",
+  "armorClass": 15,
+  "hitPoints": 110,
+  "maxHitPoints": 110,
+  "speed": 30,
+  "alternateSpeeds": {
+    "swim": 20
+  },
+  "abilities": {
+    "strength": 18,
+    "dexterity": 8,
+    "constitution": 16,
+    "intelligence": 5,
+    "wisdom": 10,
+    "charisma": 5
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 3
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "cold",
+    "fire"
+  ],
+  "damageImmunities": [
+    "lightning"
+  ],
+  "conditionImmunities": [
+    "deafened",
+    "exhaustion"
+  ],
+  "senses": {
+    "blindsight": 60,
+    "passivePerception": 10
+  },
+  "languages": "None",
+  "challengeRating": 5,
+  "specialAbilities": [
+    {
+      "name": "Lightning Absorption",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "Whenever the shambling mound is subjected to Lightning damage, it regains a number of Hit Points equal to the Lightning damage dealt."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The shambling mound makes three Charged Tendril attacks. It can replace one attack with a use of Engulf."
+    },
+    {
+      "name": "Charged Tendril",
+      "kind": "attack",
+      "attackBonus": 7,
+      "damageDice": "1d6",
+      "damageBonus": 4,
+      "damageType": "bludgeoning",
+      "description": "Melee Attack Roll: +7, reach 10 ft. Hit: 7 (1d6 + 4) Bludgeoning damage plus 5 (2d4) Lightning damage. If the target is a Medium or smaller creature, the shambling mound pulls the target 5 feet straight toward itself.",
+      "onHit": {
+        "damage": [
+          {
+            "damageDice": "2d4",
+            "damageType": "lightning"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Engulf",
+      "kind": "save",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "save": {
+        "ability": "strength",
+        "dc": 15,
+        "halfOnSave": false,
+        "onFail": {
+          "damageDice": "",
+          "damageBonus": 0,
+          "damageType": "",
+          "conditions": [
+            "grappled",
+            "blinded",
+            "restrained"
+          ],
+          "roundsRemaining": null,
+          "repeatAtEndOfTurn": false
+        }
+      },
+      "description": "Strength Saving Throw: DC 15, one Medium or smaller creature within 5 feet. Failure: The target is pulled into the shambling mound's space and has the Grappled condition (escape DC 14). Until the grapple ends, the target has the Blinded and Restrained conditions, and it takes 10 (3d6) Lightning damage at the start of each of its turns. When the shambling mound moves, the Grappled target moves with it, costing it no extra movement. The shambling mound can have only one creature Grappled by this action at a time."
+    }
+  ],
+  "multiattackSequence": [
+    {
+      "name": "Charged Tendril",
+      "count": 3
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

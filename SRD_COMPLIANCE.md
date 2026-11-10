@@ -15,32 +15,31 @@ This document tracks compliance with the System Reference Document 5.2.1 (SRD 5.
 
 ### Monsters
 
-The following monster files contain data derived from SRD 5.2.1:
+The following monster files contain data derived from SRD 5.2.1. Each carries the `_srd_attribution` line shown under Attribution Implementation below.
 
-#### Core SRD Monsters (Verified)
-- `shadow.json` - Shadow (SRD pg. XXX)
-- `skeleton.json` - Skeleton (SRD pg. XXX)
-- `giant_spider.json` - Giant Spider (SRD pg. XXX)
+#### The Thornwood Watch (`modules/The_Thornwood_Watch/monsters/`)
+- `awakened_shrub.json` - Awakened Shrub (SRD p. 260)
+- `bandit.json` - Bandit (SRD p. 261)
+- `corrupted_wolf.json` - Wolf, named "Corrupted Wolf" (SRD p. 364)
+- `wolf.json` - Wolf (SRD p. 364)
 
-#### Additional Monsters (Requires Verification)
-- `animated_armor.json` - Animated Armor
-- `ghoul.json` - Ghoul
-- `giant_rat.json` - Giant Rat
-- `mimic.json` - Mimic
-- `specter.json` - Specter
-- `swarm_of_spiders.json` - Swarm of Insects (Spiders)
-- `twig_blight.json` - Twig Blight
-- `wight.json` - Wight
-- `will-o'-wisp.json` - Will-o'-Wisp
-- `gibbering_mouther.json` - Gibbering Mouther
-
-#### Custom/Homebrew Monsters (Original Content)
-- `shadow_manifestations.json` - Original creation
-- `shadow_mastiff.json` - Needs verification (may be SRD)
-- `shadow_of_sir_garran.json` - Custom variant
-- `shadow_relic.json` - Original creation
-- `skeletal_archer.json` - Custom variant
-- `animated_weapon.json` - Custom variant
+#### Keep of Doom (`modules/Keep_of_Doom/monsters/`)
+- `animated_armor.json` - Animated Armor (SRD p. 259)
+- `awakened_shrub.json` - Awakened Shrub (SRD p. 260)
+- `gargoyle.json` - Gargoyle (SRD p. 286)
+- `gelatinous_cube.json` - Gelatinous Cube (SRD pp. 286-287)
+- `ghoul.json` - Ghoul (SRD p. 288)
+- `giant_rat.json` - Giant Rat (SRD p. 353)
+- `giant_spider.json` - Giant Spider (SRD pp. 353-354)
+- `gibbering_mouther.json` - Gibbering Mouther (SRD p. 288)
+- `mimic.json` - Mimic (SRD pp. 308-309)
+- `shadow.json` - Shadow (SRD pp. 322-323)
+- `shambling_mound.json` - Shambling Mound (SRD p. 323)
+- `skeleton.json` - Skeleton (SRD pp. 325-326)
+- `specter.json` - Specter (SRD p. 327)
+- `swarm_of_spiders.json` - Swarm of Insects, named "Swarm of Spiders" (SRD p. 361)
+- `will_o_wisp.json` - Will-o'-Wisp (SRD pp. 341-342)
+- `zombie.json` - Zombie (SRD pp. 343-344)
 
 ### Game Mechanics
 
