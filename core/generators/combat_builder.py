@@ -1185,7 +1185,44 @@ def down_hostile_rows(encounter):
     ]
 
 
-def _write_result(result_file, status, encounter_id=None, encounter_file=None, down_hostiles=None):
+def outside_victory_rows(encounter):
+    """The rows outside the fight's initiative when no one in it is against the
+    party, else None (#1899).
+
+    A typed fight is won when every hostile in its victory set (hostile rows
+    with ``initiativeEligible`` true) is resolved; with no such hostile it can
+    never be won (``all_hostiles_resolved`` is false on an empty set). One row
+    per creature outside the initiative (observer, hidden, unaware, departed),
+    from typed values; [] when everyone is in it (only the party fights).
+    Legacy encounters are never refused here.
+    """
+    from core.managers.combat_state import combat_provenance, initiative_eligible_ids, victory_hostiles
+
+    if combat_provenance(encounter) != "typed" or victory_hostiles(encounter):
+        return None
+    eligible = initiative_eligible_ids(encounter)
+    facts = {
+        item.get("combatantId"): item
+        for item in (encounter.get("sceneFacts") or {}).get("participants") or []
+        if isinstance(item, dict)
+    }
+    rows = []
+    for creature in encounter.get("creatures") or []:
+        if not isinstance(creature, dict) or creature.get("combatantId") in eligible:
+            continue
+        fact = facts.get(creature.get("combatantId")) or {}
+        rows.append({
+            "name": creature.get("name"),
+            "occupantId": creature.get("occupantId"),
+            "participation": fact.get("participation"),
+            "initiativeEligible": fact.get("initiativeEligible") is True,
+            "requested": fact.get("provenance") != ROSTER_ADDED,
+        })
+    return rows
+
+
+def _write_result(result_file, status, encounter_id=None, encounter_file=None, down_hostiles=None,
+                  outside_rows=None):
     """Hand the caller a typed result; printed lines are for people only (#812)."""
     if not result_file:
         return True
@@ -1195,6 +1232,8 @@ def _write_result(result_file, status, encounter_id=None, encounter_file=None, d
         result["encounterFile"] = encounter_file
     if down_hostiles is not None:
         result["downHostiles"] = down_hostiles
+    if outside_rows is not None:
+        result["outsideRows"] = outside_rows
     if save_json(result_file, result):
         return True
     logging.error(f"Failed to write the builder result to {result_file}")
@@ -1207,7 +1246,8 @@ def main(argv=None):
     Exits 0 only when the encounter is saved, else 1. With --result-file the
     outcome is also written there as {"version", "status", "encounterId",
     "encounterFile"}; status is saved, invalid_input, generation_failed,
-    save_failed (#812) or no_hostile_can_act with its "downHostiles" (#1891).
+    save_failed (#812), no_hostile_can_act with its "downHostiles" (#1891) or
+    no_hostile_in_fight with its "outsideRows" (#1899).
     """
     import argparse
 
@@ -1260,6 +1300,17 @@ def main(argv=None):
         if down:
             print("[COMBAT_BUILDER] Refused: no hostile in this fight can fight; no encounter saved")
             _write_result(result_file, "no_hostile_can_act", down_hostiles=down)
+            return 1
+        # #1899: a fight with no one against the party can never be won.
+        # Fail open: a failed check builds as before.
+        try:
+            outside = outside_victory_rows(encounter)
+        except Exception as exc:
+            warning("COMBAT_BUILDER: victory-set check skipped (%s)" % exc, category="encounter_setup")
+            outside = None
+        if outside is not None:
+            print("[COMBAT_BUILDER] Refused: no one in this fight is against the party; no encounter saved")
+            _write_result(result_file, "no_hostile_in_fight", outside_rows=outside)
             return 1
         print(f"[COMBAT_BUILDER] Encounter generated successfully: {encounter['encounterId']}")
         print(f"[COMBAT_BUILDER] Total creatures in encounter: {len(encounter['creatures'])}")
