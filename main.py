@@ -3752,10 +3752,15 @@ CRITICAL: If validation fails due to wrong NPC for location, provide specific co
 def _present_non_party(name, party_tracker_data):
     """#1469: a sheet outside the party names someone here now: a person
     occupant at the party's place whose id stem is the name's slug (#1450),
-    or a creature of the active encounter (its exact name or occupant id)."""
-    from core.nql.occupants import is_present_person, present_people
+    or a creature of the active encounter (its exact name or occupant id).
+    #1875: also a person the down note lists, one a fight left recorded
+    defeated here, when that sheet is readable and not dead."""
+    from core.nql.occupants import downed_at_place, is_present_person, present_people
 
     if is_present_person(name, present_people(party_tracker_data)):
+        return True
+    persons, _marked = downed_at_place(party_tracker_data)
+    if is_present_person(name, persons) and _sheet_not_dead(name):
         return True
     encounter_id = (party_tracker_data.get("worldConditions") or {}).get("activeCombatEncounter")
     if not encounter_id:
@@ -3768,6 +3773,19 @@ def _present_non_party(name, party_tracker_data):
     return any(c.get("name") == name for c in creatures) or is_present_person(
         name, [{"id": c.get("occupantId")} for c in creatures if c.get("occupantId")]
     )
+
+def _sheet_not_dead(name):
+    """#1875: the down note's own filter (down_scene.present_from_sheets): a
+    readable sheet whose status is not dead. Nobody can wake a dead one."""
+    from core.combat.down_scene import _status_text
+    from utils.module_path_manager import character_sheet_path
+
+    try:
+        sheet = safe_json_load(character_sheet_path(name))
+    except Exception:
+        return False
+    return isinstance(sheet, dict) and _status_text(sheet.get("status")) != "dead"
+
 
 # Actions that must name their character; any one of the fields will do.
 _REQUIRED_CHARACTER_FIELDS = {
