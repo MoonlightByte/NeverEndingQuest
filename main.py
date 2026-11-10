@@ -3784,8 +3784,9 @@ def _present_non_party(name, party_tracker_data):
     )
 
 def _sheet_not_dead(name):
-    """#1875: the down note's own filter (down_scene.present_from_sheets): a
-    readable sheet whose status is not dead. Nobody can wake a dead one."""
+    """#1875: a readable sheet whose status is not dead, the dead check of
+    the down note (down_scene.present_from_sheets), whose #1894 selector is
+    narrower. Nobody can wake a dead one."""
     from core.combat.down_scene import _status_text
     from utils.module_path_manager import character_sheet_path
 
@@ -4559,15 +4560,18 @@ def validate_ai_response(
         party_tracker_data, path_manager, module_snapshot=module_snapshot,
     )
     module_data_context += "\n" + installed_module_references
-    # #1469: the validator sees the same present-persons element the DM does.
-    from core.combat.down_scene import present_down_text
+    # #1469: the validator sees the same present-persons elements the DM does;
+    # #1894: those unconscious above 0 HP under their own header.
+    from core.combat.down_scene import present_elements
 
     try:
-        present_down = present_down_text(party_tracker_data, path_manager)
+        present_down, present_asleep = present_elements(party_tracker_data, path_manager)
     except Exception:
-        present_down = None
+        present_down, present_asleep = None, None
     if present_down:
         module_data_context += "\nPRESENT PERSONS AT 0 HP (engine):\n" + present_down + "\n"
+    if present_asleep:
+        module_data_context += "\nPRESENT PERSONS UNCONSCIOUS ABOVE 0 HP (engine):\n" + present_asleep + "\n"
     
     # Add structure validation status to context
     structure_validation_note = ""
