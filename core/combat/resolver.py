@@ -1974,6 +1974,14 @@ def _rider_row(rider, faces, target, source=None):
     return row
 
 
+def critical_rider(rider):
+    """#1890: a damage rider on a critical hit, its dice rolled twice (SRD
+    Critical Hits: "you also roll those dice twice"). A copy; the flat term,
+    which no SRD rider has, is kept as it is."""
+    count, sides, flat = parse_dice(rider["die"])
+    return dict(rider, die="%dd%d" % (count * 2, sides) + ("%+d" % flat if flat else ""))
+
+
 def _rolled_rider_faces(rider, rolls, actor_id, target_id):
     """#1666: the rider's dice from the persisted prerolls."""
     count, sides, _flat = parse_dice(rider["die"])
@@ -2453,6 +2461,10 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
             given = riders if riders is not None else attack_damage_riders(
                 encounter, characters, intent.get("actorId"), target)
             for rider in given:
+                if riders is None and critical:
+                    # #1890: code rolls the rider, doubled on a critical. Given
+                    # riders (the player's) were marked doubled at their attack phase.
+                    rider = critical_rider(rider)
                 faces = rider.get("faces") if riders is not None else _rolled_rider_faces(
                     rider, rolls, intent.get("actorId"), intent.get("targetId"))
                 event["rolls"].append(_rider_row(rider, faces, target, rider.get("source")))

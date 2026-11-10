@@ -51,6 +51,7 @@ from core.combat.resolver import (
     player_weapon_attack_entry,
     player_weapon_attack_score,
     attack_damage_riders,
+    critical_rider,
     is_attack_roll_action,
     spell_attack_violations,
     attack_row,
@@ -3020,6 +3021,10 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
                        "attackTotal": total, "targetAC": ac})
         marked = attack_damage_riders(encounter, characters, record.get("actorId"),
                                       combatant_by_id(encounter, record.get("targetId"))) if hit else []
+        if critical:
+            # #1890: marked once, doubled on a critical; every reader of the
+            # card, the tray and the commit takes the die from this record.
+            marked = [critical_rider(rider) for rider in marked]
         if marked:
             record["damageRiders"] = marked
         # #1350: a flat row has no damage die; its hit is ready for the engine.
