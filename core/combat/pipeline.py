@@ -57,6 +57,7 @@ from core.managers.combat_state import (
     is_combatant_targetable,
     is_turn_eligible,
     resolve_creature_controller,
+    round_ends,
 )
 
 
@@ -936,12 +937,9 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
         pending_turn.get("skippedActorIds") or [],
         pending_turn.get("actorIds") or [],
     )
-    targetable_after = {
-        creature.get("combatantId")
-        for creature in next_encounter.get("creatures", [])
-        if is_combatant_targetable(creature)
-    }
-    if events and targetable_after and targetable_after.issubset(acted_after):
+    # #1919: the commit's own round-end test (initiative members only), so an
+    # observer outside the order no longer holds the round-end ticks back.
+    if events and round_ends(next_encounter, acted_after):
         effect_ticks = plan_effect_ticks(
             next_characters,
             "end_of_round",
