@@ -2041,12 +2041,21 @@ def generate_seamless_transition_narration(departure_narration, arrival_narratio
         return departure_narration
 
     dm_text = str(dm_text or "").strip()
+    # #1883: on a move toward an onward goal (#1863) the DM's accepted
+    # narration also holds why the trip stops here (D-1862); the stitch keeps it.
+    stop_rule = (
+        "; and, because this move stops on the way to %s, keep the reason it gives "
+        "for stopping here (signs the party perceives here, or the player's own "
+        "plan) in the arrival, as signs even where they suggest someone is near, "
+        "never as a creature seen, named or counted, and never starting a fight; "
+        "if it gives no reason, add none" % onward_goal["name"]
+    ) if onward_goal else ""
     dm_block = (
         "\nTHE DM'S ACCEPTED NARRATION OF THIS TURN (use it only for this: if it "
         "leaves something the player asked for to their next turn, the closing "
         "invitation must name that action and offer it in story words, as what "
         "they can do now or what lies ahead, never as something that has not "
-        "happened; take nothing else from it):\n---\n" + dm_text + "\n---\n"
+        "happened" + stop_rule + "; take nothing else from it):\n---\n" + dm_text + "\n---\n"
     ) if dm_text else ""
     roster_block = ""
     if isinstance(party, dict):

@@ -67,7 +67,7 @@ Fresh internal follow-ups use `_process_fresh_dm_response` (`main.py`) outside r
 8. Origin area/journal departure effects reconcile from checkpoint preimages.
 9. T013 builds departure/transition from committed updated context.
 10. T063 builds arrival from the exact committed target, roster, and T013 layer.
-11. T064 stitches both into one player-facing turn and asks for the next immediate action.
+11. T064 stitches both into one player-facing turn and asks for the next immediate action; with an onward goal it keeps the DM narration's reason for the stop (#1883).
 12. Code rechecks destination projection, retains/publishes narration, applies only staged
     travel siblings, and removes the correlated checkpoint.
 
