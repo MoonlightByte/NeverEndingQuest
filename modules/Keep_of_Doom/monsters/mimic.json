@@ -1,0 +1,95 @@
+{
+  "_srd_attribution": "Portions of this monster data derived from SRD 5.2.1, licensed under CC BY 4.0",
+  "name": "Mimic",
+  "size": "Medium",
+  "type": "Monstrosity",
+  "alignment": "Neutral",
+  "armorClass": 12,
+  "hitPoints": 58,
+  "maxHitPoints": 58,
+  "speed": 20,
+  "abilities": {
+    "strength": 17,
+    "dexterity": 12,
+    "constitution": 15,
+    "intelligence": 5,
+    "wisdom": 13,
+    "charisma": 8
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 5
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [
+    "acid"
+  ],
+  "conditionImmunities": [
+    "prone"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 11
+  },
+  "languages": "None",
+  "challengeRating": 2,
+  "specialAbilities": [
+    {
+      "name": "Adhesive (Object Form Only)",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The mimic adheres to anything that touches it. A Huge or smaller creature adhered to the mimic has the Grappled condition (escape DC 13). Ability checks made to escape this grapple have Disadvantage."
+    },
+    {
+      "name": "Shape-Shift",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "Bonus Action. The mimic shape-shifts to resemble a Medium or Small object while retaining its game statistics, or it returns to its true blob form. Any equipment it is wearing or carrying isn't transformed."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "kind": "attack",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 3,
+      "damageType": "piercing",
+      "description": "Melee Attack Roll: +5 (with Advantage if the target is Grappled by the mimic), reach 5 ft. Hit: 7 (1d8 + 3) Piercing damage-or 12 (2d8 + 3) Piercing damage if the target is Grappled by the mimic-plus 4 (1d8) Acid damage.",
+      "onHit": {
+        "damage": [
+          {
+            "damageDice": "1d8",
+            "damageType": "acid"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Pseudopod",
+      "kind": "attack",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 3,
+      "damageType": "bludgeoning",
+      "description": "Melee Attack Roll: +5, reach 5 ft. Hit: 7 (1d8 + 3) Bludgeoning damage plus 4 (1d8) Acid damage. If the target is a Large or smaller creature, it has the Grappled condition (escape DC 13). Ability checks made to escape this grapple have Disadvantage.",
+      "onHit": {
+        "damage": [
+          {
+            "damageDice": "1d8",
+            "damageType": "acid"
+          }
+        ]
+      }
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}
