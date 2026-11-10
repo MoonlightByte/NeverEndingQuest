@@ -1252,13 +1252,19 @@ def recorded_dead_rows(encounter_data, response, location_id):
     a death stands, so such a fight is refused before anything is built.
     Read from the build's one occupants read (``response``: the whole
     document), by typed ids and the builder's own sheet-stem rule, never a
-    near name. Per npc slot, in order: a declared occupantIds id that names a
-    person record with none left and a died entry; else, unless the builder's
-    own living match finds someone (a living person is never refused), the
-    loaded sheet's stem, when no person in this module with that id tail is
-    alive and one has a died entry (the one at the fight's place first).
-    Monster slots and roster observers are not checked. None when the
-    document is unread; [] when no one listed is recorded dead."""
+    near name. Per npc slot, in order:
+    - a declared occupantIds id that names a person record in this module
+      decides alone: refused when it has none left and a died entry, never
+      refused by death otherwise (presence is the other gates' business);
+    - else, unless the builder's own living match at the place finds someone
+      (a living person is never refused), the loaded sheet's stem: refused
+      when a person with that id tail is recorded died at the fight's place
+      and none with it is alive there, or when none with it is alive in the
+      module and one is recorded died elsewhere.
+    Each row lists the living people elsewhere with that id tail ("others"),
+    the DM's typed way out when it means one of them. Monster slots and
+    roster observers are not checked. None when the document is unread; []
+    when no one listed is recorded dead."""
     from core.nql import occupants
 
     if response is _UNREAD or not response or not response.get("ok"):
@@ -1278,8 +1284,13 @@ def recorded_dead_rows(encounter_data, response, location_id):
             continue
         slot = "npc:%d" % index
         declared = declared_ids.get(slot) if isinstance(declared_ids, dict) else None
-        dead = next((o for o in people if o["id"] == declared and o.get("count") == 0 and _died(o)), None)
-        if dead is None:
+        named = next((o for o in people if o["id"] == declared), None) if declared else None
+        if named is not None:
+            # The DM's typed id decides alone, both ways.
+            if not (named.get("count") == 0 and _died(named)):
+                continue
+            dead, others = named, []
+        else:
             loaded = _load_npc_sheet(name, path_manager)
             npc_file = loaded[1] if loaded else path_manager.get_character_path(format_type_name(name))
             if _listed_npc_occupant(place_occupants, npc_file, name, set(), declared=declared):
@@ -1288,13 +1299,19 @@ def recorded_dead_rows(encounter_data, response, location_id):
                 continue
             stem = os.path.splitext(os.path.basename(str(loaded[1])))[0]
             same = [o for o in people if occupants.id_stem(o) == stem]
-            if not same or any(o.get("count") != 0 for o in same):
+            alive = [o for o in same if o.get("count") != 0]
+            died = [o for o in same if o.get("count") == 0 and _died(o)]
+            here = [o for o in died if o.get("location") == place]
+            if here and not any(o.get("location") == place for o in alive):
+                dead = here[0]
+            elif died and not alive:
+                dead = died[0]
+            else:
                 continue
-            died = [o for o in same if _died(o)]
-            dead = next((o for o in died if o.get("location") == place), died[0] if died else None)
-        if dead is not None:
-            rows.append({"slot": slot, "name": name, "occupantId": dead["id"], "location": dead.get("location"),
-                         "record": occupants._tally_text(dead)})
+            others = alive
+        rows.append({"slot": slot, "name": name, "occupantId": dead["id"], "location": dead.get("location"),
+                     "record": occupants._tally_text(dead),
+                     "others": [{"occupantId": o["id"], "location": o.get("location")} for o in others]})
     return rows
 
 

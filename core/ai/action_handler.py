@@ -5193,10 +5193,12 @@ def _dead_lines(rows, location_id):
     """One clause per listed person a refused fight names who is recorded
     dead (#1902), from the builder's typed rows; "" when they are unusable.
     ``location_id`` is the party's current location: a record there reads
-    "here", one elsewhere "at <its location id>"."""
+    "here", one elsewhere "at <its location id>". When a row lists living
+    people with the same sheet elsewhere ("others"), one sentence gives
+    their occupantIds as the DM's typed way out."""
     if not isinstance(rows, list) or not rows:
         return ""
-    clauses = []
+    clauses, ways = [], []
     for row in rows:
         if not isinstance(row, dict):
             return ""
@@ -5208,7 +5210,17 @@ def _dead_lines(rows, location_id):
         place = str(row.get("location") or "").rsplit("/", 1)[-1]
         at = "here" if not place or place == location_id else "at %s" % place
         clauses.append('%s (occupantId "%s"), recorded %s as "%s"' % (name, occupant_id, at, record))
-    return "; ".join(clauses) + "."
+        for other in row.get("others") or []:
+            # The typed way out: a living person with the same sheet, by id.
+            other_id = str((other or {}).get("occupantId") or "").strip() if isinstance(other, dict) else ""
+            if other_id:
+                ways.append('occupantId "%s" (alive at %s)' % (
+                    other_id, str(other.get("location") or "").rsplit("/", 1)[-1] or "an unknown place"))
+    text = "; ".join(clauses) + "."
+    if ways:
+        text += (" If the player means the living person with that sheet, send createEncounter again with %s "
+                 "in occupantIds." % " or ".join(ways))
+    return text
 
 
 def is_encounter_payment(action):
