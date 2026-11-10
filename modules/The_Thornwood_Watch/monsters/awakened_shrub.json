@@ -1,0 +1,48 @@
+{
+  "_srd_attribution": "Portions of this monster data derived from SRD 5.2.1, licensed under CC BY 4.0",
+  "name": "Awakened Shrub",
+  "size": "Small",
+  "type": "Plant",
+  "alignment": "Neutral",
+  "armorClass": 9,
+  "hitPoints": 10,
+  "maxHitPoints": 10,
+  "speed": 20,
+  "abilities": {
+    "strength": 3,
+    "dexterity": 8,
+    "constitution": 11,
+    "intelligence": 10,
+    "wisdom": 10,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [
+    "fire"
+  ],
+  "damageResistances": [
+    "piercing"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "passivePerception": 10
+  },
+  "languages": "Common plus one other language",
+  "challengeRating": 0,
+  "specialAbilities": [],
+  "actions": [
+    {
+      "name": "Rake",
+      "kind": "attack",
+      "attackBonus": 1,
+      "damageDice": "flat",
+      "damageBonus": 1,
+      "damageType": "slashing",
+      "description": "Melee Attack Roll: +1, reach 5 ft. Hit: 1 Slashing damage."
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

@@ -4879,6 +4879,50 @@ def _later_update_time_seconds(action_context):
     return seconds
 
 
+def _non_party_hp(name, party_tracker_data):
+    """#1875: the hit points on the sheet of a person outside the party, or
+    None (a party member or companion, or no readable sheet)."""
+    from utils.module_path_manager import character_sheet_path
+    from utils.npc_name_normalizer import normalize_npc_name_for_action
+
+    try:
+        if normalize_npc_name_for_action(name, party_tracker_data)[0] is not None:
+            return None
+        sheet = safe_json_load(character_sheet_path(name))
+    except Exception:
+        return None
+    hp = sheet.get("hitPoints") if isinstance(sheet, dict) else None
+    return hp if isinstance(hp, int) and not isinstance(hp, bool) else None
+
+
+def _wake_after_heal(name, hp_before, party_tracker_data, invocation_claim, action_context):
+    """#1875 (D-1875-1): a committed update that raised a person outside the
+    party from ``hp_before`` to above 0, not dead, sends #1837's return line
+    for their returnable record at the party's place. Typed fields only, no
+    screen line; a failure is a warning and the turn goes on."""
+    if hp_before is None:
+        return
+    from core.combat.down_scene import _status_text
+    from core.nql import occupants as _occupants
+    from utils.module_path_manager import character_sheet_path
+
+    try:
+        sheet = safe_json_load(character_sheet_path(name))
+    except Exception:
+        return
+    hp = sheet.get("hitPoints") if isinstance(sheet, dict) else None
+    if not isinstance(hp, int) or isinstance(hp, bool) or hp <= hp_before or hp <= 0 \
+            or _status_text(sheet.get("status")) == "dead":
+        return
+    try:
+        _occupants.wake_return(party_tracker_data, name,
+                               _engine_request_id(invocation_claim, action_context, "wake"))
+    except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+        raise
+    except Exception as exc:
+        warning("OCCUPANTS: the wake return for %s failed: %s" % (name, exc), category="location_transitions")
+
+
 def _engine_request_id(invocation_claim, action_context, suffix):
     """A deterministic engine request id for one typed occupant action of
     one accepted turn: dm:<turn id>:<action index>:<suffix>, so a retried
@@ -6156,6 +6200,8 @@ Please use a valid location that exists in the current area ({current_area_id}) 
         
         if character_name:
             debug(f"STATE_CHANGE: Updating character info for {character_name}", category="character_updates")
+            # #1875: a person outside the party; their HP before, to see a wake.
+            wake_hp_before = _non_party_hp(character_name, party_tracker_data)
             try:
                 from core.managers.effects_runtime import update_character_with_effects
                 from updates.update_character_info import EngineRefusedChange, PostCombatReplayRefused
@@ -6175,6 +6221,8 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 if success:
                     info("SUCCESS: Character info updated successfully", category="character_updates")
                     needs_conversation_history_update = True
+                    _wake_after_heal(character_name, wake_hp_before, party_tracker_data,
+                                     invocation_claim, action_context)
                 else:
                     error(f"FAILURE: Failed to update character info for {character_name}", category="character_updates")
                     print(f"ERROR: Failed to update character info for {character_name}")
