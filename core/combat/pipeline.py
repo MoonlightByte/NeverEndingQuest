@@ -43,6 +43,7 @@ from core.combat.resolver import (
     resolve_player_spell_save,
     resolve_player_weapon_attack,
     stage_dodge,
+    stand_up_ops,
     validate_intent,
     _living_opponent_ids,
 )
@@ -537,6 +538,26 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                     )
                 events.append(skipped_event)
             continue
+        # #1889: a Prone actor stands at the start of its own turn, before its
+        # intent is checked or resolved, so its own swing and every later
+        # actor of the window see it standing. The ops are applied here once
+        # and ride at the head of this actor's own event (below), which the
+        # commit and a crash replay apply like any effect op.
+        stood = stand_up_ops(next_encounter, next_characters, actor)
+        if stood:
+            stand_id = make_event_id(
+                next_encounter.get("encounterId", "encounter"),
+                pending_turn.get("round", state.get("round", 1)),
+                pending_turn.get("turnId"),
+                sequence,
+            )
+            next_encounter, next_characters = apply_resolution(
+                next_encounter,
+                next_characters,
+                {"event": {"eventId": stand_id, "actorId": actor_id, "outcome": {"targets": []},
+                           "rolls": [], "resources": [], "effects": deepcopy(stood)},
+                 "charDeltas": {}, "creatureDeltas": {}, "effectOps": deepcopy(stood), "violations": []},
+            )
         intent, stale_target_normalization = _recover_stale_known_target(
             encounter,
             next_encounter,
@@ -878,6 +899,14 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             before_characters,
             next_characters,
         )
+        if stood:
+            # #1889: after this actor's own resolution is applied (an empty
+            # effectOps falls back to event.effects, so not before), its
+            # stand-up leads the event's effects; standUp is the fact.
+            resolution["event"]["effects"] = deepcopy(stood) + list(resolution["event"].get("effects") or [])
+            # headOps: how many of the effects lead as the stand-up's own, so the
+            # narration reads only the actor's own ops (the ops carry no new key).
+            resolution["event"]["standUp"] = {"combatantId": actor_id, "ended": ["prone"], "headOps": len(stood)}
         snapshot_problems = validate_event(resolution.get("event"))
         if snapshot_problems:
             raise CombatIntentError(
