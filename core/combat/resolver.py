@@ -5481,6 +5481,13 @@ def _refresh_character_effect_projections(encounter, characters, before=None):
             value = rendered.get(sheet_field)
             if isinstance(value, (int, float)):
                 creature[encounter_field] = int(value)
+        # #1895: the row's conditions are the sheet's list, as the loop top
+        # (sync_active_encounter) writes them, so an effect or condition that
+        # ends mid-window stops counting for the window's later actors.
+        if creature.get("statsPending") is not True:
+            listed = sheet.get("condition_affected", [])
+            if creature.get("conditions") != listed:
+                creature["conditions"] = deepcopy(listed)
 
 
 def _apply_charges_after(sheet, item, resource, after_state):
