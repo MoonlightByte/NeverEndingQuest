@@ -15,7 +15,7 @@ byte-identical on every surface.
 
 import re
 
-from core.managers.combat_state import is_down, sheet_is_down
+from core.managers.combat_state import is_down, normalize_status, sheet_is_down
 
 __all__ = [
     "GO_ON_TOKEN",
@@ -29,7 +29,10 @@ __all__ = [
     "TABLE_TALK_PREFIX",
     "DOWN_RULES_MARKER",
     "PRESENT_DOWN_MARKER",
+    "PRESENT_ASLEEP_MARKER",
+    "PRESENT_MARKERS",
     "present_down_text",
+    "present_elements",
     "present_from_sheets",
     "from_encounter",
     "from_sheets",
@@ -134,30 +137,94 @@ _NO_SHEET_SENTENCE = (
     " One listed without a sheet cannot be healed awake; what becomes of them is "
     "the DM's to narrate and record."
 )
+# #1894: a person outside the party who is unconscious above 0 HP (a sleep
+# or a stated condition) is not "at 0 HP" and is not woken by a heal: the
+# wake is an updateCharacterInfo that removes unconscious from their
+# condition_affected with no hpDelta (#1891 rows A13, A13h, A13s). Its own
+# element, after the 0-HP one in the same entry; the remover in
+# conversation_utils.update_character_data matches either marker.
+PRESENT_ASLEEP_MARKER = "Present persons unconscious above 0 HP:"
+PRESENT_MARKERS = (PRESENT_DOWN_MARKER, PRESENT_ASLEEP_MARKER)
+_ASLEEP_TEMPLATE = (
+    "{marker} {members}. They are unconscious though not at 0 HP (a sleep or "
+    "a stated condition on their sheet) and cannot act, speak, or answer "
+    "until woken. Others may speak to or about them; when the player does, "
+    "the story shows that they do not answer: no spoken word or whisper is "
+    "given to them, and no look, nod or other sign that they hear, though a "
+    "wordless sign of life (a breath, a stir) may show. Their silence is "
+    "unconsciousness, not death. A heal does not wake them. Waking one is a "
+    "real action on their own sheet: an updateCharacterInfo that removes "
+    "unconscious from their condition_affected, with no hpDelta; never a "
+    "narrated claim. They are not party members: the party's down-scene rules "
+    "do not apply to them."
+)
+
+
+def _present_kind(sheet):
+    """#1894: which element lists this sheet, from typed values only:
+    "down" at or below 0 HP, or unconscious with no HP number; "asleep" when
+    unconscious above 0 HP; None for a dead one (nobody can wake them) and
+    for any other status above 0 HP (a captive can act, speak and resist)."""
+    if not isinstance(sheet, dict) or _status_text(sheet.get("status")) == "dead":
+        return None
+    hit_points = sheet.get("hitPoints")
+    numeric = isinstance(hit_points, (int, float)) and not isinstance(hit_points, bool)
+    if numeric and hit_points <= 0:
+        return "down"
+    if normalize_status(sheet.get("status")) == "unconscious":
+        return "asleep" if numeric else "down"
+    return None
+
+
+def _present_parts(sheets, sheetless=()):
+    rows = {"down": [], "asleep": []}
+    for sheet in sheets or []:
+        kind = _present_kind(sheet)
+        if kind:
+            rows[kind].append(
+                (str(sheet.get("name") or "Unknown"), sheet.get("hitPoints"), _status_text(sheet.get("status")))
+            )
+    rows["down"] += [(str(name), 0, "unconscious") for name in sheetless or () if name]
+    down = None
+    if rows["down"]:
+        down = _PRESENT_TEMPLATE.format(marker=PRESENT_DOWN_MARKER, members=_members_text(rows["down"], None))
+        if any(name for name in sheetless or ()):
+            down += _NO_SHEET_SENTENCE
+    asleep = None
+    if rows["asleep"]:
+        asleep = _ASLEEP_TEMPLATE.format(marker=PRESENT_ASLEEP_MARKER, members=_members_text(rows["asleep"], None))
+    return down, asleep
+
+
+def _join(parts):
+    text = "\n\n".join(part for part in parts if part)
+    return text or None
 
 
 def present_from_sheets(sheets, sheetless=()):
-    """The present-persons element for the down sheets among these (a dead
-    one is not down: nobody can wake them), and for ``sheetless`` names of
-    marked creatures a fight left at 0 HP (#1837), or None."""
-    down = [
-        (str(sheet.get("name") or "Unknown"), sheet.get("hitPoints"), _status_text(sheet.get("status")))
-        for sheet in sheets or [] if isinstance(sheet, dict) and sheet_is_down(sheet)
-        and _status_text(sheet.get("status")) != "dead"
-    ]
-    down += [(str(name), 0, "unconscious") for name in sheetless or () if name]
-    if not down:
-        return None
-    text = _PRESENT_TEMPLATE.format(marker=PRESENT_DOWN_MARKER, members=_members_text(down, None))
-    return text + _NO_SHEET_SENTENCE if any(name for name in sheetless or ()) else text
+    """The present-persons entry for these sheets, or None: the element for
+    those at 0 HP (and for ``sheetless`` names of marked creatures a fight
+    left at 0 HP, #1837), then the element for those unconscious above 0 HP
+    (#1894). A dead one is not listed: nobody can wake them."""
+    return _join(_present_parts(sheets, sheetless))
+
+
+def present_elements(party_tracker_data, path_manager):
+    """(the 0-HP element, the above-0-HP element), each a str or None, for
+    the person occupants at the party's place (see present_down_text)."""
+    return _present_parts(*_present_sheets(party_tracker_data, path_manager))
 
 
 def present_down_text(party_tracker_data, path_manager):
-    """The element for the person occupants at the party's place, present or
+    """The entry for the person occupants at the party's place, present or
     recorded defeated there (#1837), who are outside the party and have a
-    sheet at 0 HP, and for the creatures the area marks a person that a
-    fight left defeated there, or None. A person with no sheet is skipped;
-    no sheet is ever created here."""
+    sheet at 0 HP or unconscious above 0 HP (#1894), and for the creatures
+    the area marks a person that a fight left defeated there, or None. A
+    person with no sheet is skipped; no sheet is ever created here."""
+    return _join(present_elements(party_tracker_data, path_manager))
+
+
+def _present_sheets(party_tracker_data, path_manager):
     import json
     import os
 
@@ -183,7 +250,7 @@ def present_down_text(party_tracker_data, path_manager):
                 sheet = None
             if isinstance(sheet, dict):
                 sheets.append(sheet)
-    return present_from_sheets(sheets, [str(o.get("name") or "") for o in marked])
+    return sheets, [str(o.get("name") or "") for o in marked]
 
 
 def _render(down_members, round_number=None):
