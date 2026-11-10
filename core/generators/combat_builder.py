@@ -1161,7 +1161,31 @@ def opening_action_rules(encounter):
 RESULT_VERSION = 1
 
 
-def _write_result(result_file, status, encounter_id=None, encounter_file=None):
+def down_hostile_rows(encounter):
+    """The hostile rows that make a built fight already over, else None (#1891).
+
+    A fight whose own end rule (``all_hostiles_resolved``: every hostile in
+    the victory set is dead, defeated or unconscious, or at 0 HP) holds when
+    it is built has no one to fight; the loop would end it before anyone
+    acts. Typed row values only. Never decided from turn eligibility: a
+    surprised hostile cannot act in round 1, yet that is a fight.
+    """
+    from core.managers.combat_state import all_hostiles_resolved, normalize_status, victory_hostiles
+
+    if not all_hostiles_resolved(encounter):
+        return None
+    return [
+        {
+            "name": creature.get("name"),
+            "occupantId": creature.get("occupantId"),
+            "currentHitPoints": creature.get("currentHitPoints"),
+            "status": normalize_status(creature.get("status")),
+        }
+        for creature in victory_hostiles(encounter)
+    ]
+
+
+def _write_result(result_file, status, encounter_id=None, encounter_file=None, down_hostiles=None):
     """Hand the caller a typed result; printed lines are for people only (#812)."""
     if not result_file:
         return True
@@ -1169,6 +1193,8 @@ def _write_result(result_file, status, encounter_id=None, encounter_file=None):
     if encounter_id is not None:
         result["encounterId"] = encounter_id
         result["encounterFile"] = encounter_file
+    if down_hostiles is not None:
+        result["downHostiles"] = down_hostiles
     if save_json(result_file, result):
         return True
     logging.error(f"Failed to write the builder result to {result_file}")
@@ -1180,8 +1206,8 @@ def main(argv=None):
 
     Exits 0 only when the encounter is saved, else 1. With --result-file the
     outcome is also written there as {"version", "status", "encounterId",
-    "encounterFile"}; status is saved, invalid_input, generation_failed or
-    save_failed (#812).
+    "encounterFile"}; status is saved, invalid_input, generation_failed,
+    save_failed (#812) or no_hostile_can_act with its "downHostiles" (#1891).
     """
     import argparse
 
@@ -1224,6 +1250,17 @@ def main(argv=None):
     encounter = generate_encounter(encounter_data)
     
     if encounter:
+        # #1891: a fight with no hostile who can fight is refused before the
+        # encounter is saved. Fail open: a failed check builds as before.
+        try:
+            down = down_hostile_rows(encounter)
+        except Exception as exc:
+            warning("COMBAT_BUILDER: no-hostile check skipped (%s)" % exc, category="encounter_setup")
+            down = None
+        if down:
+            print("[COMBAT_BUILDER] Refused: no hostile in this fight can fight; no encounter saved")
+            _write_result(result_file, "no_hostile_can_act", down_hostiles=down)
+            return 1
         print(f"[COMBAT_BUILDER] Encounter generated successfully: {encounter['encounterId']}")
         print(f"[COMBAT_BUILDER] Total creatures in encounter: {len(encounter['creatures'])}")
         # Ensure centralized encounters directory exists
