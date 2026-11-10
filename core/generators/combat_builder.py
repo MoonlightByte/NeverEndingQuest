@@ -1261,9 +1261,7 @@ def recorded_dead_rows(encounter_data, response, location_id):
       when a person with that id tail is recorded died at the fight's place
       and none with it is alive there, or when none with it is alive in the
       module and one is recorded died elsewhere.
-    Each row lists the living people elsewhere with that id tail ("others"),
-    the DM's typed way out when it means one of them. Monster slots and
-    roster observers are not checked. None when the document is unread; []
+    Monster slots and roster observers are not checked. None when the document is unread; []
     when no one listed is recorded dead."""
     from core.nql import occupants
 
@@ -1289,7 +1287,7 @@ def recorded_dead_rows(encounter_data, response, location_id):
             # The DM's typed id decides alone, both ways.
             if not (named.get("count") == 0 and _died(named)):
                 continue
-            dead, others = named, []
+            dead = named
         else:
             loaded = _load_npc_sheet(name, path_manager)
             npc_file = loaded[1] if loaded else path_manager.get_character_path(format_type_name(name))
@@ -1308,10 +1306,8 @@ def recorded_dead_rows(encounter_data, response, location_id):
                 dead = died[0]
             else:
                 continue
-            others = alive
         rows.append({"slot": slot, "name": name, "occupantId": dead["id"], "location": dead.get("location"),
-                     "record": occupants._tally_text(dead),
-                     "others": [{"occupantId": o["id"], "location": o.get("location")} for o in others]})
+                     "record": occupants._tally_text(dead)})
     return rows
 
 
