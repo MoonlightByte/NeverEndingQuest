@@ -3691,10 +3691,18 @@ def _save_bonus(encounter, characters, creature, save_type):
     if ability and isinstance(saves, list) and any(
         save_ability(item) == ability for item in saves
     ):
-        try:
-            bonus += int(sheet.get("proficiencyBonus", 0) or 0)
-        except (TypeError, ValueError):
-            pass
+        if sheet.get("proficiencyBonus") is None:
+            # #1906: a monster block lists its save proficiencies by name and
+            # states no proficiencyBonus; its PB comes from its typed
+            # challengeRating (SRD 5.2.1 p.256). A stated PB always wins.
+            from core.nql import stats as nql_stats
+
+            bonus += nql_stats.proficiency_bonus_for_cr(sheet.get("challengeRating")) or 0
+        else:
+            try:
+                bonus += int(sheet.get("proficiencyBonus", 0) or 0)
+            except (TypeError, ValueError):
+                pass
     return (
         bonus
         + modifier_total(raw_sheet, "savingThrows")
