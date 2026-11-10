@@ -1,0 +1,106 @@
+{
+  "_srd_attribution": "Portions of this monster data derived from SRD 5.2.1, licensed under CC BY 4.0",
+  "name": "Giant Spider",
+  "size": "Large",
+  "type": "Beast",
+  "alignment": "Unaligned",
+  "armorClass": 14,
+  "hitPoints": 26,
+  "maxHitPoints": 26,
+  "speed": 30,
+  "alternateSpeeds": {
+    "climb": 30
+  },
+  "abilities": {
+    "strength": 14,
+    "dexterity": 16,
+    "constitution": 12,
+    "intelligence": 2,
+    "wisdom": 11,
+    "charisma": 4
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 4,
+    "stealth": 7
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 14
+  },
+  "languages": "None",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Spider Climb",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The spider can climb difficult surfaces, including along ceilings, without needing to make an ability check."
+    },
+    {
+      "name": "Web Walker",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The spider ignores movement restrictions caused by webs, and it knows the location of any other creature in contact with the same web."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "kind": "attack",
+      "attackBonus": 5,
+      "damageDice": "1d8",
+      "damageBonus": 3,
+      "damageType": "piercing",
+      "description": "Melee Attack Roll: +5, reach 5 ft. Hit: 7 (1d8 + 3) Piercing damage plus 7 (2d6) Poison damage.",
+      "onHit": {
+        "damage": [
+          {
+            "damageDice": "2d6",
+            "damageType": "poison"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Web",
+      "kind": "save",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "recharge": {
+        "min": 5,
+        "max": 6
+      },
+      "save": {
+        "ability": "dexterity",
+        "dc": 13,
+        "halfOnSave": false,
+        "onFail": {
+          "damageDice": "",
+          "damageBonus": 0,
+          "damageType": "",
+          "conditions": [
+            "restrained"
+          ],
+          "roundsRemaining": null,
+          "repeatAtEndOfTurn": false
+        }
+      },
+      "description": "Dexterity Saving Throw: DC 13, one creature the spider can see within 60 feet. Failure: The target has the Restrained condition until the web is destroyed (AC 10; HP 5; Vulnerability to Fire damage; Immunity to Poison and Psychic damage)."
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

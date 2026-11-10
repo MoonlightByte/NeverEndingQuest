@@ -1,0 +1,71 @@
+{
+  "_srd_attribution": "Portions of this monster data derived from SRD 5.2.1, licensed under CC BY 4.0",
+  "name": "Animated Armor",
+  "size": "Medium",
+  "type": "Construct",
+  "alignment": "Unaligned",
+  "armorClass": 18,
+  "hitPoints": 33,
+  "maxHitPoints": 33,
+  "speed": 25,
+  "abilities": {
+    "strength": 14,
+    "dexterity": 11,
+    "constitution": 13,
+    "intelligence": 1,
+    "wisdom": 3,
+    "charisma": 1
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [
+    "poison",
+    "psychic"
+  ],
+  "conditionImmunities": [
+    "charmed",
+    "deafened",
+    "exhaustion",
+    "frightened",
+    "paralyzed",
+    "petrified",
+    "poisoned"
+  ],
+  "senses": {
+    "blindsight": 60,
+    "passivePerception": 6
+  },
+  "languages": "None",
+  "challengeRating": 1,
+  "specialAbilities": [],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The armor makes two Slam attacks."
+    },
+    {
+      "name": "Slam",
+      "kind": "attack",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "bludgeoning",
+      "description": "Melee Attack Roll: +4, reach 5 ft. Hit: 5 (1d6 + 2) Bludgeoning damage."
+    }
+  ],
+  "multiattackSequence": [
+    {
+      "name": "Slam",
+      "count": 2
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

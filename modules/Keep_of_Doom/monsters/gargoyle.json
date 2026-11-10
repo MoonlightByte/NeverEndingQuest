@@ -1,0 +1,81 @@
+{
+  "_srd_attribution": "Portions of this monster data derived from SRD 5.2.1, licensed under CC BY 4.0",
+  "name": "Gargoyle",
+  "size": "Medium",
+  "type": "Elemental",
+  "alignment": "Chaotic Evil",
+  "armorClass": 15,
+  "hitPoints": 67,
+  "maxHitPoints": 67,
+  "speed": 30,
+  "alternateSpeeds": {
+    "fly": 60
+  },
+  "abilities": {
+    "strength": 15,
+    "dexterity": 11,
+    "constitution": 16,
+    "intelligence": 6,
+    "wisdom": 11,
+    "charisma": 7
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 4
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [
+    "poison"
+  ],
+  "conditionImmunities": [
+    "exhaustion",
+    "petrified",
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 10
+  },
+  "languages": "Primordial (Terran)",
+  "challengeRating": 2,
+  "specialAbilities": [
+    {
+      "name": "Flyby",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The gargoyle doesn't provoke an Opportunity Attack when it flies out of an enemy's reach."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The gargoyle makes two Claw attacks."
+    },
+    {
+      "name": "Claw",
+      "kind": "attack",
+      "attackBonus": 4,
+      "damageDice": "2d4",
+      "damageBonus": 2,
+      "damageType": "slashing",
+      "description": "Melee Attack Roll: +4, reach 5 ft. Hit: 7 (2d4 + 2) Slashing damage."
+    }
+  ],
+  "multiattackSequence": [
+    {
+      "name": "Claw",
+      "count": 2
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

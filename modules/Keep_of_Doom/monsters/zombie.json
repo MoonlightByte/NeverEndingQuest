@@ -1,0 +1,62 @@
+{
+  "_srd_attribution": "Portions of this monster data derived from SRD 5.2.1, licensed under CC BY 4.0",
+  "name": "Zombie",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Neutral Evil",
+  "armorClass": 8,
+  "hitPoints": 15,
+  "maxHitPoints": 15,
+  "speed": 20,
+  "abilities": {
+    "strength": 13,
+    "dexterity": 6,
+    "constitution": 16,
+    "intelligence": 3,
+    "wisdom": 6,
+    "charisma": 5
+  },
+  "savingThrows": [
+    "wisdom"
+  ],
+  "skills": {},
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [
+    "poison"
+  ],
+  "conditionImmunities": [
+    "exhaustion",
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 8
+  },
+  "languages": "Understands Common plus one other language but can't speak",
+  "challengeRating": 0.25,
+  "specialAbilities": [
+    {
+      "name": "Undead Fortitude",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "If damage reduces the zombie to 0 Hit Points, it makes a Constitution saving throw (DC 5 plus the damage taken) unless the damage is Radiant or from a Critical Hit. On a successful save, the zombie drops to 1 Hit Point instead."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Slam",
+      "kind": "attack",
+      "attackBonus": 3,
+      "damageDice": "1d8",
+      "damageBonus": 1,
+      "damageType": "bludgeoning",
+      "description": "Melee Attack Roll: +3, reach 5 ft. Hit: 5 (1d8 + 1) Bludgeoning damage."
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}
