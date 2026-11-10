@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When you leave a fight and the companions you leave behind have no one left to fight, the fight now ends and the game returns to exploration, instead of your companions taking turns on their own with no foe until the AI-call limit stops them (#1908).
 - Monsters now add their proficiency to the saving throws their stat block lists, worked out from their challenge rating as the SRD does: a Keep of Doom zombie's Wisdom save is +0 instead of -2 and a giant rat's Dexterity save +5 instead of +3, and a generated monster that lists saves gets the same (#1906).
 - Someone outside your party who is asleep or otherwise unconscious above 0 HP is no longer described as at 0 HP, and the story no longer suggests healing them awake; someone who is neither at 0 HP nor unconscious, such as a captive, is never told they cannot answer (#1894).
 - Keep of Doom now ships stat blocks for its Animated Armor, Awakened Shrub, Gargoyle, Gelatinous Cube, Ghoul, Giant Rat, Giant Spider, Gibbering Mouther, Mimic, Shadow, Shambling Mound, Skeleton, Specter, Swarm of Spiders, Will-o'-Wisp and Zombie, taken from SRD 5.2.1, so these creatures no longer get stats made up by the AI at their first fight and are the same in every game. A game already in progress keeps the stats it made up until Reset; playing from source, a `git pull` between fights brings the new stats (#1885).
