@@ -5356,7 +5356,7 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
             + " "
             + "Answer without a fight only when the player's last action attacks no one and no one there "
             "attacks the party. Either way the player's choice stands: others may react to it, but never "
-            "decide for the player's character that they hold back."
+            "decide for the player's character what they do or that they hold back."
         )
     elif rows:
         # #1891: why, per row, and what the DM can do instead.
