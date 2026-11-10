@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A condition that ends during a combat round on a party member or companion (an effect ending, a held spell dropping) no longer counts for the rest of that round, and the round summary shows the conditions as they are (#1895).
 - Keep of Doom now ships stat blocks for its Animated Armor, Awakened Shrub, Gargoyle, Gelatinous Cube, Ghoul, Giant Rat, Giant Spider, Gibbering Mouther, Mimic, Shadow, Shambling Mound, Skeleton, Specter, Swarm of Spiders, Will-o'-Wisp and Zombie, taken from SRD 5.2.1, so these creatures no longer get stats made up by the AI at their first fight and are the same in every game. A game already in progress keeps the stats it made up until Reset; playing from source, a `git pull` between fights brings the new stats (#1885).
 - Monster attacks now carry what they do on a hit: a wolf's bite knocks a Medium or smaller target prone, and a creature whose bite or claw adds a second kind of damage deals it, with resistances applied to each kind; a prone creature stands up at the start of its turn unless it is grappled, restrained or incapacitated (#1889).
 - A fight that was already won when you come back to it no longer opens with a fresh scene before it ends: it goes straight to its end (#1891).
