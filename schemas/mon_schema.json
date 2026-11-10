@@ -254,6 +254,45 @@
               },
               "required": ["ability", "dc", "halfOnSave", "onFail"]
             },
+            "onHit": {
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "damage": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "damageDice": {
+                        "type": "string",
+                        "pattern": "^[1-9][0-9]*d(4|6|8|10|12|20|100)$"
+                      },
+                      "damageBonus": {
+                        "type": "integer"
+                      },
+                      "damageType": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["damageDice", "damageType"]
+                  }
+                },
+                "conditions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "targetMaxSize": {
+                  "type": "string",
+                  "enum": ["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"]
+                }
+              }
+            },
             "recharge": {
               "type": "object",
               "properties": {
@@ -396,6 +435,45 @@
                 }
               },
               "required": ["ability", "dc", "halfOnSave", "onFail"]
+            },
+            "onHit": {
+              "type": "object",
+              "additionalProperties": false,
+              "minProperties": 1,
+              "properties": {
+                "damage": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                      "damageDice": {
+                        "type": "string",
+                        "pattern": "^[1-9][0-9]*d(4|6|8|10|12|20|100)$"
+                      },
+                      "damageBonus": {
+                        "type": "integer"
+                      },
+                      "damageType": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "required": ["damageDice", "damageType"]
+                  }
+                },
+                "conditions": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "targetMaxSize": {
+                  "type": "string",
+                  "enum": ["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"]
+                }
+              }
             },
             "recharge": {
               "type": "object",

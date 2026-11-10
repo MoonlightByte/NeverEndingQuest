@@ -29,6 +29,8 @@ from core.combat.attacks import (
     attack_sequence,
     FLAT_DAMAGE_DICE,
     is_executable_attack,
+    on_hit_spec,
+    size_rank,
 )
 from core.combat.handover import apply_hand_over
 from core.effects.effective import effective_sheet, live_damage_riders, modifier_dice, modifier_total
@@ -558,8 +560,10 @@ def last_weapon_rows_delta(encounter, characters, event):
     return actor["combatantId"], merged
 
 
-def _stat_block_condition_op(encounter, event_id, actor, target, entry, conditions, rounds, index):
+def _stat_block_condition_op(encounter, event_id, actor, target, entry, conditions, rounds, index,
+                             apply_on="failedSave"):
     """A failed-save condition effect the stat block states, normalized like a model op.
+    #1889: ``apply_on="always"`` is an onHit condition, staged on a hit with no save.
 
     Returns (op, problems); op is None when the effect contract refuses it.
     """
@@ -591,7 +595,10 @@ def _stat_block_condition_op(encounter, event_id, actor, target, entry, conditio
     problems = validate_effect(effect, require_managed=True)
     if problems:
         return None, problems
-    op = {"op": "add", "applyOn": "failedSave", "saveTargetId": target["combatantId"], "effect": effect}
+    if apply_on == "always":
+        op = {"op": "add", "applyOn": "always", "effect": effect}
+    else:
+        op = {"op": "add", "applyOn": "failedSave", "saveTargetId": target["combatantId"], "effect": effect}
     if target.get("type") in ("player", "npc"):
         op["owner"] = target.get("name")
     else:
@@ -1273,6 +1280,82 @@ def _attack_mode(attacker_conditions, target_conditions, entry_type, target_dodg
 _DODGE_ENDING_CONDITIONS = frozenset(INCAPACITATING_CONDITIONS + ("grappled", "restrained"))
 
 
+# #1889: a Prone holder stands at the start of its turn unless it has Speed 0
+# (grappled, restrained) or is incapacitated: the same typed set that ends a
+# Dodge. Standing costs no movement here (NEQ tracks none); crawling is not
+# modelled.
+_STAND_UP_BLOCKERS = frozenset(INCAPACITATING_CONDITIONS + ("grappled", "restrained"))
+
+
+def _prone_effects(effects):
+    """The effects in ``effects`` that state prone (casefolded)."""
+    return [
+        effect for effect in effects or []
+        if isinstance(effect, dict) and "prone" in [
+            str(c).strip().casefold() for c in effect.get("conditions") or [] if isinstance(c, str)
+        ]
+    ]
+
+
+def _stand_up_record(encounter, characters, actor):
+    """(owner or None, effects list) holding the actor's effects: its sheet's
+    temporaryEffects for a party sheet, else its encounter activeEffects."""
+    sheet = _sheet_backed_target(characters, actor)
+    if sheet is not None:
+        return actor.get("name"), sheet.get("temporaryEffects") or []
+    return None, actor.get("activeEffects") or []
+
+
+def stands_at_turn_start(encounter, characters, actor):
+    """#1889: True when ``actor`` holds Prone (a stated condition or a live
+    effect stating it, from any source) at the start of its turn and can
+    stand: alive above 0 HP, not incapacitated, not grappled or restrained.
+    One predicate for the pipeline's stand-up and the player's roll ask."""
+    if not isinstance(actor, dict) or not is_combatant_targetable(actor) \
+            or actor.get("effectIncapacitated") is True:
+        return False
+    stated = _stated_conditions(characters, encounter, actor)
+    _owner, effects = _stand_up_record(encounter, characters, actor)
+    held = {
+        str(c).strip().casefold() for effect in effects if isinstance(effect, dict)
+        for c in effect.get("conditions") or [] if isinstance(c, str)
+    }
+    if "prone" not in stated and "prone" not in held:
+        return False
+    return not ((stated | held) & _STAND_UP_BLOCKERS)
+
+
+def stand_up_ops(encounter, characters, actor):
+    """#1889: the effect ops that end the actor's Prone at the start of its
+    turn, or [] when it does not stand (stands_at_turn_start). An effect
+    stating prone and other conditions is upserted under its own effectId
+    with the others only (no onApply, no onRemove, its rounds and source
+    kept); one stating only prone is removed by its effectId; then one
+    remove-condition op ends the stated name (_end_stated_condition). The
+    ops are a function of the actor's records, so a replay converges."""
+    if not stands_at_turn_start(encounter, characters, actor):
+        return []
+    owner, effects = _stand_up_record(encounter, characters, actor)
+    where = {"owner": owner} if owner else {"combatantId": actor["combatantId"]}
+    upserts, removals = [], []
+    for effect in _prone_effects(effects):
+        others = [c for c in effect.get("conditions") or []
+                  if not (isinstance(c, str) and c.strip().casefold() == "prone")]
+        if others:
+            kept = deepcopy(effect)
+            kept["conditions"] = others
+            upserts.append(dict(where, op="add", effect=kept))
+        elif effect.get("effectId") or effect.get("name"):
+            removal = dict(where, op="remove", name=effect.get("name"))
+            if effect.get("effectId"):
+                removal["effectId"] = effect["effectId"]
+            removals.append(removal)
+        # A prone-only effect with neither effectId nor name cannot be named
+        # by a remove op (validate_event refuses one): the condition op below
+        # ends the stated name alone.
+    return upserts + removals + [dict(where, op="remove", condition="prone")]
+
+
 def _target_dodging(creature, conditions):
     """True when the target's ``dodging`` record stands and it can benefit."""
     creature = creature or {}
@@ -1416,6 +1499,18 @@ def _end_stated_condition(encounter, characters, op):
         # status request writes the current ones back.
         sheet.pop("rollModes", None)
         characters[op["owner"]] = sheet
+        # #1889: the party member's encounter row copies condition_affected
+        # only at the combat loop's top (sync_active_encounter), and
+        # _stated_conditions reads row and sheet together: the name leaves
+        # the row too, or every later actor of the window still reads it.
+        for creature in encounter.get("creatures") or []:
+            if (isinstance(creature, dict) and creature.get("type") in ("player", "npc")
+                    and str(creature.get("name") or "").strip().casefold() == str(op["owner"]).strip().casefold()
+                    and creature.get("conditions")):
+                creature["conditions"] = [
+                    c for c in creature.get("conditions") or []
+                    if not (isinstance(c, str) and c.strip().casefold() == name)
+                ]
         return
     creature = combatant_by_id(encounter, op.get("combatantId"))
     if creature is None or creature.get("type") in ("player", "npc"):
@@ -1682,6 +1777,13 @@ def _record_fight_cast(new_encounter, new_characters, event, op):
     effect = op.get("effect") if isinstance(op, dict) else None
     if not (isinstance(effect, dict) and effect.get("concentration") and effect.get("concentrationId")):
         return
+    # #1889: the caster of a cast is the event's actor (resolve_adjudicated
+    # stamps sourceCombatantId from it). An effect sourced from someone else
+    # is not this actor's cast: the stand-up re-adds a held effect under the
+    # holder's event, and the caster's record stays the caster's.
+    source = effect.get("sourceCombatantId")
+    if source and source != event.get("actorId"):
+        return
     actor = combatant_by_id(new_encounter, event.get("actorId"))
     sheet = _sheet_backed_target(new_characters, actor)
     if sheet is None:
@@ -1897,6 +1999,79 @@ def _apply_damage_rider(working, trait_sheet, hp_after, kind, amount, event, foc
     return damage, traits, working, hp_after, False if damage else None
 
 
+def _treat_on_hit(trait_sheet, hp_after, kind, amount):
+    """#1889: one onHit damage component meets the target's typed traits, with
+    no hit-point change: the engine's throwaway treatment (K1) for any target,
+    else today's arithmetic. Returns (damage, traits, engine used)."""
+    from core.nql import attacks as nql_attacks
+    max_hp = trait_sheet.get("maxHitPoints") if isinstance(trait_sheet, dict) else None
+    try:
+        result = nql_attacks.treat(
+            amount=amount, damage_type=kind, target_sheet=trait_sheet, target_hp=hp_after,
+            target_max_hp=max_hp if type(max_hp) is int else 0,
+        )
+    except Exception:  # adapter faults never stop a fight
+        result = None
+    if result is not None and result.ok and type(result.damage) is int:
+        return result.damage, list(result.traits), True
+    damage, traits = _typed_damage(trait_sheet, kind, amount)
+    return damage, traits, False
+
+
+def _stage_on_hit_conditions(encounter, characters, event, event_id, actor, target, entry, on_hit,
+                             trait_sheet, target_conditions, staged, hp_after, resolution):
+    """#1889: an onHit row's conditions, staged on a hit with no save through
+    the rider's condition op, gated by the target's size (casefolded; an
+    unknown size stages nothing) and by #1520's condition immunities. A
+    condition the target already states, or this intent already staged, is
+    not staged twice. Returns (kept conditions, skipped reason or None)."""
+    reason = None
+    if hp_after <= 0:
+        reason = "target down"
+    elif on_hit.get("targetMaxSize") is not None:
+        rank = size_rank((trait_sheet or {}).get("size") or target.get("size"))
+        if rank is None:
+            reason = "target size unknown"
+        elif rank > size_rank(on_hit["targetMaxSize"]):
+            reason = "target too large"
+    wanted = [] if reason else [
+        name for name in on_hit["conditions"] if name not in target_conditions and name not in staged
+    ]
+    if reason is None and not wanted:
+        reason = "already %s" % ", ".join(on_hit["conditions"])
+    kept = []
+    if wanted:
+        op, problems = _stat_block_condition_op(
+            encounter, event_id, actor, target, entry, wanted, None,
+            len(resolution.setdefault("effectOps", [])), apply_on="always",
+        )
+        if op is None:
+            resolution["violations"].append("onHit effect contract rejected: %s" % "; ".join(problems))
+            reason = "effect refused"
+        else:
+            op = _immune_condition_op(encounter, characters, op, event)
+            if op is None:
+                reason = "immune"
+            else:
+                resolution["effectOps"].append(op)
+                kept = list(op["effect"]["conditions"])
+                staged.update(kept)
+    if kept:
+        _on_hit_log("%s is %s (%s's %s)" % (target.get("name"), ", ".join(kept), actor.get("name"), entry.get("name")))
+    if reason:
+        _on_hit_log("%s's %s on %s: %s skipped (%s)" % (
+            actor.get("name"), entry.get("name"), target.get("name"), ", ".join(on_hit["conditions"]), reason))
+    return kept, reason
+
+
+def _on_hit_log(text):
+    try:
+        from utils.enhanced_logger import info as _info
+        _info("OH: %s" % text, category="combat_events")
+    except Exception:
+        pass
+
+
 def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override=None, great_weapon=None, bonus_dice=None,
                    riders=None):
     """Resolve a validated attack intent into an event + deltas.
@@ -1977,6 +2152,9 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
     attacker_conditions = _stated_conditions(characters, encounter, actor)
     target_conditions = _stated_conditions(characters, encounter, target)
     target_dodging = _target_dodging(target, target_conditions)
+    # #1889: the conditions this intent's onHit rows have staged (a second
+    # swing of the same Multiattack stages none twice).
+    on_hit_staged = set()
     for swing_number, entry in enumerate(attack_entries, start=1):
         if target is None or hp_after <= 0:
             break
@@ -2056,6 +2234,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
         damage = 0
         raw_damage = 0
         damage_traits = []
+        swing_on_hit = None
         if hit:
             count, sides, modifier = parse_dice(entry.get("damageDice", "1d4"), flat_ok=True)
             if critical:
@@ -2115,18 +2294,62 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
                     )
                 except Exception:
                     pass
-            applied = _engine_hit_points(working, -damage, event, focus) if working is not None and damage else None
+            # #1889: a monster row's onHit damage, each component its own dice
+            # (doubled on a critical), its own journal row and its own type's
+            # traits; then one hit-point change for the swing's whole damage,
+            # so a concentrating target makes one save on the sum.
+            on_hit = None
+            if actor.get("type") == "enemy":
+                on_hit, on_hit_problem = on_hit_spec(entry)
+                if on_hit_problem:
+                    event.setdefault("normalizations", []).append(
+                        {"kind": "onHitIgnored", "ability": entry.get("name"), "reason": on_hit_problem})
+                    _on_hit_log("%s %s onHit ignored: %s" % (actor.get("name"), entry.get("name"), on_hit_problem))
+            on_hit_damage = []
+            for component in (on_hit or {}).get("damage") or []:
+                dice = component["count"] * (2 if critical else 1)
+                faces = [
+                    _take_roll(rolls, "d%d" % component["sides"], "damage",
+                               actor_id=intent.get("actorId"), target_id=intent.get("targetId"))
+                    for _ in range(dice)
+                ]
+                raw = max(0, sum(faces) + component["damageBonus"])
+                dealt, traits, _engine = _treat_on_hit(trait_sheet, hp_after, component["damageType"], raw)
+                event["rolls"].append({
+                    "die": "%dd%d" % (dice, component["sides"]), "value": sum(faces), "faces": list(faces),
+                    "purpose": "damage", "combatantId": target["combatantId"],
+                    "onHit": entry.get("name"), "damageType": component["damageType"],
+                })
+                record_row = {"damageType": component["damageType"], "die": "%dd%d" % (dice, component["sides"]),
+                              "rolled": raw, "damage": dealt}
+                if traits:
+                    record_row["damageTraits"] = list(traits)
+                on_hit_damage.append(record_row)
+                _on_hit_log("%s takes %d %s from %s's %s%s" % (
+                    target.get("name"), dealt, component["damageType"], actor.get("name"), entry.get("name"),
+                    " (%s: %d -> %d)" % (", ".join(traits), raw, dealt) if traits else ""))
+            hit_damage = damage + sum(row["damage"] for row in on_hit_damage)
+            applied = _engine_hit_points(working, -hit_damage, event, focus) if working is not None and hit_damage else None
             if applied is not None:
                 working = applied
                 hp_after = int(working["hitPoints"])
                 engine_used = True
             else:
-                hp_after = max(0, hp_after - damage)
+                hp_after = max(0, hp_after - hit_damage)
                 if working is not None:
                     working["hitPoints"] = hp_after
-                    if damage:
+                    if hit_damage:
                         engine_used = False
-            total_damage += damage
+            total_damage += hit_damage
+            if on_hit is not None:
+                swing_on_hit = {"damage": on_hit_damage} if on_hit_damage else {}
+                if on_hit["conditions"]:
+                    kept, skipped = _stage_on_hit_conditions(
+                        encounter, characters, event, event_id, actor, target, entry, on_hit,
+                        trait_sheet, target_conditions, on_hit_staged, hp_after, resolution)
+                    swing_on_hit["conditions"] = kept
+                    if skipped:
+                        swing_on_hit["conditionsSkipped"] = skipped
         rider_result = None
         rider_spec = _stated_save_spec(entry, "rider") if hit else None
         if rider_spec is not None:
@@ -2273,6 +2496,8 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
             swing["rider"] = rider_result
         if swing_riders:
             swing["damageRiders"] = swing_riders
+        if swing_on_hit:
+            swing["onHit"] = swing_on_hit
         swings.append(swing)
         if _spends_ammunition(entry):
             ranged_swings += 1
@@ -2471,6 +2696,10 @@ def open_player_weapon_attack(encounter, characters, intent, entry, rolls=None):
     actor = combatant_by_id(encounter, intent.get("actorId"))
     target = combatant_by_id(encounter, intent.get("targetId"))
     attacker_conditions = _stated_conditions(characters, encounter, actor)
+    if stands_at_turn_start(encounter, characters, actor):
+        # #1889: the player stands at its slot (the window's first), so the
+        # mode asked for is the standing one, as the pipeline will score it.
+        attacker_conditions.discard("prone")
     target_conditions = _stated_conditions(characters, encounter, target)
     declared = intent.get("attackMode")
     mode, sources = _attack_mode(
