@@ -2,7 +2,7 @@
 
 A hostile npc whose sheet is unconscious above 0 HP (a sleeper) is seated
 alive at build with the typed marker ``sleeperWake``. After activation the
-marker becomes a one-round "Surprised" effect on the sheet that states
+marker becomes a one-round "Asleep" effect on the sheet that states
 unconscious and incapacitates. The sleeper wakes when it takes damage or
 when round 1 ends; a fight that ends first leaves it awake.
 
@@ -13,8 +13,10 @@ Typed keys and value compares only (AP-7). The wake effect has no
 
 from copy import deepcopy
 
-WAKE_PREFIX = "surprise-"
-WAKE_NAME = "Surprised"
+# Its own name and id namespace, apart from #834's "Surprised" / "surprise-":
+# the narrator reads the name of the effect a hit removes.
+WAKE_PREFIX = "asleep-"
+WAKE_NAME = "Asleep"
 WAKE_MARKER = "sleeperWake"
 UNCONSCIOUS = "unconscious"
 
