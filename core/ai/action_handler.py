@@ -5189,6 +5189,28 @@ def _outside_lines(rows):
     return " ".join(sentences) or "No participant in it is against the party."
 
 
+# #1911 review: the refused draft's own observers, named back to the DM.
+_OBSERVER_SENTENCE = (
+    "The draft listed %s as participation observer; a person the player attacks is a participant, not "
+    "an observer."
+)
+
+
+def _observer_names(rows):
+    """The names of the refused draft's participation observer rows (#1911
+    review), from the builder's typed outsideRows, in their order: "A",
+    "A and B", "A, B and C"; "" when there are none. Only rows the draft
+    itself listed: a person the roster added as an observer (requested
+    False) was not listed by the draft."""
+    names = [str(row.get("name") or "").strip() for row in rows or []
+             if isinstance(row, dict) and row.get("participation") == "observer"
+             and row.get("requested") is not False
+             and str(row.get("name") or "").strip()]
+    if len(names) < 2:
+        return "".join(names)
+    return "%s and %s" % (", ".join(names[:-1]), names[-1])
+
+
 def _dead_lines(rows, location_id):
     """One clause per listed person a refused fight names who is recorded
     dead (#1902), from the builder's typed rows; "" when they are unusable.
@@ -5391,14 +5413,26 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
                 dead, "" if payments is None else " " + _encounter_payment_lines(payments))
         )
     elif outside:
-        # #1899: who is outside the fight, and what a fight needs.
+        # #1899: who is outside the fight, what a fight needs, and how to
+        # answer the player's action, which still stands (#1911 review).
+        observers = _observer_names(down_hostiles)
         content = (
             "Combat Error: the encounter you requested could not be set up, because no one in it "
-            "is against the party: %s %s No fight has started.%s Answer the player's last action "
-            "again: if they attack someone listed above, or someone there fights the party, request "
-            "the fight again with that participant active and initiativeEligible true (an npc with "
-            "side: hostile); if no one is fighting the party, answer without a fight." % (
-                outside, _FIGHT_NEEDS, "" if payments is None else " " + _encounter_payment_lines(payments))
+            "is against the party: %s %s "
+            "No fight has started, and the player's last action has not been resolved yet: it stands as the "
+            "player wrote it."
+            % (outside, _FIGHT_NEEDS)
+            + ("" if payments is None else " " + _encounter_payment_lines(payments))
+            + " "
+            + "If it attacks anyone, request the fight again with each person it attacks as participation "
+            "active and initiativeEligible true, as an npc with side: hostile; in this fight that only names "
+            "the side facing the party, and on their turns they still choose to fight back, defend, flee or "
+            "yield."
+            + ((" " + _OBSERVER_SENTENCE % observers) if observers else "")
+            + " "
+            + "Answer without a fight only when the player's last action attacks no one and no one there "
+            "attacks the party. Either way the player's choice stands: others may react to it, but never "
+            "decide for the player's character what they do or that they hold back."
         )
     elif rows:
         # #1891: why, per row, and what the DM can do instead.

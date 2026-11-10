@@ -166,6 +166,7 @@ from core.managers.combat_state import (
     recovery_action,
     resolve_creature_controller,
     round_events,
+    turn_awaits_recovery,
     valid_pending_delivery,
 )
 from core.combat.down_scene import (
@@ -3991,7 +3992,8 @@ def _run_combat_simulation(
        # Format player character using the same function as NPCs
        formatted_player = format_character_for_combat(player_info, char_type="player")
        conversation_history[2]["content"] = f"Here's the player character data:\n\n{formatted_player}\n"
-       conversation_history[3]["content"] = f"Monster Templates:\n{json.dumps({k: filter_dynamic_fields(v) for k, v in monster_templates.items()}, indent=2)}"
+       from core.combat.attacks import without_mechanics_only  # #1889: model text
+       conversation_history[3]["content"] = f"Monster Templates:\n{json.dumps({k: filter_dynamic_fields(without_mechanics_only(v)) for k, v in monster_templates.items()}, indent=2)}"
        if not monster_templates and any(c["type"] == "enemy" for c in encounter_data["creatures"]):
            error("FAILURE: No monster templates were loaded!", category="file_operations")
            return None, None
@@ -4305,6 +4307,7 @@ def _run_combat_simulation(
        is_resuming
        and combat_state.get("pipelineMode") == "agentic"
        and combat_state.get("pendingDelivery") is None
+       and not turn_awaits_recovery(encounter_data)
        and combat_resolved(encounter_data)
    )
    if (
@@ -4734,6 +4737,7 @@ This is narration only. Do not advance the round or apply any combat action."""
            and (encounter_data.get("combatState") or {}).get(
                "pendingDelivery"
            ) is None
+           and not turn_awaits_recovery(encounter_data)
            and combat_resolved(encounter_data)
        ):
            character_paths, _context_sheets = _agentic_combat_context(
