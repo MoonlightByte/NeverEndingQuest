@@ -240,6 +240,65 @@ def _record_draw_applied(event, after):
     )
 
 
+def turn_slots_passed(encounter, pending_turn, ends_round):
+    """#1914: the initiative slots this window passes, in turn order.
+
+    The walk the claim makes (combat_state._skipped_actor_ids_through_window):
+    from ``turnCursor``, modular over ``initiativeOrder``, every slot not yet in
+    ``actedThisRound``. It stops after the last claimed actor unless the window
+    ends the round (#1919's ``round_ends``), when it takes every such slot to
+    the round's end; a clock-only window (no claimed actor) always does. A slot
+    is passed whether its creature acts, is skipped, is down, fled or is gone.
+    """
+    state = encounter.get("combatState") or {}
+    order = list(state.get("initiativeOrder") or [])
+    if not order:
+        return []
+    acted = set(state.get("actedThisRound") or [])
+    claimed = list(pending_turn.get("actorIds") or [])
+    last = claimed[-1] if claimed else None
+    cursor = state.get("turnCursor") if type(state.get("turnCursor")) is int else 0
+    slots = []
+    for offset in range(len(order)):
+        slot_id = order[(cursor + offset) % len(order)]
+        if slot_id in acted:
+            continue
+        slots.append(slot_id)
+        if slot_id == last and not ends_round:
+            break
+    return slots
+
+
+def _slot_turn_ticks(encounter, characters, slot_id, created_by_event=None):
+    """#1914: the end_of_turn ticks of one slot's holder (none for a gone row)."""
+    creature = combatant_by_id(encounter, slot_id)
+    if creature is None:
+        return []
+    owner = creature.get("name") if creature.get("type") in ("player", "npc") else None
+    return plan_effect_ticks(
+        characters,
+        "end_of_turn",
+        encounter=encounter,
+        holder={"owner": owner, "combatantId": slot_id},
+        created_by_event=created_by_event,
+    )
+
+
+def _apply_turn_ticks(encounter, characters, ticks, event_id, actor_id):
+    """#1914: apply turn-end ticks in staging through apply_resolution (a
+    tick-only resolution, the stand-up's pattern), so the projection refresh
+    (row flags and conditions) runs before the next actor resolves."""
+    if not ticks:
+        return encounter, characters
+    return apply_resolution(
+        encounter,
+        characters,
+        {"event": {"eventId": event_id, "actorId": actor_id, "outcome": {"targets": []},
+                   "rolls": [], "resources": [], "effects": [], "effectTicks": deepcopy(ticks)},
+         "charDeltas": {}, "creatureDeltas": {}, "effectOps": [], "violations": []},
+    )
+
+
 def resolve_effect_clock_window(encounter, characters, pending_turn):
     """Build one provider-free event when no living combatant can act."""
     if not isinstance(pending_turn, dict) or pending_turn.get("clockOnly") is not True:
@@ -247,7 +306,12 @@ def resolve_effect_clock_window(encounter, characters, pending_turn):
     state = encounter.get("combatState") or {}
     if pending_turn.get("baseRevision") != state.get("revision"):
         raise CombatIntentError("Effect-clock turn no longer matches combat revision")
-    ticks = plan_effect_ticks(
+    # #1914: the clock window passes every remaining slot (it ends the round),
+    # downed holders included; their turn-end ticks lead, in slot order.
+    turn_ticks = []
+    for slot_id in turn_slots_passed(encounter, pending_turn, ends_round=True):
+        turn_ticks.extend(_slot_turn_ticks(encounter, characters, slot_id))
+    ticks = turn_ticks + plan_effect_ticks(
         characters,
         "end_of_round",
         encounter=encounter,
@@ -259,10 +323,14 @@ def resolve_effect_clock_window(encounter, characters, pending_turn):
         # zero-tick boundary would permanently pause a fight immediately after
         # a control effect landed. With no end-of-round candidate at all, keep
         # the existing stable pause rather than spinning on an indefinite
-        # incapacitation.
+        # incapacitation. #1914: a turn-anchored effect is a candidate too.
         future_ticks = plan_effect_ticks(
             characters,
             "end_of_round",
+            encounter=encounter,
+        ) or plan_effect_ticks(
+            characters,
+            "end_of_turn",
             encounter=encounter,
         )
         if not future_ticks:
@@ -464,9 +532,58 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
     next_characters = deepcopy(characters or {})
     events = []
     intent_index = 0
+    # #1914: one walk over the initiative slots the window passes. Each slot's
+    # turn-end ticks are applied at the slot's own position; a claimed actor's
+    # ride its own event, every other slot's ride the next event (or the last).
+    walk = turn_slots_passed(next_encounter, pending_turn, ends_round=False)
+    passed = []
+    carried = []
+    carried_before = [None]
+
+    def carry_slot(slot_id):
+        passed.append(slot_id)
+        carry_ticks(slot_id)
+
+    def carry_ticks(slot_id):
+        nonlocal next_encounter, next_characters
+        ticks = _slot_turn_ticks(next_encounter, next_characters, slot_id)
+        if ticks:
+            if not carried:
+                carried_before[0] = next_characters
+            next_encounter, next_characters = _apply_turn_ticks(
+                next_encounter, next_characters, ticks,
+                "%s-turn-end-%s" % (pending_turn.get("turnId"), slot_id), slot_id)
+            carried.extend(ticks)
+
+    def pass_slots_before(actor_id):
+        if actor_id not in walk:
+            return
+        while walk[0] != actor_id:
+            carry_slot(walk.pop(0))
+        walk.pop(0)
+        passed.append(actor_id)
+
+    def ride_event(event, actor_id, created_by_event, before):
+        """The carried ticks and this actor's own turn-end ticks ride its event."""
+        nonlocal next_encounter, next_characters
+        own = _slot_turn_ticks(next_encounter, next_characters, actor_id, created_by_event)
+        if not carried and not own:
+            return
+        start = carried_before[0] if carried else before
+        if own:
+            next_encounter, next_characters = _apply_turn_ticks(
+                next_encounter, next_characters, own, "%s-turn-end" % event["eventId"], actor_id)
+        event["effectTicks"] = list(event.get("effectTicks") or []) + carried + own
+        del carried[:]
+        _record_character_state_after(event, start, next_characters)
+        problems = validate_event(event)
+        if problems:
+            raise CombatIntentError("; ".join(problems), actor_id, {"violations": problems})
+
     for sequence, actor_id in enumerate(pending_turn.get("actorIds") or [], start=1):
         intent = _intent_for_actor(intents, intent_index, actor_id)
         intent_index += 1
+        pass_slots_before(actor_id)
         actor = combatant_by_id(next_encounter, actor_id)
         if not actor:
             continue
@@ -516,7 +633,12 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                         actor_id,
                         {"violations": skipped_problems},
                     )
+                ride_event(skipped_event, actor_id, None, next_characters)
                 events.append(skipped_event)
+            else:
+                # #1914: an actor dropped or fled earlier in the batch has no
+                # event; its turn still ends, so its ticks ride the next event.
+                carry_ticks(actor_id)
             continue
         # #1889: a Prone actor stands at the start of its own turn, before its
         # intent is checked or resolved, so its own swing and every later
@@ -896,6 +1018,9 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                     {"kind": "bystanderJoinedHostile", "combatantId": joined_id, "by": actor_id}
                 )
                 join_as_hostile(next_encounter, joined_id, by=actor_id)
+        # #1914: the actor's turn ends after its whole resolution; an effect its
+        # own event made has not yet lasted to the end of its next turn.
+        ride_event(resolution["event"], actor_id, event_id, next_characters)
         events.append(resolution["event"])
 
     if intent_index != len(intents):
@@ -906,9 +1031,30 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
         pending_turn.get("skippedActorIds") or [],
         pending_turn.get("actorIds") or [],
     )
+    ends_round = round_ends(next_encounter, acted_after)
+    # #1914: slots the walk still holds, and, when the window ends the round,
+    # every slot to the round's end; their ticks ride the last event.
+    for slot_id in list(walk):
+        carry_slot(slot_id)
+    del walk[:]
+    if ends_round:
+        for slot_id in turn_slots_passed(next_encounter, pending_turn, ends_round=True):
+            if slot_id not in passed:
+                carry_slot(slot_id)
+    if carried and events:
+        events[-1]["effectTicks"] = list(events[-1].get("effectTicks") or []) + carried
+        del carried[:]
+        _record_character_state_after(events[-1], carried_before[0], next_characters)
+        carried_problems = validate_event(events[-1])
+        if carried_problems:
+            raise CombatIntentError(
+                "; ".join(carried_problems),
+                events[-1].get("actorId"),
+                {"violations": carried_problems},
+            )
     # #1919: the commit's own round-end test (initiative members only), so an
     # observer outside the order no longer holds the round-end ticks back.
-    if events and round_ends(next_encounter, acted_after):
+    if events and ends_round:
         effect_ticks = plan_effect_ticks(
             next_characters,
             "end_of_round",
@@ -916,7 +1062,8 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             created_in_round=pending_turn.get("round", state.get("round", 1)),
         )
         if effect_ticks:
-            events[-1]["effectTicks"] = effect_ticks
+            # #1914: extend; the last event may already carry turn-end ticks.
+            events[-1]["effectTicks"] = list(events[-1].get("effectTicks") or []) + effect_ticks
             tick_problems = validate_event(events[-1])
             if tick_problems:
                 raise CombatIntentError(

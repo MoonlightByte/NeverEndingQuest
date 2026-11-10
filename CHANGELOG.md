@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A ghoul's paralyzing claw now wears off at the end of the paralyzed creature's next turn, as the rules say. Before, it lasted to the end of the next round, so a character who acts before the ghoul lost a second turn, and creatures acting after that character still got advantage against them (#1914).
 - In a fight where someone only watches (an onlooker who takes no turns), effects that last a number of rounds now run out on time, and a creature that was surprised now gets its turns from round 2. Before, Bless and similar effects never counted down in such a fight, and a surprised foe never acted (#1919).
 - A fight you start where no one is actually against the party (everyone is only watching, hidden, or on your side) no longer opens as a fight that can never end: the Dungeon Master is told who is outside the fight and what a fight needs, and answers you again (#1899).
 - When you leave a fight and the companions you leave behind have no one left to fight, the fight now ends and the game returns to exploration, instead of your companions taking turns on their own with no foe until the AI-call limit stops them (#1908).
