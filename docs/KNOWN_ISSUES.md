@@ -118,3 +118,17 @@ docs/audits/.
   (R1) and fresh NC05 roster probes (R4) still outstanding.
 - WSL PK: final-boss retry in progress lineage at Sinkhole Furrow save; final report
   pending.
+
+## G. Games started before an update
+1. The Thornwood Watch, version 1.2.1 (#1859). A game started before 1.2.1 keeps the
+   old behaviour for three leaders: Bandit Captain Gorvek, Malarok the Corruptor and
+   Ranger Thane die at 0 HP, as before. A new game, or a game after Reset, gets the new
+   behaviour: they are people, so at 0 HP they fall unconscious instead of dying.
+   - Why: an installed game (the Windows installer or a hosted server) keeps its own
+     copy of the adventure files for a game in progress, and replaces that copy only
+     on Reset or when no game exists. Reset starts the adventure over.
+   - From a source checkout: a `git pull` in the middle of a game brings the new
+     adventure files at once, so the change applies from the next fight. One caveat:
+     if one of these leaders was already killed in that game, the DM may afterwards
+     describe him as lying unconscious, because the record of that fight does not say
+     he died.
