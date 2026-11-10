@@ -1436,8 +1436,11 @@ def _build_initial_combat_prompt(
     initiative_order,
     preroll_text,
     initial_prompt_text,
+    woken_sheets=None,
 ):
-    """Build the exact T044 opening request from prepared prompt surfaces."""
+    """Build the exact T044 opening request from prepared prompt surfaces.
+    ``woken_sheets``: the sheets #1900's wake just wrote, by row name; they
+    take precedence over the lookup for the asleep line."""
     opening_preroll_text = _opening_preroll_context(
         encounter_data, preroll_text
     )
@@ -1446,7 +1449,9 @@ def _build_initial_combat_prompt(
     down_block = f"\n\n{down_rules}" if down_rules else ""
     from core.generators.combat_builder import surprise_opening_rules
 
-    surprise_rules = surprise_opening_rules(encounter_data, _opening_npc_sheets(encounter_data))
+    opening_sheets = _opening_npc_sheets(encounter_data)
+    opening_sheets.update(woken_sheets or {})
+    surprise_rules = surprise_opening_rules(encounter_data, opening_sheets)
     if surprise_rules:
         down_block += f"\n\n{surprise_rules}"
     from core.generators.combat_builder import opening_action_rules
@@ -3843,10 +3848,12 @@ def run_combat_simulation(
 
 
 def _wake_seated_sleepers(json_file_path, encounter_data, combat_state, path_manager, monster_templates,
-                          npc_templates, party_tracker_data, conversation_history, invocation_claim):
+                          npc_templates, party_tracker_data, conversation_history, invocation_claim,
+                          woken_out=None):
     """#1900 C2: wake every row carrying ``sleeperWake`` (sheet first, then the
     encounter write that clears the marker), then show the woken sheets in the
-    combat history the opening and the turns read. No-op without a marker."""
+    combat history the opening and the turns read. No-op without a marker.
+    ``woken_out`` receives the woken sheets by row name, for the opening."""
     from core.combat import sleeper
 
     marked = {row.get("name") for row in sleeper.marked_rows(encounter_data)}
@@ -3858,6 +3865,8 @@ def _wake_seated_sleepers(json_file_path, encounter_data, combat_state, path_man
     combat_state = ensure_combat_state(encounter_data)
     if not woken:
         return encounter_data, combat_state
+    if woken_out is not None:
+        woken_out.update(woken)
     party_npcs = party_tracker_data.get("partyNPCs", []) if isinstance(party_tracker_data, dict) else []
     npc_roles = {npc.get("name"): npc.get("role", "Adventurer") for npc in party_npcs if isinstance(npc, dict)}
     for sheet in woken.values():
@@ -3872,6 +3881,29 @@ def _wake_seated_sleepers(json_file_path, encounter_data, combat_state, path_man
                 message["content"] = f"Here's the NPC data for {sheet_name}:\n\n{formatted}\n"
     _save_combat_history_under_invocation(invocation_claim, conversation_history)
     return encounter_data, combat_state
+
+
+def _unseat_sleepers(json_file_path, encounter_data, invocation_claim):
+    """#1900 S2: the wake failed. Drop every ``sleeperWake`` marker so no later
+    wake adds a one-round effect mid-fight, save the encounter best-effort, and
+    let the fight run as on main: the rows keep their seat, the sheets are not
+    woken. Returns (encounter, combat_state)."""
+    from core.combat import sleeper
+
+    rows = sleeper.marked_rows(encounter_data)
+    for row in rows:
+        row.pop(sleeper.WAKE_MARKER, None)
+    if rows:
+        try:
+            _save_combat_json_under_invocation(
+                invocation_claim, json_file_path, encounter_data, "sleeper wake fallback"
+            )
+        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+            raise
+        except Exception as exc:
+            error("FAILURE: the sleeper wake fallback could not be saved", exception=exc,
+                  category="encounter_setup")
+    return encounter_data, ensure_combat_state(encounter_data)
 
 
 def _resume_party_defeated(encounter_data):
@@ -4198,19 +4230,21 @@ def _run_combat_simulation(
 
    # #1900: a sleeper the builder seated asleep is woken onto its sheet here,
    # after activation and on every resume, before any sync, turn or narration.
+   woken_sheets = {}
    if combat_provenance(encounter_data) == "typed":
        try:
            encounter_data, combat_state = _wake_seated_sleepers(
                json_file_path, encounter_data, combat_state, path_manager,
                monster_templates, npc_templates, party_tracker_data,
-               conversation_history, invocation_claim,
+               conversation_history, invocation_claim, woken_out=woken_sheets,
            )
        except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
            raise
        except Exception as exc:
-           error("FAILURE: the seated sleepers could not be woken; the fight waits for a retry",
+           error("FAILURE: the seated sleepers could not be woken; the fight goes on without the wake",
                  exception=exc, category="encounter_setup")
-           return None, None
+           woken_sheets = {}
+           encounter_data, combat_state = _unseat_sleepers(json_file_path, encounter_data, invocation_claim)
 
    # Secondary histories are reset only after the encounter/history pair is
    # authoritative. A losing prepared encounter cannot clobber active combat.
@@ -4601,6 +4635,7 @@ This is narration only. Do not advance the round or apply any combat action."""
            initiative_order,
            preroll_text,
            initial_prompt_text,
+           woken_sheets=woken_sheets,
        )
 
        conversation_history.append({"role": "user", "content": initial_prompt})

@@ -69,7 +69,10 @@ def wake_effect(combatant_id, encounter_id):
 
 
 def is_wake_effect(effect):
-    """A wake effect this change wrote (typed keys only)."""
+    """A wake effect this change wrote: its id prefix, encounter and author,
+    and its own shape (name, the one unconscious condition, incapacitating).
+    The prefix alone is not enough: a combat add keeps a model-supplied
+    effectId and stamps sourceEncounterId, and authoredBy defaults to engine."""
     return (
         isinstance(effect, dict)
         and isinstance(effect.get("effectId"), str)
@@ -77,6 +80,9 @@ def is_wake_effect(effect):
         and isinstance(effect.get("sourceEncounterId"), str)
         and bool(effect["sourceEncounterId"])
         and effect.get("authoredBy") == "engine"
+        and effect.get("name") == WAKE_NAME
+        and effect.get("conditions") == [UNCONSCIOUS]
+        and effect.get("incapacitates") is True
     )
 
 
@@ -187,7 +193,7 @@ def wake_removals(event, encounter, characters):
         if effect_id not in wake_effect_ids((characters or {}).get(name)):
             continue
         seen.add(combatant_id)
-        ops.append({"op": "remove", "effectId": effect_id, "owner": name})
+        ops.append({"op": "remove", "effectId": effect_id, "name": WAKE_NAME, "owner": name})
     return ops
 
 
