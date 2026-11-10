@@ -3557,6 +3557,96 @@ def last_move_escort_sentence(party_tracker, world):
     return " With you since your last move, not party members: %s." % "; ".join(rows)
 
 
+_ESCORT_FAMILIES = ("moveOccupant", "resolveOccupant", "setOccupantAttitude", "returnOccupant")
+
+
+def transition_escort_ids(checkpoint):
+    """#1869: the occupant ids of this move's escorts. The _transition_escorts
+    predicate (#1842, main.py) by id: a staged or committed escort receipt.
+    A receipt with no occupant id names no one."""
+    deferred = checkpoint.get("deferred_actions") if isinstance(checkpoint, dict) else None
+    records = deferred.get("actions") if isinstance(deferred, dict) else None
+    ids = []
+    for record in records if isinstance(records, list) else []:
+        receipt = record.get("receipt") if isinstance(record, dict) else None
+        if not isinstance(receipt, dict) or record.get("family") not in _ESCORT_FAMILIES:
+            continue
+        if receipt.get("escort") and receipt.get("status") in ("staged", "committed"):
+            occupant_id = str(receipt.get("occupant_id") or "").strip()
+            if occupant_id and occupant_id not in ids:
+                ids.append(occupant_id)
+    return ids
+
+
+def _transition_moved_ids(checkpoint):
+    """The occupant ids a staged or committed moveOccupant of this move takes
+    somewhere (escort or not): they do not stay at the origin."""
+    deferred = checkpoint.get("deferred_actions") if isinstance(checkpoint, dict) else None
+    records = deferred.get("actions") if isinstance(deferred, dict) else None
+    ids = set()
+    for record in records if isinstance(records, list) else []:
+        receipt = record.get("receipt") if isinstance(record, dict) else None
+        if (
+            isinstance(receipt, dict)
+            and record.get("family") == "moveOccupant"
+            and receipt.get("status") in ("staged", "committed")
+        ):
+            occupant_id = str(receipt.get("occupant_id") or "").strip()
+            if occupant_id:
+                ids.add(occupant_id)
+    return ids
+
+
+def last_move_stayed_behind(party_tracker, world, checkpoint):
+    """#1869: the people who came along on the party's last move and stay at
+    this move's origin (names; [] when none). The twin of
+    last_move_escort_sentence: from the tracker's lastMoveEscorts, kept only
+    while the record is this move's module and origin (a record already
+    rewritten for this move, as on a resumed completion, names the
+    destination and gives []); minus this move's escorts and anyone a
+    moveOccupant of this move takes away, and minus party NPCs; each still a
+    person present at the origin (count above 0) in the occupant document,
+    with a name (a nameless record is skipped: an id never reaches prose)."""
+    from core.nql import occupants as _occupants
+
+    party = party_tracker if isinstance(party_tracker, dict) else {}
+    record = party.get(LAST_MOVE_ESCORTS_KEY)
+    if not isinstance(record, dict) or not isinstance(checkpoint, dict):
+        return []
+    module = str(checkpoint.get("module_name") or "").replace(" ", "_")
+    origin = str(checkpoint.get("origin_location_id") or "")
+    if not module or not origin:
+        return []
+    if str(record.get("module") or "").replace(" ", "_") != module or str(record.get("locationId") or "") != origin:
+        return []
+    ids = record.get("occupantIds")
+    if not isinstance(ids, list):
+        return []
+    place = _occupants.place_id(module, origin)
+    roster = party.get("partyNPCs")
+    companions = _roster_ids(roster if isinstance(roster, list) else [])
+    leaving = set(transition_escort_ids(checkpoint)) | _transition_moved_ids(checkpoint)
+    names = []
+    for occupant_id in ids:
+        occupant_id = str(occupant_id or "")
+        if not occupant_id or occupant_id in leaving or occupant_id in companions:
+            continue
+        occupant = _occupants.world_occupant(world, occupant_id)
+        if (
+            not isinstance(occupant, dict)
+            or occupant.get("location") != place
+            or occupant.get("kind") != "person"
+            or not isinstance(occupant.get("count", 1), int)
+            or occupant.get("count", 1) <= 0
+        ):
+            continue
+        # An id never reaches prose: a record with no name is skipped.
+        name = str(occupant.get("name") or "").strip()
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
 def party_note_lines(party_tracker, world, turn_roster, *, record=False):
     """(party_span, orphan_sentence) for the DM note, the validator and the
     corrections: "Party NPCs: <rows>." and, whenever joined people of this

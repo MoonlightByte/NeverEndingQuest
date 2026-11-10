@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A companion or escort who travels with you is now named in one plain line, such as "Ranger Gareth comes with you.", instead of a line that repeated the place and could read "to Ambush Site" (#1863).
 - When you bring someone along or recruit them, the DM now copies that person's record exactly as the game lists it, so the move or the recruit lands the first time instead of being corrected afterwards (#1869).
 - When you ask someone who is not in your party to wait and rest while you travel on, the reply is no longer sent back to be rewritten as if your whole party had to rest: their rest is part of the story only (#1869).
+- When people who came with you on your last journey stay behind as you travel on, the story of the journey now says they stayed; and people who travel with you now appear in the arrival scene as travellers instead of being left out or described as strangers already there (#1869).
 
 ## [1.2.1] - 2026-11-09
 
