@@ -3991,7 +3991,8 @@ def _run_combat_simulation(
        # Format player character using the same function as NPCs
        formatted_player = format_character_for_combat(player_info, char_type="player")
        conversation_history[2]["content"] = f"Here's the player character data:\n\n{formatted_player}\n"
-       conversation_history[3]["content"] = f"Monster Templates:\n{json.dumps({k: filter_dynamic_fields(v) for k, v in monster_templates.items()}, indent=2)}"
+       from core.combat.attacks import without_mechanics_only  # #1889: model text
+       conversation_history[3]["content"] = f"Monster Templates:\n{json.dumps({k: filter_dynamic_fields(without_mechanics_only(v)) for k, v in monster_templates.items()}, indent=2)}"
        if not monster_templates and any(c["type"] == "enemy" for c in encounter_data["creatures"]):
            error("FAILURE: No monster templates were loaded!", category="file_operations")
            return None, None

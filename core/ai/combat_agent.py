@@ -92,6 +92,9 @@ def _parse_object(content, label):
 def _relevant_sheet(sheet):
     if not isinstance(sheet, dict):
         return {}
+    # #1889: the stat block as a model may see it (mechanics-only row keys out)
+    from core.combat.attacks import without_mechanics_only
+    sheet = without_mechanics_only(sheet)
     keys = (
         "name",
         "class",
