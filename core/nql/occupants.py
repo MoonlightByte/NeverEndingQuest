@@ -853,6 +853,21 @@ def _tally_text(occupant: Dict[str, Any]) -> str:
     return ", ".join(parts)
 
 
+def _record_line(occupant: Dict[str, Any]) -> str:
+    """One rosterRecord line for an occupant with a tally. A person's line
+    carries their id (#1837): an add, or a resolve, of a person recorded
+    surrendered or defeated names it. The DM's view and the validator's
+    read this one form (#1876)."""
+    name = occupant.get("name")
+    if occupant.get("kind") == "person" and occupant.get("id"):
+        name = "%s [%s]" % (name, occupant["id"])
+    text = "%s: %s" % (name, _tally_text(occupant))
+    left = occupant.get("count")
+    if isinstance(left, int) and left > 0:
+        text += "; %d still here" % left
+    return text
+
+
 def location_record(location_id: str, module: str, *, root: str = ".") -> Optional[Dict[str, Any]]:
     """What the engine records for this place, for the DM context: one line
     per group with a tally (resolved, or partly), and the module's groups at
@@ -866,18 +881,7 @@ def location_record(location_id: str, module: str, *, root: str = ".") -> Option
     if not views:
         return None
     here = views[0]
-    record: List[str] = []
-    for occupant in list(here.get("resolved") or []) + list(here.get("present") or []):
-        if occupant.get("tally"):
-            left = occupant.get("count")
-            name = occupant.get("name")
-            if occupant.get("kind") == "person" and occupant.get("id"):
-                # #1837: a person's line carries the id an add by id takes.
-                name = "%s [%s]" % (name, occupant["id"])
-            text = "%s: %s" % (name, _tally_text(occupant))
-            if isinstance(left, int) and left > 0:
-                text += "; %d still here" % left
-            record.append(text)
+    record = record_lines(here)
     present = present_roster(here)
     describe(present, module, location_id, root=root)
     out: Dict[str, Any] = {"rosterRecord": record, "occupants": present}
@@ -944,6 +948,9 @@ def dm_action_line(action_type: str, parameters: Any, module: str) -> Tuple[str,
     p = parameters if isinstance(parameters, dict) else {}
     oid = str(p.get("occupantId") or "").strip()
     if not oid.startswith("occ:"):
+        if action_type == "resolveOccupant":
+            return "", ("occupantId must be an id from the location data's occupants list, or the id "
+                        "on the rosterRecord line of a person recorded surrendered or defeated, copied whole")
         return "", "occupantId must be an id from the location data's occupants list"
     if action_type == "resolveOccupant":
         outcome = str(p.get("outcome") or "").strip().lower()
@@ -1085,6 +1092,13 @@ def correction(action_type: str, problem: str, here: Optional[Dict[str, Any]], *
     named, shown in place of the present list: they are not present."""
     listing = ("Recorded at this location: %s" % recorded if recorded is not None
                else "Present occupants at this location: %s" % _present_lines(here))
+    if recorded is None and action_type == "resolveOccupant":
+        # #1876: a person recorded surrendered or defeated is not present;
+        # a resolve names them by the id on their record line.
+        people = [_record_line(o) for o in list((here or {}).get("resolved") or [])
+                  + list((here or {}).get("present") or []) if returnable_entry(o) is not None]
+        if people:
+            listing += "; recorded here (resolve by this id): %s" % "; ".join(people)
     return (
         "Occupant Error: %s was refused: %s. Nothing changed in the roster record. "
         "%s. Later actions from this response have not "
@@ -1563,15 +1577,9 @@ def describe(present: List[Dict[str, Any]], module: str, location_id: str, *, ro
 
 def record_lines(place_view: Dict[str, Any]) -> List[str]:
     """One line per group with a tally at the place (resolved or partly)."""
-    record: List[str] = []
-    for occupant in list(place_view.get("resolved") or []) + list(place_view.get("present") or []):
-        if occupant.get("tally"):
-            left = occupant.get("count")
-            text = "%s: %s" % (occupant.get("name"), _tally_text(occupant))
-            if isinstance(left, int) and left > 0:
-                text += "; %d still here" % left
-            record.append(text)
-    return record
+    return [_record_line(occupant)
+            for occupant in list(place_view.get("resolved") or []) + list(place_view.get("present") or [])
+            if occupant.get("tally")]
 
 
 def place_summary(place_view: Dict[str, Any], module: str, location_id: str, *, root: str = ".") -> Dict[str, Any]:

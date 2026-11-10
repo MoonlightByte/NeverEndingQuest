@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When you show mercy to someone you beat earlier, such as ending a fallen foe's suffering at their plea, the game now keeps what you did: the Dungeon Master's account of their fate is recorded instead of being turned away, and the DM is shown how to name them when a first try is refused (#1876).
 - When a long trip stops at a place on the way, the Dungeon Master now says in the story why you stopped there, shown through what you can see and hear rather than by naming who is there, and that your goal still lies ahead, so your next line can finish the trip (#1862).
 - When you set out for a place beyond your next stop, the scene at that stop no longer forgets where you were headed: it ends by offering the road on toward the place you named (#1863).
 - When the Dungeon Master asks a companion to join or leave by the wrong name tag, the game now catches it before you see anything, so you get one telling of the moment instead of the scene played out twice (#1863).
@@ -17,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - When you ask someone who is not in your party to wait and rest while you travel on, the reply is no longer sent back to be rewritten as if your whole party had to rest: their rest is part of the story only (#1869).
 - When people who came with you on your last journey stay behind as you travel on, the story of the journey now says they stayed; and people who travel with you now appear in the arrival scene as travellers instead of being left out or described as strangers already there (#1869).
 - A person lying beaten at your place who is not in your party can now be healed awake: the DM's heal or potion on their own sheet is no longer refused as "not present" before it is reviewed, and once healed awake they stand there again in the place's record (#1875).
+- The known issues now say how the 1.2.1 change for beaten leaders reaches a game already in progress. In The Thornwood Watch, a game started before 1.2.1 keeps the old behaviour: Bandit Captain Gorvek, Malarok the Corruptor and Ranger Thane die at 0 HP. A new game or a Reset has them fall unconscious instead. Playing from source, a `git pull` in the middle of a game brings the change at once, and a leader already killed in that game may then be described as unconscious (#1859).
 
 ## [1.2.1] - 2026-11-09
 

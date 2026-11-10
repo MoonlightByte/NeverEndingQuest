@@ -3729,7 +3729,7 @@ def create_module_validation_context(party_tracker_data, path_manager, *, module
 3. NEVER create new NPCs - all names must exist in the provided lists
 4. If an NPC is referenced incorrectly, suggest the CORRECT NPC from the origin record's occupants
 5. NPCs cannot be in multiple locations simultaneously - verify location consistency
-6. The occupant ids an occupant action may name are the ids in the origin record's occupants; when that record is unavailable, never reject an occupant action for its occupantId
+6. The occupant ids an occupant action may name are the ids in the origin record's occupants (for resolveOccupant, also the id on a person's rosterRecord line in that record); when that record is unavailable, never reject an occupant action for its occupantId
 
 CHARACTER NAME RULES FOR updateCharacterInfo:
 - ALWAYS use the FULL character name exactly as it appears in the party tracker or NPC lists
