@@ -12783,6 +12783,9 @@ def _review_dm_candidate(
 def main():
     """Main entry point with startup wizard integration"""
     setup_utf8_console()
+    # #1920: an engine that cannot run on this machine stops the start here, before any game or model call.
+    from core.nql.apply import require_engine
+    require_engine()
     
     # Check if config.py exists, create from template if not
     import os

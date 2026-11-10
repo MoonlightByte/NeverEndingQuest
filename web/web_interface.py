@@ -7599,6 +7599,9 @@ if __name__ == '__main__':
         sys.exit(0 if check_frontend_tools() else 1)
     if boot_args.prepare_frontend:
         sys.exit(0 if ensure_react_frontend(shipped=boot_args.shipped_frontend) else 1)
+    # #1920: an engine that cannot run on this machine stops the start here, before any game or model call.
+    from core.nql.apply import require_engine
+    require_engine()
     if boot_args.toolkit:
         selected_ui = 'react'
     else:

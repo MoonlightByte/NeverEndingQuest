@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- On a computer the rules engine is not built for (a Mac, or an ARM processor), the game now stops at start with one plain line saying it runs on Windows and Linux on x86-64 and where it looked for the engine, instead of starting and then refusing every roll, attack and item change; the README no longer lists macOS (#1920).
 - When you leave a fight and the companions you leave behind have no one left to fight, the fight now ends and the game returns to exploration, instead of your companions taking turns on their own with no foe until the AI-call limit stops them (#1908).
 - A critical hit now doubles Hunter's Mark and Hex dice too: the extra 1d6 becomes 2d6, whether the game rolls it or you do, the way the weapon's own dice already doubled (#1890).
 - A condition that ends during a combat round on a party member or companion (an effect ending, a held spell dropping) no longer counts for the rest of that round, and the round summary shows the conditions as they are (#1895).
