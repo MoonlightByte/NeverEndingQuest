@@ -1410,6 +1410,26 @@ def _opening_preroll_context(encounter_data, preroll_text):
     return "" if combat_provenance(encounter_data) == "typed" else preroll_text
 
 
+def _opening_npc_sheets(encounter_data):
+    """#1900: the npc rows' sheets by row name, for the opening's asleep line
+    (a woken sleeper's wake effect is on its sheet). {} when unreadable."""
+    sheets = {}
+    try:
+        from utils.module_path_manager import ModulePathManager
+
+        party_tracker = safe_json_load("party_tracker.json") or {}
+        path_manager = ModulePathManager(str(party_tracker.get("module") or "").replace(" ", "_") or None)
+        for creature in encounter_data.get("creatures", []) or []:
+            if not isinstance(creature, dict) or creature.get("type") != "npc" or creature.get("statsPending") is True:
+                continue
+            sheet, _filename = load_npc_with_fuzzy_match(creature.get("name"), path_manager, encounter_data, creature)
+            if isinstance(sheet, dict):
+                sheets[creature.get("name")] = sheet
+    except Exception as exc:
+        debug("COMBAT_OPENING: npc sheets unreadable (%s)" % exc, category="combat_events")
+    return sheets
+
+
 def _build_initial_combat_prompt(
     encounter_data,
     dynamic_state,
@@ -1426,7 +1446,7 @@ def _build_initial_combat_prompt(
     down_block = f"\n\n{down_rules}" if down_rules else ""
     from core.generators.combat_builder import surprise_opening_rules
 
-    surprise_rules = surprise_opening_rules(encounter_data)
+    surprise_rules = surprise_opening_rules(encounter_data, _opening_npc_sheets(encounter_data))
     if surprise_rules:
         down_block += f"\n\n{surprise_rules}"
     from core.generators.combat_builder import opening_action_rules
@@ -2917,7 +2937,12 @@ def sync_active_encounter():
                         if creature.get("maxHitPoints") != npc_data.get("maxHitPoints"):
                             creature["maxHitPoints"] = npc_data.get("maxHitPoints")
                             changes_made = True
-                        if creature.get("status") != npc_data.get("status") and not left_by_resolution(creature):
+                        # #1900 C5: a sleeper's wake effect from this fight holds the row
+                        # alive; its sheet may read unconscious from another effect's write.
+                        from core.combat.sleeper import keep_row_status
+
+                        if (creature.get("status") != npc_data.get("status") and not left_by_resolution(creature)
+                                and not keep_row_status(npc_data, creature, encounter_data)):
                             creature["status"] = npc_data.get("status")
                             changes_made = True
                         if creature.get("conditions") != npc_data.get("condition_affected"):
@@ -3817,6 +3842,38 @@ def run_combat_simulation(
            _finish_owned_combat_round_scope(owned_round_scope)
 
 
+def _wake_seated_sleepers(json_file_path, encounter_data, combat_state, path_manager, monster_templates,
+                          npc_templates, party_tracker_data, conversation_history, invocation_claim):
+    """#1900 C2: wake every row carrying ``sleeperWake`` (sheet first, then the
+    encounter write that clears the marker), then show the woken sheets in the
+    combat history the opening and the turns read. No-op without a marker."""
+    from core.combat import sleeper
+
+    marked = {row.get("name") for row in sleeper.marked_rows(encounter_data)}
+    if not marked:
+        return encounter_data, combat_state
+    character_paths, _sheets = _agentic_combat_context(encounter_data, path_manager, monster_templates)
+    paths = {name: path for name, path in character_paths.items() if name in marked}
+    encounter_data, woken = sleeper.wake_marked(json_file_path, paths)
+    combat_state = ensure_combat_state(encounter_data)
+    if not woken:
+        return encounter_data, combat_state
+    party_npcs = party_tracker_data.get("partyNPCs", []) if isinstance(party_tracker_data, dict) else []
+    npc_roles = {npc.get("name"): npc.get("role", "Adventurer") for npc in party_npcs if isinstance(npc, dict)}
+    for sheet in woken.values():
+        sheet_name = sheet.get("name")
+        for key, template in list(npc_templates.items()):
+            if isinstance(template, dict) and template.get("name") == sheet_name:
+                npc_templates[key] = sheet
+        prefix = f"Here's the NPC data for {sheet_name}:"
+        formatted = format_npc_for_combat(sheet, npc_roles.get(sheet_name, "Adventurer"))
+        for message in conversation_history:
+            if message.get("role") == "system" and str(message.get("content", "")).startswith(prefix):
+                message["content"] = f"Here's the NPC data for {sheet_name}:\n\n{formatted}\n"
+    _save_combat_history_under_invocation(invocation_claim, conversation_history)
+    return encounter_data, combat_state
+
+
 def _resume_party_defeated(encounter_data):
     """Whether a resumed agentic encounter has no party member standing (#1335).
 
@@ -4138,6 +4195,22 @@ def _run_combat_simulation(
            invocation_claim, conversation_history
        )
        print("[COMBAT_MANAGER] NPC templates updated to new format")
+
+   # #1900: a sleeper the builder seated asleep is woken onto its sheet here,
+   # after activation and on every resume, before any sync, turn or narration.
+   if combat_provenance(encounter_data) == "typed":
+       try:
+           encounter_data, combat_state = _wake_seated_sleepers(
+               json_file_path, encounter_data, combat_state, path_manager,
+               monster_templates, npc_templates, party_tracker_data,
+               conversation_history, invocation_claim,
+           )
+       except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
+           raise
+       except Exception as exc:
+           error("FAILURE: the seated sleepers could not be woken; the fight waits for a retry",
+                 exception=exc, category="encounter_setup")
+           return None, None
 
    # Secondary histories are reset only after the encounter/history pair is
    # authoritative. A losing prepared encounter cannot clobber active combat.

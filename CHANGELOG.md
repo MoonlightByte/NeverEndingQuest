@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When you attack someone who is asleep, the fight now begins with them still asleep instead of being refused: your first blow has the advantage, and they wake when they are hurt or when the first round ends (#1900).
 - A fight that was already won when you come back to it no longer opens with a fresh scene before it ends: it goes straight to its end (#1891).
 - When every foe in a fight you start is already down or asleep, the fight no longer opens and ends with a summary of nothing: the Dungeon Master is told who cannot fight and what to do instead, such as recording what becomes of someone lying helpless or waking a sleeper first (#1891).
 - Someone outside your party who is down at 0 HP no longer answers when you speak to them; the story shows their silence, though a breath or a stir may still show (#1884).

@@ -5575,6 +5575,12 @@ def apply_resolution(encounter, characters, resolution):
             sheet["temporaryHitPoints"] = max(0, snapshot["temporaryHitPoints"])
         if "status" in snapshot:
             sheet["status"] = snapshot["status"]
+    # #1900 C6: a sheet whose sleeper wake effect this event ended (C4's
+    # remove, the round-1 tick) reads alive when nothing states unconscious;
+    # a function of the event, so the commit replay agrees with the live step.
+    from core.combat.sleeper import restore_woken_after
+
+    restore_woken_after(characters, new_characters)
     _refresh_character_effect_projections(new_encounter, new_characters, before=characters)
     _refresh_effect_control_flags(new_encounter, new_characters)
     return new_encounter, new_characters
