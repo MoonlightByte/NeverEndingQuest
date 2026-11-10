@@ -59,7 +59,7 @@ import subprocess
 import sys
 import os
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as _dataclass_replace
 from datetime import datetime
 from uuid import uuid4
 from core.ai import api_client
@@ -214,6 +214,10 @@ class ApprovedTransitionPlan:
     # The engine's trip time in game minutes at SRD normal pace (C11); None
     # under NEQ's own route check (the DM's estimate stands).
     travel_minutes: object = None
+    # #1863: the place the player is travelling on toward (the checked
+    # `toward`), when this move is a stop on the way; empty otherwise.
+    goal_location_id: str = ""
+    goal_location_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -2759,6 +2763,13 @@ def pre_validate_transition(
     ):
         if approved and goal_facts:
             facts = {**dict(facts or {}), **goal_facts}
+            if isinstance(plan, ApprovedTransitionPlan) and goal_facts.get("goal_location_id"):
+                # #1863: the checked goal rides the plan to the checkpoint.
+                plan = _dataclass_replace(
+                    plan,
+                    goal_location_id=str(goal_facts["goal_location_id"]),
+                    goal_location_name=str(goal_facts.get("goal_location_name") or ""),
+                )
         if return_plan:
             return TransitionPrevalidationOutcome(
                 approved=bool(approved),
@@ -5791,6 +5802,13 @@ def process_action(
                 authority=approved_transition_plan.authority,
                 travel_minutes=getattr(approved_transition_plan, "travel_minutes", None),
             )
+            if getattr(approved_transition_plan, "goal_location_id", ""):
+                # #1863 (D-1863-1): the onward goal, for the narration chain's
+                # closing; absent when the move has no goal.
+                transition_checkpoint["trip_goal"] = {
+                    "location_id": str(approved_transition_plan.goal_location_id),
+                    "name": sanitize_text(approved_transition_plan.goal_location_name),
+                }
             transition_id = transition_checkpoint["operation_id"]
             _write_location_transition_checkpoint(transition_checkpoint)
 

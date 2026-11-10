@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When you set out for a place beyond your next stop, the scene at that stop no longer forgets where you were headed: it ends by offering the road on toward the place you named (#1863).
 - Someone who came along on your last journey is no longer left behind without a word on the next one. The DM is told who is still with you, and on a journey either brings them along or says they stay (#1861).
 - When you open a fight with a spell, the Dungeon Master's reply is no longer sent back to be rewritten just because it lists the spell slot after the fight starts: the game moves the slot payment ahead of the fight itself, where it is checked and charged as before (#1853).
 - A companion or escort who travels with you is now named in one plain line, such as "Ranger Gareth comes with you.", instead of a line that repeated the place and could read "to Ambush Site" (#1863).
