@@ -95,6 +95,24 @@ def proficiency_bonus(level: Any) -> int:
     return (max(1, min(20, value)) + 7) // 4 if value is not None else 2
 
 
+def proficiency_bonus_for_cr(challenge_rating: Any) -> Optional[int]:
+    """A monster's Proficiency Bonus from its Challenge Rating (#1906).
+
+    SRD 5.2.1 p.256: "A monster's Proficiency Bonus (PB) is determined by its
+    CR", per the table CR 0-4 +2, 5-8 +3, 9-12 +4, 13-16 +5, 17-20 +6,
+    21-24 +7, 25-28 +8, 29-30 +9. Only a typed number in 0..30 is read; any
+    other value (a string, a bool, missing) gives None, never a guess.
+    """
+    if isinstance(challenge_rating, bool) or not isinstance(challenge_rating, (int, float)):
+        return None
+    if not 0 <= challenge_rating <= 30:
+        return None
+    whole = int(challenge_rating)
+    if whole < challenge_rating:
+        whole += 1
+    return 2 + max(0, whole - 1) // 4
+
+
 def expertise_of(sheet: Dict[str, Any]) -> Tuple[List[str], bool]:
     """(skill ids with expertise, inferred).
 
