@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - Someone outside your party who is asleep or otherwise unconscious above 0 HP is no longer described as at 0 HP, and the story no longer suggests healing them awake; someone who is neither at 0 HP nor unconscious, such as a captive, is never told they cannot answer (#1894).
+- A fight that was already won when you come back to it no longer opens with a fresh scene before it ends: it goes straight to its end (#1891).
+- When every foe in a fight you start is already down or asleep, the fight no longer opens and ends with a summary of nothing: the Dungeon Master is told who cannot fight and what to do instead, such as recording what becomes of someone lying helpless or waking a sleeper first (#1891).
 - Someone outside your party who is down at 0 HP no longer answers when you speak to them; the story shows their silence, though a breath or a stir may still show (#1884).
 - When you end the life of someone you beat or captured earlier, or set a captive free, the Dungeon Master now records what became of them instead of starting a fight with someone lying helpless or bound; a captive who breaks free and fights back is still a fight (#1884).
 - A creature written to attack on sight now attacks when you act in its place, while one written to watch, wait or guard still waits for its cue (#1867).
