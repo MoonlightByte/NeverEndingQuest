@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Monster attacks now carry what they do on a hit: a wolf's bite knocks a Medium or smaller target prone, and a creature whose bite or claw adds a second kind of damage deals it, with resistances applied to each kind; a prone creature stands up at the start of its turn unless it is grappled, restrained or incapacitated (#1889).
 - A fight that was already won when you come back to it no longer opens with a fresh scene before it ends: it goes straight to its end (#1891).
 - When every foe in a fight you start is already down or asleep, the fight no longer opens and ends with a summary of nothing: the Dungeon Master is told who cannot fight and what to do instead, such as recording what becomes of someone lying helpless or waking a sleeper first (#1891).
 - Someone outside your party who is down at 0 HP no longer answers when you speak to them; the story shows their silence, though a breath or a stir may still show (#1884).
