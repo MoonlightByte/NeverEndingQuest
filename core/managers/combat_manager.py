@@ -4299,7 +4299,20 @@ def _run_combat_simulation(
        )
    )
    resume_party_defeated = _resume_party_defeated(encounter_data)
-   if is_resuming and not pending_agentic_recovery and not resume_party_defeated:
+   # #1891: a resumed fight that is already over gets no re-engagement
+   # narration; the completion below runs first (the same condition).
+   resume_already_over = bool(
+       is_resuming
+       and combat_state.get("pipelineMode") == "agentic"
+       and combat_state.get("pendingDelivery") is None
+       and combat_resolved(encounter_data)
+   )
+   if (
+       is_resuming
+       and not pending_agentic_recovery
+       and not resume_party_defeated
+       and not resume_already_over
+   ):
        # This is a resumed session. Inject a message to get a re-engagement narration.
        print("[COMBAT_MANAGER] Injecting 'player has returned' message to re-engage AI.")
        debug("RESUME: Starting combat resume flow", category="combat_events")
@@ -4605,6 +4618,12 @@ This is narration only. Do not advance the round or apply any combat action."""
        debug(
            "RESUME: Whole party defeated; no re-engagement narration, the "
            "party-defeat pause follows (#1335)",
+           category="combat_events",
+       )
+   elif resume_already_over:
+       debug(
+           "RESUME: The fight is already over; no re-engagement narration, "
+           "its completion follows (#1891)",
            category="combat_events",
        )
    else:
