@@ -5090,8 +5090,9 @@ def _no_hostile_lines(rows):
             # stated condition (stats.drop_model_states, carry_states): only
             # removing it from condition_affected, with no hpDelta, wakes them.
             sentence = ("%s is asleep (unconscious at %d HP), so no fight with them can start yet. Wake them"
-                        " in the story first (an updateCharacterInfo that removes unconscious from their"
-                        " condition_affected, with no hpDelta), then request the fight." % (who, hp))
+                        " in the story first: an updateCharacterInfo on them whose \"changes\" end their"
+                        " unconscious condition and state no healing or hit point change, with"
+                        " \"affects\": [\"condition\"], then request the fight." % (who, hp))
         else:
             sentence = "%s is %s at %d HP, so no fight with them can start." % (who, status or "out of the fight", hp)
             if occupant_id:

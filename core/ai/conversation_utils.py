@@ -90,7 +90,7 @@ from utils.transient_filesystem import raise_if_save_stopped
 from core.ai.atlas_builder import cached_atlas_for_module, format_atlas_for_conversation
 from core.combat.down_scene import (
     DOWN_RULES_MARKER,
-    PRESENT_DOWN_MARKER,
+    PRESENT_MARKERS,
     from_sheets as down_scene_rules_from_sheets,
     present_down_text,
 )
@@ -1042,7 +1042,7 @@ def update_character_data(conversation_history, party_tracker_data):
             and ("Here's the updated character data for" in entry["content"]
                  or "Here's the NPC data for" in entry["content"]
                  or DOWN_RULES_MARKER in entry["content"]
-                 or entry["content"].startswith(PRESENT_DOWN_MARKER)
+                 or entry["content"].startswith(PRESENT_MARKERS)
                  or entry["content"].startswith("SRD spell guidance for "))
         )
     ]
