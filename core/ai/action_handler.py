@@ -5122,7 +5122,7 @@ _OUTSIDE_PARTICIPATION = ("observer", "hidden", "unaware", "departed")
 _FIGHT_NEEDS = (
     "A fight needs at least one participant against the party with participation active and "
     "initiativeEligible true: a monster, or an npc with side: hostile (a monster that has not "
-    "noticed the party also has surprised: true). If no one is fighting the party, answer without a fight."
+    "noticed the party also has surprised: true)."
 )
 
 
@@ -5321,7 +5321,9 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
         content = (
             "Combat Error: the encounter you requested could not be set up, because no one in it "
             "is against the party: %s %s No fight has started.%s Answer the player's last action "
-            "again without this fight." % (
+            "again: if they attack someone listed above, or someone there fights the party, request "
+            "the fight again with that participant active and initiativeEligible true (an npc with "
+            "side: hostile); if no one is fighting the party, answer without a fight." % (
                 outside, _FIGHT_NEEDS, "" if payments is None else " " + _encounter_payment_lines(payments))
         )
     elif rows:
