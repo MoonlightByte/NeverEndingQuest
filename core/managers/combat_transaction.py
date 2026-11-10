@@ -1561,12 +1561,16 @@ def exit_effect_clock(
         state = ensure_combat_state(encounter)
         # #1908: completion starts in the state a resolving commit leaves: a
         # claimed turn with nothing to resolve is dropped and the phase is
-        # complete (the after-fight turn reads it), in this same write.
+        # complete (the after-fight turn reads it), in this same write. A
+        # turn that is kept leaves the phase as it was.
         dropped = abandon_unstaged_turn(state)
         if dropped:
             _LOGGER.debug("Completion abandoned claimed combat turn %s", dropped)
         settled = bool(dropped)
-        if state.get("phase") in ("awaiting_actor", "resolving_turn"):
+        if state.get("pendingTurn") is None and state.get("phase") in (
+            "awaiting_actor",
+            "resolving_turn",
+        ):
             state["phase"] = "complete"
             settled = True
         if state.get("effectsClockExited"):
