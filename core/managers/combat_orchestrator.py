@@ -51,6 +51,7 @@ from core.combat.resolver import (
     player_weapon_attack_entry,
     player_weapon_attack_score,
     attack_damage_riders,
+    critical_rider,
     is_attack_roll_action,
     spell_attack_violations,
     attack_row,
@@ -2454,6 +2455,22 @@ def _fitting_values(values, record, entry):
     count, sides = player_weapon_attack_dice(record, entry)
     riders = _rider_terms(record)
     if riders:
+        # #1890: every die typed, the weapon's then each rider's in order (a
+        # rider doubled on a critical has two), each within its sides, is
+        # folded to today's form: the weapon's dice, then one total per rider.
+        # The length differs from the two forms below unless every rider has
+        # one die, where the fold changes nothing. A weapon total with each
+        # rider die is not read: its length can equal dice-plus-totals.
+        rider_dice = sum(term[0] for term in riders)
+        if len(values) == count + rider_dice and all(1 <= value <= sides for value in values[:count]):
+            tail, totals = list(values[count:]), []
+            for rider_count, rider_sides in riders:
+                term_faces, tail = tail[:rider_count], tail[rider_count:]
+                if not all(1 <= value <= rider_sides for value in term_faces):
+                    break
+                totals.append(sum(term_faces))
+            else:
+                return list(values[:count]) + totals
         # #1666: one number per term: the weapon's total (or its dice), then
         # each rider's. Great Weapon Fighting still needs the weapon's dice.
         main, extra = values[:-len(riders)], values[-len(riders):]
@@ -3020,6 +3037,10 @@ def _advance_weapon_attack(encounter_path, encounter, characters, pending, text,
                        "attackTotal": total, "targetAC": ac})
         marked = attack_damage_riders(encounter, characters, record.get("actorId"),
                                       combatant_by_id(encounter, record.get("targetId"))) if hit else []
+        if critical:
+            # #1890: marked once, doubled on a critical; every reader of the
+            # card, the tray and the commit takes the die from this record.
+            marked = [critical_rider(rider) for rider in marked]
         if marked:
             record["damageRiders"] = marked
         # #1350: a flat row has no damage die; its hit is ready for the engine.

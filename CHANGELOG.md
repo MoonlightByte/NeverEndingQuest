@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A critical hit now doubles Hunter's Mark and Hex dice too: the extra 1d6 becomes 2d6, whether the game rolls it or you do, the way the weapon's own dice already doubled (#1890).
 - A condition that ends during a combat round on a party member or companion (an effect ending, a held spell dropping) no longer counts for the rest of that round, and the round summary shows the conditions as they are (#1895).
 - Monsters now add their proficiency to the saving throws their stat block lists, worked out from their challenge rating as the SRD does: a Keep of Doom zombie's Wisdom save is +0 instead of -2 and a giant rat's Dexterity save +5 instead of +3, and a generated monster that lists saves gets the same (#1906).
 - Someone outside your party who is asleep or otherwise unconscious above 0 HP is no longer described as at 0 HP, and the story no longer suggests healing them awake; someone who is neither at 0 HP nor unconscious, such as a captive, is never told they cannot answer (#1894).
