@@ -5054,7 +5054,60 @@ COMBAT_START_REASONS = {
     "builder_no_encounter": "the combat builder did not save an encounter",
     "location_unreadable": "the current location could not be loaded",
     "combat_not_started": "the combat could not start",
+    "no_hostile_can_act": "no hostile in it can fight",
 }
+
+
+def _no_hostile_lines(rows):
+    """One sentence per hostile row that made a built fight already over
+    (#1891), from its typed values: at or below 0 HP (an act that kills or
+    frees them is a resolveOccupant on their id, #1888), asleep (unconscious
+    above 0 HP: woken in the story first, never a resolve), or dead or
+    defeated above 0 HP. "" when the rows are unusable."""
+    if not isinstance(rows, list) or not rows:
+        return ""
+    sentences = []
+    for row in rows:
+        if not isinstance(row, dict):
+            return ""
+        name = str(row.get("name") or "").strip()
+        hp = row.get("currentHitPoints")
+        if not name or isinstance(hp, bool) or not isinstance(hp, (int, float)):
+            return ""
+        hp = int(hp)
+        status = str(row.get("status") or "").strip().lower()
+        occupant_id = row.get("occupantId")
+        occupant_id = occupant_id.strip() if isinstance(occupant_id, str) and occupant_id.strip().startswith("occ:") else ""
+        who = '%s (occupantId "%s")' % (name, occupant_id) if occupant_id else name
+        if hp <= 0:
+            sentence = "%s is at %d HP%s." % (who, hp, ", %s" % status if status and status != "alive" else "")
+            if occupant_id:
+                sentence += (" An act that kills or frees them is a resolveOccupant on that occupantId"
+                             " (died; departed with a reason when set free).")
+            sentence += " Someone at 0 HP can fight only after a heal raises them above 0 (updateCharacterInfo)."
+        elif status == "unconscious":
+            sentence = ("%s is asleep (unconscious at %d HP), so no fight with them can start yet. Wake them"
+                        " in the story first (updateCharacterInfo status on their sheet), then request the"
+                        " fight." % (who, hp))
+        else:
+            sentence = "%s is %s at %d HP, so no fight with them can start." % (who, status or "out of the fight", hp)
+            if occupant_id:
+                sentence += " To record what became of them, use resolveOccupant with that occupantId."
+        sentences.append(sentence)
+    return " ".join(sentences)
+
+
+def _refused_rows(result_path):
+    """The downHostiles of a builder result refused as no_hostile_can_act
+    (#1891), else None."""
+    try:
+        with open(result_path, "r", encoding="utf-8") as result_file:
+            result = json.load(result_file)
+    except (OSError, ValueError):
+        return None
+    if isinstance(result, dict) and result.get("status") == "no_hostile_can_act":
+        return result.get("downHostiles")
+    return None
 
 
 def is_encounter_payment(action):
@@ -5196,7 +5249,7 @@ def _pay_encounter(payments, party_tracker_data, location_data, conversation_his
     return None
 
 
-def _combat_start_failed(reason, conversation_history, invocation_claim, payments=None):
+def _combat_start_failed(reason, conversation_history, invocation_claim, payments=None, down_hostiles=None):
     """Close a createEncounter that ended without a finished fight (#444).
 
     The tracker decides. A fight still active there stays saved and resumes
@@ -5222,7 +5275,15 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
     ):
         return {"status": "error", "needs_update": False}
     _last_failed_combat_turn = turn_id
-    if payments is None:
+    rows = _no_hostile_lines(down_hostiles) if reason == "no_hostile_can_act" else ""
+    if rows:
+        # #1891: why, per row, and what the DM can do instead.
+        content = (
+            "Combat Error: the encounter you requested could not be set up, because no hostile "
+            "in it can fight: %s No fight has started.%s Answer the player's last action again "
+            "without this fight." % (rows, "" if payments is None else " " + _encounter_payment_lines(payments))
+        )
+    elif payments is None:
         content = (
             "Combat Error: the encounter you requested could not be set up "
             "(%s), so no fight has started and nothing changed. Answer the "
@@ -5255,6 +5316,8 @@ def _built_encounter(result_path, returncode):
         return None, "builder_failed"
     if not isinstance(result, dict) or result.get("version") != 1:
         return None, "builder_failed"
+    if result.get("status") == "no_hostile_can_act":
+        return None, "no_hostile_can_act"
     if result.get("status") != "saved":
         return None, "builder_no_encounter"
     encounter_id = result.get("encounterId")
@@ -5419,6 +5482,7 @@ def process_action(
             error(f"FAILURE: Could not update status for encounter building", exception=e, category="combat_processing")
 
         fight_finished = False
+        down_hostiles = None
         try:
             print("[DEBUG ACTION_HANDLER] Calling combat_builder.py...")
             debug(f"SUBPROCESS: Sending to combat_builder.py: {json.dumps(action)}", category="combat_processing")
@@ -5455,6 +5519,8 @@ def process_action(
                 encounter_id, build_failure = _built_encounter(
                     os.path.join(result_dir, "result.json"), result.returncode
                 )
+                if build_failure == "no_hostile_can_act":
+                    down_hostiles = _refused_rows(os.path.join(result_dir, "result.json"))
             finally:
                 shutil.rmtree(result_dir, ignore_errors=True)
             print(f"[DEBUG ACTION_HANDLER] combat_builder.py completed")
@@ -5693,7 +5759,7 @@ def process_action(
                 print("[DEBUG ACTION_HANDLER] ========== CREATE ENCOUNTER END WITH FAILURE ==========\n")
                 return _combat_start_failed(
                     build_failure, conversation_history, invocation_claim,
-                    payments=encounter_payments,
+                    payments=encounter_payments, down_hostiles=down_hostiles,
                 )
 
         except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):

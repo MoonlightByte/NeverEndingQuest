@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When every foe in a fight you start is already down or asleep, the fight no longer opens and ends with a summary of nothing: the Dungeon Master is told who cannot fight and what to do instead, such as recording what becomes of someone lying helpless or waking a sleeper first (#1891).
 - A creature written to attack on sight now attacks when you act in its place, while one written to watch, wait or guard still waits for its cue (#1867).
 - When a long trip stops at a place on the way, the reason for stopping now reaches the story you read, even where the place itself looks calm (#1883).
 - When you show mercy to someone you beat earlier, such as ending a fallen foe's suffering at their plea, the game now keeps what you did: the Dungeon Master's account of their fate is recorded instead of being turned away, and the DM is shown how to name them when a first try is refused (#1876).
