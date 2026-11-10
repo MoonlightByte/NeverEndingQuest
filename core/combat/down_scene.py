@@ -152,12 +152,15 @@ _ASLEEP_TEMPLATE = (
     "the story shows that they do not answer: no spoken word or whisper is "
     "given to them, and no look, nod or other sign that they hear, though a "
     "wordless sign of life (a breath, a stir) may show. Their silence is "
-    "unconsciousness, not death. A heal does not wake them. Waking one is a "
+    "unconsciousness, not death. A heal does not wake them. When the story "
+    "wakes one (a shake or a shout can, as the scene allows), that wake is a "
     "real action on their own sheet: an updateCharacterInfo on them whose "
     "\"changes\" end their unconscious condition and state no healing or hit "
     "point change, with \"affects\": [\"condition\"]; never a narrated claim. "
-    "They are not party members: the party's down-scene rules do not apply to "
-    "them."
+    "An attack on one starts a fight with them still asleep (createEncounter); "
+    "do not wake them first, unless the engine answers that no fight with them "
+    "can start yet. They are not party members: the party's down-scene rules "
+    "do not apply to them."
 )
 
 
