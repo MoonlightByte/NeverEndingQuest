@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In a fight where someone only watches (an onlooker who takes no turns), effects that last a number of rounds now run out on time, and a creature that was surprised now gets its turns from round 2. Before, Bless and similar effects never counted down in such a fight, and a surprised foe never acted (#1919).
 - When you leave a fight and the companions you leave behind have no one left to fight, the fight now ends and the game returns to exploration, instead of your companions taking turns on their own with no foe until the AI-call limit stops them (#1908).
 - A critical hit now doubles Hunter's Mark and Hex dice too: the extra 1d6 becomes 2d6, whether the game rolls it or you do, the way the weapon's own dice already doubled (#1890).
 - A condition that ends during a combat round on a party member or companion (an effect ending, a held spell dropping) no longer counts for the rest of that round, and the round summary shows the conditions as they are (#1895).

@@ -1419,6 +1419,22 @@ def round_events(encounter, round_number):
     return list(rows) if isinstance(rows, list) else []
 
 
+def round_ends(encounter, acted):
+    """#1919: the round ends when every targetable initiative member has acted.
+
+    The one definition: the commit advances the round by it, and staging plans
+    the round-end ticks by it. A row outside the initiative order (an observer)
+    never acts, so it never holds a round open.
+    """
+    state = encounter.get("combatState") or {}
+    members = {
+        actor_id
+        for actor_id in state.get("initiativeOrder") or []
+        if is_combatant_targetable(combatant_by_id(encounter, actor_id))
+    }
+    return bool(members) and members.issubset(set(acted))
+
+
 def commit_turn(encounter, turn_id, applied_event_ids):
     """Advance once after callers atomically apply the staged event effects."""
     state = ensure_combat_state(encounter)
@@ -1445,12 +1461,7 @@ def commit_turn(encounter, turn_id, applied_event_ids):
     for actor_id in consumed_actor_ids:
         if actor_id not in state["actedThisRound"]:
             state["actedThisRound"].append(actor_id)
-    round_actor_ids = {
-        actor_id
-        for actor_id in state["initiativeOrder"]
-        if is_combatant_targetable(combatant_by_id(encounter, actor_id))
-    }
-    if round_actor_ids and round_actor_ids.issubset(set(state["actedThisRound"])):
+    if round_ends(encounter, state["actedThisRound"]):
         state["round"] += 1
         state["actedThisRound"] = []
         state["turnCursor"] = 0
