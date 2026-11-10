@@ -67,7 +67,7 @@ apply_data_root_path()
 
 from core.ai import api_client
 from jsonschema import validate, ValidationError
-from core.combat.attacks import on_hit_issue, schema_without_on_hit, typed_multiattack_issue
+from core.combat.attacks import on_hit_issue, schema_without_mechanics_only, typed_multiattack_issue
 import config
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
@@ -204,7 +204,7 @@ Only create custom stats for unique named monsters or special variants (e.g., "C
 
 If this monster name includes terms like 'sorcerer', 'wizard', 'cleric', 'druid', 'warlock', 'mage', or other spellcasting classes, make sure to include the spellcasting property with appropriate spells for their CR.
 
-Schema: {json.dumps(schema)}"""
+Schema: {json.dumps(schema_without_mechanics_only(schema))}"""
     
     prompt = [
         {"role": "system", "content": system_content},
@@ -228,8 +228,9 @@ Schema: {json.dumps(schema)}"""
     _extra = {k: v for k, v in monster_config.items() if k != "model"}
     if MODEL_PROVIDER == "gemini":
         from model_config import convert_to_gemini_schema
-        # #1889: onHit is never offered to the model; the schema sent is as before it.
-        _extra["response_schema"] = convert_to_gemini_schema(schema_without_on_hit(schema))
+        # #1889: mechanics-only row keys are never offered to the model; the
+        # schema sent (here and in the prompt text above) is as before them.
+        _extra["response_schema"] = convert_to_gemini_schema(schema_without_mechanics_only(schema))
 
     # CH-H1: Retry on JSON parse / schema validation failures. The AI
     # occasionally returns truncated or malformed JSON on the first try;

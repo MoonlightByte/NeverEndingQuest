@@ -181,17 +181,84 @@ def on_hit_issue(sheet):
     return None
 
 
-def schema_without_on_hit(schema):
-    """#1889: a copy of mon_schema with no onHit on attack rows, for the
-    contracts sent to models (T103's strict contract, Gemini's response
-    schema): generators never author the key, and those contracts stay
-    byte-identical to the ones sent before it existed."""
+# #1889: mechanics-only keys of a stat-block row. Code reads them; no model is
+# shown them, as data or as schema: the row's description already says in
+# words what they do. Each entry is a path inside an actions/specialAbilities
+# row: (key,) for a row key, (key, nested key) for a key inside a row object.
+# A later key is one more entry here and nothing else.
+MECHANICS_ONLY_ROW_PATHS = (("onHit",),)
+MECHANICS_ONLY_ROW_FAMILIES = ("actions", "specialAbilities")
+
+
+def _row_without(row, paths):
+    """A copy of one row without the paths it holds (key order kept); the row
+    itself when it holds none."""
+    if not isinstance(row, dict):
+        return row
+    result = row
+    for path in paths:
+        if not path:
+            continue
+        parent_keys, last = tuple(path[:-1]), path[-1]
+        node = result
+        for key in parent_keys:
+            node = node.get(key) if isinstance(node, dict) else None
+        if not (isinstance(node, dict) and last in node):
+            continue
+        result = _replace_at(result, parent_keys, {k: v for k, v in node.items() if k != last})
+    return result
+
+
+def _replace_at(value, keys, replacement):
+    if not keys:
+        return replacement
+    head = keys[0]
+    return {k: (_replace_at(v, keys[1:], replacement) if k == head else v) for k, v in value.items()}
+
+
+def without_mechanics_only(sheet, paths=None):
+    """#1889: a stat block as a model may see it: each actions/specialAbilities
+    row without MECHANICS_ONLY_ROW_PATHS. Never writes the sheet or its lists
+    (they may be the saved sheet's own); rows that hold none of the paths are
+    passed as they are, so the rendered text is byte-identical to a block that
+    never had the keys."""
+    paths = MECHANICS_ONLY_ROW_PATHS if paths is None else paths
+    if not isinstance(sheet, dict):
+        return sheet
+    result = sheet
+    for family in MECHANICS_ONLY_ROW_FAMILIES:
+        rows = sheet.get(family)
+        if not isinstance(rows, list):
+            continue
+        stripped = [_row_without(row, paths) for row in rows]
+        if any(new is not old for new, old in zip(stripped, rows)):
+            if result is sheet:
+                result = dict(sheet)
+            result[family] = stripped
+    return result
+
+
+def schema_without_mechanics_only(schema, paths=None):
+    """#1889: a copy of mon_schema whose actions/specialAbilities row schema
+    has no MECHANICS_ONLY_ROW_PATHS property (nor a required entry for it):
+    for every schema a model is shown, as contract or as text. The validator
+    keeps the full schema, so shipped files carrying the keys still pass."""
     from copy import deepcopy
+    paths = MECHANICS_ONLY_ROW_PATHS if paths is None else paths
     result = deepcopy(schema)
-    for family in ("actions", "specialAbilities"):
+    for family in MECHANICS_ONLY_ROW_FAMILIES:
         items = (((result or {}).get("properties") or {}).get(family) or {}).get("items")
-        if isinstance(items, dict):
-            (items.get("properties") or {}).pop("onHit", None)
+        for path in paths:
+            node = items
+            for key in tuple(path[:-1]):
+                node = ((node or {}).get("properties") or {}).get(key) if isinstance(node, dict) else None
+            if not isinstance(node, dict) or not path:
+                continue
+            properties = node.get("properties")
+            if isinstance(properties, dict):
+                properties.pop(path[-1], None)
+            if isinstance(node.get("required"), list) and path[-1] in node["required"]:
+                node["required"] = [name for name in node["required"] if name != path[-1]]
     return result
 
 
