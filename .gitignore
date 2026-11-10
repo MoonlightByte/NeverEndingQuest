@@ -408,6 +408,22 @@ modules/*/monsters/*
 !modules/The_Thornwood_Watch/monsters/bandit.json
 !modules/The_Thornwood_Watch/monsters/corrupted_wolf.json
 !modules/The_Thornwood_Watch/monsters/wolf.json
+!modules/Keep_of_Doom/monsters/animated_armor.json
+!modules/Keep_of_Doom/monsters/awakened_shrub.json
+!modules/Keep_of_Doom/monsters/gargoyle.json
+!modules/Keep_of_Doom/monsters/gelatinous_cube.json
+!modules/Keep_of_Doom/monsters/ghoul.json
+!modules/Keep_of_Doom/monsters/giant_rat.json
+!modules/Keep_of_Doom/monsters/giant_spider.json
+!modules/Keep_of_Doom/monsters/gibbering_mouther.json
+!modules/Keep_of_Doom/monsters/mimic.json
+!modules/Keep_of_Doom/monsters/shadow.json
+!modules/Keep_of_Doom/monsters/shambling_mound.json
+!modules/Keep_of_Doom/monsters/skeleton.json
+!modules/Keep_of_Doom/monsters/specter.json
+!modules/Keep_of_Doom/monsters/swarm_of_spiders.json
+!modules/Keep_of_Doom/monsters/will_o_wisp.json
+!modules/Keep_of_Doom/monsters/zombie.json
 modules/*/encounters/
 
 # Campaign archives and summaries - keep local, don't commit to repository

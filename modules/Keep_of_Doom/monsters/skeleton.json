@@ -1,0 +1,61 @@
+{
+  "_srd_attribution": "Portions of this monster data derived from SRD 5.2.1, licensed under CC BY 4.0",
+  "name": "Skeleton",
+  "size": "Medium",
+  "type": "Undead",
+  "alignment": "Lawful Evil",
+  "armorClass": 14,
+  "hitPoints": 13,
+  "maxHitPoints": 13,
+  "speed": 30,
+  "abilities": {
+    "strength": 10,
+    "dexterity": 16,
+    "constitution": 15,
+    "intelligence": 6,
+    "wisdom": 8,
+    "charisma": 5
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [
+    "bludgeoning"
+  ],
+  "damageResistances": [],
+  "damageImmunities": [
+    "poison"
+  ],
+  "conditionImmunities": [
+    "exhaustion",
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 9
+  },
+  "languages": "Understands Common plus one other language but can't speak",
+  "challengeRating": 0.25,
+  "specialAbilities": [],
+  "actions": [
+    {
+      "name": "Shortsword",
+      "kind": "attack",
+      "attackBonus": 5,
+      "damageDice": "1d6",
+      "damageBonus": 3,
+      "damageType": "piercing",
+      "description": "Melee Attack Roll: +5, reach 5 ft. Hit: 6 (1d6 + 3) Piercing damage."
+    },
+    {
+      "name": "Shortbow",
+      "kind": "attack",
+      "attackBonus": 5,
+      "damageDice": "1d6",
+      "damageBonus": 3,
+      "damageType": "piercing",
+      "description": "Ranged Attack Roll: +5, range 80/320 ft. Hit: 6 (1d6 + 3) Piercing damage."
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

@@ -1,0 +1,103 @@
+{
+  "_srd_attribution": "Portions of this monster data derived from SRD 5.2.1, licensed under CC BY 4.0",
+  "name": "Gibbering Mouther",
+  "size": "Medium",
+  "type": "Aberration",
+  "alignment": "Chaotic Neutral",
+  "armorClass": 9,
+  "hitPoints": 52,
+  "maxHitPoints": 52,
+  "speed": 20,
+  "alternateSpeeds": {
+    "swim": 20
+  },
+  "abilities": {
+    "strength": 10,
+    "dexterity": 8,
+    "constitution": 16,
+    "intelligence": 3,
+    "wisdom": 10,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "prone"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 10
+  },
+  "languages": "None",
+  "challengeRating": 2,
+  "specialAbilities": [
+    {
+      "name": "Aberrant Ground",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The ground in a 10-foot Emanation originating from the mouther is Difficult Terrain."
+    },
+    {
+      "name": "Gibbering",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The mouther babbles incoherently while it doesn't have the Incapacitated condition. Wisdom Saving Throw: DC 10, any creature that starts its turn within 20 feet of the mouther while it is babbling. Failure: The target rolls 1d8 to determine what it does during the current turn: 1-4. The target does nothing. 5-6. The target takes no action or Bonus Action and uses all its movement to move in a random direction. 7-8. The target makes a melee attack against a randomly determined creature within its reach or does nothing if it can't make such an attack."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "kind": "attack",
+      "attackBonus": 2,
+      "damageDice": "2d6",
+      "damageBonus": 0,
+      "damageType": "piercing",
+      "description": "Melee Attack Roll: +2, reach 5 ft. Hit: 7 (2d6) Piercing damage. If the target is a Medium or smaller creature, it has the Prone condition.",
+      "onHit": {
+        "conditions": [
+          "prone"
+        ],
+        "targetMaxSize": "Medium"
+      }
+    },
+    {
+      "name": "Blinding Spittle",
+      "kind": "save",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "recharge": {
+        "min": 5,
+        "max": 6
+      },
+      "save": {
+        "ability": "dexterity",
+        "dc": 10,
+        "halfOnSave": false,
+        "onFail": {
+          "damageDice": "2d6",
+          "damageBonus": 0,
+          "damageType": "radiant",
+          "conditions": [
+            "blinded"
+          ],
+          "roundsRemaining": 1,
+          "repeatAtEndOfTurn": false
+        }
+      },
+      "description": "Dexterity Saving Throw: DC 10, each creature in a 10-foot-radius Sphere centered on a point within 30 feet. Failure: 7 (2d6) Radiant damage, and the target has the Blinded condition until the end of the mouther's next turn."
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}
