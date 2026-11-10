@@ -5062,7 +5062,7 @@ def _no_hostile_lines(rows):
     """One sentence per hostile row that made a built fight already over
     (#1891), from its typed values: at or below 0 HP (an act that kills or
     frees them is a resolveOccupant on their id, #1888), asleep (unconscious
-    above 0 HP: woken in the story first, never a resolve), or dead or
+    above 0 HP: woken in the story by ending the condition, never a resolve), or dead or
     defeated above 0 HP. "" when the rows are unusable."""
     if not isinstance(rows, list) or not rows:
         return ""
@@ -5086,9 +5086,12 @@ def _no_hostile_lines(rows):
                              " (died; departed with a reason when set free).")
             sentence += " Someone at 0 HP can fight only after a heal raises them above 0 (updateCharacterInfo)."
         elif status == "unconscious":
+            # A model-written status is dropped and an hpDelta keeps the
+            # stated condition (stats.drop_model_states, carry_states): only
+            # removing it from condition_affected, with no hpDelta, wakes them.
             sentence = ("%s is asleep (unconscious at %d HP), so no fight with them can start yet. Wake them"
-                        " in the story first (updateCharacterInfo status on their sheet), then request the"
-                        " fight." % (who, hp))
+                        " in the story first (an updateCharacterInfo that removes unconscious from their"
+                        " condition_affected, with no hpDelta), then request the fight." % (who, hp))
         else:
             sentence = "%s is %s at %d HP, so no fight with them can start." % (who, status or "out of the fight", hp)
             if occupant_id:
