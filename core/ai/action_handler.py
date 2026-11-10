@@ -5159,9 +5159,12 @@ _OBSERVER_SENTENCE = (
 def _observer_names(rows):
     """The names of the refused draft's participation observer rows (#1911
     review), from the builder's typed outsideRows, in their order: "A",
-    "A and B", "A, B and C"; "" when there are none."""
+    "A and B", "A, B and C"; "" when there are none. Only rows the draft
+    itself listed: a person the roster added as an observer (requested
+    False) was not listed by the draft."""
     names = [str(row.get("name") or "").strip() for row in rows or []
              if isinstance(row, dict) and row.get("participation") == "observer"
+             and row.get("requested") is not False
              and str(row.get("name") or "").strip()]
     if len(names) < 2:
         return "".join(names)
