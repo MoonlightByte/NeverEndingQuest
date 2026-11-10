@@ -2455,6 +2455,22 @@ def _fitting_values(values, record, entry):
     count, sides = player_weapon_attack_dice(record, entry)
     riders = _rider_terms(record)
     if riders:
+        # #1890: every die typed, the weapon's then each rider's in order (a
+        # rider doubled on a critical has two), each within its sides, is
+        # folded to today's form: the weapon's dice, then one total per rider.
+        # The length differs from the two forms below unless every rider has
+        # one die, where the fold changes nothing. A weapon total with each
+        # rider die is not read: its length can equal dice-plus-totals.
+        rider_dice = sum(term[0] for term in riders)
+        if len(values) == count + rider_dice and all(1 <= value <= sides for value in values[:count]):
+            tail, totals = list(values[count:]), []
+            for rider_count, rider_sides in riders:
+                term_faces, tail = tail[:rider_count], tail[rider_count:]
+                if not all(1 <= value <= rider_sides for value in term_faces):
+                    break
+                totals.append(sum(term_faces))
+            else:
+                return list(values[:count]) + totals
         # #1666: one number per term: the weapon's total (or its dice), then
         # each rider's. Great Weapon Fighting still needs the weapon's dice.
         main, extra = values[:-len(riders)], values[-len(riders):]
