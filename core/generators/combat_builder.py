@@ -1268,7 +1268,8 @@ def recorded_dead_rows(encounter_data, response, location_id):
     if response is _UNREAD or not response or not response.get("ok"):
         return None
     tracker = load_json("party_tracker.json") or {}
-    module = tracker.get("module") or ""
+    # Occupant ids are minted with underscores; normalize as every other reader does.
+    module = (tracker.get("module") or "").replace(" ", "_")
     place = occupants.place_id(module, location_id)
     people = [o for o in (response.get("live_state") or {}).get("occupants") or []
               if isinstance(o, dict) and o.get("kind") == "person" and isinstance(o.get("id"), str)
