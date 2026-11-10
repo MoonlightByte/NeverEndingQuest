@@ -55,7 +55,10 @@ Fresh internal follow-ups use `_process_fresh_dm_response` (`main.py`) outside r
 3. After guardian review, the shared current-module snapshot supplies identity labels and route preflight;
    T021 is used only for the existing ambiguous intermediate-encounter class.
 4. T065 validates semantic intent and the single-beat boundary against those
-   provisional route facts. Every corrected candidate passes these checks again.
+   provisional route facts. Every corrected candidate passes these checks again. When the engine would stop a trip to the
+   player's goal (`toward`) at this move's destination, the approved facts carry `trip_stop`
+   (#1862, D-1862): the DM narrates the stop as a story beat from perceivable cues, never naming or
+   counting a creature, and keeps the goal as the way onward; T065 rejects a stop narrated as the end.
 5. The existing transition publisher stages its v2 checkpoint. The draft is not
    independently published as accepted history before movement freshness succeeds.
 6. Travel-owned sibling receipts are prepared outside the mutation lock.
