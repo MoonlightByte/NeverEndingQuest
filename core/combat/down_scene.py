@@ -153,10 +153,11 @@ _ASLEEP_TEMPLATE = (
     "given to them, and no look, nod or other sign that they hear, though a "
     "wordless sign of life (a breath, a stir) may show. Their silence is "
     "unconsciousness, not death. A heal does not wake them. Waking one is a "
-    "real action on their own sheet: an updateCharacterInfo that removes "
-    "unconscious from their condition_affected, with no hpDelta; never a "
-    "narrated claim. They are not party members: the party's down-scene rules "
-    "do not apply to them."
+    "real action on their own sheet: an updateCharacterInfo on them whose "
+    "\"changes\" end their unconscious condition and state no healing or hit "
+    "point change, with \"affects\": [\"condition\"]; never a narrated claim. "
+    "They are not party members: the party's down-scene rules do not apply to "
+    "them."
 )
 
 
