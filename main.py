@@ -68,6 +68,12 @@ See LICENSE file for full terms.
 # clear information architecture that prevents AI confusion.
 # ============================================================================
 
+# #1920: run as a program, an engine that cannot run on this machine stops the start here, before
+# the imports below (they print and open logs) and before any game or model call.
+if __name__ == "__main__":
+    from core.nql.apply import require_engine
+    require_engine()
+
 import json
 import copy
 import threading
@@ -12783,9 +12789,6 @@ def _review_dm_candidate(
 def main():
     """Main entry point with startup wizard integration"""
     setup_utf8_console()
-    # #1920: an engine that cannot run on this machine stops the start here, before any game or model call.
-    from core.nql.apply import require_engine
-    require_engine()
     
     # Check if config.py exists, create from template if not
     import os

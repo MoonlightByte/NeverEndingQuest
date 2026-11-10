@@ -50,6 +50,12 @@ import secrets
 
 # Add parent directory to path FIRST so we can import from utils, core, etc.
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# #1920: run as a program, an engine that cannot run on this machine stops the start here, before
+# the imports below (they print and open logs) and before any game or model call.
+if __name__ == "__main__":
+    from core.nql.apply import require_engine
+    require_engine()
+
 # #1681/#1682: a data root (NEQ_DATA_DIR) goes first, so its config.py is the one imported.
 from utils.data_root import apply_data_root_path
 apply_data_root_path()
@@ -7599,9 +7605,6 @@ if __name__ == '__main__':
         sys.exit(0 if check_frontend_tools() else 1)
     if boot_args.prepare_frontend:
         sys.exit(0 if ensure_react_frontend(shipped=boot_args.shipped_frontend) else 1)
-    # #1920: an engine that cannot run on this machine stops the start here, before any game or model call.
-    from core.nql.apply import require_engine
-    require_engine()
     if boot_args.toolkit:
         selected_ui = 'react'
     else:
