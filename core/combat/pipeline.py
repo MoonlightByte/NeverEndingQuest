@@ -27,6 +27,7 @@ from core.combat.handover import HandOverRefused, stage_hand_over
 from core.combat.sleeper import restore_woken_after
 from core.effects.lifecycle import apply_effect_ops
 from core.combat.resolver import (
+    _refresh_character_effect_projections,
     _refresh_effect_control_flags,
     attack_row,
     json_ref,
@@ -213,6 +214,9 @@ def _wake_struck_sleepers(event, encounter, characters):
     event.setdefault("effects", []).extend(deepcopy(ops))
     restore_woken_after(before, characters)
     encounter = deepcopy(encounter)
+    # #1895: the woken row takes its conditions (and HP) from the sheet now, so
+    # the window's next attacker no longer sees the sleeper as unconscious.
+    _refresh_character_effect_projections(encounter, characters, before=before)
     _refresh_effect_control_flags(encounter, characters)
     return encounter, characters
 
