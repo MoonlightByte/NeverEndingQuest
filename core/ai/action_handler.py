@@ -5084,9 +5084,11 @@ def _show_transition_notice(message_id, content):
 _last_failed_combat_turn = None
 
 # #1894 D-1894-5 (A): the party-held refusal of this process's current turn,
-# (turn id, names, the correction text). In memory only, never saved: a second
-# createEncounter in the same turn, with that correction still in the history
-# the DM answered, starts the fight with those members held.
+# (turn id, names, the correction text, the refused request's opening). In
+# memory only, never saved: a second createEncounter in the same turn, with
+# that correction still in the history the DM answered, starts the fight with
+# those members held. The opening is the refused request's openingAction and
+# openingActionSource when it held both, else None.
 _party_held_refusal = None
 
 
@@ -5099,6 +5101,45 @@ def _party_held_allowed(invocation_claim, conversation_history):
     if not any(isinstance(m, dict) and m.get("content") == refusal[2] for m in conversation_history or []):
         return []
     return list(refusal[1])
+
+
+def _declared_opening(parameters):
+    """A createEncounter's (openingAction, openingActionSource) when it holds
+    both as strings, the action not blank; else None. Typed fields only."""
+    if not isinstance(parameters, dict):
+        return None
+    opening_action = parameters.get("openingAction")
+    source = parameters.get("openingActionSource")
+    if not isinstance(opening_action, str) or not opening_action.strip() or not isinstance(source, str):
+        return None
+    return opening_action, source
+
+
+def _with_party_held_opening(action, payments=None):
+    """#1894 (A): the turn's second request, already recognised by
+    _party_held_allowed, with the refused request's opening when it has no
+    openingAction of its own; a request with its own is left alone. The DM's
+    repeat can drop the field, which would lose the player's declared first
+    action (#882). Returns a copy for the builder. ``payments`` (the reply's
+    staged payments, #1827) gets the same two fields, so a declared cast is
+    held, not spent."""
+    refusal = _party_held_refusal
+    opening = refusal[3] if refusal and len(refusal) > 3 else None
+    parameters = action.get("parameters") if isinstance(action, dict) else None
+    if not opening or not isinstance(parameters, dict):
+        return action
+    own = parameters.get("openingAction")
+    if isinstance(own, str) and own.strip():
+        return action
+    carried = copy.deepcopy(action)
+    carried["parameters"]["openingAction"], carried["parameters"]["openingActionSource"] = opening
+    if isinstance(payments, dict) and isinstance(payments.get("encounter_index"), int):
+        staged = payments["actions"][payments["encounter_index"]].get("parameters")
+        if isinstance(staged, dict):
+            staged["openingAction"], staged["openingActionSource"] = opening
+    info("FLOW: party-held second request: the refused request's openingAction carried",
+         category="combat_processing")
+    return carried
 
 # Why a fight did not start, as the DM is told it. Fixed phrases only: never
 # raw error text, and nothing parses them.
@@ -5434,7 +5475,8 @@ def _pay_encounter(payments, party_tracker_data, location_data, conversation_his
     return None
 
 
-def _combat_start_failed(reason, conversation_history, invocation_claim, payments=None, down_hostiles=None):
+def _combat_start_failed(reason, conversation_history, invocation_claim, payments=None, down_hostiles=None,
+                         opening=None):
     """Close a createEncounter that ended without a finished fight (#444).
 
     The tracker decides. A fight still active there stays saved and resumes
@@ -5444,6 +5486,8 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
     no identity, or an unreadable tracker ends with the failure line, so this
     can never loop. ``down_hostiles`` holds the builder's refused rows: its
     downHostiles (#1891), its outsideRows (#1899) or its recordedDead (#1902).
+    ``opening`` is the refused request's _declared_opening, kept with a
+    party-held refusal (#1894 (A)) for the same turn's second request.
     """
     global _last_failed_combat_turn, _party_held_refusal
     error(
@@ -5483,6 +5527,7 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
             turn_id,
             tuple(str(row.get("name")) for row in down_hostiles if isinstance(row, dict)),
             content,
+            opening,
         )
     elif held:
         # #1894 K-a: in the DM's own terms (#1903's wording for ending a condition).
@@ -5764,11 +5809,14 @@ def process_action(
                 # #1894 D-1894-5 (A): the members the DM was told about earlier
                 # in this turn are held this time; an argument, never saved.
                 held_allowed = _party_held_allowed(invocation_claim, conversation_history)
+                builder_action = (
+                    _with_party_held_opening(action, encounter_payments) if held_allowed else action
+                )
                 returncode, stdout, stderr = run_fenced(
                     child_argv([sys.executable, combat_builder_path, "--result-file",
                      os.path.join(result_dir, "result.json")]
                      + (["--held-allowed", json.dumps(held_allowed)] if held_allowed else [])),
-                    input_text=json.dumps(action), stop_check=stop_check,
+                    input_text=json.dumps(builder_action), stop_check=stop_check,
                     stop_file=os.path.join(result_dir, "stop"), env=utf8_child_env(),
                 )
                 result = subprocess.CompletedProcess([], returncode, stdout, stderr)
@@ -6017,6 +6065,7 @@ def process_action(
                 return _combat_start_failed(
                     build_failure, conversation_history, invocation_claim,
                     payments=encounter_payments, down_hostiles=down_hostiles,
+                    opening=_declared_opening(parameters),
                 )
 
         except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
