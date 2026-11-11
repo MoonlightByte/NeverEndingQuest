@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Attacking a sleeping person outside your party, including one beaten in an earlier fight, now starts a fight with them still asleep, instead of the blow being told in the story with nothing recorded (#1894).
 - A monster made during play can no longer have two attacks of the same name beside its Multiattack, which left one of them unusable; the game asks for the stat block again. Bandit Captain Gorvek's Multiattack is now written out (a scimitar and a dagger attack), the same two attacks he made before. A stat block whose attack spares some species (as the ghoul's Claw spares elves) must now name one of the game's species, so a misspelled name is caught instead of quietly sparing no one (#1934).
 - A monster can now use an attack that is not part of its Multiattack. Before, a ghoul that chose its paralyzing Claw made its two Bites instead, so the Claw and its paralysis never happened in play. As the rules say, the Claw does not paralyze elves or undead: they take its damage and make no save (#1905).
 - When you say what your character does, they now do it: a companion or a bystander may object or react, but no longer stops your action before it happens or decides that you hold back; how it turns out is still up to the dice, the rules and the fight (#1922).
