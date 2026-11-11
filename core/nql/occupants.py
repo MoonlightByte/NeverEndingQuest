@@ -982,6 +982,11 @@ def dm_action_line(action_type: str, parameters: Any, module: str) -> Tuple[str,
         outcome = str(p.get("outcome") or "").strip().lower()
         if outcome not in OUTCOMES:
             return "", "outcome must be one of %s" % ", ".join(OUTCOMES)
+        if outcome == "died":
+            # #1902: a recorded death stands; members who died never come back.
+            return "", ("outcome died cannot be returned: a death stands, and returnOccupant brings "
+                        "back only members who left (fled, departed, surrendered, defeated, joined). "
+                        "Narrate the scene without bringing the dead back")
         n, problem = _members(p.get("count"))
         if problem:
             return "", problem
