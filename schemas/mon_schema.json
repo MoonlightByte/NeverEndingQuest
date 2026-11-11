@@ -202,6 +202,10 @@
                     },
                     "repeatAtEndOfTurn": {
                       "type": "boolean"
+                    },
+                    "tickTrigger": {
+                      "type": "string",
+                      "enum": ["end_of_round", "end_of_turn"]
                     }
                   },
                   "required": ["damageDice", "damageBonus", "damageType", "conditions"]
@@ -247,6 +251,10 @@
                     },
                     "repeatAtEndOfTurn": {
                       "type": "boolean"
+                    },
+                    "tickTrigger": {
+                      "type": "string",
+                      "enum": ["end_of_round", "end_of_turn"]
                     }
                   },
                   "required": ["damageDice", "damageBonus", "damageType", "conditions"]
@@ -384,6 +392,10 @@
                     },
                     "repeatAtEndOfTurn": {
                       "type": "boolean"
+                    },
+                    "tickTrigger": {
+                      "type": "string",
+                      "enum": ["end_of_round", "end_of_turn"]
                     }
                   },
                   "required": ["damageDice", "damageBonus", "damageType", "conditions"]
@@ -429,6 +441,10 @@
                     },
                     "repeatAtEndOfTurn": {
                       "type": "boolean"
+                    },
+                    "tickTrigger": {
+                      "type": "string",
+                      "enum": ["end_of_round", "end_of_turn"]
                     }
                   },
                   "required": ["damageDice", "damageBonus", "damageType", "conditions"]

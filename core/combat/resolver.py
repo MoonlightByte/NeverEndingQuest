@@ -370,6 +370,22 @@ def _stated_on_fail(entry, key="save"):
     return dice, conditions, (rounds if type(rounds) is int and rounds > 0 else None)
 
 
+def _stated_tick_trigger(entry, key="save"):
+    """#1914 (D-1914-1): the boundary a stat-block onFail states. ``end_of_turn``
+    ends the effect at the end of its holder's (the target's) turn; absent or
+    any other value is ``end_of_round``, as before."""
+    on_fail = ((entry or {}).get(key) or {}).get("onFail") or {}
+    return "end_of_turn" if on_fail.get("tickTrigger") == "end_of_turn" else "end_of_round"
+
+
+def _turn_duration(rounds):
+    """#1914: the duration text of a turn-anchored effect (T096 and T097 read it)."""
+    if rounds == 1:
+        return "until the end of its next turn"
+    suffix = "th" if 10 <= rounds % 100 <= 20 else {1: "st", 2: "nd", 3: "rd"}.get(rounds % 10, "th")
+    return "until the end of its %d%s turn" % (rounds, suffix)
+
+
 def _save_ability_feedback(entry):
     """Rejection feedback that tells the model how to declare a listed save ability."""
     spec = _stated_save_spec(entry) or {}
@@ -561,9 +577,11 @@ def last_weapon_rows_delta(encounter, characters, event):
 
 
 def _stat_block_condition_op(encounter, event_id, actor, target, entry, conditions, rounds, index,
-                             apply_on="failedSave"):
+                             apply_on="failedSave", tick_trigger="end_of_round"):
     """A failed-save condition effect the stat block states, normalized like a model op.
     #1889: ``apply_on="always"`` is an onHit condition, staged on a hit with no save.
+    #1914: ``tick_trigger="end_of_turn"`` (the row's onFail says so) counts the
+    rounds in the holder's turn ends.
 
     Returns (op, problems); op is None when the effect contract refuses it.
     """
@@ -580,8 +598,9 @@ def _stat_block_condition_op(encounter, event_id, actor, target, entry, conditio
         "created": {"encounterId": encounter.get("encounterId")},
     }
     if rounds:
-        effect.update({"roundsRemaining": rounds, "tickTrigger": "end_of_round",
-                       "durationKind": "rounds", "duration": "%s rounds" % rounds})
+        effect.update({"roundsRemaining": rounds, "tickTrigger": tick_trigger,
+                       "durationKind": "rounds",
+                       "duration": _turn_duration(rounds) if tick_trigger == "end_of_turn" else "%s rounds" % rounds})
     else:
         effect.update({"durationKind": "encounter", "duration": "encounter"})
     if effect_incapacitates(effect):
@@ -2436,6 +2455,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
                 op, problems = _stat_block_condition_op(
                     encounter, event_id, actor, target, entry, rider_conditions, rider_rounds,
                     len(resolution.setdefault("effectOps", [])),
+                    tick_trigger=_stated_tick_trigger(entry, "rider"),
                 )
                 if op is not None:
                     # #1520: a condition the target is immune to is never staged,
@@ -4223,7 +4243,11 @@ def resolve_adjudicated(encounter, characters, proposal, rolls, event_id, clamp_
             }
             if stated_rounds:
                 effect["roundsRemaining"] = stated_rounds
-                effect["tickTrigger"] = "end_of_round"
+                effect["tickTrigger"] = _stated_tick_trigger(stated_entry)
+                if effect["tickTrigger"] == "end_of_turn":
+                    # #1914: the duration text names the holder's turn.
+                    effect["durationKind"] = "rounds"
+                    effect["duration"] = _turn_duration(stated_rounds)
             else:
                 effect["durationKind"] = "encounter"
             op = {"op": "add", "applyOn": "failedSave", "effect": effect}
@@ -5858,17 +5882,33 @@ def _effect_was_created_in_round(effect, round_number):
         return False
 
 
-def plan_effect_ticks(characters, trigger, encounter=None, created_in_round=None):
+def plan_effect_ticks(characters, trigger, encounter=None, created_in_round=None, holder=None,
+                      created_by_event=None):
     """Return absolute, replay-safe duration changes for one trigger.
 
     At an end-of-round boundary, effects created during that round have not
     yet lasted for a full round.  Callers may identify that round so those
     newly stamped effects begin aging at the following boundary.  Legacy or
     unrecognized effect IDs retain their established tick behavior.
+
+    #1914: ``holder`` ({"owner", "combatantId"}) restricts the ticks to one
+    holder's sheet (by owner name) and row (by combatantId): a turn end.
+    ``created_by_event`` skips an effect that event stamped (``EFF-<id>-``):
+    an effect made during the holder's own turn has not yet lasted to the end
+    of its next turn.
     """
     ticks = []
+    owner_only = holder.get("owner") if isinstance(holder, dict) else None
+    combatant_only = holder.get("combatantId") if isinstance(holder, dict) else None
+    own_prefix = "EFF-%s-" % created_by_event if created_by_event else None
+
+    def made_by_this_event(effect):
+        return own_prefix is not None and str(effect.get("effectId") or "").startswith(own_prefix)
+
     for owner, sheet in (characters or {}).items():
         if not isinstance(sheet, dict):
+            continue
+        if holder is not None and (owner_only is None or owner != owner_only):
             continue
         for effect in sheet.get("temporaryEffects", []) or []:
             if not isinstance(effect, dict):
@@ -5879,6 +5919,8 @@ def plan_effect_ticks(characters, trigger, encounter=None, created_in_round=None
             if effect.get("tickTrigger", "end_of_round") != trigger:
                 continue
             if _effect_was_created_in_round(effect, created_in_round):
+                continue
+            if made_by_this_event(effect):
                 continue
             after = max(0, rounds - 1)
             ticks.append(
@@ -5895,6 +5937,8 @@ def plan_effect_ticks(characters, trigger, encounter=None, created_in_round=None
     for creature in (encounter or {}).get("creatures", []):
         if not isinstance(creature, dict):
             continue
+        if holder is not None and (combatant_only is None or creature.get("combatantId") != combatant_only):
+            continue
         for effect in creature.get("activeEffects", []) or []:
             if not isinstance(effect, dict):
                 continue
@@ -5904,6 +5948,8 @@ def plan_effect_ticks(characters, trigger, encounter=None, created_in_round=None
             if effect.get("tickTrigger", "end_of_round") != trigger:
                 continue
             if _effect_was_created_in_round(effect, created_in_round):
+                continue
+            if made_by_this_event(effect):
                 continue
             after = max(0, rounds - 1)
             ticks.append(
