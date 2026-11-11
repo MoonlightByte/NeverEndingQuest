@@ -54,7 +54,8 @@ def binary_path(repo_root: Optional[str] = None) -> str:
 # #1920: the machines the shipped engine builds (bin/) run on.
 SUPPORTED_PLATFORMS = "Windows x86-64 and Linux x86-64"
 START_CHECK_TIMEOUT_SECONDS = 10
-_BAD_EXE_FORMAT_WINERROR = 193  # Windows: not a valid program for this machine
+# Windows: 193 not a valid program, 216 built for another machine type
+_BAD_EXE_FORMAT_WINERRORS = (193, 216)
 
 
 def start_check(binary: Optional[str] = None) -> Optional[str]:
@@ -62,9 +63,11 @@ def start_check(binary: Optional[str] = None) -> Optional[str]:
 
     The cheapest run the engine supports: an empty document, which it answers at once with an input
     refusal. Only an engine that cannot run on this machine stops the start: the binary is missing, it is
-    not a program for this machine (ENOEXEC; Windows error 193), or it is not executable (EACCES). A
-    transient error, a timeout, an odd answer or any other failure is not a stop: each game call keeps
-    its own handling (EngineUnavailable), as before."""
+    not a program for this machine (ENOEXEC; Windows error 193 or 216), or, outside Windows, it is not
+    executable (EACCES). On Windows a refused access is not a stop: there is no exec bit, and access is
+    refused for a while by an antivirus scan or a file being replaced. A transient error, a timeout, an odd
+    answer or any other failure is not a stop either: each game call keeps its own handling
+    (EngineUnavailable), as before."""
     from utils.transient_filesystem import is_transient_filesystem_error
 
     exe = binary or binary_path()
@@ -77,11 +80,11 @@ def start_check(binary: Optional[str] = None) -> Optional[str]:
     except OSError as error:
         if is_transient_filesystem_error(error):
             return None
-        if error.errno == errno.ENOEXEC or getattr(error, "winerror", None) == _BAD_EXE_FORMAT_WINERROR:
+        if error.errno == errno.ENOEXEC or getattr(error, "winerror", None) in _BAD_EXE_FORMAT_WINERRORS:
             return _start_stop_line("is not built for this machine", exe)
         if isinstance(error, FileNotFoundError):
             return _start_stop_line("is missing", exe)
-        if isinstance(error, PermissionError) or error.errno == errno.EACCES:
+        if os.name != "nt" and (isinstance(error, PermissionError) or error.errno == errno.EACCES):
             return _start_stop_line("is not executable", exe)
         return None
     return None
