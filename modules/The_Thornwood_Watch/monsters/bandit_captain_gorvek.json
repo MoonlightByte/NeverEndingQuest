@@ -69,6 +69,16 @@
       "description": "Gorvek adds 2 to his AC against one melee attack that would hit him. To do so, he must see the attacker and be wielding a melee weapon."
     }
   ],
+  "multiattackSequence": [
+    {
+      "name": "Scimitar",
+      "count": 1
+    },
+    {
+      "name": "Dagger",
+      "count": 1
+    }
+  ],
   "legendaryActions": [],
   "condition": "Alive"
 }
