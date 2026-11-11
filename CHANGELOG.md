@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A companion in your party is no longer put on the enemy side of a fight while they are still with you. When the Dungeon Master tries, it is asked to seat them beside the party, or, if they will not fight beside you, as an onlooker whose objection is told in the story (#1935).
 - When you say what your character does, they now do it: a companion or a bystander may object or react, but no longer stops your action before it happens or decides that you hold back; how it turns out is still up to the dice, the rules and the fight (#1922).
 - When the Dungeon Master narrates the death of someone who is standing right there and still has hit points (a sleeping ranger you strike, for example), the game no longer records them as dead: the Dungeon Master is told they are alive, and if your action aimed a weapon or spell at them, a fight starts with your attack (#1921).
 - Someone recorded dead now stays dead: the Dungeon Master can no longer bring them back as if they had only left, start a fight that includes them, or add a new companion with their name and sheet, and is told why (#1902).

@@ -178,6 +178,14 @@ def reconcile_scene_manifest(parameters, canonical_snapshot, companion_keys=froz
                 raise SceneReconciliationError(f"side applies only to npc participants, not {key}")
             if side not in SIDE_VALUES:
                 raise SceneReconciliationError(f"invalid side for {key}: side is hostile or party")
+            # #1935 (D-1935-1): a party companion is never seated on the hostile side.
+            if side == "hostile" and key in companion_keys:
+                raise SceneReconciliationError(
+                    f"{key} is {source['displayName']}, a party companion, and a party companion is never "
+                    "side hostile: seat them side party if they fight beside the party, or participation "
+                    "observer with no side if they do not; a companion who will not fight beside the party "
+                    "(one who objects to this fight) is an observer, and their objection is told in the story"
+                )
 
         combatant_id = source["combatantId"]
         participant = {
