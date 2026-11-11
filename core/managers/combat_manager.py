@@ -2557,34 +2557,20 @@ def _xp_paths(encounter_data, character_paths):
     return {name: path for name, path in paths.items() if name in roster}
 
 
-_STANDOFF_DESCRIPTION = re.compile(
-    r"^Nobody on either side can act \((?P<held>[^()]+)\); the fight ends in a standoff\.$"
+_STANDOFF_SENTENCE = (
+    "The fight ended in a standoff: nobody on either side could act. "
+    "Neither side won, and the foes were left as they were. "
+    "A stated condition lasts until the story ends it."
 )
 
 
 def _standoff_sentence(encounter):
     """#1894 K-b: the after-fight transcript's one fixed sentence for a fight
-    that ended in a standoff; "" otherwise. Who was held comes from the
-    standoff event in the round-event journal the commit wrote (no other key
-    is kept): the same text on every resume. A cut or missing description
-    gives the sentence without names."""
+    that ended in a standoff (completion.endedBy, the only saved key), so a
+    resumed completion gives the same text; "" otherwise."""
     from core.managers.combat_state import ended_in_standoff
 
-    if not ended_in_standoff(encounter):
-        return ""
-    held = ""
-    store = ((encounter or {}).get("combatState") or {}).get("roundEvents")
-    for _round, rows in sorted((store or {}).items(), key=lambda item: str(item[0]).zfill(9)):
-        for row in rows if isinstance(rows, list) else []:
-            if isinstance(row, dict) and row.get("action") == "endStandoff":
-                match = _STANDOFF_DESCRIPTION.match(str(row.get("description") or ""))
-                held = match.group("held") if match else ""
-    return (
-        "The fight ended in a standoff: nobody on either side could act%s. "
-        "Neither side won, and the foes were left as they were. "
-        "A stated condition lasts until the story ends it."
-        % (" (%s)" % held if held else "")
-    )
+    return _STANDOFF_SENTENCE if ended_in_standoff(encounter) else ""
 
 
 def _complete_agentic_combat(

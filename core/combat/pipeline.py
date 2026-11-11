@@ -348,6 +348,16 @@ def standoff_held(encounter):
     return held if stated and held else None
 
 
+def _can_act_next_round(encounter):
+    """#1894 K-b: whether a targetable combatant in the initiative order is
+    turn-eligible (it acted already this round, or a window would have it)."""
+    state = encounter.get("combatState") or {}
+    return any(
+        is_turn_eligible(combatant_by_id(encounter, combatant_id))
+        for combatant_id in state.get("initiativeOrder") or []
+    )
+
+
 def _standoff_event(encounter, characters, pending_turn, state):
     """#1894 K-b: nobody on either side can act, no timed effect can advance,
     and someone is held by a stated condition: one provider-free event that
@@ -424,7 +434,10 @@ def resolve_effect_clock_window(encounter, characters, pending_turn):
             "end_of_turn",
             encounter=encounter,
         )
-        if not future_ticks:
+        # #1894 K-b: someone who already acted this round and can act again
+        # (the rest held, a stated hold among them) needs only the round to
+        # turn: advance the boundary with no ticks, as above.
+        if not future_ticks and not _can_act_next_round(encounter):
             standoff = _standoff_event(encounter, characters, pending_turn, state)
             if standoff is not None:
                 return standoff
