@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-11-11
+
 - A monster can now use an attack that is not part of its Multiattack. Before, a ghoul that chose its paralyzing Claw made its two Bites instead, so the Claw and its paralysis never happened in play. As the rules say, the Claw does not paralyze elves or undead: they take its damage and make no save (#1905).
 - When you say what your character does, they now do it: a companion or a bystander may object or react, but no longer stops your action before it happens or decides that you hold back; how it turns out is still up to the dice, the rules and the fight (#1922).
 - When the Dungeon Master narrates the death of someone who is standing right there and still has hit points (a sleeping ranger you strike, for example), the game no longer records them as dead: the Dungeon Master is told they are alive, and if your action aimed a weapon or spell at them, a fight starts with your attack (#1921).
