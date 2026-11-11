@@ -3387,16 +3387,21 @@ def _round_facts_text(encounter, round_num):
         if spent:
             parts.append("resources: " + "; ".join(spent))
         ticked = []
+        turn_ticked = []
         for tick in event.get("effectTicks") or []:
             if not isinstance(tick, dict):
                 continue
             holder = tick.get("owner") or _name(tick.get("combatantId"))
             piece = f"{tick.get('name') or tick.get('effectId') or 'effect'} on {holder}"
+            at_turn_end = tick.get("trigger") == "end_of_turn"
             if tick.get("expired"):
                 piece += " expired"
             elif tick.get("roundsBefore") is not None and tick.get("roundsAfter") is not None:
-                piece += f" {tick.get('roundsBefore')} -> {tick.get('roundsAfter')} rounds"
-            ticked.append(piece)
+                piece += f" {tick.get('roundsBefore')} -> {tick.get('roundsAfter')} " + ("turns" if at_turn_end else "rounds")
+            (turn_ticked if at_turn_end else ticked).append(piece)
+        if turn_ticked:
+            # #1914: a turn-anchored effect ticks at its holder's turn end.
+            parts.append("effects at turn end: " + "; ".join(turn_ticked))
         if ticked:
             parts.append("effects at round end: " + "; ".join(ticked))
         lines.append("- " + "; ".join(parts))
