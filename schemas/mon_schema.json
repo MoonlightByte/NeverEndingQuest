@@ -273,9 +273,11 @@
                     },
                     "species": {
                       "type": "array",
+                      "description": "Species keys of data/srd_character_origins.json (its species[].key); keep this list equal to them (#1934).",
                       "items": {
                         "type": "string",
-                        "minLength": 1
+                        "minLength": 1,
+                        "enum": ["dragonborn", "dwarf", "elf", "gnome", "goliath", "halfling", "human", "orc", "tiefling"]
                       }
                     }
                   }
@@ -484,9 +486,11 @@
                     },
                     "species": {
                       "type": "array",
+                      "description": "Species keys of data/srd_character_origins.json (its species[].key); keep this list equal to them (#1934).",
                       "items": {
                         "type": "string",
-                        "minLength": 1
+                        "minLength": 1,
+                        "enum": ["dragonborn", "dwarf", "elf", "gnome", "goliath", "halfling", "human", "orc", "tiefling"]
                       }
                     }
                   }

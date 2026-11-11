@@ -156,8 +156,15 @@ _ASLEEP_TEMPLATE = (
     "real action on their own sheet: an updateCharacterInfo on them whose "
     "\"changes\" end their unconscious condition and state no healing or hit "
     "point change, with \"affects\": [\"condition\"]; never a narrated claim. "
-    "They are not party members: the party's down-scene rules do not apply to "
-    "them."
+    "An attack on one starts a fight with them still unconscious "
+    "(createEncounter with them in npcs and their occupant id bound to that "
+    "entry in occupantIds, the attack as openingAction): the engine applies "
+    "the blow, so do not narrate its result or wake them first, unless the "
+    "engine answers that no fight with them can start yet. This holds for "
+    "one beaten in an earlier fight or recorded defeated here: while they "
+    "are listed here, an attack on them is that fight, not a resolveOccupant "
+    "on them. They are not party members: the party's down-scene rules do "
+    "not apply to them."
 )
 
 
