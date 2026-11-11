@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - An enemy the story says is paralyzed, stunned, asleep or otherwise unable to act now loses their turns until the story ends that condition, as the rules say. On your side this is settled when a fight starts: a party member the story says is asleep is seated asleep, so a hit or the end of the first round wakes them; one the story says is paralyzed, stunned, petrified or incapacitated is first pointed out to the DM, and only when the DM asks for it again does the fight start with them held, until the fight ends or the story ends that condition. A fight where nobody could act is not started, and one where everyone is held and no effect will wear off ends in a standoff: neither side wins, and the story goes on. (#1894)
+
+## [1.2.2] - 2026-11-11
+
 - A companion in your party is no longer put on the enemy side of a fight while they are still with you. When the Dungeon Master tries, it is asked to seat them beside the party, or, if they will not fight beside you, as an onlooker whose objection is told in the story (#1935).
 - Attacking a sleeping person outside your party, including one beaten in an earlier fight, now starts a fight with them still asleep, instead of the blow being told in the story with nothing recorded (#1894).
 - A monster made during play can no longer have two attacks of the same name beside its Multiattack, which left one of them unusable; the game asks for the stat block again. Bandit Captain Gorvek's Multiattack is now written out (a scimitar and a dagger attack), the same two attacks he made before. A stat block whose attack spares some species (as the ghoul's Claw spares elves) must now name one of the game's species, so a misspelled name is caught instead of quietly sparing no one (#1934).
