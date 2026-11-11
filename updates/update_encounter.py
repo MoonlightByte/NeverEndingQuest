@@ -208,7 +208,11 @@ Remember to only update monster information and leave player and NPC data unchan
                                 # Only sync combat-relevant state
                                 creature["currentHitPoints"] = npc_data.get("hitPoints", creature.get("currentHitPoints", 0))
                                 creature["maxHitPoints"] = npc_data.get("maxHitPoints", creature.get("maxHitPoints", 0))
-                                creature["status"] = npc_data.get("status", creature.get("status", "alive"))
+                                # #1900 C5: a sleeper's wake effect from this fight holds the row alive.
+                                from core.combat.sleeper import keep_row_status
+
+                                if not keep_row_status(npc_data, creature, encounter_info):
+                                    creature["status"] = npc_data.get("status", creature.get("status", "alive"))
                                 creature["conditions"] = npc_data.get("condition_affected", [])
                                 # Copy armorClass if it exists in NPC data
                                 if "armorClass" in npc_data:
