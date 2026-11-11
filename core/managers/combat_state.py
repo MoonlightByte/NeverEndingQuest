@@ -1362,6 +1362,10 @@ def compact_combat_event(event):
             }
             if isinstance(compact_tick.get("name"), str):
                 compact_tick["name"] = compact_tick["name"][:ROUND_EVENT_NAME_CHARS]
+            if tick.get("trigger") not in (None, "end_of_round"):
+                # #1914: a turn-end tick keeps its trigger; round-end ticks and
+                # old records stay byte-equal.
+                compact_tick["trigger"] = tick.get("trigger")
             ticks.append(compact_tick)
     compact = {
         "eventId": event.get("eventId"),
