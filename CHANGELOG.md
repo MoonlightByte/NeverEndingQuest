@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A melee hit on a paralyzed or unconscious target is now a critical hit, as the rules say, for monsters, companions and you alike: the damage dice are doubled even when the roll was below 20. It counts only for a melee attack, so an arrow or a crossbow bolt does not do it; a monster attack in your own adventure that does not say melee or ranged does not do it either. A sleeper woken by the first blow of a monster's attacks is no longer hit as if still asleep by its later attacks (#1901).
+
 ## [1.2.2] - 2026-11-11
 
 - A companion in your party is no longer put on the enemy side of a fight while they are still with you. When the Dungeon Master tries, it is asked to seat them beside the party, or, if they will not fight beside you, as an onlooker whose objection is told in the story (#1935).

@@ -40,6 +40,7 @@
     {
       "name": "Shortsword",
       "kind": "attack",
+      "attackKind": "melee",
       "attackBonus": 5,
       "damageDice": "1d6",
       "damageBonus": 3,
@@ -49,6 +50,7 @@
     {
       "name": "Shortbow",
       "kind": "attack",
+      "attackKind": "ranged",
       "attackBonus": 5,
       "damageDice": "1d6",
       "damageBonus": 3,

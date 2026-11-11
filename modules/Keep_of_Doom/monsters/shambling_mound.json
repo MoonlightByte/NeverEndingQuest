@@ -65,6 +65,7 @@
     {
       "name": "Charged Tendril",
       "kind": "attack",
+      "attackKind": "melee",
       "attackBonus": 7,
       "damageDice": "1d6",
       "damageBonus": 4,
