@@ -601,7 +601,19 @@
             "summaryPublished": {"type": "boolean"},
             "transcriptArchived": {"type": "boolean"},
             "dialogueSummary": {"type": "string"},
-            "archiveFile": {"type": "string"}
+            "archiveFile": {"type": "string"},
+            "endedBy": {"type": "string", "enum": ["standoff"]},
+            "standoffHeld": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "combatantId": {"type": "string"},
+                  "name": {"type": "string"},
+                  "condition": {"type": "string"}
+                }
+              }
+            }
           },
           "required": ["status", "rewardsApplied", "summaryPublished", "transcriptArchived"]
         }

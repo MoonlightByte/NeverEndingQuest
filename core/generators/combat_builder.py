@@ -1294,6 +1294,36 @@ def outside_victory_rows(encounter):
     return rows
 
 
+def nobody_can_act_rows(encounter):
+    """The rows of a built fight where nobody could act, when no combat effect
+    holds anyone, else None (#1894 K-a).
+
+    Every living, targetable row in the initiative-eligible set states an
+    incapacitating condition and none is effect-held: at build, effects come
+    only from #1907's timed wake and surprise, so an effect-held row means the
+    clock will free someone, which is a fight. One row per such creature:
+    {"combatantId", "name", "condition"}.
+    """
+    from core.managers.combat_state import (
+        initiative_eligible_ids, is_combatant_targetable, stated_incapacitation)
+
+    eligible = initiative_eligible_ids(encounter)
+    rows = []
+    for creature in encounter.get("creatures") or []:
+        if not isinstance(creature, dict) or creature.get("combatantId") not in eligible:
+            continue
+        if not is_combatant_targetable(creature):
+            continue
+        if creature.get("effectIncapacitated") is True:
+            return None
+        condition = stated_incapacitation(creature)
+        if condition is None:
+            return None
+        rows.append({"combatantId": creature.get("combatantId"), "name": creature.get("name"),
+                     "condition": condition})
+    return rows or None
+
+
 def _died(occupant):
     """A person record whose tally holds a died entry (#1902)."""
     return any(isinstance(e, dict) and e.get("outcome") == "died" for e in occupant.get("tally") or [])
@@ -1365,7 +1395,7 @@ def recorded_dead_rows(encounter_data, response, location_id):
 
 
 def _write_result(result_file, status, encounter_id=None, encounter_file=None, down_hostiles=None,
-                  outside_rows=None, recorded_dead=None):
+                  outside_rows=None, recorded_dead=None, stated_incapacitated=None):
     """Hand the caller a typed result; printed lines are for people only (#812)."""
     if not result_file:
         return True
@@ -1379,6 +1409,8 @@ def _write_result(result_file, status, encounter_id=None, encounter_file=None, d
         result["outsideRows"] = outside_rows
     if recorded_dead is not None:
         result["recordedDead"] = recorded_dead
+    if stated_incapacitated is not None:
+        result["statedIncapacitated"] = stated_incapacitated
     if save_json(result_file, result):
         return True
     logging.error(f"Failed to write the builder result to {result_file}")
@@ -1392,8 +1424,9 @@ def main(argv=None):
     outcome is also written there as {"version", "status", "encounterId",
     "encounterFile"}; status is saved, invalid_input, generation_failed,
     save_failed (#812), no_hostile_can_act with its "downHostiles" (#1891),
-    no_hostile_in_fight with its "outsideRows" (#1899) or recorded_dead with
-    its "recordedDead" (#1902).
+    no_hostile_in_fight with its "outsideRows" (#1899), recorded_dead with
+    its "recordedDead" (#1902) or nobody_can_act with its
+    "statedIncapacitated" (#1894).
     """
     import argparse
 
@@ -1472,6 +1505,17 @@ def main(argv=None):
         if outside is not None:
             print("[COMBAT_BUILDER] Refused: no one in this fight is against the party; no encounter saved")
             _write_result(result_file, "no_hostile_in_fight", outside_rows=outside)
+            return 1
+        # #1894 K-a: a fight where nobody could act and no effect's clock will
+        # free anyone is refused. Fail open: a failed check builds as before.
+        try:
+            stated = nobody_can_act_rows(encounter)
+        except Exception as exc:
+            warning("COMBAT_BUILDER: nobody-can-act check skipped (%s)" % exc, category="encounter_setup")
+            stated = None
+        if stated:
+            print("[COMBAT_BUILDER] Refused: nobody in this fight could act; no encounter saved")
+            _write_result(result_file, "nobody_can_act", stated_incapacitated=stated)
             return 1
         print(f"[COMBAT_BUILDER] Encounter generated successfully: {encounter['encounterId']}")
         print(f"[COMBAT_BUILDER] Total creatures in encounter: {len(encounter['creatures'])}")

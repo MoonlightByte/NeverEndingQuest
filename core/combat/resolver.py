@@ -47,6 +47,7 @@ from core.managers.combat_state import (
     falls_unconscious,
     has_left_fight,
     initiative_eligible_ids,
+    incapacitated,
     is_combatant_targetable,
     is_hostile,
     is_turn_eligible,
@@ -1331,7 +1332,7 @@ def stands_at_turn_start(encounter, characters, actor):
     stand: alive above 0 HP, not incapacitated, not grappled or restrained.
     One predicate for the pipeline's stand-up and the player's roll ask."""
     if not isinstance(actor, dict) or not is_combatant_targetable(actor) \
-            or actor.get("effectIncapacitated") is True:
+            or incapacitated(actor):
         return False
     stated = _stated_conditions(characters, encounter, actor)
     _owner, effects = _stand_up_record(encounter, characters, actor)

@@ -5093,6 +5093,7 @@ COMBAT_START_REASONS = {
     "no_hostile_can_act": "no hostile in it can fight",
     "no_hostile_in_fight": "no one in it is against the party",
     "recorded_dead": "it names someone recorded dead",
+    "nobody_can_act": "nobody in it could act",
 }
 
 
@@ -5162,7 +5163,8 @@ def _sweep_stale_sleepers(encounter_path, encounter, party_tracker):
 def _refused_rows(result_path):
     """The refused rows of a builder result: downHostiles for
     no_hostile_can_act (#1891), outsideRows for no_hostile_in_fight (#1899),
-    recordedDead for recorded_dead (#1902); else None."""
+    recordedDead for recorded_dead (#1902), statedIncapacitated for
+    nobody_can_act (#1894); else None."""
     try:
         with open(result_path, "r", encoding="utf-8") as result_file:
             result = json.load(result_file)
@@ -5174,7 +5176,26 @@ def _refused_rows(result_path):
         return result.get("outsideRows")
     if isinstance(result, dict) and result.get("status") == "recorded_dead":
         return result.get("recordedDead")
+    if isinstance(result, dict) and result.get("status") == "nobody_can_act":
+        return result.get("statedIncapacitated")
     return None
+
+
+def _stated_lines(rows):
+    """#1894 K-a: "Garrick is paralyzed; Scout Kira is paralyzed" from the
+    builder's typed rows; "" when the rows are unusable."""
+    if not isinstance(rows, list) or not rows:
+        return ""
+    parts = []
+    for row in rows:
+        if not isinstance(row, dict):
+            return ""
+        name = str(row.get("name") or "").strip()
+        condition = str(row.get("condition") or "").strip()
+        if not name or not condition:
+            return ""
+        parts.append("%s is %s" % (name, condition))
+    return "; ".join(parts)
 
 
 _OUTSIDE_PARTICIPATION = ("observer", "hidden", "unaware", "departed")
@@ -5422,7 +5443,18 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
     rows = _no_hostile_lines(down_hostiles) if reason == "no_hostile_can_act" else ""
     outside = _outside_lines(down_hostiles) if reason == "no_hostile_in_fight" else ""
     dead = _dead_lines(down_hostiles, world.get("currentLocationId")) if reason == "recorded_dead" else ""
-    if dead:
+    held = _stated_lines(down_hostiles) if reason == "nobody_can_act" else ""
+    if held:
+        # #1894 K-a: in the DM's own terms (#1903's wording for ending a condition).
+        content = (
+            "Combat Error: the encounter you requested could not be set up, because nobody in it "
+            "could act: %s. No fight has started.%s A stated condition lasts until the story ends it: "
+            "to end one, send an updateCharacterInfo on that character whose \"changes\" end the "
+            "condition and state no healing or hit point change, with \"affects\": [\"condition\"]. "
+            "Otherwise answer the player's last action again without a fight." % (
+                held, "" if payments is None else " " + _encounter_payment_lines(payments))
+        )
+    elif dead:
         # #1902: a death stands; the fight goes on only without the dead.
         content = (
             "Combat Error: the encounter you requested could not be set up, because it names someone "
@@ -5494,7 +5526,7 @@ def _built_encounter(result_path, returncode):
         return None, "builder_failed"
     if not isinstance(result, dict) or result.get("version") != 1:
         return None, "builder_failed"
-    if result.get("status") in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead"):
+    if result.get("status") in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead", "nobody_can_act"):
         return None, result["status"]
     if result.get("status") != "saved":
         return None, "builder_no_encounter"
@@ -5698,7 +5730,8 @@ def process_action(
                 encounter_id, build_failure = _built_encounter(
                     os.path.join(result_dir, "result.json"), result.returncode
                 )
-                if build_failure in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead"):
+                if build_failure in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead",
+                                     "nobody_can_act"):
                     down_hostiles = _refused_rows(os.path.join(result_dir, "result.json"))
             finally:
                 shutil.rmtree(result_dir, ignore_errors=True)
