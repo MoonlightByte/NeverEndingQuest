@@ -1579,6 +1579,19 @@ def main(argv=None):
             print("[COMBAT_BUILDER] Refused: a party member is held by a stated condition; no encounter saved")
             _write_result(result_file, "party_member_held", party_held=held)
             return 1
+        # #1894 (A), as ruled after the audit: each member the DM confirmed is
+        # seated held (the untimed "Held" effect after activation). Fail open:
+        # a fault leaves them unseated, and a stated name alone never holds a
+        # party member in a fight.
+        if held_allowed:
+            try:
+                from core.combat import sleeper
+                rows_by_id = {c.get("combatantId"): c for c in encounter.get("creatures") or [] if isinstance(c, dict)}
+                for item in party_held_rows(encounter, _PARTY_SHEETS):
+                    if item.get("name") in held_allowed and item.get("combatantId") in rows_by_id:
+                        sleeper.seat_held(rows_by_id[item["combatantId"]])
+            except Exception as exc:
+                warning("COMBAT_BUILDER: confirmed-hold seating skipped (%s)" % exc, category="encounter_setup")
         print(f"[COMBAT_BUILDER] Encounter generated successfully: {encounter['encounterId']}")
         print(f"[COMBAT_BUILDER] Total creatures in encounter: {len(encounter['creatures'])}")
         # Ensure centralized encounters directory exists

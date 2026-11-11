@@ -327,10 +327,14 @@ def _apply_turn_ticks(encounter, characters, ticks, event_id, actor_id):
     )
 
 
-def standoff_held(encounter):
+def standoff_held(encounter, characters=None):
     """#1894 K-b: who holds the fight still, one entry per living targetable
     combatant in the initiative order, or None when no one is held by a stated
-    condition alone (an effect-only hold keeps today's pause)."""
+    condition alone (an effect-only hold keeps today's pause). A party member
+    the DM confirmed held (D-1894-5 A) counts as stated: read from its own
+    effect's id and sourceEncounterId on its sheet, never from a name."""
+    from core.combat.sleeper import held_seat
+
     state = encounter.get("combatState") or {}
     held, stated = [], False
     for combatant_id in state.get("initiativeOrder") or []:
@@ -339,9 +343,13 @@ def standoff_held(encounter):
             continue
         if not incapacitated(creature):
             return None
+        sheet = (characters or {}).get(creature.get("name")) if creature.get("type") in ("player", "npc") else None
         if stated_only(creature):
             stated = True
             condition = stated_incapacitation(creature)
+        elif held_seat(sheet, creature, encounter):
+            stated = True
+            condition = stated_incapacitation(creature) or "held"
         else:
             condition = "effect"
         held.append({"combatantId": combatant_id, "name": creature.get("name"), "condition": condition})
@@ -363,7 +371,7 @@ def _standoff_event(encounter, characters, pending_turn, state):
     and someone is held by a stated condition: one provider-free event that
     ends the fight as a standoff (the commit writes completion.endedBy). No
     mutation. None when the hold is effects only."""
-    held = standoff_held(encounter)
+    held = standoff_held(encounter, characters)
     if held is None:
         return None
     parts = [

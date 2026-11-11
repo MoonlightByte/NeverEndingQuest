@@ -5519,9 +5519,15 @@ def _refresh_effect_control_flags(encounter, characters):
             effects = sheet.get("temporaryEffects", []) or []
         else:
             effects = creature.get("activeEffects", []) or []
-        creature["effectIncapacitated"] = any(
-            effect_incapacitates(effect) for effect in effects
-        )
+        if creature.get("type") in ("player", "npc"):
+            # #1894 (A): a confirmed hold holds while the sheet states it.
+            from core.combat.sleeper import held_effect_holds
+
+            creature["effectIncapacitated"] = any(held_effect_holds(effect, sheet) for effect in effects)
+        else:
+            creature["effectIncapacitated"] = any(
+                effect_incapacitates(effect) for effect in effects
+            )
 
 
 def settle_effect_zero_status(encounter, before, characters):

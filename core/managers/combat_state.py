@@ -208,14 +208,28 @@ def stated_incapacitation(creature):
     return None
 
 
+def stated_hold(creature):
+    """#1894: the stated incapacitating condition that holds this row in a
+    fight, or None. On the party's side (``sleeper.party_side``: the player, a
+    companion, a friendly npc) only an effect holds (D-1894-5 as ruled after
+    the audit): a stated sleep and a stated hold are seated as effects at the
+    start of a fight, and a name left in the list (an old save, a name stated
+    mid-fight, "unconscious" left after a heal) plays as on main."""
+    from core.combat.sleeper import party_side
+
+    if party_side(creature):
+        return None
+    return stated_incapacitation(creature)
+
+
 def incapacitated(creature):
-    """#1894: a combat effect's projection, or a stated incapacitating condition."""
-    return (creature or {}).get("effectIncapacitated") is True or stated_incapacitation(creature) is not None
+    """#1894: a combat effect's projection, or a stated hold (``stated_hold``)."""
+    return (creature or {}).get("effectIncapacitated") is True or stated_hold(creature) is not None
 
 
 def stated_only(creature):
     """#1894: held by a stated condition alone (no combat effect holds it)."""
-    return (creature or {}).get("effectIncapacitated") is not True and stated_incapacitation(creature) is not None
+    return (creature or {}).get("effectIncapacitated") is not True and stated_hold(creature) is not None
 
 
 def is_turn_eligible(creature):

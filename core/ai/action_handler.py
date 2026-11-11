@@ -5169,8 +5169,9 @@ def _sweep_stale_sleepers(encounter_path, encounter, party_tracker):
 
         module = str((party_tracker or {}).get("module") or "").replace(" ", "_") or None
         paths, _sheets = _agentic_combat_context(encounter, ModulePathManager(module), {})
+        # #1894 D-1894-5: the player and companions are seated too.
         npc_names = {c.get("name") for c in encounter.get("creatures") or []
-                     if isinstance(c, dict) and c.get("type") == "npc"}
+                     if isinstance(c, dict) and c.get("type") in ("npc", "player")}
         paths = {name: path for name, path in paths.items() if name in npc_names}
         if paths:
             sleeper.sweep_encounter_sheets(encounter_path, paths)
