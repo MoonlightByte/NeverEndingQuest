@@ -83,6 +83,14 @@
           "roundsRemaining": 1,
           "repeatAtEndOfTurn": false,
           "tickTrigger": "end_of_turn"
+        },
+        "exemptTargets": {
+          "creatureTypes": [
+            "undead"
+          ],
+          "species": [
+            "elf"
+          ]
         }
       },
       "description": "Melee Attack Roll: +4, reach 5 ft. Hit: 4 (1d4 + 2) Slashing damage. If the target is a creature that isn't an Undead or elf, it is subjected to the following effect. Constitution Saving Throw: DC 10. Failure: The target has the Paralyzed condition until the end of its next turn."
