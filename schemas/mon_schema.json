@@ -258,6 +258,27 @@
                     }
                   },
                   "required": ["damageDice", "damageBonus", "damageType", "conditions"]
+                },
+                "exemptTargets": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "creatureTypes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "species": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
                 }
               },
               "required": ["ability", "dc", "halfOnSave", "onFail"]
@@ -448,6 +469,27 @@
                     }
                   },
                   "required": ["damageDice", "damageBonus", "damageType", "conditions"]
+                },
+                "exemptTargets": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "minProperties": 1,
+                  "properties": {
+                    "creatureTypes": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "species": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
                 }
               },
               "required": ["ability", "dc", "halfOnSave", "onFail"]
