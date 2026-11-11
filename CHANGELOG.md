@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- A monster can now use an attack that is not part of its Multiattack. Before, a ghoul that chose its paralyzing Claw made its two Bites instead, so the Claw and its paralysis never happened in play (#1905).
+- A monster can now use an attack that is not part of its Multiattack. Before, a ghoul that chose its paralyzing Claw made its two Bites instead, so the Claw and its paralysis never happened in play. As the rules say, the Claw does not paralyze elves or undead: they take its damage and make no save (#1905).
 - A ghoul's paralyzing claw now wears off at the end of the paralyzed creature's next turn, as the rules say. Before, it lasted to the end of the next round, so a character who acts before the ghoul lost a second turn, and creatures acting after that character still got advantage against them (#1914).
 - When you attack someone who is asleep, the fight now begins with them still asleep instead of being refused: your first blow has the advantage, and they wake when they are hurt or when the first round ends (#1900).
 - In a fight where someone only watches (an onlooker who takes no turns), effects that last a number of rounds now run out on time, and a creature that was surprised now gets its turns from round 2. Before, Bless and similar effects never counted down in such a fight, and a surprised foe never acted (#1919).

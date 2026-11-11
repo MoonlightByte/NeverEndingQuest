@@ -187,7 +187,9 @@ def on_hit_issue(sheet):
 # row: (key,) for a row key, (key, nested key) for a key inside a row object.
 # A later key is one more entry here and nothing else.
 # #1914 (D-1914-1): onFail.tickTrigger is engine-only; no generator is taught it yet.
-MECHANICS_ONLY_ROW_PATHS = (("onHit",), ("rider", "onFail", "tickTrigger"), ("save", "onFail", "tickTrigger"))
+# #1905 (D-1905-2): rider.exemptTargets is engine-only as well.
+MECHANICS_ONLY_ROW_PATHS = (("onHit",), ("rider", "onFail", "tickTrigger"), ("save", "onFail", "tickTrigger"),
+                            ("rider", "exemptTargets"))
 MECHANICS_ONLY_ROW_FAMILIES = ("actions", "specialAbilities")
 
 
