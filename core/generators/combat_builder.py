@@ -1056,7 +1056,12 @@ def generate_encounter(encounter_data, occupant_response=_UNREAD):
             "expiresAtRevision": None,
             "consentEventId": None,
         }
-    _seat_sleepers(encounter, reconciled["sceneFacts"]["participants"], npc_sheets, place_occupants)
+    # #1894 D-1894-5: the build's party-side sheets, for (B) the seat below
+    # and (A) the held check in main(); this process only, never saved.
+    party_sheets = [(player, player_data)] + [(row, sheet) for row, sheet in npc_sheets]
+    _PARTY_SHEETS[:] = party_sheets
+    _seat_sleepers(encounter, reconciled["sceneFacts"]["participants"], npc_sheets, place_occupants,
+                   party_sheets=party_sheets)
     _apply_surprise(encounter, reconciled["sceneFacts"]["participants"])
     ensure_combat_state(
         encounter,
@@ -1083,7 +1088,11 @@ def generate_encounter(encounter_data, occupant_response=_UNREAD):
 SURPRISE_EFFECT_NAME = "Surprised"
 
 
-def _seat_sleepers(encounter, participants, npc_sheets, place_occupants):
+_PARTY_SHEETS = []
+PARTY_HELD_CONDITIONS = ("incapacitated", "paralyzed", "petrified", "stunned")
+
+
+def _seat_sleepers(encounter, participants, npc_sheets, place_occupants, party_sheets=()):
     """#1900: a hostile npc asleep (unconscious above 0 HP), active, eligible
     and a present person occupant is seated alive and asleep with the typed
     marker ``sleeperWake``; the wake goes on its sheet after activation
@@ -1094,6 +1103,8 @@ def _seat_sleepers(encounter, participants, npc_sheets, place_occupants):
 
     try:
         found = sleeper.sleeper_rows(encounter, participants, npc_sheets, place_occupants)
+        # #1894 D-1894-5 (B): a party-side sleep stated with no effect behind it.
+        found += sleeper.party_sleeper_rows(encounter, participants, party_sheets)
         initiatives = [
             None if sleeper.states_unconscious(sheet) else _roll_initiative(sheet, True, mode="disadvantage")
             for _row, sheet in found
@@ -1394,8 +1405,38 @@ def recorded_dead_rows(encounter_data, response, location_id):
     return rows
 
 
+def party_held_rows(encounter, sheets, allowed=()):
+    """#1894 D-1894-5 (A): the party-side rows held by a stated stunned,
+    paralyzed, incapacitated or petrified with no effect behind it, other than
+    the names in ``allowed`` (the DM's second request in the same turn). One
+    row per such creature: {"combatantId", "name", "condition"}; [] when none."""
+    from core.combat.sleeper import party_side
+    from core.effects.lifecycle import combat_effect_states
+    from core.managers.combat_state import (
+        initiative_eligible_ids, is_combatant_targetable, stated_incapacitation)
+
+    by_id = {row.get("combatantId"): sheet for row, sheet in sheets or [] if isinstance(row, dict)}
+    eligible = initiative_eligible_ids(encounter)
+    rows = []
+    for creature in encounter.get("creatures") or []:
+        if not party_side(creature) or creature.get("combatantId") not in eligible:
+            continue
+        if not is_combatant_targetable(creature) or creature.get("effectIncapacitated") is True:
+            continue
+        condition = stated_incapacitation(creature)
+        if condition not in PARTY_HELD_CONDITIONS or creature.get("name") in allowed:
+            continue
+        sheet = by_id.get(creature.get("combatantId"))
+        effects = (sheet or {}).get("temporaryEffects") if isinstance(sheet, dict) else None
+        if condition in combat_effect_states(effects or []):
+            continue
+        rows.append({"combatantId": creature.get("combatantId"), "name": creature.get("name"),
+                     "condition": condition})
+    return rows
+
+
 def _write_result(result_file, status, encounter_id=None, encounter_file=None, down_hostiles=None,
-                  outside_rows=None, recorded_dead=None, stated_incapacitated=None):
+                  outside_rows=None, recorded_dead=None, stated_incapacitated=None, party_held=None):
     """Hand the caller a typed result; printed lines are for people only (#812)."""
     if not result_file:
         return True
@@ -1411,6 +1452,8 @@ def _write_result(result_file, status, encounter_id=None, encounter_file=None, d
         result["recordedDead"] = recorded_dead
     if stated_incapacitated is not None:
         result["statedIncapacitated"] = stated_incapacitated
+    if party_held is not None:
+        result["partyHeld"] = party_held
     if save_json(result_file, result):
         return True
     logging.error(f"Failed to write the builder result to {result_file}")
@@ -1432,7 +1475,15 @@ def main(argv=None):
 
     parser = argparse.ArgumentParser(description="Build a combat encounter from JSON on stdin.")
     parser.add_argument("--result-file", default=None)
-    result_file = parser.parse_args(sys.argv[1:] if argv is None else argv).result_file
+    # #1894 D-1894-5 (A): the party members the DM was told about earlier in
+    # this same turn (a JSON list of names), held this time. Never saved.
+    parser.add_argument("--held-allowed", default=None)
+    parsed = parser.parse_args(sys.argv[1:] if argv is None else argv)
+    result_file = parsed.result_file
+    try:
+        held_allowed = [n for n in json.loads(parsed.held_allowed) if isinstance(n, str)] if parsed.held_allowed else []
+    except (TypeError, ValueError):
+        held_allowed = []
     global _STOP_FILE
     _STOP_FILE = os.path.join(os.path.dirname(os.path.abspath(result_file)), "stop") if result_file else None
     logging.debug("Starting combat encounter creation")
@@ -1516,6 +1567,17 @@ def main(argv=None):
         if stated:
             print("[COMBAT_BUILDER] Refused: nobody in this fight could act; no encounter saved")
             _write_result(result_file, "nobody_can_act", stated_incapacitated=stated)
+            return 1
+        # #1894 D-1894-5 (A): a party member held by a stated condition no
+        # effect will end is refused once per turn. Fail open.
+        try:
+            held = party_held_rows(encounter, _PARTY_SHEETS, allowed=held_allowed)
+        except Exception as exc:
+            warning("COMBAT_BUILDER: party-held check skipped (%s)" % exc, category="encounter_setup")
+            held = []
+        if held:
+            print("[COMBAT_BUILDER] Refused: a party member is held by a stated condition; no encounter saved")
+            _write_result(result_file, "party_member_held", party_held=held)
             return 1
         print(f"[COMBAT_BUILDER] Encounter generated successfully: {encounter['encounterId']}")
         print(f"[COMBAT_BUILDER] Total creatures in encounter: {len(encounter['creatures'])}")

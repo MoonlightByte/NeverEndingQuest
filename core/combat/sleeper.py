@@ -6,6 +6,10 @@ marker becomes a one-round "Asleep" effect on the sheet that states
 unconscious and incapacitates. The sleeper wakes when it takes damage or
 when round 1 ends; a fight that ends first leaves it awake.
 
+#1894 (D-1894-5, B): a party-side combatant (the player, a companion, a
+friendly npc) whose sheet states unconscious above 0 HP with no effect
+behind it is seated the same way (``party_sleeper_rows``).
+
 Typed keys and value compares only (AP-7). The wake effect has no
 ``modifiers`` key, so the rules engine never holds it (core/nql/effects
 ``pending_effects``) and adding or removing it makes no engine request.
@@ -188,7 +192,7 @@ def wake_removals(event, encounter, characters):
             continue
         combatant_id = record.get("combatantId")
         creature = combatant_by_id(encounter, combatant_id)
-        if not isinstance(creature, dict) or creature.get("type") != "npc" or combatant_id in seen:
+        if not isinstance(creature, dict) or creature.get("type") not in ("npc", "player") or combatant_id in seen:
             continue
         name = creature.get("name")
         effect_id = wake_effect_id(combatant_id)
@@ -246,6 +250,49 @@ def sleeper_rows(encounter, participants, npc_sheets, place_occupants):
     return found
 
 
+def _effect_states_unconscious(sheet):
+    """Whether a live effect on the sheet states unconscious (it holds the
+    sheet itself; no stated-only sleep to seat)."""
+    for effect in (sheet or {}).get("temporaryEffects") or []:
+        if isinstance(effect, dict) and any(
+            name.strip().casefold() == UNCONSCIOUS for name in _names(effect.get("conditions"))
+        ):
+            return True
+    return False
+
+
+def party_side(row):
+    """#1894 D-1894-5: the player, a party companion or a friendly npc."""
+    return isinstance(row, dict) and (row.get("type") == "player" or row.get("faction") == "party")
+
+
+def party_sleeper_rows(encounter, participants, sheets):
+    """#1894 D-1894-5 (B): the (row, sheet) pairs seated asleep on the party's
+    side: a party-side row, active and initiative-eligible, whose sheet states
+    unconscious above 0 HP with no effect behind it. Seated as #1907's hostile
+    sleeper is, so damage or round 1's end wakes them. ``sheets`` is
+    [(row, sheet)] from the build (the player and the npcs)."""
+    from core.managers.combat_state import combat_provenance
+
+    if combat_provenance(encounter) != "typed":
+        return []
+    eligible = {
+        item.get("combatantId")
+        for item in participants or []
+        if isinstance(item, dict) and item.get("participation") == "active" and item.get("initiativeEligible") is True
+    }
+    found = []
+    for row, sheet in sheets or []:
+        if not party_side(row) or row.get("type") not in ("player", "npc"):
+            continue
+        if row.get("combatantId") not in eligible or row.get("effectIncapacitated") is True:
+            continue
+        if not is_sleeper_sheet(sheet) or not states_unconscious(sheet) or _effect_states_unconscious(sheet):
+            continue
+        found.append((row, sheet))
+    return found
+
+
 def seat_sleeper(row):
     """C1 on one row: alive, conditions [unconscious], the marker, and
     effectIncapacitated as a surprised creature is seated."""
@@ -274,7 +321,8 @@ def opening_names(encounter, characters=None):
 def marked_rows(encounter):
     return [
         creature for creature in (encounter or {}).get("creatures") or []
-        if isinstance(creature, dict) and creature.get("type") == "npc" and isinstance(creature.get(WAKE_MARKER), dict)
+        if isinstance(creature, dict) and creature.get("type") in ("npc", "player")
+        and isinstance(creature.get(WAKE_MARKER), dict)
     ]
 
 

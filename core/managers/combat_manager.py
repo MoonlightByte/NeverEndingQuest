@@ -2934,7 +2934,11 @@ def sync_active_encounter():
                         creature["maxHitPoints"] = player_data.get("maxHitPoints")
                         changes_made = True
                     # #1110: a typed flee or yield stays on the row; the sheet keeps its own status.
-                    if creature.get("status") != player_data.get("status") and not left_by_resolution(creature):
+                    # #1894 D-1894-5 (B): a party sleeper's wake effect holds the row alive, as #1900 C5.
+                    from core.combat.sleeper import keep_row_status
+
+                    if (creature.get("status") != player_data.get("status") and not left_by_resolution(creature)
+                            and not keep_row_status(player_data, creature, encounter_data)):
                         creature["status"] = player_data.get("status")
                         changes_made = True
                     if creature.get("conditions") != player_data.get("condition_affected"):

@@ -5083,6 +5083,23 @@ def _show_transition_notice(message_id, content):
 # is harmless.
 _last_failed_combat_turn = None
 
+# #1894 D-1894-5 (A): the party-held refusal of this process's current turn,
+# (turn id, names, the correction text). In memory only, never saved: a second
+# createEncounter in the same turn, with that correction still in the history
+# the DM answered, starts the fight with those members held.
+_party_held_refusal = None
+
+
+def _party_held_allowed(invocation_claim, conversation_history):
+    """The names the DM was told about earlier in this same turn, or []."""
+    turn_id = str(getattr(invocation_claim, "logical_invocation_id", "") or "").strip()
+    refusal = _party_held_refusal
+    if not turn_id or not refusal or refusal[0] != turn_id:
+        return []
+    if not any(isinstance(m, dict) and m.get("content") == refusal[2] for m in conversation_history or []):
+        return []
+    return list(refusal[1])
+
 # Why a fight did not start, as the DM is told it. Fixed phrases only: never
 # raw error text, and nothing parses them.
 COMBAT_START_REASONS = {
@@ -5094,6 +5111,7 @@ COMBAT_START_REASONS = {
     "no_hostile_in_fight": "no one in it is against the party",
     "recorded_dead": "it names someone recorded dead",
     "nobody_can_act": "nobody in it could act",
+    "party_member_held": "a party member in it is held by a stated condition",
 }
 
 
@@ -5178,6 +5196,8 @@ def _refused_rows(result_path):
         return result.get("recordedDead")
     if isinstance(result, dict) and result.get("status") == "nobody_can_act":
         return result.get("statedIncapacitated")
+    if isinstance(result, dict) and result.get("status") == "party_member_held":
+        return result.get("partyHeld")
     return None
 
 
@@ -5424,7 +5444,7 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
     can never loop. ``down_hostiles`` holds the builder's refused rows: its
     downHostiles (#1891), its outsideRows (#1899) or its recordedDead (#1902).
     """
-    global _last_failed_combat_turn
+    global _last_failed_combat_turn, _party_held_refusal
     error(
         "FAILURE: Combat did not start: %s" % COMBAT_START_REASONS[reason],
         category="combat_processing",
@@ -5444,7 +5464,26 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
     outside = _outside_lines(down_hostiles) if reason == "no_hostile_in_fight" else ""
     dead = _dead_lines(down_hostiles, world.get("currentLocationId")) if reason == "recorded_dead" else ""
     held = _stated_lines(down_hostiles) if reason == "nobody_can_act" else ""
-    if held:
+    party_held = _stated_lines(down_hostiles) if reason == "party_member_held" else ""
+    if party_held:
+        # #1894 D-1894-5 (A): once per turn; the same request again in this
+        # turn starts the fight with them held.
+        content = (
+            "Combat Error: the encounter you requested was not set up, because a party member in it is "
+            "held by a condition the story stated and no effect will end: %s. Held, they would lose "
+            "every turn of this fight. No fight has started.%s A stated condition lasts until the story "
+            "ends it: to end one, send an updateCharacterInfo on that character whose \"changes\" end "
+            "the condition and state no healing or hit point change, with \"affects\": [\"condition\"]. "
+            "If they are truly held, send the same createEncounter again now and the fight starts "
+            "with them held." % (
+                party_held, "" if payments is None else " " + _encounter_payment_lines(payments))
+        )
+        _party_held_refusal = (
+            turn_id,
+            tuple(str(row.get("name")) for row in down_hostiles if isinstance(row, dict)),
+            content,
+        )
+    elif held:
         # #1894 K-a: in the DM's own terms (#1903's wording for ending a condition).
         content = (
             "Combat Error: the encounter you requested could not be set up, because nobody in it "
@@ -5526,7 +5565,8 @@ def _built_encounter(result_path, returncode):
         return None, "builder_failed"
     if not isinstance(result, dict) or result.get("version") != 1:
         return None, "builder_failed"
-    if result.get("status") in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead", "nobody_can_act"):
+    if result.get("status") in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead", "nobody_can_act",
+                                "party_member_held"):
         return None, result["status"]
     if result.get("status") != "saved":
         return None, "builder_no_encounter"
@@ -5720,9 +5760,13 @@ def process_action(
                         pass  # unreadable authority is never a supersession
                     raise_if_save_stopped()
 
+                # #1894 D-1894-5 (A): the members the DM was told about earlier
+                # in this turn are held this time; an argument, never saved.
+                held_allowed = _party_held_allowed(invocation_claim, conversation_history)
                 returncode, stdout, stderr = run_fenced(
                     child_argv([sys.executable, combat_builder_path, "--result-file",
-                     os.path.join(result_dir, "result.json")]),
+                     os.path.join(result_dir, "result.json")]
+                     + (["--held-allowed", json.dumps(held_allowed)] if held_allowed else [])),
                     input_text=json.dumps(action), stop_check=stop_check,
                     stop_file=os.path.join(result_dir, "stop"), env=utf8_child_env(),
                 )
@@ -5731,7 +5775,7 @@ def process_action(
                     os.path.join(result_dir, "result.json"), result.returncode
                 )
                 if build_failure in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead",
-                                     "nobody_can_act"):
+                                     "nobody_can_act", "party_member_held"):
                     down_hostiles = _refused_rows(os.path.join(result_dir, "result.json"))
             finally:
                 shutil.rmtree(result_dir, ignore_errors=True)
