@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When you say what your character does, they now do it: a companion or a bystander may object or react, but no longer stops your action before it happens or decides that you hold back; how it turns out is still up to the dice, the rules and the fight (#1922).
 - When you attack someone who is asleep, the fight now begins with them still asleep instead of being refused: your first blow has the advantage, and they wake when they are hurt or when the first round ends (#1900).
 - In a fight where someone only watches (an onlooker who takes no turns), effects that last a number of rounds now run out on time, and a creature that was surprised now gets its turns from round 2. Before, Bless and similar effects never counted down in such a fight, and a surprised foe never acted (#1919).
 - A fight you start where no one is actually against the party (everyone is only watching, hidden, or on your side) no longer opens as a fight that can never end: the Dungeon Master is told who is outside the fight and what a fight needs, and answers you again (#1899).
