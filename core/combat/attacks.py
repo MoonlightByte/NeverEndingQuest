@@ -186,7 +186,8 @@ def on_hit_issue(sheet):
 # words what they do. Each entry is a path inside an actions/specialAbilities
 # row: (key,) for a row key, (key, nested key) for a key inside a row object.
 # A later key is one more entry here and nothing else.
-MECHANICS_ONLY_ROW_PATHS = (("onHit",),)
+# #1914 (D-1914-1): onFail.tickTrigger is engine-only; no generator is taught it yet.
+MECHANICS_ONLY_ROW_PATHS = (("onHit",), ("rider", "onFail", "tickTrigger"), ("save", "onFail", "tickTrigger"))
 MECHANICS_ONLY_ROW_FAMILIES = ("actions", "specialAbilities")
 
 
