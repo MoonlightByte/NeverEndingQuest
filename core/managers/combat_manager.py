@@ -2557,25 +2557,33 @@ def _xp_paths(encounter_data, character_paths):
     return {name: path for name, path in paths.items() if name in roster}
 
 
-def _standoff_sentence(completion):
+_STANDOFF_DESCRIPTION = re.compile(
+    r"^Nobody on either side can act \((?P<held>[^()]+)\); the fight ends in a standoff\.$"
+)
+
+
+def _standoff_sentence(encounter):
     """#1894 K-b: the after-fight transcript's one fixed sentence for a fight
-    that ended in a standoff, from the commit's held list; "" otherwise."""
-    if not isinstance(completion, dict) or completion.get("endedBy") != "standoff":
+    that ended in a standoff; "" otherwise. Who was held comes from the
+    standoff event in the round-event journal the commit wrote (no other key
+    is kept): the same text on every resume. A cut or missing description
+    gives the sentence without names."""
+    from core.managers.combat_state import ended_in_standoff
+
+    if not ended_in_standoff(encounter):
         return ""
-    parts = []
-    for item in completion.get("standoffHeld") or []:
-        if not isinstance(item, dict) or not item.get("name"):
-            continue
-        condition = item.get("condition")
-        parts.append(
-            "%s is held by an effect" % item["name"] if condition == "effect"
-            else "%s is %s" % (item["name"], condition)
-        )
+    held = ""
+    store = ((encounter or {}).get("combatState") or {}).get("roundEvents")
+    for _round, rows in sorted((store or {}).items(), key=lambda item: str(item[0]).zfill(9)):
+        for row in rows if isinstance(rows, list) else []:
+            if isinstance(row, dict) and row.get("action") == "endStandoff":
+                match = _STANDOFF_DESCRIPTION.match(str(row.get("description") or ""))
+                held = match.group("held") if match else ""
     return (
         "The fight ended in a standoff: nobody on either side could act%s. "
         "Neither side won, and the foes were left as they were. "
         "A stated condition lasts until the story ends it."
-        % (" (%s)" % "; ".join(parts) if parts else "")
+        % (" (%s)" % held if held else "")
     )
 
 
@@ -2687,7 +2695,7 @@ def _complete_agentic_combat(
             )
         else:
             xp_message = f"XP Awarded: {xp_narrative}{ammunition_note}"
-            standoff_text = _standoff_sentence(completion)
+            standoff_text = _standoff_sentence(receipt_encounter)
             if standoff_text:
                 xp_message += " " + standoff_text
             if not any(

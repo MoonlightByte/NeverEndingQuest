@@ -1279,8 +1279,9 @@ def stage_turn_events(encounter, turn_id, events):
             pending.get("clockOnly") is True
             and len(normalized) == 1
             and normalized[0].get("actorId") == "combat-clock"
+            # #1894 K-b: or the one standoff event that ends the fight.
             and (normalized[0].get("outcome") or {}).get("kind")
-            == "effectClock"
+            in ("effectClock", "standoff")
         ):
             raise CombatStateConflict(
                 "Clock-only turns require exactly one engine effect-clock event"
@@ -1495,7 +1496,6 @@ def commit_turn(encounter, turn_id, applied_event_ids):
         # makes every resume see the same end (a replayed turn returns above).
         if isinstance(event, dict) and (event.get("intent") or {}).get("action") == "endStandoff":
             state["completion"]["endedBy"] = "standoff"
-            state["completion"]["standoffHeld"] = deepcopy((event.get("outcome") or {}).get("held") or [])
 
     actor_ids = pending["actorIds"]
     consumed_actor_ids = list(pending.get("skippedActorIds") or []) + actor_ids

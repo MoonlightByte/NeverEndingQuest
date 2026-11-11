@@ -602,18 +602,7 @@
             "transcriptArchived": {"type": "boolean"},
             "dialogueSummary": {"type": "string"},
             "archiveFile": {"type": "string"},
-            "endedBy": {"type": "string", "enum": ["standoff"]},
-            "standoffHeld": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "combatantId": {"type": "string"},
-                  "name": {"type": "string"},
-                  "condition": {"type": "string"}
-                }
-              }
-            }
+            "endedBy": {"type": "string", "enum": ["standoff"]}
           },
           "required": ["status", "rewardsApplied", "summaryPublished", "transcriptArchived"]
         }
