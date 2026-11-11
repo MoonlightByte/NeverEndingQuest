@@ -501,17 +501,38 @@ def player_sheet_path(path_manager, party_tracker, player):
         return found[0]
     return path_manager.get_character_path(player)
 
-def _place_occupants(location_id):
-    """The engine occupants at the fight's place, by ID: the typed records a
-    declared occupantIds slot names. A pure reader (the DM turn makes the
-    document). Empty when the engine or the document is unavailable, and the
-    slot then takes a listed or a new key (never a stop)."""
+_UNREAD = object()
+
+
+def _occupant_read(location_id):
+    """The build's one read of the occupants document (#1902): the engine
+    response (None when the engine or the document is unavailable). main()
+    reads once and passes it to the recorded-death check and the build. A
+    pure reader; a failed read returns _UNREAD and the build reads as before."""
     try:
         from core.nql import occupants
 
         tracker = load_json("party_tracker.json") or {}
         place = occupants.place_id(tracker.get("module") or "", location_id)
-        response = occupants.request(view=(place,), create=False)
+        return occupants.request(view=(place,), create=False)
+    except Exception as exc:  # fail forward: the build reads for itself
+        warning(f"MONSTER_KEY: occupants at {location_id} unavailable ({exc})", category="combat_builder")
+        return _UNREAD
+
+
+def _place_occupants(location_id, response=_UNREAD):
+    """The engine occupants at the fight's place, by ID: the typed records a
+    declared occupantIds slot names. A pure reader (the DM turn makes the
+    document). Empty when the engine or the document is unavailable, and the
+    slot then takes a listed or a new key (never a stop). ``response`` is the
+    build's one occupants read when main() made it (#1902)."""
+    try:
+        from core.nql import occupants
+
+        tracker = load_json("party_tracker.json") or {}
+        place = occupants.place_id(tracker.get("module") or "", location_id)
+        if response is _UNREAD:
+            response = occupants.request(view=(place,), create=False)
         if not response or not response.get("ok"):
             return {}
         found = {
@@ -780,7 +801,7 @@ def _roster_observers(encounter, scene_sources, place_occupants, party_tracker,
     return added
 
 
-def generate_encounter(encounter_data):
+def generate_encounter(encounter_data, occupant_response=_UNREAD):
     print(f"[COMBAT_BUILDER] Starting encounter generation with data: player={encounter_data.get('player')}, npcs={encounter_data.get('npcs', [])}, monsters={encounter_data.get('monsters', [])}")
     location = get_current_location()
     if not location:
@@ -857,7 +878,7 @@ def generate_encounter(encounter_data):
     # Add monsters. Each one's stat block is chosen by a typed key, never by
     # the name the DM wrote (#293/typed-monster-key, D-KW-12, D-TMK-1).
     from core.combat.monster_keys import bestiary, monster_key
-    place_occupants = _place_occupants(location)
+    place_occupants = _place_occupants(location, occupant_response)
     listed = bestiary()
     used_names = set()
     new_keys = {}
@@ -1273,8 +1294,78 @@ def outside_victory_rows(encounter):
     return rows
 
 
+def _died(occupant):
+    """A person record whose tally holds a died entry (#1902)."""
+    return any(isinstance(e, dict) and e.get("outcome") == "died" for e in occupant.get("tally") or [])
+
+
+def recorded_dead_rows(encounter_data, response, location_id):
+    """The listed npcs a createEncounter names who are recorded dead (#1902):
+    a death stands, so such a fight is refused before anything is built.
+    Read from the build's one occupants read (``response``: the whole
+    document), by typed ids and the builder's own sheet-stem rule, never a
+    near name. Per npc slot, in order:
+    - a declared occupantIds id that names a person record in this module
+      decides alone: refused when it has none left and a died entry, never
+      refused by death otherwise (presence is the other gates' business);
+    - else, unless the builder's own living match at the place finds someone
+      (a living person is never refused), the loaded sheet's stem: refused
+      when a person with that id tail is recorded died at the fight's place
+      and none with it is alive there, or when none with it is alive in the
+      module and one is recorded died elsewhere.
+    Monster slots and roster observers are not checked. None when the document is unread; []
+    when no one listed is recorded dead."""
+    from core.nql import occupants
+
+    if response is _UNREAD or not response or not response.get("ok"):
+        return None
+    tracker = load_json("party_tracker.json") or {}
+    # Occupant ids are minted with underscores; normalize as every other reader does.
+    module = (tracker.get("module") or "").replace(" ", "_")
+    place = occupants.place_id(module, location_id)
+    people = [o for o in (response.get("live_state") or {}).get("occupants") or []
+              if isinstance(o, dict) and o.get("kind") == "person" and isinstance(o.get("id"), str)
+              and o["id"].startswith("occ:%s/" % module)]
+    place_occupants = _place_occupants(location_id, response)
+    path_manager = ModulePathManager(module.replace(" ", "_") or None)
+    declared_ids = encounter_data.get("occupantIds") or {}
+    rows = []
+    for index, name in enumerate(encounter_data.get("npcs") or []):
+        if not isinstance(name, str):
+            continue
+        slot = "npc:%d" % index
+        declared = declared_ids.get(slot) if isinstance(declared_ids, dict) else None
+        named = next((o for o in people if o["id"] == declared), None) if declared else None
+        if named is not None:
+            # The DM's typed id decides alone, both ways.
+            if not (named.get("count") == 0 and _died(named)):
+                continue
+            dead = named
+        else:
+            loaded = _load_npc_sheet(name, path_manager)
+            npc_file = loaded[1] if loaded else path_manager.get_character_path(format_type_name(name))
+            if _listed_npc_occupant(place_occupants, npc_file, name, set(), declared=declared):
+                continue
+            if not loaded:
+                continue
+            stem = os.path.splitext(os.path.basename(str(loaded[1])))[0]
+            same = [o for o in people if occupants.id_stem(o) == stem]
+            alive = [o for o in same if o.get("count") != 0]
+            died = [o for o in same if o.get("count") == 0 and _died(o)]
+            here = [o for o in died if o.get("location") == place]
+            if here and not any(o.get("location") == place for o in alive):
+                dead = here[0]
+            elif died and not alive:
+                dead = died[0]
+            else:
+                continue
+        rows.append({"slot": slot, "name": name, "occupantId": dead["id"], "location": dead.get("location"),
+                     "record": occupants._tally_text(dead)})
+    return rows
+
+
 def _write_result(result_file, status, encounter_id=None, encounter_file=None, down_hostiles=None,
-                  outside_rows=None):
+                  outside_rows=None, recorded_dead=None):
     """Hand the caller a typed result; printed lines are for people only (#812)."""
     if not result_file:
         return True
@@ -1286,6 +1377,8 @@ def _write_result(result_file, status, encounter_id=None, encounter_file=None, d
         result["downHostiles"] = down_hostiles
     if outside_rows is not None:
         result["outsideRows"] = outside_rows
+    if recorded_dead is not None:
+        result["recordedDead"] = recorded_dead
     if save_json(result_file, result):
         return True
     logging.error(f"Failed to write the builder result to {result_file}")
@@ -1298,8 +1391,9 @@ def main(argv=None):
     Exits 0 only when the encounter is saved, else 1. With --result-file the
     outcome is also written there as {"version", "status", "encounterId",
     "encounterFile"}; status is saved, invalid_input, generation_failed,
-    save_failed (#812), no_hostile_can_act with its "downHostiles" (#1891) or
-    no_hostile_in_fight with its "outsideRows" (#1899).
+    save_failed (#812), no_hostile_can_act with its "downHostiles" (#1891),
+    no_hostile_in_fight with its "outsideRows" (#1899) or recorded_dead with
+    its "recordedDead" (#1902).
     """
     import argparse
 
@@ -1339,7 +1433,22 @@ def main(argv=None):
         _write_result(result_file, "invalid_input")
         return 1
 
-    encounter = generate_encounter(encounter_data)
+    # #1902: a fight that names someone recorded dead is refused before
+    # anything is built. One occupants read serves this check and the build.
+    # Fail open: a failed check builds as before.
+    location = get_current_location()
+    occupant_response = _occupant_read(location) if location else _UNREAD
+    try:
+        dead = recorded_dead_rows(encounter_data, occupant_response, location)
+    except Exception as exc:
+        warning("COMBAT_BUILDER: recorded-death check skipped (%s)" % exc, category="encounter_setup")
+        dead = None
+    if dead:
+        print("[COMBAT_BUILDER] Refused: this fight names someone recorded dead; nothing built")
+        _write_result(result_file, "recorded_dead", recorded_dead=dead)
+        return 1
+
+    encounter = generate_encounter(encounter_data, occupant_response)
     
     if encounter:
         # #1891: a fight with no hostile who can fight is refused before the
