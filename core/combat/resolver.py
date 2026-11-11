@@ -47,6 +47,7 @@ from core.managers.combat_state import (
     falls_unconscious,
     has_left_fight,
     initiative_eligible_ids,
+    incapacitated,
     is_combatant_targetable,
     is_hostile,
     is_turn_eligible,
@@ -1397,7 +1398,7 @@ def stands_at_turn_start(encounter, characters, actor):
     stand: alive above 0 HP, not incapacitated, not grappled or restrained.
     One predicate for the pipeline's stand-up and the player's roll ask."""
     if not isinstance(actor, dict) or not is_combatant_targetable(actor) \
-            or actor.get("effectIncapacitated") is True:
+            or incapacitated(actor):
         return False
     stated = _stated_conditions(characters, encounter, actor)
     _owner, effects = _stand_up_record(encounter, characters, actor)
@@ -5518,9 +5519,15 @@ def _refresh_effect_control_flags(encounter, characters):
             effects = sheet.get("temporaryEffects", []) or []
         else:
             effects = creature.get("activeEffects", []) or []
-        creature["effectIncapacitated"] = any(
-            effect_incapacitates(effect) for effect in effects
-        )
+        if creature.get("type") in ("player", "npc"):
+            # #1894 (A): a confirmed hold holds while the sheet states it.
+            from core.combat.sleeper import held_effect_holds
+
+            creature["effectIncapacitated"] = any(held_effect_holds(effect, sheet) for effect in effects)
+        else:
+            creature["effectIncapacitated"] = any(
+                effect_incapacitates(effect) for effect in effects
+            )
 
 
 def settle_effect_zero_status(encounter, before, characters):

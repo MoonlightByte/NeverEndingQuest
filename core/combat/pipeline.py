@@ -54,10 +54,13 @@ from core.managers.combat_state import (
     combat_provenance,
     has_left_fight,
     join_as_hostile,
+    incapacitated,
     is_combatant_targetable,
     is_turn_eligible,
     resolve_creature_controller,
     round_ends,
+    stated_incapacitation,
+    stated_only,
 )
 
 
@@ -324,6 +327,87 @@ def _apply_turn_ticks(encounter, characters, ticks, event_id, actor_id):
     )
 
 
+def standoff_held(encounter, characters=None):
+    """#1894 K-b: who holds the fight still, one entry per living targetable
+    combatant in the initiative order, or None when no one is held by a stated
+    condition alone (an effect-only hold keeps today's pause). A party member
+    the DM confirmed held (D-1894-5 A) counts as stated: read from its own
+    effect's id and sourceEncounterId on its sheet, never from a name."""
+    from core.combat.sleeper import held_seat
+
+    state = encounter.get("combatState") or {}
+    held, stated = [], False
+    for combatant_id in state.get("initiativeOrder") or []:
+        creature = combatant_by_id(encounter, combatant_id)
+        if not is_combatant_targetable(creature):
+            continue
+        if not incapacitated(creature):
+            return None
+        sheet = (characters or {}).get(creature.get("name")) if creature.get("type") in ("player", "npc") else None
+        if stated_only(creature):
+            stated = True
+            condition = stated_incapacitation(creature)
+        elif held_seat(sheet, creature, encounter):
+            stated = True
+            condition = stated_incapacitation(creature) or "held"
+        else:
+            condition = "effect"
+        held.append({"combatantId": combatant_id, "name": creature.get("name"), "condition": condition})
+    return held if stated and held else None
+
+
+def _can_act_next_round(encounter):
+    """#1894 K-b: whether a targetable combatant in the initiative order is
+    turn-eligible (it acted already this round, or a window would have it)."""
+    state = encounter.get("combatState") or {}
+    return any(
+        is_turn_eligible(combatant_by_id(encounter, combatant_id))
+        for combatant_id in state.get("initiativeOrder") or []
+    )
+
+
+def _standoff_event(encounter, characters, pending_turn, state):
+    """#1894 K-b: nobody on either side can act, no timed effect can advance,
+    and someone is held by a stated condition: one provider-free event that
+    ends the fight as a standoff (the commit writes completion.endedBy). No
+    mutation. None when the hold is effects only."""
+    held = standoff_held(encounter, characters)
+    if held is None:
+        return None
+    parts = [
+        "%s is %s" % (item["name"], item["condition"]) if item["condition"] != "effect"
+        else "%s is held by an effect" % item["name"]
+        for item in held
+    ]
+    event = {
+        "eventId": make_event_id(
+            encounter.get("encounterId", "encounter"),
+            pending_turn.get("round", state.get("round", 1)),
+            pending_turn.get("turnId"),
+            0,
+        ),
+        "actorId": "combat-clock",
+        "stateVersion": state.get("revision"),
+        "intent": {"action": "endStandoff"},
+        "outcome": {
+            "kind": "standoff",
+            "description": "Nobody on either side can act (%s); the fight ends in a standoff." % "; ".join(parts),
+            "held": held,
+            "targets": [],
+        },
+        "resources": [],
+        "effects": [],
+        "effectTicks": [],
+    }
+    resolution = {"event": event, "charDeltas": {}, "creatureDeltas": {}, "effectOps": [], "violations": []}
+    next_encounter, next_characters = apply_resolution(encounter, characters, resolution)
+    _record_character_state_after(event, characters, next_characters)
+    problems = validate_event(event)
+    if problems:
+        raise CombatIntentError("; ".join(problems), "combat-clock", {"violations": problems})
+    return [event], next_encounter, next_characters
+
+
 def resolve_effect_clock_window(encounter, characters, pending_turn):
     """Build one provider-free event when no living combatant can act."""
     if not isinstance(pending_turn, dict) or pending_turn.get("clockOnly") is not True:
@@ -358,7 +442,13 @@ def resolve_effect_clock_window(encounter, characters, pending_turn):
             "end_of_turn",
             encounter=encounter,
         )
-        if not future_ticks:
+        # #1894 K-b: someone who already acted this round and can act again
+        # (the rest held, a stated hold among them) needs only the round to
+        # turn: advance the boundary with no ticks, as above.
+        if not future_ticks and not _can_act_next_round(encounter):
+            standoff = _standoff_event(encounter, characters, pending_turn, state)
+            if standoff is not None:
+                return standoff
             raise CombatIntentError(
                 "All living combatants are incapacitated, but no timed effect can advance"
             )
@@ -620,8 +710,11 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             # ticks attach to a durable event. Defeated actors remain omitted.
             if (
                 is_combatant_targetable(actor)
-                and actor.get("effectIncapacitated") is True
+                and incapacitated(actor)
             ):
+                # #1894: a stated condition gets its own reason, kind and name;
+                # the effect case is byte-equal to before.
+                stated_name = stated_incapacitation(actor) if stated_only(actor) else None
                 skipped_event = {
                     "eventId": make_event_id(
                         next_encounter.get("encounterId", "encounter"),
@@ -633,19 +726,23 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                     "stateVersion": revision,
                     "intent": {
                         "action": "skipTurn",
-                        "reason": "effectIncapacitated",
+                        "reason": "statedIncapacitation" if stated_name else "effectIncapacitated",
                     },
                     "outcome": {
                         "kind": "skipped",
-                        "description": "%s is incapacitated and cannot act."
-                        % actor.get("name", "The combatant"),
+                        "description": (
+                            "%s is %s and cannot act." % (actor.get("name", "The combatant"), stated_name)
+                            if stated_name else
+                            "%s is incapacitated and cannot act." % actor.get("name", "The combatant")
+                        ),
                         "targets": [],
                     },
                     "resources": [],
                     "effects": [],
                     "normalizations": [
                         {
-                            "kind": "actorIncapacitatedEarlierInBatch",
+                            "kind": "actorStatedIncapacitated" if stated_name
+                            else "actorIncapacitatedEarlierInBatch",
                             "actorId": actor_id,
                         }
                     ],

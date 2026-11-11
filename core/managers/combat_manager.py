@@ -156,7 +156,9 @@ from core.managers.combat_state import (
     display_status,
     ensure_combat_state,
     expected_automatic_actor_ids,
+    ended_in_standoff,
     expected_player_window_ids,
+    incapacitated,
     initiative_eligible_ids,
     is_down,
     is_party_member,
@@ -166,6 +168,8 @@ from core.managers.combat_state import (
     recovery_action,
     resolve_creature_controller,
     round_events,
+    stated_incapacitation,
+    stated_only,
     turn_awaits_recovery,
     valid_pending_delivery,
 )
@@ -2553,6 +2557,22 @@ def _xp_paths(encounter_data, character_paths):
     return {name: path for name, path in paths.items() if name in roster}
 
 
+_STANDOFF_SENTENCE = (
+    "The fight ended in a standoff: nobody on either side could act. "
+    "Neither side won, and the foes were left as they were. "
+    "A stated condition lasts until the story ends it."
+)
+
+
+def _standoff_sentence(encounter):
+    """#1894 K-b: the after-fight transcript's one fixed sentence for a fight
+    that ended in a standoff (completion.endedBy, the only saved key), so a
+    resumed completion gives the same text; "" otherwise."""
+    from core.managers.combat_state import ended_in_standoff
+
+    return _STANDOFF_SENTENCE if ended_in_standoff(encounter) else ""
+
+
 def _complete_agentic_combat(
     encounter_data,
     encounter_path,
@@ -2616,6 +2636,8 @@ def _complete_agentic_combat(
             for creature in (encounter_data.get("creatures") or [])
             if isinstance(creature, dict)
         )
+        # #1894 K-b: a standoff leaves no minute to search, as a withdrawal.
+        fled = fled or ended_in_standoff(encounter_data)
         # #1405: only the committed initiative members (#1339): an observer
         # fired nothing here, and its pending count from an earlier fight is
         # not forfeit by this one.
@@ -2659,6 +2681,9 @@ def _complete_agentic_combat(
             )
         else:
             xp_message = f"XP Awarded: {xp_narrative}{ammunition_note}"
+            standoff_text = _standoff_sentence(receipt_encounter)
+            if standoff_text:
+                xp_message += " " + standoff_text
             if not any(
                 message.get("role") == "user"
                 and message.get("content") == xp_message
@@ -2909,7 +2934,11 @@ def sync_active_encounter():
                         creature["maxHitPoints"] = player_data.get("maxHitPoints")
                         changes_made = True
                     # #1110: a typed flee or yield stays on the row; the sheet keeps its own status.
-                    if creature.get("status") != player_data.get("status") and not left_by_resolution(creature):
+                    # #1894 D-1894-5 (B): a party sleeper's wake effect holds the row alive, as #1900 C5.
+                    from core.combat.sleeper import keep_row_status
+
+                    if (creature.get("status") != player_data.get("status") and not left_by_resolution(creature)
+                            and not keep_row_status(player_data, creature, encounter_data)):
                         creature["status"] = player_data.get("status")
                         changes_made = True
                     if creature.get("conditions") != player_data.get("condition_affected"):
@@ -5058,7 +5087,7 @@ This is narration only. Do not advance the round or apply any combat action."""
                        encounter_data.get("combatState") or {},
                    ) == "human"
                    and creature.get("combatantId") not in already_acted
-                   and creature.get("effectIncapacitated") is True
+                   and incapacitated(creature)
                    and str(creature.get("status", "alive")).lower() == "alive"
                    and (
                        not isinstance(
@@ -5085,6 +5114,18 @@ This is narration only. Do not advance the round or apply any combat action."""
                    "temporarily incapacitated and cannot act this turn. "
                    "Combat and effect durations continue."
                )
+               if stated_only(skipped_player):
+                   # #1894: a stated condition has no clock; it lasts until
+                   # the story ends it.
+                   stated_name = stated_incapacitation(skipped_player)
+                   skipped_player_notice = (
+                       f"{skipped_player.get('name', 'The player character')} is "
+                       f"{stated_name} and cannot act until it ends. Combat continues."
+                   )
+                   presentation_skipped_player_notice = (
+                       f"{skipped_player_display_name} is "
+                       f"{stated_name} and cannot act until it ends. Combat continues."
+                   )
        else:
            automatic_initiative_step = bool(pending_initial_npc_turns)
            automatic_turn_window = list(pending_initial_npc_turns)
