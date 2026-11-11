@@ -1090,11 +1090,48 @@ def _present_lines(here: Optional[Dict[str, Any]]) -> str:
                      for e in entries)
 
 
+def _present_person_hp(occupant: Any, place: str, root: str) -> Optional[int]:
+    """#1921: the sheet hit points of a present person occupant (kind person,
+    at this place, a count above 0), read from the sheet its id's stem names
+    (#1450), never from a display name. None when it is not a present
+    person, the sheet cannot be read, or its hitPoints is not an int."""
+    import json
+
+    if not isinstance(occupant, dict) or occupant.get("kind") != "person" or occupant.get("location") != place:
+        return None
+    count = occupant.get("count")
+    if not isinstance(count, int) or isinstance(count, bool) or count < 1:
+        return None
+    from utils.module_path_manager import character_sheet_path
+
+    try:
+        with open(os.path.join(root, character_sheet_path(id_stem(occupant))), "r", encoding="utf-8") as handle:
+            hp = json.load(handle).get("hitPoints")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return hp if isinstance(hp, int) and not isinstance(hp, bool) else None
+
+
+# #1921 (D-1921-2, form A): a died resolve on a present person above 0 HP is
+# refused; the correction keys its exits on the player's last action.
+ALIVE_PROBLEM = '%s (occupantId "%s") is present at %d HP, so their death is not a story outcome yet'
+ALIVE_ENDING = (
+    "Answer the player's last action again; the player's choice stands, and their character does what the "
+    "player said. If the player's last action aims a spell or weapon at them, send createEncounter with them "
+    "in npcs and \"%s\" in occupantIds, the attack as openingAction (openingActionSource "
+    "\"latest_player_message\"), and narration \"\" with no attack roll, hit or damage before the fight. "
+    "Only if they die from something no one in the party does (a fall, a poison, someone outside the party), "
+    "first send an updateCharacterInfo on them that brings their hitPoints to 0, then this resolveOccupant. "
+    "Otherwise they are alive: do not narrate their death."
+)
+
+
 def correction(action_type: str, problem: str, here: Optional[Dict[str, Any]], *,
-               recorded: Optional[str] = None) -> str:
+               recorded: Optional[str] = None, ending: Optional[str] = None) -> str:
     """The message that sends a refused occupant action back to the DM.
     ``recorded`` (#1837) is the rosterRecord line of the person the action
-    named, shown in place of the present list: they are not present."""
+    named, shown in place of the present list: they are not present.
+    ``ending`` (#1921) replaces the generic last clause."""
     listing = ("Recorded at this location: %s" % recorded if recorded is not None
                else "Present occupants at this location: %s" % _present_lines(here))
     if recorded is None and action_type == "resolveOccupant":
@@ -1104,12 +1141,13 @@ def correction(action_type: str, problem: str, here: Optional[Dict[str, Any]], *
                   + list((here or {}).get("present") or []) if returnable_entry(o) is not None]
         if people:
             listing += "; recorded here (resolve by this id): %s" % "; ".join(people)
+    tail = ("; issue the action again with an id and values from this list, or narrate the outcome "
+            "without it." if ending is None else ". " + ending)
     return (
         "Occupant Error: %s was refused: %s. Nothing changed in the roster record. "
         "%s. Later actions from this response have not "
-        "executed. Do not repeat earlier completed actions; issue the action again with an id "
-        "and values from this list, or narrate the outcome without it."
-        % (action_type, problem, listing)
+        "executed. Do not repeat earlier completed actions%s"
+        % (action_type, problem, listing, tail)
     )
 
 
@@ -1148,6 +1186,15 @@ def apply_dm_action(action_type: str, parameters: Any, request_id: str, module: 
             current = request(view=(place,), root=root)
             occupant = world_occupant((current or {}).get("live_state"), oid) if current and current.get("ok") else None
             entry = returnable_entry(occupant, place)
+            outcome = str((parameters if isinstance(parameters, dict) else {}).get("outcome") or "").strip().lower()
+            if entry is None and outcome == "died":
+                # #1921: a present person above 0 HP is not killed by a story
+                # outcome; by id and sheet only, failing open.
+                hp = _present_person_hp(occupant, place, root)
+                if hp is not None and hp > 0:
+                    return {"ok": False, "correction": correction(
+                        action_type, ALIVE_PROBLEM % (occupant.get("name"), oid, hp),
+                        (current.get("locations") or [None])[0], ending=ALIVE_ENDING % oid)}
             if entry is not None:
                 recorded = "%s [%s]: %s" % (occupant.get("name"), oid, _tally_text(occupant))
                 p = parameters if isinstance(parameters, dict) else {}
