@@ -8,7 +8,9 @@ between calls; the caller keeps the returned ``checkpoint`` and hands it back on
 the next call. See Firelight's docs/PROTOCOL.md for the contract.
 """
 import contextvars
+import errno
 import json
+import sys
 import os
 import platform
 import subprocess
@@ -47,6 +49,60 @@ def binary_path(repo_root: Optional[str] = None) -> str:
     paths = [os.path.join(root, "bin", name + suffix) for name in ENGINE_NAMES]
     # Neither present: the nql-apply path, as before the rename.
     return next((path for path in paths if os.path.isfile(path)), paths[-1])
+
+
+# #1920: the machines the shipped engine builds (bin/) run on.
+SUPPORTED_PLATFORMS = "Windows x86-64 and Linux x86-64"
+START_CHECK_TIMEOUT_SECONDS = 10
+# Windows: 193 not a valid program, 216 built for another machine type
+_BAD_EXE_FORMAT_WINERRORS = (193, 216)
+
+
+def start_check(binary: Optional[str] = None) -> Optional[str]:
+    """Run the engine once at start (#1920): None when it runs here, else the one line to stop with.
+
+    The cheapest run the engine supports: an empty document, which it answers at once with an input
+    refusal. Only an engine that cannot run on this machine stops the start: the binary is missing, it is
+    not a program for this machine (ENOEXEC; Windows error 193 or 216), or, outside Windows, it is not
+    executable (EACCES). On Windows a refused access is not a stop: there is no exec bit, and access is
+    refused for a while by an antivirus scan or a file being replaced. A transient error, a timeout, an odd
+    answer or any other failure is not a stop either: each game call keeps its own handling
+    (EngineUnavailable), as before."""
+    from utils.transient_filesystem import is_transient_filesystem_error
+
+    exe = binary or binary_path()
+    if not os.path.isfile(exe):
+        return _start_stop_line("is missing", exe)
+    try:
+        subprocess.run([exe], input=b"{}", capture_output=True, timeout=START_CHECK_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        return None
+    except OSError as error:
+        if is_transient_filesystem_error(error):
+            return None
+        if error.errno == errno.ENOEXEC or getattr(error, "winerror", None) in _BAD_EXE_FORMAT_WINERRORS:
+            return _start_stop_line("is not built for this machine", exe)
+        if isinstance(error, FileNotFoundError):
+            return _start_stop_line("is missing", exe)
+        if os.name != "nt" and (isinstance(error, PermissionError) or error.errno == errno.EACCES):
+            return _start_stop_line("is not executable", exe)
+        return None
+    return None
+
+
+def _start_stop_line(reason: str, exe: str) -> str:
+    path = os.path.abspath(exe).encode("ascii", "backslashreplace").decode("ascii")
+    return (f"NeverEndingQuest cannot start: the rules engine {reason} ({path}). "
+            f"It runs on {SUPPORTED_PLATFORMS}.")
+
+
+def require_engine(exit_code: int = 1) -> None:
+    """At a game start: print start_check's line on stderr and exit with ``exit_code``; nothing when the
+    engine runs (#1920)."""
+    line = start_check()
+    if line is not None:
+        print(line, file=sys.stderr, flush=True)
+        raise SystemExit(exit_code)
 
 
 def call(document: Dict[str, Any], *, binary: Optional[str] = None, timeout: Optional[float] = DEFAULT_TIMEOUT_SECONDS,
