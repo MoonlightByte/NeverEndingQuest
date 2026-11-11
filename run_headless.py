@@ -254,10 +254,18 @@ def _run_session(args, driver, timeout_per_turn=None):
 
 
 def cmd_serve(args):
+    # #1920: an engine that cannot run on this machine stops the start before any game
+    # or model call; its line goes to stderr, so stdout stays NDJSON.
+    from core.nql.apply import require_engine
+    require_engine(EXIT_BOOTSTRAP)
     return _run_session(args, ServeDriver(sys.stdin))
 
 
 def cmd_script(args):
+    # #1920: an engine that cannot run on this machine stops the start before any game
+    # or model call; its line goes to stderr, so stdout stays NDJSON.
+    from core.nql.apply import require_engine
+    require_engine(EXIT_BOOTSTRAP)
     try:
         with open(args.inputs, "r", encoding="utf-8") as handle:
             inputs = ["" if line.strip() == SCRIPT_ENTER else line.rstrip("\n")
