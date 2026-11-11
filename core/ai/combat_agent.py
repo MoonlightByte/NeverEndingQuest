@@ -413,9 +413,11 @@ the number of Multiattack swings and consumes each persisted roll; do not emit
 duplicate intents for the same actor. Never set a known attack's ability to
 'Multiattack' itself or to any listed entry whose damageDice is 0d0: those
 are containers or traits, not attacks (a kind 'save' entry is declared in
-mode 'adjudicated' as described above). Give the rowRef of the single
-weapon/action the Multiattack is made of (for example the 'Slam' row) and code
-applies the extra swings.
+mode 'adjudicated' as described above). When the actor uses its Multiattack,
+give the rowRef of the single weapon/action the Multiattack is made of (for
+example the 'Slam' row) and code applies the extra swings; a listed attack the
+Multiattack does not make is its own action: its rowRef makes that one attack
+instead.
 
 Intents resolve in the required order. Account for the HP changes you propose
 for earlier actors: never have a later actor attack a target your earlier

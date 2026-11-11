@@ -379,6 +379,72 @@ def _stated_tick_trigger(entry, key="save"):
     return "end_of_turn" if on_fail.get("tickTrigger") == "end_of_turn" else "end_of_round"
 
 
+_SPECIES_NAMES = {}
+
+
+def _species_names(key):
+    """#1905 (D-1905-2): the casefolded names a species key stands for, read
+    from data/srd_character_origins.json: the species' own name and the first
+    cell of every row of its tables whose first column is "Lineage" (Elf: Elf,
+    Drow, High Elf, Wood Elf). Character creation writes ``race`` as that name."""
+    if not isinstance(key, str):
+        return frozenset()
+    if key not in _SPECIES_NAMES:
+        import json
+        import os
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+                            "data", "srd_character_origins.json")
+        names = set()
+        try:
+            with open(path, encoding="utf-8") as handle:
+                species = json.load(handle).get("species") or []
+        except (OSError, ValueError):
+            species = []
+        for entry in species:
+            if not isinstance(entry, dict) or entry.get("key") != key:
+                continue
+            if isinstance(entry.get("name"), str):
+                names.add(entry["name"].strip().casefold())
+            for table in entry.get("tables") or []:
+                columns = (table or {}).get("columns") or []
+                if not columns or str(columns[0]).strip().casefold() != "lineage":
+                    continue
+                for row_cells in table.get("rows") or []:
+                    if row_cells and isinstance(row_cells[0], str):
+                        names.add(row_cells[0].strip().casefold())
+        _SPECIES_NAMES[key] = frozenset(names)
+    return _SPECIES_NAMES[key]
+
+
+def _rider_exemption(encounter, characters, target, entry):
+    """#1905 (D-1905-2): the typed creature a rider spares, or None.
+
+    ``rider.exemptTargets`` lists ``creatureTypes`` (a monster target's sheet
+    ``type``, exact after strip and casefold) and ``species`` (keys: a party
+    target's sheet ``race`` equals that species' name or one of its lineages).
+    A target with no recorded race or type is not exempt. Returns the matched
+    key ("undead", "elf")."""
+    exempt = ((entry or {}).get("rider") or {}).get("exemptTargets")
+    if not isinstance(exempt, dict) or not isinstance(target, dict):
+        return None
+    sheet = _raw_combatant_sheet(encounter, characters, target)
+    if target.get("type") in ("player", "npc"):
+        race = sheet.get("race")
+        if not isinstance(race, str) or not race.strip():
+            return None
+        for key in exempt.get("species") or []:
+            if race.strip().casefold() in _species_names(key):
+                return key
+        return None
+    kind = sheet.get("type")
+    if not isinstance(kind, str) or not kind.strip():
+        return None
+    for listed in exempt.get("creatureTypes") or []:
+        if isinstance(listed, str) and kind.strip().casefold() == listed.strip().casefold():
+            return listed
+    return None
+
+
 def _turn_duration(rounds):
     """#1914: the duration text of a turn-anchored effect (T096 and T097 read it)."""
     if rounds == 1:
@@ -2380,6 +2446,17 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
                         swing_on_hit["conditionsSkipped"] = skipped
         rider_result = None
         rider_spec = _stated_save_spec(entry, "rider") if hit else None
+        rider_exempt = (_rider_exemption(encounter, characters, target, entry)
+                        if rider_spec is not None else None)
+        if rider_exempt is not None:
+            # #1905 (D-1905-2): the rider spares this target (the ghoul's Claw:
+            # Undead and elves). No save is rolled and nothing is staged; the
+            # hit's own damage stands. The record names the exemption.
+            rider_result = {
+                "ability": entry.get("name"), "save": rider_spec["type"], "dc": rider_spec["dc"],
+                "saved": None, "damage": 0, "conditions": [], "engine": False, "exempt": rider_exempt,
+            }
+            rider_spec = None
         if rider_spec is not None:
             # MS-b: the hit forces the stat block's rider save on the same
             # event (a venomous bite): party target through the engine,
