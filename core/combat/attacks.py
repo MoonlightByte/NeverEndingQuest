@@ -95,6 +95,21 @@ def typed_multiattack_issue(sheet):
                 "multiattackSequence item %d names %r, which is not one of this "
                 "monster's attack entries %s" % (index, name, attacks)
             )
+    # #1934: the sequence names its swings, and _find takes the first entry of
+    # a name, so two executable entries of one name (after strip and casefold,
+    # as _find compares) would leave one of them unplayable.
+    seen = set()
+    for entry in entries:
+        if not is_executable_attack(entry):
+            continue
+        key = str(entry.get("name") or "").strip().casefold()
+        if key in seen:
+            return (
+                "two attack entries share the name %r; a multiattackSequence "
+                "names its swings by name, so every attack entry needs its own "
+                "name" % (entry.get("name"),)
+            )
+        seen.add(key)
     return None
 
 
