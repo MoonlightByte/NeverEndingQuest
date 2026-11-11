@@ -1337,11 +1337,14 @@ _TARGET_ADVANTAGE = frozenset(("blinded", "paralyzed", "petrified", "restrained"
 AUTO_CRITICAL_CONDITIONS = frozenset(("paralyzed", "unconscious"))
 
 
-def auto_critical(target_conditions, kind):
+def auto_critical(target_conditions, kind, held):
     """Whether a hit by an attack of ``kind`` on a target stating
     ``target_conditions`` (typed, casefolded) is a critical hit by that rule.
-    It never makes a miss a hit; the caller asks only for a hit below 20."""
-    return kind == "melee" and bool(AUTO_CRITICAL_CONDITIONS & set(target_conditions or ()))
+    ``held``: the target cannot take its turns (not is_turn_eligible), the
+    test turns use (#1901 M1), so a name alone on a creature that still acts
+    gives no critical. It never makes a miss a hit; the caller asks only for
+    a hit below 20."""
+    return kind == "melee" and held is True and bool(AUTO_CRITICAL_CONDITIONS & set(target_conditions or ()))
 
 
 def _attack_mode(attacker_conditions, target_conditions, entry_type, target_dodging=False, declared=None):
@@ -2333,7 +2336,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
         if critical_override is not None:
             forced = bool(critical_override)
         else:
-            forced = auto_critical(swing_conditions, attack_kind(entry))
+            forced = auto_critical(swing_conditions, attack_kind(entry), not is_turn_eligible(target))
         forced = forced and attack_die != 20
         # Option 3: the rules engine scores the swing and its damage; today's
         # arithmetic stays the fallback (engine false on the swing).
@@ -2954,9 +2957,11 @@ def player_weapon_attack_score(encounter, characters, record, entry):
         total = kept + to_hit
         critical = kept == 20
         hit = critical or (kept != 1 and total >= ac)
-    # #1901: a melee hit on a target stating Paralyzed or Unconscious now is a
-    # critical; the record keeps it, so the damage asked and the commit agree.
-    if hit and kept != 20 and auto_critical(_stated_conditions(characters, encounter, target), attack_kind(entry)):
+    # #1901: a melee hit on a target stating Paralyzed or Unconscious and held
+    # (M1: not turn-eligible) now is a critical; the record keeps it, so the
+    # damage asked and the commit agree.
+    if hit and kept != 20 and auto_critical(_stated_conditions(characters, encounter, target), attack_kind(entry),
+                                            not is_turn_eligible(target)):
         critical = True
     return hit, critical, kept, total, ac
 
