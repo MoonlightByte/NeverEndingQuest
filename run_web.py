@@ -509,6 +509,9 @@ if __name__ == "__main__":
         sys.exit(0 if check_frontend_tools() else 1)
     if args.prepare_frontend:
         sys.exit(0 if ensure_react_frontend(shipped=args.shipped_frontend) else 1)
+    # #1920: an engine that cannot run on this machine stops the start here, before any game or model call.
+    from core.nql.apply import require_engine
+    require_engine()
     # #1681/#1682: a data root (--data-dir or NEQ_DATA_DIR) holds this player's
     # state; seed or refresh it, then run from it. Unset: nothing changes.
     from utils.data_root import enter_data_root, prepare_data_root, resolve_data_root
