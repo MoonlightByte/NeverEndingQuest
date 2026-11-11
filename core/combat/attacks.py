@@ -187,7 +187,9 @@ def on_hit_issue(sheet):
 # row: (key,) for a row key, (key, nested key) for a key inside a row object.
 # A later key is one more entry here and nothing else.
 # #1914 (D-1914-1): onFail.tickTrigger is engine-only; no generator is taught it yet.
-MECHANICS_ONLY_ROW_PATHS = (("onHit",), ("rider", "onFail", "tickTrigger"), ("save", "onFail", "tickTrigger"))
+# #1905 (D-1905-2): rider.exemptTargets is engine-only as well.
+MECHANICS_ONLY_ROW_PATHS = (("onHit",), ("rider", "onFail", "tickTrigger"), ("save", "onFail", "tickTrigger"),
+                            ("rider", "exemptTargets"))
 MECHANICS_ONLY_ROW_FAMILIES = ("actions", "specialAbilities")
 
 
@@ -342,6 +344,13 @@ def attack_sequence(
     specification = _explicit_sequence(sheet, marker, sequence)
     exact = _expand_sequence(executable, specification)
     if exact:
+        # #1905: a chosen executable row the Multiattack does not swing is its
+        # own action (SRD: the ghoul's Claw beside "makes two Bite attacks"):
+        # one swing of that row. Found by identity (K1: the typed position),
+        # never by name; a row the sequence names, or no choice, swings it all.
+        chosen = next((entry for entry in executable if entry is selected), None)
+        if chosen is not None and not any(entry is chosen for entry in exact):
+            return [chosen]
         return exact
     if specification:
         _warn_unresolved_sequence(sheet, specification)
