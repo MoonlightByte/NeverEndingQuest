@@ -6,6 +6,16 @@ marker becomes a one-round "Asleep" effect on the sheet that states
 unconscious and incapacitates. The sleeper wakes when it takes damage or
 when round 1 ends; a fight that ends first leaves it awake.
 
+#1894 (D-1894-5, B): a party-side combatant (the player, a companion, a
+friendly npc) whose sheet states unconscious above 0 HP with no effect
+behind it is seated the same way (``party_sleeper_rows``).
+
+#1894 (D-1894-5, A, as ruled after the audit): a party member the DM
+confirmed held in the same turn is seated with the same marker under the
+"held-" id; after activation the marker becomes the untimed "Held" effect
+(``held_effect``), which holds while the sheet states one of
+HELD_CONDITIONS and leaves with the fight.
+
 Typed keys and value compares only (AP-7). The wake effect has no
 ``modifiers`` key, so the rules engine never holds it (core/nql/effects
 ``pending_effects``) and adding or removing it makes no engine request.
@@ -19,6 +29,10 @@ WAKE_PREFIX = "asleep-"
 WAKE_NAME = "Asleep"
 WAKE_MARKER = "sleeperWake"
 UNCONSCIOUS = "unconscious"
+# #1894 (A): the confirmed hold's own namespace and the stated names it holds.
+HELD_PREFIX = "held-"
+HELD_NAME = "Held"
+HELD_CONDITIONS = ("incapacitated", "paralyzed", "petrified", "stunned")
 
 
 def _names(value):
@@ -85,6 +99,89 @@ def is_wake_effect(effect):
         and effect.get("name") == WAKE_NAME
         and effect.get("conditions") == [UNCONSCIOUS]
         and effect.get("incapacitates") is True
+    )
+
+
+def held_effect_id(combatant_id):
+    return HELD_PREFIX + str(combatant_id)
+
+
+def held_effect(combatant_id, encounter_id):
+    """#1894 (A): the sheet effect that seats a party member the DM confirmed
+    held. Untimed (it leaves with the fight: exit_combat_effect drops an
+    encounter effect at completion). No ``conditions`` key: the sheet's
+    condition_affected stays the story's own, so removing this effect never
+    removes the stated name, and the DM can still end the condition. No
+    ``modifiers`` key: the engine never holds it."""
+    return {
+        "effectId": held_effect_id(combatant_id),
+        "name": HELD_NAME,
+        "description": "Held by a condition the story stated: no turns in this fight until the story ends it.",
+        "incapacitates": True,
+        "durationKind": "encounter",
+        "duration": "encounter",
+        "sourceEncounterId": str(encounter_id),
+        "authoredBy": "engine",
+    }
+
+
+def is_held_effect(effect):
+    """A confirmed-hold effect this change wrote: its id prefix, encounter,
+    author and shape."""
+    return (
+        isinstance(effect, dict)
+        and isinstance(effect.get("effectId"), str)
+        and effect["effectId"].startswith(HELD_PREFIX)
+        and isinstance(effect.get("sourceEncounterId"), str)
+        and bool(effect["sourceEncounterId"])
+        and effect.get("authoredBy") == "engine"
+        and effect.get("name") == HELD_NAME
+        and effect.get("incapacitates") is True
+        and effect.get("durationKind") == "encounter"
+        and not effect.get("conditions")
+    )
+
+
+def held_effect_ids(sheet):
+    if not isinstance(sheet, dict):
+        return set()
+    return {effect["effectId"] for effect in sheet.get("temporaryEffects") or [] if is_held_effect(effect)}
+
+
+def states_held(sheet):
+    """Whether the sheet's own condition or condition_affected names one of
+    HELD_CONDITIONS (the confirmed hold lasts while it does)."""
+    if not isinstance(sheet, dict):
+        return False
+    listed = _names(sheet.get("condition")) + _names(sheet.get("condition_affected"))
+    return any(name.strip().casefold() in HELD_CONDITIONS for name in listed)
+
+
+def held_effect_holds(effect, sheet):
+    """Whether one sheet effect incapacitates, with the confirmed hold's own
+    rule: it holds only while the sheet states one of HELD_CONDITIONS."""
+    from core.effects.lifecycle import effect_incapacitates
+
+    if not effect_incapacitates(effect):
+        return False
+    return not is_held_effect(effect) or states_held(sheet)
+
+
+def held_seat(sheet, creature, encounter):
+    """K-b's read of the confirmed hold: this row's own held effect from this
+    encounter is on its sheet (id and sourceEncounterId, never a name)."""
+    if not isinstance(sheet, dict) or not isinstance(creature, dict) or not isinstance(encounter, dict):
+        return False
+    combatant_id = creature.get("combatantId")
+    encounter_id = encounter.get("encounterId")
+    if not combatant_id or not encounter_id:
+        return False
+    wanted = held_effect_id(combatant_id)
+    return any(
+        is_held_effect(effect)
+        and effect.get("effectId") == wanted
+        and effect.get("sourceEncounterId") == encounter_id
+        for effect in sheet.get("temporaryEffects") or []
     )
 
 
@@ -188,7 +285,7 @@ def wake_removals(event, encounter, characters):
             continue
         combatant_id = record.get("combatantId")
         creature = combatant_by_id(encounter, combatant_id)
-        if not isinstance(creature, dict) or creature.get("type") != "npc" or combatant_id in seen:
+        if not isinstance(creature, dict) or creature.get("type") not in ("npc", "player") or combatant_id in seen:
             continue
         name = creature.get("name")
         effect_id = wake_effect_id(combatant_id)
@@ -200,10 +297,11 @@ def wake_removals(event, encounter, characters):
 
 
 def sweep_wake_effects(sheet):
-    """C2b: the sheet without any wake effect, then C6. Returns (sheet, removed)."""
+    """C2b: the sheet without any wake effect or confirmed-hold effect (#1894),
+    then C6. Returns (sheet, removed)."""
     from core.effects.lifecycle import apply_effect_ops
 
-    removed = sorted(wake_effect_ids(sheet))
+    removed = sorted(wake_effect_ids(sheet) | held_effect_ids(sheet))
     if not removed:
         return sheet, []
     swept = apply_effect_ops(sheet, [{"op": "remove", "effectId": effect_id} for effect_id in removed])
@@ -246,6 +344,49 @@ def sleeper_rows(encounter, participants, npc_sheets, place_occupants):
     return found
 
 
+def _effect_states_unconscious(sheet):
+    """Whether a live effect on the sheet states unconscious (it holds the
+    sheet itself; no stated-only sleep to seat)."""
+    for effect in (sheet or {}).get("temporaryEffects") or []:
+        if isinstance(effect, dict) and any(
+            name.strip().casefold() == UNCONSCIOUS for name in _names(effect.get("conditions"))
+        ):
+            return True
+    return False
+
+
+def party_side(row):
+    """#1894 D-1894-5: the player, a party companion or a friendly npc."""
+    return isinstance(row, dict) and (row.get("type") == "player" or row.get("faction") == "party")
+
+
+def party_sleeper_rows(encounter, participants, sheets):
+    """#1894 D-1894-5 (B): the (row, sheet) pairs seated asleep on the party's
+    side: a party-side row, active and initiative-eligible, whose sheet states
+    unconscious above 0 HP with no effect behind it. Seated as #1907's hostile
+    sleeper is, so damage or round 1's end wakes them. ``sheets`` is
+    [(row, sheet)] from the build (the player and the npcs)."""
+    from core.managers.combat_state import combat_provenance
+
+    if combat_provenance(encounter) != "typed":
+        return []
+    eligible = {
+        item.get("combatantId")
+        for item in participants or []
+        if isinstance(item, dict) and item.get("participation") == "active" and item.get("initiativeEligible") is True
+    }
+    found = []
+    for row, sheet in sheets or []:
+        if not party_side(row) or row.get("type") not in ("player", "npc"):
+            continue
+        if row.get("combatantId") not in eligible or row.get("effectIncapacitated") is True:
+            continue
+        if not is_sleeper_sheet(sheet) or not states_unconscious(sheet) or _effect_states_unconscious(sheet):
+            continue
+        found.append((row, sheet))
+    return found
+
+
 def seat_sleeper(row):
     """C1 on one row: alive, conditions [unconscious], the marker, and
     effectIncapacitated as a surprised creature is seated."""
@@ -255,13 +396,26 @@ def seat_sleeper(row):
     row["effectIncapacitated"] = True
 
 
+def seat_held(row):
+    """#1894 (A) on one row: the marker under the held id and
+    effectIncapacitated; status and conditions stay the sheet's."""
+    row[WAKE_MARKER] = {"effectId": held_effect_id(row.get("combatantId"))}
+    row["effectIncapacitated"] = True
+
+
+def _held_marker(row):
+    marker = row.get(WAKE_MARKER) if isinstance(row, dict) else None
+    return isinstance(marker, dict) and marker.get("effectId") == held_effect_id(row.get("combatantId"))
+
+
 def opening_names(encounter, characters=None):
-    """C3: the rows asleep at the opening (marker, or the sheet effect)."""
+    """C3: the rows asleep at the opening (marker, or the sheet effect); a
+    confirmed hold is not asleep."""
     names = []
     for creature in (encounter or {}).get("creatures") or []:
         if not isinstance(creature, dict):
             continue
-        asleep = isinstance(creature.get(WAKE_MARKER), dict)
+        asleep = isinstance(creature.get(WAKE_MARKER), dict) and not _held_marker(creature)
         if not asleep and characters is not None:
             asleep = wake_effect_id(creature.get("combatantId")) in wake_effect_ids(characters.get(creature.get("name")))
         if asleep:
@@ -274,7 +428,8 @@ def opening_names(encounter, characters=None):
 def marked_rows(encounter):
     return [
         creature for creature in (encounter or {}).get("creatures") or []
-        if isinstance(creature, dict) and creature.get("type") == "npc" and isinstance(creature.get(WAKE_MARKER), dict)
+        if isinstance(creature, dict) and creature.get("type") in ("npc", "player")
+        and isinstance(creature.get(WAKE_MARKER), dict)
     ]
 
 
@@ -299,13 +454,14 @@ def wake_marked(encounter_path, character_paths, timeout_seconds=5.0):
             if not path:
                 continue
             sheet = _load_object(path, "character %s" % name)
-            if normalize_status(sheet.get("status")) == UNCONSCIOUS:
-                sheet["status"] = "alive"
-            sheet = apply_effect_ops(
-                sheet,
-                [{"op": "add", "effect": wake_effect(row.get("combatantId"), encounter_id)}],
-                engine=False,
-            )
+            if _held_marker(row):
+                # #1894 (A): the confirmed hold; status and conditions stay.
+                effect = held_effect(row.get("combatantId"), encounter_id)
+            else:
+                if normalize_status(sheet.get("status")) == UNCONSCIOUS:
+                    sheet["status"] = "alive"
+                effect = wake_effect(row.get("combatantId"), encounter_id)
+            sheet = apply_effect_ops(sheet, [{"op": "add", "effect": effect}], engine=False)
             _write_object(path, sheet, "sleeper wake for %s" % name)
             woken[name] = deepcopy(sheet)
         for row in rows:
@@ -315,7 +471,7 @@ def wake_marked(encounter_path, character_paths, timeout_seconds=5.0):
 
 
 def sweep_encounter_sheets(encounter_path, character_paths, timeout_seconds=5.0):
-    """C2b at a stale clear: every wake effect off the listed sheets, then C6,
+    """C2b at a stale clear: every wake and confirmed-hold effect off the listed sheets, then C6,
     under the leases. Returns the names swept."""
     from core.managers.combat_transaction import _combat_leases, _load_object, _write_object
 

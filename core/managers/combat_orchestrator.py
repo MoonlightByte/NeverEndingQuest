@@ -3742,6 +3742,10 @@ def execute_agentic_turn(
             narrator,
             player_input,
             deterministic_narration=(
+                # #1894 K-b: the standoff's own line; the clock text otherwise.
+                "Nobody on either side can act, so the fight ends in a standoff."
+                if any((event.get("intent") or {}).get("action") == "endStandoff" for event in events)
+                else
                 "Every combatant is momentarily unable to act. Ongoing "
                 "effects run their course as the next round begins."
             ),

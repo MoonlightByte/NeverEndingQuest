@@ -196,10 +196,46 @@ def is_combatant_targetable(creature):
     return not isinstance(hit_points, (int, float)) or hit_points > 0
 
 
+def stated_incapacitation(creature):
+    """#1894: the first incapacitating condition the row states (copied from
+    the sheet at build, at each loop top and after each applied resolution,
+    #1895), or None."""
+    from core.effects.lifecycle import INCAPACITATING_CONDITIONS
+
+    for name in (creature or {}).get("conditions") or []:
+        if isinstance(name, str) and name.strip().casefold() in INCAPACITATING_CONDITIONS:
+            return name.strip().casefold()
+    return None
+
+
+def stated_hold(creature):
+    """#1894: the stated incapacitating condition that holds this row in a
+    fight, or None. On the party's side (``sleeper.party_side``: the player, a
+    companion, a friendly npc) only an effect holds (D-1894-5 as ruled after
+    the audit): a stated sleep and a stated hold are seated as effects at the
+    start of a fight, and a name left in the list (an old save, a name stated
+    mid-fight, "unconscious" left after a heal) plays as on main."""
+    from core.combat.sleeper import party_side
+
+    if party_side(creature):
+        return None
+    return stated_incapacitation(creature)
+
+
+def incapacitated(creature):
+    """#1894: a combat effect's projection, or a stated hold (``stated_hold``)."""
+    return (creature or {}).get("effectIncapacitated") is True or stated_hold(creature) is not None
+
+
+def stated_only(creature):
+    """#1894: held by a stated condition alone (no combat effect holds it)."""
+    return (creature or {}).get("effectIncapacitated") is not True and stated_hold(creature) is not None
+
+
 def is_turn_eligible(creature):
     if not is_combatant_targetable(creature):
         return False
-    return creature.get("effectIncapacitated") is not True
+    return not incapacitated(creature)
 
 
 def has_left_fight(creature):
@@ -474,7 +510,16 @@ def combat_resolved(encounter):
         all_hostiles_resolved(encounter)
         or party_withdrawn(encounter)
         or no_opposition_left(encounter)
+        or ended_in_standoff(encounter)
     )
+
+
+def ended_in_standoff(encounter):
+    """#1894 K-b: the commit wrote ``completion.endedBy`` "standoff" (nobody on
+    either side could act and someone was held by a stated condition)."""
+    state = (encounter or {}).get("combatState")
+    completion = state.get("completion") if isinstance(state, dict) else None
+    return isinstance(completion, dict) and completion.get("endedBy") == "standoff"
 
 
 def turn_awaits_recovery(encounter):
@@ -1248,8 +1293,9 @@ def stage_turn_events(encounter, turn_id, events):
             pending.get("clockOnly") is True
             and len(normalized) == 1
             and normalized[0].get("actorId") == "combat-clock"
+            # #1894 K-b: or the one standoff event that ends the fight.
             and (normalized[0].get("outcome") or {}).get("kind")
-            == "effectClock"
+            in ("effectClock", "standoff")
         ):
             raise CombatStateConflict(
                 "Clock-only turns require exactly one engine effect-clock event"
@@ -1459,6 +1505,11 @@ def commit_turn(encounter, turn_id, applied_event_ids):
     if committed_round is None:
         committed_round = state["round"]
     record_round_events(state, committed_round, pending.get("events") or [])
+    for event in pending.get("events") or []:
+        # #1894 K-b: the standoff ends the fight in this same commit; the key
+        # makes every resume see the same end (a replayed turn returns above).
+        if isinstance(event, dict) and (event.get("intent") or {}).get("action") == "endStandoff":
+            state["completion"]["endedBy"] = "standoff"
 
     actor_ids = pending["actorIds"]
     consumed_actor_ids = list(pending.get("skippedActorIds") or []) + actor_ids
