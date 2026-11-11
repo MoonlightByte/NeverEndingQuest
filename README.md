@@ -31,10 +31,12 @@ takes a minute or two, and the app reopens by itself when you chose Update and r
 
 ## Quickstart (about 10 minutes)
 
-You need Python 3.9 or newer, Git, Node.js LTS ([nodejs.org](https://nodejs.org/)),
+You need a Windows or Linux computer with an x86-64 processor (the rules engine is built for
+those two only; on another machine the game stops at start and says so), Python 3.9 or newer,
+Git, Node.js LTS ([nodejs.org](https://nodejs.org/)),
 and an OpenAI API key ([platform.openai.com/api-keys](https://platform.openai.com/api-keys)).
 
-**Linux / macOS**
+**Linux (x86-64)**
 ```bash
 git clone https://github.com/MoonlightByte/NeverEndingQuest.git
 cd NeverEndingQuest
@@ -436,7 +438,8 @@ See [LICENSING.md](LICENSING.md) for complete details, FAQ, and legal informatio
 - One AI provider: OpenAI, Gemini, or a local OpenAI-compatible server such as LM Studio
 - 4GB+ RAM recommended
 - Modern web browser (Chrome, Firefox, Edge)
-- Windows, macOS, or Linux
+- Windows or Linux, on an x86-64 processor (the rules engine in `bin/` is built for these two
+  only; macOS and ARM computers are not supported)
 
 ### Setup Steps
 
@@ -449,7 +452,7 @@ See [LICENSING.md](LICENSING.md) for complete details, FAQ, and legal informatio
 2. **Install dependencies**
    ```bash
    python -m venv venv
-   # Linux/macOS: source venv/bin/activate
+   # Linux: source venv/bin/activate
    # Windows: venv\Scripts\activate
    pip install -r requirements.txt
    ```
@@ -459,7 +462,7 @@ See [LICENSING.md](LICENSING.md) for complete details, FAQ, and legal informatio
 
 3. **Create the local configuration**
    ```bash
-   # Linux/macOS
+   # Linux
    cp config_template.py config.py
 
    # Windows Command Prompt
@@ -1363,7 +1366,6 @@ New module detected → Security scan → Content safety check → Schema valida
 
 #### Platform-Specific
 - **Windows encoding**: Use web interface
-- **macOS permissions**: Check file access
 - **Linux paths**: Use absolute paths
 
 ### Developer Debugging
@@ -1440,7 +1442,7 @@ black .
 - **Code Style**: Follow existing patterns and use meaningful variable names
 - **Documentation**: Update README and docstrings for new features
 - **Testing**: Add tests for new functionality when possible
-- **Compatibility**: Ensure changes work across Windows, macOS, and Linux
+- **Compatibility**: Ensure changes work on both Windows and Linux
 - **Licensing**: All contributions will be under Fair Source License 1.0 (transitioning to Apache 2.0 after 5 years)
 
 ### Areas Needing Help
