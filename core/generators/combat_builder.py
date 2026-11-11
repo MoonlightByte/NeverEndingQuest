@@ -246,14 +246,15 @@ def _dexterity_modifier(data):
         return 0
 
 
-def _roll_initiative(data, sheet_backed):
+def _roll_initiative(data, sheet_backed, mode=None):
     """IN: one combatant's initiative.
 
     A character sheet (the player, an NPC or companion) is rolled by the rules
     engine: the sheet's initiative total (Dexterity, Alert, effect modifiers)
     and the roll mode its conditions impose. A monster stat block, or a sheet
     the engine cannot answer for, is d20 + its modifier (fail forward, the
-    fight never waits for the engine).
+    fight never waits for the engine). ``mode`` "disadvantage" is passed for
+    a sleeper whose sheet states no condition that imposes it (#1900).
     """
     if not sheet_backed:
         return random.randint(1, 20) + _dexterity_modifier(data)
@@ -261,7 +262,7 @@ def _roll_initiative(data, sheet_backed):
     try:
         from core.nql import checks
         started = time.monotonic()
-        result = checks.resolve(data, "initiative")
+        result = checks.resolve(data, "initiative", mode=mode)
         elapsed_ms = (time.monotonic() - started) * 1000
         if result.ok and type(result.total) is int:
             info(
@@ -279,7 +280,10 @@ def _roll_initiative(data, sheet_backed):
         "IN: %s initiative rolled without the engine (%s)" % (data.get("name"), reason),
         category="combat_builder",
     )
-    return random.randint(1, 20) + bonus
+    roll = random.randint(1, 20)
+    if mode == "disadvantage":
+        roll = min(roll, random.randint(1, 20))
+    return roll + bonus
 
 
 # #1529: the parent's stop file (beside --result-file); None when run alone.
@@ -920,6 +924,7 @@ def generate_encounter(encounter_data):
 
     # Add NPCs
     npc_counts = {}
+    npc_sheets = []
     for npc_index, npc_name in enumerate(encounter_data.get("npcs", [])):
         formatted_npc_type = format_type_name(npc_name)
         pending_source = _listed_pending_observer(
@@ -974,6 +979,7 @@ def generate_encounter(encounter_data):
             npc["faction"] = "party"
         # Add the NPC to the encounter's creatures array
         encounter["creatures"].append(npc)
+        npc_sheets.append((npc, npc_data))
         scene_sources.append(
             {
                 "participantKey": f"npc:{npc_index}",
@@ -1029,6 +1035,7 @@ def generate_encounter(encounter_data):
             "expiresAtRevision": None,
             "consentEventId": None,
         }
+    _seat_sleepers(encounter, reconciled["sceneFacts"]["participants"], npc_sheets, place_occupants)
     _apply_surprise(encounter, reconciled["sceneFacts"]["participants"])
     ensure_combat_state(
         encounter,
@@ -1055,6 +1062,30 @@ def generate_encounter(encounter_data):
 SURPRISE_EFFECT_NAME = "Surprised"
 
 
+def _seat_sleepers(encounter, participants, npc_sheets, place_occupants):
+    """#1900: a hostile npc asleep (unconscious above 0 HP), active, eligible
+    and a present person occupant is seated alive and asleep with the typed
+    marker ``sleeperWake``; the wake goes on its sheet after activation
+    (combat_manager). Its initiative has Disadvantage (SRD Surprise): the
+    engine gives it from a stated unconscious, and it is passed when only the
+    status says so. Fail open: a fault seats the rows as before."""
+    from core.combat import sleeper
+
+    try:
+        found = sleeper.sleeper_rows(encounter, participants, npc_sheets, place_occupants)
+        initiatives = [
+            None if sleeper.states_unconscious(sheet) else _roll_initiative(sheet, True, mode="disadvantage")
+            for _row, sheet in found
+        ]
+    except Exception as exc:
+        warning("COMBAT_BUILDER: sleeper seating skipped (%s)" % exc, category="encounter_setup")
+        return
+    for (row, _sheet), initiative in zip(found, initiatives):
+        sleeper.seat_sleeper(row)
+        if initiative is not None:
+            row["initiative"] = initiative
+
+
 def _apply_surprise(encounter, participants):
     """Give each surprised monster a one-round incapacitating effect (#834).
 
@@ -1074,6 +1105,10 @@ def _apply_surprise(encounter, participants):
         combatant_id = creature.get("combatantId")
         if combatant_id not in surprised:
             continue
+        if isinstance(creature.get("sleeperWake"), dict):
+            # #1900: a sleeper's round 1 is its sheet's wake effect; a second
+            # row copy would outlast the wake (C4 ends only the sheet's).
+            continue
         _apply_encounter_effect_operation(
             creature,
             {
@@ -1092,7 +1127,7 @@ def _apply_surprise(encounter, participants):
         creature["effectIncapacitated"] = True
 
 
-def surprise_opening_rules(encounter):
+def surprise_opening_rules(encounter, characters=None):
     """Name the creatures that open the fight surprised (#837).
 
     The engine already skips their round 1 turn; without this the opening
@@ -1100,24 +1135,41 @@ def surprise_opening_rules(encounter):
     """
     from core.managers.combat_state import combatant_presentation_name
 
+    from core.combat import sleeper
+
+    asleep = sleeper.opening_names(encounter, characters)
+    asleep_ids = {creature.get("combatantId") for creature in asleep}
     names = [
         combatant_presentation_name(
             encounter, creature.get("combatantId"), creature.get("name")
         )
         for creature in encounter.get("creatures", [])
-        if any(
+        if creature.get("combatantId") not in asleep_ids
+        and any(
             isinstance(effect, dict) and effect.get("name") == SURPRISE_EFFECT_NAME
             for effect in creature.get("activeEffects") or []
         )
     ]
-    if not names:
-        return ""
-    return (
-        "Surprise: " + ", ".join(names) + " did not notice the party until "
-        "this moment and lose their round 1 turn. Narrate them caught off "
-        "guard (startled, turning, scrambling for a weapon); before the party "
-        "acts they make no attack, no move and no challenge or speech."
-    )
+    sleepers = [
+        combatant_presentation_name(encounter, creature.get("combatantId"), creature.get("name"))
+        for creature in asleep
+    ]
+    lines = []
+    if names:
+        lines.append(
+            "Surprise: " + ", ".join(names) + " did not notice the party until "
+            "this moment and lose their round 1 turn. Narrate them caught off "
+            "guard (startled, turning, scrambling for a weapon); before the party "
+            "acts they make no attack, no move and no challenge or speech."
+        )
+    if sleepers:
+        # #1900: a DM-note element for the opening narration only.
+        lines.append(
+            "Asleep: " + ", ".join(sleepers) + ". Asleep when the fight "
+            "began, they stay asleep until struck or until round 1 ends, and "
+            "make no move and no sound before then."
+        )
+    return " ".join(lines)
 
 
 # #882: the longest declared opening action kept on the encounter.
@@ -1185,7 +1237,44 @@ def down_hostile_rows(encounter):
     ]
 
 
-def _write_result(result_file, status, encounter_id=None, encounter_file=None, down_hostiles=None):
+def outside_victory_rows(encounter):
+    """The rows outside the fight's initiative when no one in it is against the
+    party, else None (#1899).
+
+    A typed fight is won when every hostile in its victory set (hostile rows
+    with ``initiativeEligible`` true) is resolved; with no such hostile it can
+    never be won (``all_hostiles_resolved`` is false on an empty set). One row
+    per creature outside the initiative (observer, hidden, unaware, departed),
+    from typed values; [] when everyone is in it (only the party fights).
+    Legacy encounters are never refused here.
+    """
+    from core.managers.combat_state import combat_provenance, initiative_eligible_ids, victory_hostiles
+
+    if combat_provenance(encounter) != "typed" or victory_hostiles(encounter):
+        return None
+    eligible = initiative_eligible_ids(encounter)
+    facts = {
+        item.get("combatantId"): item
+        for item in (encounter.get("sceneFacts") or {}).get("participants") or []
+        if isinstance(item, dict)
+    }
+    rows = []
+    for creature in encounter.get("creatures") or []:
+        if not isinstance(creature, dict) or creature.get("combatantId") in eligible:
+            continue
+        fact = facts.get(creature.get("combatantId")) or {}
+        rows.append({
+            "name": creature.get("name"),
+            "occupantId": creature.get("occupantId"),
+            "participation": fact.get("participation"),
+            "initiativeEligible": fact.get("initiativeEligible") is True,
+            "requested": fact.get("provenance") != ROSTER_ADDED,
+        })
+    return rows
+
+
+def _write_result(result_file, status, encounter_id=None, encounter_file=None, down_hostiles=None,
+                  outside_rows=None):
     """Hand the caller a typed result; printed lines are for people only (#812)."""
     if not result_file:
         return True
@@ -1195,6 +1284,8 @@ def _write_result(result_file, status, encounter_id=None, encounter_file=None, d
         result["encounterFile"] = encounter_file
     if down_hostiles is not None:
         result["downHostiles"] = down_hostiles
+    if outside_rows is not None:
+        result["outsideRows"] = outside_rows
     if save_json(result_file, result):
         return True
     logging.error(f"Failed to write the builder result to {result_file}")
@@ -1207,7 +1298,8 @@ def main(argv=None):
     Exits 0 only when the encounter is saved, else 1. With --result-file the
     outcome is also written there as {"version", "status", "encounterId",
     "encounterFile"}; status is saved, invalid_input, generation_failed,
-    save_failed (#812) or no_hostile_can_act with its "downHostiles" (#1891).
+    save_failed (#812), no_hostile_can_act with its "downHostiles" (#1891) or
+    no_hostile_in_fight with its "outsideRows" (#1899).
     """
     import argparse
 
@@ -1260,6 +1352,17 @@ def main(argv=None):
         if down:
             print("[COMBAT_BUILDER] Refused: no hostile in this fight can fight; no encounter saved")
             _write_result(result_file, "no_hostile_can_act", down_hostiles=down)
+            return 1
+        # #1899: a fight with no one against the party can never be won.
+        # Fail open: a failed check builds as before.
+        try:
+            outside = outside_victory_rows(encounter)
+        except Exception as exc:
+            warning("COMBAT_BUILDER: victory-set check skipped (%s)" % exc, category="encounter_setup")
+            outside = None
+        if outside is not None:
+            print("[COMBAT_BUILDER] Refused: no one in this fight is against the party; no encounter saved")
+            _write_result(result_file, "no_hostile_in_fight", outside_rows=outside)
             return 1
         print(f"[COMBAT_BUILDER] Encounter generated successfully: {encounter['encounterId']}")
         print(f"[COMBAT_BUILDER] Total creatures in encounter: {len(encounter['creatures'])}")

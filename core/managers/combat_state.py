@@ -441,10 +441,72 @@ def party_withdrawn(encounter):
     return not any(is_combatant_targetable(creature) for creature in party)
 
 
+def no_opposition_left(encounter):
+    """Return whether no one is left to fight (#1908).
+
+    True when every human-controlled initiative member left the fight on
+    their feet (at least one is human) and no two standing initiative
+    members are on opposite sides. A human who is down, or incapacitated
+    for a while, has not left, and a paralyzed foe still stands. Only the
+    committed initiative membership counts (#1354).
+    """
+    members = initiative_eligible_ids(encounter)
+    state = encounter.get("combatState") or {}
+    rows = [
+        creature
+        for creature in encounter.get("creatures", [])
+        if isinstance(creature, dict) and creature.get("combatantId") in members
+    ]
+    humans = [
+        creature for creature in rows
+        if resolve_creature_controller(creature, state) == "human"
+    ]
+    if not humans or not all(has_left_fight(creature) for creature in humans):
+        return False
+    sides = {is_party_member(creature) for creature in rows if is_combatant_targetable(creature)}
+    return len(sides) < 2
+
+
 def combat_resolved(encounter):
     """Return whether the fight is over: every actable hostile is resolved,
-    or the party has withdrawn (#446, #466)."""
-    return all_hostiles_resolved(encounter) or party_withdrawn(encounter)
+    the party has withdrawn, or no one is left to fight (#446, #466, #1908)."""
+    return (
+        all_hostiles_resolved(encounter)
+        or party_withdrawn(encounter)
+        or no_opposition_left(encounter)
+    )
+
+
+def turn_awaits_recovery(encounter):
+    """Return whether the pending turn is recovered before completion (#1908).
+
+    Staged events apply first through recovery; a recovery conflict pauses
+    as it does today, and completion follows once it is resolved.
+    """
+    pending = (encounter.get("combatState") or {}).get("pendingTurn")
+    return isinstance(pending, dict) and pending.get("stage") in (
+        "events_staged",
+        "recovery_conflict",
+    )
+
+
+def abandon_unstaged_turn(state):
+    """At completion, drop a claimed turn that has nothing to resolve (#1908).
+
+    Only a claim at stage ``intent_pending`` with no events and no open
+    player roll phase (``weaponAttack``) is dropped. Returns the dropped
+    turn id, else None.
+    """
+    pending = state.get("pendingTurn")
+    if not (
+        isinstance(pending, dict)
+        and pending.get("stage") == "intent_pending"
+        and not pending.get("events")
+        and pending.get("weaponAttack") is None
+    ):
+        return None
+    state["pendingTurn"] = None
+    return str(pending.get("turnId"))
 
 
 def player_control_unavailable(encounter):
@@ -1357,6 +1419,22 @@ def round_events(encounter, round_number):
     return list(rows) if isinstance(rows, list) else []
 
 
+def round_ends(encounter, acted):
+    """#1919: the round ends when every targetable initiative member has acted.
+
+    The one definition: the commit advances the round by it, and staging plans
+    the round-end ticks by it. A row outside the initiative order (an observer)
+    never acts, so it never holds a round open.
+    """
+    state = encounter.get("combatState") or {}
+    members = {
+        actor_id
+        for actor_id in state.get("initiativeOrder") or []
+        if is_combatant_targetable(combatant_by_id(encounter, actor_id))
+    }
+    return bool(members) and members.issubset(set(acted))
+
+
 def commit_turn(encounter, turn_id, applied_event_ids):
     """Advance once after callers atomically apply the staged event effects."""
     state = ensure_combat_state(encounter)
@@ -1383,12 +1461,7 @@ def commit_turn(encounter, turn_id, applied_event_ids):
     for actor_id in consumed_actor_ids:
         if actor_id not in state["actedThisRound"]:
             state["actedThisRound"].append(actor_id)
-    round_actor_ids = {
-        actor_id
-        for actor_id in state["initiativeOrder"]
-        if is_combatant_targetable(combatant_by_id(encounter, actor_id))
-    }
-    if round_actor_ids and round_actor_ids.issubset(set(state["actedThisRound"])):
+    if round_ends(encounter, state["actedThisRound"]):
         state["round"] += 1
         state["actedThisRound"] = []
         state["turnCursor"] = 0

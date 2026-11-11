@@ -1974,6 +1974,14 @@ def _rider_row(rider, faces, target, source=None):
     return row
 
 
+def critical_rider(rider):
+    """#1890: a damage rider on a critical hit, its dice rolled twice (SRD
+    Critical Hits: "you also roll those dice twice"). A copy; the flat term,
+    which no SRD rider has, is kept as it is."""
+    count, sides, flat = parse_dice(rider["die"])
+    return dict(rider, die="%dd%d" % (count * 2, sides) + ("%+d" % flat if flat else ""))
+
+
 def _rolled_rider_faces(rider, rolls, actor_id, target_id):
     """#1666: the rider's dice from the persisted prerolls."""
     count, sides, _flat = parse_dice(rider["die"])
@@ -2453,6 +2461,10 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
             given = riders if riders is not None else attack_damage_riders(
                 encounter, characters, intent.get("actorId"), target)
             for rider in given:
+                if riders is None and critical:
+                    # #1890: code rolls the rider, doubled on a critical. Given
+                    # riders (the player's) were marked doubled at their attack phase.
+                    rider = critical_rider(rider)
                 faces = rider.get("faces") if riders is not None else _rolled_rider_faces(
                     rider, rolls, intent.get("actorId"), intent.get("targetId"))
                 event["rolls"].append(_rider_row(rider, faces, target, rider.get("source")))
@@ -3691,10 +3703,18 @@ def _save_bonus(encounter, characters, creature, save_type):
     if ability and isinstance(saves, list) and any(
         save_ability(item) == ability for item in saves
     ):
-        try:
-            bonus += int(sheet.get("proficiencyBonus", 0) or 0)
-        except (TypeError, ValueError):
-            pass
+        if sheet.get("proficiencyBonus") is None:
+            # #1906: a monster block lists its save proficiencies by name and
+            # states no proficiencyBonus; its PB comes from its typed
+            # challengeRating (SRD 5.2.1 p.256). A stated PB always wins.
+            from core.nql import stats as nql_stats
+
+            bonus += nql_stats.proficiency_bonus_for_cr(sheet.get("challengeRating")) or 0
+        else:
+            try:
+                bonus += int(sheet.get("proficiencyBonus", 0) or 0)
+            except (TypeError, ValueError):
+                pass
     return (
         bonus
         + modifier_total(raw_sheet, "savingThrows")
@@ -5461,6 +5481,13 @@ def _refresh_character_effect_projections(encounter, characters, before=None):
             value = rendered.get(sheet_field)
             if isinstance(value, (int, float)):
                 creature[encounter_field] = int(value)
+        # #1895: the row's conditions are the sheet's list, as the loop top
+        # (sync_active_encounter) writes them, so an effect or condition that
+        # ends mid-window stops counting for the window's later actors.
+        if creature.get("statsPending") is not True:
+            listed = sheet.get("condition_affected", [])
+            if creature.get("conditions") != listed:
+                creature["conditions"] = deepcopy(listed)
 
 
 def _apply_charges_after(sheet, item, resource, after_state):
@@ -5804,6 +5831,12 @@ def apply_resolution(encounter, characters, resolution):
             sheet["temporaryHitPoints"] = max(0, snapshot["temporaryHitPoints"])
         if "status" in snapshot:
             sheet["status"] = snapshot["status"]
+    # #1900 C6: a sheet whose sleeper wake effect this event ended (C4's
+    # remove, the round-1 tick) reads alive when nothing states unconscious;
+    # a function of the event, so the commit replay agrees with the live step.
+    from core.combat.sleeper import restore_woken_after
+
+    restore_woken_after(characters, new_characters)
     _refresh_character_effect_projections(new_encounter, new_characters, before=characters)
     _refresh_effect_control_flags(new_encounter, new_characters)
     return new_encounter, new_characters

@@ -33,10 +33,12 @@ from core.combat import (
     resolution_from_event,
 )
 from core.combat.resolver import settle_effect_zero_status
+from core.combat.sleeper import is_wake_effect, restore_woken_after
 from core.effects.lifecycle import apply_effect_ops, enter_combat_effect, exit_combat_effect
 from core.effects.effective import effective_sheet
 from core.managers.combat_state import (
     CombatStateConflict,
+    abandon_unstaged_turn,
     begin_turn,
     commit_turn,
     ensure_combat_state,
@@ -1558,17 +1560,36 @@ def exit_effect_clock(
     ):
         encounter = _load_object(encounter_path, "encounter")
         state = ensure_combat_state(encounter)
+        # #1908: completion starts in the state a resolving commit leaves: a
+        # claimed turn with nothing to resolve is dropped and the phase is
+        # complete (the after-fight turn reads it), in this same write. A
+        # turn that is kept leaves the phase as it was.
+        dropped = abandon_unstaged_turn(state)
+        if dropped:
+            _LOGGER.debug("Completion abandoned claimed combat turn %s", dropped)
+        settled = bool(dropped)
+        if state.get("pendingTurn") is None and state.get("phase") in (
+            "awaiting_actor",
+            "resolving_turn",
+        ):
+            state["phase"] = "complete"
+            settled = True
         if state.get("effectsClockExited"):
+            if settled:
+                _write_object(encounter_path, encounter, "completed combat state")
             return
         for name, path in (character_paths or {}).items():
             character = _load_object(path, "character %s" % name)
             # An effect that ended in combat (no rounds left, or an encounter
             # effect) leaves through the lifecycle operation so its onRemove
             # change applies and the engine takes its numbers off the sheet.
+            # #1900 C2b: a sleeper's wake effect ends with the fight (a fight
+            # that ends before it wakes leaves it awake), then C6.
             ended = [
                 {"op": "remove", "effectId": effect.get("effectId"), "name": effect.get("name")}
                 for effect in character.get("temporaryEffects", []) or []
-                if isinstance(effect, dict) and exit_combat_effect(effect, now_scalar) is None
+                if isinstance(effect, dict) and (
+                    exit_combat_effect(effect, now_scalar) is None or is_wake_effect(effect))
             ]
             if ended:
                 before = character
@@ -1576,6 +1597,7 @@ def exit_effect_clock(
                 # #1550: an onRemove that took the last hit points records
                 # the status a hit would (D-242-1 by the encounter row).
                 settle_effect_zero_status(encounter, {name: before}, {name: character})
+                restore_woken_after({name: before}, {name: character})
             surviving = []
             for effect in character.get("temporaryEffects", []) or []:
                 converted = (

@@ -5055,6 +5055,7 @@ COMBAT_START_REASONS = {
     "location_unreadable": "the current location could not be loaded",
     "combat_not_started": "the combat could not start",
     "no_hostile_can_act": "no hostile in it can fight",
+    "no_hostile_in_fight": "no one in it is against the party",
 }
 
 
@@ -5101,6 +5102,26 @@ def _no_hostile_lines(rows):
     return " ".join(sentences)
 
 
+def _sweep_stale_sleepers(encounter_path, encounter, party_tracker):
+    """#1900 C2b: a stale active encounter's sleepers keep no wake effect
+    (and C6 restores their status). Fail forward: a fault is logged."""
+    if not isinstance(encounter, dict):
+        return
+    try:
+        from core.combat import sleeper
+        from core.managers.combat_manager import _agentic_combat_context
+
+        module = str((party_tracker or {}).get("module") or "").replace(" ", "_") or None
+        paths, _sheets = _agentic_combat_context(encounter, ModulePathManager(module), {})
+        npc_names = {c.get("name") for c in encounter.get("creatures") or []
+                     if isinstance(c, dict) and c.get("type") == "npc"}
+        paths = {name: path for name, path in paths.items() if name in npc_names}
+        if paths:
+            sleeper.sweep_encounter_sheets(encounter_path, paths)
+    except Exception as exc:
+        warning("Sleeper sweep at the stale clear skipped (%s)" % exc, category="combat_processing")
+
+
 def _refused_rows(result_path):
     """The downHostiles of a builder result refused as no_hostile_can_act
     (#1891), else None."""
@@ -5111,7 +5132,63 @@ def _refused_rows(result_path):
         return None
     if isinstance(result, dict) and result.get("status") == "no_hostile_can_act":
         return result.get("downHostiles")
+    if isinstance(result, dict) and result.get("status") == "no_hostile_in_fight":
+        return result.get("outsideRows")
     return None
+
+
+_OUTSIDE_PARTICIPATION = ("observer", "hidden", "unaware", "departed")
+
+# #1899: what a fight needs, in the createEncounter scene's own terms.
+_FIGHT_NEEDS = (
+    "A fight needs at least one participant against the party with participation active and "
+    "initiativeEligible true: a monster, or an npc with side: hostile (a monster that has not "
+    "noticed the party also has surprised: true)."
+)
+
+
+def _outside_lines(rows):
+    """One sentence per participant outside a refused fight's initiative
+    (#1899), from its typed values; one sentence when there is none (only the
+    party in it). "" when the rows are unusable."""
+    if not isinstance(rows, list):
+        return ""
+    sentences = []
+    for row in rows:
+        if not isinstance(row, dict):
+            return ""
+        name = str(row.get("name") or "").strip()
+        participation = row.get("participation")
+        if not name or participation not in _OUTSIDE_PARTICIPATION:
+            return ""
+        sentence = ("%s is participation %s with initiativeEligible false, so they take no turns and "
+                    "cannot be beaten in this fight." % (name, participation))
+        if row.get("requested") is False:
+            sentence += " They are present here and were added as an observer; your request did not name them."
+        sentences.append(sentence)
+    return " ".join(sentences) or "No participant in it is against the party."
+
+
+# #1911 review: the refused draft's own observers, named back to the DM.
+_OBSERVER_SENTENCE = (
+    "The draft listed %s as participation observer; a person the player attacks is a participant, not "
+    "an observer."
+)
+
+
+def _observer_names(rows):
+    """The names of the refused draft's participation observer rows (#1911
+    review), from the builder's typed outsideRows, in their order: "A",
+    "A and B", "A, B and C"; "" when there are none. Only rows the draft
+    itself listed: a person the roster added as an observer (requested
+    False) was not listed by the draft."""
+    names = [str(row.get("name") or "").strip() for row in rows or []
+             if isinstance(row, dict) and row.get("participation") == "observer"
+             and row.get("requested") is not False
+             and str(row.get("name") or "").strip()]
+    if len(names) < 2:
+        return "".join(names)
+    return "%s and %s" % (", ".join(names[:-1]), names[-1])
 
 
 def is_encounter_payment(action):
@@ -5261,7 +5338,8 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
     When no fight was activated the DM is told once per turn and answers
     again ("needs_response"). A second failure in the same turn, a turn with
     no identity, or an unreadable tracker ends with the failure line, so this
-    can never loop.
+    can never loop. ``down_hostiles`` holds the builder's refused rows: its
+    downHostiles (#1891) or its outsideRows (#1899).
     """
     global _last_failed_combat_turn
     error(
@@ -5280,7 +5358,30 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
         return {"status": "error", "needs_update": False}
     _last_failed_combat_turn = turn_id
     rows = _no_hostile_lines(down_hostiles) if reason == "no_hostile_can_act" else ""
-    if rows:
+    outside = _outside_lines(down_hostiles) if reason == "no_hostile_in_fight" else ""
+    if outside:
+        # #1899: who is outside the fight, what a fight needs, and how to
+        # answer the player's action, which still stands (#1911 review).
+        observers = _observer_names(down_hostiles)
+        content = (
+            "Combat Error: the encounter you requested could not be set up, because no one in it "
+            "is against the party: %s %s "
+            "No fight has started, and the player's last action has not been resolved yet: it stands as the "
+            "player wrote it."
+            % (outside, _FIGHT_NEEDS)
+            + ("" if payments is None else " " + _encounter_payment_lines(payments))
+            + " "
+            + "If it attacks anyone, request the fight again with each person it attacks as participation "
+            "active and initiativeEligible true, as an npc with side: hostile; in this fight that only names "
+            "the side facing the party, and on their turns they still choose to fight back, defend, flee or "
+            "yield."
+            + ((" " + _OBSERVER_SENTENCE % observers) if observers else "")
+            + " "
+            + "Answer without a fight only when the player's last action attacks no one and no one there "
+            "attacks the party. Either way the player's choice stands: others may react to it, but never "
+            "decide for the player's character what they do or that they hold back."
+        )
+    elif rows:
         # #1891: why, per row, and what the DM can do instead.
         content = (
             "Combat Error: the encounter you requested could not be set up, because no hostile "
@@ -5320,8 +5421,8 @@ def _built_encounter(result_path, returncode):
         return None, "builder_failed"
     if not isinstance(result, dict) or result.get("version") != 1:
         return None, "builder_failed"
-    if result.get("status") == "no_hostile_can_act":
-        return None, "no_hostile_can_act"
+    if result.get("status") in ("no_hostile_can_act", "no_hostile_in_fight"):
+        return None, result["status"]
     if result.get("status") != "saved":
         return None, "builder_no_encounter"
     encounter_id = result.get("encounterId")
@@ -5423,6 +5524,7 @@ def process_action(
                     % active_encounter,
                     category="combat_processing",
                 )
+                _sweep_stale_sleepers(active_path, active_data, authoritative_party)
                 authoritative_party.setdefault("worldConditions", {})[
                     "activeCombatEncounter"
                 ] = ""
@@ -5523,7 +5625,7 @@ def process_action(
                 encounter_id, build_failure = _built_encounter(
                     os.path.join(result_dir, "result.json"), result.returncode
                 )
-                if build_failure == "no_hostile_can_act":
+                if build_failure in ("no_hostile_can_act", "no_hostile_in_fight"):
                     down_hostiles = _refused_rows(os.path.join(result_dir, "result.json"))
             finally:
                 shutil.rmtree(result_dir, ignore_errors=True)
