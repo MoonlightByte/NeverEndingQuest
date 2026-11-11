@@ -160,8 +160,11 @@ _ASLEEP_TEMPLATE = (
     "An attack on one starts a fight with them still unconscious "
     "(createEncounter, the attack as openingAction): the engine applies the "
     "blow, so do not narrate its result or wake them first, unless the "
-    "engine answers that no fight with them can start yet. They are not "
-    "party members: the party's down-scene rules do not apply to them."
+    "engine answers that no fight with them can start yet. This holds for "
+    "one beaten in an earlier fight or recorded defeated here: while they "
+    "are listed here, an attack on them is that fight, not a resolveOccupant "
+    "on them. They are not party members: the party's down-scene rules do "
+    "not apply to them."
 )
 
 
