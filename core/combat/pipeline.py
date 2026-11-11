@@ -24,7 +24,11 @@ from core.combat.bonus_actions import (
 )
 from core.combat.events import make_event_id, validate_event
 from core.combat.handover import HandOverRefused, stage_hand_over
+from core.combat.sleeper import restore_woken_after
+from core.effects.lifecycle import apply_effect_ops
 from core.combat.resolver import (
+    _refresh_character_effect_projections,
+    _refresh_effect_control_flags,
     attack_row,
     json_ref,
     apply_encounter_effect_ticks,
@@ -195,6 +199,27 @@ def _defend_for_fled_target(current_encounter, actor, intent):
         "fromTargetId": intent["targetId"],
         "action": "defend",
     }
+
+
+def _wake_struck_sleepers(event, encounter, characters):
+    """#1900 C4 and C6 on one event's committed target records."""
+    from core.combat.sleeper import wake_removals
+
+    ops = wake_removals(event, encounter, characters)
+    if not ops:
+        return encounter, characters
+    before = characters
+    characters = deepcopy(characters)
+    for op in ops:
+        characters[op["owner"]] = apply_effect_ops(characters[op["owner"]], [op])
+    event.setdefault("effects", []).extend(deepcopy(ops))
+    restore_woken_after(before, characters)
+    encounter = deepcopy(encounter)
+    # #1895: the woken row takes its conditions (and HP) from the sheet now, so
+    # the window's next attacker no longer sees the sleeper as unconscious.
+    _refresh_character_effect_projections(encounter, characters, before=before)
+    _refresh_effect_control_flags(encounter, characters)
+    return encounter, characters
 
 
 def _record_character_state_after(event, before, after):
@@ -988,6 +1013,12 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
             resolution["event"]["bonusAction"], next_encounter, next_characters = _resolve_off_hand(
                 next_encounter, next_characters, actor, controller, bonus, event_id, roll_source, off_hand_phase,
             )
+        # #1900 C4: a sleeper this event damaged and left above 0 wakes in the
+        # same commit (the remove op is on the event, so the commit replay
+        # wakes it too); C6 then restores its status before the snapshot.
+        next_encounter, next_characters = _wake_struck_sleepers(
+            resolution["event"], next_encounter, next_characters
+        )
         # #1806: after the Off-hand Attack, or this snapshot writes over its
         # damage at commit and a replay matches neither staged value.
         _record_character_state_after(
@@ -1078,6 +1109,8 @@ def resolve_claimed_window(encounter, characters, pending_turn, batch, roll_sour
                 effect_ticks,
             )
             settle_effect_zero_status(next_encounter, before_ticks, next_characters)
+            # #1900 C6: a sleeper whose wake effect the round-1 tick ended.
+            restore_woken_after(before_ticks, next_characters)
             _record_character_state_after(
                 events[-1],
                 before_ticks,

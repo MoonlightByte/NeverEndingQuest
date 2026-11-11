@@ -5102,6 +5102,26 @@ def _no_hostile_lines(rows):
     return " ".join(sentences)
 
 
+def _sweep_stale_sleepers(encounter_path, encounter, party_tracker):
+    """#1900 C2b: a stale active encounter's sleepers keep no wake effect
+    (and C6 restores their status). Fail forward: a fault is logged."""
+    if not isinstance(encounter, dict):
+        return
+    try:
+        from core.combat import sleeper
+        from core.managers.combat_manager import _agentic_combat_context
+
+        module = str((party_tracker or {}).get("module") or "").replace(" ", "_") or None
+        paths, _sheets = _agentic_combat_context(encounter, ModulePathManager(module), {})
+        npc_names = {c.get("name") for c in encounter.get("creatures") or []
+                     if isinstance(c, dict) and c.get("type") == "npc"}
+        paths = {name: path for name, path in paths.items() if name in npc_names}
+        if paths:
+            sleeper.sweep_encounter_sheets(encounter_path, paths)
+    except Exception as exc:
+        warning("Sleeper sweep at the stale clear skipped (%s)" % exc, category="combat_processing")
+
+
 def _refused_rows(result_path):
     """The downHostiles of a builder result refused as no_hostile_can_act
     (#1891), else None."""
@@ -5504,6 +5524,7 @@ def process_action(
                     % active_encounter,
                     category="combat_processing",
                 )
+                _sweep_stale_sleepers(active_path, active_data, authoritative_party)
                 authoritative_party.setdefault("worldConditions", {})[
                     "activeCombatEncounter"
                 ] = ""
