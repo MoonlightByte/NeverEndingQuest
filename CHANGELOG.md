@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the Dungeon Master starts a fight with someone the game records at another place, that person is no longer seated in the fight while their record stays behind, which lost what happened to them there: the Dungeon Master is told where they are, and the fight goes on without them unless the story brings them here first (#1936).
+- When the Dungeon Master links one person's record to someone else in a fight (a companion given an enemy's identity, for example), the fight is no longer set up that way: the Dungeon Master is told whose record it is and asked to put it on that person or leave it out (#1937).
 - After a fight, its summary and the story that follows are told how everyone who took part ended up (hit points, conscious or not, conditions), so a sleeper who woke during the fight is no longer described as still out cold; and the fight's narrator is told when a timed effect such as a sleep ends (#1946).
 - A fight no longer asks the Dungeon Master for the enemies' moves over and over when the same error comes back: the turn now stops there and is kept, so you can go on from it (#1945).
 - When you leave a place, the game no longer rejects the Dungeon Master's update of it for keeping the adventure author's notes exactly as written. Before, one such note could make leaving cost up to 3 model calls in place of 1, and the record of your visit could be lost (#1942).
