@@ -61,6 +61,7 @@
     {
       "name": "Pseudopod",
       "kind": "attack",
+      "attackKind": "melee",
       "attackBonus": 4,
       "damageDice": "3d6",
       "damageBonus": 2,

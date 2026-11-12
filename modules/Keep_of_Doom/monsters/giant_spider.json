@@ -58,6 +58,7 @@
     {
       "name": "Bite",
       "kind": "attack",
+      "attackKind": "melee",
       "attackBonus": 5,
       "damageDice": "1d8",
       "damageBonus": 3,

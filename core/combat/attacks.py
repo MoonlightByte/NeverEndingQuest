@@ -203,9 +203,30 @@ def on_hit_issue(sheet):
 # A later key is one more entry here and nothing else.
 # #1914 (D-1914-1): onFail.tickTrigger is engine-only; no generator is taught it yet.
 # #1905 (D-1905-2): rider.exemptTargets is engine-only as well.
+# #1901 (Q2): attackKind is engine-only too (the automatic critical's melee test).
 MECHANICS_ONLY_ROW_PATHS = (("onHit",), ("rider", "onFail", "tickTrigger"), ("save", "onFail", "tickTrigger"),
-                            ("rider", "exemptTargets"))
+                            ("rider", "exemptTargets"), ("attackKind",))
 MECHANICS_ONLY_ROW_FAMILIES = ("actions", "specialAbilities")
+
+
+# #1901: the typed kind of an attack row, for the SRD's "within 5 feet" of a
+# Paralyzed or Unconscious target (decided: every melee attack is within 5 feet).
+ATTACK_KINDS = ("melee", "ranged")
+
+
+def attack_kind(entry):
+    """"melee", "ranged" or None for an attack row. A stat-block row states its
+    own attackKind (a monster row carries no type: a "ranged" type would spend
+    ammunition); a party or spell row has its type, a thrown row being ranged.
+    Anything else is None, which never gives an automatic critical."""
+    if not isinstance(entry, dict):
+        return None
+    if "attackKind" in entry:
+        return entry["attackKind"] if entry["attackKind"] in ATTACK_KINDS else None
+    row_type = entry.get("type")
+    if row_type not in ATTACK_KINDS:
+        return None
+    return "ranged" if entry.get("thrown") is True else row_type
 
 
 def _row_without(row, paths):

@@ -161,6 +161,11 @@
               "type": "string",
               "enum": ["attack", "save", "trait"]
             },
+            "attackKind": {
+              "description": "#1901: melee or ranged, for the automatic critical on a Paralyzed or Unconscious target; engine-only, never shown to a model.",
+              "type": "string",
+              "enum": ["melee", "ranged"]
+            },
             "description": {
               "type": "string"
             },
@@ -373,6 +378,11 @@
             "kind": {
               "type": "string",
               "enum": ["attack", "save", "trait"]
+            },
+            "attackKind": {
+              "description": "#1901: melee or ranged, for the automatic critical on a Paralyzed or Unconscious target; engine-only, never shown to a model.",
+              "type": "string",
+              "enum": ["melee", "ranged"]
             },
             "description": {
               "type": "string"

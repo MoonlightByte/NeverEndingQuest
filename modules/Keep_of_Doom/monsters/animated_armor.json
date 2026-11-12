@@ -53,6 +53,7 @@
     {
       "name": "Slam",
       "kind": "attack",
+      "attackKind": "melee",
       "attackBonus": 4,
       "damageDice": "1d6",
       "damageBonus": 2,

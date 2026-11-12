@@ -48,6 +48,7 @@
     {
       "name": "Bite",
       "kind": "attack",
+      "attackKind": "melee",
       "attackBonus": 4,
       "damageDice": "1d6",
       "damageBonus": 2,
@@ -65,6 +66,7 @@
     {
       "name": "Claw",
       "kind": "attack",
+      "attackKind": "melee",
       "attackBonus": 4,
       "damageDice": "1d4",
       "damageBonus": 2,

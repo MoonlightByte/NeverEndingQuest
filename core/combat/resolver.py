@@ -26,6 +26,7 @@ import re
 from copy import deepcopy
 
 from core.combat.attacks import (
+    attack_kind,
     attack_sequence,
     FLAT_DAMAGE_DICE,
     is_executable_attack,
@@ -1331,6 +1332,21 @@ def _stated_conditions(characters, encounter, creature):
 _ATTACKER_DISADVANTAGE = frozenset(("blinded", "poisoned", "prone", "restrained"))
 _TARGET_ADVANTAGE = frozenset(("blinded", "paralyzed", "petrified", "restrained", "stunned", "unconscious"))
 
+# #1901 (SRD 5.2.1 Paralyzed, Unconscious): "Any attack roll that hits you is a
+# Critical Hit if the attacker is within 5 feet of you." Decided: every melee
+# attack is within 5 feet; a ranged or untyped attack never is.
+AUTO_CRITICAL_CONDITIONS = frozenset(("paralyzed", "unconscious"))
+
+
+def auto_critical(target_conditions, kind, held):
+    """Whether a hit by an attack of ``kind`` on a target stating
+    ``target_conditions`` (typed, casefolded) is a critical hit by that rule.
+    ``held``: the target cannot take its turns (not is_turn_eligible), the
+    test turns use (#1901 M1), so a name alone on a creature that still acts
+    gives no critical. It never makes a miss a hit; the caller asks only for
+    a hit below 20."""
+    return kind == "melee" and held is True and bool(AUTO_CRITICAL_CONDITIONS & set(target_conditions or ()))
+
 
 def _attack_mode(attacker_conditions, target_conditions, entry_type, target_dodging=False, declared=None):
     """("normal" | "advantage" | "disadvantage", sources). Any advantage
@@ -1955,7 +1971,7 @@ def _warn_great_weapon(entry, exc):
 
 
 def _engine_swing(rolls, entry, sheet, to_hit, mode, faces, target_ac, target, target_hp, trait_sheet,
-                  log_label="", treat=False):
+                  log_label="", treat=False, forced_critical=False):
     """Option 3: one swing scored by the rules engine (NQL X6 + X8), or None.
 
     The engine keeps the face, decides hit, miss and critical, adds the
@@ -1964,6 +1980,12 @@ def _engine_swing(rolls, entry, sheet, to_hit, mode, faces, target_ac, target, t
     next (peeked, not taken), so the caller takes exactly what today's code
     takes. None (engine missing or refusing, dice it cannot take) keeps
     today's arithmetic for the whole swing.
+
+    #1901: a ``forced_critical`` swing (the automatic critical, kept face
+    below 20) is sent as a 2N-dice profile whose damage is the sum of the 2N
+    faces: the engine refuses a one-roll damage above N dice. The engine
+    still decides hit or miss and applies the traits; the caller sets the
+    critical on a hit.
     """
     from core.nql import attacks
 
@@ -1977,6 +1999,8 @@ def _engine_swing(rolls, entry, sheet, to_hit, mode, faces, target_ac, target, t
         upcoming = great_weapon_treated(upcoming)
     normal = sum(upcoming[:count]) if len(upcoming) >= count else None
     critical = sum(upcoming) if len(upcoming) >= 2 * count else None
+    if forced_critical:
+        count, normal, critical = 2 * count, critical, None
     # With no damage faces ahead (the player's miss) the swing is only scored.
     scored = attacks.score(
         to_hit=to_hit, count=count, sides=sides,
@@ -2167,7 +2191,7 @@ def _on_hit_log(text):
 
 
 def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override=None, great_weapon=None, bonus_dice=None,
-                   riders=None):
+                   riders=None, critical_override=None):
     """Resolve a validated attack intent into an event + deltas.
 
     Only 'attack' (and the no-op stances) resolve mechanically here;
@@ -2176,6 +2200,10 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
 
     #1666: ``riders`` holds the typed rider rows of the player's roll phase,
     their faces already rolled; with None code rolls the target's live riders.
+
+    #1901: ``critical_override`` is the player's roll record's ``critical``,
+    fixed when the attack face was typed; with None each swing tests the
+    automatic critical (a melee hit on a Paralyzed or Unconscious target).
     """
     actor = combatant_by_id(encounter, intent.get("actorId"))
     sheet = _raw_combatant_sheet(encounter, characters, actor)
@@ -2249,9 +2277,18 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
     # #1889: the conditions this intent's onHit rows have staged (a second
     # swing of the same Multiattack stages none twice).
     on_hit_staged = set()
+    # #1901 (F3): a sleeper whose wake effect (#1900) still holds wakes on the
+    # first damage of this sequence; the later swings no longer see it
+    # unconscious (no Advantage, no automatic critical from it).
+    from core.combat.sleeper import UNCONSCIOUS, wake_holds
+    sleeper_held = target is not None and wake_holds(
+        _raw_combatant_sheet(encounter, characters, target), target, encounter)
+    woken = False
     for swing_number, entry in enumerate(attack_entries, start=1):
         if target is None or hp_after <= 0:
             break
+        swing_conditions = target_conditions - {UNCONSCIOUS} if woken else target_conditions
+        damage_before_swing = total_damage
         if _spends_ammunition(entry) and ranged_swings >= _ammunition_left(sheet, ranged_entry or entry):
             continue
         attack_bonus = int(entry.get("attackBonus", 0) or 0) + modifier_total(
@@ -2270,7 +2307,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
             attack_mode, mode_sources = mode_override
         else:
             attack_mode, mode_sources = _attack_mode(
-                attacker_conditions, target_conditions, entry.get("type"), target_dodging
+                attacker_conditions, swing_conditions, entry.get("type"), target_dodging
             )
         attack_faces = [
             _take_roll(
@@ -2295,12 +2332,20 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
             gwf, gwf_note = great_weapon_applies(sheet, entry)
         if gwf or gwf_note:
             event["outcome"]["greatWeaponFighting"] = True if gwf else gwf_note
+        # #1901: the automatic critical, below a kept 20 (a 20 is today's
+        # critical); the player's record fixes it when the face was typed.
+        if critical_override is not None:
+            forced = bool(critical_override)
+        else:
+            forced = auto_critical(swing_conditions, attack_kind(entry), not is_turn_eligible(target))
+        forced = forced and attack_die != 20
         # Option 3: the rules engine scores the swing and its damage; today's
         # arithmetic stays the fallback (engine false on the swing).
         scored = _engine_swing(
             rolls, entry, sheet, attack_bonus, attack_mode, attack_faces, target_ac,
             target, hp_after, trait_sheet,
             log_label="%s %s" % (actor.get("name"), entry.get("name")), treat=gwf,
+            forced_critical=forced,
         )
         if scored is not None:
             total, critical, hit = int(scored.total), bool(scored.critical), bool(scored.hit)
@@ -2308,6 +2353,7 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
             total = attack_die + attack_bonus
             critical = attack_die == 20
             hit = critical or (attack_die != 1 and total >= target_ac)
+        critical = critical or (forced and hit)
         if mode_sources:
             try:
                 from utils.enhanced_logger import info as _info
@@ -2591,6 +2637,10 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
             "rowType": entry.get("type"),
             "thrown": entry.get("thrown") is True,
         }
+        if forced and hit:
+            # #1901: a hit below 20 made critical by the target's Paralyzed or
+            # Unconscious (the reason is in attackModeSources).
+            swing["autoCritical"] = True
         if attack_mode != "normal" or mode_sources:
             # #528: the mode, the faces it chose from and the conditions
             # behind it (cancelled ones included) stay on the journal.
@@ -2609,6 +2659,8 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
         if swing_on_hit:
             swing["onHit"] = swing_on_hit
         swings.append(swing)
+        if sleeper_held and total_damage > damage_before_swing:
+            woken = True
         if _spends_ammunition(entry):
             ranged_swings += 1
             ranged_entry = ranged_entry or entry
@@ -2616,6 +2668,8 @@ def resolve_intent(encounter, characters, intent, rolls, event_id, mode_override
     event["outcome"]["swings"] = swings
     event["outcome"]["hit"] = any(swing["hit"] for swing in swings)
     event["outcome"]["critical"] = any(swing["critical"] for swing in swings)
+    if any(swing.get("autoCritical") for swing in swings):
+        event["outcome"]["autoCritical"] = True
     event["outcome"]["damage"] = total_damage
     if swings:
         event["outcome"].update(
@@ -2898,11 +2952,19 @@ def player_weapon_attack_score(encounter, characters, record, entry):
     # damage total yet); today's arithmetic stays the fallback.
     scored = _engine_score_only(entry, to_hit, mode, faces, ac, target, sheet)
     if scored is not None:
-        return bool(scored.hit), bool(scored.critical), int(scored.kept), int(scored.total), ac
-    kept = max(faces) if mode == "advantage" else min(faces) if mode == "disadvantage" else faces[0]
-    total = kept + to_hit
-    critical = kept == 20
-    return critical or (kept != 1 and total >= ac), critical, kept, total, ac
+        hit, critical, kept, total = bool(scored.hit), bool(scored.critical), int(scored.kept), int(scored.total)
+    else:
+        kept = max(faces) if mode == "advantage" else min(faces) if mode == "disadvantage" else faces[0]
+        total = kept + to_hit
+        critical = kept == 20
+        hit = critical or (kept != 1 and total >= ac)
+    # #1901: a melee hit on a target stating Paralyzed or Unconscious and held
+    # (M1: not turn-eligible) now is a critical; the record keeps it, so the
+    # damage asked and the commit agree.
+    if hit and kept != 20 and auto_critical(_stated_conditions(characters, encounter, target), attack_kind(entry),
+                                            not is_turn_eligible(target)):
+        critical = True
+    return hit, critical, kept, total, ac
 
 
 def _engine_score_only(entry, to_hit, mode, faces, ac, target, sheet):
@@ -2995,6 +3057,8 @@ def resolve_player_weapon_attack(encounter, characters, intent, record, event_id
         mode_override=(record.get("mode"), list(record.get("modeSources") or [])),
         great_weapon=great_weapon,
         bonus_dice=added,
+        # #1901: the critical asked for when the face was typed, never recomputed.
+        critical_override=bool(record.get("critical")),
         # #1666: a phase saved before riders has none; nothing is rolled for it.
         riders=[dict(rider) for rider in record.get("damageRiders") or [] if rider.get("faces")],
     )
@@ -3202,15 +3266,23 @@ def resolve_player_spell_attack(encounter, characters, intent, record, event_id,
     ac = _combatant_ac(encounter, characters, target)
     count, sides, _flat = parse_dice(entry["damageDice"])
     damage_bonus = int(spell.get("damageBonus") or 0)
+    face = (max(attack_faces) if mode == "advantage"
+            else min(attack_faces) if mode == "disadvantage" else attack_faces[0]) if attack_faces else None
+    # #1901: a critical asked below a kept 20 is the automatic one (a melee
+    # spell attack on a Paralyzed or Unconscious target): scored as a 2N-dice
+    # profile, as the swing is.
+    forced = critical_phase and face != 20
     scored = attacks.score(
-        to_hit=to_hit, count=count, sides=sides, bonus=damage_bonus, damage_type=entry["damageType"], mode=mode,
+        to_hit=to_hit, count=2 * count if forced else count, sides=sides, bonus=damage_bonus,
+        damage_type=entry["damageType"], mode=mode,
         faces=attack_faces, target_ac=ac, target_hp=int(target.get("currentHitPoints", 0) or 0),
         target_max_hp=_combatant_max_hp(encounter, characters, target), target_sheet=trait_sheet,
-        damage=None if critical_phase else total_rolled,
-        critical_damage=total_rolled if critical_phase else None,
+        damage=total_rolled if forced or not critical_phase else None,
+        critical_damage=total_rolled if critical_phase and not forced else None,
     )
     if scored.ok and (not scored.hit or scored.damage_rolled == total_rolled):
         hit, critical, kept, total = bool(scored.hit), bool(scored.critical), int(scored.kept), int(scored.total)
+        critical = critical or (forced and hit)
         raw_damage = scored.raw_damage if hit else 0
         damage, traits = (int(scored.damage or 0), list(scored.traits)) if hit else (0, [])
         engine = True
@@ -3227,6 +3299,7 @@ def resolve_player_spell_attack(encounter, characters, intent, record, event_id,
         total = kept + to_hit
         critical = kept == 20
         hit = critical or (kept != 1 and total >= ac)
+        critical = critical or (forced and hit)
         raw_damage = max(0, (total_rolled or 0) + damage_bonus) if hit else 0
         damage, traits = _typed_damage(trait_sheet, entry["damageType"], raw_damage) if hit else (0, [])
         engine = False
@@ -3269,10 +3342,14 @@ def resolve_player_spell_attack(encounter, characters, intent, record, event_id,
         spell_record.update({"damageRolled": total_rolled, "rawDamage": raw_damage, "damage": damage})
         if traits:
             spell_record["damageTraits"] = traits
+    if forced and hit:
+        spell_record["autoCritical"] = True
     event["outcome"].update({
         "hit": hit, "critical": critical, "attackRoll": kept, "totalAttack": total, "targetAC": ac,
         "damage": damage, "scoredBy": "code", "spellAttack": spell_record,
     })
+    if forced and hit:
+        event["outcome"]["autoCritical"] = True
     return resolution
 
 

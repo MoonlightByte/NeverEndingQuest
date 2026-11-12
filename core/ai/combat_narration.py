@@ -293,6 +293,9 @@ def _fact_event(event, creatures, presentation=None):
         "targets": targets,
         "hit": outcome.get("hit"),
         "critical": outcome.get("critical"),
+        # #1901: the hit below 20 was critical by the target's Paralyzed or
+        # Unconscious (present only when it fired)
+        "autoCritical": True if outcome.get("autoCritical") is True else None,
         "damage": outcome.get("damage"),
         "attackRoll": outcome.get("attackRoll"),
         "totalAttack": outcome.get("totalAttack"),

@@ -102,6 +102,7 @@
     {
       "name": "Shock",
       "kind": "attack",
+      "attackKind": "melee",
       "attackBonus": 4,
       "damageDice": "2d8",
       "damageBonus": 2,
