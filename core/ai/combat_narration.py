@@ -252,9 +252,16 @@ def _ended_effects(event, creatures, presentation=None):
         if tick.get("combatantId"):
             holder = _display_name(creatures, tick.get("combatantId"), None, presentation)
         elif isinstance(tick.get("owner"), str) and tick["owner"].strip():
+            # A sheet tick names its owner: a player or npc (only they have
+            # sheets), never a monster row that shares the name.
             owner = tick["owner"]
             combatant_id = next(
-                (key for key, creature in creatures.items() if creature.get("name") == owner), None
+                (
+                    key for key, creature in creatures.items()
+                    if creature.get("name") == owner
+                    and creature.get("type") in ("player", "npc")
+                ),
+                None,
             )
             holder = _display_name(creatures, combatant_id, owner, presentation) if combatant_id else owner
         if not holder:
