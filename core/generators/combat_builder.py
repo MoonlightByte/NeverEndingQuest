@@ -1405,6 +1405,51 @@ def recorded_dead_rows(encounter_data, response, location_id):
     return rows
 
 
+# #1953: the tally outcomes of members who left the scene alive and can be
+# brought back by returnOccupant (never defeated or died).
+RETURNABLE_GROUP_OUTCOMES = ("fled", "departed", "surrendered")
+
+
+def recorded_resolved_rows(encounter_data, response, location_id):
+    """#1953: the monster slots a createEncounter binds by a declared
+    occupantIds id to a creature group at the fight's place with none left
+    (count 0), whatever its tally. Such a fight's outcome is booked to
+    another group of the same kind, or to none, so it is refused before
+    anything is built. Read from the build's one occupants read, by typed
+    ids only. One row per group, in slot order: name, occupantId, record
+    (the tally text, as on its rosterRecord line), location, returnable (an
+    entry fled, departed or surrendered) and returns (those entries:
+    outcome and count). None when the document is unread; [] when no slot
+    names such a group."""
+    from core.nql import occupants
+
+    if response is _UNREAD or not response or not response.get("ok"):
+        return None
+    tracker = load_json("party_tracker.json") or {}
+    module = (tracker.get("module") or "").replace(" ", "_")
+    place = occupants.place_id(module, location_id)
+    groups = {o["id"]: o for o in (response.get("live_state") or {}).get("occupants") or []
+              if isinstance(o, dict) and o.get("kind") == "creatures" and isinstance(o.get("id"), str)
+              and o.get("location") == place and o.get("count") == 0}
+    declared_ids = encounter_data.get("occupantIds") or {}
+    if not isinstance(declared_ids, dict):
+        return []
+    rows, seen = [], set()
+    for index, _monster in enumerate(encounter_data.get("monsters") or []):
+        declared = declared_ids.get("monster:%d" % index)
+        group = groups.get(declared) if isinstance(declared, str) else None
+        if group is None or declared in seen:
+            continue
+        seen.add(declared)
+        returns = [{"outcome": e.get("outcome"), "count": e.get("count")} for e in group.get("tally") or []
+                   if isinstance(e, dict) and e.get("outcome") in RETURNABLE_GROUP_OUTCOMES
+                   and isinstance(e.get("count"), int) and e.get("count") > 0]
+        rows.append({"name": group.get("name") or declared, "occupantId": declared, "location": place,
+                     "record": occupants._tally_text(group) or "none left", "returnable": bool(returns),
+                     "returns": returns})
+    return rows
+
+
 def _declared_person_slots(encounter_data, response):
     """(path_manager, tracker, module, [(slot, name, record)]) for the npc
     slots whose declared occupantIds id names a person record of this module:
@@ -1574,7 +1619,7 @@ def party_held_rows(encounter, sheets, allowed=()):
 
 def _write_result(result_file, status, encounter_id=None, encounter_file=None, down_hostiles=None,
                   outside_rows=None, recorded_dead=None, stated_incapacitated=None, party_held=None,
-                  misbound=None, named_elsewhere=None):
+                  misbound=None, named_elsewhere=None, recorded_resolved=None):
     """Hand the caller a typed result; printed lines are for people only (#812)."""
     if not result_file:
         return True
@@ -1596,6 +1641,8 @@ def _write_result(result_file, status, encounter_id=None, encounter_file=None, d
         result["misboundRows"] = misbound
     if named_elsewhere is not None:
         result["namedElsewhere"] = named_elsewhere
+    if recorded_resolved is not None:
+        result["recordedResolved"] = recorded_resolved
     if save_json(result_file, result):
         return True
     logging.error(f"Failed to write the builder result to {result_file}")
@@ -1674,6 +1721,18 @@ def main(argv=None):
     if dead:
         print("[COMBAT_BUILDER] Refused: this fight names someone recorded dead; nothing built")
         _write_result(result_file, "recorded_dead", recorded_dead=dead)
+        return 1
+    # #1953: a monster slot bound by id to a creature group with none left
+    # here. Before anything is built, from the same read. Fail open.
+    try:
+        resolved = recorded_resolved_rows(encounter_data, occupant_response, location)
+    except Exception as exc:
+        warning("COMBAT_BUILDER: recorded-group check skipped (%s)" % exc, category="encounter_setup")
+        resolved = None
+    if resolved:
+        left = any(row.get("returnable") for row in resolved)
+        print("[COMBAT_BUILDER] Refused: this fight names a group with none left here; nothing built")
+        _write_result(result_file, "recorded_left" if left else "recorded_beaten", recorded_resolved=resolved)
         return 1
     # #1937: a declared occupant id on the slot of someone it does not name.
     # Before anything is built, from the same read. Fail open.

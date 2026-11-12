@@ -5155,6 +5155,8 @@ COMBAT_START_REASONS = {
     "party_member_held": "a party member in it is held by a stated condition",
     "id_not_this_slot": "an occupantId in it is on another person's slot",
     "named_elsewhere": "it names someone recorded at another place",
+    "recorded_beaten": "it names a group recorded beaten here",
+    "recorded_left": "it names a group recorded as gone from here",
 }
 
 
@@ -5228,7 +5230,8 @@ def _refused_rows(result_path):
     recordedDead for recorded_dead (#1902), statedIncapacitated for
     nobody_can_act (#1894), partyHeld for party_member_held (#1894),
     misboundRows for id_not_this_slot (#1937), namedElsewhere for
-    named_elsewhere (#1936); else None."""
+    named_elsewhere (#1936), recordedResolved for recorded_beaten and
+    recorded_left (#1953); else None."""
     try:
         with open(result_path, "r", encoding="utf-8") as result_file:
             result = json.load(result_file)
@@ -5248,6 +5251,8 @@ def _refused_rows(result_path):
         return result.get("misboundRows")
     if isinstance(result, dict) and result.get("status") == "named_elsewhere":
         return result.get("namedElsewhere")
+    if isinstance(result, dict) and result.get("status") in ("recorded_beaten", "recorded_left"):
+        return result.get("recordedResolved")
     return None
 
 
@@ -5342,6 +5347,47 @@ def _dead_lines(rows, location_id):
         at = "here" if not place or place == location_id else "at %s" % place
         clauses.append('%s (occupantId "%s"), recorded %s as "%s"' % (name, occupant_id, at, record))
     return "; ".join(clauses) + "."
+
+
+def _group_lines(rows, returnable):
+    """#1953: ('Corrupted Wolf (occupantId "occ:..."), recorded as "1 fled"',
+    count) for the builder's typed rows whose returnable is ``returnable``,
+    clauses joined with "; "; ("", 0) when there are none or any row is
+    unusable."""
+    if not isinstance(rows, list) or not rows:
+        return "", 0
+    clauses = []
+    for row in rows:
+        if not isinstance(row, dict):
+            return "", 0
+        name = str(row.get("name") or "").strip()
+        occupant_id = str(row.get("occupantId") or "").strip()
+        record = str(row.get("record") or "").strip()
+        if not name or not occupant_id or not record:
+            return "", 0
+        if bool(row.get("returnable")) is returnable:
+            clauses.append('%s (occupantId "%s"), recorded as "%s"' % (name, occupant_id, record))
+    return "; ".join(clauses), len(clauses)
+
+
+def _return_steps(rows):
+    """#1953: one returnOccupant per returnable tally entry of the builder's
+    typed rows, by its outcome and count (fled, departed or surrendered;
+    never defeated or died), joined with " and "; "" when unusable."""
+    steps = []
+    for row in rows if isinstance(rows, list) else []:
+        if not isinstance(row, dict) or not row.get("returnable"):
+            continue
+        occupant_id = str(row.get("occupantId") or "").strip()
+        for entry in row.get("returns") or []:
+            outcome = entry.get("outcome") if isinstance(entry, dict) else None
+            count = entry.get("count") if isinstance(entry, dict) else None
+            if not occupant_id or outcome not in ("fled", "departed", "surrendered") \
+                    or not isinstance(count, int) or count < 1:
+                return ""
+            steps.append('returnOccupant on "%s" with "outcome": "%s" and "count": %d' % (
+                occupant_id, outcome, count))
+    return " and ".join(steps)
 
 
 def _misbound_lines(rows):
@@ -5564,6 +5610,9 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
     party_held = _stated_lines(down_hostiles) if reason == "party_member_held" else ""
     misbound = _misbound_lines(down_hostiles) if reason == "id_not_this_slot" else ""
     elsewhere, several = _elsewhere_lines(down_hostiles) if reason == "named_elsewhere" else ("", False)
+    beaten, beaten_count = _group_lines(down_hostiles, False) if reason == "recorded_beaten" else ("", 0)
+    left, left_count = _group_lines(down_hostiles, True) if reason == "recorded_left" else ("", 0)
+    left_steps = _return_steps(down_hostiles) if reason == "recorded_left" else ""
     here = str(world.get("currentLocationId") or "").strip()
     if misbound:
         # #1937: each occupantId belongs on its own person's slot.
@@ -5622,6 +5671,33 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
             "without the dead in npcs or occupantIds; only when no one else is left to fight, answer "
             "the player's last action again without this fight." % (
                 dead, "" if payments is None else " " + _encounter_payment_lines(payments))
+        )
+    elif beaten:
+        # #1953: a fight bound to a group with none left here records its
+        # outcome on another group or on none; new creatures need no id.
+        content = (
+            "Combat Error: the encounter you requested could not be set up, because it names a group "
+            "recorded beaten here: %s. No fight has started.%s Send createEncounter again without %s "
+            "(new creatures of that kind may be listed with no id), or answer the player's last action "
+            "again without this fight." % (
+                beaten, "" if payments is None else " " + _encounter_payment_lines(payments),
+                "that occupantId" if beaten_count == 1 else "those occupantIds")
+        )
+    elif left and left_steps:
+        # #1953: members who left alive come back by returnOccupant first,
+        # by the outcome and count on their record; beaten ones never do.
+        ids = "that occupantId" if left_count == 1 else "those occupantIds"
+        also, also_count = _group_lines(down_hostiles, False)
+        content = (
+            "Combat Error: the encounter you requested could not be set up, because it names a group "
+            "recorded as gone from here: %s. No fight has started.%s If they come back to fight, send %s "
+            "first, then createEncounter with %s; otherwise send createEncounter without %s (new "
+            "creatures of that kind may be listed with no id), or answer the player's last action again "
+            "without this fight." % (
+                left, "" if payments is None else " " + _encounter_payment_lines(payments), left_steps,
+                ids, ids)
+            + (" It also names a group recorded beaten here: %s; send createEncounter without %s." % (
+                also, "that occupantId" if also_count == 1 else "those occupantIds") if also else "")
         )
     elif outside:
         # #1899: who is outside the fight, what a fight needs, and how to
@@ -5686,7 +5762,8 @@ def _built_encounter(result_path, returncode):
     if not isinstance(result, dict) or result.get("version") != 1:
         return None, "builder_failed"
     if result.get("status") in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead", "nobody_can_act",
-                                "party_member_held", "id_not_this_slot", "named_elsewhere"):
+                                "party_member_held", "id_not_this_slot", "named_elsewhere", "recorded_beaten",
+                                "recorded_left"):
         return None, result["status"]
     if result.get("status") != "saved":
         return None, "builder_no_encounter"
@@ -5899,7 +5976,7 @@ def process_action(
                 )
                 if build_failure in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead",
                                      "nobody_can_act", "party_member_held", "id_not_this_slot",
-                                     "named_elsewhere"):
+                                     "named_elsewhere", "recorded_beaten", "recorded_left"):
                     down_hostiles = _refused_rows(os.path.join(result_dir, "result.json"))
             finally:
                 shutil.rmtree(result_dir, ignore_errors=True)
