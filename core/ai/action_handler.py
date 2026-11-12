@@ -5153,6 +5153,8 @@ COMBAT_START_REASONS = {
     "recorded_dead": "it names someone recorded dead",
     "nobody_can_act": "nobody in it could act",
     "party_member_held": "a party member in it is held by a stated condition",
+    "id_not_this_slot": "an occupantId in it is on another person's slot",
+    "named_elsewhere": "it names someone recorded at another place",
 }
 
 
@@ -5224,7 +5226,9 @@ def _refused_rows(result_path):
     """The refused rows of a builder result: downHostiles for
     no_hostile_can_act (#1891), outsideRows for no_hostile_in_fight (#1899),
     recordedDead for recorded_dead (#1902), statedIncapacitated for
-    nobody_can_act (#1894); else None."""
+    nobody_can_act (#1894), partyHeld for party_member_held (#1894),
+    misboundRows for id_not_this_slot (#1937), namedElsewhere for
+    named_elsewhere (#1936); else None."""
     try:
         with open(result_path, "r", encoding="utf-8") as result_file:
             result = json.load(result_file)
@@ -5240,6 +5244,10 @@ def _refused_rows(result_path):
         return result.get("statedIncapacitated")
     if isinstance(result, dict) and result.get("status") == "party_member_held":
         return result.get("partyHeld")
+    if isinstance(result, dict) and result.get("status") == "id_not_this_slot":
+        return result.get("misboundRows")
+    if isinstance(result, dict) and result.get("status") == "named_elsewhere":
+        return result.get("namedElsewhere")
     return None
 
 
@@ -5334,6 +5342,42 @@ def _dead_lines(rows, location_id):
         at = "here" if not place or place == location_id else "at %s" % place
         clauses.append('%s (occupantId "%s"), recorded %s as "%s"' % (name, occupant_id, at, record))
     return "; ".join(clauses) + "."
+
+
+def _misbound_lines(rows):
+    """#1937: "the occupantId of Ranger Thane (occ:...) on npc:0, which is
+    Scout Kira" per row, joined with "and", from the builder's typed rows;
+    "" when they are unusable."""
+    if not isinstance(rows, list) or not rows:
+        return ""
+    clauses = []
+    for row in rows:
+        if not isinstance(row, dict):
+            return ""
+        slot, name = str(row.get("slot") or "").strip(), str(row.get("name") or "").strip()
+        occupant_id, owner = str(row.get("occupantId") or "").strip(), str(row.get("recordName") or "").strip()
+        if not slot or not name or not occupant_id or not owner:
+            return ""
+        clauses.append("the occupantId of %s (%s) on %s, which is %s" % (owner, occupant_id, slot, name))
+    return ", and ".join(clauses)
+
+
+def _elsewhere_lines(rows):
+    """#1936: ("Ranger Thane (occupantId occ:...) is at NC03", several) from
+    the builder's typed rows, clauses joined with "and"; ("", False) when
+    they are unusable."""
+    if not isinstance(rows, list) or not rows:
+        return "", False
+    clauses = []
+    for row in rows:
+        if not isinstance(row, dict):
+            return "", False
+        name, occupant_id = str(row.get("name") or "").strip(), str(row.get("occupantId") or "").strip()
+        place = str(row.get("location") or "").rsplit("/", 1)[-1].strip()
+        if not name or not occupant_id or not place:
+            return "", False
+        clauses.append("%s (occupantId %s) is at %s" % (name, occupant_id, place))
+    return " and ".join(clauses), len(clauses) > 1
 
 
 def is_encounter_payment(action):
@@ -5510,7 +5554,29 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
     dead = _dead_lines(down_hostiles, world.get("currentLocationId")) if reason == "recorded_dead" else ""
     held = _stated_lines(down_hostiles) if reason == "nobody_can_act" else ""
     party_held = _stated_lines(down_hostiles) if reason == "party_member_held" else ""
-    if party_held:
+    misbound = _misbound_lines(down_hostiles) if reason == "id_not_this_slot" else ""
+    elsewhere, several = _elsewhere_lines(down_hostiles) if reason == "named_elsewhere" else ("", False)
+    here = str(world.get("currentLocationId") or "").strip()
+    if misbound:
+        # #1937: each occupantId belongs on its own person's slot.
+        content = (
+            "Combat Error: the encounter you requested could not be set up, because occupantIds puts %s. "
+            "No fight has started.%s Each occupantId goes on the npc slot of the person it belongs to "
+            "(npc:N is npcs[N]): add that person to npcs if they fight, or remove the occupantId, then "
+            "request the fight again." % (
+                misbound, "" if payments is None else " " + _encounter_payment_lines(payments))
+        )
+    elif elsewhere and here:
+        # #1936: they are elsewhere; a move only when the story brings them.
+        content = (
+            "Combat Error: the encounter you requested could not be set up, because %s, not at %s where "
+            "the fight is. No fight has started.%s Request the fight without them, or answer without a "
+            "fight; only if the story brings them to %s now, send moveOccupant with %s and "
+            "\"locationId\": \"%s\" before the createEncounter in the same reply." % (
+                elsewhere, here, "" if payments is None else " " + _encounter_payment_lines(payments),
+                here, "each one's occupantId" if several else "that occupantId", here)
+        )
+    elif party_held:
         # #1894 D-1894-5 (A): once per turn; the same request again in this
         # turn starts the fight with them held.
         content = (
@@ -5612,7 +5678,7 @@ def _built_encounter(result_path, returncode):
     if not isinstance(result, dict) or result.get("version") != 1:
         return None, "builder_failed"
     if result.get("status") in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead", "nobody_can_act",
-                                "party_member_held"):
+                                "party_member_held", "id_not_this_slot", "named_elsewhere"):
         return None, result["status"]
     if result.get("status") != "saved":
         return None, "builder_no_encounter"
@@ -5824,7 +5890,8 @@ def process_action(
                     os.path.join(result_dir, "result.json"), result.returncode
                 )
                 if build_failure in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead",
-                                     "nobody_can_act", "party_member_held"):
+                                     "nobody_can_act", "party_member_held", "id_not_this_slot",
+                                     "named_elsewhere"):
                     down_hostiles = _refused_rows(os.path.join(result_dir, "result.json"))
             finally:
                 shutil.rmtree(result_dir, ignore_errors=True)

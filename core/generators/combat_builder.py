@@ -1405,6 +1405,84 @@ def recorded_dead_rows(encounter_data, response, location_id):
     return rows
 
 
+def _declared_person_slots(encounter_data, response):
+    """(path_manager, tracker, module, [(slot, name, record)]) for the npc
+    slots whose declared occupantIds id names a person record of this module:
+    an occupant of kind "person" with count not 0, as _listed_npc_occupant
+    counts persons (a creature the area data marks a person is not one). Read
+    from the build's one occupants read; None when the document is unread."""
+    if response is _UNREAD or not response or not response.get("ok"):
+        return None
+    tracker = load_json("party_tracker.json") or {}
+    module = (tracker.get("module") or "").replace(" ", "_")
+    records = {o["id"]: o for o in (response.get("live_state") or {}).get("occupants") or []
+               if isinstance(o, dict) and o.get("kind") == "person" and o.get("count") != 0
+               and isinstance(o.get("id"), str) and o["id"].startswith("occ:%s/" % module)}
+    declared_ids = encounter_data.get("occupantIds") or {}
+    slots = []
+    for index, name in enumerate(encounter_data.get("npcs") or []):
+        slot = "npc:%d" % index
+        declared = declared_ids.get(slot) if isinstance(declared_ids, dict) else None
+        if isinstance(name, str) and isinstance(declared, str) and declared in records:
+            slots.append((slot, name, records[declared]))
+    return ModulePathManager(module or None), tracker, module, slots
+
+
+def misbound_rows(encounter_data, response):
+    """#1937: the npc slots whose declared occupantIds id names a person record
+    this slot is not, so such a fight is refused before anything is built.
+    A slot with a sheet (loaded as the builder loads it, load only) is that
+    person when the id's last segment is the sheet's file stem (#1450), or
+    when npcs[N] names a roster companion whose partyNPCs occupantId is that
+    id; a slot with no sheet when the record's own name or an alias slugs
+    exactly to npcs[N]. Typed ids, stems and exact slugs only, never a near
+    name. Each row is {"slot", "name", "occupantId", "recordName"}; None
+    when the document is unread, [] when every declared person fits."""
+    from core.combat.scene import _folded
+    from core.nql import occupants
+    from utils.roster_conversion import slug
+
+    read = _declared_person_slots(encounter_data, response)
+    if read is None:
+        return None
+    path_manager, tracker, _module, slots = read
+    roster = [e for e in tracker.get("partyNPCs") or [] if isinstance(e, dict)]
+    rows = []
+    for slot, name, record in slots:
+        loaded = _load_npc_sheet(name, path_manager)
+        if loaded:
+            stem = os.path.splitext(os.path.basename(str(loaded[1])))[0]
+            fits = occupants.id_stem(record) == stem or any(
+                _folded(e.get("name")) == _folded(name) and e.get("occupantId") == record["id"] for e in roster)
+        else:
+            fits = occupants._person_matches(record, slug(name))
+        if not fits:
+            rows.append({"slot": slot, "name": name, "occupantId": record["id"],
+                         "recordName": record.get("name")})
+    return rows
+
+
+def named_elsewhere_rows(encounter_data, response, location_id):
+    """#1936: the npc slots whose declared occupantIds id names a living
+    person recorded at another place than the fight's, so such a fight is
+    refused before anything is built (seated, they would fight here while
+    their record stays there). A roster companion's slot is not checked: a
+    companion is with the party. Each row is {"slot", "name", "occupantId",
+    "location"}; None when the document is unread, [] when none."""
+    from core.combat.scene import companion_participant_keys
+    from core.nql import occupants
+
+    read = _declared_person_slots(encounter_data, response)
+    if read is None:
+        return None
+    _path_manager, tracker, module, slots = read
+    place = occupants.place_id(module, location_id)
+    companions = companion_participant_keys(encounter_data, tracker)
+    return [{"slot": slot, "name": name, "occupantId": record["id"], "location": record.get("location")}
+            for slot, name, record in slots
+            if slot not in companions and record.get("location") != place]
+
+
 def party_held_rows(encounter, sheets, allowed=()):
     """#1894 D-1894-5 (A): the party-side rows held by a stated stunned,
     paralyzed, incapacitated or petrified with no effect behind it, other than
@@ -1436,7 +1514,8 @@ def party_held_rows(encounter, sheets, allowed=()):
 
 
 def _write_result(result_file, status, encounter_id=None, encounter_file=None, down_hostiles=None,
-                  outside_rows=None, recorded_dead=None, stated_incapacitated=None, party_held=None):
+                  outside_rows=None, recorded_dead=None, stated_incapacitated=None, party_held=None,
+                  misbound=None, named_elsewhere=None):
     """Hand the caller a typed result; printed lines are for people only (#812)."""
     if not result_file:
         return True
@@ -1454,6 +1533,10 @@ def _write_result(result_file, status, encounter_id=None, encounter_file=None, d
         result["statedIncapacitated"] = stated_incapacitated
     if party_held is not None:
         result["partyHeld"] = party_held
+    if misbound is not None:
+        result["misboundRows"] = misbound
+    if named_elsewhere is not None:
+        result["namedElsewhere"] = named_elsewhere
     if save_json(result_file, result):
         return True
     logging.error(f"Failed to write the builder result to {result_file}")
@@ -1468,8 +1551,10 @@ def main(argv=None):
     "encounterFile"}; status is saved, invalid_input, generation_failed,
     save_failed (#812), no_hostile_can_act with its "downHostiles" (#1891),
     no_hostile_in_fight with its "outsideRows" (#1899), recorded_dead with
-    its "recordedDead" (#1902) or nobody_can_act with its
-    "statedIncapacitated" (#1894).
+    its "recordedDead" (#1902), nobody_can_act with its
+    "statedIncapacitated" (#1894), party_member_held with its "partyHeld"
+    (#1894), id_not_this_slot with its "misboundRows" (#1937) or
+    named_elsewhere with its "namedElsewhere" (#1936).
     """
     import argparse
 
@@ -1530,6 +1615,27 @@ def main(argv=None):
     if dead:
         print("[COMBAT_BUILDER] Refused: this fight names someone recorded dead; nothing built")
         _write_result(result_file, "recorded_dead", recorded_dead=dead)
+        return 1
+    # #1937: a declared occupant id on the slot of someone it does not name.
+    # Before anything is built, from the same read. Fail open.
+    try:
+        misbound = misbound_rows(encounter_data, occupant_response)
+    except Exception as exc:
+        warning("COMBAT_BUILDER: occupant-id slot check skipped (%s)" % exc, category="encounter_setup")
+        misbound = None
+    if misbound:
+        print("[COMBAT_BUILDER] Refused: an occupant id is on another person's slot; nothing built")
+        _write_result(result_file, "id_not_this_slot", misbound=misbound)
+        return 1
+    # #1936: a declared living person recorded at another place. Fail open.
+    try:
+        elsewhere = named_elsewhere_rows(encounter_data, occupant_response, location)
+    except Exception as exc:
+        warning("COMBAT_BUILDER: named-elsewhere check skipped (%s)" % exc, category="encounter_setup")
+        elsewhere = None
+    if elsewhere:
+        print("[COMBAT_BUILDER] Refused: this fight names someone recorded at another place; nothing built")
+        _write_result(result_file, "named_elsewhere", named_elsewhere=elsewhere)
         return 1
 
     encounter = generate_encounter(encounter_data, occupant_response)
