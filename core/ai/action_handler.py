@@ -5346,8 +5346,9 @@ def _dead_lines(rows, location_id):
 
 def _misbound_lines(rows):
     """#1937: "the occupantId of Ranger Thane (occ:...) on npc:0, which is
-    Scout Kira" per row, joined with "and", from the builder's typed rows;
-    "" when they are unusable."""
+    Scout Kira" per row, joined with "and", from the builder's typed rows
+    ("which is a different person named <name>" when the record's name folds
+    equal to the slot's); "" when they are unusable."""
     if not isinstance(rows, list) or not rows:
         return ""
     clauses = []
@@ -5358,7 +5359,9 @@ def _misbound_lines(rows):
         occupant_id, owner = str(row.get("occupantId") or "").strip(), str(row.get("recordName") or "").strip()
         if not slot or not name or not occupant_id or not owner:
             return ""
-        clauses.append("the occupantId of %s (%s) on %s, which is %s" % (owner, occupant_id, slot, name))
+        # the auditor's nit: a record and a slot of one name are still two people
+        who = "a different person named %s" % name if owner.casefold() == name.casefold() else name
+        clauses.append("the occupantId of %s (%s) on %s, which is %s" % (owner, occupant_id, slot, who))
     return ", and ".join(clauses)
 
 
