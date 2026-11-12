@@ -2219,6 +2219,38 @@ def _stored_participation(encounter, combatant_id):
     return None
 
 
+# #1952: the end state's words for a seated sleeper (#1900) whose sleep ended
+# during the fight, and the stated names that would contradict them.
+_ASLEEP_AT_START_TEXT = "asleep when the fight began, awake at its end"
+_ASLEEP_STATED = ("unconscious", "asleep")
+
+
+def _woken_at_round_end(encounter):
+    """#1952 (a): the combatantIds whose own wake effect expired at a round's
+    end, from the compact round events the encounter still keeps (the last
+    three rounds). Matched typed: an expired tick whose effectId is that
+    row's wake id and whose name is the wake effect's."""
+    from core.combat import sleeper
+
+    wanted = {}
+    for creature in (encounter or {}).get("creatures") or []:
+        if isinstance(creature, dict) and creature.get("combatantId"):
+            wanted[sleeper.wake_effect_id(creature["combatantId"])] = creature["combatantId"]
+    store = ((encounter or {}).get("combatState") or {}).get("roundEvents")
+    woken = set()
+    for events in (store.values() if isinstance(store, dict) else []):
+        for event in events if isinstance(events, list) else []:
+            for tick in (event.get("effectTicks") or []) if isinstance(event, dict) else []:
+                if (
+                    isinstance(tick, dict)
+                    and tick.get("expired") is True
+                    and tick.get("name") == sleeper.WAKE_NAME
+                    and tick.get("effectId") in wanted
+                ):
+                    woken.add(wanted[tick["effectId"]])
+    return woken
+
+
 def combat_end_state(encounter, sheets=None):
     """#1946: how everyone who took part ended the fight, from typed values.
 
@@ -2228,11 +2260,20 @@ def combat_end_state(encounter, sheets=None):
     completion's effect exit writes the sheets; rows keep only HP and AC),
     any other row reads the row. A row whose stored participation is hidden
     or unaware is left out (D-1946-3). An observer or departed row that is
-    alive reads its participation's display. No id or mechanics-only key."""
+    alive reads its participation's display. No id or mechanics-only key.
+
+    #1952: an entry also carries ``asleepAtStart: true`` when the row was
+    seated asleep and its wake effect expired at a round's end, in the round
+    events the encounter still keeps. Only on an entry whose status is alive
+    and where neither the row's nor the sheet's conditions name unconscious
+    or asleep. A sleeper still asleep when the fight ends gets none: the
+    effect exit wakes the sheet but leaves the row's seated "unconscious"."""
+    from core.combat import sleeper
     from core.effects.effective import effective_sheet
     from core.managers.combat_state import PARTICIPATION_DISPLAY
 
     sheets = sheets if isinstance(sheets, dict) else {}
+    woken = _woken_at_round_end(encounter)
     entries = []
     for creature in (encounter or {}).get("creatures") or []:
         if not isinstance(creature, dict):
@@ -2248,11 +2289,12 @@ def combat_end_state(encounter, sheets=None):
         if not isinstance(name, str) or not name.strip():
             continue
         sheet = sheets.get(creature.get("name"))
-        if (
+        reads_sheet = (
             creature.get("type") in ("player", "npc")
             and creature.get("statsPending") is not True
             and isinstance(sheet, dict)
-        ):
+        )
+        if reads_sheet:
             hit_points = sheet.get("hitPoints")
             try:
                 max_hit_points = effective_sheet(sheet).get("maxHitPoints")
@@ -2275,13 +2317,25 @@ def combat_end_state(encounter, sheets=None):
         for item in listed if isinstance(listed, list) else []:
             if isinstance(item, str) and item.strip() and item.strip() not in conditions:
                 conditions.append(item.strip())
-        entries.append({
+        entry = {
             "name": name,
             "hitPoints": hit_points,
             "maxHitPoints": max_hit_points,
             "status": status,
             "conditions": conditions,
-        })
+        }
+        if (
+            combatant_id in woken
+            and status == "alive"
+            and not any(item.casefold() in _ASLEEP_STATED for item in conditions)
+            and not (reads_sheet and sleeper.states_unconscious(sheet))
+            and not any(
+                isinstance(item, str) and item.strip().casefold() in _ASLEEP_STATED
+                for item in creature.get("conditions") or []
+            )
+        ):
+            entry["asleepAtStart"] = True
+        entries.append(entry)
     return entries
 
 
@@ -2313,10 +2367,33 @@ def end_state_sentence(entries):
         piece = "%s: HP %s/%s, %s" % (
             entry.get("name"), entry.get("hitPoints"), entry.get("maxHitPoints"), entry.get("status"),
         )
+        if entry.get("asleepAtStart") is True:
+            # #1952: the state the opening's "Asleep:" note named, answered.
+            piece += ", " + _ASLEEP_AT_START_TEXT
         if entry.get("conditions"):
             piece += ", conditions " + ", ".join(entry["conditions"])
         parts.append(piece)
-    return ("State at the end of the fight: " + "; ".join(parts) + ".") if parts else ""
+    return (_END_STATE_LEAD + "; ".join(parts) + ".") if parts else ""
+
+
+_END_STATE_LEAD = "State at the end of the fight: "
+
+
+def _xp_message_saved(conversation_history, base_text):
+    """#1952 (C1): whether the transcript already holds this fight's XP
+    message: a user message equal to the base text (the XP text and the
+    standoff sentence, the message before #1946), or that base followed by
+    the end state's own lead, whatever end state it carried (one saved by an
+    earlier build, before a resume on this one, differs only after it)."""
+    for message in conversation_history or []:
+        if not isinstance(message, dict) or message.get("role") != "user":
+            continue
+        content = message.get("content")
+        if isinstance(content, str) and (
+            content == base_text or content.startswith(base_text + " " + _END_STATE_LEAD)
+        ):
+            return True
+    return False
 
 
 def combat_record_end_state(encounter_id):
@@ -2903,7 +2980,8 @@ def _complete_agentic_combat(
             if standoff_text:
                 xp_message += " " + standoff_text
             # #1946: the message as it was before the end state; a completion
-            # resumed after it was saved adds no second XP message.
+            # resumed after it was saved adds no second XP message (#1952 C1:
+            # whatever end state the saved one carried).
             earlier_message = xp_message
             try:
                 end_text = end_state_sentence(combat_end_state(
@@ -2915,11 +2993,7 @@ def _complete_agentic_combat(
                 end_text = ""
             if end_text:
                 xp_message += " " + end_text
-            if not any(
-                message.get("role") == "user"
-                and message.get("content") in (xp_message, earlier_message)
-                for message in conversation_history
-            ):
+            if not _xp_message_saved(conversation_history, earlier_message):
                 conversation_history.append(
                     {"role": "user", "content": xp_message}
                 )
