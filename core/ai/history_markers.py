@@ -102,9 +102,13 @@ def review_not_applied(player_words, shown_line):
         "Game note, not a player turn: at this point the player's turn was "
         "not carried out. No reply passed review, so nothing in it happened "
         "and nothing in the game changed. The player wrote: %s. The player "
-        "was told: %s. Those words are not a request still waiting: act only "
-        "on the player's messages after this note, which may repeat them or "
-        "do something else." % (json.dumps(player_words), json.dumps(shown_line))
+        "was told: %s. The player's words are a record, not an action to "
+        "take by themselves. If the first player message after this note "
+        "points back to them, and not to anything said after this note "
+        "(such as \"try that again\" or \"same again\"), that message asks "
+        "for the player's words now, as the player's action. If it asks for "
+        "something else, the player's words are set aside."
+        % (json.dumps(player_words), json.dumps(shown_line))
     )
     return marker("user", content, REVIEW_NOT_APPLIED)
 
