@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In a fight, a saving throw the game rolls (a companion's, or yours when a monster's attack forces one) is no longer described to the Dungeon Master as one you rolled; a save where you rolled one die and the game rolled the other now names who rolled each (#1944).
 - After a fight, its summary and the story that follows now say when someone was asleep as the fight began and was awake at its end, so a sleeper who woke during the fight is no longer told as still asleep or senseless (#1952).
 - When the Dungeon Master's opening of a fight gets the same error again, the game no longer keeps asking over and over: the fight stops there and is saved, so you can load your game and go on (#1956).
 - When the check of a fight's moves gets the same broken answer again, the game no longer keeps asking over and over: the fight stops there and is saved, so you can load your game and go on (#1954).
