@@ -3955,6 +3955,8 @@ def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id, player_faces=
             return None
         needed = nql_checks.faces_needed(mode.mode)
         faces = list(player_faces or [])[:needed]
+        # #1944: who rolled each face sent, in order: the player's checked faces, then the pool's.
+        rolled_by = ["player"] * len(faces) + ["game"] * (needed - len(faces))
         faces += [
             _take_roll(rolls, "d20", "save", actor_id=actor_id, target_id=target_id, ability=ability)
             for _ in range(needed - len(faces))
@@ -3967,6 +3969,10 @@ def _engine_save(sheet, save_type, dc, rolls, actor_id, target_id, player_faces=
     if not result.ok or result.success is None:
         _warn_save(sheet, save_type, result.reason or "engine returned no verdict")
         return None
+    # #1944: name each face's roller only when faces were sent and the engine kept them as sent (an
+    # automatic failure sends none, and its line has no dice).
+    if faces and list(result.faces) == faces:
+        result.rolled_by = rolled_by
     try:
         from utils.enhanced_logger import info as _info
         _info("CS: engine save: %s" % nql_checks.describe(result), category="combat_events")

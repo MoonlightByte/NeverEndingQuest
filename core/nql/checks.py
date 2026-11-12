@@ -146,6 +146,9 @@ class CheckResult:
     margin: Optional[int] = None
     reason: Optional[str] = None
     added: List[Dict[str, Any]] = field(default_factory=list)  # #889: the added dice rolled, in the total
+    # #1944: who rolled each face, "player" or "game", in face order, when the caller knows (a fight's save,
+    # whose faces the caller sends); None reads the engine's own `drawn`. In memory only, never saved.
+    rolled_by: Optional[List[str]] = None
 
 
 def resolve(sheet: Dict[str, Any], stat: str, *, dc: Optional[int] = None, mode: Optional[str] = None,
@@ -195,6 +198,29 @@ def resolve(sheet: Dict[str, Any], stat: str, *, dc: Optional[int] = None, mode:
                        record.get("success"), record.get("margin"), added=added_dice(sheet, record.get("added")))
 
 
+ROLLERS = ("player", "game")
+
+
+def rolled_words(result: CheckResult) -> str:
+    """#1944: who rolled the faces, and the faces. With ``rolled_by``, each run of faces is named by its roller in
+    face order ("the game rolled 1", "the player rolled 3 and the game rolled 14"); a roller list that is not one
+    known roller per face names none ("rolled 3"). Without it, the engine's own flag: it drew the dice, or the
+    player gave them."""
+    faces = [str(f) for f in result.faces]
+    by = result.rolled_by
+    if by is None:
+        return ("the game rolled " if result.drawn else "the player rolled ") + " and ".join(faces)
+    if len(by) != len(faces) or any(who not in ROLLERS for who in by):
+        return "rolled " + " and ".join(faces)
+    runs: List[Tuple[str, List[str]]] = []
+    for who, face in zip(by, faces):
+        if runs and runs[-1][0] == who:
+            runs[-1][1].append(face)
+        else:
+            runs.append((who, [face]))
+    return " and ".join(f"the {who} rolled {' and '.join(run)}" for who, run in runs)
+
+
 def added_text(dice: List[Dict[str, Any]]) -> str:
     """' +3 (Bless 1d4, the game rolled)' per added die, or ''."""
     return "".join(f" {int(d.get('sum') or 0):+d} ({d['name']} {d['count']}d{d['sides']}"
@@ -209,12 +235,10 @@ def describe(result: CheckResult) -> str:
     why = f" from {', '.join(result.sources)}" if result.sources else (" (situation)" if result.requested in MODES and result.mode == result.requested else "")
     if result.mode == "fail":
         return f"{result.character} {what}" + (f" vs DC {result.dc}" if result.dc is not None else "") + f": automatic failure{why} (no dice)"
-    dice = " and ".join(str(f) for f in result.faces)
-    how = "the game rolled" if result.drawn else "the player rolled"
     modes = f", {result.mode}{why}, kept {result.kept}" if result.mode in MODES else ""
     if result.requested in MODES and result.sources and result.mode == "normal":
         modes = f" ({result.requested} for the situation and {', '.join(result.sources)} cancel)"
-    line = f"{result.character} {what}: {how} {dice}{modes}; {result.kept} {result.bonus:+d}{added_text(result.added)} = {result.total}"
+    line = f"{result.character} {what}: {rolled_words(result)}{modes}; {result.kept} {result.bonus:+d}{added_text(result.added)} = {result.total}"
     if result.dc is None:
         return line + " (no DC: compare totals)"
     verdict = f"succeeds by {result.margin}" if result.success else f"fails by {-result.margin}"
