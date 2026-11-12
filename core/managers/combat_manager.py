@@ -945,6 +945,34 @@ def _inexact_character_names(response, encounter_data):
     )
 
 
+def _end_repeated_t044_failure(failures, failure, invocation_claim, provider, model, exc=None):
+    """#1956: keep a failure of the T044 opening; one it already had ends it.
+
+    ``failure`` is the kind and the correction the game sent back ("json",
+    "review"), or the kind, class and message of an error ("error"). The
+    model saw the correction and failed the same way again: the opening ends
+    on the ceiling's path (#1342, as #1949 and #1954), the fight is kept and
+    no reply is applied. A stop that came meanwhile wins.
+    """
+    if failure not in failures:
+        failures.add(failure)
+        return
+    _require_current_combat_invocation(invocation_claim)
+    detail = failure[0] if exc is None else "%s, %s" % (failure[0], exc.__class__.__name__)
+    error(
+        "FAILURE: T044 returned the same %s failure again; the opening ends" % detail,
+        category="combat_events",
+    )
+    envelope = _limit_envelope(
+        "turn_call_ceiling",
+        "T044",
+        {"_request_provider": provider, "model": model},
+    )
+    if exc is None:
+        raise LiveProviderCompletedError("T044", envelope)
+    raise LiveProviderCompletedError("T044", envelope) from exc
+
+
 def _end_repeated_t040_failure(failures, kind, exc, invocation_claim, provider, model):
     """#1954: keep a T040 failure; one this review already had ends it.
 
@@ -4898,6 +4926,9 @@ This is narration only. Do not advance the round or apply any combat action."""
        else:  # legacy
            combat_config = config.COMBAT_MAIN_LEGACY
 
+       # #1956: the failures this opening has had; the only completed pass
+       # (a validated reply) ends the loop, so the set is never cleared.
+       opening_failures = set()
        attempt = -1
        while not initial_response_valid:
            attempt += 1
@@ -4927,7 +4958,12 @@ This is narration only. Do not advance the round or apply any combat action."""
                conversation_history.append({"role": "assistant", "content": initial_response})
                
                if not is_valid_json(initial_response):
-                   conversation_history.append({"role": "user", "content": "Invalid JSON format. Please try again."})
+                   json_correction = "Invalid JSON format. Please try again."
+                   conversation_history.append({"role": "user", "content": json_correction})
+                   _end_repeated_t044_failure(
+                       opening_failures, ("json", json_correction), invocation_claim,
+                       MODEL_PROVIDER, combat_config["model"],
+                   )
                    continue
 
                # FIX: Use the correct variable for the user input parameter
@@ -4941,6 +4977,10 @@ This is narration only. Do not advance the round or apply any combat action."""
                else:
                    # validation_result is now the full feedback string
                    conversation_history.append({"role": "user", "content": validation_result})
+                   _end_repeated_t044_failure(
+                       opening_failures, ("review", validation_result), invocation_claim,
+                       MODEL_PROVIDER, combat_config["model"],
+                   )
                    continue
            except (CombatTurnPaused, LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop,
                    LiveProviderCompletedError):
@@ -4948,6 +4988,10 @@ This is narration only. Do not advance the round or apply any combat action."""
                raise
            except Exception as e:
                error(f"FAILURE: AI call for initial scene failed on attempt {attempt + 1}", exception=e, category="combat_events")
+               _end_repeated_t044_failure(
+                   opening_failures, ("error", type(e), str(e)), invocation_claim,
+                   MODEL_PROVIDER, combat_config["model"], exc=e,
+               )
                continue
 
        conversation_history, initial_response = _finalize_initial_combat_scene(
