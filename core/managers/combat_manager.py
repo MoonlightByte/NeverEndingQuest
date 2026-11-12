@@ -2178,7 +2178,11 @@ def combat_end_state(encounter, sheets=None):
         if not isinstance(name, str) or not name.strip():
             continue
         sheet = sheets.get(creature.get("name"))
-        if creature.get("type") in ("player", "npc") and isinstance(sheet, dict):
+        if (
+            creature.get("type") in ("player", "npc")
+            and creature.get("statsPending") is not True
+            and isinstance(sheet, dict)
+        ):
             hit_points = sheet.get("hitPoints")
             try:
                 max_hit_points = effective_sheet(sheet).get("maxHitPoints")
