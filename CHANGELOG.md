@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When creatures that ran off, left or gave up earlier come back, the Dungeon Master can now bring back those same creatures instead of new ones, and creatures that were beaten can no longer be brought back that way (#1953).
 - When the Dungeon Master starts a fight with a group of creatures the game records as gone from the place, the fight is no longer set up on that empty record or on another group there; the Dungeon Master is asked to bring back those who ran off, or to fight new creatures (#1953).
 - In a fight, a saving throw the game rolls (a companion's, or yours when a monster's attack forces one) is no longer described to the Dungeon Master as one you rolled; a save where you rolled one die and the game rolled the other now names who rolled each (#1944).
 - After a fight, its summary and the story that follows now say when someone was asleep as the fight began and was awake at its end, so a sleeper who woke during the fight is no longer told as still asleep or senseless (#1952).

@@ -853,13 +853,21 @@ def _tally_text(occupant: Dict[str, Any]) -> str:
     return ", ".join(parts)
 
 
+# #1953: the tally outcomes that put a creature group's id on its record line.
+RECORD_ID_OUTCOMES = ("fled", "departed", "surrendered")
+
+
 def _record_line(occupant: Dict[str, Any]) -> str:
     """One rosterRecord line for an occupant with a tally. A person's line
     carries their id (#1837): an add, or a resolve, of a person recorded
     surrendered or defeated names it. The DM's view and the validator's
-    read this one form (#1876)."""
+    read this one form (#1876). A creature group's line carries its id only
+    when some of it left alive (fled, departed or surrendered): those may be
+    brought back by that id (#1953). A beaten group's line has no id."""
     name = occupant.get("name")
-    if occupant.get("kind") == "person" and occupant.get("id"):
+    if occupant.get("id") and (occupant.get("kind") == "person" or (
+            occupant.get("kind") == "creatures"
+            and any(entry.get("outcome") in RECORD_ID_OUTCOMES for entry in occupant.get("tally") or []))):
         name = "%s [%s]" % (name, occupant["id"])
     text = "%s: %s" % (name, _tally_text(occupant))
     left = occupant.get("count")
@@ -1156,6 +1164,20 @@ def _here(root: str, place: str) -> Optional[Dict[str, Any]]:
     return views[0] if views else None
 
 
+# #1953: the refusal of a return from defeated on a creature group.
+BEATEN_RETURN_PROBLEM = "%s is a creature group, and members recorded defeated stay beaten and are not brought back"
+
+
+def _beaten_return_ending(group: Dict[str, Any]) -> str:
+    left = ", ".join("%d %s" % (entry.get("count", 0), entry.get("outcome"))
+                     for entry in group.get("tally") or [] if entry.get("outcome") in RECORD_ID_OUTCOMES)
+    if left:
+        return ("Only the members it records as left alive can come back (%s): send returnOccupant on this id "
+                "with that outcome and the count beside it, or narrate the scene without bringing the beaten "
+                "back." % left)
+    return "None of it left alive; narrate the scene without bringing the beaten back."
+
+
 def apply_dm_action(action_type: str, parameters: Any, request_id: str, module: str,
                     location_id: str, *, root: str = ".",
                     companion_ids: frozenset = frozenset()) -> Dict[str, Any]:
@@ -1177,6 +1199,16 @@ def apply_dm_action(action_type: str, parameters: Any, request_id: str, module: 
                 "%s is a party companion. To part ways, use updatePartyNPCs remove. If they "
                 "travel with the party but are not shown as joined, add them again by this id" % oid,
                 _here(root, place))}
+        if action_type == "returnOccupant" and str(
+                (parameters if isinstance(parameters, dict) else {}).get("outcome") or "").strip().lower() == "defeated":
+            # #1953: a creature group's members recorded defeated stay beaten;
+            # a return would revive them past B's refusal. Persons as before.
+            current = request(view=(place,), root=root)
+            group = world_occupant((current or {}).get("live_state"), oid) if current and current.get("ok") else None
+            if isinstance(group, dict) and group.get("kind") == "creatures":
+                return {"ok": False, "correction": correction(
+                    action_type, BEATEN_RETURN_PROBLEM % oid, None, recorded=_record_line(group),
+                    ending=_beaten_return_ending(group))}
         recorded = occupant = None
         if action_type == "resolveOccupant":
             # #1837: a person recorded here as one who yielded or was beaten
