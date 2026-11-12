@@ -2132,8 +2132,147 @@ def combat_record_joined_against_party(encounter_id):
     return joined or None
 
 
+# #1946 (owner D-1946-3): a row whose stored scene participation is one of
+# these did not take part in the fight; it is left out of the end state.
+_END_STATE_LEFT_OUT = ("hidden", "unaware")
+
+
+def _stored_participation(encounter, combatant_id):
+    """#1946: the raw sceneFacts participation stored for a row, or None.
+    Read as stored: participation_of maps hidden and unaware to None."""
+    if not combatant_id:
+        return None
+    for row in ((encounter or {}).get("sceneFacts") or {}).get("participants") or []:
+        if isinstance(row, dict) and row.get("combatantId") == combatant_id:
+            value = row.get("participation")
+            return value if isinstance(value, str) else None
+    return None
+
+
+def combat_end_state(encounter, sheets=None):
+    """#1946: how everyone who took part ended the fight, from typed values.
+
+    One entry per encounter row in roster order (name, hitPoints,
+    maxHitPoints, status, conditions), by the scene dossier's authority
+    rule: a player or npc row with a loaded sheet reads the sheet (the
+    completion's effect exit writes the sheets; rows keep only HP and AC),
+    any other row reads the row. A row whose stored participation is hidden
+    or unaware is left out (D-1946-3). An observer or departed row that is
+    alive reads its participation's display. No id or mechanics-only key."""
+    from core.effects.effective import effective_sheet
+    from core.managers.combat_state import PARTICIPATION_DISPLAY
+
+    sheets = sheets if isinstance(sheets, dict) else {}
+    entries = []
+    for creature in (encounter or {}).get("creatures") or []:
+        if not isinstance(creature, dict):
+            continue
+        combatant_id = creature.get("combatantId")
+        participation = _stored_participation(encounter, combatant_id)
+        if participation in _END_STATE_LEFT_OUT:
+            continue
+        name = (
+            combatant_presentation_name(encounter, combatant_id, creature.get("name"))
+            if combatant_id else creature.get("name")
+        )
+        if not isinstance(name, str) or not name.strip():
+            continue
+        sheet = sheets.get(creature.get("name"))
+        if (
+            creature.get("type") in ("player", "npc")
+            and creature.get("statsPending") is not True
+            and isinstance(sheet, dict)
+        ):
+            hit_points = sheet.get("hitPoints")
+            try:
+                max_hit_points = effective_sheet(sheet).get("maxHitPoints")
+            except Exception:
+                max_hit_points = None
+            if max_hit_points is None:
+                max_hit_points = sheet.get("maxHitPoints", creature.get("maxHitPoints"))
+            stored = sheet.get("status", creature.get("status"))
+            listed = sheet.get("condition_affected")
+        else:
+            hit_points = creature.get("currentHitPoints")
+            max_hit_points = creature.get("maxHitPoints")
+            stored = creature.get("status")
+            listed = creature.get("conditions")
+        if participation in PARTICIPATION_DISPLAY and normalize_status(stored) == "alive":
+            status = PARTICIPATION_DISPLAY[participation]
+        else:
+            status = display_status(creature, stored, encounter=encounter)
+        conditions = []
+        for item in listed if isinstance(listed, list) else []:
+            if isinstance(item, str) and item.strip() and item.strip() not in conditions:
+                conditions.append(item.strip())
+        entries.append({
+            "name": name,
+            "hitPoints": hit_points,
+            "maxHitPoints": max_hit_points,
+            "status": status,
+            "conditions": conditions,
+        })
+    return entries
+
+
+def _end_state_sheets(encounter, character_paths=None):
+    """#1946: the player and npc sheets combat_end_state reads, fresh from
+    disk: the completion's own paths, or the ones _agentic_combat_context
+    finds for the encounter (enemies have no sheet)."""
+    if character_paths is None:
+        from utils.module_path_manager import ModulePathManager
+
+        party_tracker = safe_json_load("party_tracker.json") or {}
+        module_name = str(party_tracker.get("module") or "").replace(" ", "_") or None
+        character_paths, _sheets = _agentic_combat_context(
+            encounter, ModulePathManager(module_name), {}
+        )
+    sheets = {}
+    for name, path in (character_paths or {}).items():
+        sheet = safe_json_load(path)
+        if isinstance(sheet, dict):
+            sheets[name] = sheet
+    return sheets
+
+
+def end_state_sentence(entries):
+    """#1946: the end state as one sentence for the after-fight transcript,
+    in _round_facts_text's creature-state form; "" for no entries."""
+    parts = []
+    for entry in entries or []:
+        piece = "%s: HP %s/%s, %s" % (
+            entry.get("name"), entry.get("hitPoints"), entry.get("maxHitPoints"), entry.get("status"),
+        )
+        if entry.get("conditions"):
+            piece += ", conditions " + ", ".join(entry["conditions"])
+        parts.append(piece)
+    return ("State at the end of the fight: " + "; ".join(parts) + ".") if parts else ""
+
+
+def combat_record_end_state(encounter_id):
+    """#1946: combat_end_state for the record of a closed fight (the
+    encounter file and the sheets), or None when the encounter is unreadable
+    or holds no entry."""
+    if not encounter_id:
+        return None
+    try:
+        encounter = safe_json_load(
+            os.path.join("modules", "encounters", "encounter_%s.json" % encounter_id)
+        )
+    except Exception:
+        return None
+    if not isinstance(encounter, dict):
+        return None
+    try:
+        sheets = _end_state_sheets(encounter)
+    except Exception as exc:
+        debug("COMBAT_RECORD: end-state sheets unreadable (%s)" % exc, category="combat_events")
+        sheets = {}
+    return combat_end_state(encounter, sheets) or None
+
+
 def render_combat_record_marker(summary_line, exit_kind=None, xp_receipt=None,
-                                joined_against_party=None):
+                                joined_against_party=None, end_state=None):
     """Return the historical combat record appended to the main history.
 
     ``summary_line`` is the "Combat Summary: ..." line. The normal flow and the
@@ -2153,6 +2292,9 @@ def render_combat_record_marker(summary_line, exit_kind=None, xp_receipt=None,
     ``joined_against_party`` is combat_record_joined_against_party's list. On
     the agentic exit it is stated as data; their attitude and party place are
     left for the DM to decide.
+
+    ``end_state`` is combat_record_end_state's list (#1946): on the agentic
+    exit, everyone who took part, as the fight left them, stated as data.
     """
     if exit_kind == "agentic":
         contract = (
@@ -2176,6 +2318,12 @@ def render_combat_record_marker(summary_line, exit_kind=None, xp_receipt=None,
                 + ". Their attitude and party membership are unchanged; "
                 "setOccupantAttitude and updatePartyNPCs are yours to use if the "
                 "story calls for it."
+            )
+        if end_state:
+            contract += (
+                "\nEveryone in this fight as it ended (typed): "
+                + json.dumps(end_state, sort_keys=True)
+                + "."
             )
     else:
         contract = (
@@ -2684,9 +2832,22 @@ def _complete_agentic_combat(
             standoff_text = _standoff_sentence(receipt_encounter)
             if standoff_text:
                 xp_message += " " + standoff_text
+            # #1946: the message as it was before the end state; a completion
+            # resumed after it was saved adds no second XP message.
+            earlier_message = xp_message
+            try:
+                end_text = end_state_sentence(combat_end_state(
+                    receipt_encounter,
+                    _end_state_sheets(receipt_encounter, character_paths),
+                ))
+            except Exception as exc:
+                warning("#1946: end state not stated (%s)" % exc, category="combat_events")
+                end_text = ""
+            if end_text:
+                xp_message += " " + end_text
             if not any(
                 message.get("role") == "user"
-                and message.get("content") == xp_message
+                and message.get("content") in (xp_message, earlier_message)
                 for message in conversation_history
             ):
                 conversation_history.append(
