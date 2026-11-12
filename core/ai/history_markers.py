@@ -59,6 +59,11 @@ COMBAT_ROUND_SUMMARY = "combat_round_summary"
 # The turn after a dice submission: the engine asks the DM to narrate the
 # settled check; the player typed nothing.
 CHECK_CONTINUATION = "check_continuation"
+# A player turn the review gave up on (#1960, owner D-1823-3): no reply passed
+# review, so nothing in it happened. The turn itself is removed from history;
+# this note keeps a record of it, worded to hold wherever it sits. It carries
+# no player-input field: its words are not player speech.
+REVIEW_NOT_APPLIED = "review_not_applied"
 
 SUMMARY_KINDS = (LOCATION_SUMMARY, CHRONICLE)
 MODULE_KINDS = (MODULE_TRANSITION, ARCHIVED_MODULE_TRANSITION)
@@ -85,6 +90,23 @@ def marker(role, content, kind, **extra):
     message.update(extra)
     message[MARKER_FIELD] = kind
     return message
+
+
+def review_not_applied(player_words, shown_line):
+    """The note the game saves in place of a player turn the review gave up
+    on (#1960). The words and the line shown are quoted, so nothing the player
+    typed can read as the game's own text."""
+    import json
+
+    content = (
+        "Game note, not a player turn: at this point the player's turn was "
+        "not carried out. No reply passed review, so nothing in it happened "
+        "and nothing in the game changed. The player wrote: %s. The player "
+        "was told: %s. Those words are not a request still waiting: act only "
+        "on the player's messages after this note, which may repeat them or "
+        "do something else." % (json.dumps(player_words), json.dumps(shown_line))
+    )
+    return marker("user", content, REVIEW_NOT_APPLIED)
 
 
 def marker_kind(message):

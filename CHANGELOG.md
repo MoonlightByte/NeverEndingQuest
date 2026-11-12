@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A turn the review gives up on now leaves a typed game note in saved history in its place: what the player wrote and was told, marked as not carried out, so later requests and reviews know it was tried and nothing happened. Summaries, the guardian's evidence and the latest-ask readers skip it; nothing new is shown on screen (#1960).
 - In a fight, a saving throw the game rolls (a companion's, or yours when a monster's attack forces one) is no longer described to the Dungeon Master as one you rolled; a save where you rolled one die and the game rolled the other now names who rolled each (#1944).
 - After a fight, its summary and the story that follows now say when someone was asleep as the fight began and was awake at its end, so a sleeper who woke during the fight is no longer told as still asleep or senseless (#1952).
 - When the Dungeon Master's opening of a fight gets the same error again, the game no longer keeps asking over and over: the fight stops there and is saved, so you can load your game and go on (#1956).

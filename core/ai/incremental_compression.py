@@ -156,8 +156,9 @@ class IncrementalLocationCompressor:
             role = msg["role"]
             content = msg["content"]
             if role == "user":
-                # Skip location transition messages
-                if hm.is_marker(msg, hm.LOCATION_TRANSITION):
+                # Skip location transition messages, and the note for a
+                # turn not carried out (#1960): it is not a player line.
+                if hm.is_marker(msg, hm.LOCATION_TRANSITION, hm.REVIEW_NOT_APPLIED):
                     continue
                 context_parts.append(f"Player: {content}")
             elif role == "assistant":

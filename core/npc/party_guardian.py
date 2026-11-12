@@ -168,9 +168,14 @@ def review_party_membership(
         config["response_format"] = {"type": "json_object"}
     prompt = Path("prompts/validation/party_guardian_prompt.txt").read_text(encoding="utf-8")
     review_candidate, review_proposals = consent_view(candidate, proposals)
+    from core.ai import history_markers as hm
     packet = {
         "player_input": player_input,
-        "accepted_history": accepted_history,
+        # #1960: a turn not carried out is not consent evidence.
+        "accepted_history": [
+            message for message in accepted_history
+            if not hm.is_marker(message, hm.REVIEW_NOT_APPLIED)
+        ],
         "canonical_party": party,
         "party_line": party_line + orphan_sentence,
         "candidate": review_candidate,

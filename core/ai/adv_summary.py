@@ -562,6 +562,8 @@ def convert_to_dialogue(trimmed_data):
         if role == 'assistant':
             dialogue += f"Dungeon Master: {content}\n\n"
         elif role == 'user':
+            if hm.is_marker(message, hm.REVIEW_NOT_APPLIED):
+                continue  # #1960: nothing in that turn happened at this place
             if hm.is_marker(message, hm.LOCATION_TRANSITION): # This is a system note, not player dialogue for summary
                 dialogue += f"[{content}]\n\n" # Keep as a note for context if needed by summarizer
             elif hm.player_input(message) is not None:

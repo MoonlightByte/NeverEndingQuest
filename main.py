@@ -5461,7 +5461,7 @@ def _find_legacy_location_repair(conversation_history):
             copy.deepcopy(item)
             for item in source_entries
             if item.get("role") != "system"
-            and not hm.is_marker(item, hm.VALIDATION_ERROR)
+            and not hm.is_marker(item, hm.VALIDATION_ERROR, hm.REVIEW_NOT_APPLIED)
         ]
         if not summary_messages:
             continue
@@ -8056,7 +8056,8 @@ def _get_ai_response_impl(
     user_input = ""
     has_module_creation_prompt = False
     for msg in reversed(conversation_history):
-        if msg.get("role") == "user":
+        # #1960: a note for a turn not carried out is not the latest ask.
+        if msg.get("role") == "user" and not hm.is_marker(msg, hm.REVIEW_NOT_APPLIED):
             user_input = msg.get("content", "")
             # The game marks the turn whose note carries the module creation prompt.
             has_module_creation_prompt = bool(msg.get(hm.MODULE_CREATION_FIELD))
@@ -8752,7 +8753,12 @@ def _prepare_rebuilt_history_for_t067(
     # #223: the newest note in this history was built before the change that
     # led here; requests from it get the current state (never saved as text).
     for message in reversed(detached_history):
-        if isinstance(message, dict) and message.get("role") == "user":
+        # #1960: never on a note for a turn not carried out.
+        if (
+            isinstance(message, dict)
+            and message.get("role") == "user"
+            and not hm.is_marker(message, hm.REVIEW_NOT_APPLIED)
+        ):
             message[hm.CURRENT_STATE_FIELD] = True
             break
     return order_conversation_messages(
@@ -10925,6 +10931,13 @@ def _main_game_loop(startup_authority, turn_authority):
                 review_failure_message = review_result["player_message"]
                 review_failure_status = review_result["status"]
                 conversation_history[:] = pre_turn_accepted_history
+                # #1960: a turn the review gave up on leaves a typed note in
+                # its place, saved with the restore in one write.
+                lost_words = hm.player_input(turn_message)
+                if review_failure_status == "review_exhausted" and lost_words is not None:
+                    conversation_history.append(
+                        hm.review_not_applied(lost_words, review_failure_message)
+                    )
                 if not persist_t067_history_if_current(conversation_history):
                     invocation_superseded = True
                 break
