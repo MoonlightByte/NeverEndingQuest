@@ -3822,6 +3822,10 @@ def execute_agentic_turn(
     # typed value; one returned again ends the window as the ceiling does,
     # unless #146 holds the actor it names.
     rejected_batches = []
+    # #1945: the failures (failure class, exception class, message) since the
+    # last pass whose batch got past the provider; one returned again ends the
+    # window as the ceiling does.
+    window_failures = set()
     # #146: replies the rules refused this window (not provider failures, not
     # #1606's ask), the actors held to a Defend, and the batch the next pass
     # reuses with no provider call.
@@ -3913,8 +3917,39 @@ def execute_agentic_turn(
                 capability_candidates=capability_count,
                 rule_references=rule_count,
             )
+            failure = (failure_class, type(exc), str(exc))
+            if failure in window_failures:
+                # #1945: a failure this window already had, with no batch past
+                # the provider since. Asking again cannot heal it: the window
+                # ends on the ceiling's path (#1251, #1342), the turn kept. A
+                # stop that came meanwhile wins over the ceiling's line.
+                _require_current_invocation(invocation_claim)
+                record_combat_diagnostic(
+                    record_type="window_outcome",
+                    callsite="T096",
+                    outcome="repeated_failure",
+                    encounter_id=encounter.get("encounterId"),
+                    turn_id=pending.get("turnId"),
+                    revision=(encounter.get("combatState") or {}).get("revision"),
+                    round_number=(encounter.get("combatState") or {}).get("round"),
+                    attempt=attempt_number,
+                    failure_class=failure_class,
+                    error_code=exc.__class__.__name__,
+                )
+                raise LiveProviderCompletedError(
+                    "T096",
+                    _limit_envelope(
+                        "turn_call_ceiling",
+                        "T096",
+                        {"_request_provider": intent_provider_name, "model": intent_model_name},
+                    ),
+                ) from exc
+            window_failures.add(failure)
             continue
 
+        # #1945: this pass's batch got past the provider; earlier failures no
+        # longer count as repeats.
+        window_failures.clear()
         if player_resource_refusal and not any(
             isinstance(intent, dict)
             and _is_human_controlled(encounter, combatant_by_id(encounter, intent.get("actorId")))

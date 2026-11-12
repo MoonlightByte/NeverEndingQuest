@@ -501,7 +501,8 @@
         "Investigation DC 12: Piece together the timeline of the camp's abandonment from scattered evidence",
         "Insight DC 15: Recognize when Thane is lucid versus when the corruption is controlling him",
         "Persuasion DC 12: Reach Thane's humanity during his lucid moments and convince him to help before combat",
-        "Medicine or Religion DC 14: With Thane reached in a lucid moment, perform the cleansing rite -- press his family locket to the blackened wound on his sword arm and speak his ranger's oath back to him as the taint is drawn out. Success frees him of the corruption."
+        "Medicine DC 14: With Thane reached in a lucid moment, perform the cleansing rite -- press his family locket to the blackened wound on his sword arm and speak his ranger's oath back to him as the taint is drawn out. Success frees him of the corruption. A Religion check can perform the same rite instead.",
+        "Religion DC 14: Perform the same cleansing rite as a rite of faith instead of a healer's work, with Thane reached in a lucid moment. Success frees him of the corruption. A Medicine check can perform the same rite instead."
       ],
       "accessibility": "Abandoned campsite in a small clearing, easily spotted but emanating obvious danger",
       "dangerLevel": "High",
