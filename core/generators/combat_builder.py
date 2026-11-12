@@ -1499,8 +1499,11 @@ def _name_only_elsewhere_rows(encounter_data, response, location_id, path_manage
     a person, is never one). Not checked: a roster companion's slot (a
     companion is with the party; added to the owner's words because a
     companion's own record can stay unjoined elsewhere), and a slot the
-    builder's own living match binds at the place (#1902's guard). Rows as
-    named_elsewhere_rows' with "declared": False and the record's own id."""
+    builder's own living match binds at the place (#1902's guard). A slot whose
+    declared id names a person record of this module is left to the declared
+    pass; a declared id that names none (made up or stale) is checked by name,
+    as #1902's recorded_dead_rows reads it. Rows as named_elsewhere_rows' with
+    "declared": False and the record's own id."""
     from core.nql import occupants
     from utils.roster_conversion import slug
 
@@ -1508,6 +1511,10 @@ def _name_only_elsewhere_rows(encounter_data, response, location_id, path_manage
     people = [o for o in (response.get("live_state") or {}).get("occupants") or []
               if isinstance(o, dict) and isinstance(o.get("id"), str) and o.get("kind") == "person"
               and o.get("count") != 0 and str(o.get("location") or "").startswith(prefix)]
+    # Every person record of this module, any count: a declared id names one of these or none (as #1902 reads it).
+    person_ids = {o["id"] for o in (response.get("live_state") or {}).get("occupants") or []
+                  if isinstance(o, dict) and o.get("kind") == "person" and isinstance(o.get("id"), str)
+                  and o["id"].startswith("occ:%s/" % module)}
     place_occupants = _place_occupants(location_id, response)
     declared_ids = encounter_data.get("occupantIds") or {}
     rows = []
@@ -1516,8 +1523,9 @@ def _name_only_elsewhere_rows(encounter_data, response, location_id, path_manage
         if not isinstance(name, str) or not name.strip() or slot in companions:
             continue
         declared = declared_ids.get(slot) if isinstance(declared_ids, dict) else None
-        if isinstance(declared, str) and declared.strip():
-            continue  # a declared id decides (the declared pass, #1937, the binder)
+        if declared in person_ids:
+            continue  # a declared person record decides (the declared pass, #1937, #1902, the binder)
+        # A declared id that names no person record (made up, stale, or another kind) does not hide the name.
         same = [o for o in people if occupants._person_matches(o, slug(name))]
         if any(o.get("location") == place for o in same):
             continue  # a living person of that name is here
