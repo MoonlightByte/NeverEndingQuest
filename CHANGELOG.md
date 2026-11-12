@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A melee hit on a paralyzed or unconscious target is now a critical hit, as the rules say, for monsters, companions and you alike: the damage dice are doubled even when the roll was below 20. It counts only for a melee attack, so an arrow or a crossbow bolt does not do it; a monster from an adventure you made yourself does not do it yet. A sleeper woken by the first blow of a monster's attacks is no longer hit as if still asleep by its later attacks (#1901).
 - An enemy the story says is paralyzed, stunned, asleep or otherwise unable to act now loses their turns until the story ends that condition, as the rules say. On your side this is settled when a fight starts: a party member the story says is asleep is seated asleep, so a hit or the end of the first round wakes them; one the story says is paralyzed, stunned, petrified or incapacitated is first pointed out to the DM, and only when the DM asks for it again does the fight start with them held, until the fight ends or the story ends that condition. A fight where nobody could act is not started, and one where everyone is held and no effect will wear off ends in a standoff: neither side wins, and the story goes on. (#1894)
+- In The Thornwood Watch, one check at the Doomed Explorer's Camp is now written in the adventure's own check format. Before, leaving the camp could take up to 3 model calls in place of 1, and the camp's update could be lost (#1878).
 
 ## [1.2.2] - 2026-11-11
 
