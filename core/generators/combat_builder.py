@@ -1466,9 +1466,11 @@ def named_elsewhere_rows(encounter_data, response, location_id):
     """#1936: the npc slots whose declared occupantIds id names a living
     person recorded at another place than the fight's, so such a fight is
     refused before anything is built (seated, they would fight here while
-    their record stays there). A roster companion's slot is not checked: a
+    their record stays there); then (D-1936-3) the slots with no declared id
+    whose name is that of exactly one such person elsewhere and of none here
+    (_name_only_elsewhere_rows). A roster companion's slot is not checked: a
     companion is with the party. Each row is {"slot", "name", "occupantId",
-    "location"}; None when the document is unread, [] when none."""
+    "location", "declared"}; None when the document is unread, [] when none."""
     from core.combat.scene import companion_participant_keys
     from core.nql import occupants
 
@@ -1478,9 +1480,58 @@ def named_elsewhere_rows(encounter_data, response, location_id):
     _path_manager, tracker, module, slots = read
     place = occupants.place_id(module, location_id)
     companions = companion_participant_keys(encounter_data, tracker)
-    return [{"slot": slot, "name": name, "occupantId": record["id"], "location": record.get("location")}
+    rows = [{"slot": slot, "name": name, "occupantId": record["id"], "location": record.get("location"),
+             "declared": True}
             for slot, name, record in slots
             if slot not in companions and record.get("location") != place]
+    return rows + _name_only_elsewhere_rows(encounter_data, response, location_id, _path_manager, module, place,
+                                            companions)
+
+
+def _name_only_elsewhere_rows(encounter_data, response, location_id, path_manager, module, place, companions):
+    """#1936 D-1936-3 (owner, 2026-11-12): an npc slot with no declared
+    occupantIds id is refused when no living person record of that exact name
+    is at the fight's place and exactly one is elsewhere in this module; none
+    or two or more builds as today. The exact tie only refuses: it never binds,
+    seats or moves anyone. Exact name = slug equality with the record's name
+    or an alias (occupants._person_matches, the engine's own equality). Living
+    = kind "person" and count not 0 (a creature, even one the area data marks
+    a person, is never one). Not checked: a roster companion's slot (a
+    companion is with the party; added to the owner's words because a
+    companion's own record can stay unjoined elsewhere), and a slot the
+    builder's own living match binds at the place (#1902's guard). Rows as
+    named_elsewhere_rows' with "declared": False and the record's own id."""
+    from core.nql import occupants
+    from utils.roster_conversion import slug
+
+    prefix = "loc:%s/" % module
+    people = [o for o in (response.get("live_state") or {}).get("occupants") or []
+              if isinstance(o, dict) and isinstance(o.get("id"), str) and o.get("kind") == "person"
+              and o.get("count") != 0 and str(o.get("location") or "").startswith(prefix)]
+    place_occupants = _place_occupants(location_id, response)
+    declared_ids = encounter_data.get("occupantIds") or {}
+    rows = []
+    for index, name in enumerate(encounter_data.get("npcs") or []):
+        slot = "npc:%d" % index
+        if not isinstance(name, str) or not name.strip() or slot in companions:
+            continue
+        declared = declared_ids.get(slot) if isinstance(declared_ids, dict) else None
+        if isinstance(declared, str) and declared.strip():
+            continue  # a declared id decides (the declared pass, #1937, the binder)
+        same = [o for o in people if occupants._person_matches(o, slug(name))]
+        if any(o.get("location") == place for o in same):
+            continue  # a living person of that name is here
+        elsewhere = [o for o in same if o.get("location") != place]
+        loaded = _load_npc_sheet(name, path_manager)
+        # The builder's expected sheet path when no sheet loads, as its own caller passes it.
+        expected_file = loaded[1] if loaded else path_manager.get_character_path(format_type_name(name))
+        if _listed_npc_occupant(place_occupants, expected_file, name, set()):
+            continue  # the builder binds someone here
+        if len(elsewhere) != 1:
+            continue  # none or two or more elsewhere: not an exact tie
+        rows.append({"slot": slot, "name": name, "occupantId": elsewhere[0]["id"],
+                     "location": elsewhere[0].get("location"), "declared": False})
+    return rows
 
 
 def party_held_rows(encounter, sheets, allowed=()):

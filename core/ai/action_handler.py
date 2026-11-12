@@ -5367,8 +5367,10 @@ def _misbound_lines(rows):
 
 def _elsewhere_lines(rows):
     """#1936: ("Ranger Thane (occupantId occ:...) is at NC03", several) from
-    the builder's typed rows, clauses joined with "and"; ("", False) when
-    they are unusable."""
+    the builder's typed rows, clauses joined with "and"; a row with
+    "declared": False (D-1936-3, a slot with no occupantIds) reads "npcs names
+    Ranger Thane, whose occupantId occ:... is at NC03"; ("", False) when they
+    are unusable."""
     if not isinstance(rows, list) or not rows:
         return "", False
     clauses = []
@@ -5379,7 +5381,10 @@ def _elsewhere_lines(rows):
         place = str(row.get("location") or "").rsplit("/", 1)[-1].strip()
         if not name or not occupant_id or not place:
             return "", False
-        clauses.append("%s (occupantId %s) is at %s" % (name, occupant_id, place))
+        if row.get("declared") is False:
+            clauses.append("npcs names %s, whose occupantId %s is at %s" % (name, occupant_id, place))
+        else:
+            clauses.append("%s (occupantId %s) is at %s" % (name, occupant_id, place))
     return " and ".join(clauses), len(clauses) > 1
 
 
