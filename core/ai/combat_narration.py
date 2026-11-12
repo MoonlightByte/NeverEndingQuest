@@ -237,6 +237,36 @@ def _hand_over_fact(event, creatures, presentation=None):
     }
 
 
+def _ended_effects(event, creatures, presentation=None):
+    """#1946: the timed effects that ended at this event (its expired ticks,
+    a round end or a turn end), by holder and effect name; None for none.
+    A tick without a name is left out (its id is never shown)."""
+    ended = []
+    for tick in (event or {}).get("effectTicks") or []:
+        if not isinstance(tick, dict) or tick.get("expired") is not True:
+            continue
+        name = tick.get("name")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        holder = None
+        if tick.get("combatantId"):
+            holder = _display_name(creatures, tick.get("combatantId"), None, presentation)
+        elif isinstance(tick.get("owner"), str) and tick["owner"].strip():
+            owner = tick["owner"]
+            combatant_id = next(
+                (key for key, creature in creatures.items() if creature.get("name") == owner), None
+            )
+            holder = _display_name(creatures, combatant_id, owner, presentation) if combatant_id else owner
+        if not holder:
+            continue
+        ended.append({
+            "holder": holder,
+            "effect": name.strip(),
+            "at": "end of turn" if tick.get("trigger") == "end_of_turn" else "end of round",
+        })
+    return ended or None
+
+
 def _fact_event(event, creatures, presentation=None):
     outcome = event.get("outcome") or {}
     intent = event.get("intent") or {}
@@ -302,6 +332,8 @@ def _fact_event(event, creatures, presentation=None):
         "targetAC": outcome.get("targetAC"),
         "resources": _public_copy(event.get("resources") or []),
         "effects": _public_copy(_own_effect_ops(event)),
+        # #1946: the timed effects that ended at this event (expired ticks)
+        "effectsEnded": _ended_effects(event, creatures, presentation),
         # MS-b: recharge abilities spent by this action, and the d6 draws made
         # at the start of the actor's turn (name, value, rechargesOn, recharged)
         "rechargeSpent": [spent.get("name") for spent in event.get("recharge") or [] if spent.get("name")] or None,
