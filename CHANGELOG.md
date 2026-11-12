@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the check of a fight's moves gets the same broken answer again, the game no longer keeps asking over and over: the fight stops there and is saved, so you can load your game and go on (#1954).
 - When the Dungeon Master starts a fight with someone the game records at another place, that person is no longer seated in the fight while their record stays behind, which lost what happened to them there: the Dungeon Master is told where they are, and the fight goes on without them unless the story brings them here first (#1936).
 - When the Dungeon Master links one person's record to someone else in a fight (a companion given an enemy's identity, for example), the fight is no longer set up that way: the Dungeon Master is told whose record it is and asked to put it on that person or leave it out (#1937).
 - After a fight, its summary and the story that follows are told how everyone who took part ended up (hit points, conscious or not, conditions), so a sleeper who woke during the fight is no longer described as still out cold; and the fight's narrator is told when a timed effect such as a sleep ends (#1946).

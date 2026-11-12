@@ -185,7 +185,7 @@ from core.combat.down_scene import (
 from core.managers import roll_prompt
 from core.managers.combat_orchestrator import CombatTurnPaused, execute_agentic_turn, open_roll_request
 from core.combat.invocation import InvocationSupersededError
-from utils.capture.live_provider_call import LiveProviderCompletedError, LiveProviderSuperseded
+from utils.capture.live_provider_call import LiveProviderCompletedError, LiveProviderSuperseded, _limit_envelope
 
 
 def _require_current_combat_invocation(invocation_claim):
@@ -945,7 +945,37 @@ def _inexact_character_names(response, encounter_data):
     )
 
 
-def validate_combat_response(response, encounter_data, user_input, conversation_history=None, npc_voice_batch=None):
+def _end_repeated_t040_failure(failures, kind, exc, invocation_claim, provider, model):
+    """#1954: keep a T040 failure; one this review already had ends it.
+
+    The review's request never changes between tries, so the same failure
+    again cannot heal: the review ends on the ceiling's path (#1342, as
+    #1949 for T096), and nothing is applied. A stop that came meanwhile wins.
+    """
+    failure = (kind, type(exc), str(exc))
+    if failure not in failures:
+        failures.add(failure)
+        return
+    _require_current_combat_invocation(invocation_claim)
+    detail = exc.__class__.__name__
+    if kind == "verdict":
+        detail = "%s: %s" % (detail, exc)
+    error(
+        "FAILURE: T040 returned the same %s failure again (%s); the review ends" % (kind, detail),
+        category="combat_validation",
+    )
+    raise LiveProviderCompletedError(
+        "T040",
+        _limit_envelope(
+            "turn_call_ceiling",
+            "T040",
+            {"_request_provider": provider, "model": model},
+        ),
+    ) from exc
+
+
+def validate_combat_response(response, encounter_data, user_input, conversation_history=None, npc_voice_batch=None,
+                             invocation_claim=None):
     """
     Validate a combat response for accuracy in HP tracking, combat flow, etc.
     Returns True if valid, or a string with the reason for failure if invalid.
@@ -1066,9 +1096,15 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
 
     # Malformed/provider-failed referee calls do not establish a verdict. Keep
     # the same candidate under visible correction until T040 returns one.
+    # #1954: the failures this review has had (a verdict returns, so the set
+    # is never cleared); one returned again ends the review.
+    failures = set()
     attempt = -1
     while True:
         attempt += 1
+        if attempt:
+            # #1954: a Load, Reset or exit between tries ends the review.
+            _require_current_combat_invocation(invocation_claim)
         try:
             validation_result = capture_and_fanout("T040", api_client.create_completion,
                 _request_provider=MODEL_PROVIDER,
@@ -1186,9 +1222,12 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
                     # Return the full, structured feedback
                     return full_feedback
                     
-            except (json.JSONDecodeError, TypeError, ValueError):
+            except (json.JSONDecodeError, TypeError, ValueError) as verdict_error:
                 debug(f"VALIDATION: Invalid JSON from validation model (Attempt {attempt + 1})", category="combat_validation")
                 file_only(f"VALIDATION: Problematic response: {validation_response}", category="combat_validation")
+                _end_repeated_t040_failure(
+                    failures, "verdict", verdict_error, invocation_claim, MODEL_PROVIDER, validation_config["model"]
+                )
                 continue
 
         except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop, LiveProviderCompletedError):
@@ -1196,6 +1235,9 @@ def validate_combat_response(response, encounter_data, user_input, conversation_
             raise
         except Exception as e:
             debug(f"VALIDATION: Validation error - {str(e)}", category="combat_validation")
+            _end_repeated_t040_failure(
+                failures, "provider", e, invocation_claim, MODEL_PROVIDER, validation_config["model"]
+            )
             continue
     
 def normalize_encounter_status(encounter_data):
@@ -4889,7 +4931,8 @@ This is narration only. Do not advance the round or apply any combat action."""
                    continue
 
                # FIX: Use the correct variable for the user input parameter
-               validation_result = validate_combat_response(initial_response, encounter_data, initial_prompt_text, conversation_history)
+               validation_result = validate_combat_response(initial_response, encounter_data, initial_prompt_text, conversation_history,
+                                                            invocation_claim=invocation_claim)
                _require_current_combat_invocation(invocation_claim)
                
                if validation_result is True:
@@ -6385,6 +6428,7 @@ Rules:
                    user_input_text,
                    conversation_history,
                    npc_voice_batch=legacy_voice_batch,
+                   invocation_claim=invocation_claim,
                )
                
                if validation_result is True:
