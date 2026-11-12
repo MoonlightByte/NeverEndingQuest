@@ -270,6 +270,25 @@ def compare_and_update(original, updates):
 # instruction.
 AUTHOR_OWNED_LOCATION_FIELDS = ("locationId", "name", "dmInstructions", "dcChecks", "lootItems", "typedFacts")
 
+# #1942: what the departure keeps from the location before T015 whatever T015
+# returns: the author-owned fields above and the presence lists, which their own
+# workflow reconciles. T015's reply is validated without them, since they are
+# restored anyway, so an author entry outside the schema never fails a reply.
+PRESENCE_LOCATION_FIELDS = ("monsters", "npcs")
+RESTORED_AFTER_T015 = AUTHOR_OWNED_LOCATION_FIELDS + PRESENCE_LOCATION_FIELDS
+
+
+def t015_reply_schema(location_schema):
+    """The location item schema without the fields restored after T015 (#1942)."""
+    schema = copy.deepcopy(location_schema)
+    properties = schema.get("properties")
+    if isinstance(properties, dict):
+        for field in RESTORED_AFTER_T015:
+            properties.pop(field, None)
+    if isinstance(schema.get("required"), list):
+        schema["required"] = [f for f in schema["required"] if f not in RESTORED_AFTER_T015]
+    return schema
+
 
 def preserve_author_location_fields(updated_location, location_before):
     """Restore author-owned fields from the location as it was before T015."""
@@ -460,7 +479,7 @@ def update_location_json(adventure_summary, location_info, current_area_id_from_
                 updated_location, location_info, loca_single_item_schema)
             if restored:
                 debug_print(f"T015 omitted required fields; restored from the location before the update: {', '.join(restored)}")
-            validate_location_json(updated_location, loca_single_item_schema)
+            validate_location_json(updated_location, t015_reply_schema(loca_single_item_schema))
 
             # T015 only stages a validated location object. Journal and area
             # files are committed together later, after both AI calls succeed.
@@ -1465,7 +1484,7 @@ def prepare_departure_summary(
     # chronicle-derived location description, not creature placement. Preserve
     # the accepted lists so a summary proposal cannot silently add, remove, or
     # relocate an entity outside its responsible workflow lane.
-    for presence_field in ("monsters", "npcs"):
+    for presence_field in PRESENCE_LOCATION_FIELDS:
         updated_location[presence_field] = copy.deepcopy(
             location_before.get(presence_field, [])
         )
