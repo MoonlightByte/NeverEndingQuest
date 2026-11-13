@@ -331,6 +331,7 @@ from utils.provider_errors import (  # noqa: E402
     PROVIDER_RETRY_MAX_DELAY,
     account_refusal_message,
     classify_provider_error,
+    provider_refusal_line,
     provider_failure_policy,
     provider_retry_delay,
 )
@@ -398,6 +399,7 @@ class _WelcomeLifecycle:
         self.review_failure_status = None
         self.refusal_category = None
         self.refusal_provider = None
+        self.refusal_class = None  # #1981: the connection class, if any
         self.provider_complete = threading.Event()
         self.live_history = None  # the loop's live list; set before input parks
         self.worker = None
@@ -467,6 +469,7 @@ def _welcome_worker_main(lifecycle):
                 if reviewed["status"] == "provider_error":
                     lifecycle.refusal_category = reviewed.get("category")
                     lifecycle.refusal_provider = reviewed.get("provider")
+                    lifecycle.refusal_class = reviewed.get("connection_class")
                 lifecycle.disposition = "FAILED"
     except LiveProviderSuperseded:
         with lifecycle.lock:
@@ -483,6 +486,7 @@ def _welcome_worker_main(lifecycle):
                 lifecycle.review_failure_status = "provider_error"
                 lifecycle.refusal_category = refusal["category"]
                 lifecycle.refusal_provider = refusal["provider"]
+                lifecycle.refusal_class = refusal["connection_class"]
     finally:
         with lifecycle.lock:
             if lifecycle.phase == "GENERATING":
@@ -737,14 +741,18 @@ def _apply_welcome(lifecycle):
             if lifecycle.review_failure_status in {"travel_content_unavailable", "review_exhausted"}:
                 display_dm_narration(lifecycle.error)
             elif lifecycle.review_failure_status == "provider_error":
-                refusal_text = account_refusal_message(
-                    lifecycle.refusal_category,
-                    lifecycle.refusal_provider,
-                    "welcome",
-                )
-                # #1233: a non-account refusal ends on the D-COST-4 line, not silence.
-                display_dm_narration(refusal_text if refusal_text is not None
-                                     else _dm_fail_forward_line())
+                refusal_text = provider_refusal_line({
+                    "category": lifecycle.refusal_category,
+                    "provider": lifecycle.refusal_provider,
+                    "connection_class": lifecycle.refusal_class,
+                }, "welcome")
+                # #1981: a connection or account refusal is a system notice,
+                # never the Dungeon Master. #1233: a refusal with neither line
+                # still ends on the D-COST-4 line, not silence.
+                if refusal_text is not None:
+                    show_player_notice(refusal_text)
+                else:
+                    display_dm_narration(_dm_fail_forward_line())
         _finish_welcome(lifecycle, "FAILED")
         return
 
@@ -1445,8 +1453,8 @@ def _run_startup_kickoff_once(
         if isinstance(exc, LiveProviderCompletedError):
             refusal = classify_provider_error(exc)
             # #1228: once a leg kept a welcome beat, "Nothing in your game was changed" is false.
-            _kickoff_refusal_line = account_refusal_message(
-                refusal["category"], refusal["provider"], "followup" if _kickoff_beat_kept else "welcome"
+            _kickoff_refusal_line = provider_refusal_line(
+                refusal, "followup" if _kickoff_beat_kept else "welcome"
             )
         fail_result = mark_kickoff_failed(startup_attempt_id, lease_owner, str(exc))
         emit_startup_marker(
@@ -3643,7 +3651,7 @@ def _offer_lost_words(text):
     from web.shared_state import emit_player_output, has_player_output_sink
 
     if not has_player_output_sink():
-        print("Press Enter to send it again: %s" % text)
+        print("Press Enter to send it again, or type something else: %s" % text)
         return True
     emit_player_output({"type": "input_suggestion", "channel": "input_suggestion", "content": text})
     return False
@@ -9559,9 +9567,7 @@ def _resume_active_combat(
         # #1087: a refused combat call leaves the fight saved and active.
         combat_result = None
         refusal = classify_provider_error(refused)
-        combat_refusal_line = account_refusal_message(
-            refusal["category"], refusal["provider"], "combat"
-        )
+        combat_refusal_line = provider_refusal_line(refusal, "combat")
     dialogue_summary = (
         combat_result[0]
         if isinstance(combat_result, tuple) and combat_result
@@ -10353,7 +10359,10 @@ def _main_game_loop(startup_authority, turn_authority):
                     category="startup",
                 )
                 failure_line = _kickoff_failure_line(kickoff_result)
-                if failure_line:
+                if failure_line and kickoff_result.get("player_message"):
+                    # #1981: a refusal line is a system notice, not the DM.
+                    show_player_notice(failure_line)
+                elif failure_line:
                     display_dm_narration(failure_line)
 
     # #1960: the words offered at the last give-up (the repeat guard: the same
@@ -11286,13 +11295,17 @@ def _main_game_loop(startup_authority, turn_authority):
                         "turn. No game state was changed.",
                         category="ai_validation",
                     )
-                display_dm_narration(
-                    review_failure_message or (
-                        "Nothing in your game was changed. The AI provider "
-                        "call could not be completed. Try that action again; "
-                        "if it keeps happening, Load your last save."
-                    )
+                review_failure_line = review_failure_message or (
+                    "Nothing in your game was changed. The AI provider "
+                    "call could not be completed. Try that action again; "
+                    "if it keeps happening, Load your last save."
                 )
+                if review_failure_status == "provider_error":
+                    # #1981: a provider give-up is a system notice, never
+                    # the Dungeon Master; the D-COST-4 line stays narration.
+                    show_player_notice(review_failure_line)
+                else:
+                    display_dm_narration(review_failure_line)
                 # #1960 (OWNER D-1960-1): nothing changed, so the player's own
                 # words come back exactly as typed. Not for a check continuation
                 # or a line that settled a waiting roll (it answered the roll),
@@ -12892,6 +12905,7 @@ def _review_dm_candidate(
                     "player_message": decision["player_message"],
                     "category": classification["category"],
                     "provider": classification["provider"],
+                    "connection_class": classification.get("connection_class"),
                 }
             if decision["notice"]:
                 review_status(decision["notice"])

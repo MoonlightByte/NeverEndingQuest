@@ -26,7 +26,7 @@ from core.nql import leveling as nql_leveling
 from utils.capture.live_provider_call import LiveProviderCompletedError, get_live_turn_scope
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 from utils.enhanced_logger import debug, error, info, warning
-from utils.provider_errors import account_refusal_message, classify_provider_error
+from utils.provider_errors import classify_provider_error, provider_refusal_line
 from utils.file_operations import safe_read_json
 from utils.module_path_manager import ModulePathManager
 
@@ -251,7 +251,7 @@ class LevelUpSession:
             error(f"LEVEL-UP: agent call failed: {exc}", category="level_up")
             if isinstance(exc, LiveProviderCompletedError):
                 refusal = classify_provider_error(exc)
-                self._refusal_text = account_refusal_message(refusal["category"], refusal["provider"], "turn")
+                self._refusal_text = provider_refusal_line(refusal, "turn")
             return None
         try:
             parsed = json.loads(raw)
