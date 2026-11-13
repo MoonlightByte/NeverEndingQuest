@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the AI service goes quiet in the middle of an answer, the game now tries again after a minute and a half instead of ten minutes and stops after three tries; a model running on your own computer still gets the time it needs (#1981).
+
 - When the AI service has a brief failure while a new adventure is being built, Load and Reset now stop the game's retries at once (#1963).
 
 - In adventures the game writes for you, quests that are set to finish when you reach a place or deal with someone now finish on their own when you do (#1982).
