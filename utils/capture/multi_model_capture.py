@@ -505,9 +505,24 @@ def _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
         if build_state is not None:
             from utils.provider_errors import connection_class
 
-            # The first give-up of a connection class stops the build.
-            build_state.stop(connection_class(exc), provider)
+            # A give-up after the game's reissue, or an account class, stops
+            # the build; a transient failure without the reissue counts.
+            build_state.record_failure(
+                connection_class(exc), provider,
+                reissued=_route_p_reissue_on(primary_fn, provider, kwargs),
+            )
         raise
+
+
+def _route_p_reissue_on(primary_fn, provider, kwargs):
+    """True when this call gets the game's counted reissue (#1963)."""
+    from core.ai import api_client
+
+    return (
+        primary_fn is api_client.create_completion
+        and provider in _ROUTE_P_REISSUE_PROVIDERS
+        and kwargs.get("timeout") is None
+    )
 
 
 def _build_retry_notice(build_state, exc, provider, attempt, max_attempts):
@@ -545,11 +560,7 @@ def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
     from core.ai.api_client import ProviderCallError, ProviderEmptyResponse
     from utils.capture import live_provider_call as live
 
-    reissue_on = (
-        primary_fn is api_client.create_completion
-        and provider in _ROUTE_P_REISSUE_PROVIDERS
-        and kwargs.get("timeout") is None
-    )
+    reissue_on = _route_p_reissue_on(primary_fn, provider, kwargs)
     if reissue_on:
         kwargs = dict(kwargs, _sdk_max_retries=0)
     # #1981: with no caller-owned timeout, the call gets its connection

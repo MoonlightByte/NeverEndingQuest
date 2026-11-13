@@ -216,6 +216,9 @@ class BuildConnectionState:
     armed: bool = False
     stopped_class: str = None
     provider: str = None
+    # Transient failures of calls made without the game's reissue (Gemini,
+    # or a caller-owned timeout), counted per build.
+    unretried_failures: int = 0
     notices_shown: set = field(default_factory=set)
     # The build's progress hook for a retry notice: fn(message, notice).
     progress_notice: object = field(default=None, repr=False, compare=False)
@@ -223,11 +226,30 @@ class BuildConnectionState:
         default_factory=threading.Lock, repr=False, compare=False
     )
 
-    def stop(self, connection_class, provider=None):
+    def record_failure(self, connection_class, provider=None, reissued=False):
+        """A model call in this build failed with ``connection_class``.
+
+        The build stops at once when the call had the game's reissue (its
+        tries are spent) or the class is an account class; a transient class
+        on a call without the reissue stops it only at the second such
+        failure in the build, so one brief 503 keeps today's fallback.
+        """
+        if not connection_class:
+            return
         with self.lock:
-            if self.armed and self.stopped_class is None and connection_class:
-                self.stopped_class = connection_class
-                self.provider = provider
+            if not self.armed or self.stopped_class is not None:
+                return
+            if not reissued and connection_class in _TRANSIENT_CLASSES:
+                self.unretried_failures += 1
+                if self.unretried_failures < 2:
+                    return
+            self.stopped_class = connection_class
+            self.provider = provider
+
+
+_TRANSIENT_CLASSES = frozenset(
+    {"no_connection", "no_answer", "service_error", "rate_limited"}
+)
 
 
 @dataclass
