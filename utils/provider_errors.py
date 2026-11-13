@@ -613,7 +613,9 @@ def _is_local(provider):
 
 def connection_retry_line(cls, provider, minutes=0):
     """The card while a connection class is being retried, or None."""
-    if _is_local(provider) and cls in _RETRY_LINES_LOCAL:
+    if _is_local(provider) and cls in _RETRY_LINES_LOCAL and (cls != "no_answer" or minutes >= 2):
+        # Under two whole minutes the local no_answer card takes the plain
+        # form: never "0 minutes" or "1 minutes".
         return _RETRY_LINES_LOCAL[cls] % {"N": int(minutes)}
     template = _RETRY_LINES.get(cls)
     return template % {"P": provider_display_name(provider)} if template else None
