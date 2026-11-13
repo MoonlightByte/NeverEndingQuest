@@ -11645,11 +11645,12 @@ def _provider_refusal_followup(exc):
 
 
 def _show_followup_failure(line, result):
-    """#1981: a follow-up that failed on a connection class is a system notice,
-    never the Dungeon Master; its text stays the follow-up's own (the beat
-    before it is kept). Any other follow-up failure keeps its narration."""
+    """#1981: a follow-up the provider refused is a system notice, never the
+    Dungeon Master, like every provider give-up; its text stays the follow-up's
+    own (the beat before it is kept). The review's local-fault line and the
+    content failures (review_exhausted, travel) keep their narration."""
     if isinstance(result, dict) and result.get("status") == "provider_error" \
-            and result.get("connection_class"):
+            and result.get("category") != "local_fault":
         show_player_notice(line)
     else:
         display_dm_narration(line)
