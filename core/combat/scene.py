@@ -168,6 +168,11 @@ def reconcile_scene_manifest(parameters, canonical_snapshot, companion_keys=froz
                 f"surprised applies only to monster participants, not {key}"
             )
         side = proposal.get("side")
+        # #1967 (D-1967-1): "side": "party" on the player, or "hostile" on a monster, says what that
+        # participant always is; it means nothing and is dropped here, so its scene row is written as
+        # if it were never sent. Any other side on the player or a monster is still refused below.
+        if (side == "party" and key.startswith("player:")) or (side == "hostile" and key.startswith("monster:")):
+            side = None
         if side is None and key.startswith("npc:") and participation == "active" and key not in companion_keys:
             raise SceneReconciliationError(
                 f"{key} fights (participation active) and needs side: hostile (against the party) "
