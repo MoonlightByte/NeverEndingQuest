@@ -3540,6 +3540,22 @@ def _dm_fail_forward_line():
     return random.choice(lines) if lines else _DM_FAIL_FORWARD_FALLBACK
 
 
+def _offer_lost_words(text):
+    """#1960 (OWNER D-1960-1): give back the words of a player turn the game
+    could not carry out, exactly as the game received them, by #882's route.
+    A frontend (web, headless) gets an input_suggestion: the web composer takes
+    it into an empty draft only, it is never cached (a reload never replays it)
+    and never sent by itself. A terminal has no box: one printed line, and the
+    caller holds the words for the next read only. True when held."""
+    from web.shared_state import emit_player_output, has_player_output_sink
+
+    if not has_player_output_sink():
+        print("Press Enter to send it again: %s" % text)
+        return True
+    emit_player_output({"type": "input_suggestion", "channel": "input_suggestion", "content": text})
+    return False
+
+
 def _verdict_log_reason(reason, limit=200):
     """A rejected verdict's reason for the debug log (#1241): one line, at most ``limit`` characters."""
     text = re.sub(r"\s+", " ", str(reason or "")).strip()
@@ -10241,6 +10257,12 @@ def _main_game_loop(startup_authority, turn_authority):
                 if failure_line:
                     display_dm_narration(failure_line)
 
+    # #1960: the words offered at the last give-up (the repeat guard: the same
+    # words are not offered twice with no accepted turn between), and a
+    # terminal's held offer, which an empty Enter at the next read sends.
+    last_offered_words = None
+    held_offer = None
+
     # Add safeguard against infinite loops in non-interactive environments
     empty_input_count = 0
     max_empty_inputs = 5
@@ -10474,10 +10496,18 @@ def _main_game_loop(startup_authority, turn_authority):
         # waits: then a blank line lets the game roll (#1118 items 3 and 4).
         from core.managers.checks_state import pending_checks, pending_rest
 
+        # #1960: a terminal's held offer is good for this one read only. An
+        # empty line sends it, unless a roll or rest waits (then the blank line
+        # is the roll's, #1118); a typed line is sent as typed.
+        offered_now, held_offer = held_offer, None
         if not user_input_text or not user_input_text.strip():
             if pending_rest() is None and not pending_checks():
-                continue
-            user_input_text = ""
+                if offered_now is None:
+                    continue
+                user_input_text = offered_now
+                empty_input_count = 0
+            else:
+                user_input_text = ""
         else:
             # Reset counter on valid input
             empty_input_count = 0
@@ -10938,6 +10968,7 @@ def _main_game_loop(startup_authority, turn_authority):
                 not in (None, "", party_tracker_data.get("module"))
             )
             valid_response_received = True
+            last_offered_words = None  # #1960: an accepted turn resets the repeat guard
             live_turn_scope.phase = "MUTATING"
             debug("SUCCESS: Shared review accepted the response", category="ai_validation")
 
@@ -11191,6 +11222,20 @@ def _main_game_loop(startup_authority, turn_authority):
                         "if it keeps happening, Load your last save."
                     )
                 )
+                # #1960 (OWNER D-1960-1): nothing changed, so the player's own
+                # words come back exactly as typed. Not for a check continuation
+                # or a line that settled a waiting roll (it answered the roll),
+                # not for travel records unavailable, and not the same words
+                # twice with no accepted turn between.
+                lost_words = turn_message.get(hm.PLAYER_INPUT_FIELD)
+                if (
+                    review_failure_status in ("review_exhausted", "provider_error")
+                    and isinstance(lost_words, str) and lost_words.strip()
+                    and not roll_settle.get("settled")
+                    and lost_words != last_offered_words
+                ):
+                    last_offered_words = lost_words
+                    held_offer = lost_words if _offer_lost_words(lost_words) else None
             finish_live_turn_scope(live_turn_scope)
             turn_authority.close()
             if live_turn_scope.is_superseded():
