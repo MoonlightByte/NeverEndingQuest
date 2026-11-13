@@ -251,7 +251,7 @@ class LevelUpSession:
             error(f"LEVEL-UP: agent call failed: {exc}", category="level_up")
             if isinstance(exc, LiveProviderCompletedError):
                 refusal = classify_provider_error(exc)
-                self._refusal_text = provider_refusal_line(refusal, "turn")
+                self._refusal_text = provider_refusal_line(refusal, "level_up")
             return None
         try:
             parsed = json.loads(raw)

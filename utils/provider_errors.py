@@ -526,7 +526,11 @@ _CONNECTION_TAILS = {
     "turn": "Nothing in your game changed. Send your action again when you're ready.",
     "combat": "The fight is saved as it stands; load your game to continue the fight.",
     "welcome": "Nothing in your game changed. Tell the DM what you do next when you're ready.",
+    "level_up": "Your level-up has not been applied. Nothing changed; ask to level up again later.",
 }
+# A moment the account table does not name takes this one's account line
+# (level-up always used the turn's, #442).
+_ACCOUNT_MOMENT_FOR = {"level_up": "turn"}
 
 
 def _envelope_of(item):
@@ -647,7 +651,9 @@ def provider_refusal_line(refusal, moment):
     notice = connection_notice(refusal.get("connection_class"), refusal.get("provider"), moment)
     if notice is not None:
         return notice
-    return account_refusal_message(refusal.get("category"), refusal.get("provider"), moment)
+    return account_refusal_message(
+        refusal.get("category"), refusal.get("provider"), _ACCOUNT_MOMENT_FOR.get(moment, moment)
+    )
 
 
 def classify_provider_error(exc):
