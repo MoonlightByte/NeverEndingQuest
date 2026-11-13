@@ -289,7 +289,7 @@ def _provider_error_codes(exc):
     return codes
 
 
-def classify_provider_error(exc):
+def _classify_provider_error(exc):
     """Classify a provider exception for retry policy and player messaging.
 
     Returns a dict with:
@@ -459,6 +459,210 @@ def classify_provider_error(exc):
         "player_message": None,
         "retry_notice": None,
     }
+
+
+# ---------------------------------------------------------------------------
+# #1981: connection classes and the plain notice (OWNER D-CONN-2, D-CONN-3)
+# ---------------------------------------------------------------------------
+# One class per failure, from typed fields only (never message text, #1224).
+# Each notice leads with "Connection problem:" or "Account problem:" so the
+# player knows at a glance it is not the story; no try count in a card (the
+# count lives on the status line).
+CONNECTION_CLASSES = (
+    "no_connection", "no_answer", "service_error", "rate_limited",
+    "out_of_quota", "bad_key",
+)
+_BACKSTOP_CLASSES = frozenset(
+    {"ProviderChildGenerationBackstop", "ProviderChildAcknowledgeBackstop"}
+)
+# The child failed to start or to read its payload: the provider was never
+# asked, so it is not a connection class (plan r1 f).
+_CHILD_START_CLASSES = frozenset({"ProviderChildUnavailable", "process_setup_unavailable"})
+_CHILD_INTERNAL_PHASES = frozenset({None, "", "spawned", "payload_read"})
+_AFTER_SEND_PHASES = frozenset({"sent", "acknowledged", "working", "receiving", "done"})
+_BOUND_CODES = frozenset({"reissue_limit", "turn_call_ceiling", "advisory_reserve"})
+_TIMEOUT_NAMES = frozenset(
+    {"apitimeouterror", "readtimeout", "writetimeout", "timeoutexception", "pooltimeout"}
+)
+_CONNECT_NAMES = frozenset(
+    {"apiconnectionerror", "connecterror", "connecttimeout", "gaierror", "networkerror",
+     "transporterror", "remoteprotocolerror", "readerror"}
+)
+_AUTH_CODES = ("invalid_api_key", "invalid_authentication", "unauthenticated")
+
+_RETRY_LINES = {
+    "no_connection": "Connection problem: the game can't reach %(P)s. Trying again.",
+    "no_answer": "Connection problem: %(P)s isn't replying. Trying again.",
+    "service_error": "Connection problem: %(P)s is having trouble right now. Trying again.",
+    "rate_limited": "Connection problem: %(P)s is asking the game to slow down. Waiting, then trying again.",
+}
+_RETRY_LINES_LOCAL = {
+    "no_connection": "Connection problem: the game can't reach your local model server. Check that it's running. Trying again.",
+    "no_answer": "Connection problem: your local model server hasn't replied for %(N)d minutes. Trying again.",
+}
+_GIVE_UP_LINES = {
+    "no_connection": "Connection problem: the game couldn't reach %(P)s. Check that you're online.",
+    "no_answer": "Connection problem: %(P)s didn't reply in time.",
+    "service_error": "Connection problem: %(P)s is having trouble right now. This is not a problem with your game. Wait a few minutes.",
+    "rate_limited": "Connection problem: %(P)s is still asking the game to slow down. Wait a minute. If this happens often, your %(P)s account may have a low usage limit.",
+    "out_of_quota": "Account problem: your %(P)s account has run out of credit or reached its spending limit. Add credit on the %(P)s website.",
+    "bad_key": "Account problem: %(P)s didn't accept your API key. Check the key in Settings (the gear icon).",
+}
+_GIVE_UP_LINES_LOCAL = {
+    "no_connection": "Connection problem: the game couldn't reach your local model server. Start it, or check its address in Settings > Local/Custom.",
+    "no_answer": "Connection problem: your local model server didn't reply in time. Check that it's still running and not busy with something else.",
+    "rate_limited": "Connection problem: your local model server is still asking the game to slow down. Wait a minute.",
+    "bad_key": "Account problem: your local or custom model server didn't accept its API key. Check the key in Settings > Local/Custom.",
+    "out_of_quota": "Account problem: your custom model server says its account has run out of credit or reached its spending limit. Check that account with whoever runs the server.",
+}
+# #1711: with the operator's gateway the host holds the account.
+_HOSTED_GIVE_UP_LINE = (
+    "Account problem: the game's AI service refused the request. This is on the "
+    "host's side, not yours: let the host know, or wait a few minutes."
+)
+# What follows the give-up line, by moment. A moment not here (a follow-up
+# after a kept beat, #1228) keeps its existing line.
+_CONNECTION_TAILS = {
+    "turn": "Nothing in your game changed. Send your action again when you're ready.",
+    "combat": "The fight is saved as it stands; load your game to continue the fight.",
+    "welcome": "Nothing in your game changed. Tell the DM what you do next when you're ready.",
+    "level_up": "Your level-up has not been applied. Nothing changed; ask to level up again later.",
+}
+# A moment the account table does not name takes this one's account line
+# (level-up always used the turn's, #442).
+_ACCOUNT_MOMENT_FOR = {"level_up": "turn"}
+
+
+def _envelope_of(item):
+    if isinstance(item, dict):
+        return item
+    envelope = getattr(item, "envelope", None)
+    return envelope if isinstance(envelope, dict) else None
+
+
+def _envelope_class(envelope):
+    """connection_class for a live-child envelope (typed fields only)."""
+    if "connection_class" in envelope:
+        # A bound (reissue_limit) carries the class of its last failure.
+        return envelope["connection_class"]
+    code = str(envelope.get("error_code") or "").lower()
+    status = envelope.get("http_status")
+    error_class = envelope.get("error_class")
+    cause = str(envelope.get("cause_class") or "").lower()
+    reached = envelope.get("reached_phase") or envelope.get("last_phase")
+    if reached == "failed":
+        reached = None
+    if code in QUOTA_ERROR_CODES:
+        return "out_of_quota"
+    if code in _BOUND_CODES:
+        return None
+    if status == 401 or code in _AUTH_CODES or cause == "authenticationerror":
+        return "bad_key"
+    if status == 429:
+        return "rate_limited"
+    if isinstance(status, int) and (status >= 500 or status == 408):
+        return "service_error"
+    if isinstance(status, int):
+        return None
+    if error_class in _BACKSTOP_CLASSES:
+        return "no_answer"
+    if error_class in _CHILD_START_CLASSES and reached in _CHILD_INTERNAL_PHASES:
+        return None
+    disposition = envelope.get("disposition")
+    if disposition == "retryable_http":
+        # A failed Responses stream with a server code and no HTTP status.
+        return "service_error"
+    if disposition == "retryable_transport" or cause in _TIMEOUT_NAMES | _CONNECT_NAMES:
+        return "no_answer" if reached in _AFTER_SEND_PHASES else "no_connection"
+    return None
+
+
+def connection_class(exc_or_envelope):
+    """The connection class of a provider failure, or None (#1981)."""
+    envelope = _envelope_of(exc_or_envelope)
+    if envelope is not None:
+        return _envelope_class(envelope)
+    status = None
+    codes = []
+    names = set()
+    for item in _provider_error_chain(exc_or_envelope):
+        envelope = _envelope_of(item)
+        if envelope is not None:
+            return _envelope_class(envelope)
+        if status is None:
+            status = _provider_error_status(item)
+        codes.extend(_provider_error_codes(item))
+        if _from_transport(item):
+            names.update(base.__name__.lower() for base in type(item).__mro__)
+    if any(code in QUOTA_ERROR_CODES for code in codes):
+        return "out_of_quota"
+    if status == 401 or any(code in _AUTH_CODES for code in codes) or "authenticationerror" in names:
+        return "bad_key"
+    if status == 429:
+        return "rate_limited"
+    if isinstance(status, int) and (status >= 500 or status == 408):
+        return "service_error"
+    if isinstance(status, int):
+        return None
+    if names & _TIMEOUT_NAMES and not {"connecttimeout"} & names:
+        return "no_answer"
+    if names & _CONNECT_NAMES:
+        return "no_connection"
+    return None
+
+
+def _is_local(provider):
+    return str(provider or "").lower() == "lmstudio"
+
+
+def connection_retry_line(cls, provider, minutes=0):
+    """The card while a connection class is being retried, or None."""
+    if _is_local(provider) and cls in _RETRY_LINES_LOCAL and (cls != "no_answer" or minutes >= 2):
+        # Under two whole minutes the local no_answer card takes the plain
+        # form: never "0 minutes" or "1 minutes".
+        return _RETRY_LINES_LOCAL[cls] % {"N": int(minutes)}
+    template = _RETRY_LINES.get(cls)
+    return template % {"P": provider_display_name(provider)} if template else None
+
+
+def connection_give_up_line(cls, provider):
+    """The line a connection class ends on, before its tail, or None."""
+    from utils.provider_gateway import gateway
+
+    if cls in ("bad_key", "out_of_quota") and gateway() is not None:
+        return _HOSTED_GIVE_UP_LINE
+    if _is_local(provider) and cls in _GIVE_UP_LINES_LOCAL:
+        return _GIVE_UP_LINES_LOCAL[cls]
+    template = _GIVE_UP_LINES.get(cls)
+    return template % {"P": provider_display_name(provider)} if template else None
+
+
+def connection_notice(cls, provider, moment):
+    """The give-up line plus the moment's tail, or None when the class or the
+    moment has none (the caller keeps its existing line)."""
+    tail = _CONNECTION_TAILS.get(moment)
+    line = connection_give_up_line(cls, provider) if tail else None
+    return "%s %s" % (line, tail) if line else None
+
+
+def provider_refusal_line(refusal, moment):
+    """A classified refusal's text at ``moment``: the connection notice when it
+    has a class, else the existing account line (None when neither)."""
+    notice = connection_notice(refusal.get("connection_class"), refusal.get("provider"), moment)
+    if notice is not None:
+        return notice
+    return account_refusal_message(
+        refusal.get("category"), refusal.get("provider"), _ACCOUNT_MOMENT_FOR.get(moment, moment)
+    )
+
+
+def classify_provider_error(exc):
+    """_classify_provider_error plus the #1981 connection class. Its texts are
+    unchanged: each display site builds its own line for its moment with
+    provider_refusal_line (a turn, a fight, the welcome, level-up)."""
+    result = _classify_provider_error(exc)
+    result["connection_class"] = connection_class(exc)
+    return result
 
 
 def provider_retry_delay(attempt):

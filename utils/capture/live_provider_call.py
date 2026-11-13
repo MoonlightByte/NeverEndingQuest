@@ -1490,52 +1490,31 @@ def _feed_request(request_stdin, request_payload):
             pass
 
 
-def phase_status_line(provider_name, attempt, state, elapsed, generation_elapsed=None):
-    """The player's wait line, rendered from the child's reported phase.
-
-    One renderer for every caller (the level-up manager reuses it). The
-    stopwatch is context, never the claim of activity; the claim is the
-    phase the child actually reported and when the provider last did
-    something (D-PROVIDER-LIVENESS-20260913). ``elapsed`` is the logical
-    call's age (shown); ``generation_elapsed`` is this attempt's age, the
-    clock the child's phase offsets are relative to.
+def phase_status_line(provider_name, attempt, state, elapsed, generation_elapsed=None,
+                      max_attempts=None):
+    """The player's wait line (#1981, the note's form): the provider, how
+    long, which try of how many, and that the turn is safe. The phase decides
+    only whether the provider has the turn yet; the phase detail (connecting,
+    acknowledging, last activity) stays in the log. ``elapsed`` is the logical
+    call's age. ``generation_elapsed`` is kept for callers; it is not shown.
     """
     seconds = max(1, int(elapsed))
-    if generation_elapsed is None:
-        generation_elapsed = elapsed
     shown = "%d min" % (seconds // 60) if seconds >= 120 else "%d s" % seconds
-    prefix = "Attempt %d, %s: " % (attempt, shown)
-    suffix = " Your turn is safe."
-    if not state:
-        return prefix + "starting a connection to %s..." % provider_name + suffix
-    current = state.get("current")
-    if current in ("spawned", "payload_read", "connecting"):
-        body = "connecting to %s..." % provider_name
-    elif current in ("connected", "secured"):
-        body = "connected to %s; sending your request..." % provider_name
-    elif current == "sent":
-        waited = max(
-            0, int(generation_elapsed - float(state["phases"].get("sent", 0.0)))
+    count = (
+        "try %d of %d" % (attempt, max_attempts) if max_attempts else "try %d" % attempt
+    )
+    current = state.get("current") if state else None
+    if current in _AFTER_SEND_STATUS_PHASES:
+        line = "%s has your turn; waiting for its reply (%s, %s)." % (
+            provider_name, shown, count,
         )
-        body = (
-            "request delivered to %s; waiting for it to acknowledge (%d s)..."
-            % (provider_name, waited)
-        )
-    elif current in ("acknowledged", "working"):
-        since = state.get("last_progress")
-        ago = max(0, int(generation_elapsed - float(since))) if since is not None else 0
-        body = "%s is working on it (last activity %d s ago)..." % (
-            provider_name, ago,
-        )
-    elif current == "receiving":
-        body = "answer arriving from %s..." % provider_name
-    elif current == "done":
-        body = "answer received from %s; finishing..." % provider_name
-    elif current == "failed":
-        body = "%s connection failed; reconnecting..." % provider_name
+        line = line[:1].upper() + line[1:]
     else:
-        body = "waiting for %s..." % provider_name
-    return prefix + body + suffix
+        line = "Waiting for %s, %s (%s)." % (provider_name, shown, count)
+    return line + " Your turn is safe."
+
+
+_AFTER_SEND_STATUS_PHASES = frozenset({"sent", "acknowledged", "working", "receiving", "done"})
 
 
 def _safe_emit(emit, message):
@@ -1946,6 +1925,8 @@ def _call_live_provider(
     )
     billed_reissues = 0
     free_reissues = 0
+    # #1981: the bucket the last failure was counted in ("billed" or "free").
+    last_bucket = {"kind": None}
     logical_started = time.monotonic()
     notices_shown = set()
     # #221: the player was told a provider failure is being retried; the
@@ -1973,8 +1954,28 @@ def _call_live_provider(
         )
         return phase_status_line(
             provider_name, attempt, state, now - logical_started,
-            generation_elapsed,
+            generation_elapsed, attempt_bound(state),
         )
+
+    def attempt_bound(state=None):
+        """#1981: the tries this call can reach. Between tries, the bucket
+        the last failure was counted in; during a try, the one its phase
+        would fall in (delivered: the billed bound, 3; before: the free, 7)."""
+        if state is None:
+            reader = current_reader["reader"]
+            state = reader.snapshot() if reader is not None else None
+        phase = (state or {}).get("current")
+        if phase == "failed" and last_bucket["kind"] is not None:
+            billed = last_bucket["kind"] == "billed"
+        else:
+            if phase == "failed":
+                phase = (state or {}).get("reached")
+            billed = phase in _AFTER_SEND_STATUS_PHASES
+        if billed:
+            remaining = _BILLED_REISSUE_LIMIT - billed_reissues
+        else:
+            remaining = _FREE_REISSUE_LIMIT - free_reissues
+        return failure_count + 1 + max(0, remaining)
 
     def notify_player_once(key, text):
         """One system-channel card per class per turn (never the status line)."""
@@ -1984,12 +1985,10 @@ def _call_live_provider(
 
         def deliver(_message):
             from utils.player_notice import show_player_notice
-            from web.shared_state import has_player_output_sink
 
-            # The operational notice card (#1580). A plain terminal has only
-            # the status line, as before.
-            if has_player_output_sink():
-                show_player_notice(text)
+            # The operational notice card (#1580); the terminal gets the
+            # same notice as a [SYSTEM] line (#1981).
+            show_player_notice(text)
 
         _safe_emit(deliver, text)
 
@@ -2016,7 +2015,7 @@ def _call_live_provider(
             "providerName": provider_name,
             # The attempt in progress, or during a retry wait the next one.
             "attempt": failure_count + 1,
-            "maxAttempts": None,
+            "maxAttempts": attempt_bound(state),
             "startedAt": logical_started,
             "phase": state.get("current") if state else None,
             "lastActivityAt": (generation_started + float(last)
@@ -2403,6 +2402,7 @@ def _call_live_provider(
             stalled = _is_stalled_failure(envelope)
             if _is_billed_failure(envelope) or stalled:
                 billed_reissues += 1
+                last_bucket["kind"] = "billed"
                 from utils.session_spend import record_possibly_billed
 
                 possibly_billed = _is_billed_failure(envelope) or (
@@ -2413,6 +2413,7 @@ def _call_live_provider(
                 exhausted = billed_reissues > _BILLED_REISSUE_LIMIT
             else:
                 free_reissues += 1
+                last_bucket["kind"] = "free"
                 exhausted = free_reissues > _FREE_REISSUE_LIMIT
             if exhausted:
                 _provider_debug(
@@ -2422,6 +2423,10 @@ def _call_live_provider(
                 )
                 limit = _limit_envelope("reissue_limit", task_id, frozen_kwargs)
                 limit["http_status"] = envelope.get("http_status")
+                from utils.provider_errors import connection_class
+
+                # #1981: the give-up names what failed last, not the bound.
+                limit["connection_class"] = connection_class(envelope)
                 if policy == "advisory" and not completion_required:
                     raise LiveProviderUnavailable(task_id, limit)
                 raise LiveProviderCompletedError(task_id, limit)
@@ -2479,20 +2484,37 @@ def _call_live_provider(
                 )
             except Exception:
                 pass
-            from utils.provider_errors import player_exits_notice, reissue_notice
-
-            reason = reissue_notice(
-                envelope.get("disposition"),
-                envelope.get("http_status"),
-                frozen_kwargs.get("_request_provider"),
-                envelope.get("error_code"),
-                last_phase=envelope.get("last_phase"),
+            from utils.provider_errors import (
+                connection_class,
+                connection_retry_line,
+                player_exits_notice,
+                reissue_notice,
             )
+
+            failed_class = connection_class(envelope)
+            reason = connection_retry_line(
+                failed_class, frozen_kwargs.get("_request_provider"),
+                (time.monotonic() - logical_started) // 60,
+            )
+            if reason is None:
+                # A child that failed to start keeps today's line (plan r1 f).
+                reason = reissue_notice(
+                    envelope.get("disposition"),
+                    envelope.get("http_status"),
+                    frozen_kwargs.get("_request_provider"),
+                    envelope.get("error_code"),
+                    last_phase=envelope.get("last_phase"),
+                )
             notify_player_once("exits", player_exits_notice())
             notify_player_once(
-                "class:%s" % envelope.get("disposition"), reason
+                "class:%s" % (failed_class or envelope.get("disposition")), reason
             )
-            emit_status("%s %s" % (turn_heartbeat(generation), reason))
+            if player_turn and not completion_required:
+                # #1981: the card carries the reason; the status line keeps
+                # only the wait and the try count.
+                emit_status(turn_heartbeat(generation))
+            else:
+                emit_status("%s %s" % (turn_heartbeat(generation), reason))
             failure_announced = True
         retry_wait(
             _delay_for_error(envelope, failure_count),
