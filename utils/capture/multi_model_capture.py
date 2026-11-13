@@ -506,7 +506,9 @@ def _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
         and kwargs.get("timeout") is None
         and provider is not None
     ):
-        deadline = live.class_deadline(provider, chars, base_url)
+        deadline = live.class_deadline(
+            provider, chars, base_url, kwargs.get("reasoning_effort")
+        )
         if provider == "gemini":
             kwargs = dict(kwargs, _sdk_timeout=deadline)
         else:

@@ -105,6 +105,12 @@ _CONNECT_SECONDS = 5.0
 # evaluates a long prompt for minutes before its first token). The rate is
 # kept in memory only: nothing is saved (no settings key).
 _REMOTE_SILENCE_SECONDS = 90.0
+# A reasoning model asked to think at medium effort or above writes nothing on
+# the stream between its reasoning item's start and its first written token
+# (the game requests no reasoning summary), so its silence can pass 90 s.
+# 300 s until a capture sizes it (D-AUTH-1, 2026-11-13).
+_REMOTE_REASONING_SILENCE_SECONDS = 300.0
+_LONG_REASONING_EFFORTS = frozenset({"medium", "high", "xhigh"})
 _GEMINI_TOTAL_SECONDS = 180.0
 _LOCAL_MAX_SECONDS = 600.0
 _LOCAL_MIN_SECONDS = 120.0
@@ -149,8 +155,9 @@ def record_local_answer(base_url, first_chunk_seconds, chars):
             _local_rates[base_url] = sample
 
 
-def class_deadline(provider, chars, base_url=None):
-    """Seconds for one generation of this connection class (#1981)."""
+def class_deadline(provider, chars, base_url=None, reasoning_effort=None):
+    """Seconds for one generation of this connection class (#1981).
+    ``reasoning_effort`` is the request's own ``reasoning_effort`` keyword."""
     if provider == "gemini":
         return _GEMINI_TOTAL_SECONDS
     if provider == "lmstudio":
@@ -162,6 +169,8 @@ def class_deadline(provider, chars, base_url=None):
             _LOCAL_MAX_SECONDS,
             max(_LOCAL_MIN_SECONDS, _LOCAL_RATE_FACTOR * rate * _prompt_kchars(chars)),
         )
+    if str(reasoning_effort or "").lower() in _LONG_REASONING_EFFORTS:
+        return _REMOTE_REASONING_SILENCE_SECONDS
     return _REMOTE_SILENCE_SECONDS
 
 
@@ -1903,7 +1912,10 @@ def _call_live_provider(
     request_base_url = (
         local_base_url(frozen_kwargs) if request_provider == "lmstudio" else None
     )
-    request_deadline = class_deadline(request_provider, request_chars, request_base_url)
+    request_deadline = class_deadline(
+        request_provider, request_chars, request_base_url,
+        frozen_kwargs.get("reasoning_effort"),
+    )
     if level_up_task:
         frozen_kwargs["timeout"] = httpx.Timeout(
             _LEVEL_UP_BACKSTOP_SECONDS, connect=_CONNECT_SECONDS
