@@ -108,8 +108,8 @@ _REMOTE_SILENCE_SECONDS = 90.0
 # A reasoning model asked to think at medium effort or above writes nothing on
 # the stream between its reasoning item's start and its first written token
 # (the game requests no reasoning summary), so its silence can pass 90 s.
-# 300 s until a capture sizes it (D-AUTH-1, 2026-11-13).
-_REMOTE_REASONING_SILENCE_SECONDS = 300.0
+# 120 s, the owner's direction (2026-11-13), until a capture sizes it.
+_REMOTE_REASONING_SILENCE_SECONDS = 120.0
 _LONG_REASONING_EFFORTS = frozenset({"medium", "high", "xhigh"})
 _GEMINI_TOTAL_SECONDS = 180.0
 _LOCAL_MAX_SECONDS = 600.0
