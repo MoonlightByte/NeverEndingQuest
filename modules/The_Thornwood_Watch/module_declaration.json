@@ -190,7 +190,7 @@
       "from": "RO02",
       "to": "RO04",
       "ticks": 300,
-      "both": false
+      "both": true
     },
     {
       "from": "RO03",
@@ -226,7 +226,7 @@
       "from": "TW01",
       "to": "TW06",
       "ticks": 900,
-      "both": false
+      "both": true
     },
     {
       "from": "TW02",
@@ -250,7 +250,7 @@
       "from": "TW06",
       "to": "TW04",
       "ticks": 720,
-      "both": false
+      "both": true
     }
   ]
 }
