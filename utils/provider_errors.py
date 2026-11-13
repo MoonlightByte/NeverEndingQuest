@@ -529,6 +529,12 @@ _CONNECTION_TAILS = {
     "level_up": "Your level-up has not been applied. Nothing changed; ask to level up again later.",
     "build": "The new adventure was not built, and nothing in your game was changed. Ask for it again when the connection works.",
 }
+# An account class (bad_key, out_of_quota) at these moments: "when the
+# connection works" would be false, the account must be fixed first
+# (D-AUTH-1, #1981 PR C).
+_ACCOUNT_CLASS_TAILS = {
+    "build": "The new adventure was not built, and nothing in your game was changed. Ask for it again once that is fixed.",
+}
 # A moment the account table does not name takes this one's account line
 # (level-up always used the turn's, #442).
 _ACCOUNT_MOMENT_FOR = {"level_up": "turn"}
@@ -662,6 +668,8 @@ def connection_notice(cls, provider, moment):
     """The give-up line plus the moment's tail, or None when the class or the
     moment has none (the caller keeps its existing line)."""
     tail = _CONNECTION_TAILS.get(moment)
+    if cls in ("bad_key", "out_of_quota") and moment in _ACCOUNT_CLASS_TAILS:
+        tail = _ACCOUNT_CLASS_TAILS[moment]
     line = connection_give_up_line(cls, provider) if tail else None
     return "%s %s" % (line, tail) if line else None
 

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the AI service can't be reached or refuses while the game is building a new adventure, the build now stops at the first failed step and says why in a "Connection problem:" or "Account problem:" notice, instead of carrying on; nothing in your game is changed (#1981).
+
 - When the game can't reach the AI service, or your account has a problem, it now says so in a plain notice that starts with "Connection problem:" or "Account problem:" and tells you what to do, instead of speaking as the Dungeon Master (#1981).
 
 - When the AI service goes quiet in the middle of an answer, the game now tries again after a minute and a half, or two minutes for a model set to think harder, instead of ten minutes, and stops after three tries; a model running on your own computer still gets the time it needs (#1981).
