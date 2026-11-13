@@ -94,13 +94,103 @@ _WIZARD_TASK_IDS = frozenset({"T092", "T093", "T124"})
 # every generation at "connecting" (#557). It fires only before any connection exists; the next
 # address is tried, then the existing reissue loop (#193 B2-iii).
 _CONNECT_SECONDS = 5.0
+# #1981 (D-CONN-2): one deadline per connection class, read by both routes
+# (this child and multi_model_capture's in-process calls). Streamed remote
+# providers (openai, legacy) get 90 s of SILENCE: about 3 times the slowest
+# whole call ever captured (T098, 31 s); a long answer that keeps streaming is
+# never cut. Gemini is not streamed (generate_content returns the whole
+# answer), so its deadline is TOTAL time. Local/Custom keeps 600 s until it
+# has answered once this session, then a per-request deadline from the
+# slowest observed rate, scaled to the request's prompt size (a slow machine
+# evaluates a long prompt for minutes before its first token). The rate is
+# kept in memory only: nothing is saved (no settings key).
+_REMOTE_SILENCE_SECONDS = 90.0
+# A reasoning model asked to think at medium effort or above writes nothing on
+# the stream between its reasoning item's start and its first written token
+# (the game requests no reasoning summary), so its silence can pass 90 s.
+# 120 s, the owner's direction (2026-11-13), until a capture sizes it.
+_REMOTE_REASONING_SILENCE_SECONDS = 120.0
+_LONG_REASONING_EFFORTS = frozenset({"medium", "high", "xhigh"})
+_GEMINI_TOTAL_SECONDS = 180.0
+_LOCAL_MAX_SECONDS = 600.0
+_LOCAL_MIN_SECONDS = 120.0
+_LOCAL_RATE_FACTOR = 4.0
+# Retry-After the game waits before a reissue, on both routes. A longer one
+# means no reissue: the call gives up at once (rate_limited).
+RETRY_AFTER_CAP = 60.0
+_local_rates = {}
+_local_rates_lock = threading.Lock()
+
+
+def prompt_chars(messages):
+    """The summed length of a request's message contents."""
+    total = 0
+    for message in messages or ():
+        content = message.get("content") if isinstance(message, dict) else None
+        if isinstance(content, str):
+            total += len(content)
+        elif isinstance(content, list):
+            for part in content:
+                text = part.get("text") if isinstance(part, dict) else None
+                if isinstance(text, str):
+                    total += len(text)
+    return total
+
+
+def _prompt_kchars(chars):
+    return max(1.0, float(chars) / 1000.0)
+
+
+def record_local_answer(base_url, first_chunk_seconds, chars):
+    """Learn a Local/Custom endpoint's rate from one answered call: seconds to
+    its first chunk per 1k prompt characters. The slowest sample is kept."""
+    try:
+        sample = float(first_chunk_seconds) / _prompt_kchars(chars)
+    except (TypeError, ValueError):
+        return
+    if not (sample >= 0.0) or not base_url:
+        return
+    with _local_rates_lock:
+        if sample > _local_rates.get(base_url, -1.0):
+            _local_rates[base_url] = sample
+
+
+def class_deadline(provider, chars, base_url=None, reasoning_effort=None):
+    """Seconds for one generation of this connection class (#1981).
+    ``reasoning_effort`` is the request's own ``reasoning_effort`` keyword."""
+    if provider == "gemini":
+        return _GEMINI_TOTAL_SECONDS
+    if provider == "lmstudio":
+        with _local_rates_lock:
+            rate = _local_rates.get(base_url) if base_url else None
+        if rate is None:
+            return _LOCAL_MAX_SECONDS
+        return min(
+            _LOCAL_MAX_SECONDS,
+            max(_LOCAL_MIN_SECONDS, _LOCAL_RATE_FACTOR * rate * _prompt_kchars(chars)),
+        )
+    if str(reasoning_effort or "").lower() in _LONG_REASONING_EFFORTS:
+        return _REMOTE_REASONING_SILENCE_SECONDS
+    return _REMOTE_SILENCE_SECONDS
+
+
+def local_base_url(request_kwargs):
+    """The Local/Custom endpoint a request goes to, as its rate's key."""
+    endpoint = request_kwargs.get("_request_local_endpoint")
+    if not isinstance(endpoint, dict):
+        try:
+            import model_config
+
+            endpoint = model_config.get_local_endpoint()
+        except Exception:
+            endpoint = None
+    return endpoint.get("base_url") if isinstance(endpoint, dict) else None
 # Level-up interview and specialist calls answer in 10 to 30 s; a provider
 # that accepts the body and never replies (run 9, 2026-09-14: one call in
 # ~330) is reissued after 2 minutes instead of 10. Still a reissue trigger,
 # never a terminal (#193 B2-iii); owner ruling 2026-09-14.
 _LEVEL_UP_TASK_IDS = frozenset({"T121"})
 _LEVEL_UP_BACKSTOP_SECONDS = 120.0
-_NO_WATCHDOG_ADVISORY_TASK_IDS = frozenset({"T105", "T112"})
 # Combat-turn tasks, from their call sites (#1271): combat_manager.py
 # T040-T044, combat_agent.py T096/T097, roll_answer.py T126 (read only by the
 # combat orchestrator today).
@@ -1234,6 +1324,9 @@ class _GenerationReader(threading.Thread):
         self._lock = threading.Lock()
         self.phases = {}
         self.current = "spawned"
+        # #1981: the last phase before "failed". A child that fails reports
+        # "failed" last, so the billing class reads the phase it had reached.
+        self.reached = "spawned"
         self.last_progress = None
         self.detail = None
         self.endpoint = None
@@ -1258,6 +1351,8 @@ class _GenerationReader(threading.Thread):
                 return
             self.phases.setdefault(name, offset)
             self.current = name
+            if name != "failed":
+                self.reached = name
             self.detail = event.get("detail")
             if name in ("acknowledged", "working", "receiving"):
                 self.last_progress = offset
@@ -1267,6 +1362,7 @@ class _GenerationReader(threading.Thread):
             return {
                 "phases": dict(self.phases),
                 "current": self.current,
+                "reached": self.reached,
                 "last_progress": self.last_progress,
                 "detail": self.detail,
                 "endpoint": self.endpoint,
@@ -1555,11 +1651,33 @@ def _spend_provider(request_provider):
     return "local"
 
 
+def _billing_phase(envelope):
+    """The phase a failed generation had reached (#1981): never "failed"."""
+    return envelope.get("reached_phase") or envelope.get("last_phase")
+
+
 def _is_billed_failure(envelope):
     """True when a failed generation was likely charged in full (#1342)."""
     if envelope.get("disposition") == "empty" or envelope.get("error_code") == "runaway_output":
         return True
-    return envelope.get("last_phase") in _BILLED_PHASES
+    return _billing_phase(envelope) in _BILLED_PHASES
+
+
+_DEADLINE_ERROR_CLASSES = frozenset(
+    {"ProviderChildGenerationBackstop", "ProviderChildAcknowledgeBackstop"}
+)
+_DEADLINE_CAUSE_CLASSES = frozenset({"APITimeoutError", "ReadTimeout"})
+
+
+def _is_stalled_failure(envelope):
+    """#1981: a deadline that ran out after the request was delivered and
+    before any answer. The provider may be working (a local model evaluating
+    a long prompt) or never acknowledged it; either way the reissue costs a
+    full deadline, so it is bounded like a billed one, not like a refusal."""
+    return _billing_phase(envelope) in _PRE_ACK_PHASES and (
+        envelope.get("error_class") in _DEADLINE_ERROR_CLASSES
+        or envelope.get("cause_class") in _DEADLINE_CAUSE_CLASSES
+    )
 
 
 def _record_unused_generation(output, phase_state, frozen_kwargs, operation_id, generation):
@@ -1592,6 +1710,7 @@ def _record_unused_generation(output, phase_state, frozen_kwargs, operation_id, 
             return
         probe = {
             "last_phase": (phase_state or {}).get("current"),
+            "reached_phase": (phase_state or {}).get("reached"),
             "disposition": envelope.get("disposition"),
             "error_code": envelope.get("error_code"),
         }
@@ -1659,11 +1778,12 @@ def _reconstruct_response(envelope):
 
 def _provider_debug(message):
     """Provider-call diagnostics stay in the debug log: a console warning can
-    land in the headless player stream (#233, #1545)."""
+    land in the headless player stream (#233, #1545). File only (#1981): a
+    debug record also reached the terminal console, which has no level."""
     try:
-        from utils.enhanced_logger import debug
+        from utils.enhanced_logger import file_only
 
-        debug(message, category="ai_routing")
+        file_only(message, category="ai_routing")
     except Exception:
         pass
 
@@ -1785,23 +1905,34 @@ def _call_live_provider(
     import httpx
 
     level_up_task = task_id in _LEVEL_UP_TASK_IDS
+    # #1981: every other task, the plain-advisory T105/T112 included (one
+    # attempt, dropped as before), takes its connection class's deadline.
+    request_provider = frozen_kwargs.get("_request_provider")
+    request_chars = prompt_chars(frozen_messages)
+    request_base_url = (
+        local_base_url(frozen_kwargs) if request_provider == "lmstudio" else None
+    )
+    request_deadline = class_deadline(
+        request_provider, request_chars, request_base_url,
+        frozen_kwargs.get("reasoning_effort"),
+    )
     if level_up_task:
         frozen_kwargs["timeout"] = httpx.Timeout(
             _LEVEL_UP_BACKSTOP_SECONDS, connect=_CONNECT_SECONDS
         )
-    elif completion_required:
-        frozen_kwargs["timeout"] = httpx.Timeout(
-            _WATCHDOG_SECONDS, connect=_CONNECT_SECONDS
-        )
-    elif wizard_task and frozen_kwargs.get("_request_provider") == "openai":
+    elif wizard_task and not completion_required and request_provider == "openai":
         frozen_kwargs["timeout"] = httpx.Timeout(
             _WATCHDOG_SECONDS,
             read=_WIZARD_READ_INACTIVITY_SECONDS,
             connect=_CONNECT_SECONDS,
         )
-    elif task_id not in _NO_WATCHDOG_ADVISORY_TASK_IDS:
+    elif wizard_task and not completion_required:
         frozen_kwargs["timeout"] = httpx.Timeout(
             _WATCHDOG_SECONDS, connect=_CONNECT_SECONDS
+        )
+    else:
+        frozen_kwargs["timeout"] = httpx.Timeout(
+            request_deadline, connect=_CONNECT_SECONDS
         )
     failure_count = 0
     runaway_trips = 0
@@ -2009,13 +2140,9 @@ def _call_live_provider(
         generation_limit = (
             _LEVEL_UP_BACKSTOP_SECONDS
             if level_up_task
-            else _WATCHDOG_SECONDS
-            if completion_required
-            else (
-                None
-                if task_id in _NO_WATCHDOG_ADVISORY_TASK_IDS
-                else (_WIZARD_BACKSTOP_SECONDS if wizard_task else _WATCHDOG_SECONDS)
-            )
+            else _WIZARD_BACKSTOP_SECONDS
+            if wizard_task and not completion_required
+            else request_deadline
         )
         # The request is written by its own thread on a pipe that communicate()
         # never sees. communicate(input=..., timeout=...) registers stdin for
@@ -2175,6 +2302,7 @@ def _call_live_provider(
             envelope["correlation_accepted"] = correlation_accepted
             envelope["phases"] = phase_state["phases"]
             envelope["last_phase"] = phase_state["current"]
+            envelope["reached_phase"] = phase_state.get("reached")
             envelope["last_progress"] = phase_state["last_progress"]
             # Every error or reaped generation of every task is evidence
             # (#284 F6); success rows keep the existing gate because those
@@ -2192,6 +2320,15 @@ def _call_live_provider(
             and correlation_accepted
         ):
             response = _reconstruct_response(envelope)
+            if request_provider == "lmstudio":
+                # #1981: time to the first chunk, from the request's delivery
+                # (the child's own start-up is not the model's time).
+                answered = phase_state["phases"].get("acknowledged")
+                delivered = phase_state["phases"].get("sent", 0.0)
+                if answered is not None:
+                    record_local_answer(
+                        request_base_url, max(0.0, answered - delivered), request_chars
+                    )
             # #1388: the session cost line, priced by the requested catalog id.
             # Counted before the authority check: a dropped answer was still
             # billed (#1435).
@@ -2243,13 +2380,35 @@ def _call_live_provider(
                     % (task_id, frozen_kwargs.get("_output_ceiling_chars"), runaway_trips)
                 )
                 frozen_kwargs.pop("_output_ceiling_chars", None)
+        retry_after = envelope.get("retry_after")
+        if (
+            envelope.get("disposition") == "retryable_http"
+            and isinstance(retry_after, (int, float))
+            and retry_after > RETRY_AFTER_CAP
+        ):
+            # #1981: a provider asking for a longer wait than the cap is not
+            # waited out: no reissue, the call gives up at once (rate_limited).
+            _provider_debug(
+                "LIVE_PROVIDER_RETRY_AFTER_ABOVE_CAP task=%s retry_after=%s cap=%s"
+                % (task_id, retry_after, RETRY_AFTER_CAP)
+            )
+            if policy == "advisory" and not completion_required:
+                raise LiveProviderUnavailable(task_id, envelope)
+            raise LiveProviderCompletedError(task_id, envelope)
         if envelope.get("disposition") in {"retryable_http", "retryable_transport", "empty"}:
             # #1342: bound the reissues of one logical call by billing class.
-            if _is_billed_failure(envelope):
+            # #1981: a deadline that ran out before any answer takes the
+            # billed bound too; on a chat endpoint (no acknowledgment event)
+            # the provider may have been working, so it may also be billed.
+            stalled = _is_stalled_failure(envelope)
+            if _is_billed_failure(envelope) or stalled:
                 billed_reissues += 1
                 from utils.session_spend import record_possibly_billed
 
-                if not spend_recorded:  # already counted as an unused generation
+                possibly_billed = _is_billed_failure(envelope) or (
+                    phase_state.get("endpoint") not in _ACK_ENDPOINTS
+                )
+                if possibly_billed and not spend_recorded:  # already counted as an unused generation
                     record_possibly_billed(turn_key=operation_id)
                 exhausted = billed_reissues > _BILLED_REISSUE_LIMIT
             else:
@@ -2307,10 +2466,11 @@ def _call_live_provider(
                 raise LiveProviderCompletedError(task_id, envelope)
             try:
                 # Diagnostics stay in the debug log; in headless the console
-                # warning handler landed in the narration stream (#233).
-                from utils.enhanced_logger import debug
+                # warning handler landed in the narration stream (#233). File
+                # only (#1981): a debug record reached the terminal too.
+                from utils.enhanced_logger import file_only
 
-                debug(
+                file_only(
                     "LIVE_PROVIDER_REISSUE task=%s class=%s status=%s "
                     "generation=%d billing=%s"
                     % (task_id, error_class, envelope.get("http_status"),

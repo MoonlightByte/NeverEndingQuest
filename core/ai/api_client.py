@@ -366,6 +366,10 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
     # #1963: set only by multi_model_capture._fire_primary_with_retry, which
     # makes the in-process resends itself, counted. Never sent to a provider.
     _sdk_max_retries = kwargs.pop("_sdk_max_retries", None)
+    # #1981: the connection class's deadline for an in-process call, set by
+    # the same capture layer as a CLIENT option (the request's own ``timeout``
+    # means a caller-owned policy). Never sent to a provider.
+    _sdk_timeout = kwargs.pop("_sdk_timeout", None)
     # Observational transport-phase callback from the live-provider child
     # (#409): never forwarded to a provider, never affects routing.
     _phase_emit = kwargs.pop("_phase_emit", None)
@@ -399,6 +403,7 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
                     phase_emit=_phase_emit,
                     output_ceiling=_output_ceiling,
                     sdk_max_retries=_sdk_max_retries,
+                    sdk_timeout=_sdk_timeout,
                     **local_options,
                     **kwargs,
                 )
@@ -415,10 +420,15 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
                     phase_emit=_phase_emit,
                     output_ceiling=_output_ceiling,
                     sdk_max_retries=_sdk_max_retries,
+                    sdk_timeout=_sdk_timeout,
                     **local_options,
                     **kwargs,
                 )
         else:  # gemini
+            if _sdk_timeout is not None and kwargs.get("timeout") is None:
+                # One attempt per call (Gemini is not reissued, D-1963-1), so
+                # the deadline is the request's whole-time bound.
+                kwargs["timeout"] = _sdk_timeout
             raw_response = _gemini_completion(
                 messages,
                 model,
@@ -883,7 +893,7 @@ def _chat_stream_completion(client, call_kwargs, phase_emit, output_ceiling=None
 
 def _openai_completion(messages, model, temperature, provider, response_format=_UNSET,
                        phase_emit=None, output_ceiling=None, local_endpoint=None,
-                       sdk_max_retries=None, **kwargs):
+                       sdk_max_retries=None, sdk_timeout=None, **kwargs):
     """Execute a completion via the OpenAI-compatible API."""
     if provider == "lmstudio" and local_endpoint is not None:
         client = get_openai_client(provider=provider, local_endpoint=local_endpoint)
@@ -928,9 +938,15 @@ def _openai_completion(messages, model, temperature, provider, response_format=_
     request_timeout = kwargs.pop("timeout", None)
     if request_timeout is not None:
         client = client.with_options(timeout=request_timeout, max_retries=0)
-    elif sdk_max_retries is not None:
+    elif sdk_max_retries is not None or sdk_timeout is not None:
         # #1963: the in-process caller counts its own resends (capture layer).
-        client = client.with_options(max_retries=sdk_max_retries)
+        # #1981: and gives the call its connection class's deadline.
+        options = {}
+        if sdk_max_retries is not None:
+            options["max_retries"] = sdk_max_retries
+        if sdk_timeout is not None:
+            options["timeout"] = sdk_timeout
+        client = client.with_options(**options)
 
     if provider == "openai":
         # The Responses endpoint is the OpenAI transport (D-409-1, owner-ruled

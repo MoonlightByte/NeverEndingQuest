@@ -376,15 +376,17 @@ def _resolve_effective_callsite_kwargs(task_id, provider, kwargs, attempt=0):
 # #1963: an in-process call on an OpenAI-SDK provider turns the library's own
 # hidden resends off and the game makes them, counted, logged and stoppable.
 # Only the failures the library itself resends are eligible, in its order
-# (openai _base_client._should_retry). The cap equals the library's
-# MAX_RETRY_AFTER_DELAY: a longer Retry-After means no resend at all.
-ROUTE_P_RETRY_AFTER_CAP = 120.0
+# (openai _base_client._should_retry). A Retry-After above the cap means no
+# resend at all; #1981 lowered the cap to 60 s and shares it with the live
+# child (live_provider_call.RETRY_AFTER_CAP).
 _ROUTE_P_REISSUE_PROVIDERS = frozenset({"openai", "legacy", "lmstudio"})
 _ROUTE_P_POLL_SECONDS = 0.25
 
 
 def _route_p_retry_after(headers):
     """Retry-After in seconds as the openai SDK parses it, or None."""
+    from utils.capture.live_provider_call import RETRY_AFTER_CAP
+
     if headers is None:
         return None
     for header, divisor in (("retry-after-ms", 1000.0), ("retry-after", 1.0)):
@@ -398,7 +400,7 @@ def _route_p_retry_after(headers):
         if delay == math.inf and value.strip().lower() not in (
             "inf", "+inf", "infinity", "+infinity",
         ):
-            return ROUTE_P_RETRY_AFTER_CAP + 1
+            return RETRY_AFTER_CAP + 1
         return delay / divisor
     try:
         parsed = email.utils.parsedate_tz(headers.get("retry-after"))
@@ -414,7 +416,11 @@ def _route_p_reissue_delay(exc, reissue):
     library would not have resent this failure. Typed fields only."""
     import openai
 
-    from utils.capture.live_provider_call import _delay_for_error, _primitive_error
+    from utils.capture.live_provider_call import (
+        RETRY_AFTER_CAP,
+        _delay_for_error,
+        _primitive_error,
+    )
     from utils.provider_errors import QUOTA_ERROR_CODES
 
     original = getattr(exc, "original_error", None)
@@ -423,7 +429,7 @@ def _route_p_reissue_delay(exc, reissue):
         headers = getattr(getattr(original, "response", None), "headers", None)
         retry_after = _route_p_retry_after(headers)
         if (retry_after is not None and math.isfinite(retry_after)
-                and retry_after > ROUTE_P_RETRY_AFTER_CAP):
+                and retry_after > RETRY_AFTER_CAP):
             return None
         envelope = _primitive_error(exc, {})
         code = envelope.get("error_code")
@@ -439,7 +445,7 @@ def _route_p_reissue_delay(exc, reissue):
     elif not isinstance(original, openai.APIConnectionError):
         return None
     if (retry_after is not None and math.isfinite(retry_after)
-            and 0 < retry_after <= ROUTE_P_RETRY_AFTER_CAP):
+            and 0 < retry_after <= RETRY_AFTER_CAP):
         return retry_after
     return _delay_for_error({"retry_after": None}, reissue)
 
@@ -480,20 +486,49 @@ def _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
     """
     from core.ai import api_client
     from core.ai.api_client import ProviderCallError, ProviderEmptyResponse
-    from utils.capture.live_provider_call import _BILLED_REISSUE_LIMIT
+    from utils.capture import live_provider_call as live
 
+    provider = kwargs.get("_request_provider")
     reissue_on = (
         primary_fn is api_client.create_completion
-        and kwargs.get("_request_provider") in _ROUTE_P_REISSUE_PROVIDERS
+        and provider in _ROUTE_P_REISSUE_PROVIDERS
         and kwargs.get("timeout") is None
     )
     if reissue_on:
         kwargs = dict(kwargs, _sdk_max_retries=0)
+    # #1981: with no caller-owned timeout, the call gets its connection
+    # class's deadline as a CLIENT option, never the request's ``timeout``
+    # (that would mean the caller owns its retries and turn the reissue off).
+    chars = live.prompt_chars(messages)
+    base_url = live.local_base_url(kwargs) if provider == "lmstudio" else None
+    if (
+        primary_fn is api_client.create_completion
+        and kwargs.get("timeout") is None
+        and provider is not None
+    ):
+        deadline = live.class_deadline(
+            provider, chars, base_url, kwargs.get("reasoning_effort")
+        )
+        if provider == "gemini":
+            kwargs = dict(kwargs, _sdk_timeout=deadline)
+        else:
+            import httpx
+
+            kwargs = dict(
+                kwargs,
+                _sdk_timeout=httpx.Timeout(deadline, connect=live._CONNECT_SECONDS),
+            )
     attempt = 1
     reissues = 0
     while True:
         try:
-            return primary_fn(messages=messages, **kwargs)
+            started = time.monotonic()
+            response = primary_fn(messages=messages, **kwargs)
+            if base_url is not None and kwargs.get("timeout") is None:
+                # No phase stream in process: the whole call's time is an upper
+                # bound of the time to the first chunk, so the deadline errs long.
+                live.record_local_answer(base_url, time.monotonic() - started, chars)
+            return response
         except ProviderEmptyResponse as exc:
             if attempt >= max_attempts:
                 raise
@@ -506,23 +541,23 @@ def _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
             time.sleep(base_delay * attempt)
             attempt += 1
         except ProviderCallError as exc:
-            if not reissue_on or reissues >= _BILLED_REISSUE_LIMIT:
+            if not reissue_on or reissues >= live._BILLED_REISSUE_LIMIT:
                 raise
             delay = _route_p_reissue_delay(exc, reissues + 1)
             if delay is None:
                 raise
             reissues += 1
             original = getattr(exc, "original_error", None)
-            # The game log, not the capture error log: that one keeps ERROR
-            # and above only, so a warning there is never written.
-            from utils.enhanced_logger import warning
+            # The game's log files only: the capture error log keeps ERROR and
+            # above, and a console record reaches a terminal player (#1981).
+            from utils.enhanced_logger import file_only
 
-            warning(
+            file_only(
                 "PROVIDER_REISSUE: %s failed (%s, HTTP %s); reissue %d/%d "
                 "in %.1f s." % (
                     task_id, type(original).__name__,
                     getattr(original, "status_code", None),
-                    reissues, _BILLED_REISSUE_LIMIT, delay,
+                    reissues, live._BILLED_REISSUE_LIMIT, delay,
                 ),
                 category="provider_retry",
             )
