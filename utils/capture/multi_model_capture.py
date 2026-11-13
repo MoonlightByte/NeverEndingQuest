@@ -487,8 +487,64 @@ def _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
     from core.ai import api_client
     from core.ai.api_client import ProviderCallError, ProviderEmptyResponse
     from utils.capture import live_provider_call as live
+    from utils.openai_usage_tracker import build_connection_state
+    from utils.provider_errors import BuildConnectionStopped
 
     provider = kwargs.get("_request_provider")
+    # #1981 PR C: in a build that already gave up on a connection class, no
+    # call is made at all, whatever the caller's fallback does next.
+    build_state = build_connection_state()
+    if build_state is not None and build_state.stopped_class is not None:
+        raise BuildConnectionStopped(build_state.stopped_class, build_state.provider)
+    try:
+        return _fire_primary_attempts(
+            primary_fn, messages, kwargs, task_id, max_attempts, base_delay,
+            provider, build_state,
+        )
+    except BaseException as exc:
+        if build_state is not None:
+            from utils.provider_errors import connection_class
+
+            # The first give-up of a connection class stops the build.
+            build_state.stop(connection_class(exc), provider)
+        raise
+
+
+def _build_retry_notice(build_state, exc, provider, attempt, max_attempts):
+    """#1981 PR C: a Route P retry inside a build: a progress event at the
+    same stage and percentage with the retry sentence and a typed notice,
+    and the same sentence once per class per build as a system card."""
+    from utils.provider_errors import connection_class, connection_retry_line
+
+    cls = connection_class(exc)
+    line = connection_retry_line(cls, provider) if cls else None
+    if line is None:
+        return
+    hook = build_state.progress_notice
+    if hook is not None:
+        try:
+            hook(line, {"class": cls, "attempt": attempt, "max": max_attempts})
+        except Exception:
+            pass
+    with build_state.lock:
+        first = cls not in build_state.notices_shown
+        build_state.notices_shown.add(cls)
+    if first:
+        try:
+            from utils.player_notice import show_player_notice
+
+            show_player_notice(line)
+        except Exception:
+            pass
+
+
+def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
+                           base_delay, provider, build_state):
+    """_fire_primary_with_retry's attempts (#1963), unchanged."""
+    from core.ai import api_client
+    from core.ai.api_client import ProviderCallError, ProviderEmptyResponse
+    from utils.capture import live_provider_call as live
+
     reissue_on = (
         primary_fn is api_client.create_completion
         and provider in _ROUTE_P_REISSUE_PROVIDERS
@@ -561,6 +617,11 @@ def _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
                 ),
                 category="provider_retry",
             )
+            if build_state is not None:
+                _build_retry_notice(
+                    build_state, exc, provider, reissues + 1,
+                    1 + live._BILLED_REISSUE_LIMIT,
+                )
             _route_p_wait(delay)
 
 

@@ -527,6 +527,7 @@ _CONNECTION_TAILS = {
     "combat": "The fight is saved as it stands; load your game to continue the fight.",
     "welcome": "Nothing in your game changed. Tell the DM what you do next when you're ready.",
     "level_up": "Your level-up has not been applied. Nothing changed; ask to level up again later.",
+    "build": "The new adventure was not built, and nothing in your game was changed. Ask for it again when the connection works.",
 }
 # A moment the account table does not name takes this one's account line
 # (level-up always used the turn's, #442).
@@ -577,8 +578,26 @@ def _envelope_class(envelope):
     return None
 
 
+# In the exception-chain form (Route P: no phases) a read or protocol error
+# means the connection was made and the answer broke off, so the provider
+# did not reply; "couldn't reach" would be false (#1981 PR C).
+_CHAIN_NO_ANSWER_NAMES = frozenset({"readerror", "remoteprotocolerror"})
+
+
+class BuildConnectionStopped(Exception):
+    """A model call in a build that already gave up on a connection class
+    (#1981 PR C): raised before any request, carrying that class."""
+
+    def __init__(self, connection_class, provider=None):
+        super().__init__("build stopped after a connection give-up (%s)" % connection_class)
+        self.connection_class = connection_class
+        self.provider = provider
+
+
 def connection_class(exc_or_envelope):
     """The connection class of a provider failure, or None (#1981)."""
+    if isinstance(exc_or_envelope, BuildConnectionStopped):
+        return exc_or_envelope.connection_class
     envelope = _envelope_of(exc_or_envelope)
     if envelope is not None:
         return _envelope_class(envelope)
@@ -605,6 +624,8 @@ def connection_class(exc_or_envelope):
     if isinstance(status, int):
         return None
     if names & _TIMEOUT_NAMES and not {"connecttimeout"} & names:
+        return "no_answer"
+    if names & _CHAIN_NO_ANSWER_NAMES:
         return "no_answer"
     if names & _CONNECT_NAMES:
         return "no_connection"

@@ -7135,7 +7135,12 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             "last_percentage": -1,
             "total_stages": 9,
             "terminal_emitted": False,
+            # #1981 PR C: the last stage name and retry notice published.
+            "last_stage_name": "Initializing",
+            "last_notice": None,
         }
+        # #1981 PR C: this build's connection stop, once its scope is open.
+        build_connection = {"state": None}
 
         def _bounded_progress_int(value, default, minimum, maximum):
             if isinstance(value, bool):
@@ -7206,14 +7211,34 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     or percentage < progress_state["last_percentage"]
                 ):
                     return False
+                state = build_connection["state"]
+                if (
+                    state is not None
+                    and state.stopped_class is not None
+                    and stage > progress_state["last_stage"]
+                ):
+                    # #1981 PR C: a stage boundary after a connection give-up
+                    # ends the build here.
+                    from utils.provider_errors import BuildConnectionStopped
+
+                    raise BuildConnectionStopped(state.stopped_class, state.provider)
+                notice = progress_data.get("notice")
+                if not isinstance(notice, dict):
+                    notice = None
                 if (
                     stage == progress_state["last_stage"]
                     and percentage == progress_state["last_percentage"]
+                    and (notice is None or notice == progress_state["last_notice"])
                 ):
+                    # A retry notice alone (same stage and percentage) passes.
                     return False
                 progress_state["last_stage"] = stage
                 progress_state["last_percentage"] = percentage
                 progress_state["total_stages"] = total_stages
+                progress_state["last_stage_name"] = _progress_text(
+                    progress_data.get("stage_name"), "Processing"
+                )
+                progress_state["last_notice"] = notice
                 payload = {
                     "build_id": build_id,
                     "stage": stage,
@@ -7228,6 +7253,12 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     "status": "running",
                     "terminal": False,
                 }
+                if notice is not None:
+                    payload["notice"] = {
+                        "class": str(notice.get("class")),
+                        "attempt": _bounded_progress_int(notice.get("attempt"), 1, 1, 99),
+                        "max": _bounded_progress_int(notice.get("max"), 1, 1, 99),
+                    }
                 # Keep queue order within the same lock that linearizes stage
                 # state so a terminal can never overtake accepted progress.
                 _queue_module_progress(payload)
@@ -7337,6 +7368,44 @@ Please use a valid location that exists in the current area ({current_area_id}) 
 
             with module_build_usage_scope(build_id=build_id) as build_context:
                 build_id = str(build_context.build_id)
+                # #1981 PR C: arm this build's connection stop and give Route
+                # P its retry-notice hook (same stage and percentage).
+                connection_state = build_context.connection
+                connection_state.armed = True
+                build_connection["state"] = connection_state
+
+                def retry_notice_progress(message, notice):
+                    module_progress_callback(
+                        {
+                            "stage": progress_state["last_stage"],
+                            "total_stages": progress_state["total_stages"],
+                            "stage_name": progress_state["last_stage_name"],
+                            "percentage": progress_state["last_percentage"],
+                            "message": message,
+                            "notice": notice,
+                        }
+                    )
+
+                connection_state.progress_notice = retry_notice_progress
+
+                def connection_failure():
+                    """The build's end after a connection give-up: the class
+                    line and the build tail, never "failed validation"."""
+                    if connection_state.stopped_class is None:
+                        return None
+                    from utils.provider_errors import connection_notice
+
+                    line = connection_notice(
+                        connection_state.stopped_class,
+                        connection_state.provider,
+                        "build",
+                    )
+                    mark_module_build_outcome("not_generated")
+                    failure = module_failure(message=line)
+                    terminal_progress(
+                        "failed", failure["response_data"]["error_message"]
+                    )
+                    return failure
                 try:
                     validate_create_new_module_action(action)
                 except ModuleCreationContractError:
@@ -7399,6 +7468,9 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         exception=build_error,
                         category="module_creation",
                     )
+                    stopped = connection_failure()
+                    if stopped is not None:
+                        return stopped
                     mark_module_build_outcome("not_generated")
                     failure = module_failure()
                     terminal_progress(
@@ -7407,6 +7479,9 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     return failure
 
                 if not success or not module_name:
+                    stopped = connection_failure()
+                    if stopped is not None:
+                        return stopped
                     mark_module_build_outcome("not_generated")
                     failure = module_failure()
                     terminal_progress(
