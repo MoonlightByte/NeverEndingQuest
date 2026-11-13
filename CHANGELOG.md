@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - In adventures the game writes for you, quests that are set to finish when you reach a place or deal with someone now finish on their own when you do (#1982).
+
 ## [1.2.3] - 2026-11-13
 
 - When the game is waiting for your roll and you type something else, it now reads your words against the roll it asked for, not against whatever the Dungeon Master said last (#1975).
