@@ -1665,12 +1665,98 @@ def _welcome_history(frozen_history):
         return frozen_history
 
 
-def _resume_guidance(unresolved=False):
+def _party_note_fields(party_tracker_data, party_stats_str, *, record, orphans=True):
+    """The party fields of a Dungeon Master Note, and whether anyone travels
+    with the player: (text, company). The text is "Party members: ...",
+    the player character, "Party NPCs: <rows>." (each companion with its
+    occupant id, or the [slot n] of a row saved before ids), "Party stats:
+    <stats>.", the sentence on joined people no row carries (``orphans``)
+    and the people who came along on the last move and are still here
+    (#1861). The "Party NPCs: ... Party stats:" span is parsed
+    (episode_capture, voice_context). Each turn's note (record=True keeps
+    its roster for the turn's slots) and the welcome's resume note
+    (record=False, orphans=False) take them from here (#1969): one roster.
+    company is True when a party NPC or an escort is listed."""
+    party_members_list = party_tracker_data.get('partyMembers', [])
+    party_members_str = ", ".join(party_members_list) if party_members_list else "None"
+    # The player is partyMembers[0] (#189): name them so narration
+    # speaks to them, not about them.
+    player_character_str = (
+        f"Player character: {party_members_list[0]} (narrate to them as \"you\"; "
+        f"narrate everyone else in third person). "
+    ) if party_members_list else ""
+    from core.nql import occupants as _note_occupants
+
+    world_conditions = party_tracker_data.get("worldConditions") or {}
+    _note_world = _note_occupants.party_world(
+        str(party_tracker_data.get("module") or ""),
+        str(world_conditions.get("currentLocationId") or ""),
+        create=False,
+    )
+    party_npcs_span, party_orphan_sentence = action_handler.party_note_lines(
+        party_tracker_data,
+        _note_world,
+        party_tracker_data.get('partyNPCs', []),
+        record=record,
+    )
+    party_escort_sentence = action_handler.last_move_escort_sentence(
+        party_tracker_data, _note_world
+    )
+    text = (
+        f"Party members: {party_members_str}. "
+        f"{player_character_str}"
+        f"{party_npcs_span} "
+        f"Party stats: {party_stats_str}.{party_orphan_sentence if orphans else ''}{party_escort_sentence}"
+    )
+    roster = party_tracker_data.get("partyNPCs")
+    company = bool(party_escort_sentence) or any(
+        isinstance(entry, dict) for entry in (roster if isinstance(roster, list) else [])
+    )
+    return text, company
+
+
+def _resume_party_note(party_tracker_data):
+    """#1969 (OWNER D-1969-1): who travels with the player at this return, for
+    the welcome's resume note: the turn note's own party fields (without the
+    sentence on joined people, which asks for state actions) and one sentence
+    dated to the return. "" when the party cannot be read: the note is then
+    the one it was before."""
+    try:
+        if not isinstance(party_tracker_data, dict) or not party_tracker_data.get("partyMembers"):
+            return ""
+        party = copy.deepcopy(party_tracker_data)
+        path_manager = ModulePathManager((party.get("module", "") or "").replace(" ", "_"))
+        party_members_stats, _roster_level_synced = _party_members_stats(party, path_manager)
+        if not party_members_stats:
+            return ""
+        stats = _party_stats_text(party, path_manager, party_members_stats)
+        fields, company = _party_note_fields(party, stats, record=False, orphans=False)
+    except Exception as exc:
+        warning(f"INITIALIZATION: resume note party fields skipped: {type(exc).__name__}", category="startup")
+        return ""
+    if company:
+        closing = (
+            "At this return, only the people named in this note travel with the player; anyone else named in "
+            "the history is not with them unless the Current Location's occupants list them here. "
+        )
+    else:
+        closing = (
+            "At this return, no one travels with the player; anyone named in the history is not with them "
+            "unless the Current Location's occupants list them here. "
+        )
+    return fields + " " + closing
+
+
+def _resume_guidance(unresolved=False, roster=False):
     """How the returning-player narration should read; restates a check that still awaits the player's dice."""
+    with_them = (
+        "who is with them (exactly the people this note names as travelling with the player, or no one)"
+        if roster else "who is with them"
+    )
     guidance = (
         "As the narrator, welcome the player back to the table in a sentence. In the fiction no time has passed: "
         "characters do not remark on the player having been away. Give a brief present-tense reminder of where "
-        "they are, who is with them and what was just happening, without retelling the whole adventure. "
+        "they are, " + with_them + " and what was just happening, without retelling the whole adventure. "
         "People present may greet the player or show what they are doing, but they do not deliver information, "
         "briefings or answers the player has not already heard in the story; keep those for when the player asks. "
     )
@@ -1710,7 +1796,8 @@ def _resume_guidance(unresolved=False):
     )
 
 
-def check_and_inject_return_message(conversation_history, is_combat_active=False, location_note=""):
+def check_and_inject_return_message(conversation_history, is_combat_active=False, location_note="",
+                                    party_note=""):
     """
     Checks if a 'player has returned' message needs to be injected at startup.
 
@@ -1722,6 +1809,9 @@ def check_and_inject_return_message(conversation_history, is_combat_active=False
             note so the welcome-back narration reflects the authoritative location
             instead of a stale one inferred from interrupted-turn history (#210).
             Empty string keeps the original note byte-for-byte.
+        party_note: Optional "who travels with the player" fields and sentence
+            (#1969, _resume_party_note), after location_note. Empty keeps the
+            note as it was.
 
     Returns:
         Tuple of (updated_conversation_history, was_injected)
@@ -1773,8 +1863,11 @@ def check_and_inject_return_message(conversation_history, is_combat_active=False
     # its place after the opening; empty keeps the text byte-identical.
     return_message = hm.marker(
         "user",
-        "Dungeon Master Note: Resume the game, the player has returned. " + location_note
-        + _resume_guidance(unresolved=_unresolved_player_turn(conversation_history) is not None),
+        "Dungeon Master Note: Resume the game, the player has returned. " + location_note + party_note
+        + _resume_guidance(
+            unresolved=_unresolved_player_turn(conversation_history) is not None,
+            roster=bool(party_note),
+        ),
         hm.RETURN_NOTE,
     )
     conversation_history.append(return_message)
@@ -10105,9 +10198,15 @@ def _main_game_loop(startup_authority, turn_authority):
                     )
             except Exception:
                 resume_location_note = ""
+            # #1969: who travels with the player, from the same tracker read
+            # (the turn note's own fields; "" keeps the note as it was).
+            try:
+                resume_party_note = _resume_party_note(_pt_now) if resume_location_note else ""
+            except Exception:
+                resume_party_note = ""
             conversation_history, was_injected = check_and_inject_return_message(
                 conversation_history, is_combat_active=False,
-                location_note=resume_location_note)
+                location_note=resume_location_note, party_note=resume_party_note)
             resume_note_message = (
                 copy.deepcopy(conversation_history[-1])
                 if was_injected and conversation_history
@@ -10766,37 +10865,12 @@ def _main_game_loop(startup_authority, turn_authority):
             current_season = world_conditions.get('season', 'Unknown')
             current_area_name = world_conditions.get('currentArea', 'Unknown')
         
-            # Format party members and NPCs for DM note
-            party_members_list = party_tracker_data.get('partyMembers', [])
-            party_members_str = ", ".join(party_members_list) if party_members_list else "None"
-            # The player is partyMembers[0] (#189): name them so narration
-            # speaks to them, not about them.
-            player_character_str = (
-                f"Player character: {party_members_list[0]} (narrate to them as \"you\"; "
-                f"narrate everyone else in third person). "
-            ) if party_members_list else ""
-        
-            # Each companion with its occupant id, or the [slot n] of a row
-            # saved before ids; joined people no row carries are listed after
-            # Party stats. The roster rendered here numbers this turn's slots.
-            from core.nql import occupants as _note_occupants
-
-            _note_world = _note_occupants.party_world(
-                str(party_tracker_data.get("module") or ""),
-                str(world_conditions.get("currentLocationId") or ""),
-                create=False,
-            )
-            party_npcs_span, party_orphan_sentence = action_handler.party_note_lines(
-                party_tracker_data,
-                _note_world,
-                party_tracker_data.get('partyNPCs', []),
-                record=True,
-            )
-            # #1861: who came along on the last move and is still here. After
-            # Party stats: the "Party NPCs: ... Party stats:" span is parsed
-            # (episode_capture, voice_context).
-            party_escort_sentence = action_handler.last_move_escort_sentence(
-                party_tracker_data, _note_world
+            # Party members, the player character, the party NPCs, Party stats
+            # and the last move's escorts (#1969: the one builder the welcome's
+            # resume note shares). The roster rendered here numbers this
+            # turn's slots (record=True).
+            party_fields, _party_company = _party_note_fields(
+                party_tracker_data, party_stats_str, record=True
             )
         
             # C3: hubs are told once, by WORLD STATE CONTEXT.
@@ -10810,10 +10884,7 @@ def _main_game_loop(startup_authority, turn_authority):
             # system prompt (D4), sent once instead of once per turn.
             dm_note = (f"Dungeon Master Note: Current date and time: {date_time_str}, {current_season} season. "
                 f"Current location: {current_location_name_note} ({current_location_id_note}) in the {current_area_name} area. "
-                f"Party members: {party_members_str}. "
-                f"{player_character_str}"
-                f"{party_npcs_span} "
-                f"Party stats: {party_stats_str}.{party_orphan_sentence}{party_escort_sentence}")
+                f"{party_fields}")
             if not should_inject_creation_prompt:
                 dm_note += f" Open plot points located in this area: {plot_here_str} (see ADVENTURE PLOT STATUS)."
             dm_note += f"{module_creation_prompt}"

@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When you come back to a saved game, the Dungeon Master's welcome now knows exactly who is travelling with you, including when no one is, so it no longer brings along people from earlier in the story who are not with you (#1969).
 - When creatures that ran off earlier come back to fight you, the game now brings back those same creatures for the fight, so the Dungeon Master no longer has to be corrected before the fight can start (#1953).
 - When the game can't carry out your turn and nothing in your game changed, the words you typed come back in the input box exactly as you typed them, so you can send them again or type something else; in the terminal, pressing Enter on an empty line sends them again (#1960).
 - When creatures that ran off, left or gave up earlier come back, the Dungeon Master can now bring back those same creatures instead of new ones, and creatures that were beaten can no longer be brought back that way (#1953).
