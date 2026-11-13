@@ -203,6 +203,56 @@ class _UsageTrackerToken:
 
 
 @dataclass
+class BuildConnectionState:
+    """#1981 PR C: one in-game build's connection stop.
+
+    Armed by createNewModule only (the standalone builder page runs its own
+    thread and is out of scope). After the first Route P give-up of a
+    connection class the build records it; every later model call in the
+    build raises BuildConnectionStopped before any request, and the build
+    ends with that class's line at its next stage boundary or before publish.
+    """
+
+    armed: bool = False
+    stopped_class: str = None
+    provider: str = None
+    # Transient failures of calls made without the game's reissue (Gemini,
+    # or a caller-owned timeout), counted per build.
+    unretried_failures: int = 0
+    notices_shown: set = field(default_factory=set)
+    # The build's progress hook for a retry notice: fn(message, notice).
+    progress_notice: object = field(default=None, repr=False, compare=False)
+    lock: threading.Lock = field(
+        default_factory=threading.Lock, repr=False, compare=False
+    )
+
+    def record_failure(self, connection_class, provider=None, reissued=False):
+        """A model call in this build failed with ``connection_class``.
+
+        The build stops at once when the call had the game's reissue (its
+        tries are spent) or the class is an account class; a transient class
+        on a call without the reissue stops it only at the second such
+        failure in the build, so one brief 503 keeps today's fallback.
+        """
+        if not connection_class:
+            return
+        with self.lock:
+            if not self.armed or self.stopped_class is not None:
+                return
+            if not reissued and connection_class in _TRANSIENT_CLASSES:
+                self.unretried_failures += 1
+                if self.unretried_failures < 2:
+                    return
+            self.stopped_class = connection_class
+            self.provider = provider
+
+
+_TRANSIENT_CLASSES = frozenset(
+    {"no_connection", "no_answer", "service_error", "rate_limited"}
+)
+
+
+@dataclass
 class ModuleBuildUsageContext:
     """Request-local accounting state for one module generation lifecycle."""
 
@@ -213,9 +263,31 @@ class ModuleBuildUsageContext:
     lock: threading.Lock = field(
         default_factory=threading.Lock, repr=False, compare=False
     )
+    connection: BuildConnectionState = field(
+        default_factory=BuildConnectionState, repr=False, compare=False
+    )
 
 
+# The one build context variable. A worker thread a build starts sees it
+# only through submit_in_build (contextvars.copy_context at submit): any pool
+# a build adds MUST submit through it, or its calls escape the build's
+# connection stop (#1981 PR C).
 _module_build_context = ContextVar("module_build_usage_context", default=None)
+
+
+def submit_in_build(executor, fn, *args):
+    """Submit ``fn(*args)`` to ``executor`` in a copy of this context, so the
+    worker sees the build (and its connection stop) as the caller does."""
+    import contextvars
+
+    return executor.submit(contextvars.copy_context().run, fn, *args)
+
+
+def build_connection_state():
+    """This build's connection stop when an armed build is active, else None."""
+    context = _module_build_context.get()
+    state = getattr(context, "connection", None)
+    return state if state is not None and state.armed else None
 
 class OpenAIUsageTracker:
     """Tracks OpenAI's built-in usage statistics with enhanced telemetry"""

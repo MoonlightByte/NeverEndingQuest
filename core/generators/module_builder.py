@@ -102,6 +102,16 @@ _STORY_FIRST_PROVIDER_FALLBACK_MESSAGE = (
 )
 
 
+def _raise_if_build_stopped():
+    """Raise BuildConnectionStopped when this armed build gave up (#1981 PR C)."""
+    from utils.openai_usage_tracker import build_connection_state
+    from utils.provider_errors import BuildConnectionStopped
+
+    state = build_connection_state()
+    if state is not None and state.stopped_class is not None:
+        raise BuildConnectionStopped(state.stopped_class, state.provider)
+
+
 def _publication_step(prepare_candidate, builder_holder):
     """The one publication step every entry path runs on its hidden candidate,
     before the commit rename (utils/module_publish.publish_module_atomic).
@@ -114,9 +124,15 @@ def _publication_step(prepare_candidate, builder_holder):
     there is no prepare_candidate, as before: no registry write).
     """
     def step(candidate_path, final_name):
+        # #1981 PR C: no module is published after a connection give-up in
+        # this build, whatever its fallbacks produced; checked before the
+        # publication calls and again after them (T032, T033 and the
+        # "integration deferred" path run inside prepare_candidate).
+        _raise_if_build_stopped()
         registry_bytes = None
         if prepare_candidate is not None:
             registry_bytes = prepare_candidate(candidate_path, final_name)
+        _raise_if_build_stopped()
         builder = builder_holder.get("builder")
         if builder is not None and builder.emit_module_declaration():
             from core.generators.module_declaration import load_declared_world, reach_check
