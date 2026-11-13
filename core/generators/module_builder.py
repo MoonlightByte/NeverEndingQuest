@@ -346,118 +346,57 @@ def _useful_string(value, field):
 # strict request schema both read these, so they cannot drift.
 # #1478: the opening conditions ride on T028 but never fail its contract; a
 # missing or empty value is read as absent (_opening_conditions).
+# #1982: T028 writes only the plot's text. Code numbers the plot points and
+# side quests, links them and keeps their typed completion
+# (ModuleBuilder._numbered_plot), so T028 gets the ids and returns text by id.
 _T028_OPENING_FIELDS = ("openingWeather", "openingPoliticalClimate")
-_T028_ROOT_FIELDS = (
-    "plotTitle", "mainObjective", "plotPoints", "activeQuests",
-    "completedQuests", "failedQuests", "worldEvents", "dmNotes",
-) + _T028_OPENING_FIELDS
-_T028_PLOT_POINT_FIELDS = (
-    "id", "title", "description", "location", "nextPoints", "status",
-    "plotImpact", "sideQuests",
-)
-_T028_SIDE_QUEST_FIELDS = (
-    "id", "title", "description", "involvedLocations", "status", "plotImpact",
-)
+_T028_ROOT_FIELDS = ("plotTitle", "mainObjective", "plotPoints") + _T028_OPENING_FIELDS
+_T028_PLOT_POINT_FIELDS = ("id", "title", "description")
 
 
-def _t028_schema(area_ids: List[str]) -> Dict[str, Any]:
-    """T028's reply schema with typed area IDs, pinned to the contract fields."""
+def _t028_schema(point_ids: List[str]) -> Dict[str, Any]:
+    """T028's reply schema: the plot's text, by the given plot point ids."""
     def obj(fields, props):
         assert tuple(props) == fields
         return {"type": "object", "properties": props,
                 "required": list(fields), "additionalProperties": False}
 
-    area_enum = {"type": "string", "enum": list(area_ids)}
     text = {"type": "string"}
-    side_quest = obj(_T028_SIDE_QUEST_FIELDS, {
-        "id": text, "title": text, "description": text,
-        "involvedLocations": {"type": "array", "items": area_enum},
-        "status": text, "plotImpact": text,
-    })
     plot_point = obj(_T028_PLOT_POINT_FIELDS, {
-        "id": text, "title": text, "description": text, "location": area_enum,
-        "nextPoints": {"type": "array", "items": text},
-        "status": text, "plotImpact": text,
-        "sideQuests": {"type": "array", "items": side_quest},
+        "id": {"type": "string", "enum": list(point_ids)}, "title": text, "description": text,
     })
-    string_list = {"type": "array", "items": text}
     return obj(_T028_ROOT_FIELDS, {
         "plotTitle": text, "mainObjective": text,
         "plotPoints": {"type": "array", "items": plot_point},
-        "activeQuests": string_list, "completedQuests": string_list,
-        "failedQuests": string_list, "worldEvents": string_list,
-        "dmNotes": string_list,
         "openingWeather": text, "openingPoliticalClimate": text,
     })
 
 
-def _validate_unified_plot_contract(
-    value: Any,
-    area_ids: List[str],
-    expected_plot_points: int,
-    expected_side_quests: int,
-) -> Dict[str, Any]:
-    """Validate T028 identities/references before the unified plot is saved."""
+def _validate_t028_text(value: Any, point_ids: List[str]) -> Dict[str, Any]:
+    """Validate T028's text before it is merged onto the numbered plot: every
+    given plot point id once, in the given order, with useful text."""
     root_fields = set(_T028_ROOT_FIELDS) - set(_T028_OPENING_FIELDS)
     if not isinstance(value, dict) or not (
         root_fields <= set(value) <= set(_T028_ROOT_FIELDS)
     ):
-        raise ValueError("T028 requires the exact unified-plot root fields")
+        raise ValueError("T028 requires plotTitle, mainObjective and plotPoints")
     _useful_string(value["plotTitle"], "plotTitle")
     _useful_string(value["mainObjective"], "mainObjective")
-    for field in root_fields - {"plotTitle", "mainObjective", "plotPoints"}:
-        if not isinstance(value[field], list):
-            raise ValueError(f"T028 {field} must be an array")
-
     plot_points = value["plotPoints"]
-    if not isinstance(plot_points, list) or len(plot_points) != expected_plot_points:
-        raise ValueError("T028 must preserve the exact plot-point cardinality")
-    expected_pp_ids = [f"PP{index:03d}" for index in range(1, len(plot_points) + 1)]
-    actual_pp_ids = [pp.get("id") if isinstance(pp, dict) else None for pp in plot_points]
-    if actual_pp_ids != expected_pp_ids:
-        raise ValueError("T028 plot IDs must be globally sequential")
-
-    valid_areas = set(area_ids)
-    side_quest_ids = []
+    if not isinstance(plot_points, list):
+        raise ValueError("T028 plotPoints must be an array")
+    actual = [pp.get("id") if isinstance(pp, dict) else None for pp in plot_points]
+    if actual != list(point_ids):
+        missing = [ident for ident in point_ids if ident not in actual]
+        raise ValueError(
+            "T028 must return every given plot point id once, in the given order "
+            f"({', '.join(point_ids)}); missing: {', '.join(missing) or 'none'}"
+        )
     for pp in plot_points:
-        required = set(_T028_PLOT_POINT_FIELDS)
-        if set(pp) != required:
-            raise ValueError(f"T028 {pp.get('id')} has missing or extra fields")
+        if set(pp) != set(_T028_PLOT_POINT_FIELDS):
+            raise ValueError(f"T028 {pp['id']} must have exactly id, title and description")
         _useful_string(pp["title"], f"{pp['id']}.title")
         _useful_string(pp["description"], f"{pp['id']}.description")
-        if pp["location"] not in valid_areas:
-            raise ValueError(f"T028 {pp['id']} references an unknown area")
-        if not isinstance(pp["nextPoints"], list) or not all(
-            isinstance(item, str) for item in pp["nextPoints"]
-        ):
-            raise ValueError(f"T028 {pp['id']}.nextPoints must be an ID array")
-        if any(item not in expected_pp_ids or item == pp["id"] for item in pp["nextPoints"]):
-            raise ValueError(f"T028 {pp['id']} has an invalid nextPoints reference")
-        if not isinstance(pp["status"], str) or not isinstance(pp["plotImpact"], str):
-            raise ValueError(f"T028 {pp['id']} status/plotImpact types are invalid")
-        if not isinstance(pp["sideQuests"], list):
-            raise ValueError(f"T028 {pp['id']}.sideQuests must be an array")
-
-        for sq in pp["sideQuests"]:
-            sq_fields = set(_T028_SIDE_QUEST_FIELDS)
-            if not isinstance(sq, dict) or set(sq) != sq_fields:
-                raise ValueError("T028 side quest has missing or extra fields")
-            side_quest_ids.append(sq["id"])
-            _useful_string(sq["title"], f"{sq['id']}.title")
-            _useful_string(sq["description"], f"{sq['id']}.description")
-            locations = sq["involvedLocations"]
-            if not isinstance(locations, list) or not locations or any(
-                location not in valid_areas for location in locations
-            ):
-                raise ValueError(f"T028 {sq['id']} references an unknown area")
-            if not isinstance(sq["status"], str) or not isinstance(sq["plotImpact"], str):
-                raise ValueError(f"T028 {sq['id']} status/plotImpact types are invalid")
-
-    expected_sq_ids = [
-        f"SQ{index:03d}" for index in range(1, expected_side_quests + 1)
-    ]
-    if side_quest_ids != expected_sq_ids:
-        raise ValueError("T028 side-quest IDs/cardinality must be globally sequential")
     return value
 
 
@@ -1597,20 +1536,121 @@ The area ID {area_id} is not a location ID and must never be used in those field
 
             self.log(f"Generated plot for {area_id}")
     
+    def _numbered_plot(self) -> Dict[str, Any]:
+        """The module's plot from the areas' T037 plots, by code (#1982).
+
+        Areas in build order (``plots_data``), each area's plot points in its
+        own order: points are numbered PP001, PP002, ... and side quests SQ001,
+        SQ002, ... across the module. Each point's nextPoints are its area's own
+        ids, remapped; a point with none, in every area but the last, leads to
+        the next area's first point (else the area's last point does). A typed
+        ``completion`` is kept as written: it names only place and occupant
+        ids, which publication rewrites with every other place reference.
+        ``location`` and ``involvedLocations`` are area ids: the area that
+        holds the named place, else the plot's own area. Status "not started",
+        plotImpact "". The text is T037's until T028's is merged by id."""
+        import copy
+
+        area_of = {}
+        for area_id, location_data in (self.locations_data or {}).items():
+            for loc in (location_data or {}).get("locations") or []:
+                if isinstance(loc, dict) and isinstance(loc.get("locationId"), str):
+                    area_of.setdefault(loc["locationId"], area_id)
+
+        def areas_for(places, own):
+            found = []
+            for place in places if isinstance(places, list) else []:
+                area = area_of.get(place)
+                if area and area not in found:
+                    found.append(area)
+            return found or [own]
+
+        plot = {
+            "plotTitle": self.module_data.get('moduleName', 'Adventure Module'),
+            "mainObjective": f"Complete the challenges across {len(self.areas_data)} interconnected areas",
+            "plotPoints": [],
+            "activeQuests": [],
+            "completedQuests": [],
+            "failedQuests": [],
+            "worldEvents": [],
+            "dmNotes": []
+        }
+        by_area = []
+        pp_count = sq_count = 0
+        for area_id, plot_data in self.plots_data.items():
+            local, points = {}, []
+            for pp in (plot_data or {}).get("plotPoints") or []:
+                if not isinstance(pp, dict):
+                    continue
+                pp_count += 1
+                new_pp = {
+                    "id": f"PP{pp_count:03d}",
+                    "title": pp.get("title") or f"Plot Point {pp_count}",
+                    "description": pp.get("description", ""),
+                    "location": areas_for([pp.get("location")], area_id)[0],
+                    "nextPoints": [],
+                    "status": "not started",
+                    "plotImpact": "",
+                    "sideQuests": []
+                }
+                if isinstance(pp.get("completion"), dict):
+                    new_pp["completion"] = copy.deepcopy(pp["completion"])
+                if isinstance(pp.get("id"), str):
+                    local.setdefault(pp["id"], new_pp["id"])
+                for sq in pp.get("sideQuests") or []:
+                    if not isinstance(sq, dict):
+                        continue
+                    sq_count += 1
+                    new_sq = {
+                        "id": f"SQ{sq_count:03d}",
+                        "title": sq.get("title") or f"Side Quest {sq_count}",
+                        "description": sq.get("description", ""),
+                        "involvedLocations": areas_for(sq.get("involvedLocations"), area_id),
+                        "status": "not started",
+                        "plotImpact": ""
+                    }
+                    if isinstance(sq.get("completion"), dict):
+                        new_sq["completion"] = copy.deepcopy(sq["completion"])
+                    new_pp["sideQuests"].append(new_sq)
+                points.append((pp, new_pp))
+            for pp, new_pp in points:
+                for nxt in pp.get("nextPoints") or []:
+                    target = local.get(nxt)
+                    if target is None or target == new_pp["id"]:
+                        self.log(f"  - WARNING: {area_id} plot point {pp.get('id')} names next point "
+                                 f"{nxt}, which is not another point of its area; left out")
+                    elif target not in new_pp["nextPoints"]:
+                        new_pp["nextPoints"].append(target)
+            if points:
+                by_area.append([new_pp for _, new_pp in points])
+        for index, points in enumerate(by_area[:-1]):
+            first_next = by_area[index + 1][0]["id"]
+            ends = [pp for pp in points if not pp["nextPoints"]] or [points[-1]]
+            for pp in ends:
+                pp["nextPoints"].append(first_next)
+        plot["plotPoints"] = [pp for points in by_area for pp in points]
+        return plot
+
     def unify_plots(self):
-        """Unify individual area plots into a single module_plot.json using AI"""
+        """The module's plot (module_plot.json). Code builds it from the
+        areas' plots (_numbered_plot, #1982), and T028 writes its text: the
+        title, the objective and each point's title and description by id,
+        with the opening conditions. Without valid text, the numbered plot is
+        saved with T037's text."""
         if not self.plots_data:
             self.log("Warning: No plots to unify")
             return
-            
+
         from core.ai import api_client
         import config
-        
-        # Prepare context for unification
+
+        unified_plot = self._numbered_plot()
+        point_ids = [pp["id"] for pp in unified_plot["plotPoints"]]
+        if not point_ids:
+            self.log("Warning: the area plots have no plot points; no text to write")
+            self._create_fallback_unified_plot()
+            return
         area_summaries = []
-        all_plot_points = []
-        all_side_quests = []
-        
         for area_id, plot_data in self.plots_data.items():
             area_data = self.areas_data[area_id]
             area_summaries.append({
@@ -1620,90 +1660,42 @@ The area ID {area_id} is not a location ID and must never be used in those field
                 "recommended_level": area_data.get("recommendedLevel", 1),
                 "plot_title": plot_data.get("plotTitle", ""),
                 "main_objective": plot_data.get("mainObjective", ""),
-                "num_plot_points": len(plot_data.get("plotPoints", []))
             })
-            
-            # Extract plot points and side quests with area context
-            for pp in plot_data.get("plotPoints", []):
-                pp_with_context = pp.copy()
-                pp_with_context["source_area"] = area_id
-                pp_with_context["area_name"] = area_data["areaName"]
-                all_plot_points.append(pp_with_context)
-                
-                for sq in pp.get("sideQuests", []):
-                    sq_with_context = sq.copy()
-                    sq_with_context["source_area"] = area_id
-                    sq_with_context["area_name"] = area_data["areaName"]
-                    sq_with_context["parent_plot_point"] = pp["id"]
-                    all_side_quests.append(sq_with_context)
-        
-        # Create AI prompt for unification
-        prompt = f"""You are an expert 5th edition module designer. Combine these individual area plots into a single, coherent module-wide plot structure.
+        plot_points = [
+            {"id": pp["id"], "area_name": (self.areas_data.get(pp["location"]) or {}).get("areaName", ""),
+             "title": pp["title"], "description": pp["description"]}
+            for pp in unified_plot["plotPoints"]
+        ]
+
+        prompt = f"""You are an expert 5th edition module designer. Write the text of this module's plot. Its plot points, their order and their links are already set; you write only the words.
 
 MODULE CONTEXT:
 - Module Name: {self.module_data.get('moduleName', 'Unknown')}
 - Module Description: {self.module_data.get('moduleDescription', '')}
 - Total Areas: {len(self.areas_data)}
 
-INDIVIDUAL AREA PLOTS TO UNIFY:
+AREAS:
 {json.dumps(area_summaries, indent=2)}
 
-ALL PLOT POINTS TO REORGANIZE:
-{json.dumps(all_plot_points, indent=2)}
+PLOT POINTS, IN ORDER:
+{json.dumps(plot_points, indent=2)}
 
-UNIFICATION REQUIREMENTS:
-1. Create a single overarching plot title that encompasses the entire module
-2. Write a main objective that ties all areas together
-3. Reorganize plot points into a logical progression that flows between areas
-4. Maintain narrative coherence - each plot point should lead naturally to the next
-5. Preserve all existing plot points but reorder/renumber them for better flow
-6. Update plot point descriptions to reference connections between areas when appropriate
-7. Ensure side quests remain attached to their appropriate plot points
-8. Update nextPoints arrays to reflect the new unified progression
-9. Consider level progression - easier areas should come before harder ones
+WRITE:
+1. plotTitle: one title for the whole module
+2. mainObjective: the goal that ties all areas together
+3. plotPoints: for every plot point above, in the same order and with the same id, a title and a description; a description may mention the travel from one area to the next where the story crosses it
+4. openingWeather and openingPoliticalClimate: the weather and the political mood where PP001 opens, each in one short phrase
 
 RETURN FORMAT:
-Return a JSON object with this exact structure:
 {{
-    "plotTitle": "Unified title for the entire module",
-    "mainObjective": "Overarching goal that spans all areas",
+    "plotTitle": "Title for the entire module",
+    "mainObjective": "Goal that spans all areas",
     "plotPoints": [
-        {{
-            "id": "PP001",
-            "title": "Plot point title",
-            "description": "Detailed description that may reference travel between areas",
-            "location": "area_id (like HG001, not R01)",
-            "nextPoints": ["PP002"],
-            "status": "not started",
-            "plotImpact": "",
-            "sideQuests": [
-                {{
-                    "id": "SQ001", 
-                    "title": "Side quest title",
-                    "description": "Side quest description",
-                    "involvedLocations": ["area_id"],
-                    "status": "not started",
-                    "plotImpact": ""
-                }}
-            ]
-        }}
+        {{"id": "PP001", "title": "Plot point title", "description": "Plot point description"}}
     ],
-    "activeQuests": [],
-    "completedQuests": [],
-    "failedQuests": [],
-    "worldEvents": [],
-    "dmNotes": [],
     "openingWeather": "The weather where PP001 opens, in one short phrase",
     "openingPoliticalClimate": "The political mood where PP001 opens, in one short phrase"
-}}
-
-IMPORTANT:
-- openingWeather and openingPoliticalClimate describe the moment the story opens, at PP001's place
-- Use area IDs (like HG001) for location fields, not room IDs (like R01)
-- Renumber plot points sequentially starting from PP001
-- Renumber side quests GLOBALLY and sequentially starting from SQ001 (SQ001, SQ002, SQ003, etc. across ALL plot points)
-- Each side quest must have a unique number across the entire module, not restarting from SQ001 for each plot point
-- Maintain all existing content but improve flow and connections"""
+}}"""
 
         try:
             from model_config import MODEL_PROVIDER
@@ -1716,11 +1708,11 @@ IMPORTANT:
             else:  # legacy
                 main_cfg = config.DM_MAIN_LEGACY
 
-            # D-COST-5: typed area IDs under a schema pinned to the contract;
-            # LM Studio keeps json_object with the IDs in the prompt.
+            # D-COST-5: typed plot point ids under a schema pinned to the
+            # contract; LM Studio keeps json_object with the ids in the prompt.
             t028_extra = {k: v for k, v in main_cfg.items() if k != "model"}
             t028_format = {"type": "json_object"}
-            t028_schema = _t028_schema(list(self.areas_data))
+            t028_schema = _t028_schema(point_ids)
             if MODEL_PROVIDER in ("openai", "legacy"):
                 t028_format = {"type": "json_schema", "json_schema": {
                     "name": "t028_unified_plot", "strict": True, "schema": t028_schema}}
@@ -1731,7 +1723,7 @@ IMPORTANT:
 
             last_error = None
             last_reply = None
-            unified_plot = None
+            text = None
             for attempt in range(2):
                 attempt_prompt = prompt
                 if last_error is not None:
@@ -1754,30 +1746,26 @@ IMPORTANT:
                     **t028_extra)
                 last_reply = response.choices[0].message.content
                 try:
-                    unified_plot = _validate_unified_plot_contract(
-                        json.loads(last_reply),
-                        list(self.areas_data),
-                        len(all_plot_points),
-                        len(all_side_quests),
-                    )
+                    text = _validate_t028_text(json.loads(last_reply), point_ids)
                     break
                 except (json.JSONDecodeError, TypeError, ValueError) as exc:
                     last_error = exc
-                    unified_plot = None
+                    text = None
                     self.log(
                         f"T028 response failed contract (attempt {attempt + 1}/2): {exc}"
                     )
-            if unified_plot is None:
+            if text is None:
                 raise ValueError(f"T028 validation exhausted: {last_error}")
 
             # The opening conditions belong to the party tracker, not the
-            # plot: take them out so module_plot.json keeps its shape (#1478).
-            self.opening_conditions = _opening_conditions(unified_plot)
-            for field in _T028_OPENING_FIELDS:
-                unified_plot.pop(field, None)
+            # plot (#1478).
+            self.opening_conditions = _opening_conditions(text)
+            unified_plot["plotTitle"] = text["plotTitle"].strip()
+            unified_plot["mainObjective"] = text["mainObjective"].strip()
+            for pp, written in zip(unified_plot["plotPoints"], text["plotPoints"]):
+                pp["title"] = written["title"].strip()
+                pp["description"] = written["description"].strip()
 
-            # Save the unified plot
-            output_path = os.path.join(self.config.output_directory, "module_plot.json")
             self._atomic_save_json("module_plot.json", unified_plot)
             # Retain the plot-ordered structure for cross-area connection finalization.
             self.unified_plot = unified_plot
@@ -1786,56 +1774,15 @@ IMPORTANT:
 
         except Exception as e:
             self.log(f"Error during plot unification: {e}")
-            # Fallback: create a simple unified structure. Any cross-area gap is
-            # healed deterministically at finalization (extract_plot_route), so a
-            # module is always produced.
+            # Fallback: the numbered plot with T037's text. Any cross-area gap
+            # is healed deterministically at finalization (extract_plot_route),
+            # so a module is always produced.
             self._create_fallback_unified_plot()
-    
+
     def _create_fallback_unified_plot(self):
-        """Create a simple unified plot if AI unification fails"""
-        unified_plot = {
-            "plotTitle": self.module_data.get('moduleName', 'Adventure Module'),
-            "mainObjective": f"Complete the challenges across {len(self.areas_data)} interconnected areas",
-            "plotPoints": [],
-            "activeQuests": [],
-            "completedQuests": [],
-            "failedQuests": [],
-            "worldEvents": [],
-            "dmNotes": []
-        }
-        
-        # Simple concatenation of all plot points
-        plot_counter = 1
-        side_quest_counter = 1
-        
-        for area_id, plot_data in self.plots_data.items():
-            for pp in plot_data.get("plotPoints", []):
-                new_pp = {
-                    "id": f"PP{plot_counter:03d}",
-                    "title": pp.get("title", f"Plot Point {plot_counter}"),
-                    "description": pp.get("description", ""),
-                    "location": area_id,
-                    "nextPoints": [f"PP{plot_counter+1:03d}"] if plot_counter < sum(len(p.get("plotPoints", [])) for p in self.plots_data.values()) else [],
-                    "status": "not started",
-                    "plotImpact": "",
-                    "sideQuests": []
-                }
-                
-                # Add side quests
-                for sq in pp.get("sideQuests", []):
-                    new_sq = {
-                        "id": f"SQ{side_quest_counter:03d}",
-                        "title": sq.get("title", f"Side Quest {side_quest_counter}"),
-                        "description": sq.get("description", ""),
-                        "involvedLocations": [area_id],
-                        "status": "not started",
-                        "plotImpact": ""
-                    }
-                    new_pp["sideQuests"].append(new_sq)
-                    side_quest_counter += 1
-                
-                unified_plot["plotPoints"].append(new_pp)
-                plot_counter += 1
+        """The numbered plot (#1982: completion kept) with the areas' own text,
+        when T028 gives no valid text."""
+        unified_plot = self._numbered_plot()
 
         # issue #128: surface (non-destructively) any cross-area location refs the
         # unified plot can't resolve against the module's real location IDs.
