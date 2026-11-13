@@ -946,9 +946,13 @@ def _apply_welcome(lifecycle):
                 return
             # #1233: an unclassified refusal has no text; never show "None".
             # #1228: an account refusal says the welcome beat is kept.
-            line = (_welcome_followup_refusal_line(process_result) or process_result["player_message"]
-                    or _dm_fail_forward_line())
-            _show_followup_failure(line, process_result)
+            line = _welcome_followup_refusal_line(process_result) or process_result["player_message"]
+            if line:
+                _show_followup_failure(line, process_result)
+            else:
+                # The in-character D-COST-4 line stays the DM's, never a notice.
+                line = _dm_fail_forward_line()
+                display_dm_narration(line)
             raise RuntimeError(line)
         if (
             isinstance(process_result, dict)
