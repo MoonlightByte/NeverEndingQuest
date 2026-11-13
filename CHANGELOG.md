@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- In The Thornwood Watch, the walks from the Scout's Watch at the East Tower to the Supply Depot, from the Hermit's Refuge to the Wolf's Den Cave and from the Wolf's Den Cave to the Ambush Site now take the same time as the walk the other way, instead of a general estimate (#1976).
+- In The Thornwood Watch, three walks now take the same time in both directions, instead of a general estimate one way (#1976).
 - When the Dungeon Master starts a fight and also says that you fight on your own party's side, or that a monster fights against you, the fight is no longer sent back to be written again over that; it starts as it would have without it (#1967).
 - When you come back to a saved game, the Dungeon Master's welcome now knows exactly who is travelling with you, including when no one is, so it no longer brings along people from earlier in the story who are not with you (#1969).
 - When creatures that ran off earlier come back to fight you, the game now brings back those same creatures for the fight, so the Dungeon Master no longer has to be corrected before the fight can start (#1953).
