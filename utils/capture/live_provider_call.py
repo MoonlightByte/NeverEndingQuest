@@ -2501,7 +2501,12 @@ def _call_live_provider(
             notify_player_once(
                 "class:%s" % (failed_class or envelope.get("disposition")), reason
             )
-            emit_status("%s %s" % (turn_heartbeat(generation), reason))
+            if player_turn and not completion_required:
+                # #1981: the card carries the reason; the status line keeps
+                # only the wait and the try count.
+                emit_status(turn_heartbeat(generation))
+            else:
+                emit_status("%s %s" % (turn_heartbeat(generation), reason))
             failure_announced = True
         retry_wait(
             _delay_for_error(envelope, failure_count),
