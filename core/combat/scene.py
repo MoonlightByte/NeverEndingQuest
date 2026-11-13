@@ -65,7 +65,7 @@ def _canonical_index(canonical_snapshot):
 
 
 def _participant_id(key, canonical, label):
-    if key not in canonical:
+    if type(key) is not str or key not in canonical:
         raise SceneReconciliationError(f"{label} references unknown participant key: {key}")
     return canonical[key]["combatantId"]
 
@@ -148,14 +148,14 @@ def reconcile_scene_manifest(parameters, canonical_snapshot, companion_keys=froz
         # model-supplied value is ignored.
         persistence = "encounter" if source["sourceKind"] == "monster" else "canonical_character"
         controller = proposal.get("controller")
-        if participation not in PARTICIPATION_VALUES:
+        if type(participation) is not str or participation not in PARTICIPATION_VALUES:
             raise SceneReconciliationError(f"invalid participation for {key}")
         if type(proposal.get("initiativeEligible")) is not bool:
             raise SceneReconciliationError(f"initiativeEligible must be boolean for {key}")
-        if controller not in CONTROLLER_VALUES:
+        if type(controller) is not str or controller not in CONTROLLER_VALUES:
             raise SceneReconciliationError(f"invalid controller for {key}")
         scope = proposal.get("controllerScope", "encounter")
-        if scope not in CONTROLLER_SCOPE_VALUES:
+        if type(scope) is not str or scope not in CONTROLLER_SCOPE_VALUES:
             raise SceneReconciliationError(f"invalid controller scope for {key}")
         expires_at = proposal.get("controllerExpiresAtRevision")
         if expires_at is not None and (type(expires_at) is not int or expires_at < 0):
@@ -181,7 +181,7 @@ def reconcile_scene_manifest(parameters, canonical_snapshot, companion_keys=froz
         if side is not None:
             if not key.startswith("npc:"):
                 raise SceneReconciliationError(f"side applies only to npc participants, not {key}")
-            if side not in SIDE_VALUES:
+            if type(side) is not str or side not in SIDE_VALUES:
                 raise SceneReconciliationError(f"invalid side for {key}: side is hostile or party")
             # #1935 (D-1935-1): a party companion is never seated on the hostile side.
             if side == "hostile" and key in companion_keys:
@@ -230,7 +230,7 @@ def reconcile_scene_manifest(parameters, canonical_snapshot, companion_keys=froz
     for index, raw in enumerate(_require_list(scene.get("objectives"), "scene objectives")):
         item = _require_object(raw, f"scene objective {index}")
         status = item.get("status", "active")
-        if status not in OBJECTIVE_STATUS_VALUES:
+        if type(status) is not str or status not in OBJECTIVE_STATUS_VALUES:
             raise SceneReconciliationError(f"invalid objective status at index {index}")
         objectives.append(
             {
