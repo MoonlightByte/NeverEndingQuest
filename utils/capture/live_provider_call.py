@@ -1925,6 +1925,8 @@ def _call_live_provider(
     )
     billed_reissues = 0
     free_reissues = 0
+    # #1981: the bucket the last failure was counted in ("billed" or "free").
+    last_bucket = {"kind": None}
     logical_started = time.monotonic()
     notices_shown = set()
     # #221: the player was told a provider failure is being retried; the
@@ -1956,16 +1958,20 @@ def _call_live_provider(
         )
 
     def attempt_bound(state=None):
-        """#1981: the tries this call can reach if this one fails: a failure
-        after the request was delivered takes the billed bound (3), one
-        before it the free bound (7)."""
+        """#1981: the tries this call can reach. Between tries, the bucket
+        the last failure was counted in; during a try, the one its phase
+        would fall in (delivered: the billed bound, 3; before: the free, 7)."""
         if state is None:
             reader = current_reader["reader"]
             state = reader.snapshot() if reader is not None else None
         phase = (state or {}).get("current")
-        if phase == "failed":
-            phase = (state or {}).get("reached")
-        if phase in _AFTER_SEND_STATUS_PHASES:
+        if phase == "failed" and last_bucket["kind"] is not None:
+            billed = last_bucket["kind"] == "billed"
+        else:
+            if phase == "failed":
+                phase = (state or {}).get("reached")
+            billed = phase in _AFTER_SEND_STATUS_PHASES
+        if billed:
             remaining = _BILLED_REISSUE_LIMIT - billed_reissues
         else:
             remaining = _FREE_REISSUE_LIMIT - free_reissues
@@ -2396,6 +2402,7 @@ def _call_live_provider(
             stalled = _is_stalled_failure(envelope)
             if _is_billed_failure(envelope) or stalled:
                 billed_reissues += 1
+                last_bucket["kind"] = "billed"
                 from utils.session_spend import record_possibly_billed
 
                 possibly_billed = _is_billed_failure(envelope) or (
@@ -2406,6 +2413,7 @@ def _call_live_provider(
                 exhausted = billed_reissues > _BILLED_REISSUE_LIMIT
             else:
                 free_reissues += 1
+                last_bucket["kind"] = "free"
                 exhausted = free_reissues > _FREE_REISSUE_LIMIT
             if exhausted:
                 _provider_debug(
