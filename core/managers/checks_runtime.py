@@ -119,10 +119,15 @@ def _show_check_receipt(content: str, message_id: Optional[str] = None) -> None:
         print(content)
 
 
+def _card_ask(entry: Dict[str, Any]) -> str:
+    """The waiting check as its card shows it: label, name and reason (#1734 panel; #1975: the ask T126 is shown)."""
+    reason = str(entry.get("reason") or "").rstrip(". ")
+    return f"{checks.label(entry['stat'])} for {entry.get('characterName')}" + (f": {reason}" if reason else "")
+
+
 def _roll_prompt_line(entry: Dict[str, Any]) -> str:
     """The console's roll panel (#1734): the waiting check for the read prompt, from typed fields only."""
-    reason = str(entry.get("reason") or "").rstrip(". ")
-    what = f"{checks.label(entry['stat'])} for {entry.get('characterName')}" + (f": {reason}" if reason else "")
+    what = _card_ask(entry)
     two = entry.get("faces") == 2
     dice = f"Two d20s, {entry.get('netMode')}: type them" if two else "One d20: type it"
     return f'[{what}. {dice}, or "roll"] '
@@ -164,23 +169,6 @@ def read_player_line(read: Callable[[str], str], prompt: str) -> str:
             roll_prompt.open_line(None)
 
 
-def _last_dm_narration(conversation_history: Any) -> str:
-    """The DM's last narration as the player saw it (the ask T126 is shown), or ""."""
-    import json
-
-    for message in reversed(conversation_history or []):
-        if isinstance(message, dict) and message.get("role") == "assistant":
-            content = message.get("content")
-            try:
-                parsed = json.loads(content) if isinstance(content, str) else None
-            except ValueError:
-                parsed = None
-            if isinstance(parsed, dict) and isinstance(parsed.get("narration"), str):
-                return parsed["narration"]
-            return content if isinstance(content, str) else ""
-    return ""
-
-
 def settle_pending_rolls(line: str, conversation_history: Any) -> Dict[str, Any]:
     """Settle the open roll with the line the player typed (#1118 items 3 and 4).
 
@@ -220,7 +208,7 @@ def _settle_pending_check(entry: Dict[str, Any], line: str, conversation_history
             try:
                 read = read_roll_answer(request_payload(
                     f"{label} for {name}", "check", [{"count": count, "sides": 20}], True,
-                    _last_dm_narration(conversation_history), line))
+                    _card_ask(entry), line))
             except LiveProviderCompletedError as exc:
                 result["providerError"] = exc
                 return result
@@ -310,7 +298,7 @@ def settle_pending_rest(line: str, conversation_history: Any) -> Dict[str, Any]:
             try:
                 read = read_roll_answer(request_payload(
                     f"Hit die for {name}", "hitDie", [{"count": count, "sides": die}], True,
-                    _last_dm_narration(conversation_history), line))
+                    f"Hit die for {name}", line))
             except LiveProviderCompletedError as exc:
                 result["providerError"] = exc
                 return result

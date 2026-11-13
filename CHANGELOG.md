@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the game is waiting for your roll and you type something else, it now reads your words against the roll it asked for, not against whatever the Dungeon Master said last (#1975).
 - In The Thornwood Watch, three walks now take the same time in both directions, instead of a general estimate one way (#1976).
 - When the Dungeon Master starts a fight and also says that you fight on your own party's side, or that a monster fights against you, the fight is no longer sent back to be written again over that; it starts as it would have without it (#1967).
 - When you come back to a saved game, the Dungeon Master's welcome now knows exactly who is travelling with you, including when no one is, so it no longer brings along people from earlier in the story who are not with you (#1969).
