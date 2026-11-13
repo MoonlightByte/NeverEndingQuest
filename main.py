@@ -948,7 +948,7 @@ def _apply_welcome(lifecycle):
             # #1228: an account refusal says the welcome beat is kept.
             line = (_welcome_followup_refusal_line(process_result) or process_result["player_message"]
                     or _dm_fail_forward_line())
-            display_dm_narration(line)
+            _show_followup_failure(line, process_result)
             raise RuntimeError(line)
         if (
             isinstance(process_result, dict)
@@ -1344,6 +1344,9 @@ def _run_startup_kickoff_once(
             # Existing exception cleanup owns its failure receipt/recovery.
             if reviewed["status"] in {"travel_content_unavailable", "review_exhausted"}:
                 display_dm_narration(reviewed["player_message"])
+            elif reviewed.get("connection_class"):
+                # #1981: told once, by the kickoff's caller (#442).
+                _kickoff_refusal_line = provider_refusal_line(reviewed, "welcome")
             raise RuntimeError(reviewed["player_message"])
         initial_ai_response = reviewed["candidate"]
 
@@ -1410,7 +1413,7 @@ def _run_startup_kickoff_once(
             # #1233: with no text, raise without a line; the kickoff's caller
             # shows one line after the forced retry (#442: told once).
             if process_result["player_message"]:
-                display_dm_narration(process_result["player_message"])
+                _show_followup_failure(process_result["player_message"], process_result)
             raise RuntimeError(process_result["player_message"])
         if (
             isinstance(process_result, dict)
@@ -9690,7 +9693,8 @@ def _resume_active_combat(
             ai_response_after_combat = get_ai_response(conversation_history)
         except LiveProviderCompletedError as refused:
             # #442: the fight's result is kept; the turn loop starts.
-            display_dm_narration(_provider_refusal_followup(refused)["player_message"])
+            followup = _provider_refusal_followup(refused)
+            _show_followup_failure(followup["player_message"], followup)
     if ai_response_after_combat:
         require_current_invocation(claim)
         # Process the AI's post-combat response to get the game moving again.
@@ -9729,7 +9733,7 @@ def _resume_active_combat(
         if isinstance(post_combat_result, dict) and post_combat_result.get("status") in {
             "provider_error", "travel_content_unavailable", "review_exhausted",
         }:
-            display_dm_narration(_followup_failure_message(post_combat_result))
+            _show_followup_failure(_followup_failure_message(post_combat_result), post_combat_result)
         if isinstance(post_combat_result, dict) and post_combat_result.get("status") == "error":
             # #442: the same line the turn loop prints for a failed action.
             _show_action_failure(post_combat_result)
@@ -11034,6 +11038,9 @@ def _main_game_loop(startup_authority, turn_authority):
             if review_result["status"] != "accepted":
                 review_failure_message = review_result["player_message"]
                 review_failure_status = review_result["status"]
+                if review_result.get("connection_class"):
+                    # #1981: a connection class ends on the turn's notice.
+                    review_failure_message = provider_refusal_line(review_result, "turn")
                 conversation_history[:] = pre_turn_accepted_history
                 if not persist_t067_history_if_current(conversation_history):
                     invocation_superseded = True
@@ -11179,7 +11186,7 @@ def _main_game_loop(startup_authority, turn_authority):
             }:
                 # Only the new followup was refused. Its accepted parent beat
                 # remains committed; ordinary end-of-turn cleanup still runs.
-                display_dm_narration(_followup_failure_message(final_result))
+                _show_followup_failure(_followup_failure_message(final_result), final_result)
 
             # After processing, we only need to check for control flow signals.
             # Everything else (including history updates) has been handled by process_ai_response.
@@ -11633,7 +11640,19 @@ def _provider_refusal_followup(exc):
         "player_message": text or _FOLLOWUP_NOT_APPLIED_MESSAGE,
         "category": refusal["category"],
         "provider": refusal["provider"],
+        "connection_class": refusal["connection_class"],
     }
+
+
+def _show_followup_failure(line, result):
+    """#1981: a follow-up that failed on a connection class is a system notice,
+    never the Dungeon Master; its text stays the follow-up's own (the beat
+    before it is kept). Any other follow-up failure keeps its narration."""
+    if isinstance(result, dict) and result.get("status") == "provider_error" \
+            and result.get("connection_class"):
+        show_player_notice(line)
+    else:
+        display_dm_narration(line)
 
 
 def _followup_failure_message(result):

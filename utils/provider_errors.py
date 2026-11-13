@@ -657,15 +657,11 @@ def provider_refusal_line(refusal, moment):
 
 
 def classify_provider_error(exc):
-    """_classify_provider_error plus the #1981 connection class: a failure with
-    a class ends on its plain connection or account notice."""
+    """_classify_provider_error plus the #1981 connection class. Its texts are
+    unchanged: each display site builds its own line for its moment with
+    provider_refusal_line (a turn, a fight, the welcome, level-up)."""
     result = _classify_provider_error(exc)
-    cls = connection_class(exc)
-    result["connection_class"] = cls
-    if cls is not None:
-        result["player_message"] = connection_notice(cls, result["provider"], "turn")
-        if result.get("retry_notice") is not None:
-            result["retry_notice"] = connection_retry_line(cls, result["provider"])
+    result["connection_class"] = connection_class(exc)
     return result
 
 
