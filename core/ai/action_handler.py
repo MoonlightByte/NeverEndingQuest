@@ -5574,7 +5574,7 @@ def _pay_encounter(payments, party_tracker_data, location_data, conversation_his
 
 
 def _combat_start_failed(reason, conversation_history, invocation_claim, payments=None, down_hostiles=None,
-                         opening=None):
+                         opening=None, returned_ids=()):
     """Close a createEncounter that ended without a finished fight (#444).
 
     The tracker decides. A fight still active there stays saved and resumes
@@ -5586,6 +5586,9 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
     downHostiles (#1891), its outsideRows (#1899) or its recordedDead (#1902).
     ``opening`` is the refused request's _declared_opening, kept with a
     party-held refusal (#1894 (A)) for the same turn's second request.
+    ``returned_ids`` (#1953) are the groups the game brought back before a
+    later return was refused: the left line leaves them out and says they
+    are back.
     """
     global _last_failed_combat_turn, _party_held_refusal
     error(
@@ -5611,8 +5614,18 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
     misbound = _misbound_lines(down_hostiles) if reason == "id_not_this_slot" else ""
     elsewhere, several = _elsewhere_lines(down_hostiles) if reason == "named_elsewhere" else ("", False)
     beaten, beaten_count = _group_lines(down_hostiles, False) if reason == "recorded_beaten" else ("", 0)
-    left, left_count = _group_lines(down_hostiles, True) if reason == "recorded_left" else ("", 0)
-    left_steps = _return_steps(down_hostiles) if reason == "recorded_left" else ""
+    back_rows = []
+    left_rows = down_hostiles
+    if reason == "recorded_left" and returned_ids and isinstance(down_hostiles, list):
+        # #1953: a group brought back before a later refusal is not gone.
+        back_rows = [row for row in down_hostiles
+                     if isinstance(row, dict) and row.get("occupantId") in returned_ids]
+        left_rows = [row for row in down_hostiles
+                     if not (isinstance(row, dict) and row.get("occupantId") in returned_ids)]
+    left, left_count = _group_lines(left_rows, True) if reason == "recorded_left" else ("", 0)
+    left_steps = _return_steps(left_rows) if reason == "recorded_left" else ""
+    back = " ".join('%s (occupantId "%s") is back here now: name it by that id.' % (
+        str(row.get("name") or "").strip(), row["occupantId"]) for row in back_rows)
     here = str(world.get("currentLocationId") or "").strip()
     if misbound:
         # #1937: each occupantId belongs on its own person's slot.
@@ -5690,11 +5703,12 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
         also, also_count = _group_lines(down_hostiles, False)
         content = (
             "Combat Error: the encounter you requested could not be set up, because it names a group "
-            "recorded as gone from here: %s. No fight has started.%s If they come back to fight, send %s "
+            "recorded as gone from here: %s.%s No fight has started.%s If they come back to fight, send %s "
             "first, then createEncounter with %s; otherwise send createEncounter without %s (new "
             "creatures of that kind may be listed with no id), or answer the player's last action again "
             "without this fight." % (
-                left, "" if payments is None else " " + _encounter_payment_lines(payments), left_steps,
+                left, " " + back if back else "",
+                "" if payments is None else " " + _encounter_payment_lines(payments), left_steps,
                 ids, ids)
             + (" It also names a group recorded beaten here: %s; send createEncounter without %s." % (
                 also, "that occupantId" if also_count == 1 else "those occupantIds") if also else "")
@@ -5747,6 +5761,70 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
     return {"status": "needs_response", "needs_update": True}
 
 
+def _auto_return_result(result_path):
+    """#1953 (D-1953-3): (the returns, the recorded rows) of a builder result
+    asking for returns before the build: each return an occupantId, an
+    outcome fled, departed or surrendered and a whole count of at least 1.
+    (None, rows) when any return is unusable."""
+    try:
+        with open(result_path, "r", encoding="utf-8") as result_file:
+            result = json.load(result_file)
+    except (OSError, ValueError):
+        return None, None
+    if not isinstance(result, dict):
+        return None, None
+    rows = result.get("recordedResolved")
+    rows = rows if isinstance(rows, list) else None
+    returns = result.get("autoReturn")
+    if not isinstance(returns, list) or not returns:
+        return None, rows
+    for entry in returns:
+        if not isinstance(entry, dict) or not isinstance(entry.get("occupantId"), str) \
+                or not entry["occupantId"].strip() \
+                or entry.get("outcome") not in ("fled", "departed", "surrendered") \
+                or not isinstance(entry.get("count"), int) or isinstance(entry.get("count"), bool) \
+                or entry["count"] < 1:
+            return None, rows
+    return returns, rows
+
+
+def _apply_auto_return(returns, party_tracker_data, invocation_claim, action_context):
+    """#1953 (D-1953-3): bring back, before the fight is built, the members
+    of each group the builder named, by the outcome and count it gave, in
+    the parent (the builder only reads the record). Each return has its own
+    request id from the turn, the action index and the occupant id, so a
+    replayed turn is answered as already applied. (True, ids) when every
+    return was applied or changed nothing; (False, ids) at the first refusal
+    or when the engine is unavailable, ids being the occupant ids whose
+    return was applied before it, in order. A return applied before a later
+    failure stands."""
+    from core.nql import occupants as _occupants
+
+    applied = []
+    if not isinstance(returns, list) or not returns:
+        return False, applied
+    module = str(party_tracker_data.get("module") or "")
+    location_id = str((party_tracker_data.get("worldConditions") or {}).get("currentLocationId") or "")
+    roster = party_tracker_data.get("partyNPCs")
+    companions = frozenset(_roster_ids(roster)) if isinstance(roster, list) else frozenset()
+    for entry in returns:
+        occupant_id = entry["occupantId"]
+        outcome = _occupants.apply_dm_action(
+            "returnOccupant",
+            {"occupantId": occupant_id, "outcome": entry["outcome"], "count": entry["count"]},
+            _engine_request_id(invocation_claim, action_context, "autoReturn:%s" % occupant_id),
+            module, location_id, companion_ids=companions,
+        )
+        if not outcome.get("ok"):
+            warning("Combat setup: the return of %s before the fight was not made" % occupant_id,
+                    category="combat_processing")
+            return False, applied
+        applied.append(occupant_id)
+        info("Combat setup: %s came back (%s %d) before the fight" % (
+            occupant_id, entry["outcome"], entry["count"]), category="combat_processing")
+    return True, applied
+
+
 def _built_encounter(result_path, returncode):
     """The encounter id the combat builder saved, or the reason it has none (#812).
 
@@ -5761,6 +5839,9 @@ def _built_encounter(result_path, returncode):
         return None, "builder_failed"
     if not isinstance(result, dict) or result.get("version") != 1:
         return None, "builder_failed"
+    if result.get("status") == "auto_return":
+        # #1953 (D-1953-3): not a refusal; the caller returns, then rebuilds.
+        return None, "auto_return"
     if result.get("status") in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead", "nobody_can_act",
                                 "party_member_held", "id_not_this_slot", "named_elsewhere", "recorded_beaten",
                                 "recorded_left"):
@@ -5931,6 +6012,7 @@ def process_action(
 
         fight_finished = False
         down_hostiles = None
+        returned_ids = ()
         try:
             print("[DEBUG ACTION_HANDLER] Calling combat_builder.py...")
             debug(f"SUBPROCESS: Sending to combat_builder.py: {json.dumps(action)}", category="combat_processing")
@@ -5940,46 +6022,67 @@ def process_action(
             import shutil
             import tempfile
 
-            result_dir = tempfile.mkdtemp(prefix="combat_builder_")
-            try:
-                from utils.encoding_utils import utf8_child_env
-                from utils.child_process import run_fenced
-                from utils.provider_gateway import child_argv
-                from utils.capture.live_provider_call import _check_live_authority, get_live_provider_scope
-                from utils.transient_filesystem import raise_if_save_stopped
+            from utils.encoding_utils import utf8_child_env
+            from utils.child_process import run_fenced
+            from utils.provider_gateway import child_argv
+            from utils.capture.live_provider_call import _check_live_authority, get_live_provider_scope
+            from utils.transient_filesystem import raise_if_save_stopped
 
-                def stop_check():
-                    # #1529: a Load/Reset (or a read-only save stop) ends the
-                    # build's wait; the builder and its child are reaped first.
-                    try:
-                        _check_live_authority(get_live_provider_scope())
-                    except OSError:
-                        pass  # unreadable authority is never a supersession
-                    raise_if_save_stopped()
+            def stop_check():
+                # #1529: a Load/Reset (or a read-only save stop) ends the
+                # build's wait; the builder and its child are reaped first.
+                try:
+                    _check_live_authority(get_live_provider_scope())
+                except OSError:
+                    pass  # unreadable authority is never a supersession
+                raise_if_save_stopped()
 
-                # #1894 D-1894-5 (A): the members the DM was told about earlier
-                # in this turn are held this time; an argument, never saved.
-                held_allowed = _party_held_allowed(invocation_claim, conversation_history)
-                builder_action = (
-                    _with_party_held_opening(action, encounter_payments) if held_allowed else action
-                )
-                returncode, stdout, stderr = run_fenced(
-                    child_argv([sys.executable, combat_builder_path, "--result-file",
-                     os.path.join(result_dir, "result.json")]
-                     + (["--held-allowed", json.dumps(held_allowed)] if held_allowed else [])),
-                    input_text=json.dumps(builder_action), stop_check=stop_check,
-                    stop_file=os.path.join(result_dir, "stop"), env=utf8_child_env(),
-                )
-                result = subprocess.CompletedProcess([], returncode, stdout, stderr)
-                encounter_id, build_failure = _built_encounter(
-                    os.path.join(result_dir, "result.json"), result.returncode
-                )
-                if build_failure in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead",
+            # #1894 D-1894-5 (A): the members the DM was told about earlier
+            # in this turn are held this time; an argument, never saved.
+            held_allowed = _party_held_allowed(invocation_claim, conversation_history)
+            builder_action = (
+                _with_party_held_opening(action, encounter_payments) if held_allowed else action
+            )
+
+            def run_builder(auto_returned):
+                """One builder run in its own result dir: (run, encounter id,
+                failure, refused rows, the returns it asks for)."""
+                result_dir = tempfile.mkdtemp(prefix="combat_builder_")
+                result_path = os.path.join(result_dir, "result.json")
+                try:
+                    returncode, stdout, stderr = run_fenced(
+                        child_argv([sys.executable, combat_builder_path, "--result-file", result_path]
+                         + (["--held-allowed", json.dumps(held_allowed)] if held_allowed else [])
+                         + (["--auto-returned"] if auto_returned else [])),
+                        input_text=json.dumps(builder_action), stop_check=stop_check,
+                        stop_file=os.path.join(result_dir, "stop"), env=utf8_child_env(),
+                    )
+                    run = subprocess.CompletedProcess([], returncode, stdout, stderr)
+                    built_id, failure = _built_encounter(result_path, run.returncode)
+                    rows = returns = None
+                    if failure == "auto_return":
+                        returns, rows = _auto_return_result(result_path)
+                    elif failure in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead",
                                      "nobody_can_act", "party_member_held", "id_not_this_slot",
                                      "named_elsewhere", "recorded_beaten", "recorded_left"):
-                    down_hostiles = _refused_rows(os.path.join(result_dir, "result.json"))
-            finally:
-                shutil.rmtree(result_dir, ignore_errors=True)
+                        rows = _refused_rows(result_path)
+                finally:
+                    shutil.rmtree(result_dir, ignore_errors=True)
+                return run, built_id, failure, rows, returns
+
+            result, encounter_id, build_failure, down_hostiles, returns = run_builder(False)
+            if build_failure == "auto_return":
+                # #1953 (D-1953-3): the fight names a group recorded gone that
+                # left alive; code brings those members back, then builds once
+                # more. A refused return builds nothing more (the left line,
+                # naming only the groups still gone, and the ones brought back).
+                all_back, applied_ids = _apply_auto_return(
+                    returns, party_tracker_data, invocation_claim, action_context)
+                if all_back:
+                    result, encounter_id, build_failure, down_hostiles, returns = run_builder(True)
+                if build_failure == "auto_return":
+                    build_failure = "recorded_left"
+                    returned_ids = tuple(applied_ids)
             print(f"[DEBUG ACTION_HANDLER] combat_builder.py completed")
             print(f"[DEBUG ACTION_HANDLER] Output: {result.stdout[:200]}...")  # First 200 chars
             debug(f"SUBPROCESS: combat_builder.py output: {result.stdout}", category="combat_processing")
@@ -6219,7 +6322,7 @@ def process_action(
                 return _combat_start_failed(
                     build_failure, conversation_history, invocation_claim,
                     payments=encounter_payments, down_hostiles=down_hostiles,
-                    opening=_declared_opening(parameters),
+                    opening=_declared_opening(parameters), returned_ids=returned_ids,
                 )
 
         except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):
