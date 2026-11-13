@@ -1419,8 +1419,8 @@ def recorded_resolved_rows(encounter_data, response, location_id):
     ids only. One row per group, in slot order: name, occupantId, record
     (the tally text, as on its rosterRecord line), location, returnable (an
     entry fled, departed or surrendered) and returns (those entries:
-    outcome and count). None when the document is unread; [] when no slot
-    names such a group."""
+    outcome and count) and slots (how many monster slots it binds). None
+    when the document is unread; [] when no slot names such a group."""
     from core.nql import occupants
 
     if response is _UNREAD or not response or not response.get("ok"):
@@ -1434,20 +1434,42 @@ def recorded_resolved_rows(encounter_data, response, location_id):
     declared_ids = encounter_data.get("occupantIds") or {}
     if not isinstance(declared_ids, dict):
         return []
-    rows, seen = [], set()
+    rows, seen = [], {}
     for index, _monster in enumerate(encounter_data.get("monsters") or []):
         declared = declared_ids.get("monster:%d" % index)
         group = groups.get(declared) if isinstance(declared, str) else None
-        if group is None or declared in seen:
+        if group is None:
             continue
-        seen.add(declared)
+        if declared in seen:
+            seen[declared]["slots"] += 1
+            continue
         returns = [{"outcome": e.get("outcome"), "count": e.get("count")} for e in group.get("tally") or []
                    if isinstance(e, dict) and e.get("outcome") in RETURNABLE_GROUP_OUTCOMES
                    and isinstance(e.get("count"), int) and e.get("count") > 0]
-        rows.append({"name": group.get("name") or declared, "occupantId": declared, "location": place,
-                     "record": occupants._tally_text(group) or "none left", "returnable": bool(returns),
-                     "returns": returns})
+        row = {"name": group.get("name") or declared, "occupantId": declared, "location": place,
+               "record": occupants._tally_text(group) or "none left", "returnable": bool(returns),
+               "returns": returns, "slots": 1}
+        seen[declared] = row
+        rows.append(row)
     return rows
+
+
+def auto_return_entries(rows):
+    """#1953 (D-1953-3): the returns code makes before this fight, or None.
+    Only when every row is unambiguous: its group's tally holds exactly one
+    entry fled, departed or surrendered, and the slots bound to its id are at
+    most that entry's count. Each entry returns that many, not the whole
+    entry. Any other row (two such outcomes, more slots than the count, or a
+    beaten-only group) gives None: the fight is refused as before and
+    nothing is returned."""
+    entries = []
+    for row in rows or []:
+        returns = row.get("returns") or []
+        slots = row.get("slots")
+        if len(returns) != 1 or not isinstance(slots, int) or slots < 1 or slots > returns[0]["count"]:
+            return None
+        entries.append({"occupantId": row["occupantId"], "outcome": returns[0]["outcome"], "count": slots})
+    return entries or None
 
 
 def _declared_person_slots(encounter_data, response):
@@ -1619,7 +1641,7 @@ def party_held_rows(encounter, sheets, allowed=()):
 
 def _write_result(result_file, status, encounter_id=None, encounter_file=None, down_hostiles=None,
                   outside_rows=None, recorded_dead=None, stated_incapacitated=None, party_held=None,
-                  misbound=None, named_elsewhere=None, recorded_resolved=None):
+                  misbound=None, named_elsewhere=None, recorded_resolved=None, auto_return=None):
     """Hand the caller a typed result; printed lines are for people only (#812)."""
     if not result_file:
         return True
@@ -1643,6 +1665,8 @@ def _write_result(result_file, status, encounter_id=None, encounter_file=None, d
         result["namedElsewhere"] = named_elsewhere
     if recorded_resolved is not None:
         result["recordedResolved"] = recorded_resolved
+    if auto_return is not None:
+        result["autoReturn"] = auto_return
     if save_json(result_file, result):
         return True
     logging.error(f"Failed to write the builder result to {result_file}")
@@ -1660,7 +1684,10 @@ def main(argv=None):
     its "recordedDead" (#1902), nobody_can_act with its
     "statedIncapacitated" (#1894), party_member_held with its "partyHeld"
     (#1894), id_not_this_slot with its "misboundRows" (#1937) or
-    named_elsewhere with its "namedElsewhere" (#1936).
+    named_elsewhere with its "namedElsewhere" (#1936); or auto_return
+    (#1953, D-1953-3) with its "autoReturn" and "recordedResolved": nothing
+    built, the caller returns those members and runs the build once more
+    with --auto-returned, which never asks for a return again.
     """
     import argparse
 
@@ -1669,6 +1696,9 @@ def main(argv=None):
     # #1894 D-1894-5 (A): the party members the DM was told about earlier in
     # this same turn (a JSON list of names), held this time. Never saved.
     parser.add_argument("--held-allowed", default=None)
+    # #1953 (D-1953-3): the second run after the caller's returns; a group
+    # still recorded gone is refused as before (one rebuild only).
+    parser.add_argument("--auto-returned", action="store_true")
     parsed = parser.parse_args(sys.argv[1:] if argv is None else argv)
     result_file = parsed.result_file
     try:
@@ -1729,7 +1759,11 @@ def main(argv=None):
     except Exception as exc:
         warning("COMBAT_BUILDER: recorded-group check skipped (%s)" % exc, category="encounter_setup")
         resolved = None
-    if resolved:
+    # D-1953-3: when every such group left alive by one outcome, with no more
+    # slots than its count, the caller brings them back after the checks
+    # below pass; otherwise the fight is refused as before.
+    auto = None if parsed.auto_returned or not resolved else auto_return_entries(resolved)
+    if resolved and not auto:
         left = any(row.get("returnable") for row in resolved)
         print("[COMBAT_BUILDER] Refused: this fight names a group with none left here; nothing built")
         _write_result(result_file, "recorded_left" if left else "recorded_beaten", recorded_resolved=resolved)
@@ -1754,6 +1788,11 @@ def main(argv=None):
     if elsewhere:
         print("[COMBAT_BUILDER] Refused: this fight names someone recorded at another place; nothing built")
         _write_result(result_file, "named_elsewhere", named_elsewhere=elsewhere)
+        return 1
+    if auto:
+        # D-1953-3: the caller returns them, then runs this build again.
+        print("[COMBAT_BUILDER] Not built yet: a group recorded gone comes back first")
+        _write_result(result_file, "auto_return", recorded_resolved=resolved, auto_return=auto)
         return 1
 
     encounter = generate_encounter(encounter_data, occupant_response)

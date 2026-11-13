@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When creatures that ran off earlier come back to fight you, the game now brings back those same creatures for the fight, so the Dungeon Master no longer has to be corrected before the fight can start (#1953).
 - When the game can't carry out your turn and nothing in your game changed, the words you typed come back in the input box exactly as you typed them, so you can send them again or type something else; in the terminal, pressing Enter on an empty line sends them again (#1960).
 - When creatures that ran off, left or gave up earlier come back, the Dungeon Master can now bring back those same creatures instead of new ones, and creatures that were beaten can no longer be brought back that way (#1953).
 - When the Dungeon Master starts a fight with a group of creatures the game records as gone from the place, the fight is no longer set up on that empty record or on another group there; the Dungeon Master is asked to bring back those who ran off, or to fight new creatures (#1953).
