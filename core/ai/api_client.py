@@ -363,6 +363,9 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
         raise ValueError(f"Unknown request provider: {request_provider}")
     kwargs.pop("top_p", None)
     _response_format = kwargs.pop("response_format", _UNSET)
+    # #1963: set only by multi_model_capture._fire_primary_with_retry, which
+    # makes the in-process resends itself, counted. Never sent to a provider.
+    _sdk_max_retries = kwargs.pop("_sdk_max_retries", None)
     # Observational transport-phase callback from the live-provider child
     # (#409): never forwarded to a provider, never affects routing.
     _phase_emit = kwargs.pop("_phase_emit", None)
@@ -395,6 +398,7 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
                     response_format=_response_format,
                     phase_emit=_phase_emit,
                     output_ceiling=_output_ceiling,
+                    sdk_max_retries=_sdk_max_retries,
                     **local_options,
                     **kwargs,
                 )
@@ -410,6 +414,7 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
                     response_format=_response_format,
                     phase_emit=_phase_emit,
                     output_ceiling=_output_ceiling,
+                    sdk_max_retries=_sdk_max_retries,
                     **local_options,
                     **kwargs,
                 )
@@ -877,7 +882,8 @@ def _chat_stream_completion(client, call_kwargs, phase_emit, output_ceiling=None
 
 
 def _openai_completion(messages, model, temperature, provider, response_format=_UNSET,
-                       phase_emit=None, output_ceiling=None, local_endpoint=None, **kwargs):
+                       phase_emit=None, output_ceiling=None, local_endpoint=None,
+                       sdk_max_retries=None, **kwargs):
     """Execute a completion via the OpenAI-compatible API."""
     if provider == "lmstudio" and local_endpoint is not None:
         client = get_openai_client(provider=provider, local_endpoint=local_endpoint)
@@ -922,6 +928,9 @@ def _openai_completion(messages, model, temperature, provider, response_format=_
     request_timeout = kwargs.pop("timeout", None)
     if request_timeout is not None:
         client = client.with_options(timeout=request_timeout, max_retries=0)
+    elif sdk_max_retries is not None:
+        # #1963: the in-process caller counts its own resends (capture layer).
+        client = client.with_options(max_retries=sdk_max_retries)
 
     if provider == "openai":
         # The Responses endpoint is the OpenAI transport (D-409-1, owner-ruled

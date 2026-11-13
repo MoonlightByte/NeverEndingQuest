@@ -7,8 +7,10 @@ import atexit
 import copy
 import hashlib
 import inspect
+import email.utils
 import json
 import logging
+import math
 import os
 import threading
 import time
@@ -371,26 +373,130 @@ def _resolve_effective_callsite_kwargs(task_id, provider, kwargs, attempt=0):
     return effective
 
 
+# #1963: an in-process call on an OpenAI-SDK provider turns the library's own
+# hidden resends off and the game makes them, counted, logged and stoppable.
+# Only the failures the library itself resends are eligible, in its order
+# (openai _base_client._should_retry). The cap equals the library's
+# MAX_RETRY_AFTER_DELAY: a longer Retry-After means no resend at all.
+ROUTE_P_RETRY_AFTER_CAP = 120.0
+_ROUTE_P_REISSUE_PROVIDERS = frozenset({"openai", "legacy", "lmstudio"})
+_ROUTE_P_POLL_SECONDS = 0.25
+
+
+def _route_p_retry_after(headers):
+    """Retry-After in seconds as the openai SDK parses it, or None."""
+    if headers is None:
+        return None
+    for header, divisor in (("retry-after-ms", 1000.0), ("retry-after", 1.0)):
+        value = headers.get(header)
+        if value is None:
+            continue
+        try:
+            delay = float(value)
+        except ValueError:
+            continue
+        if delay == math.inf and value.strip().lower() not in (
+            "inf", "+inf", "infinity", "+infinity",
+        ):
+            return ROUTE_P_RETRY_AFTER_CAP + 1
+        return delay / divisor
+    try:
+        parsed = email.utils.parsedate_tz(headers.get("retry-after"))
+        if parsed is None:
+            return None
+        return float(email.utils.mktime_tz(parsed) - time.time())
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _route_p_reissue_delay(exc, reissue):
+    """Seconds to wait before reissue number ``reissue``, or None when the
+    library would not have resent this failure. Typed fields only."""
+    import openai
+
+    from utils.capture.live_provider_call import _delay_for_error, _primitive_error
+    from utils.provider_errors import QUOTA_ERROR_CODES
+
+    original = getattr(exc, "original_error", None)
+    retry_after = None
+    if isinstance(original, openai.APIStatusError):
+        headers = getattr(getattr(original, "response", None), "headers", None)
+        retry_after = _route_p_retry_after(headers)
+        if (retry_after is not None and math.isfinite(retry_after)
+                and retry_after > ROUTE_P_RETRY_AFTER_CAP):
+            return None
+        envelope = _primitive_error(exc, {})
+        code = envelope.get("error_code")
+        if isinstance(code, str) and code.lower() in QUOTA_ERROR_CODES:
+            # Not resent even when the server says x-should-retry: true (the
+            # library would): no resend pays the bill (#1963, R18c).
+            return None
+        should_retry = headers.get("x-should-retry") if headers is not None else None
+        if should_retry == "false":
+            return None
+        if should_retry != "true" and envelope.get("disposition") != "retryable_http":
+            return None
+    elif not isinstance(original, openai.APIConnectionError):
+        return None
+    if (retry_after is not None and math.isfinite(retry_after)
+            and 0 < retry_after <= ROUTE_P_RETRY_AFTER_CAP):
+        return retry_after
+    return _delay_for_error({"retry_after": None}, reissue)
+
+
+def _route_p_wait(seconds):
+    """Wait before a reissue, ending at once on Load, Reset or a save stop."""
+    from utils.capture.live_provider_call import (
+        _check_live_authority,
+        get_live_provider_scope,
+    )
+
+    deadline = time.monotonic() + max(0.0, float(seconds))
+    while True:
+        raise_if_save_stopped()
+        _check_live_authority(get_live_provider_scope())
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(_ROUTE_P_POLL_SECONDS, remaining))
+
+
 def _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
                              max_attempts=3, base_delay=0.6):
-    """Fire the primary provider call, retrying only on transient empty responses.
+    """Fire the primary provider call, retrying transient empty responses and,
+    on an OpenAI-SDK provider, the failures the SDK itself would resend.
 
     A provider occasionally returns a response with no text content
     (finish_reason=stop, empty/whitespace content) -- a transient glitch that
     succeeds on retry. Retrying HERE (the shared production boundary) keeps
     create_completion() a thin router (wrapper-scope rule) while making every
-    registered callsite resilient. Any other error propagates immediately, and
-    an exhausted budget re-raises the original ProviderEmptyResponse unchanged.
+    registered callsite resilient. An exhausted empty budget re-raises the
+    original ProviderEmptyResponse unchanged.
+
+    #1963: for openai, legacy and lmstudio, with no caller-owned timeout, the
+    SDK's hidden resends are off and the game makes at most two of its own,
+    counted, logged, waiting as the live child does, and checking Load, Reset
+    and a save stop before each. Any other error propagates immediately.
     """
-    from core.ai.api_client import ProviderEmptyResponse
-    last_exc = None
-    for attempt in range(1, max_attempts + 1):
+    from core.ai import api_client
+    from core.ai.api_client import ProviderCallError, ProviderEmptyResponse
+    from utils.capture.live_provider_call import _BILLED_REISSUE_LIMIT
+
+    reissue_on = (
+        primary_fn is api_client.create_completion
+        and kwargs.get("_request_provider") in _ROUTE_P_REISSUE_PROVIDERS
+        and kwargs.get("timeout") is None
+    )
+    if reissue_on:
+        kwargs = dict(kwargs, _sdk_max_retries=0)
+    attempt = 1
+    reissues = 0
+    while True:
         try:
             return primary_fn(messages=messages, **kwargs)
         except ProviderEmptyResponse as exc:
-            last_exc = exc
             if attempt >= max_attempts:
-                break
+                raise
             _get_error_logger().warning(
                 "Transient empty provider response for %s (attempt %d/%d, "
                 "finish_reason=%s); retrying.",
@@ -398,7 +504,29 @@ def _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
                 getattr(exc, "finish_reason", "unknown"),
             )
             time.sleep(base_delay * attempt)
-    raise last_exc
+            attempt += 1
+        except ProviderCallError as exc:
+            if not reissue_on or reissues >= _BILLED_REISSUE_LIMIT:
+                raise
+            delay = _route_p_reissue_delay(exc, reissues + 1)
+            if delay is None:
+                raise
+            reissues += 1
+            original = getattr(exc, "original_error", None)
+            # The game log, not the capture error log: that one keeps ERROR
+            # and above only, so a warning there is never written.
+            from utils.enhanced_logger import warning
+
+            warning(
+                "PROVIDER_REISSUE: %s failed (%s, HTTP %s); reissue %d/%d "
+                "in %.1f s." % (
+                    task_id, type(original).__name__,
+                    getattr(original, "status_code", None),
+                    reissues, _BILLED_REISSUE_LIMIT, delay,
+                ),
+                category="provider_retry",
+            )
+            _route_p_wait(delay)
 
 
 def capture_and_fanout(task_id, primary_fn, messages, **kwargs):

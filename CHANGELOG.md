@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the AI service has a brief failure while a new adventure is being built, Load and Reset now stop the game's retries at once (#1963).
+
 - In adventures the game writes for you, quests that are set to finish when you reach a place or deal with someone now finish on their own when you do (#1982).
 
 ## [1.2.3] - 2026-11-13
