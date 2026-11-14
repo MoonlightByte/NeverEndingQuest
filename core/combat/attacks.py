@@ -207,6 +207,8 @@ def on_hit_issue(sheet):
 MECHANICS_ONLY_ROW_PATHS = (("onHit",), ("rider", "onFail", "tickTrigger"), ("save", "onFail", "tickTrigger"),
                             ("rider", "exemptTargets"), ("attackKind",))
 MECHANICS_ONLY_ROW_FAMILIES = ("actions", "specialAbilities")
+# #1985: a character sheet's attack rows (char_schema attacksAndSpellcasting).
+CHARACTER_ROW_FAMILIES = ("attacksAndSpellcasting",)
 
 
 # #1901: the typed kind of an attack row, for the SRD's "within 5 feet" of a
@@ -255,17 +257,19 @@ def _replace_at(value, keys, replacement):
     return {k: (_replace_at(v, keys[1:], replacement) if k == head else v) for k, v in value.items()}
 
 
-def without_mechanics_only(sheet, paths=None):
+def without_mechanics_only(sheet, paths=None, families=None):
     """#1889: a stat block as a model may see it: each actions/specialAbilities
     row without MECHANICS_ONLY_ROW_PATHS. Never writes the sheet or its lists
     (they may be the saved sheet's own); rows that hold none of the paths are
     passed as they are, so the rendered text is byte-identical to a block that
-    never had the keys."""
+    never had the keys. families names other row lists (#1985: a character
+    sheet's attacksAndSpellcasting)."""
     paths = MECHANICS_ONLY_ROW_PATHS if paths is None else paths
+    families = MECHANICS_ONLY_ROW_FAMILIES if families is None else families
     if not isinstance(sheet, dict):
         return sheet
     result = sheet
-    for family in MECHANICS_ONLY_ROW_FAMILIES:
+    for family in families:
         rows = sheet.get(family)
         if not isinstance(rows, list):
             continue

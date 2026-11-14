@@ -67,7 +67,8 @@ apply_data_root_path()
 
 from core.ai import api_client
 from jsonschema import validate, ValidationError
-from core.combat.attacks import on_hit_issue, schema_without_mechanics_only, typed_multiattack_issue
+from core.combat.attacks import (on_hit_issue, schema_without_mechanics_only, typed_multiattack_issue,
+                                 without_mechanics_only)
 import config
 from utils.module_path_manager import ModulePathManager
 from utils.enhanced_logger import debug, info, warning, error, set_script_name, file_only
@@ -277,6 +278,9 @@ Schema: {json.dumps(schema_without_mechanics_only(schema))}"""
                 # Remove nested 'value' fields if they exist
                 monster_data = remove_nested_values(monster_data)
                 monster_data = empty_lists_as_maps(monster_data)
+                # #1985: engine-only row keys a model was never shown are not
+                # kept from its reply (#1889), so they are never checked either.
+                monster_data = without_mechanics_only(monster_data)
                 last_parsed_data = monster_data
                 validate(instance=monster_data, schema=schema)
                 require_stated_abilities(monster_data)
