@@ -1572,13 +1572,17 @@ def shutdown_build_due(reason="engine_stop"):
 
 
 def _present_build_failure(result, message_id):
-    """A failed background build's line, shown at once with today's words."""
+    """A failed background build's line, shown at once with today's words:
+    the error card (web) and the console line, as a failed action in a turn
+    shows both (_handle_ordinary_action_failure, _show_action_failure). The
+    terminal registers no output sink, so the console line is its only one."""
     from web.shared_state import emit_player_output
 
     player_message = _action_failure_player_message(result)
     emit_player_output(
         {"type": "error", "content": player_message, "message_id": message_id}
     )
+    print(f"[SYSTEM] {player_message}", flush=True)
     return player_message
 
 
