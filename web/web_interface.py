@@ -5109,7 +5109,7 @@ def handle_test_local_endpoint(data):
         emit('local_endpoint_test_result', {'ok': False, 'detail': 'Base URL is required.'})
         return
     try:
-        client = OpenAI(base_url=base_url, api_key=api_key, timeout=10.0)
+        client = OpenAI(base_url=base_url, api_key=api_key, timeout=10.0, max_retries=0)
     except Exception as e:
         emit('local_endpoint_test_result', {'ok': False, 'detail': f'Could not create client: {e}'})
         return
