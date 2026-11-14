@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A fight no longer makes a monster copy of someone from the story (#2010).
+
 - Changing the Local/Custom address or model while an adventure is being built, or the AI provider while the toolkit builds one, no longer switches the build partway: it finishes on the setting it started with (#2018).
 
 - When building a new adventure stops because the connection failed or your save folder became read-only, it no longer first says it is adjusting to a different generator (#2012).

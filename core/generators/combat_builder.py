@@ -1609,6 +1609,70 @@ def _name_only_elsewhere_rows(encounter_data, response, location_id, path_manage
     return rows
 
 
+def person_monster_rows(encounter_data, response, location_id):
+    """#2010 (D-2010-1): the monster slots a createEncounter fills with a living
+    person recorded in this module, so such a fight is refused before anything
+    is built (seated, the person would fight as a monster copy beside their own
+    record, or a fight bound by id would be booked to a person's record).
+    People are occupants of kind "person" with count not 0 whose id is in this
+    module (a creature group, even one the area data marks a person, is never
+    one). Per monster slot, the first route that matches gives its row:
+    "id", occupantIds[monster:N] is a person's id (always refused); "key",
+    monsterKeys[monster:N] is not a compendium key and is a person's id stem
+    (a module-own or minted key); "name", when the slot has no occupantIds
+    entry (with or without a key), monsters[N] is not a compendium monster
+    (its slug is no compendium key and no compendium name's slug) and is the
+    exact name of a person here, or of none here and exactly one elsewhere
+    (D-1936-3's tie, the engine's own equality). A compendium monster is a
+    kind of creature and never identifies a person. Each row is {"slot",
+    "name", "route", "key", "occupantId", "recordName", "location", "here"};
+    None when the document is unread, [] when no slot names a person."""
+    from core.combat.monster_keys import _compendium
+    from core.nql import occupants
+    from utils.roster_conversion import slug
+
+    if response is _UNREAD or not response or not response.get("ok"):
+        return None
+    tracker = load_json("party_tracker.json") or {}
+    module = (tracker.get("module") or "").replace(" ", "_")
+    place = occupants.place_id(module, location_id)
+    people = [o for o in (response.get("live_state") or {}).get("occupants") or []
+              if isinstance(o, dict) and o.get("kind") == "person" and o.get("count") != 0
+              and isinstance(o.get("id"), str) and o["id"].startswith("occ:%s/" % module)]
+    by_id = {o["id"]: o for o in people}
+    by_stem = {}
+    for o in people:
+        by_stem.setdefault(occupants.id_stem(o), o)
+    compendium = _compendium()
+    generic = set(compendium) | {slug(name) for name in compendium.values()}
+    declared_ids = encounter_data.get("occupantIds") or {}
+    declared_ids = declared_ids if isinstance(declared_ids, dict) else {}
+    keys = encounter_data.get("monsterKeys") or {}
+    keys = keys if isinstance(keys, dict) else {}
+    rows = []
+    for index, name in enumerate(encounter_data.get("monsters") or []):
+        slot = "monster:%d" % index
+        declared, key = declared_ids.get(slot), keys.get(slot)
+        record, route = None, None
+        if isinstance(declared, str) and declared in by_id:
+            record, route = by_id[declared], "id"
+        elif isinstance(key, str) and key not in compendium and key in by_stem:
+            record, route = by_stem[key], "key"
+        elif declared is None and isinstance(name, str) and name.strip() and slug(name) not in generic:
+            same = [o for o in people if occupants._person_matches(o, slug(name))]
+            here = [o for o in same if o.get("location") == place]
+            if here:
+                record, route = here[0], "name"
+            elif len(same) == 1:
+                record, route = same[0], "name"
+        if record is None:
+            continue
+        rows.append({"slot": slot, "name": name, "route": route, "key": key if route == "key" else None,
+                     "occupantId": record["id"], "recordName": record.get("name"),
+                     "location": record.get("location"), "here": record.get("location") == place})
+    return rows
+
+
 def party_held_rows(encounter, sheets, allowed=()):
     """#1894 D-1894-5 (A): the party-side rows held by a stated stunned,
     paralyzed, incapacitated or petrified with no effect behind it, other than
@@ -1641,7 +1705,8 @@ def party_held_rows(encounter, sheets, allowed=()):
 
 def _write_result(result_file, status, encounter_id=None, encounter_file=None, down_hostiles=None,
                   outside_rows=None, recorded_dead=None, stated_incapacitated=None, party_held=None,
-                  misbound=None, named_elsewhere=None, recorded_resolved=None, auto_return=None):
+                  misbound=None, named_elsewhere=None, recorded_resolved=None, auto_return=None,
+                  person_monster=None):
     """Hand the caller a typed result; printed lines are for people only (#812)."""
     if not result_file:
         return True
@@ -1667,6 +1732,8 @@ def _write_result(result_file, status, encounter_id=None, encounter_file=None, d
         result["recordedResolved"] = recorded_resolved
     if auto_return is not None:
         result["autoReturn"] = auto_return
+    if person_monster is not None:
+        result["personMonsterRows"] = person_monster
     if save_json(result_file, result):
         return True
     logging.error(f"Failed to write the builder result to {result_file}")
@@ -1684,7 +1751,8 @@ def main(argv=None):
     its "recordedDead" (#1902), nobody_can_act with its
     "statedIncapacitated" (#1894), party_member_held with its "partyHeld"
     (#1894), id_not_this_slot with its "misboundRows" (#1937) or
-    named_elsewhere with its "namedElsewhere" (#1936); or auto_return
+    named_elsewhere with its "namedElsewhere" (#1936),
+    person_on_monster_slot with its "personMonsterRows" (#2010); or auto_return
     (#1953, D-1953-3) with its "autoReturn" and "recordedResolved": nothing
     built, the caller returns those members and runs the build once more
     with --auto-returned, which never asks for a return again.
@@ -1788,6 +1856,18 @@ def main(argv=None):
     if elsewhere:
         print("[COMBAT_BUILDER] Refused: this fight names someone recorded at another place; nothing built")
         _write_result(result_file, "named_elsewhere", named_elsewhere=elsewhere)
+        return 1
+    # #2010: a monster slot that names a living person recorded in this
+    # module. Before anything is built or returned, from the same read.
+    # Fail open.
+    try:
+        person_slots = person_monster_rows(encounter_data, occupant_response, location)
+    except Exception as exc:
+        warning("COMBAT_BUILDER: person-on-monster-slot check skipped (%s)" % exc, category="encounter_setup")
+        person_slots = None
+    if person_slots:
+        print("[COMBAT_BUILDER] Refused: a monster slot names a person recorded in this module; nothing built")
+        _write_result(result_file, "person_on_monster_slot", person_monster=person_slots)
         return 1
     if auto:
         # D-1953-3: the caller returns them, then runs this build again.
