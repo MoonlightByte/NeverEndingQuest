@@ -13,8 +13,11 @@ import jsonschema
 
 from .compilers import normalize_ascii_typography
 from .contracts import StageEvidence, freeze_value, mutable_copy
-from utils.capture.multi_model_capture import register_callsite
-from utils.provider_errors import BuildCeilingReached
+from utils.capture.multi_model_capture import (
+    _raise_if_build_stopped,
+    is_build_stop,
+    register_callsite,
+)
 
 
 register_callsite("T098", "core/generators/story_first/execution.py", 183)
@@ -245,11 +248,15 @@ def production_completion_gateway(request: StructuredRequest) -> CompletionPaylo
             temperature=request.temperature,
             **call_options,
         )
-    except (KeyboardInterrupt, SystemExit, BuildCeilingReached):
-        # #2011: the build's call limit is not a provider failure; it ends
-        # the build (the stage loop re-raises it too).
+    except (KeyboardInterrupt, SystemExit):
         raise
     except BaseException as exc:
+        # #2011/#2012: the build's own stop is not a provider failure; it
+        # ends the build (the stage loop re-raises it too). A failure that
+        # just stopped the build (a connection give-up) leaves as the stop.
+        if is_build_stop(exc):
+            raise
+        _raise_if_build_stopped()
         raise GatewayFailure(_provider_failure_class(exc)) from None
     try:
         choice = response.choices[0]
@@ -395,11 +402,13 @@ def execute_structured_stage(
                     failure_classes=tuple(failures),
                 ),
             )
-        except (KeyboardInterrupt, SystemExit, NonRetryableStageError, BuildCeilingReached):
-            # #2011: a build at its call limit ends; it is never retried or
-            # classed as a stage failure, which would fall back.
+        except (KeyboardInterrupt, SystemExit, NonRetryableStageError):
             raise
         except BaseException as exc:
+            # #2011/#2012: a stopped build ends; its stop is never retried or
+            # classed as a stage failure, which would fall back.
+            if is_build_stop(exc):
+                raise
             failures.append(_failure_class(exc, phase))
             focused_issues.append(
                 exc.prompt_fragment()
