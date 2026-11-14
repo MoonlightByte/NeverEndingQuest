@@ -1,7 +1,7 @@
 {
   "name": "neverendingquest-desktop",
   "productName": "NeverEndingQuest",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Windows desktop shell for NeverEndingQuest: starts the game server and opens the game.",
   "private": true,
   "license": "SEE LICENSE IN ../LICENSING.md",
