@@ -120,14 +120,17 @@ _STORY_FIRST_SINGLE_STAGES = (
 
 def build_attempt_bound(arm, num_areas, locations_per_area, creatures=0):
     """#2011: the most model calls an in-game build may make: every planned
-    call times the attempts its site allows. ``arm`` is "legacy", "story_first"
-    or "fallback" (the legacy build after story-first, T030 already made)."""
+    call times the attempts its site allows, plus the advisory reserve, so
+    T104 and T123 are sent even when every other attempt was used. ``arm`` is
+    "legacy", "story_first" or "fallback" (the legacy build after story-first:
+    T030 and the reserve are already counted)."""
     import config
     from core.generators import area_generator, location_generator
     from core.generators import module_declaration, module_generator
     from core.generators import module_stitcher, plot_generator
     from core.generators.story_first.settings import STAGE_POLICIES
     from utils import npc_reconciler
+    from utils.capture.live_provider_call import _REQUIRED_RESERVE
 
     locations = location_generator.T026_ATTEMPTS + (
         locations_per_area
@@ -135,7 +138,8 @@ def build_attempt_bound(arm, num_areas, locations_per_area, creatures=0):
         * location_generator.T025_ATTEMPTS
     )
     common = (
-        T030_ATTEMPTS
+        _REQUIRED_RESERVE
+        + T030_ATTEMPTS
         + module_stitcher.T032_ATTEMPTS
         + module_stitcher.T033_ATTEMPTS
         + module_declaration.T123_ATTEMPTS
@@ -166,7 +170,7 @@ def build_attempt_bound(arm, num_areas, locations_per_area, creatures=0):
         )
     )
     if arm == "fallback":
-        return legacy - T030_ATTEMPTS
+        return legacy - T030_ATTEMPTS - _REQUIRED_RESERVE
     return legacy
 
 
