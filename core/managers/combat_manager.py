@@ -4397,6 +4397,9 @@ def _run_combat_simulation(
                    traceback.print_exc()
                    return None, None
        
+       elif creature["type"] == "npc" and creature.get("statsPending") is True:
+           # #1447/#1984: no sheet yet; the first intent that targets it builds one.
+           pass
        elif creature["type"] == "npc":
            # The NPC's own sheet: its recorded sourceRef, else its exact name
            npc_data, matched_filename = load_npc_with_fuzzy_match(creature["name"], path_manager, encounter_data, creature)
@@ -4678,7 +4681,10 @@ def _run_combat_simulation(
            creature_condition = creature.get("condition", "none")
            
            # Get the actual max HP from the correct source
-           if creature["type"] == "npc":
+           if creature["type"] == "npc" and creature.get("statsPending") is True:
+               # #1447/#1984: no sheet yet; today's fallback, read with no load.
+               creature_max_hp = creature.get("maxHitPoints", "Unknown")
+           elif creature["type"] == "npc":
                # For NPCs, look up their true max HP from their own character file
                npc_data, matched_filename = load_npc_with_fuzzy_match(creature_name, path_manager, encounter_data, creature)
                if npc_data:
@@ -5258,6 +5264,9 @@ This is narration only. Do not advance the round or apply any combat action."""
        
        # Reload NPC data
        for creature in encounter_data["creatures"]:
+           if creature["type"] == "npc" and creature.get("statsPending") is True:
+               # #1447/#1984: no sheet yet; the first intent that targets it builds one.
+               continue
            if creature["type"] == "npc":
                # The NPC's own sheet: its recorded sourceRef, else its exact name
                npc_data, matched_filename = load_npc_with_fuzzy_match(creature["name"], path_manager, encounter_data, creature)
@@ -5651,7 +5660,10 @@ This is narration only. Do not advance the round or apply any combat action."""
                
                # Get the actual max HP from the correct source
                npc_data = None
-               if creature["type"] == "npc":
+               if creature["type"] == "npc" and creature.get("statsPending") is True:
+                   # #1447/#1984: no sheet yet; today's fallback, read with no load.
+                   creature_max_hp = creature.get("maxHitPoints", "Unknown")
+               elif creature["type"] == "npc":
                    # For NPCs, look up their true max HP from their own character file
                    npc_data, matched_filename = load_npc_with_fuzzy_match(creature_name, path_manager, encounter_data, creature)
                    if npc_data:
