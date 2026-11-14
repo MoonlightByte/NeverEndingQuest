@@ -13,6 +13,35 @@ from datetime import datetime
 from typing import Optional, Dict, List
 import hashlib
 
+# #1998: a pack name that could leave the packs folder.
+PACK_NAME_REFUSED = {"success": False, "error": "That pack name is not allowed.", "reason": "pack_name"}
+_warned_stored_pack = False
+
+
+def checked_active_pack(name, default):
+    """#1998: a stored active pack name that could leave the packs folder
+    (written before this check) is not used: one warning per process, the
+    default instead, and data/active_pack.json is left as it is."""
+    global _warned_stored_pack
+    from web.media_paths import safe_name
+    if safe_name(name):
+        return name
+    if not _warned_stored_pack:
+        _warned_stored_pack = True
+        import sys
+        print("WARNING: data/active_pack.json names a pack outside graphic_packs; using the default pack.",
+              file=sys.stderr)
+    return default
+
+
+def _same_pack_name(a, b):
+    """#1998: True when two pack names reach the same folder on Windows too:
+    compared without case, after Windows drops trailing dots and spaces."""
+    if not isinstance(a, str) or not isinstance(b, str):
+        return a == b
+    return a.rstrip(". ").casefold() == b.rstrip(". ").casefold()
+
+
 class PackManager:
     """Service for managing graphic packs"""
     
@@ -27,13 +56,20 @@ class PackManager:
         # Load active pack configuration
         self.active_pack = self._load_active_pack()
     
+    def _pack_dir(self, name):
+        """#1998: the pack folder for a name, or None when the name could leave
+        the packs folder. Lexical: a pack folder linked elsewhere still works."""
+        from web.media_paths import dir_within
+        path = dir_within(str(self.packs_dir), name)
+        return Path(path) if path is not None else None
+
     def _load_active_pack(self) -> Optional[str]:
         """Load the currently active pack"""
         active_file = Path(self.ACTIVE_PACK_FILE)
         if active_file.exists():
             with open(active_file, 'r') as f:
                 data = json.load(f)
-                return data.get("active_pack", "photorealistic")
+                return checked_active_pack(data.get("active_pack", "photorealistic"), "photorealistic")
         return "photorealistic"
     
     def _save_active_pack(self, pack_name: str):
@@ -72,7 +108,9 @@ class PackManager:
         """
         # Sanitize pack name
         safe_name = name.replace(" ", "_").lower()
-        pack_dir = self.packs_dir / safe_name
+        pack_dir = self._pack_dir(safe_name)
+        if pack_dir is None:
+            return dict(PACK_NAME_REFUSED)
         
         if pack_dir.exists():
             return {
@@ -206,7 +244,9 @@ Created: {datetime.now().strftime("%Y-%m-%d")}
                     pack_name = pack_name.replace(" ", "_").lower()
                 
                 # Check if pack already exists
-                pack_dir = self.packs_dir / pack_name
+                pack_dir = self._pack_dir(pack_name)
+                if pack_dir is None:
+                    return dict(PACK_NAME_REFUSED)
                 if pack_dir.exists():
                     # Version check
                     existing_manifest_path = pack_dir / "manifest.json"
@@ -308,7 +348,9 @@ Created: {datetime.now().strftime("%Y-%m-%d")}
         Returns:
             Export result dictionary
         """
-        pack_dir = self.packs_dir / pack_name
+        pack_dir = self._pack_dir(pack_name)
+        if pack_dir is None:
+            return dict(PACK_NAME_REFUSED)
         
         if not pack_dir.exists():
             return {
@@ -362,7 +404,9 @@ Created: {datetime.now().strftime("%Y-%m-%d")}
         Returns:
             Activation result dictionary
         """
-        pack_dir = self.packs_dir / pack_name
+        pack_dir = self._pack_dir(pack_name)
+        if pack_dir is None:
+            return dict(PACK_NAME_REFUSED)
         
         if not pack_dir.exists():
             return {
@@ -606,7 +650,9 @@ Created: {datetime.now().strftime("%Y-%m-%d")}
         Returns:
             Detailed pack information or None if not found
         """
-        pack_dir = self.packs_dir / pack_name
+        pack_dir = self._pack_dir(pack_name)
+        if pack_dir is None:
+            return None
         
         if not pack_dir.exists():
             return None
@@ -671,19 +717,21 @@ Created: {datetime.now().strftime("%Y-%m-%d")}
         Returns:
             Deletion result dictionary
         """
-        if pack_name == "photorealistic":
+        if _same_pack_name(pack_name, "photorealistic"):
             return {
                 "success": False,
                 "error": "Cannot delete the default pack"
             }
         
-        if pack_name == self.active_pack:
+        if _same_pack_name(pack_name, self.active_pack):
             return {
                 "success": False,
                 "error": "Cannot delete the active pack. Please activate another pack first."
             }
         
-        pack_dir = self.packs_dir / pack_name
+        pack_dir = self._pack_dir(pack_name)
+        if pack_dir is None:
+            return dict(PACK_NAME_REFUSED)
         
         if not pack_dir.exists():
             return {

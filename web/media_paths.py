@@ -39,6 +39,80 @@ def _safe_component(name):
         and "\\" not in name and "\x00" not in name
 
 
+# #1998: why a client name was refused, by the kind of name.
+NAME_REFUSALS = {
+    "pack_name": "That pack name is not allowed.",
+    "monster_id": "That monster id is not allowed.",
+    "npc_id": "That NPC id is not allowed.",
+    "module_name": "That module name is not allowed.",
+    "asset_id": "That asset id is not allowed.",
+    "character_name": "That character name is not allowed.",
+    "style": "That style is not allowed.",
+    "filename": "That file name is not allowed.",
+}
+
+# #1998: names Windows gives to devices, whatever follows the first dot.
+_WINDOWS_DEVICES = frozenset(
+    ["CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"]
+    + ["COM%s" % d for d in "123456789\u00b9\u00b2\u00b3"]
+    + ["LPT%s" % d for d in "123456789\u00b9\u00b2\u00b3"])
+
+
+def safe_name(value):
+    """#1998: True for one folder or file name that stays where it is joined,
+    on Linux and on Windows: a non-empty str, not '.' or '..', with no slash,
+    backslash, colon or control character, not ending in a dot or a space,
+    and not a Windows device name (CON, NUL, COM1, LPT1, ... before the first
+    dot, in any case)."""
+    if not isinstance(value, str) or not _safe_component(value):
+        return False
+    if ":" in value or any(ord(c) < 0x20 for c in value):
+        return False
+    if value.endswith((".", " ")):
+        return False
+    if value.partition(".")[0].rstrip(" ").upper() in _WINDOWS_DEVICES:
+        return False
+    return True
+
+
+def refused_name(dict_items=(), **values):
+    """#1998: {success, error, reason} for the first client value that could
+    leave its folder, else None. Keys are the kinds in NAME_REFUSALS.
+
+    None (not sent) is skipped, so a missing value keeps its existing
+    handling. A str must pass safe_name. A list is checked item by item: a str
+    item must pass safe_name; a dict item is accepted only for the kinds in
+    dict_items (the routes that read item['id']), and then its 'id' must be a
+    str that passes safe_name. Anything else (a number, a dict, a list inside
+    a list) is refused. A style is checked as the folder it names, temp_<style>."""
+    for reason, value in values.items():
+        if value is None:
+            continue
+        items = value if isinstance(value, list) else [value]
+        for item in items:
+            if isinstance(item, dict) and reason in dict_items and isinstance(value, list):
+                item = item.get("id")
+            if not isinstance(item, str):
+                return {"success": False, "error": NAME_REFUSALS[reason], "reason": reason}
+            if reason == "style":
+                item = "temp_" + item
+            if not safe_name(item):
+                return {"success": False, "error": NAME_REFUSALS[reason], "reason": reason}
+    return None
+
+
+def dir_within(directory, name):
+    """#1998: directory/name when name is one safe component, else None.
+    Lexical on purpose: a folder inside directory that links to another disk
+    keeps working (resolve_file_within keeps its real-path check)."""
+    if not safe_name(name):
+        return None
+    path = os.path.join(directory, name)
+    if not os.path.abspath(path).startswith(os.path.abspath(directory) + os.sep):
+        return None
+    return path
+
+
 def _inside(base, candidate):
     base = os.path.abspath(base)
     candidate = os.path.realpath(candidate)

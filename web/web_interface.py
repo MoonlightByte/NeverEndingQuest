@@ -1543,9 +1543,14 @@ def get_character_data():
         if not character_name:
             return jsonify({'error': 'No character name provided'}), 400
         
-        # Look for character file in characters folder
-        character_path = f'characters/{character_name}.json'
-        character_data = safe_read_json(character_path)
+        # Look for character file in characters folder. #1998: the name must
+        # stay inside it.
+        from web.media_paths import refused_name, resolve_file_within
+        refused = refused_name(character_name=character_name)
+        if refused:
+            return jsonify({'error': refused['error'], 'reason': refused['reason']}), 400
+        character_path = resolve_file_within('characters', f'{character_name}.json')
+        character_data = safe_read_json(character_path) if character_path else None
         
         if character_data:
             # Return relevant character data
@@ -1711,6 +1716,10 @@ def create_pack():
     
     try:
         data = request.json
+        from web.media_paths import refused_name  # #1998
+        refused = refused_name(pack_name=(data or {}).get('name'))
+        if refused:
+            return jsonify(refused), 400
         from core.toolkit.pack_manager import PackManager
         manager = PackManager()
         # Pass all the new fields to the manager
@@ -1729,6 +1738,10 @@ def create_pack():
 @app.route('/api/toolkit/packs/<pack_name>/activate', methods=['POST'])
 def activate_pack(pack_name):
     """Activate a graphic pack with optional backup"""
+    from web.media_paths import refused_name  # #1998
+    refused = refused_name(pack_name=pack_name)
+    if refused:
+        return jsonify(refused), 400
     if not TOOLKIT_AVAILABLE:
         return jsonify({'success': False, 'error': 'Toolkit not available'})
     
@@ -1761,6 +1774,10 @@ def activate_pack(pack_name):
 @app.route('/api/toolkit/packs/<pack_name>/export')
 def export_pack(pack_name):
     """Export a pack as ZIP file"""
+    from web.media_paths import refused_name  # #1998
+    refused = refused_name(pack_name=pack_name)
+    if refused:
+        return jsonify(refused), 400
     if not TOOLKIT_AVAILABLE:
         return jsonify({'success': False, 'error': 'Toolkit not available'})
     
@@ -1795,6 +1812,10 @@ def export_pack(pack_name):
 @app.route('/api/toolkit/packs/<pack_name>', methods=['DELETE'])
 def delete_pack(pack_name):
     """Delete a graphic pack"""
+    from web.media_paths import refused_name  # #1998
+    refused = refused_name(pack_name=pack_name)
+    if refused:
+        return jsonify(refused), 400
     if not TOOLKIT_AVAILABLE:
         return jsonify({'success': False, 'error': 'Toolkit not available'})
     
@@ -1858,6 +1879,10 @@ def export_monsters_to_pack():
         style = data.get('style', 'custom')
         source_pack = data.get('source_pack')
         monster_ids = data.get('monster_ids', [])
+        from web.media_paths import refused_name  # #1998
+        refused = refused_name(pack_name=[pack_name, source_pack], monster_id=monster_ids)
+        if refused:
+            return jsonify(refused), 400
         
         if not all([pack_name, display_name, author, source_pack, monster_ids]):
             return jsonify({'success': False, 'error': 'Missing required fields'})
@@ -2065,6 +2090,10 @@ def get_monsters():
     try:
         # Get pack parameter from query string
         pack_name = request.args.get('pack', 'photorealistic')
+        from web.media_paths import refused_name  # #1998
+        refused = refused_name(pack_name=pack_name)
+        if refused:
+            return jsonify(refused), 400
         
         # Use a temporary generator instance to get monster list
         from config import OPENAI_API_KEY
@@ -2079,6 +2108,10 @@ def get_monsters():
 @app.route('/toolkit/pack_image/<pack_name>/<filename>')
 def serve_pack_image(pack_name, filename):
     """Serve an image from a graphic pack"""
+    from web.media_paths import refused_name  # #1998
+    refused = refused_name(pack_name=pack_name, filename=filename)
+    if refused:
+        return jsonify(refused), 400
     from flask import send_from_directory
     import os
     
@@ -2096,6 +2129,10 @@ def serve_pack_image(pack_name, filename):
 @app.route('/toolkit/pack_video/<pack_name>/<filename>')
 def serve_pack_video(pack_name, filename):
     """Serve a video from a graphic pack"""
+    from web.media_paths import refused_name  # #1998
+    refused = refused_name(pack_name=pack_name, filename=filename)
+    if refused:
+        return jsonify(refused), 400
     from flask import send_from_directory
     import os
     
@@ -2120,6 +2157,10 @@ def check_existing_images():
         data = request.json
         pack_name = data.get('pack_name')
         monster_ids = data.get('monster_ids', [])
+        from web.media_paths import refused_name  # #1998
+        refused = refused_name(pack_name=pack_name, monster_id=monster_ids)
+        if refused:
+            return jsonify(refused), 400
         
         if not pack_name or not monster_ids:
             return jsonify({'success': False, 'error': 'Missing pack_name or monster_ids'})
@@ -2159,6 +2200,10 @@ def generate_monsters():
         style = data.get('style', 'photorealistic')
         model = data.get('model', 'auto')
         monsters = data.get('monsters', [])
+        from web.media_paths import refused_name  # #1998
+        refused = refused_name(pack_name=pack_name or None, monster_id=monsters, style=style if not pack_name else None)
+        if refused:
+            return jsonify(refused), 400
         
         # Start generation in background thread
         import uuid
@@ -2218,6 +2263,10 @@ def process_video():
         pack_name = request.form.get('pack_name')
         copy_to_monsters = request.form.get('copy_to_monsters', 'false').lower() == 'true'
         copy_to_npcs = request.form.get('copy_to_npcs', 'false').lower() == 'true'
+        from web.media_paths import refused_name  # #1998
+        refused = refused_name(monster_id=monster_id, pack_name=pack_name)
+        if refused:
+            return jsonify(refused), 400
         
         if not monster_id or not pack_name:
             return jsonify({'success': False, 'error': 'Missing monster_id or pack_name'})
@@ -2744,6 +2793,10 @@ def create_pack_toolkit():
     
     try:
         data = request.json
+        from web.media_paths import refused_name  # #1998
+        refused = refused_name(pack_name=(data or {}).get('name'))
+        if refused:
+            return jsonify(refused), 400
         from core.toolkit.pack_manager import PackManager
         manager = PackManager()
         result = manager.create_pack(
@@ -2766,6 +2819,10 @@ def save_toolkit_settings():
     try:
         data = request.json
         active_pack = data.get('active_pack')
+        from web.media_paths import refused_name  # #1998
+        refused = refused_name(pack_name=active_pack)
+        if refused:
+            return jsonify(refused), 400
         api_key = data.get('api_key')
         
         # Save active pack
@@ -2800,6 +2857,10 @@ def get_available_modules_api():
 @app.route('/api/toolkit/modules/<module_name>/monsters')
 def get_module_monsters_api(module_name):
     """Get list of monster IDs found in a specific module."""
+    from web.media_paths import refused_name  # #1998
+    refused = refused_name(module_name=module_name)
+    if refused:
+        return jsonify(refused), 400
     if not TOOLKIT_AVAILABLE:
         return jsonify([]), 503
     
@@ -2856,6 +2917,10 @@ def get_module_unified_assets(module_name):
     Get unified list of all NPCs and monsters in a module with their asset status.
     Returns detailed information about description existence and media availability.
     """
+    from web.media_paths import refused_name  # #1998
+    refused = refused_name(module_name=module_name)
+    if refused:
+        return jsonify(refused), 400
     if not TOOLKIT_AVAILABLE:
         return jsonify({'success': False, 'error': 'Toolkit not available'}), 503
     
@@ -5818,6 +5883,10 @@ def get_module_npcs(module_name):
         return jsonify([]), 503
     
     pack_name = request.args.get('pack')
+    from web.media_paths import refused_name  # #1998
+    refused = refused_name(module_name=module_name, pack_name=pack_name)
+    if refused:
+        return jsonify(refused), 400
     include_local = request.args.get('include_local', 'false').lower() == 'true'
 
     if not pack_name:
@@ -6088,6 +6157,10 @@ def fetch_npc_descriptions():
     data = request.json or {}
     module_name = data.get('module_name')
     npcs = data.get('npcs', [])
+    from web.media_paths import refused_name  # #1998
+    refused = refused_name(module_name=module_name, npc_id=npcs, dict_items=('npc_id',))
+    if refused:
+        return jsonify(refused), 400
     if not module_name or not isinstance(npcs, list) or not npcs:
         return jsonify({'success': False, 'error': 'Missing module name or NPC list'}), 400
 
@@ -6175,6 +6248,10 @@ def handle_npc_description():
     if request.method == 'GET':
         module_name = request.args.get('module')
         npc_id = request.args.get('npc_id')
+        from web.media_paths import refused_name  # #1998
+        refused = refused_name(module_name=module_name, npc_id=npc_id)
+        if refused:
+            return jsonify(refused), 400
         
         if not module_name or not npc_id:
             return jsonify({'error': 'Missing module or NPC ID'}), 400
@@ -6211,6 +6288,10 @@ def handle_npc_description():
         data = request.json
         module_name = data.get('module_name')
         npc_id = data.get('npc_id')
+        from web.media_paths import refused_name  # #1998
+        refused = refused_name(module_name=module_name, npc_id=npc_id)
+        if refused:
+            return jsonify(refused), 400
         npc_name = data.get('npc_name')
         description = data.get('description')
         
@@ -6262,6 +6343,10 @@ def generate_npc_portraits():
     style = data.get('style', 'photorealistic')
     style_prompt = data.get('style_prompt', '')
     npcs = data.get('npcs', [])
+    from web.media_paths import refused_name  # #1998
+    refused = refused_name(module_name=module_name, pack_name=pack_name, npc_id=npcs, dict_items=('npc_id',))
+    if refused:
+        return jsonify(refused), 400
     
     if not all([module_name, pack_name, npcs]):
         return jsonify({'success': False, 'error': 'Missing required fields'}), 400
@@ -6574,6 +6659,10 @@ def copy_pack_npcs_to_game(pack_name):
 @app.route('/api/toolkit/packs/<pack_name>/npcs/<npc_id>/thumbnail')
 def get_npc_thumbnail(pack_name, npc_id):
     """Serve NPC thumbnail image from a specific graphic pack."""
+    from web.media_paths import refused_name  # #1998
+    refused = refused_name(pack_name=pack_name, npc_id=npc_id)
+    if refused:
+        return jsonify(refused), 400
     if not TOOLKIT_AVAILABLE:
         return '', 404
     
@@ -6610,6 +6699,10 @@ def get_npc_thumbnail(pack_name, npc_id):
 @app.route('/api/toolkit/packs/<pack_name>/npcs/<npc_id>/image')
 def get_npc_image(pack_name, npc_id):
     """Serve full NPC image from a specific graphic pack."""
+    from web.media_paths import refused_name  # #1998
+    refused = refused_name(pack_name=pack_name, npc_id=npc_id)
+    if refused:
+        return jsonify(refused), 400
     if not TOOLKIT_AVAILABLE:
         return '', 404
     
@@ -6637,6 +6730,10 @@ def get_npc_image(pack_name, npc_id):
 @app.route('/api/toolkit/packs/<pack_name>/npcs/<npc_id>/video')
 def get_npc_video(pack_name, npc_id):
     """Serve NPC video from a specific graphic pack."""
+    from web.media_paths import refused_name  # #1998
+    refused = refused_name(pack_name=pack_name, npc_id=npc_id)
+    if refused:
+        return jsonify(refused), 400
     if not TOOLKIT_AVAILABLE:
         return '', 404
     
@@ -6679,6 +6776,10 @@ def export_npcs_to_pack():
         data = request.json
         pack_name = data.get('pack_name')
         npc_ids = data.get('npc_ids', [])
+        from web.media_paths import refused_name  # #1998
+        refused = refused_name(pack_name=pack_name, npc_id=npc_ids)
+        if refused:
+            return jsonify(refused), 400
 
         if not pack_name or not npc_ids:
             return jsonify({'success': False, 'error': 'Missing pack name or NPC IDs.'}), 400
@@ -6906,6 +7007,11 @@ def handle_generate_unified_assets(data):
     module_name = data.get('module_name')
     assets = data.get('assets', [])
     options = data.get('options', {})
+    from web.media_paths import refused_name  # #1998
+    refused = refused_name(module_name=module_name, asset_id=assets, style=options.get('style', 'photorealistic'), dict_items=('asset_id',))
+    if refused:
+        emit('unified_generation_complete', {'success': False, 'message': refused['error'], 'reason': refused['reason']})
+        return
     
     # Debug logging
     info(f"TOOLKIT: Received generation request for module: {module_name}")
