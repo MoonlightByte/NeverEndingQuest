@@ -2450,7 +2450,9 @@ def _call_live_provider(
                 "Still working; checking the current adventure...",
             )
             continue
-        # #2021 J1b-2: a background build yields before each child.
+        # #2021 J1b-2: a background build yields before each child. A mark
+        # a `continue` left behind (no child started) is ended first.
+        end_build_attempt(shown.pop("build_attempt", None), sent=False)
         shown["build_attempt"] = begin_build_attempt()
         claim = getattr(scope, "claim_provider_generation", None)
         if claim is not None and not (

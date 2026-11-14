@@ -7539,6 +7539,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                                 stitcher.build_publication_registry_bytes
                             ),
                             fence=claimed_fence,
+                            inputs=job_inputs,
                         )
                     except ModuleCreationCancelledError:
                         mark_module_build_outcome("not_generated")
@@ -7677,9 +7678,23 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     # job's send in flight; on a remote one they overlap.
                     claimed_fence.local_wait = job_inputs.provider == "lmstudio"
                     claimed_fence.build_yield = BuildYield(claimed_fence)
+                    def job_entry():
+                        # The copied context keeps the usage context (and its
+                        # connection state); the turn's control scope and its
+                        # engine stop hook are cleared, so job code outside
+                        # the build's own scope never sees the closed turn.
+                        from core.nql.apply import engine_stop_check
+                        from utils.capture.live_provider_call import (
+                            _executing_control_scope,
+                        )
+
+                        _executing_control_scope.set(None)
+                        engine_stop_check.set(None)
+                        build_job()
+
                     job = threading.Thread(
                         target=_contextvars.copy_context().run,
-                        args=(build_job,),
+                        args=(job_entry,),
                         name="module-build-job",
                         daemon=False,
                     )

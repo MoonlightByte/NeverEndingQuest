@@ -1136,6 +1136,11 @@ BUILD_PREPARING_NOTE = (
     "[The new adventure is being prepared; it is not reachable until it is "
     "announced. Narrate preparation or other play, never arrival.]"
 )
+# Model-facing only: a preparing note whose build was never announced.
+BUILD_CLOSED_NOTE = (
+    "[No announcement came for the adventure that was being prepared. Do not "
+    "narrate it as ready or reached.]"
+)
 _announcement = None
 _announcement_guard = threading.Lock()
 _input_live_history = None
@@ -1202,28 +1207,83 @@ def _build_record_current(record):
 
 
 def _record_build_failure(record, live_history):
-    """A failed build's line, in history as today's failed action records it."""
-    if any(
-        isinstance(message, dict) and message.get("message_id") == record.message_id
-        for message in live_history
-    ):
+    """A failed build's line, in history as today's failed action records it
+    (role system, main's form). Fail-forward: an append that fails is put back
+    once; a failed persist is logged (the turn's end save covers it)."""
+    from utils import build_job as jobs
+
+    try:
+        if any(
+            isinstance(message, dict) and message.get("message_id") == record.message_id
+            for message in live_history
+        ):
+            return
+        live_history.append(
+            {"role": "system", "content": record.line, "message_id": record.message_id}
+        )
+    except Exception as append_error:
+        warning(
+            "A failed build's line could not be recorded: %s" % type(append_error).__name__,
+            category="module_management",
+        )
+        if not getattr(record, "retried", False):
+            record.retried = True
+            jobs.put_back_due([record])
         return
-    live_history.append(
-        {"role": "system", "content": record.line, "message_id": record.message_id}
-    )
-    _strictly_persist_conversation_history(live_history)
+    try:
+        _strictly_persist_conversation_history(live_history)
+    except _PUMP_TRANSFERS:
+        raise
+    except Exception as persist_error:
+        warning(
+            "A failed build's line was recorded but not yet persisted: %s"
+            % type(persist_error).__name__,
+            category="module_management",
+        )
+
+
+# The typed control transfers a pump step lets through (as the welcome's).
+_PUMP_TRANSFERS = ()
+
+
+def _pump_transfers():
+    global _PUMP_TRANSFERS
+    if not _PUMP_TRANSFERS:
+        from utils.capture.live_provider_call import LiveProviderSuperseded
+
+        _PUMP_TRANSFERS = (_RestoreControlTransfer, LiveProviderSuperseded)
+    return _PUMP_TRANSFERS
 
 
 def _start_announcement(record, live_history):
     """Game thread: refresh the context for the new place, then generate the
-    announcement off-thread on a snapshot of the live list plus its note."""
+    announcement off-thread on a snapshot of the live list plus its note. A
+    staged completion not yet drained raises RuntimeError (try again)."""
+    require_staged_module_completions_drained()
+    try:
+        return _start_announcement_drained(record, live_history)
+    except _PUMP_TRANSFERS:
+        raise
+    except BaseException as exc:
+        # Past the drain: the record is dropped (fail-forward); a scope
+        # already registered is ended. Marked so the caller does not retry.
+        lifecycle = _announcement
+        if lifecycle is not None and lifecycle.record is record:
+            _end_announcement(lifecycle)
+        try:
+            exc._announcement_started = True
+        except Exception:
+            pass
+        raise
+
+
+def _start_announcement_drained(record, live_history):
     global _announcement
     from utils.capture.live_provider_call import (
         LiveTurnScope,
         register_announcement_scope,
     )
 
-    require_staged_module_completions_drained()
     rebuild_conversation_for_current_party(live_history)
     note = (record.dm_note or "").strip()
     note_message = {"role": "user", "content": note} if note else None
@@ -1281,7 +1341,7 @@ def _apply_announcement(lifecycle, live_history):
                 category="module_management",
             )
             return False
-        followup_id = "module-followup-%s" % lifecycle.record.module_name
+        followup_id = "module-followup-%s" % lifecycle.record.build_id
         with _party_module_transition_lock():
             if lifecycle.note_message is not None:
                 live_history.append(dict(lifecycle.note_message))
@@ -1338,7 +1398,32 @@ def _start_next_due(live_history):
             _record_build_failure(record, live_history)
             continue
         jobs.put_back_due(records)
-        return _start_announcement(record, live_history)
+        try:
+            return _start_announcement(record, live_history)
+        except _PUMP_TRANSFERS:
+            raise
+        except RuntimeError as not_yet:
+            if not getattr(not_yet, "_announcement_started", False):
+                # A staged module completion is not drained yet: try again
+                # on the next pass.
+                jobs.put_back_due([record])
+                debug(
+                    "Module announcement waits for a staged completion: %s" % not_yet,
+                    category="module_management",
+                )
+                return None
+            warning(
+                "Module announcement could not start: %s" % not_yet,
+                category="module_management",
+            )
+            return None
+        except Exception as start_error:
+            warning(
+                "Module announcement could not start (%s); the module is live "
+                "and the game continues" % type(start_error).__name__,
+                category="module_management",
+            )
+            return None
     return None
 
 
@@ -1354,6 +1439,7 @@ def service_build_due(live_history, *, turn_start=False):
 
     if live_history is None or get_live_turn_scope() is not None:
         return
+    _pump_transfers()
     shown = False
     while True:
         lifecycle = _announcement
@@ -1370,6 +1456,53 @@ def service_build_due(live_history, *, turn_start=False):
             lifecycle = _start_next_due(live_history)
         if lifecycle is None or not turn_start:
             return
+
+
+def close_open_build_notes(live_history):
+    """Loop top, once nothing is building, due or announcing: a preparing note
+    whose build was never announced, recorded as failed, or closed gets one
+    closing note (a Load of a save made mid-build, a restart). By id only."""
+    from utils import build_job as jobs
+    from utils.capture.live_provider_call import get_live_turn_scope
+
+    if (
+        live_history is None
+        or get_live_turn_scope() is not None
+        or jobs.active_job() is not None
+        or jobs.has_due()
+        or _announcement is not None
+    ):
+        return 0
+    ids = [
+        message.get("message_id") for message in live_history
+        if isinstance(message, dict) and isinstance(message.get("message_id"), str)
+    ]
+    present = set(ids)
+    opened = [i[len("module-build-preparing-"):] for i in ids if i.startswith("module-build-preparing-")]
+    closed = 0
+    for build_id in opened:
+        if (
+            "module-build-failure-%s" % build_id in present
+            or "module-followup-%s" % build_id in present
+            or "module-build-closed-%s" % build_id in present
+        ):
+            continue
+        live_history.append({
+            "role": "user",
+            "content": BUILD_CLOSED_NOTE,
+            "message_id": "module-build-closed-%s" % build_id,
+        })
+        present.add("module-build-closed-%s" % build_id)
+        closed += 1
+    if closed:
+        try:
+            _strictly_persist_conversation_history(live_history)
+        except Exception as persist_error:
+            warning(
+                "A closing build note was not yet persisted: %s" % type(persist_error).__name__,
+                category="module_management",
+            )
+    return closed
 
 
 def announcement_pending():
@@ -7721,14 +7854,24 @@ def process_ai_response(
         narration = parsed_response.get("narration", "")
         sanitized_narration = sanitize_text(narration)
         narration_shown = False
-        # A reply that starts a fight (createEncounter, alone or after a
-        # prerequisite's updates) is held: the combat opening narrates the
-        # fight from its encounterSummary (#1345, D-1345-1 A). The stored
-        # reply leaves out the narration that was not shown. #2021 J1b-2: a
-        # reply whose only action is createNewModule is no longer held; the
-        # build runs in the background and its narration says the way is
-        # being prepared; the DM announces the place once it is published.
-        if any(
+        # A reply whose only action is createNewModule narrates a module that
+        # does not exist yet, so its narration is held, as a transition holds
+        # its departure narration (#182). #2021 J1b-2: the build's result
+        # decides: once the build has started in the background, the
+        # narration (the way is being prepared) is shown and the full reply
+        # stored; any other result keeps the held reply and shows only its
+        # system line. A reply that starts a fight (createEncounter, alone or
+        # after a prerequisite's updates) is held the same way: the combat
+        # opening narrates the fight from its encounterSummary (#1345,
+        # D-1345-1 A). The stored reply leaves out the narration that was not
+        # shown.
+        unheld_response = response
+        module_held = (
+            len(actions) == 1
+            and isinstance(actions[0], dict)
+            and actions[0].get("action") == action_handler.ACTION_CREATE_NEW_MODULE
+        )
+        if module_held or any(
             isinstance(action, dict)
             and action.get("action") == action_handler.ACTION_CREATE_ENCOUNTER
             for action in actions
@@ -7813,8 +7956,9 @@ def process_ai_response(
         # the encounter commits it once its fight is built, just before play,
         # and a fight that could not be set up spends nothing.
         encounter_payments = action_handler.stage_encounter_payments(actions)
-        # #2021 J1b-2: a module build started in the background this turn.
-        build_started = False
+        # #2021 J1b-2: the build_id of a module build started in the
+        # background this turn.
+        build_started = None
         # Execute accepted actions once, in the order the DM and referee approved.
         for action_index, action in enumerate(actions):
             if encounter_payments and action_index in encounter_payments["staged"]:
@@ -7918,7 +8062,12 @@ def process_ai_response(
                 # #2021 J1b-2: the build runs in the background. As after a
                 # publish, later sibling actions are not run; the reply is
                 # stored below, with the model-facing preparing note after it.
-                build_started = True
+                # A held sole createNewModule is shown now, and stored whole.
+                build_started = str(result.get("build_id") or "")
+                if module_held:
+                    display_dm_narration(sanitized_narration)
+                    narration_shown = bool(str(sanitized_narration or "").strip())
+                    response = unheld_response
                 break
             if isinstance(result, dict) and result.get("status") == "published":
                 # Module publication is an irreversible terminal action for
@@ -8117,10 +8266,12 @@ def process_ai_response(
         # preventing any possibility of the history and game state becoming out of sync.
         assistant_message = {"role": "assistant", "content": response}
         conversation_history.append(assistant_message)
-        if build_started:
-            conversation_history.append(
-                {"role": "system", "content": BUILD_PREPARING_NOTE}
-            )
+        if build_started is not None:
+            conversation_history.append({
+                "role": "user",
+                "content": BUILD_PREPARING_NOTE,
+                "message_id": "module-build-preparing-%s" % build_started,
+            })
         save_conversation_history(conversation_history)
         
         # DELAYED ARCHIVING: Process any pending archive after the AI response is saved
@@ -9763,6 +9914,23 @@ def _prompt_date_display(world_conditions):
 
 
 def main_game_loop():
+    """#2021 J1b-2: an exception out of the loop (a crash, a KeyboardInterrupt)
+    stops a background build and its announcement at once, so the process
+    does not wait for a whole build on its way out."""
+    try:
+        return _main_game_loop_outer()
+    except BaseException:
+        try:
+            from utils.capture.live_provider_call import request_build_stop
+
+            request_build_stop("quit")
+            shutdown_build_due("crash")
+        except Exception:
+            pass
+        raise
+
+
+def _main_game_loop_outer():
     """Keep startup/turn cleanup outside the single game-loop implementation."""
     from contextlib import ExitStack
     from core.combat.invocation import InvocationSupersededError
@@ -10794,8 +10962,10 @@ def _main_game_loop(startup_authority, turn_authority):
         if _welcome_lifecycle is None:
             _flush_library_notices()
         # #2021 J1b-2: a background build's due record (a failure line, or a
-        # published place's announcement, started here when it is due).
+        # published place's announcement, started here when it is due); then
+        # a preparing note left open (no job, nothing due) is closed.
         service_build_due(conversation_history)
+        close_open_build_notes(conversation_history)
 
         if needs_conversation_history_update:
             debug("STATE_CHANGE: Reloading conversation history from disk due to needs_conversation_history_update flag", category="conversation_management")
