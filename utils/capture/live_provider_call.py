@@ -628,18 +628,119 @@ def request_build_stop(kind):
     return fence is not None
 
 
-@contextmanager
-def build_fence(bound_turn):
-    """Register the fence for one in-game build, until the build returns."""
+def claim_build_fence(bound_turn):
+    """#2021: one in-game build at a time. Under the slot's guard, register a
+    new fence and return it, or return None while another build holds the
+    slot. The claim comes before any bind, so a refused build never touches
+    the running one's fence; release_build_fence frees the slot."""
     global _active_build_fence
+    with _fence_guard:
+        if _active_build_fence is not None:
+            return None
+        fence = BuildFence(bound_turn, game_epoch())
+        _active_build_fence = fence
+        return fence
+
+
+def release_build_fence(fence):
+    """Free the slot, only if this fence still holds it."""
+    global _active_build_fence
+    with _fence_guard:
+        if _active_build_fence is fence:
+            _active_build_fence = None
+
+
+@contextmanager
+def build_fence(bound_turn, fence=None):
+    """The fence for one in-game build, until the build returns.
+
+    A fence already claimed (claim_build_fence) is used as it is; its
+    claimer releases it. Otherwise a new fence is registered here, and the
+    fence it replaced, if any, is put back when the build returns (#2021: a
+    second build never leaves the slot empty under a running one)."""
+    global _active_build_fence
+    if fence is not None:
+        yield fence
+        return
     fence = BuildFence(bound_turn, game_epoch())
-    _set_active_build_fence(fence)
+    with _fence_guard:
+        previous = _active_build_fence
+        _active_build_fence = fence
     try:
         yield fence
     finally:
         with _fence_guard:
             if _active_build_fence is fence:
-                _active_build_fence = None
+                _active_build_fence = previous
+
+
+# --- The build's yield to the player (#2021, J1b) -----------------------------
+# A background build waits before each attempt while the player's game is
+# busy, polled in short beats (no notify needed from every scope's close).
+# N counts the distinct turn operations seen while waiting and K the time
+# spent waiting; both reset when an attempt is sent. The wait never runs while
+# this thread holds module refresh (the stitcher's T032/T033 run inside the
+# publish, under that lock): a turn that needs the lock would wait for the
+# build while the build waited for the turn.
+BUILD_YIELD_BEAT_SECONDS = 0.25
+BUILD_YIELD_MAX_TURNS = 3
+BUILD_YIELD_MAX_SECONDS = 120.0
+
+
+def _game_busy_operations(extra_scopes=None):
+    """The operation ids of the scopes a build yields to, or () when idle."""
+    scopes = list(get_lifecycle_turn_scopes())
+    welcome = get_active_welcome_scope()
+    if welcome is not None:
+        scopes.append(welcome)
+    if extra_scopes is not None:
+        scopes.extend(scope for scope in extra_scopes() if scope is not None)
+    return tuple(
+        getattr(scope, "operation_id", None) or id(scope) for scope in scopes
+    )
+
+
+class BuildYield:
+    """One job's yield state: N and K across its waits, reset on a send."""
+
+    def __init__(self, fence, *, beat=None, max_turns=None, max_seconds=None,
+                 extra_scopes=None):
+        self.fence = fence
+        self.beat = BUILD_YIELD_BEAT_SECONDS if beat is None else beat
+        self.max_turns = BUILD_YIELD_MAX_TURNS if max_turns is None else max_turns
+        self.max_seconds = (
+            BUILD_YIELD_MAX_SECONDS if max_seconds is None else max_seconds
+        )
+        self.extra_scopes = extra_scopes
+        self.turns_seen = set()
+        self.waited = 0.0
+
+    def attempt_sent(self):
+        self.turns_seen = set()
+        self.waited = 0.0
+
+    def wait_before_attempt(self):
+        """Return why the next attempt may go: "idle", "refresh_lock",
+        "turns" (N reached), "time" (K reached), or "superseded" (the fence
+        says stop; the caller raises the build's stop)."""
+        from utils.module_refresh_lock import module_refresh_lock_owned
+
+        while True:
+            if self.fence.is_superseded():
+                return "superseded"
+            if module_refresh_lock_owned():
+                return "refresh_lock"
+            busy = _game_busy_operations(self.extra_scopes)
+            if not busy:
+                return "idle"
+            self.turns_seen.update(busy)
+            if len(self.turns_seen) >= self.max_turns:
+                return "turns"
+            if self.waited >= self.max_seconds:
+                return "time"
+            started = time.monotonic()
+            time.sleep(self.beat)
+            self.waited += time.monotonic() - started
 
 
 # --- Lifecycle owner record (issue #270) ------------------------------------

@@ -3743,10 +3743,11 @@ def _toolkit_retry_hook(state, progress_callback):
 
 
 @contextmanager
-def _in_game_build_scope(policy, build_id):
+def _in_game_build_scope(policy, build_id, fence=None):
     """#2011: an in-game build (policy "game", under a live scope) runs on its
     own provider scope, bounded at the policy's largest module until its spec
-    is known; any other build runs as before."""
+    is known; any other build runs as before. ``fence``: one already claimed
+    for this build (#2021); it binds the build with or without a live scope."""
     from utils.capture.live_provider_call import bind_build_scope, build_fence, get_live_provider_scope
 
     try:
@@ -3754,14 +3755,14 @@ def _in_game_build_scope(policy, build_id):
     except Exception:
         resolved = None  # the build reports a bad policy itself, as before
     parent = get_live_provider_scope()
-    if resolved is None or resolved.name != "game" or parent is None:
+    if resolved is None or resolved.name != "game" or (parent is None and fence is None):
         yield None
         return
     from utils.build_inputs import build_story_first
 
     # #2018: the scope's parent is the build's fence: the starting turn, the
     # game epoch at the start, and the quit stop flag.
-    with build_fence(parent) as fence, bind_build_scope(fence, build_id) as scope:
+    with build_fence(parent, fence) as fence, bind_build_scope(fence, build_id) as scope:
         scope.set_bound(build_attempt_bound(
             "story_first" if build_story_first() else "legacy",
             resolved.max_areas, resolved.max_locations_per_area,
@@ -3775,8 +3776,13 @@ def ai_driven_module_creation(
     *,
     policy: Any = "game",
     prepare_candidate: Optional[Callable[[Path, str], Any]] = None,
+    fence=None,
+    inputs=None,
 ) -> tuple[bool, Optional[str]]:
     """Run a module build inside exactly one nested-safe usage scope.
+
+    ``fence`` and ``inputs`` (#2021): a fence the caller already claimed and
+    inputs it already took; None (the default) takes both here, as before.
 
     The in-game action owns a wider scope that continues through publication,
     so this wrapper must not record a premature terminal event when a context is
@@ -3799,7 +3805,9 @@ def ai_driven_module_creation(
         progress_callback = _toolkit_retry_hook(context.connection, progress_callback)
         try:
             # #2018: the build's inputs are taken here, before the arm is chosen
-            with build_inputs(), _in_game_build_scope(policy, context.build_id):
+            with build_inputs(inputs), _in_game_build_scope(
+                policy, context.build_id, fence
+            ):
                 result = _ai_driven_module_creation_impl(
                     params,
                     progress_callback=progress_callback,

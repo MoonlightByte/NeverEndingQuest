@@ -1507,6 +1507,10 @@ class SaveGameManager:
                     ) as refresh_acquired:
                         if not refresh_acquired:
                             raise OSError("Module refresh acquisition did not complete")
+                        # #2021: moved again under module refresh, the lock a
+                        # build's publish holds: a build that started after
+                        # the entry bump never publishes into this Load.
+                        bump_game_epoch("restore")
                         # P2b: restore no longer consults the module-lifecycle
                         # store. Loading a save must NEVER be refused -- a
                         # published module is already live on disk regardless of
