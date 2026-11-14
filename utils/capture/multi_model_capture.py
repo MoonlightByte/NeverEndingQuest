@@ -519,8 +519,12 @@ def _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
 
 def _raise_if_build_stopped():
     """#1993: raise BuildConnectionStopped when this build already stopped;
-    #2011: BuildCeilingReached when its scope ended at its bound."""
-    from utils.capture.live_provider_call import raise_if_build_ceiling
+    #2011: BuildCeilingReached when its scope ended at its bound; #2014:
+    LiveProviderSuperseded when an in-game build's turn was superseded."""
+    from utils.capture.live_provider_call import (
+        raise_if_build_ceiling,
+        raise_if_build_superseded,
+    )
     from utils.openai_usage_tracker import build_connection_state
     from utils.provider_errors import BuildConnectionStopped
 
@@ -528,6 +532,7 @@ def _raise_if_build_stopped():
     if build_state is not None and build_state.stopped_class is not None:
         raise BuildConnectionStopped(build_state.stopped_class, build_state.provider)
     raise_if_build_ceiling()
+    raise_if_build_superseded()
 
 
 _ACCOUNT_CLASSES = frozenset({"bad_key", "out_of_quota"})

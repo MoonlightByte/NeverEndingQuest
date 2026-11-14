@@ -206,8 +206,12 @@ def _add_creature_bound(creatures):
 
 def _raise_if_build_stopped():
     """Raise BuildConnectionStopped when this armed build gave up (#1981 PR C);
-    BuildCeilingReached when its scope ended at its bound (#2011)."""
-    from utils.capture.live_provider_call import raise_if_build_ceiling
+    BuildCeilingReached when its scope ended at its bound (#2011);
+    LiveProviderSuperseded when an in-game build's turn was superseded (#2014)."""
+    from utils.capture.live_provider_call import (
+        raise_if_build_ceiling,
+        raise_if_build_superseded,
+    )
     from utils.openai_usage_tracker import build_connection_state
     from utils.provider_errors import BuildConnectionStopped
 
@@ -215,6 +219,7 @@ def _raise_if_build_stopped():
     if state is not None and state.stopped_class is not None:
         raise BuildConnectionStopped(state.stopped_class, state.provider)
     raise_if_build_ceiling()
+    raise_if_build_superseded()
 
 
 def _publication_step(prepare_candidate, builder_holder):

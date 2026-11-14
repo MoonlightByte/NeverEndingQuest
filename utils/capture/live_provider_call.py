@@ -508,6 +508,16 @@ def raise_if_build_ceiling():
         raise _build_ceiling_error(scope)
 
 
+def raise_if_build_superseded():
+    """#2014: an in-game build ends at its next model call or stage once its
+    turn is superseded (Load, Reset, Quit, web exit), so no request is sent
+    after it. Only the in-game build's own scope is read (its supersession is
+    the turn's); any other build, and any call outside a build, is as before."""
+    scope = get_live_provider_scope()
+    if isinstance(scope, BuildProviderScope) and scope.is_superseded():
+        raise LiveProviderSuperseded("live player turn superseded")
+
+
 def claim_build_generation():
     """#2011: a Route P call claims one generation on the in-game build's
     scope, once per logical call; refused at the bound, nothing is sent."""
