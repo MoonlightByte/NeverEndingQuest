@@ -1615,12 +1615,14 @@ def person_monster_rows(encounter_data, response, location_id):
     is built (seated, the person would fight as a monster copy beside their own
     record, or a fight bound by id would be booked to a person's record).
     People are occupants of kind "person" with count not 0 whose id is in this
-    module (a creature group, even one the area data marks a person, is never
-    one). Per monster slot, the first route that matches gives its row:
-    "id", occupantIds[monster:N] is a person's id (always refused); "key",
-    monsterKeys[monster:N] is not a compendium key and is a person's id stem
-    (a module-own or minted key); "name", when the slot has no occupantIds
-    entry (with or without a key), monsters[N] is not a compendium monster
+    module, and the companions: the records the roster's partyNPCs occupantIds
+    name, from any module, counted as here (a creature group, even one the
+    area data marks a person, is never one). Per monster slot, the first
+    route that matches gives its row: "id", occupantIds[monster:N] is a
+    person's id (always refused); "key", monsterKeys[monster:N] is not a
+    compendium key and is a person's id stem (a module-own or minted key; of
+    two people with that stem, the one here); "name", when the slot has no
+    occupantIds entry (with or without a key), monsters[N] is not a compendium monster
     (its slug is no compendium key and no compendium name's slug) and is the
     exact name of a person here, or of none here and exactly one elsewhere
     (D-1936-3's tie, the engine's own equality). A compendium monster is a
@@ -1636,13 +1638,22 @@ def person_monster_rows(encounter_data, response, location_id):
     tracker = load_json("party_tracker.json") or {}
     module = (tracker.get("module") or "").replace(" ", "_")
     place = occupants.place_id(module, location_id)
+    # A companion is their roster row's occupantId, whatever module they
+    # joined in and whatever the join left on the record; they travel with
+    # the party, so they count as here.
+    companions = {n.get("occupantId") for n in tracker.get("partyNPCs") or []
+                  if isinstance(n, dict) and isinstance(n.get("occupantId"), str)}
     people = [o for o in (response.get("live_state") or {}).get("occupants") or []
-              if isinstance(o, dict) and o.get("kind") == "person" and o.get("count") != 0
-              and isinstance(o.get("id"), str) and o["id"].startswith("occ:%s/" % module)]
+              if isinstance(o, dict) and o.get("kind") == "person" and isinstance(o.get("id"), str)
+              and ((o.get("count") != 0 and o["id"].startswith("occ:%s/" % module)) or o["id"] in companions)]
+
+    def is_here(o):
+        return o.get("location") == place or o["id"] in companions
+
     by_id = {o["id"]: o for o in people}
     by_stem = {}
     for o in people:
-        by_stem.setdefault(occupants.id_stem(o), o)
+        by_stem.setdefault(occupants.id_stem(o), []).append(o)
     compendium = _compendium()
     generic = set(compendium) | {slug(name) for name in compendium.values()}
     declared_ids = encounter_data.get("occupantIds") or {}
@@ -1657,10 +1668,11 @@ def person_monster_rows(encounter_data, response, location_id):
         if isinstance(declared, str) and declared in by_id:
             record, route = by_id[declared], "id"
         elif isinstance(key, str) and key not in compendium and key in by_stem:
-            record, route = by_stem[key], "key"
+            # Two people can share a stem at different places: the one here first.
+            record, route = next((o for o in by_stem[key] if is_here(o)), by_stem[key][0]), "key"
         elif declared is None and isinstance(name, str) and name.strip() and slug(name) not in generic:
             same = [o for o in people if occupants._person_matches(o, slug(name))]
-            here = [o for o in same if o.get("location") == place]
+            here = [o for o in same if is_here(o)]
             if here:
                 record, route = here[0], "name"
             elif len(same) == 1:
@@ -1669,7 +1681,7 @@ def person_monster_rows(encounter_data, response, location_id):
             continue
         rows.append({"slot": slot, "name": name, "route": route, "key": key if route == "key" else None,
                      "occupantId": record["id"], "recordName": record.get("name"),
-                     "location": record.get("location"), "here": record.get("location") == place})
+                     "location": record.get("location"), "here": is_here(record)})
     return rows
 
 
