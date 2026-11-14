@@ -7,21 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.4] - 2026-11-13
+
 - In the module toolkit, names given for packs, monsters, NPCs and modules can no longer point outside their folders, and a character sheet is only read from the characters folder (#1998).
-
 - On a hosted game, the server now refuses changes to the AI provider, keys, local endpoint and updates, and does not serve the module toolkit; these belong to the host (#1995).
-
 - In fights where someone nearby has no character sheet yet, the game no longer shows an error about a missing file (#1984).
-
 - When the AI service can't be reached or refuses while the game is building a new adventure, the build now stops at the first failed step and says why in a "Connection problem:" or "Account problem:" notice, instead of carrying on; nothing in your game is changed (#1981).
-
 - When the game can't reach the AI service, or your account has a problem, it now says so in a plain notice that starts with "Connection problem:" or "Account problem:" and tells you what to do, instead of speaking as the Dungeon Master (#1981).
-
 - When the AI service goes quiet in the middle of an answer, the game now tries again after a minute and a half, or two minutes for a model set to think harder, instead of ten minutes, and stops after three tries; a model running on your own computer still gets the time it needs (#1981).
-
 - When the AI service has a brief failure while a new adventure is being built, Load and Reset now stop the game's retries at once (#1963).
-
 - In adventures the game writes for you, quests that are set to finish when you reach a place or deal with someone now finish on their own when you do (#1982).
+- Known limit: with Gemini, one step of building a new adventure that takes longer than three minutes is cut off and treated as a failed step (#1981).
 
 ## [1.2.3] - 2026-11-13
 
