@@ -426,7 +426,9 @@ For objects, return just the object.
 Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
 """
 
-        from model_config import MODEL_PROVIDER
+        # #2018: the provider this build started on (live outside a build)
+        from utils.build_inputs import build_provider
+        MODEL_PROVIDER = build_provider()
         if MODEL_PROVIDER == "openai":
             main_cfg = config.DM_MAIN_GPT52_NONE
         elif MODEL_PROVIDER == "gemini":
@@ -537,7 +539,9 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 + "\nReturn the complete plotPoints again, changing only what the errors name.\n"
             )
 
-        from model_config import MODEL_PROVIDER
+        # #2018: the provider this build started on (live outside a build)
+        from utils.build_inputs import build_provider
+        MODEL_PROVIDER = build_provider()
         if MODEL_PROVIDER == "openai":
             main_cfg = config.DM_MAIN_GPT52_NONE
         elif MODEL_PROVIDER == "gemini":

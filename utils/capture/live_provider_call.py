@@ -179,9 +179,9 @@ def local_base_url(request_kwargs):
     endpoint = request_kwargs.get("_request_local_endpoint")
     if not isinstance(endpoint, dict):
         try:
-            import model_config
+            from utils.build_inputs import request_local_endpoint
 
-            endpoint = model_config.get_local_endpoint()
+            endpoint = request_local_endpoint()
         except Exception:
             endpoint = None
     return endpoint.get("base_url") if isinstance(endpoint, dict) else None
@@ -2049,15 +2049,16 @@ def _call_live_provider(
     frozen_messages = copy.deepcopy(messages)
     frozen_kwargs = copy.deepcopy(request_kwargs)
     if frozen_kwargs.get("_request_provider") == "lmstudio":
-        import model_config
+        from utils.build_inputs import request_local_endpoint
 
         # Local/Custom also has request-owned connection settings. Re-reading
         # them in each fresh child can change the endpoint, credential or model
         # after dispatch (or on a retry), despite the pinned provider ID. Keep
         # the resolved settings on the private stdin pipe only, never in capture
         # records, process arguments or environment variables (#557).
+        # #2018: inside a build, its URL and model are the ones it started on.
         frozen_kwargs["_request_local_endpoint"] = copy.deepcopy(
-            model_config.get_local_endpoint()
+            request_local_endpoint()
         )
     wizard_task = task_id in _WIZARD_TASK_IDS
     # The per-generation transport deadline is the REISSUE TRIGGER, never a

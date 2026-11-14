@@ -1339,9 +1339,13 @@ MODULE INDEPENDENCE RULES:
             # Check current module directory first
             current_module_chars = glob.glob(f"{self.config.output_directory}/characters/*.json")
             
-            # If no characters in current module, check all modules
+            # If no characters in current module, check all modules: as
+            # they were when the build started (#2018).
             if not current_module_chars:
-                char_files = glob.glob("modules/*/characters/*.json")
+                from utils.build_inputs import build_party_names
+
+                character_names = build_party_names()
+                char_files = []
             else:
                 char_files = current_module_chars
                 
@@ -1828,7 +1832,9 @@ RETURN FORMAT:
 }}"""
 
         try:
-            from model_config import MODEL_PROVIDER
+            # #2018: the provider this build started on (live outside a build)
+            from utils.build_inputs import build_provider
+            MODEL_PROVIDER = build_provider()
             if MODEL_PROVIDER == "openai":
                 main_cfg = config.DM_MAIN_GPT52_NONE
             elif MODEL_PROVIDER == "gemini":
@@ -2121,7 +2127,9 @@ IMPORTANT:
 - Make hooks more specific and actionable"""
 
         try:
-            from model_config import MODEL_PROVIDER
+            # #2018: the provider this build started on (live outside a build)
+            from utils.build_inputs import build_provider
+            MODEL_PROVIDER = build_provider()
             if MODEL_PROVIDER == "openai":
                 main_cfg = config.DM_MAIN_GPT52_NONE
             elif MODEL_PROVIDER == "gemini":
@@ -2537,7 +2545,8 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         try:
             import glob
             from core.generators import npc_coherence as nc
-            from model_config import get_provider, resolve_callsite_config
+            from model_config import resolve_callsite_config
+            from utils.build_inputs import build_provider
             from utils.file_operations import safe_read_json
             from core.ai import api_client
 
@@ -2564,7 +2573,7 @@ Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 return
 
             # Production and capture resolve the same explicit T104 binding.
-            provider = get_provider()
+            provider = build_provider()
             cfg = resolve_callsite_config("T104", provider)
 
             send_packet = {k: v for k, v in packet.items() if k != "_occurrence_index"}
@@ -3166,7 +3175,9 @@ Return ONLY the JSON object, no explanations or additional text.""" % (
     current_prompt = parsing_prompt
 
     # Select model config per provider (before retry loop)
-    from model_config import MODEL_PROVIDER
+    # #2018: the provider this build started on (live outside a build)
+    from utils.build_inputs import build_provider
+    MODEL_PROVIDER = build_provider()
 
     if MODEL_PROVIDER == "openai":
         summ_config = config.DM_SUMM_GPT54MINI_NONE
@@ -3386,14 +3397,13 @@ def _ai_driven_module_creation_impl(
                 }
             )
         spec = _resolve_module_creation_spec(narrative, params, resolved_policy)
-        from core.generators.story_first.settings import story_first_enabled
+        # #2018: the arm and the provider this build started on
+        from utils.build_inputs import build_provider, build_story_first
 
-        use_story_first = story_first_enabled()
+        use_story_first = build_story_first()
         story_first_provider = None
         if use_story_first:
-            from model_config import get_provider
-
-            story_first_provider = get_provider()
+            story_first_provider = build_provider()
         module_name = spec.module_name
         num_areas = spec.num_areas
         locations_per_area = spec.locations_per_area
@@ -3747,13 +3757,13 @@ def _in_game_build_scope(policy, build_id):
     if resolved is None or resolved.name != "game" or parent is None:
         yield None
         return
-    from core.generators.story_first.settings import story_first_enabled
+    from utils.build_inputs import build_story_first
 
     # #2018: the scope's parent is the build's fence: the starting turn, the
     # game epoch at the start, and the quit stop flag.
     with build_fence(parent) as fence, bind_build_scope(fence, build_id) as scope:
         scope.set_bound(build_attempt_bound(
-            "story_first" if story_first_enabled() else "legacy",
+            "story_first" if build_story_first() else "legacy",
             resolved.max_areas, resolved.max_locations_per_area,
         ))
         yield scope
@@ -3779,6 +3789,7 @@ def ai_driven_module_creation(
         mark_module_build_outcome,
         module_build_usage_scope,
     )
+    from utils.build_inputs import build_inputs
 
     owns_usage_scope = get_module_build_usage_context() is None
     with module_build_usage_scope() as context:
@@ -3787,7 +3798,8 @@ def ai_driven_module_creation(
         context.connection.armed = True
         progress_callback = _toolkit_retry_hook(context.connection, progress_callback)
         try:
-            with _in_game_build_scope(policy, context.build_id):
+            # #2018: the build's inputs are taken here, before the arm is chosen
+            with build_inputs(), _in_game_build_scope(policy, context.build_id):
                 result = _ai_driven_module_creation_impl(
                     params,
                     progress_callback=progress_callback,

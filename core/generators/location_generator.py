@@ -1077,7 +1077,9 @@ For objects, return just the object.
 Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols.
 """
 
-        from model_config import MODEL_PROVIDER
+        # #2018: the provider this build started on (live outside a build)
+        from utils.build_inputs import build_provider
+        MODEL_PROVIDER = build_provider()
         if MODEL_PROVIDER == "openai":
             main_cfg = config.DM_MAIN_GPT52_NONE
         elif MODEL_PROVIDER == "gemini":
@@ -1287,10 +1289,11 @@ Return no commentary or Markdown.
 {location_contract_prompt}
 """
 
-        from model_config import get_provider, resolve_callsite_config
+        from model_config import resolve_callsite_config
+        from utils.build_inputs import build_provider
         # T026's measured Luna selection and every non-OpenAI compatibility
         # branch come from the same registry used by capture tooling.
-        provider = get_provider()
+        provider = build_provider()
         main_cfg = resolve_callsite_config("T026", provider)
 
         # Reject ambiguous stub input before spending a model request.

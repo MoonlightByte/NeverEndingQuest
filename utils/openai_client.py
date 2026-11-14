@@ -72,8 +72,9 @@ def get_openai_client(provider=None, *, local_endpoint=None):
         response = client.chat.completions.create(...)
     """
     if provider is None:
-        import model_config
-        provider = model_config.get_provider()
+        # #2018: inside a module build, the provider it started on.
+        from utils.build_inputs import build_provider
+        provider = build_provider()
 
     if provider == "lmstudio":
         # Local / OpenAI-compatible server (LM Studio, Ollama, vLLM, OpenRouter,
@@ -81,10 +82,11 @@ def get_openai_client(provider=None, *, local_endpoint=None):
         # other callers read current settings so UI changes apply next request.
         # Defaults preserve
         # the original LM Studio localhost:1234 behavior. (Issue #120)
-        import model_config
         # Live children receive the parent's frozen Local/Custom connection
-        # settings. Other callers keep the existing live-settings behavior.
-        ep = local_endpoint if local_endpoint is not None else model_config.get_local_endpoint()
+        # settings. Other callers keep the existing live-settings behavior
+        # (inside a module build: its URL and model, #2018).
+        from utils.build_inputs import request_local_endpoint
+        ep = local_endpoint if local_endpoint is not None else request_local_endpoint()
         from openai import OpenAI
         return OpenAI(
             base_url=ep["base_url"],

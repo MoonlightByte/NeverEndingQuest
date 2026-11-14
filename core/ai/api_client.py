@@ -357,8 +357,11 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
     if request_provider is None:
         # Backward-compatible fallback for infrastructure probes and any caller
         # not yet routed through capture_and_fanout. Runtime callsites pass the
-        # provider snapshot used to select their config.
-        request_provider = model_config.get_provider()
+        # provider snapshot used to select their config. Inside a module build
+        # it is the provider the build started on (#2018).
+        from utils.build_inputs import build_provider
+
+        request_provider = build_provider()
     if request_provider not in model_config.PROVIDER_MODELS:
         raise ValueError(f"Unknown request provider: {request_provider}")
     kwargs.pop("top_p", None)
@@ -906,8 +909,10 @@ def _openai_completion(messages, model, temperature, provider, response_format=_
     # param is affected (create_completion remains a thin router).
     if provider == "lmstudio":
         import model_config
+        from utils.build_inputs import request_local_endpoint
+
         endpoint = (local_endpoint if local_endpoint is not None
-                    else model_config.get_local_endpoint())
+                    else request_local_endpoint())
         _local_model = endpoint.get("model")
         if _local_model:
             model = _local_model

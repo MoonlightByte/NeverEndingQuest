@@ -183,7 +183,9 @@ CRITICAL: Your narrative must include all location names from the journey progre
 Your output should read like a published game codex, narrative recap, or campaign journal entry. Never reference this prompt or the data format -- just write the immersive, source-faithful chronicle."""
 
                 # Select model config per provider
-                from model_config import MODEL_PROVIDER
+                # #2018: the provider this build started on (live outside a build)
+                from utils.build_inputs import build_provider
+                MODEL_PROVIDER = build_provider()
                 if MODEL_PROVIDER == "openai":
                     summ_cfg = config.DM_SUMM_GPT54MINI_NONE
                 elif MODEL_PROVIDER == "gemini":
