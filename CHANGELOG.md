@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Changing the Local/Custom address or model while an adventure is being built, or the AI provider while the toolkit builds one, no longer switches the build partway: it finishes on the setting it started with (#2018).
+
 - When building a new adventure stops because the connection failed or your save folder became read-only, it no longer first says it is adjusting to a different generator (#2012).
 
 - Loading, resetting or quitting while the game is building a new adventure now stops the build at once, so it no longer keeps spending AI calls or adds that adventure after your Load (#2014).

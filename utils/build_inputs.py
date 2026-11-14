@@ -7,21 +7,23 @@ A build reads the provider, the story-first arm, the names of characters in
 other modules and, on Local/Custom, the endpoint's URL and model through the
 readers below. Inside a build they return the values taken at its start, so
 a setting changed while the build runs applies to the next build; outside a
-build they return the live value, as before.
+build they return the live value, as before. A credential stays paired with
+the endpoint it was configured for: the Local/Custom key is taken with its
+URL and model, held in memory only.
 
 Not frozen, on purpose: the build's own output folder (read live by
 get_party_members), the game files the stitcher and publication read
-(world_registry.json, party_tracker.json), API keys and the Local/Custom key
-(a credential, read per request), and the learned Local/Custom rate (only a
-waiting deadline). The DM_* profiles are fixed tables, selected by the
-frozen provider.
+(world_registry.json, party_tracker.json), the OpenAI and Gemini keys (their
+endpoints never change), and the learned Local/Custom rate (only a waiting
+deadline). The DM_* profiles are fixed tables, selected by the frozen
+provider.
 """
 
 import glob
 import json
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass(frozen=True)
@@ -31,6 +33,8 @@ class BuildInputs:
     party_names: tuple
     local_base_url: str = None
     local_model: str = None
+    # In memory only: never in a repr, log, record or message.
+    local_api_key: str = field(default=None, repr=False)
 
 
 _current = ContextVar("neq_build_inputs", default=None)
@@ -66,16 +70,18 @@ def take_build_inputs():
     import model_config
 
     provider = model_config.get_provider()
-    base_url = model = None
+    base_url = model = api_key = None
     if provider == "lmstudio":
         endpoint = model_config.get_local_endpoint()
         base_url, model = endpoint.get("base_url"), endpoint.get("model")
+        api_key = endpoint.get("api_key")
     return BuildInputs(
         provider=provider,
         story_first=_live_story_first(),
         party_names=tuple(other_module_character_names()),
         local_base_url=base_url,
         local_model=model,
+        local_api_key=api_key,
     )
 
 
@@ -119,12 +125,12 @@ def build_party_names():
 
 
 def request_local_endpoint():
-    """The Local/Custom endpoint for one request: live, with the build's URL
-    and model inside a build that started on Local/Custom. The key stays live."""
-    import model_config
-
-    endpoint = model_config.get_local_endpoint()
+    """The Local/Custom endpoint for one request: live, or inside a build that
+    started on Local/Custom the URL, model and key it started with."""
     inputs = _current.get()
     if inputs is not None and inputs.provider == "lmstudio":
-        endpoint = dict(endpoint, base_url=inputs.local_base_url, model=inputs.local_model)
-    return endpoint
+        return {"base_url": inputs.local_base_url, "api_key": inputs.local_api_key,
+                "model": inputs.local_model}
+    import model_config
+
+    return model_config.get_local_endpoint()

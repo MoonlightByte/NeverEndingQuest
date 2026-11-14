@@ -1344,7 +1344,8 @@ MODULE INDEPENDENCE RULES:
             if not current_module_chars:
                 from utils.build_inputs import build_party_names
 
-                return build_party_names()
+                character_names = build_party_names()
+                char_files = []
             else:
                 char_files = current_module_chars
                 
