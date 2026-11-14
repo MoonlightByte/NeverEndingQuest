@@ -1005,11 +1005,16 @@ def _t026_surgical_repair_location(gen, location, stub, issues, item_schema, con
             try:
                 fixed[field] = gen.generate_field(field, field_schema, context)   # surgical agentic
             except Exception as exc:
-                # #2012: the build's own stop ends the repair at once.
-                from utils.capture.multi_model_capture import is_build_stop
+                # #2012: the build's own stop ends the repair at once, and so
+                # does a failure that just stopped it (a connection give-up).
+                from utils.capture.multi_model_capture import (
+                    _raise_if_build_stopped,
+                    is_build_stop,
+                )
 
                 if is_build_stop(exc):
                     raise
+                _raise_if_build_stopped()
                 fixed[field] = _t026_creative_floor(field_schema)  # last-resort valid floor
                 floored.append(field)
         # #2012: a structural field the stub lacks, or a field outside the
