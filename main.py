@@ -1632,8 +1632,13 @@ farewell_taken = threading.Event()
 def exit_game():
     from core.combat.invocation import supersede_invocations
 
+    from utils.capture.live_provider_call import request_build_stop
+
     farewell_taken.set()
     supersede_invocations("exit")
+    # #2018: the CLI quits between turns, so no build runs here today; the
+    # flag is raised for a build that outlives its turn (J1b).
+    request_build_stop("quit")
     print("Fond farewell until we meet again!")
     exit()
 

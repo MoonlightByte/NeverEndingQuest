@@ -4766,12 +4766,15 @@ def _quit_stop(notify):
         answer_lifecycle_followers,
         get_active_welcome_scope,
         get_live_turn_scope,
+        request_build_stop,
         request_live_turn_supersession,
     )
 
     # #270 C3: Exit is the web's Quit (D-214). A Load or Reset waiting
     # behind another one is answered now, before this Exit's own waits.
     answer_lifecycle_followers("quit")
+    # #2018: a running in-game build stops at its next check.
+    request_build_stop("web_exit")
     live_scope = get_live_turn_scope()
     if live_scope is not None:
         operation = request_live_turn_supersession("web_exit")
@@ -7638,9 +7641,16 @@ def handle_trigger_update():
 
 def _health_state():
     """The world's state for GET /health and the shutdown wait (#1681, #1682)."""
-    from utils.capture.live_provider_call import get_active_welcome_scope, get_live_turn_scope
+    from utils.capture.live_provider_call import (
+        active_build_fence, get_active_welcome_scope, get_live_turn_scope,
+    )
     from utils.version_checker import get_local_version
-    in_flight = int(get_live_turn_scope() is not None or get_active_welcome_scope() is not None)
+    # #2018: a running in-game build counts; still 0 or 1.
+    in_flight = int(
+        get_live_turn_scope() is not None
+        or get_active_welcome_scope() is not None
+        or active_build_fence() is not None
+    )
     restore = _web_restore_state()
     return {
         'version': get_local_version(),

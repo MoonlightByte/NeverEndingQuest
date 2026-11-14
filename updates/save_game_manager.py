@@ -72,6 +72,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
+
+from utils.module_publish import _BUILD_WORKSPACE_PREFIX
 from uuid import uuid4
 # Import our existing utilities
 from utils.file_operations import atomic_writer, safe_write_json, safe_read_json
@@ -700,6 +702,8 @@ class SaveGameManager:
             "modules/.module_transactions/",
             "modules/.publication_transactions/",
             "modules/.module_orphan_quarantine/",
+            # #2018: a module build's live workspace is never save data.
+            "modules/" + _BUILD_WORKSPACE_PREFIX,
             "modules/.runtime_quarantine/",
             ".runtime_locks/",
             "modules/conversation_history/pending_location_transition.json",
@@ -1474,6 +1478,11 @@ class SaveGameManager:
             end_invocation_supersession,
         )
 
+        # #2018: a Load moves the game epoch, so a running in-game build stops,
+        # also when this restore is then refused.
+        from utils.capture.live_provider_call import bump_game_epoch
+
+        bump_game_epoch("restore")
         invocation_barrier = begin_invocation_supersession("load")
         restore_outcome = None
         boundary_clean = previous_clean

@@ -562,6 +562,86 @@ _closing_scopes = []
 _executing_control_scope = ContextVar("executing_live_control_scope", default=None)
 
 
+# --- Game epoch and build fence (issue #2018) --------------------------------
+# The epoch is an in-memory counter, never persisted: every Load or Reset moves
+# it, at its request and again where the shared restore/reset code runs. An
+# in-game build's scope has a BuildFence as its parent: the build stops once its
+# bound turn is superseded, the epoch moved since it started, or a quit raised
+# the fence's stop flag. _epoch_guard and _fence_guard are leaf locks.
+_epoch_guard = threading.Lock()
+_game_epoch = 0
+_fence_guard = threading.Lock()
+_active_build_fence = None
+
+
+def game_epoch():
+    with _epoch_guard:
+        return _game_epoch
+
+
+def bump_game_epoch(reason):
+    global _game_epoch
+    with _epoch_guard:
+        _game_epoch += 1
+        value = _game_epoch
+    _provider_debug("GAME_EPOCH %s -> %d" % (reason, value))
+    return value
+
+
+class BuildFence:
+    """What an in-game build answers to (#2018); the parent of its scope."""
+
+    def __init__(self, bound_turn, start_epoch):
+        self.bound_turn = bound_turn
+        self.start_epoch = start_epoch
+        self.stop_requested = threading.Event()
+
+    @property
+    def operation_id(self):
+        return getattr(self.bound_turn, "operation_id", None)
+
+    def is_superseded(self):
+        return (
+            (self.bound_turn is not None and self.bound_turn.is_superseded())
+            or game_epoch() != self.start_epoch
+            or self.stop_requested.is_set()
+        )
+
+
+def active_build_fence():
+    with _fence_guard:
+        return _active_build_fence
+
+
+def _set_active_build_fence(fence):
+    global _active_build_fence
+    with _fence_guard:
+        _active_build_fence = fence
+
+
+def request_build_stop(kind):
+    """A quit stops a running in-game build at its next check; no-op without one."""
+    fence = active_build_fence()
+    if fence is not None:
+        fence.stop_requested.set()
+        _provider_debug("BUILD_STOP %s" % kind)
+    return fence is not None
+
+
+@contextmanager
+def build_fence(bound_turn):
+    """Register the fence for one in-game build, until the build returns."""
+    global _active_build_fence
+    fence = BuildFence(bound_turn, game_epoch())
+    _set_active_build_fence(fence)
+    try:
+        yield fence
+    finally:
+        with _fence_guard:
+            if _active_build_fence is fence:
+                _active_build_fence = None
+
+
 # --- Lifecycle owner record (issue #270) ------------------------------------
 # One Load or Reset owns the lifecycle at a time, from the lock section that
 # accepts it to its terminal. A second Load/Reset/Save that meets it follows
@@ -586,6 +666,7 @@ _LIFECYCLE_LABELS = {"restore": "Load", "reset": "Reset", "save": "Save"}
 def _hold_lifecycle_owner(kind, operation_id, claim, queued=False):
     """Return the owner another id holds; otherwise claim it when ``claim``."""
     global _lifecycle_owner
+    created = False
     with _owner_guard:
         holder = _lifecycle_owner
         if holder is not None and holder.operation_id != operation_id:
@@ -593,8 +674,14 @@ def _hold_lifecycle_owner(kind, operation_id, claim, queued=False):
         if claim:
             if holder is None:
                 _lifecycle_owner = LifecycleOwner(str(kind), operation_id)
+                created = True
             _lifecycle_owner.queued = _lifecycle_owner.queued or queued
-        return None
+    # #2018: a Load or Reset moves the game epoch when it is requested, so a
+    # running build stops even if the request is refused later. Outside
+    # _owner_guard, which is a leaf lock.
+    if created and str(kind) in ("restore", "reset"):
+        bump_game_epoch(str(kind))
+    return None
 
 
 def claim_lifecycle_owner(kind, operation_id):
