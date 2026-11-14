@@ -203,7 +203,8 @@ def local_provider_stub(provider_runtime):
     def client(**kwargs):
         assert kwargs["base_url"] == state.url
         assert kwargs["timeout"] == 10.0
-        sdk = OpenAI(**kwargs, max_retries=0, http_client=httpx.Client(trust_env=False))
+        assert kwargs["max_retries"] == 0
+        sdk = OpenAI(**kwargs, http_client=httpx.Client(trust_env=False))
         clients.append(sdk)
         return sdk
 
@@ -267,7 +268,7 @@ def test_real_sdk_transport_failure_can_be_retried(provider_runtime, failure):
         return httpx.Response(200, json={"object": "list", "data": [{"id": "fixture-model"}]})
 
     with httpx.Client(transport=httpx.MockTransport(transport), trust_env=False) as http:
-        rt.handlers["OpenAI"] = lambda **kwargs: OpenAI(**kwargs, max_retries=0, http_client=http)
+        rt.handlers["OpenAI"] = lambda **kwargs: OpenAI(**kwargs, http_client=http)
         payload = {"base_url": "http://fixture.invalid/v1", "model": "fixture-model", "api_key": "fixture-only-key"}
         rt.handlers["handle_test_local_endpoint"](payload)
         assert rt.events[-1][1]["ok"] is False
