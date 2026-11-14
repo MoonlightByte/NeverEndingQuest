@@ -40,6 +40,27 @@ def provider_display_name(provider):
     return _PROVIDER_NAMES.get(str(provider or "").lower(), "the AI provider")
 
 
+def _through_gateway(provider):
+    """True when this provider's requests go through the operator's
+    --provider-gateway (#1995): every provider but Local/Custom, which always
+    goes to the player's own endpoint."""
+    from utils.provider_gateway import gateway
+
+    return gateway() is not None and str(provider or "").lower() != "lmstudio"
+
+
+# #1995: on a hosted game the wait line names the host's service, as the
+# approved hosted account line does.
+_HOSTED_STATUS_NAME = "the game's AI service"
+
+
+def status_provider_name(provider):
+    """The name the player's wait line uses for ``provider``."""
+    if _through_gateway(provider):
+        return _HOSTED_STATUS_NAME
+    return provider_display_name(provider)
+
+
 def _sentence(text):
     """Capitalize the first letter (names like 'your local model server' start sentences)."""
     return text[:1].upper() + text[1:] if text else text
@@ -116,9 +137,7 @@ def account_refusal_message(category, provider, moment):
     template = _ACCOUNT_REFUSAL_MOMENTS.get(moment)
     if entry is None or template is None:
         return None
-    from utils.provider_gateway import gateway
-
-    if category in _HOSTED_ACCOUNT_CATEGORIES and gateway() is not None:
+    if category in _HOSTED_ACCOUNT_CATEGORIES and _through_gateway(provider):
         entry = _HOSTED_ACCOUNT_REFUSAL
     else:
         entry = entry.get("overrides", {}).get(str(provider or "").lower(), entry)
@@ -520,6 +539,20 @@ _HOSTED_GIVE_UP_LINE = (
     "Account problem: the game's AI service refused the request. This is on the "
     "host's side, not yours: let the host know, or wait a few minutes."
 )
+# #1995: on a hosted game a connection problem is on the host's side too
+# (the owner's sentences, D-CONN-5).
+_RETRY_LINES_HOSTED = {
+    "no_connection": "Connection problem: the game server can't reach its AI service. Trying again.",
+    "no_answer": "Connection problem: the game server's AI service isn't replying. Trying again.",
+    "service_error": "Connection problem: the game server's AI service is having trouble right now. Trying again.",
+    "rate_limited": "Connection problem: the game server's AI service is busy. Waiting, then trying again.",
+}
+_GIVE_UP_LINES_HOSTED = {
+    "no_connection": "Connection problem: the game server couldn't reach its AI service. This is on the host's side, not yours. Wait a few minutes.",
+    "no_answer": "Connection problem: the game server's AI service didn't reply in time. This is on the host's side, not yours. Wait a few minutes.",
+    "service_error": "Connection problem: the game server's AI service is having trouble right now. This is on the host's side, not yours. Wait a few minutes.",
+    "rate_limited": "Connection problem: the game server's AI service is still too busy. Wait a few minutes. If this keeps happening, let the host know.",
+}
 # What follows the give-up line, by moment. A moment not here (a follow-up
 # after a kept beat, #1228) keeps its existing line.
 _CONNECTION_TAILS = {
@@ -644,6 +677,8 @@ def _is_local(provider):
 
 def connection_retry_line(cls, provider, minutes=0):
     """The card while a connection class is being retried, or None."""
+    if _through_gateway(provider) and cls in _RETRY_LINES_HOSTED:
+        return _RETRY_LINES_HOSTED[cls]
     if _is_local(provider) and cls in _RETRY_LINES_LOCAL and (cls != "no_answer" or minutes >= 2):
         # Under two whole minutes the local no_answer card takes the plain
         # form: never "0 minutes" or "1 minutes".
@@ -654,10 +689,11 @@ def connection_retry_line(cls, provider, minutes=0):
 
 def connection_give_up_line(cls, provider):
     """The line a connection class ends on, before its tail, or None."""
-    from utils.provider_gateway import gateway
-
-    if cls in ("bad_key", "out_of_quota") and gateway() is not None:
-        return _HOSTED_GIVE_UP_LINE
+    if _through_gateway(provider):
+        if cls in ("bad_key", "out_of_quota"):
+            return _HOSTED_GIVE_UP_LINE
+        if cls in _GIVE_UP_LINES_HOSTED:
+            return _GIVE_UP_LINES_HOSTED[cls]
     if _is_local(provider) and cls in _GIVE_UP_LINES_LOCAL:
         return _GIVE_UP_LINES_LOCAL[cls]
     template = _GIVE_UP_LINES.get(cls)

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- On a hosted game, a connection problem now says it is on the host's side and asks you to wait, instead of naming OpenAI and asking you to check that you're online (#1995).
+
 - When the game puts your last action back in the empty box after a turn it couldn't carry out, a line under the box now says so; it goes away when you change or send the words, and nothing is sent for you (#1990).
 
 ## [1.2.4] - 2026-11-13
