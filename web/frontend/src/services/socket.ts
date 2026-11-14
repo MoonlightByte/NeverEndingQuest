@@ -205,6 +205,8 @@ on('welcome_progress', (p) => useSession.getState().setWelcome((p && p.message) 
 on('game_started', (p) => {
   localStorage.setItem('neq_hasPlayed', 'true')
   useSession.getState().gameStarted(p.message)
+  // #1990: a new game; the returned-words hint belongs to the old one.
+  useInputSuggestion.getState().forget()
   refreshAuthoritativeState()
 })
 on('game_resumed', (p) => {
@@ -244,7 +246,7 @@ on('ui_state_snapshot', (p) => {
 
 // ---------- game log ----------
 on('game_output', (m) => {
-  if (m.type === 'input_suggestion') useInputSuggestion.getState().offer(m.content)
+  if (m.type === 'input_suggestion') useInputSuggestion.getState().offer(m.content, m.reason)
   else if (m.type === 'system' && isTransientNotice(m.content)) useConnectionNotice.getState().show(m.content)
   else useLog.getState().append(m)
 })
@@ -293,15 +295,20 @@ on('module_list_response', (list) => useDialogs.getState().setModuleList(list))
 on('restore_complete', (p) => {
   if (p.can_resume === false || p.restart_required === false) cancelPendingRestart()
   useSession.getState().setRestoreResult(p)
+  useInputSuggestion.getState().forget() // #1990: Load
   useDialogs.getState().setActionResult({ kind: 'restore', ...p })
   if (isTransientNotice(p.message)) useConnectionNotice.getState().show(p.message)
   else useLog.getState().append({ type: 'system', content: p.message })
 })
 on('reset_complete', (p) => {
   useDialogs.getState().setActionResult({ kind: 'reset', message: p.message })
+  useInputSuggestion.getState().forget() // #1990: Reset
   useLog.getState().append({ type: 'system', content: 'Campaign has been reset. The page will now reload.' })
 })
-on('message_log_cleared', () => useLog.getState().clear())
+on('message_log_cleared', () => {
+  useLog.getState().clear()
+  useInputSuggestion.getState().forget() // #1990: setup reset another adventure's save
+})
 on('exit_acknowledged', () => {
   // The legacy overlay owns fixed player-facing copy. Do not let the server's
   // transport acknowledgment ("Exit acknowledged") replace that sentence.

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the game puts your last action back in the empty box after a turn it couldn't carry out, a line under the box now says so; it goes away when you change or send the words, and nothing is sent for you (#1990).
+
 ## [1.2.4] - 2026-11-13
 
 - In the module toolkit, names given for packs, monsters, NPCs and modules can no longer point outside their folders, and a character sheet is only read from the characters folder (#1998).

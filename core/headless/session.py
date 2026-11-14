@@ -413,12 +413,15 @@ class HeadlessSession:
         # print -- no double delivery.
         msg_type = payload.get("type", "system")
         event_type = "narration" if msg_type == "narration" else "system"
+        # #1990: an input suggestion keeps its reason ("lost_words"); no other event changes.
+        reason = payload.get("reason") if msg_type == "input_suggestion" else None
+        extra = {"reason": reason} if isinstance(reason, str) else {}
         return self.writer.emit(
             event_type,
             channel=payload.get("channel", "system"),
             content=payload.get("content", ""),
             message_id=payload.get("message_id"),
-            source="sink", commit_guard=commit_guard)
+            source="sink", commit_guard=commit_guard, **extra)
 
     def _classify_prompt(self, clean_prompt, snapshot):
         if "(Leveling Up)" in clean_prompt:

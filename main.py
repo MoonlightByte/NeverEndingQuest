@@ -3660,7 +3660,10 @@ def _offer_lost_words(text):
     if not has_player_output_sink():
         print("Press Enter to send it again, or type something else: %s" % text)
         return True
-    emit_player_output({"type": "input_suggestion", "channel": "input_suggestion", "content": text})
+    # #1990 (Q1 option A): the reason tells a page the words came back from a
+    # turn the game gave up on, so it may say so under the box; #882 sends none.
+    emit_player_output({"type": "input_suggestion", "channel": "input_suggestion", "content": text,
+                        "reason": "lost_words"})
     return False
 
 

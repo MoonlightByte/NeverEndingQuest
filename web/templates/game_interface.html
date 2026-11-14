@@ -845,6 +845,20 @@
             background-color: #333;
             border-top: 1px solid #444;
         }
+        /* #1990: the returned-words line under the box; empty, it takes no room. */
+        .input-returned {
+            margin: 0;
+            padding: 0 10px 8px;
+            background-color: #333;
+            color: #cbbb99;
+            font-size: 13px;
+            font-style: italic;
+            line-height: 1.4;
+            overflow-wrap: anywhere;
+        }
+        .input-returned:empty {
+            padding: 0;
+        }
         
         .input-field {
             flex: 1;
@@ -4629,9 +4643,11 @@
                     placeholder="Enter your command..."
                     disabled
                     onkeypress="handleKeyPress(event)"
+                    oninput="updateReturnedHint()"
                 />
                 <button class="send-button" id="send-button" onclick="sendInput()" disabled>Send</button>
             </div>
+            <p class="input-returned" id="input-returned-hint" aria-live="polite"></p>
         </div>
         
         <div class="panel debug-panel">
@@ -5638,6 +5654,7 @@
         });
         
         socket.on('game_started', (data) => {
+            forgetReturnedWords();
             gameStarted = true;
             startupInputEnabled = false;
             var _frbHide = document.getElementById('first-run-banner');
@@ -5802,10 +5819,36 @@
             }
         });
 
+        // #1990: the returned-words hint shows only while the box holds exactly the
+        // words it took after a turn the game could not carry out (reason lost_words).
+        let returnedWords = null;
+        const RETURNED_WORDS_HINT = 'Your last action is back here; press Send to try again.';
+        function updateReturnedHint() {
+            const box = document.getElementById('user-input');
+            const hint = document.getElementById('input-returned-hint');
+            if (!hint) return;
+            const shown = returnedWords !== null && !!box && box.value === returnedWords;
+            const text = shown ? RETURNED_WORDS_HINT : '';
+            if (hint.textContent !== text) hint.textContent = text;
+            if (!box) return;
+            if (shown) box.setAttribute('aria-describedby', 'input-returned-hint');
+            else box.removeAttribute('aria-describedby');
+        }
+        // #1990: Load, Reset, a new game or Send drops the hint; the box text stays.
+        function forgetReturnedWords() {
+            returnedWords = null;
+            updateReturnedHint();
+        }
+
         socket.on('game_output', (message) => {
             if (message.type === 'input_suggestion') {
                 const box = document.getElementById('user-input');
-                if (box && !box.value) box.value = message.content || '';
+                // #882: fills an empty draft only (#1990: trimmed, as the React page).
+                if (box && !box.value.trim()) {
+                    box.value = message.content || '';
+                    returnedWords = message.reason === 'lost_words' && box.value ? box.value : null;
+                    updateReturnedHint();
+                }
                 return;
             }
             if (!addGameOutputMessage(message)) return;
@@ -6140,6 +6183,7 @@
             if (value && connected && !restoreRecoveryRequired && !restorePending && (gameStarted || startupInputEnabled)) {
                 socket.emit('user_input', { input: value });
                 input.value = '';
+                forgetReturnedWords();
                 input.focus();
             }
         }
@@ -8876,6 +8920,7 @@
         }
 
         socket.on('restore_complete', (data) => {
+            forgetReturnedWords();
             applyRestoreRecovery(data);
             addMessage('game-output', { type: 'system', content: data.message });
             if (restoreRecoveryRequired || data.restart_required === false) return;
@@ -8893,6 +8938,7 @@
         });
 
         socket.on('reset_complete', (data) => {
+            forgetReturnedWords();
             serverRestartExpected = true;
             console.log('Reset complete signal received:', data.message);
             addMessage('game-output', { type: 'system', content: 'Campaign has been reset. The page will now reload.' });
