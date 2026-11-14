@@ -48,6 +48,10 @@ from model_config import convert_to_gemini_schema
 register_callsite("T022", "core/generators/area_generator.py", 223)
 register_callsite("T023", "core/generators/area_generator.py", 527)
 
+# #2011: attempts per call at this site; build_attempt_bound reads them.
+T022_ATTEMPTS = 2
+T023_ATTEMPTS = 2
+
 # issue #128: small Gemini response_schema for the area name/description call (T023).
 # Source of truth for these fields is the code's own expected output
 # {refinedName, description}; converted once at import so Gemini flash models emit
@@ -208,7 +212,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 main_cfg = app_config.DM_MAIN_LEGACY
 
             last_error = None
-            for attempt in range(2):
+            for attempt in range(T022_ATTEMPTS):
                 response = capture_and_fanout("T022", api_client.create_completion,
                     _request_provider=MODEL_PROVIDER,
                     messages=[
@@ -512,7 +516,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 extra_params["response_schema"] = _AREA_NAMEDESC_SCHEMA_GEMINI
 
             last_error = None
-            for attempt in range(2):
+            for attempt in range(T023_ATTEMPTS):
                 response = capture_and_fanout("T023", api_client.create_completion,
                     _request_provider=MODEL_PROVIDER,
                     messages=[

@@ -637,6 +637,18 @@ class BuildConnectionStopped(Exception):
         self.provider = provider
 
 
+class BuildCeilingReached(Exception):
+    """An in-game build spent its attempt bound (#2011): raised before any
+    request. Not a connection class, and not a story-first stage failure, so
+    nothing falls back after it."""
+
+    def __init__(self, build_id=None, bound=None, spent=None):
+        super().__init__("build reached its call limit (bound=%s spent=%s)" % (bound, spent))
+        self.build_id = build_id
+        self.bound = bound
+        self.spent = spent
+
+
 def connection_class(exc_or_envelope):
     """The connection class of a provider failure, or None (#1981)."""
     if isinstance(exc_or_envelope, BuildConnectionStopped):

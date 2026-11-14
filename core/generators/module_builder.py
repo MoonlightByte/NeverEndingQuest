@@ -25,6 +25,7 @@ import re
 import shutil
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Dict, List, Any, Optional
 from dataclasses import dataclass
@@ -102,14 +103,118 @@ _STORY_FIRST_PROVIDER_FALLBACK_MESSAGE = (
 )
 
 
+# #2011: attempts per call at the builder's own sites; build_attempt_bound
+# reads them with the generators' (never restating a number).
+T030_ATTEMPTS = 3
+AREA_PLOT_ATTEMPTS = 2
+T028_ATTEMPTS = 2
+T029_ATTEMPTS = 1
+T104_ATTEMPTS = 1
+# Why an in-game build ended early (in memory and the debug log only; "bar"
+# is reserved for the turn bar).
+BUILD_END_REASONS = ("content", "contract", "ceiling", "connection", "bar")
+_STORY_FIRST_SINGLE_STAGES = (
+    "outline", "area_binding", "plot_derivation", "npc_repair", "candidate_hardening",
+)
+
+
+def build_attempt_bound(arm, num_areas, locations_per_area, creatures=0):
+    """#2011: the most model calls an in-game build may make: every planned
+    call times the attempts its site allows, plus the advisory reserve, so
+    T104 and T123 are sent even when every other attempt was used. ``arm`` is
+    "legacy", "story_first" or "fallback" (the legacy build after story-first:
+    T030 and the reserve are already counted)."""
+    import config
+    from core.generators import area_generator, location_generator
+    from core.generators import module_declaration, module_generator
+    from core.generators import module_stitcher, plot_generator
+    from core.generators.story_first.settings import STAGE_POLICIES
+    from utils import npc_reconciler
+    from utils.capture.live_provider_call import _REQUIRED_RESERVE
+
+    locations = location_generator.T026_ATTEMPTS + (
+        locations_per_area
+        * len(location_generator.t025_repair_fields())
+        * location_generator.T025_ATTEMPTS
+    )
+    common = (
+        _REQUIRED_RESERVE
+        + T030_ATTEMPTS
+        + module_stitcher.T032_ATTEMPTS
+        + module_stitcher.T033_ATTEMPTS
+        + module_declaration.T123_ATTEMPTS
+    )
+    if arm == "story_first":
+        return (
+            common
+            + sum(STAGE_POLICIES[name].max_attempts for name in _STORY_FIRST_SINGLE_STAGES)
+            + num_areas * locations
+            + creatures * STAGE_POLICIES["creature_compile"].max_attempts
+        )
+    plot = AREA_PLOT_ATTEMPTS * (
+        len(plot_generator.T036_FIELDS) * plot_generator.T036_ATTEMPTS
+        + plot_generator.T037_ATTEMPTS
+    )
+    legacy = (
+        common
+        + len(module_generator.T031_FIELDS) * module_generator.T031_ATTEMPTS
+        + T028_ATTEMPTS
+        + npc_reconciler.T088_ATTEMPTS
+        + (T104_ATTEMPTS if getattr(config, "ENABLE_NPC_COHERENCE_REPAIR", True) else 0)
+        + num_areas * (
+            area_generator.T022_ATTEMPTS
+            + area_generator.T023_ATTEMPTS
+            + locations
+            + T029_ATTEMPTS
+            + plot
+        )
+    )
+    if arm == "fallback":
+        return legacy - T030_ATTEMPTS - _REQUIRED_RESERVE
+    return legacy
+
+
+def _bound_build_scope():
+    """#2011: the in-game build's own provider scope, when one is bound."""
+    from utils.capture.live_provider_call import BuildProviderScope, get_live_provider_scope
+
+    scope = get_live_provider_scope()
+    return scope if isinstance(scope, BuildProviderScope) else None
+
+
+def _build_end_cause(exc):
+    """#2011: the cause a failed build carries out: BuildCeilingReached when
+    its scope ended at its bound (story-first wraps a stage's failure), else
+    the failure itself."""
+    from utils.capture.live_provider_call import _build_ceiling_error
+
+    scope = _bound_build_scope()
+    if scope is not None and scope.end_reason == "ceiling":
+        return _build_ceiling_error(scope)
+    return exc
+
+
+def _add_creature_bound(creatures):
+    """#2011: the story-first creature stage's calls join the build's bound
+    once the pipeline knows how many creatures it compiles."""
+    scope = _bound_build_scope()
+    if scope is not None:
+        from core.generators.story_first.settings import STAGE_POLICIES
+
+        scope.add_bound(creatures * STAGE_POLICIES["creature_compile"].max_attempts)
+
+
 def _raise_if_build_stopped():
-    """Raise BuildConnectionStopped when this armed build gave up (#1981 PR C)."""
+    """Raise BuildConnectionStopped when this armed build gave up (#1981 PR C);
+    BuildCeilingReached when its scope ended at its bound (#2011)."""
+    from utils.capture.live_provider_call import raise_if_build_ceiling
     from utils.openai_usage_tracker import build_connection_state
     from utils.provider_errors import BuildConnectionStopped
 
     state = build_connection_state()
     if state is not None and state.stopped_class is not None:
         raise BuildConnectionStopped(state.stopped_class, state.provider)
+    raise_if_build_ceiling()
 
 
 def _publication_step(prepare_candidate, builder_holder):
@@ -153,6 +258,7 @@ def _run_managed_module_build(
     prepare_registry_fn,
     use_story_first,
     progress_callback,
+    on_fallback=None,
 ):
     """Build a module into a hidden temp workspace and atomically publish it.
 
@@ -241,6 +347,8 @@ def _run_managed_module_build(
                     "message": fallback_message,
                 }
             )
+        if on_fallback is not None:
+            on_fallback()
         return run(compatible_candidate)
 
     # SHARED orchestration boundary. Every build entry point (in-game, toolkit,
@@ -953,6 +1061,7 @@ MODULE INDEPENDENCE RULES:
             schemas=schemas,
             blocklist=GOLD_PRIOR_BLOCKLIST,
             gateway=production_completion_gateway,
+            before_creatures=_add_creature_bound,
         )
 
         if self.progress_callback:
@@ -1475,7 +1584,7 @@ The area ID {area_id} is not a location ID and must never be used in those field
 
             errors = []
             plot_data = None
-            for attempt in range(2):
+            for attempt in range(AREA_PLOT_ATTEMPTS):
                 # D-COST-5: the retry is a targeted repair of the previous
                 # plot from its validation errors, with typed location IDs.
                 repair = (
@@ -1740,7 +1849,7 @@ RETURN FORMAT:
             last_error = None
             last_reply = None
             text = None
-            for attempt in range(2):
+            for attempt in range(T028_ATTEMPTS):
                 attempt_prompt = prompt
                 if last_error is not None:
                     # A targeted repair: the previous reply and its contract
@@ -3048,7 +3157,7 @@ Return ONLY the JSON object, no explanations or additional text.""" % (
         resolved_policy.max_locations_per_area,
     )
 
-    max_retries = 3
+    max_retries = T030_ATTEMPTS
     current_prompt = parsing_prompt
 
     # Select model config per provider (before retry loop)
@@ -3231,7 +3340,8 @@ def _ai_driven_module_creation_impl(
         # entry. An in-game build binds the live scope its action runs under,
         # read once here, so a Load that replaces the turn stops the build
         # instead of moving its later calls onto the next turn. Any other build
-        # owns its scope (ModuleBuilder._provider_binding).
+        # owns its scope (ModuleBuilder._provider_binding). #2011: the live
+        # scope read here is the build's own scope (ai_driven_module_creation).
         provider_binding = None
         if resolved_policy.name == "game":
             from utils.capture.live_provider_call import get_live_provider_scope
@@ -3282,6 +3392,13 @@ def _ai_driven_module_creation_impl(
         module_name = spec.module_name
         num_areas = spec.num_areas
         locations_per_area = spec.locations_per_area
+        build_scope = _bound_build_scope()
+        if build_scope is not None:
+            # #2011: the build's bound, now that the spec gives its size.
+            build_scope.set_bound(build_attempt_bound(
+                "story_first" if use_story_first else "legacy",
+                num_areas, locations_per_area,
+            ))
         level_range = spec.level_range
         adventure_type = spec.adventure_type
         plot_themes = spec.plot_themes
@@ -3492,6 +3609,13 @@ def _ai_driven_module_creation_impl(
             prepare_registry_fn=_publication_step(prepare_candidate, builder_holder),
             use_story_first=use_story_first,
             progress_callback=progress_callback,
+            on_fallback=lambda: (
+                # #2011: the compatible generator's calls join the bound.
+                build_scope.add_bound(
+                    build_attempt_bound("fallback", num_areas, locations_per_area)
+                )
+                if build_scope is not None else None
+            ),
         )
         module_name = result.module_name
         info(
@@ -3538,7 +3662,7 @@ def _ai_driven_module_creation_impl(
         # Carry the reason out instead of returning (False, None): callers used
         # to receive a bare failure and could only report "Module generation
         # failed" (issue #130).
-        raise ModuleCreationFailedError(_toolkit_stop_line() or str(e)) from e
+        raise ModuleCreationFailedError(_toolkit_stop_line() or str(e)) from _build_end_cause(e)
 
 
 def _toolkit_stop_line():
@@ -3603,6 +3727,31 @@ def _toolkit_retry_hook(state, progress_callback):
     return remembering
 
 
+@contextmanager
+def _in_game_build_scope(policy, build_id):
+    """#2011: an in-game build (policy "game", under a live scope) runs on its
+    own provider scope, bounded at the policy's largest module until its spec
+    is known; any other build runs as before."""
+    from utils.capture.live_provider_call import bind_build_scope, get_live_provider_scope
+
+    try:
+        resolved = get_module_creation_policy(policy)
+    except Exception:
+        resolved = None  # the build reports a bad policy itself, as before
+    parent = get_live_provider_scope()
+    if resolved is None or resolved.name != "game" or parent is None:
+        yield None
+        return
+    from core.generators.story_first.settings import story_first_enabled
+
+    with bind_build_scope(parent, build_id) as scope:
+        scope.set_bound(build_attempt_bound(
+            "story_first" if story_first_enabled() else "legacy",
+            resolved.max_areas, resolved.max_locations_per_area,
+        ))
+        yield scope
+
+
 def ai_driven_module_creation(
     params: Dict[str, Any],
     progress_callback=None,
@@ -3631,12 +3780,13 @@ def ai_driven_module_creation(
         context.connection.armed = True
         progress_callback = _toolkit_retry_hook(context.connection, progress_callback)
         try:
-            result = _ai_driven_module_creation_impl(
-                params,
-                progress_callback=progress_callback,
-                policy=policy,
-                prepare_candidate=prepare_candidate,
-            )
+            with _in_game_build_scope(policy, context.build_id):
+                result = _ai_driven_module_creation_impl(
+                    params,
+                    progress_callback=progress_callback,
+                    policy=policy,
+                    prepare_candidate=prepare_candidate,
+                )
         except Exception:
             if owns_usage_scope:
                 mark_module_build_outcome("failed")

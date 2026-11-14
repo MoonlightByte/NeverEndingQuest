@@ -26,6 +26,8 @@ from utils.file_operations import safe_write_json
 
 register_callsite("T122", "core/generators/module_declaration.py", 382)
 register_callsite("T123", "core/generators/module_declaration.py", 382)
+# #2011: attempts per call at this site; build_attempt_bound reads them.
+T123_ATTEMPTS = 1
 
 REFUSED = "module_declaration.refused.json"
 # Classifications whose occurrences are one being (as the builder's ONE_BEING).
