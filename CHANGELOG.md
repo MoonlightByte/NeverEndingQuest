@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - On a hosted game, a connection problem now says it is on the host's side and asks you to wait, instead of naming OpenAI and asking you to check that you're online (#1995).
+- The Settings test for a local or custom model server now answers after one try, instead of quietly trying up to three times (#1995).
 
 - When making a picture or the Dungeon Master's voice fails for a moment, the game now tries once more and counts that try, instead of up to two hidden tries; pictures made in the toolkit now count toward the session's spending too (#1994).
 
