@@ -87,20 +87,28 @@ def _folder_stamps(folder):
 
 def _sheet_name(path):
     """The stat block's own name, or None when the file is not a readable
-    object with a non-empty name."""
+    monster stat block with a non-empty name: it must have hitPoints and
+    armorClass (mon_schema requires both) and neither character_role nor
+    character_type (char_schema's markers, which mon_schema does not have)."""
     try:
         with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
     except (OSError, ValueError):
         return None
-    name = data.get("name") if isinstance(data, dict) else None
+    if not isinstance(data, dict):
+        return None
+    if "character_role" in data or "character_type" in data:
+        return None
+    if "hitPoints" not in data or "armorClass" not in data:
+        return None
+    name = data.get("name")
     return name if isinstance(name, str) and name.strip() else None
 
 
 def module_monsters(module, modules_root="modules"):
     """{stem: name} for the module's own monster files (#1997): a stem that
-    get_monster_path maps back to its file, not a minted key, whose file has a
-    name. Read once per folder state (the stamps are taken before the read, so
+    get_monster_path maps back to its file, not a minted key, whose file is a
+    monster stat block with a name (_sheet_name). Read once per folder state (the stamps are taken before the read, so
     a file changed during it is read again next time)."""
     if not isinstance(module, str) or not module.strip():
         return {}
