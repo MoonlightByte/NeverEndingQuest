@@ -7647,17 +7647,19 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                                 dm_note=data.get("dm_note"),
                             ))
                             return
+                        # Shown at once where the game registered how; the
+                        # record is posted either way (the pump shows a line
+                        # that was not shown yet), so a failure is never lost.
                         message_id = "module-build-failure-%s" % build_id
                         line = jobs.present_failure(outcome, message_id)
-                        if line:
-                            jobs.post_due(jobs.DueRecord(
-                                kind="failure",
-                                build_id=build_id,
-                                start_epoch=claimed_fence.start_epoch,
-                                line=line,
-                                message_id=message_id,
-                                result=outcome,
-                            ))
+                        jobs.post_due(jobs.DueRecord(
+                            kind="failure",
+                            build_id=build_id,
+                            start_epoch=claimed_fence.start_epoch,
+                            line=line or None,
+                            message_id=message_id,
+                            result=outcome,
+                        ))
                     finally:
                         release_build_fence(claimed_fence)
                         jobs.clear_job(threading.current_thread())

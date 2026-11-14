@@ -1212,6 +1212,17 @@ def _record_build_failure(record, live_history):
     once; a failed persist is logged (the turn's end save covers it)."""
     from utils import build_job as jobs
 
+    if not record.line:
+        # Not shown when the job ended (no presenter registered then): shown
+        # now, with the same words, then recorded.
+        try:
+            record.line = _present_build_failure(record.result or {}, record.message_id)
+        except Exception as show_error:
+            warning(
+                "A failed build's line could not be shown: %s" % type(show_error).__name__,
+                category="module_management",
+            )
+            record.line = _action_failure_player_message(record.result or {})
     try:
         if any(
             isinstance(message, dict) and message.get("message_id") == record.message_id
