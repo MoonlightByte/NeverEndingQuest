@@ -7226,9 +7226,14 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     # #2011: a stage boundary after the build reached its call
                     # limit ends it here (a fail-forward site went on without
                     # its call).
-                    from utils.capture.live_provider_call import raise_if_build_ceiling
+                    from utils.capture.live_provider_call import (
+                        raise_if_build_ceiling,
+                        raise_if_build_superseded,
+                    )
 
                     raise_if_build_ceiling()
+                    # #2014: and after a Load, Reset or Quit of its turn.
+                    raise_if_build_superseded()
                 notice = progress_data.get("notice")
                 if not isinstance(notice, dict):
                     notice = None
