@@ -1130,11 +1130,13 @@ LOCAL_BUILD_WAIT_LINE = (
     "adventure. This usually takes a minute or two."
 )
 # Model-facing only, never shown: between the start narration and the
-# announcement the new place exists but cannot be reached. An ordinary system
-# message; the announcement's note closes it.
+# announcement the new place is still being built. It must not refuse the
+# player's travel toward it (a4): the party may set out; only arrival waits.
+# The announcement's ready note follows it.
 BUILD_PREPARING_NOTE = (
-    "[The new adventure is being prepared; it is not reachable until it is "
-    "announced. Narrate preparation or other play, never arrival.]"
+    "[The new adventure is still being prepared. The party may set out toward "
+    "it or do anything else: narrate the journey or other play, never arrival "
+    "there yet.]"
 )
 # Model-facing only: a preparing note whose build was never announced (a
 # quit or a Load mid-build). It must not deny the place: it may be live.
@@ -1143,9 +1145,10 @@ BUILD_CLOSED_NOTE = (
     "announce it or narrate it as reached; if the party travels toward it, "
     "the game says whether it can be reached.]"
 )
-# Model-facing only: a published place whose announcement failed (an error
-# or a refusal): it is live. Not the dm_note, whose "return no actions" would
-# steer the player's next turn.
+# Model-facing only: a published place is live. Appended after an applied
+# announcement's reply (a4), and for an announcement that failed (an error or
+# a refusal). Not the dm_note, whose "return no actions" would steer the
+# player's next turn.
 BUILD_READY_NOTE = "[The new adventure %s is ready; the party can travel there.]"
 _announcement = None
 _announcement_guard = threading.Lock()
@@ -1335,9 +1338,9 @@ def _end_announcement(lifecycle):
 
 
 def _apply_announcement(lifecycle, live_history):
-    """Game thread: [note][reply] into the live list, persisted, then shown.
-    A failed, stopped or stale announcement leaves nothing (the place stays
-    live; fail-forward, as today)."""
+    """Game thread: [note][reply][ready] into the live list, persisted, then
+    shown. A stopped or stale announcement leaves nothing; a failed one leaves
+    the ready note (the place stays live; fail-forward, as today)."""
     from core.managers.campaign_manager import _party_module_transition_lock
 
     try:
@@ -1362,6 +1365,7 @@ def _apply_announcement(lifecycle, live_history):
                 _record_build_ready(lifecycle.record, live_history)
             return False
         followup_id = "module-followup-%s" % lifecycle.record.build_id
+        ready_id = "module-build-ready-%s" % lifecycle.record.build_id
         with _party_module_transition_lock():
             if lifecycle.note_message is not None:
                 live_history.append(dict(lifecycle.note_message))
@@ -1373,6 +1377,17 @@ def _apply_announcement(lifecycle, live_history):
                     "role": "assistant",
                     "content": lifecycle.reply,
                     "message_id": followup_id,
+                })
+            # a4: the place is reachable from here on; the same ready fact as
+            # the error path, by id, after the reply (the closer counts it).
+            if not any(
+                isinstance(message, dict) and message.get("message_id") == ready_id
+                for message in live_history
+            ):
+                live_history.append({
+                    "role": "user",
+                    "content": BUILD_READY_NOTE % (lifecycle.record.module_name or ""),
+                    "message_id": ready_id,
                 })
             saved = save_conversation_history(
                 live_history, strict=True, allow_compression=False,
