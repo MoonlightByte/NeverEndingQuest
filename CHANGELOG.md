@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Loading, resetting or quitting while the game is building a new adventure now stops the build at once, so it no longer keeps spending AI calls or adds that adventure after your Load (#2014).
+
 - When the game builds a new adventure during play, the build now has its own limit on AI calls, sized to the adventure, instead of drawing on your turn's (#2011).
 
 - When a fight brings in more of a module's own creatures, the game now uses that module's own stats for them instead of making new ones, so they fight as the module describes and the fight starts sooner (#1997).
