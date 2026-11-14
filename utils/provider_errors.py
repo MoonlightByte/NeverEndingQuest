@@ -561,12 +561,16 @@ _CONNECTION_TAILS = {
     "welcome": "Nothing in your game changed. Tell the DM what you do next when you're ready.",
     "level_up": "Your level-up has not been applied. Nothing changed; ask to level up again later.",
     "build": "The new adventure was not built, and nothing in your game was changed. Ask for it again when the connection works.",
+    # #1995 F3: a build from the module toolkit (an operator, not a player;
+    # the owner's words, D-CONN-6).
+    "toolkit_build": "The module was not built, and nothing was changed. Start the build again when the connection works.",
 }
 # An account class (bad_key, out_of_quota) at these moments: "when the
 # connection works" would be false, the account must be fixed first
 # (D-AUTH-1, #1981 PR C).
 _ACCOUNT_CLASS_TAILS = {
     "build": "The new adventure was not built, and nothing in your game was changed. Ask for it again once that is fixed.",
+    "toolkit_build": "The module was not built, and nothing was changed. Start the build again once that is fixed.",
 }
 # A moment the account table does not name takes this one's account line
 # (level-up always used the turn's, #442).

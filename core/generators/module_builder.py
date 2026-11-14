@@ -3538,7 +3538,69 @@ def _ai_driven_module_creation_impl(
         # Carry the reason out instead of returning (False, None): callers used
         # to receive a bare failure and could only report "Module generation
         # failed" (issue #130).
-        raise ModuleCreationFailedError(str(e)) from e
+        raise ModuleCreationFailedError(_toolkit_stop_line() or str(e)) from e
+
+
+def _toolkit_stop_line():
+    """#1995 F3: after a connection give-up in a build outside the game, the
+    class line with the toolkit tail; None otherwise. An in-game build
+    (createNewModule) builds its own line from the state."""
+    from utils.openai_usage_tracker import build_connection_state
+
+    state = build_connection_state()
+    if state is None or state.stopped_class is None or state.in_game:
+        return None
+    from utils.provider_errors import connection_notice
+
+    return connection_notice(state.stopped_class, state.provider, "toolkit_build")
+
+
+_INITIAL_PROGRESS = {
+    "stage": 0,
+    "total_stages": 9,
+    "stage_name": "Initializing",
+    "percentage": 0,
+}
+
+
+def _toolkit_retry_hook(state, progress_callback):
+    """#1995 F3: give a build outside the game a retry-notice hook, unless one
+    is set (createNewModule's own). Returns the callback the build uses.
+
+    The hook shows the retry sentence at the stage the build is in, with that
+    stage's percentage (the last payload the entry's callback was given);
+    with no callback (the interactive builder) it prints the sentence. It
+    never raises: a broken page cannot stop a build.
+    """
+    if state.progress_notice is not None:
+        return progress_callback
+    if progress_callback is None:
+
+        def print_notice(message, notice):
+            try:
+                print(message)
+            except Exception:
+                pass
+
+        state.progress_notice = print_notice
+        return None
+    last = dict(_INITIAL_PROGRESS)
+
+    def remembering(payload):
+        if isinstance(payload, dict):
+            for key in _INITIAL_PROGRESS:
+                if key in payload:
+                    last[key] = payload[key]
+        return progress_callback(payload)
+
+    def notice_hook(message, notice):
+        try:
+            progress_callback({**last, "message": message, "notice": notice})
+        except Exception:
+            pass
+
+    state.progress_notice = notice_hook
+    return remembering
 
 
 def ai_driven_module_creation(
@@ -3563,7 +3625,11 @@ def ai_driven_module_creation(
     )
 
     owns_usage_scope = get_module_build_usage_context() is None
-    with module_build_usage_scope():
+    with module_build_usage_scope() as context:
+        # #1995 F3: every build entry stops after a connection give-up, as
+        # createNewModule's does (same context there, already armed).
+        context.connection.armed = True
+        progress_callback = _toolkit_retry_hook(context.connection, progress_callback)
         try:
             result = _ai_driven_module_creation_impl(
                 params,

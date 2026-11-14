@@ -7372,6 +7372,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                 # P its retry-notice hook (same stage and percentage).
                 connection_state = build_context.connection
                 connection_state.armed = True
+                connection_state.in_game = True  # #1995 F3: cards to the player
                 build_connection["state"] = connection_state
 
                 def retry_notice_progress(message, notice):
