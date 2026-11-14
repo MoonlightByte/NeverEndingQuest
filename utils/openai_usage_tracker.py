@@ -204,10 +204,10 @@ class _UsageTrackerToken:
 
 @dataclass
 class BuildConnectionState:
-    """#1981 PR C: one in-game build's connection stop.
+    """#1981 PR C: one build's connection stop.
 
-    Armed by createNewModule only (the standalone builder page runs its own
-    thread and is out of scope). After the first Route P give-up of a
+    Armed by every build entry (#1995 F3: ai_driven_module_creation's scope,
+    the same context createNewModule arms). After the first Route P give-up of a
     connection class the build records it; every later model call in the
     build raises BuildConnectionStopped before any request, and the build
     ends with that class's line at its next stage boundary or before publish.
@@ -222,6 +222,9 @@ class BuildConnectionState:
     notices_shown: set = field(default_factory=set)
     # The build's progress hook for a retry notice: fn(message, notice).
     progress_notice: object = field(default=None, repr=False, compare=False)
+    # #1995 F3: an in-game build (createNewModule) shows retry cards to the
+    # player; a toolkit build never puts a card in the player's game.
+    in_game: bool = False
     lock: threading.Lock = field(
         default_factory=threading.Lock, repr=False, compare=False
     )

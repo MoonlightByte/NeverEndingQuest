@@ -590,7 +590,9 @@ def _build_retry_notice(build_state, exc, provider, attempt, max_attempts):
     with build_state.lock:
         first = cls not in build_state.notices_shown
         build_state.notices_shown.add(cls)
-    if first:
+    # #1995 F3: the card belongs to the player's game; a toolkit build shows
+    # the sentence only through its own progress hook.
+    if first and build_state.in_game:
         try:
             from utils.player_notice import show_player_notice
 
