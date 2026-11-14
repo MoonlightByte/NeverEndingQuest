@@ -42,6 +42,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from jsonschema import validate, ValidationError
 import config
 from core.ai import api_client
+from core.combat.attacks import CHARACTER_ROW_FAMILIES, without_mechanics_only
 from core.leveling import choices as class_choices
 from core.leveling import tables as class_tables
 from core.nql.legacy_loadout import RECEIPT_FIELD, migrate as repair_initial_loadout
@@ -372,6 +373,9 @@ Adhere strictly to 5e rules and the provided schema."""
                 # Remove nested 'value' fields if they exist
                 npc_data = remove_nested_values(npc_data)
                 npc_data, _ = repair_required_ammunition_field(npc_data)
+                # #1985: engine-only attack-row keys (#1889) are never taken
+                # from a model's reply; the engine reads them on a saved sheet.
+                npc_data = without_mechanics_only(npc_data, families=CHARACTER_ROW_FAMILIES)
                 last_parsed_data = npc_data
                 validate(instance=npc_data, schema=schema)
                 npc_data = _set_class_tables(npc_data)
