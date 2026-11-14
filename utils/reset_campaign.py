@@ -103,6 +103,10 @@ def create_backup():
                     'commit_state.json',
                 ])
                 ignored.extend(name for name in files if '.completion' in name)
+                # #2018: a module build's live workspace is never save data.
+                from utils.module_publish import _BUILD_WORKSPACE_PREFIX
+
+                ignored.extend(name for name in files if name.startswith(_BUILD_WORKSPACE_PREFIX))
             return ignored
 
         shutil.copytree("modules", os.path.join(backup_dir, "modules"), ignore=ignore_backups)
@@ -555,6 +559,11 @@ def perform_reset_logic(only_if=None):
         with _reset_reconciled_boundary():
             if only_if is not None and not only_if():
                 return None
+            # #2018: a Reset moves the game epoch, so a running in-game build
+            # stops. A launch refresh of shipped modules runs here too.
+            from utils.capture.live_provider_call import bump_game_epoch
+
+            bump_game_epoch("reset")
             return _perform_reset_logic_locked()
     finally:
         # The reset roster numbers its own [slot] rows; the old turn's pair

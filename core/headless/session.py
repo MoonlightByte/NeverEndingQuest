@@ -596,12 +596,15 @@ class HeadlessSession:
     def request_quit(self, kind="quit", operation_id=None):
         from utils.capture.live_provider_call import (
             get_active_welcome_scope,
+            request_build_stop,
             request_lifecycle_turn_supersession,
         )
 
         kind = str(kind)
         requested_id = str(operation_id or uuid4())
         operation_name = "Reset" if kind == "reset" else "Quit"
+        # #2018: a running in-game build stops at its next check.
+        request_build_stop(kind)
 
         # #214: a background startup welcome must quiesce BEFORE the quit
         # intent is latched. The game thread is parked at the prompt, and its

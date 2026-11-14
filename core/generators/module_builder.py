@@ -3737,7 +3737,7 @@ def _in_game_build_scope(policy, build_id):
     """#2011: an in-game build (policy "game", under a live scope) runs on its
     own provider scope, bounded at the policy's largest module until its spec
     is known; any other build runs as before."""
-    from utils.capture.live_provider_call import bind_build_scope, get_live_provider_scope
+    from utils.capture.live_provider_call import bind_build_scope, build_fence, get_live_provider_scope
 
     try:
         resolved = get_module_creation_policy(policy)
@@ -3749,7 +3749,9 @@ def _in_game_build_scope(policy, build_id):
         return
     from core.generators.story_first.settings import story_first_enabled
 
-    with bind_build_scope(parent, build_id) as scope:
+    # #2018: the scope's parent is the build's fence: the starting turn, the
+    # game epoch at the start, and the quit stop flag.
+    with build_fence(parent) as fence, bind_build_scope(fence, build_id) as scope:
         scope.set_bound(build_attempt_bound(
             "story_first" if story_first_enabled() else "legacy",
             resolved.max_areas, resolved.max_locations_per_area,
