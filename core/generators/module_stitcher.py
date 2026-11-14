@@ -113,6 +113,9 @@ from utils.enhanced_logger import debug, info, warning, error, set_script_name, 
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T032", "core/generators/module_stitcher.py", 1450)
 register_callsite("T033", "core/generators/module_stitcher.py", 4016)
+# #2011: attempts per call at this site; build_attempt_bound reads them.
+T032_ATTEMPTS = 1
+T033_ATTEMPTS = 1
 
 # Set script name for logging
 set_script_name("module_stitcher")

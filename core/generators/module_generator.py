@@ -87,6 +87,25 @@ from utils.capture.multi_model_capture import capture_and_fanout, register_calls
 from utils.status_words import status_word_refusal
 register_callsite("T031", "core/generators/module_generator.py", 585)
 
+# #2011: attempts per call at this site; build_attempt_bound reads them.
+T031_ATTEMPTS = 2
+# The module fields, in order of dependencies; one T031 call per field not
+# already given (a build gives moduleName from its spec).
+MODULE_FIELD_ORDER = (
+    "moduleName",
+    "moduleDescription",
+    "moduleMetadata",
+    "moduleConflicts",
+    "mainPlot.mainObjective",
+    "mainPlot.antagonist",
+    "mainPlot.antagonistName",
+    "mainPlot.plotStages",
+    "factions",
+    "worldMap",
+    "timelineEvents",
+)
+T031_FIELDS = tuple(name for name in MODULE_FIELD_ORDER if name != "moduleName")
+
 
 # Location ID prefix mapping to ensure unique IDs across areas
 LOCATION_PREFIX_MAP = {
@@ -693,7 +712,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
                 main_cfg = config.DM_MAIN_LEGACY
 
             last_error = None
-            for attempt in range(2):
+            for attempt in range(T031_ATTEMPTS):
                 retry_prompt = prompt
                 if last_error is not None:
                     retry_prompt += (
@@ -752,19 +771,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
             print(f"DEBUG: [ModuleGenerator] Using module name: {context.module_name}")
         
         # Generate fields in order of dependencies
-        field_order = [
-            "moduleName",
-            "moduleDescription", 
-            "moduleMetadata",
-            "moduleConflicts",
-            "mainPlot.mainObjective",
-            "mainPlot.antagonist",
-            "mainPlot.antagonistName",
-            "mainPlot.plotStages",
-            "factions",
-            "worldMap",
-            "timelineEvents"
-        ]
+        field_order = list(MODULE_FIELD_ORDER)
         
         # Build context with initial concept
         context = {"initialConcept": initial_concept}

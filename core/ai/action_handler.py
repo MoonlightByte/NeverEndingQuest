@@ -7222,6 +7222,13 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     from utils.provider_errors import BuildConnectionStopped
 
                     raise BuildConnectionStopped(state.stopped_class, state.provider)
+                if stage > progress_state["last_stage"]:
+                    # #2011: a stage boundary after the build reached its call
+                    # limit ends it here (a fail-forward site went on without
+                    # its call).
+                    from utils.capture.live_provider_call import raise_if_build_ceiling
+
+                    raise_if_build_ceiling()
                 notice = progress_data.get("notice")
                 if not isinstance(notice, dict):
                     notice = None
@@ -7472,6 +7479,16 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     stopped = connection_failure()
                     if stopped is not None:
                         return stopped
+                    from utils.provider_errors import BuildCeilingReached
+
+                    ceiling = build_error.__cause__
+                    if isinstance(ceiling, BuildCeilingReached):
+                        # #2011: the reason stays in the debug log.
+                        debug(
+                            "MODULE_BUILD_END build=%s reason=ceiling bound=%s spent=%s"
+                            % (ceiling.build_id, ceiling.bound, ceiling.spent),
+                            category="module_creation",
+                        )
                     mark_module_build_outcome("not_generated")
                     failure = module_failure()
                     terminal_progress(

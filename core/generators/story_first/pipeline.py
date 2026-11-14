@@ -331,6 +331,7 @@ class StoryFirstPipeline:
         blocklist: Iterable[str],
         gateway: CompletionGateway,
         generate_batch: Optional[Callable[..., Dict[str, Any]]] = None,
+        before_creatures: Optional[Callable[[int], None]] = None,
     ):
         self.candidate_dir = Path(candidate_dir)
         if not self.candidate_dir.is_dir() or self.candidate_dir.is_symlink():
@@ -355,6 +356,9 @@ class StoryFirstPipeline:
         self.blocklist = tuple(blocklist)
         self.gateway = gateway
         self.generate_batch = generate_batch
+        # #2011: told how many creatures the creature stage will compile,
+        # before it runs (the in-game build sizes its call limit from it).
+        self.before_creatures = before_creatures
         self.workspace = self.candidate_dir / ".story_first"
         if self.workspace.is_symlink():
             raise ValueError("story-first workspace cannot be a symbolic link")
@@ -990,6 +994,10 @@ class StoryFirstPipeline:
                 raise ValueError("creature guidance has an unknown identity")
             return accepted
 
+        if self.before_creatures is not None:
+            self.before_creatures(
+                len(creature_compile.referenced_creatures(_json_value(hardened.areas)))
+            )
         creatures = self._stage(
             "creature_compile",
             {

@@ -297,6 +297,9 @@ class LiveTurnScope:
     advisory_scopes: list = field(default_factory=list)
     purpose: str = "turn"
     provider_generations: int = 0
+    # #2011: the generations this scope may spend. Every scope has the turn
+    # ceiling except an in-game build's, which is its attempt bound.
+    ceiling: int = _TURN_GENERATION_CEILING
 
     def next_generation(self):
         with self.lock:
@@ -307,7 +310,7 @@ class LiveTurnScope:
         """Count one provider generation; False once the turn ceiling is spent (#1342),
         or once it would leave fewer than ``reserve`` generations (#204)."""
         with self.lock:
-            if self.provider_generations + reserve >= _TURN_GENERATION_CEILING:
+            if self.provider_generations + reserve >= self.ceiling:
                 return False
             self.provider_generations += 1
             return True
@@ -426,6 +429,91 @@ class AdvisoryProviderScope:
 
     def finish(self):
         self.quiescent.set()
+
+
+@dataclass
+class BuildProviderScope(LiveTurnScope):
+    """An in-game module build's own provider scope (#2011).
+
+    Its ceiling is the build's attempt bound, so the build no longer draws on
+    the turn's generations. It keeps a link to the scope the build started
+    under: a Load or Reset of that turn stops the build, and the attribute
+    keeps an advisory's reserve. It never owns a lifecycle."""
+
+    parent: LiveTurnScope = None
+    purpose: str = "build"
+    build_id: str = None
+    controls_open: bool = False
+    # Why the build ended early; in memory only. "ceiling" is sticky: once a
+    # claim is refused at the bound, every later claim is refused.
+    end_reason: str = None
+
+    @property
+    def bound(self):
+        return self.ceiling
+
+    def set_bound(self, n):
+        with self.lock:
+            self.ceiling = int(n)
+
+    def add_bound(self, n):
+        with self.lock:
+            self.ceiling += int(n)
+
+    def claim_provider_generation(self, reserve=0):
+        with self.lock:
+            if self.end_reason == "ceiling":
+                return False
+            claimed = super().claim_provider_generation(reserve)
+            if not claimed and not reserve:
+                self.end_reason = "ceiling"
+            return claimed
+
+    def is_superseded(self):
+        with self.lock:
+            if self.supersession is not None:
+                return True
+        return self.parent is not None and self.parent.is_superseded()
+
+
+@contextmanager
+def bind_build_scope(parent, build_id):
+    """Run an in-game build on its own scope (#2011): the build's calls claim
+    on it, in this execution context only, until the build returns."""
+    scope = BuildProviderScope(parent=parent, build_id=build_id)
+    _provider_debug(
+        "MODULE_BUILD_SCOPE build=%s turn=%s"
+        % (build_id, getattr(parent, "operation_id", None))
+    )
+    token = _executing_control_scope.set(scope)
+    try:
+        yield scope
+    finally:
+        scope.phase = "QUIESCENT"
+        scope.quiescent.set()
+        _executing_control_scope.reset(token)
+
+
+def _build_ceiling_error(scope):
+    from utils.provider_errors import BuildCeilingReached
+
+    return BuildCeilingReached(scope.build_id, scope.ceiling, scope.provider_generations)
+
+
+def raise_if_build_ceiling():
+    """#2011: once the in-game build's scope ended at its bound, no call of
+    either route is made and nothing is published."""
+    scope = get_live_provider_scope()
+    if isinstance(scope, BuildProviderScope) and scope.end_reason == "ceiling":
+        raise _build_ceiling_error(scope)
+
+
+def claim_build_generation():
+    """#2011: a Route P call claims one generation on the in-game build's
+    scope, once per logical call; refused at the bound, nothing is sent."""
+    scope = get_live_provider_scope()
+    if isinstance(scope, BuildProviderScope) and not scope.claim_provider_generation():
+        raise _build_ceiling_error(scope)
 
 
 def open_advisory_scope(parent, beat_id):
@@ -2072,9 +2160,13 @@ def _call_live_provider(
         ):
             # #1342: the turn spent its provider generations. Nothing is sent;
             # the caller's completed-refusal path ends the turn with one line.
+            # #2011: the ceiling of the scope that counted the claim (an
+            # advisory child counts on its parent).
+            counted = scope.parent if isinstance(scope, AdvisoryProviderScope) else scope
             _provider_debug(
-                "LIVE_PROVIDER_TURN_CEILING task=%s generations=%d reserve=%d operation=%s"
-                % (task_id, _TURN_GENERATION_CEILING, reserve, operation_id)
+                "LIVE_PROVIDER_TURN_CEILING task=%s generations=%d reserve=%d operation=%s purpose=%s"
+                % (task_id, getattr(counted, "ceiling", _TURN_GENERATION_CEILING), reserve,
+                   operation_id, getattr(counted, "purpose", None))
             )
             if reserve:
                 # #1587: the turn goes on without this advisory.

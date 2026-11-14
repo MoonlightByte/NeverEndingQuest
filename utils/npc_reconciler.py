@@ -23,6 +23,8 @@ from core.ai import api_client
 import config
 from utils.capture.multi_model_capture import capture_and_fanout, register_callsite
 register_callsite("T088", "utils/npc_reconciler.py", 184)
+# #2011: attempts per call at this site; build_attempt_bound reads them.
+T088_ATTEMPTS = 1
 
 
 _T088_TRANSACTION_VERSION = 1

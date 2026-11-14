@@ -14,6 +14,7 @@ import jsonschema
 from .compilers import normalize_ascii_typography
 from .contracts import StageEvidence, freeze_value, mutable_copy
 from utils.capture.multi_model_capture import register_callsite
+from utils.provider_errors import BuildCeilingReached
 
 
 register_callsite("T098", "core/generators/story_first/execution.py", 183)
@@ -392,7 +393,9 @@ def execute_structured_stage(
                     failure_classes=tuple(failures),
                 ),
             )
-        except (KeyboardInterrupt, SystemExit, NonRetryableStageError):
+        except (KeyboardInterrupt, SystemExit, NonRetryableStageError, BuildCeilingReached):
+            # #2011: a build at its call limit ends; it is never retried or
+            # classed as a stage failure, which would fall back.
             raise
         except BaseException as exc:
             failures.append(_failure_class(exc, phase))

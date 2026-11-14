@@ -37,6 +37,13 @@ from model_config import convert_to_gemini_schema
 register_callsite("T025", "core/generators/location_generator.py", 693)
 register_callsite("T026", "core/generators/location_generator.py", 884)
 
+# #2011: attempts per call at this site; build_attempt_bound reads them.
+# T026: the batch call, then at most one more (the full retry or the
+# targeted replacement). T025: the surgical repair, once per creative field
+# of a location (t025_repair_fields).
+T026_ATTEMPTS = 2
+T025_ATTEMPTS = 1
+
 
 _T026_CALENDAR_MONTHS = (
     "Firstmonth",
@@ -923,6 +930,21 @@ _T026_RUNTIME_FIELD_DEFAULTS = {
     "adventureSummary": "",
     "explorationState": {"status": "unvisited"},
 }
+
+
+def t025_repair_fields(schema=None):
+    """#2011: the location fields T025's surgical repair may re-ask, at most
+    once each per location: every top field the repair does not fill in code
+    (the runtime defaults, and the structural fields every stub carries:
+    area_generator's and story-first's compile_world stubs set them all)."""
+    if schema is None:
+        schema = LocationGenerator().schema
+    props = _location_item_schema(schema).get("properties", {})
+    return tuple(
+        name for name in props
+        if name not in _T026_RUNTIME_FIELD_DEFAULTS
+        and name not in _T026_STRUCTURAL_STUB_FIELDS
+    )
 
 
 def _t026_top_field(path: str) -> str:

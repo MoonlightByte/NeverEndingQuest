@@ -49,6 +49,12 @@ import copy
 register_callsite("T036", "core/generators/plot_generator.py", 404)
 register_callsite("T037", "core/generators/plot_generator.py", 504)
 
+# #2011: attempts per call at this site; build_attempt_bound reads them.
+# T036 makes one call per plot field (generate_plot), T037 one per plot.
+T036_ATTEMPTS = 2
+T037_ATTEMPTS = 1
+T036_FIELDS = ("plotTitle", "mainObjective")
+
 # issue #128: pre-load + convert plot_schema for Gemini response_schema so flash
 # models emit the plot structure JSON, not DM narration. Loaded once at import; if
 # it fails, _PLOT_SCHEMA_GEMINI stays None and the Gemini branch raises rather than
@@ -431,7 +437,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
             main_cfg = config.DM_MAIN_LEGACY
 
         last_error = None
-        for attempt in range(2):
+        for attempt in range(T036_ATTEMPTS):
             retry_prompt = prompt
             if last_error is not None:
                 retry_prompt += (
@@ -649,10 +655,9 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
             plot_data["plotTitle"] = previous["plotTitle"]
             plot_data["mainObjective"] = previous["mainObjective"]
         else:
-            plot_data["plotTitle"] = self.generate_field("plotTitle",
-                self.schema["properties"]["plotTitle"], field_context)
-            plot_data["mainObjective"] = self.generate_field("mainObjective",
-                self.schema["properties"]["mainObjective"], field_context)
+            for name in T036_FIELDS:
+                plot_data[name] = self.generate_field(name,
+                    self.schema["properties"][name], field_context)
         field_context["plotTitle"] = plot_data["plotTitle"]
         field_context["mainObjective"] = plot_data["mainObjective"]
         
