@@ -524,4 +524,6 @@ def main(argv=None):
 if __name__ == "__main__":
     from utils.provider_gateway import take_from_argv
     take_from_argv(sys.argv)  # #1682
+    from utils.provider_gateway import refuse_local_provider_on_gateway
+    refuse_local_provider_on_gateway()  # #1995
     sys.exit(main())
