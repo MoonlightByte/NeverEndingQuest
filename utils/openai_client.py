@@ -119,6 +119,9 @@ def openai_api_client(api_key=None, **kwargs):
     from openai import OpenAI
     from utils import provider_gateway
 
+    # #1994: no hidden SDK resends. Chat calls already set 0 per call; any
+    # other call that is tried again goes through call_with_counted_reissue.
+    kwargs.setdefault("max_retries", 0)
     http_client = kwargs.pop("http_client", None) or _provider_http_client()
     return OpenAI(
         api_key=api_key or config.OPENAI_API_KEY,
@@ -126,6 +129,80 @@ def openai_api_client(api_key=None, **kwargs):
         http_client=http_client,
         **kwargs,
     )
+
+
+_REISSUE_POLL_SECONDS = 0.25
+
+
+def _possibly_billed(exc):
+    """A failure after the request was sent that the provider may bill: a
+    timeout, or a 5xx answer. A refused connection or a 4xx is not."""
+    import openai
+
+    if isinstance(exc, openai.APITimeoutError):
+        return True
+    status = getattr(exc, "status_code", None)
+    return isinstance(exc, openai.APIStatusError) and isinstance(status, int) and status >= 500
+
+
+def _reissue_wait(seconds):
+    """Wait before a reissue, ending at once on a save stop."""
+    import time
+
+    from utils.transient_filesystem import raise_if_save_stopped
+
+    deadline = time.monotonic() + max(0.0, float(seconds))
+    while True:
+        raise_if_save_stopped()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(_REISSUE_POLL_SECONDS, remaining))
+
+
+def call_with_counted_reissue(fn, label, limit=1, max_delay=None):
+    """Call ``fn()`` (one OpenAI SDK request on a client with no hidden
+    resends) and reissue it at most ``limit`` times, counted and logged
+    (#1994).
+
+    A failure is reissued only when the SDK would have resent it (typed
+    fields only, as Route P: a connection error, or a status with
+    x-should-retry, 408/409/429/5xx; never a quota code) and the wait is at
+    most ``max_delay`` (default RETRY_AFTER_CAP). A failure that may have
+    been billed is counted in the session's spending. The error raised is
+    always the SDK's own exception object, never a wrapper, so callers read
+    the same typed fields as before.
+    """
+    from types import SimpleNamespace
+
+    from utils.capture.live_provider_call import RETRY_AFTER_CAP
+    from utils.capture.multi_model_capture import _route_p_reissue_delay
+    from utils.enhanced_logger import file_only
+    from utils.session_spend import record_possibly_billed
+
+    cap = RETRY_AFTER_CAP if max_delay is None else float(max_delay)
+    reissues = 0
+    while True:
+        try:
+            return fn()
+        except Exception as exc:
+            if _possibly_billed(exc):
+                record_possibly_billed()
+            if reissues >= limit:
+                raise
+            delay = _route_p_reissue_delay(SimpleNamespace(original_error=exc), reissues + 1)
+            if delay is None or delay > cap:
+                raise
+            reissues += 1
+            file_only(
+                "PROVIDER_REISSUE: %s failed (%s, HTTP %s); reissue %d/%d "
+                "in %.1f s." % (
+                    label, type(exc).__name__, getattr(exc, "status_code", None),
+                    reissues, limit, delay,
+                ),
+                category="provider_retry",
+            )
+            _reissue_wait(delay)
 
 
 def is_using_lm_studio():
