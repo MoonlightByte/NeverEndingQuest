@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When building a new adventure stops because the connection failed or your save folder became read-only, it no longer first says it is adjusting to a different generator (#2012).
+
 - Loading, resetting or quitting while the game is building a new adventure now stops the build at once, so it no longer keeps spending AI calls or adds that adventure after your Load (#2014).
 
 - When the game builds a new adventure during play, the build now has its own limit on AI calls, sized to the adventure, instead of drawing on your turn's (#2011).
