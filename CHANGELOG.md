@@ -9,24 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A fight no longer makes a monster copy of someone from the story (#2010).
 
+## [1.2.5] - 2026-11-14
+
 - Changing the Local/Custom address or model while an adventure is being built, or the AI provider while the toolkit builds one, no longer switches the build partway: it finishes on the setting it started with (#2018).
-
 - When building a new adventure stops because the connection failed or your save folder became read-only, it no longer first says it is adjusting to a different generator (#2012).
-
 - Loading, resetting or quitting while the game is building a new adventure now stops the build at once, so it no longer keeps spending AI calls or adds that adventure after your Load (#2014).
-
 - When the game builds a new adventure during play, the build now has its own limit on AI calls, sized to the adventure, instead of drawing on your turn's (#2011).
-
 - When a fight brings in more of a module's own creatures, the game now uses that module's own stats for them instead of making new ones, so they fight as the module describes and the fight starts sooner (#1997).
-
 - In the toolkit, building a module now stops at the first failed step when the AI service can't be reached or refuses, and says why, instead of carrying on (#1995).
-
 - On a hosted game, a connection problem now says it is on the host's side and asks you to wait, instead of naming OpenAI and asking you to check that you're online (#1995).
-
 - The Settings test for a local or custom model server now answers after one try, instead of quietly trying up to three times (#1995).
-
 - When making a picture or the Dungeon Master's voice fails for a moment, the game now tries once more and counts that try, instead of up to two hidden tries; pictures made in the toolkit now count toward the session's spending too (#1994).
-
 - When the game puts your last action back in the empty box after a turn it couldn't carry out, a line under the box now says so; it goes away when you change or send the words, and nothing is sent for you (#1990).
 
 ## [1.2.4] - 2026-11-13
