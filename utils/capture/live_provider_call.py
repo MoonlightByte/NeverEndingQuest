@@ -1934,9 +1934,10 @@ def _call_live_provider(
     failure_announced = False
     player_turn = scope is not None and scope is get_live_turn_scope()
 
-    from utils.provider_errors import provider_display_name
+    from utils.provider_errors import status_provider_name
 
-    provider_name = provider_display_name(frozen_kwargs.get("_request_provider"))
+    # #1995: on a hosted game the wait line names "the game's AI service".
+    provider_name = status_provider_name(frozen_kwargs.get("_request_provider"))
     current_reader = {"reader": None, "started": None}
 
     def turn_heartbeat(_generation_number=None):
