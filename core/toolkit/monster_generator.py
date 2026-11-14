@@ -77,7 +77,8 @@ class MonsterGenerator:
         
         try:
             # Try a minimal API call to check access
-            response = self.client.models.list()
+            from utils.openai_client import call_with_counted_reissue
+            response = call_with_counted_reissue(self.client.models.list, "models.list")
             available_models = [model.id for model in response.data]
             
             # Check for GPT-Image model availability
@@ -85,7 +86,11 @@ class MonsterGenerator:
             return self._account_validated
         except Exception as e:
             print(f"Account validation failed: {e}")
-            self._account_validated = False
+            # #1994: only a definite answer is kept for the generator's life;
+            # after a brief failure this portrait uses DALL-E 3 and the next
+            # one asks again.
+            if getattr(e, "status_code", None) in (401, 403):
+                self._account_validated = False
             return False
     
     def build_prompt(self, monster_id: str, style: str = "photorealistic") -> str:
@@ -181,22 +186,31 @@ class MonsterGenerator:
             start_time = time.time()
             
             # Generate image based on model
+            # #1994: one counted reissue on a brief failure (the client
+            # makes no hidden resends).
+            from utils.openai_client import call_with_counted_reissue
             if model == "dall-e-3":
-                response = self.client.images.generate(
-                    model="dall-e-3",
-                    prompt=prompt,
-                    size=model_settings.get("size", "1024x1024"),
-                    quality=model_settings.get("quality", "standard"),
-                    style=model_settings.get("style", "vivid"),
-                    n=1
+                response = call_with_counted_reissue(
+                    lambda: self.client.images.generate(
+                        model="dall-e-3",
+                        prompt=prompt,
+                        size=model_settings.get("size", "1024x1024"),
+                        quality=model_settings.get("quality", "standard"),
+                        style=model_settings.get("style", "vivid"),
+                        n=1
+                    ),
+                    "image",
                 )
             else:  # gpt-image-1
-                response = self.client.images.generate(
-                    model="gpt-image-1",
-                    prompt=prompt,
-                    size=model_settings.get("size", "1024x1024"),
-                    quality=model_settings.get("quality", "auto"),
-                    n=1
+                response = call_with_counted_reissue(
+                    lambda: self.client.images.generate(
+                        model="gpt-image-1",
+                        prompt=prompt,
+                        size=model_settings.get("size", "1024x1024"),
+                        quality=model_settings.get("quality", "auto"),
+                        n=1
+                    ),
+                    "image",
                 )
             
             elapsed = time.time() - start_time
@@ -215,6 +229,8 @@ class MonsterGenerator:
                 img = Image.open(BytesIO(img_response.content))
             else:
                 raise Exception("No image data in response")
+            from utils.session_spend import record_other
+            record_other("portrait")  # #1994: billed per image, counted as the web button's (#1388)
             
             # Save image
             save_path = self._save_image(img, monster_id, style, pack_name)
