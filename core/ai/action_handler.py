@@ -5155,6 +5155,7 @@ COMBAT_START_REASONS = {
     "party_member_held": "a party member in it is held by a stated condition",
     "id_not_this_slot": "an occupantId in it is on another person's slot",
     "named_elsewhere": "it names someone recorded at another place",
+    "person_on_monster_slot": "a monster slot in it names a person recorded in this module",
     "recorded_beaten": "it names a group recorded beaten here",
     "recorded_left": "it names a group recorded as gone from here",
 }
@@ -5230,8 +5231,9 @@ def _refused_rows(result_path):
     recordedDead for recorded_dead (#1902), statedIncapacitated for
     nobody_can_act (#1894), partyHeld for party_member_held (#1894),
     misboundRows for id_not_this_slot (#1937), namedElsewhere for
-    named_elsewhere (#1936), recordedResolved for recorded_beaten and
-    recorded_left (#1953); else None."""
+    named_elsewhere (#1936), personMonsterRows for person_on_monster_slot
+    (#2010), recordedResolved for recorded_beaten and recorded_left (#1953);
+    else None."""
     try:
         with open(result_path, "r", encoding="utf-8") as result_file:
             result = json.load(result_file)
@@ -5251,6 +5253,8 @@ def _refused_rows(result_path):
         return result.get("misboundRows")
     if isinstance(result, dict) and result.get("status") == "named_elsewhere":
         return result.get("namedElsewhere")
+    if isinstance(result, dict) and result.get("status") == "person_on_monster_slot":
+        return result.get("personMonsterRows")
     if isinstance(result, dict) and result.get("status") in ("recorded_beaten", "recorded_left"):
         return result.get("recordedResolved")
     return None
@@ -5434,6 +5438,46 @@ def _elsewhere_lines(rows):
     return " and ".join(clauses), len(clauses) > 1
 
 
+def _person_monster_lines(rows):
+    """#2010: (clauses, all_here) from the builder's typed rows, one clause
+    per monster slot that names a person, joined with ", and": by id
+    "occupantIds puts the person Miller Hosk (occ:...) on monster:0", by key
+    "monsterKeys gives monster:0 the key miller_hosk, which is the person
+    Miller Hosk (occ:...), not a creature", by name "monster:0 names Miller
+    Hosk, who is the person Miller Hosk (occ:...)", each with " at <place>"
+    when the record is elsewhere; ("", True) when they are unusable."""
+    if not isinstance(rows, list) or not rows:
+        return "", True
+    clauses, all_here = [], True
+    for row in rows:
+        if not isinstance(row, dict):
+            return "", True
+        slot, name = str(row.get("slot") or "").strip(), str(row.get("name") or "").strip()
+        occupant_id, owner = str(row.get("occupantId") or "").strip(), str(row.get("recordName") or "").strip()
+        route, key = row.get("route"), str(row.get("key") or "").strip()
+        if not slot or not occupant_id or not owner or route not in ("id", "key", "name"):
+            return "", True
+        if route == "id":
+            clause = "occupantIds puts the person %s (%s) on %s" % (owner, occupant_id, slot)
+        elif route == "key":
+            if not key:
+                return "", True
+            clause = "monsterKeys gives %s the key %s, which is the person %s (%s), not a creature" % (
+                slot, key, owner, occupant_id)
+        else:
+            if not name:
+                return "", True
+            clause = "%s names %s, who is the person %s (%s)" % (slot, name, owner, occupant_id)
+        if row.get("here") is not True:
+            place = str(row.get("location") or "").rsplit("/", 1)[-1].strip()
+            if not place:
+                return "", True
+            clause += " at %s" % place
+            all_here = False
+        clauses.append(clause)
+    return ", and ".join(clauses), all_here
+
+
 def is_encounter_payment(action):
     """#1731: an updateCharacterInfo with a castingResource object, the payment
     a reply's fight start stages (#1853 moves one listed after the fight)."""
@@ -5613,6 +5657,8 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
     party_held = _stated_lines(down_hostiles) if reason == "party_member_held" else ""
     misbound = _misbound_lines(down_hostiles) if reason == "id_not_this_slot" else ""
     elsewhere, several = _elsewhere_lines(down_hostiles) if reason == "named_elsewhere" else ("", False)
+    person_slots, all_here = (_person_monster_lines(down_hostiles) if reason == "person_on_monster_slot"
+                              else ("", True))
     beaten, beaten_count = _group_lines(down_hostiles, False) if reason == "recorded_beaten" else ("", 0)
     back_rows = []
     left_rows = down_hostiles
@@ -5635,6 +5681,20 @@ def _combat_start_failed(reason, conversation_history, invocation_claim, payment
             "(npc:N is npcs[N]): add that person to npcs if they fight, or remove the occupantId, then "
             "request the fight again." % (
                 misbound, "" if payments is None else " " + _encounter_payment_lines(payments))
+        )
+    elif person_slots and (all_here or here):
+        # #2010 (D-2010-1): a person never fills a monster slot.
+        move = "" if all_here else (
+            "; someone recorded at another place joins only if the story brings them here now, with "
+            "moveOccupant and their occupantId and \"locationId\": \"%s\" before the createEncounter in the "
+            "same reply" % here)
+        content = (
+            "Combat Error: the encounter you requested could not be set up, because %s. No fight has "
+            "started.%s A person recorded in this module never fills a monster slot. Request the fight "
+            "without them, or, if they fight here as themselves, put them in npcs with their occupantId "
+            "(npc:N is npcs[N]) and give their scene participant side hostile or party%s. Then request "
+            "the fight again." % (
+                person_slots, "" if payments is None else " " + _encounter_payment_lines(payments), move)
         )
     elif elsewhere and here:
         # #1936: they are elsewhere; a move only when the story brings them.
@@ -5844,7 +5904,7 @@ def _built_encounter(result_path, returncode):
         return None, "auto_return"
     if result.get("status") in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead", "nobody_can_act",
                                 "party_member_held", "id_not_this_slot", "named_elsewhere", "recorded_beaten",
-                                "recorded_left"):
+                                "recorded_left", "person_on_monster_slot"):
         return None, result["status"]
     if result.get("status") != "saved":
         return None, "builder_no_encounter"
@@ -6064,7 +6124,8 @@ def process_action(
                         returns, rows = _auto_return_result(result_path)
                     elif failure in ("no_hostile_can_act", "no_hostile_in_fight", "recorded_dead",
                                      "nobody_can_act", "party_member_held", "id_not_this_slot",
-                                     "named_elsewhere", "recorded_beaten", "recorded_left"):
+                                     "named_elsewhere", "recorded_beaten", "recorded_left",
+                                     "person_on_monster_slot"):
                         rows = _refused_rows(result_path)
                 finally:
                     shutil.rmtree(result_dir, ignore_errors=True)
