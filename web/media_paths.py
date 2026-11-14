@@ -39,6 +39,52 @@ def _safe_component(name):
         and "\\" not in name and "\x00" not in name
 
 
+# #1998: why a client name was refused, by the kind of name.
+NAME_REFUSALS = {
+    "pack_name": "That pack name is not allowed.",
+    "monster_id": "That monster id is not allowed.",
+    "npc_id": "That NPC id is not allowed.",
+    "module_name": "That module name is not allowed.",
+    "asset_id": "That asset id is not allowed.",
+    "character_name": "That character name is not allowed.",
+}
+
+
+def safe_name(value):
+    """#1998: True for one folder or file name that stays where it is joined:
+    a non-empty str, not '.' or '..', with no slash, backslash or NUL."""
+    return isinstance(value, str) and _safe_component(value)
+
+
+def refused_name(**values):
+    """#1998: {success, error, reason} for the first client name that could
+    leave its folder, else None. Keys are the kinds in NAME_REFUSALS. None
+    (not sent) is skipped, so a missing value keeps its existing handling. A
+    list is checked item by item: a str item itself, a dict item by its 'id'."""
+    for reason, value in values.items():
+        items = value if isinstance(value, (list, tuple)) else [value]
+        for item in items:
+            if isinstance(item, dict):
+                item = item.get("id")
+            if item is None or not isinstance(item, str):
+                continue
+            if not safe_name(item):
+                return {"success": False, "error": NAME_REFUSALS[reason], "reason": reason}
+    return None
+
+
+def dir_within(directory, name):
+    """#1998: directory/name when name is one safe component, else None.
+    Lexical on purpose: a folder inside directory that links to another disk
+    keeps working (resolve_file_within keeps its real-path check)."""
+    if not safe_name(name):
+        return None
+    path = os.path.join(directory, name)
+    if not os.path.abspath(path).startswith(os.path.abspath(directory) + os.sep):
+        return None
+    return path
+
+
 def _inside(base, candidate):
     base = os.path.abspath(base)
     candidate = os.path.realpath(candidate)

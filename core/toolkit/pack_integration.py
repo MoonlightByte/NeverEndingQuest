@@ -26,7 +26,8 @@ class PackIntegration:
             try:
                 with open(active_file, 'r') as f:
                     data = json.load(f)
-                    return data.get("active_pack", self.DEFAULT_PACK)
+                    from core.toolkit.pack_manager import checked_active_pack
+                    return checked_active_pack(data.get("active_pack", self.DEFAULT_PACK), self.DEFAULT_PACK)
             except:
                 pass
         return self.DEFAULT_PACK

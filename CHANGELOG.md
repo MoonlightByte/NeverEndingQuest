@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In the module toolkit, names given for packs, monsters, NPCs and modules can no longer point outside their folders, and a character sheet is only read from the characters folder (#1998).
+
 - On a hosted game, the server now refuses changes to the AI provider, keys, local endpoint and updates, and does not serve the module toolkit; these belong to the host (#1995).
 
 - In fights where someone nearby has no character sheet yet, the game no longer shows an error about a missing file (#1984).
