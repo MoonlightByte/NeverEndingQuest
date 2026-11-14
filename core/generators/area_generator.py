@@ -201,7 +201,9 @@ Please respond with ONLY a JSON array of names in the exact order listed above:
 No explanations, just the JSON array of thematic location names.
 Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode symbols."""
 
-            from model_config import MODEL_PROVIDER
+            # #2018: the provider this build started on (live outside a build)
+            from utils.build_inputs import build_provider
+            MODEL_PROVIDER = build_provider()
             if MODEL_PROVIDER == "openai":
                 main_cfg = app_config.DM_MAIN_GPT52_NONE
             elif MODEL_PROVIDER == "gemini":
@@ -494,7 +496,9 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
         )
 
         try:
-            from model_config import MODEL_PROVIDER
+            # #2018: the provider this build started on (live outside a build)
+            from utils.build_inputs import build_provider
+            MODEL_PROVIDER = build_provider()
             if MODEL_PROVIDER == "openai":
                 main_cfg = app_config.DM_MAIN_GPT52_NONE
             elif MODEL_PROVIDER == "gemini":

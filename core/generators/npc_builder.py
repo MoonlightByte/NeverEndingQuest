@@ -313,7 +313,9 @@ Adhere strictly to 5e rules and the provided schema."""
     ]
 
     # Select model config per provider
-    from model_config import MODEL_PROVIDER
+    # #2018: the provider this build started on (live outside a build)
+    from utils.build_inputs import build_provider
+    MODEL_PROVIDER = build_provider()
     if MODEL_PROVIDER == "openai":
         npc_config = config.NPC_BUILD_GPT52_NONE
     elif MODEL_PROVIDER == "gemini":

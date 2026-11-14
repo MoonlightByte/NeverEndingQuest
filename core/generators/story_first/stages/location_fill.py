@@ -105,7 +105,8 @@ def run(
     generate_batch: Optional[Callable[..., Dict[str, Any]]] = None,
 ) -> AcceptedAreas:
     """Fill each trusted area stub through T026, without changing T026 mechanics."""
-    from model_config import get_provider
+    # #2018: compared with the provider the build started on
+    from utils.build_inputs import build_provider as get_provider
 
     if get_provider() != provider:
         raise ValueError("T026 provider snapshot differs from active provider")

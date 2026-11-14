@@ -363,10 +363,11 @@ def _structured_call(task_id, schema_name, schema, prompt, binding=None):
     (scope, status sink); without one the call owns its scope and its status
     goes to the debug log, so it never joins a player's turn."""
     from core.ai import api_client
-    from model_config import get_provider, resolve_callsite_config
+    from model_config import resolve_callsite_config
+    from utils.build_inputs import build_provider
     from utils.capture.live_provider_call import LiveTurnScope
 
-    provider = get_provider()
+    provider = build_provider()
     cfg = resolve_callsite_config(task_id, provider)
     extra = {k: v for k, v in cfg.items() if k != "model"}
     if provider in ("openai", "legacy"):
