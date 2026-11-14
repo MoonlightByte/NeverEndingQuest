@@ -1136,11 +1136,17 @@ BUILD_PREPARING_NOTE = (
     "[The new adventure is being prepared; it is not reachable until it is "
     "announced. Narrate preparation or other play, never arrival.]"
 )
-# Model-facing only: a preparing note whose build was never announced.
+# Model-facing only: a preparing note whose build was never announced (a
+# quit or a Load mid-build). It must not deny the place: it may be live.
 BUILD_CLOSED_NOTE = (
-    "[No announcement came for the adventure that was being prepared. Do not "
-    "narrate it as ready or reached.]"
+    "[The adventure that was being prepared was never announced. Do not "
+    "announce it or narrate it as reached; if the party travels toward it, "
+    "the game says whether it can be reached.]"
 )
+# Model-facing only: a published place whose announcement failed (an error
+# or a refusal): it is live. Not the dm_note, whose "return no actions" would
+# steer the player's next turn.
+BUILD_READY_NOTE = "[The new adventure %s is ready; the party can travel there.]"
 _announcement = None
 _announcement_guard = threading.Lock()
 _input_live_history = None
@@ -1243,7 +1249,7 @@ def _record_build_failure(record, live_history):
         return
     try:
         _strictly_persist_conversation_history(live_history)
-    except _PUMP_TRANSFERS:
+    except _pump_transfers():
         raise
     except Exception as persist_error:
         warning(
@@ -1253,17 +1259,12 @@ def _record_build_failure(record, live_history):
         )
 
 
-# The typed control transfers a pump step lets through (as the welcome's).
-_PUMP_TRANSFERS = ()
-
-
 def _pump_transfers():
-    global _PUMP_TRANSFERS
-    if not _PUMP_TRANSFERS:
-        from utils.capture.live_provider_call import LiveProviderSuperseded
+    """The typed control transfers a pump step lets through (as the
+    welcome's service does)."""
+    from utils.capture.live_provider_call import LiveProviderSuperseded
 
-        _PUMP_TRANSFERS = (_RestoreControlTransfer, LiveProviderSuperseded)
-    return _PUMP_TRANSFERS
+    return (_RestoreControlTransfer, LiveProviderSuperseded)
 
 
 def _start_announcement(record, live_history):
@@ -1273,7 +1274,7 @@ def _start_announcement(record, live_history):
     require_staged_module_completions_drained()
     try:
         return _start_announcement_drained(record, live_history)
-    except _PUMP_TRANSFERS:
+    except _pump_transfers():
         raise
     except BaseException as exc:
         # Past the drain: the record is dropped (fail-forward); a scope
@@ -1351,6 +1352,14 @@ def _apply_announcement(lifecycle, live_history):
                 "the game continues" % (lifecycle.error or "stopped"),
                 category="module_management",
             )
+            if (
+                lifecycle.error not in (None, "superseded")
+                and not lifecycle.scope.is_superseded()
+                and _build_record_current(lifecycle.record)
+            ):
+                # An error or a refusal, not a Load or quit: the place is
+                # live, so the preparing note gets the ready note.
+                _record_build_ready(lifecycle.record, live_history)
             return False
         followup_id = "module-followup-%s" % lifecycle.record.build_id
         with _party_module_transition_lock():
@@ -1384,6 +1393,44 @@ def _apply_announcement(lifecycle, live_history):
         _end_announcement(lifecycle)
 
 
+def _record_build_ready(record, live_history):
+    """The ready note for a published place whose announcement failed, once,
+    under the transition lock; persisted fail-forward (the turn's end save
+    covers a failed persist)."""
+    from core.managers.campaign_manager import _party_module_transition_lock
+
+    ready_id = "module-build-ready-%s" % record.build_id
+    try:
+        with _party_module_transition_lock():
+            if any(
+                isinstance(message, dict) and message.get("message_id") == ready_id
+                for message in live_history
+            ):
+                return
+            live_history.append({
+                "role": "user",
+                "content": BUILD_READY_NOTE % (record.module_name or ""),
+                "message_id": ready_id,
+            })
+            try:
+                _strictly_persist_conversation_history(live_history)
+            except _pump_transfers():
+                raise
+            except Exception as persist_error:
+                warning(
+                    "A ready note was recorded but not yet persisted: %s"
+                    % type(persist_error).__name__,
+                    category="module_management",
+                )
+    except _pump_transfers():
+        raise
+    except Exception as ready_error:
+        warning(
+            "A ready note could not be recorded: %s" % type(ready_error).__name__,
+            category="module_management",
+        )
+
+
 def _show_wait_line(text):
     """A wait line: the web and headless inputs show theirs at the enqueue;
     a terminal prints it here."""
@@ -1411,7 +1458,7 @@ def _start_next_due(live_history):
         jobs.put_back_due(records)
         try:
             return _start_announcement(record, live_history)
-        except _PUMP_TRANSFERS:
+        except _pump_transfers():
             raise
         except RuntimeError as not_yet:
             if not getattr(not_yet, "_announcement_started", False):
@@ -1450,7 +1497,6 @@ def service_build_due(live_history, *, turn_start=False):
 
     if live_history is None or get_live_turn_scope() is not None:
         return
-    _pump_transfers()
     shown = False
     while True:
         lifecycle = _announcement
@@ -1489,13 +1535,30 @@ def close_open_build_notes(live_history):
         if isinstance(message, dict) and isinstance(message.get("message_id"), str)
     ]
     present = set(ids)
-    opened = [i[len("module-build-preparing-"):] for i in ids if i.startswith("module-build-preparing-")]
+    # A note before the latest summary (any compressor's own typed marker) is
+    # skipped: a summary may have taken its follow-up, ready or closing note
+    # while the note itself was kept (a build started before a move).
+    last_summary = -1
+    for index, message in enumerate(live_history):
+        if isinstance(message, dict) and hm.is_marker(
+            message, hm.ROLLING_SUMMARY, *hm.SUMMARY_KINDS
+        ):
+            last_summary = index
+    opened = [
+        message["message_id"][len("module-build-preparing-"):]
+        for index, message in enumerate(live_history)
+        if index > last_summary
+        and isinstance(message, dict)
+        and isinstance(message.get("message_id"), str)
+        and message["message_id"].startswith("module-build-preparing-")
+    ]
     closed = 0
     for build_id in opened:
         if (
             "module-build-failure-%s" % build_id in present
             or "module-followup-%s" % build_id in present
             or "module-build-closed-%s" % build_id in present
+            or "module-build-ready-%s" % build_id in present
         ):
             continue
         live_history.append({
