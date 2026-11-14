@@ -86,13 +86,14 @@ def take_build_inputs():
 
 
 @contextmanager
-def build_inputs():
-    """Take the inputs at a build's start; a nested build keeps the outer ones."""
+def build_inputs(preset=None):
+    """Take the inputs at a build's start; a nested build keeps the outer ones.
+    ``preset``: inputs already taken (#2021: by the turn that starts a job)."""
     current = _current.get()
     if current is not None:
         yield current
         return
-    token = _current.set(take_build_inputs())
+    token = _current.set(preset if preset is not None else take_build_inputs())
     try:
         yield _current.get()
     finally:

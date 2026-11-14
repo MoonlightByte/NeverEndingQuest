@@ -428,6 +428,9 @@ def publish_reserved(
     candidate_path = reservation.candidate_path
 
     try:
+        # #2021: an in-game build stopped (Load, Reset, Quit) while it waited
+        # for the lock spends nothing more here.
+        _raise_if_build_superseded()
         # 2. Prepare the registry on the CANDIDATE (before it is live). Any
         #    in-place rewrite (ID conflict resolution) touches only the hidden
         #    candidate; a raise here aborts cleanly with modules/ untouched.
@@ -443,6 +446,10 @@ def publish_reserved(
         #    the rare indeterminate-rename case, the complete candidate may be
         #    live or absent; the operation never exposes a partial copy.
         _assert_final_path_free(modules_root, final_name)
+        # #2021: the decisive check, the last point before the module goes
+        # live. A Load moves the game epoch under this same lock, so either
+        # the Load came first and this refuses, or the rename did.
+        _raise_if_build_superseded()
         _replace_entry(candidate_path, modules_root / final_name)
     except BaseException:
         _cleanup_orphan_workspace(workspace)
@@ -481,6 +488,13 @@ def publish_reserved(
         category="module_management",
     )
     return PublishResult(final_name, build_id, workspace)
+
+
+def _raise_if_build_superseded() -> None:
+    """Stop an in-game build whose fence was superseded; no-op otherwise."""
+    from utils.capture.live_provider_call import raise_if_build_superseded
+
+    raise_if_build_superseded()
 
 
 def _cleanup_orphan_workspace(workspace: Path) -> None:

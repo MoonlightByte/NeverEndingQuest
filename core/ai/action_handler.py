@@ -7378,7 +7378,10 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             # name and to publish (issue #708); it is not held here while the
             # module generates.
 
-            with module_build_usage_scope(build_id=build_id) as build_context:
+            import contextlib as _contextlib
+
+            with module_build_usage_scope(build_id=build_id) as build_context, \
+                    _contextlib.ExitStack() as build_slot:
                 build_id = str(build_context.build_id)
                 # #1981 PR C: arm this build's connection stop and give Route
                 # P its retry-notice hook (same stage and percentage).
@@ -7429,6 +7432,34 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     )
                     return failure
 
+                # #2021: one in-game build at a time, claimed before anything
+                # binds, so a refused second build leaves the running one's
+                # fence (its stop and in_flight) as it was. As before, the
+                # build is bound only under a live provider scope.
+                from utils.capture.live_provider_call import (
+                    claim_build_fence,
+                    get_live_provider_scope,
+                    release_build_fence,
+                )
+
+                claimed_fence = None
+                bound_turn = get_live_provider_scope()
+                if bound_turn is not None:
+                    claimed_fence = claim_build_fence(bound_turn)
+                    if claimed_fence is None:
+                        mark_module_build_outcome("lock_unavailable")
+                        failure = module_failure(
+                            message=(
+                                "Module creation is busy; no game state was "
+                                "changed. Please retry shortly."
+                            )
+                        )
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+                    build_slot.callback(release_build_fence, claimed_fence)
+
                 # No cross-turn idempotency dedup: a createNewModule may carry
                 # only a narrative (no module_name), and the allocated final
                 # name may differ, so nothing can reliably match a retry to a
@@ -7450,6 +7481,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         prepare_candidate=(
                             stitcher.build_publication_registry_bytes
                         ),
+                        fence=claimed_fence,
                     )
                 except ModuleCreationCancelledError:
                     mark_module_build_outcome("not_generated")
