@@ -3355,6 +3355,14 @@ def handle_user_input(data):
     user_input_queue.put(user_input)
     if opening_scene:
         emit('system_message', {'content': 'Your action is queued for after the opening scene.'})
+    else:
+        # #2021 J1b-2: the DM's announcement of a new place is never
+        # discarded by input; the text waits for it on the game thread.
+        try:
+            if dm_main.announcement_pending():
+                emit('system_message', {'content': dm_main.ANNOUNCEMENT_WAIT_LINE})
+        except Exception:
+            pass
     from utils.capture.live_provider_call import get_live_turn_scope
     scope = get_live_turn_scope()
     if scope is not None and scope.purpose == "travel_recovery":
@@ -3600,6 +3608,15 @@ def handle_action(data, _operation_id=None):
                 })
                 for turn_scope in turn_scopes:
                     turn_scope.quiescent.wait()
+            # #2021 J1b-2: an announcement of a new place stops first (a due
+            # one is dropped); the game thread discards it, then the Load runs.
+            announcement_scope = dm_main.supersede_announcement('restore', _operation_id)
+            if announcement_scope is not None:
+                emit('system_message', {
+                    'content': 'Load accepted. The announcement of the new place is stopping safely first.',
+                    'operation_id': _operation_id,
+                })
+                announcement_scope.quiescent.wait(_ANNOUNCEMENT_STOP_SECONDS)
             if welcome_scope is not None:
                 # #214 F9: Load supersedes the background welcome and QUEUES
                 # the restore to execute ON THE GAME THREAD inside the
@@ -3717,6 +3734,14 @@ def handle_action(data, _operation_id=None):
                 })
                 for turn_scope in turn_scopes:
                     turn_scope.quiescent.wait()
+            # #2021 J1b-2: as Load.
+            announcement_scope = dm_main.supersede_announcement('reset', _operation_id)
+            if announcement_scope is not None:
+                emit('system_message', {
+                    'content': 'Reset accepted. The announcement of the new place is stopping safely first.',
+                    'operation_id': _operation_id,
+                })
+                announcement_scope.quiescent.wait(_ANNOUNCEMENT_STOP_SECONDS)
             if welcome_scope is not None:
                 # #214 F9: same discipline as Load - supersede and QUEUE the
                 # reset to execute on the game thread inside the welcome
@@ -4783,6 +4808,14 @@ def _quit_stop(notify):
             'operation_id': operation['operation_id'],
         })
         live_scope.quiescent.wait()
+    # #2021 J1b-2: a due announcement is dropped; a running one stops and is
+    # discarded by the game thread (no line: the Exit's own line follows).
+    try:
+        announcement_scope = dm_main.supersede_announcement("web_exit")
+    except Exception:
+        announcement_scope = None
+    if announcement_scope is not None:
+        announcement_scope.quiescent.wait(_ANNOUNCEMENT_STOP_SECONDS)
     welcome_scope = get_active_welcome_scope()
     if welcome_scope is not None:
         # #214: player exit must not leave welcome work attached to the
@@ -5707,6 +5740,11 @@ def run_game_loop():
             # #214 r9 section 3: teardown supersedes + reaps a pending
             # background welcome (discard, never apply) before scope abort.
             dm_main.shutdown_welcome_lifecycle("engine_stop")
+        except Exception:
+            pass
+        try:
+            # #2021 J1b-2: a due announcement is dropped, a running one reaped.
+            dm_main.shutdown_build_due("engine_stop")
         except Exception:
             pass
         try:
@@ -7639,16 +7677,25 @@ def handle_trigger_update():
     except Exception as e:
         emit_update('update_error', {'error': str(e)})
 
+# #2021 J1b-2: how long a Load, Reset or Exit waits for a stopped
+# announcement to be discarded by the game thread (its call stops at the next
+# poll; the input pump discards it within half a second).
+_ANNOUNCEMENT_STOP_SECONDS = 30
+
+
 def _health_state():
     """The world's state for GET /health and the shutdown wait (#1681, #1682)."""
     from utils.capture.live_provider_call import (
-        active_build_fence, get_active_welcome_scope, get_live_turn_scope,
+        active_build_fence, get_active_announcement_scope,
+        get_active_welcome_scope, get_live_turn_scope,
     )
     from utils.version_checker import get_local_version
-    # #2018: a running in-game build counts; still 0 or 1.
+    # #2018: a running in-game build counts; still 0 or 1. #2021 J1b-2: and
+    # a new place's announcement while it is being written.
     in_flight = int(
         get_live_turn_scope() is not None
         or get_active_welcome_scope() is not None
+        or get_active_announcement_scope() is not None
         or active_build_fence() is not None
     )
     restore = _web_restore_state()

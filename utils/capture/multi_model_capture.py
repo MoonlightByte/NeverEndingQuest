@@ -669,9 +669,15 @@ def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
     attempt = 1
     reissues = 0
     while True:
+        # #2021 J1b-2: a background build yields before each send (empty-
+        # response retries and reissues included) and marks it in flight.
+        build_attempt = live.begin_build_attempt()
         try:
             started = time.monotonic()
-            response = primary_fn(messages=messages, **kwargs)
+            try:
+                response = primary_fn(messages=messages, **kwargs)
+            finally:
+                live.end_build_attempt(build_attempt)
             if base_url is not None and kwargs.get("timeout") is None:
                 # No phase stream in process: the whole call's time is an upper
                 # bound of the time to the first chunk, so the deadline errs long.

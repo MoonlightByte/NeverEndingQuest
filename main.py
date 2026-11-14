@@ -1114,6 +1114,359 @@ def service_welcome_lifecycle():
             raise _RestoreControlTransfer(restore_request)
 
 
+# --- #2021 J1b-2: what a background module build leaves for the game thread --
+# The build runs on its own thread and never writes history (the loop owns its
+# in-memory list). It leaves one due record (utils.build_job); this game-thread
+# pump records a failed build's line, and runs and applies the DM's
+# announcement of a published place on its own registered scope, as the
+# startup welcome's handback is applied. The pump runs at the loop top, on the
+# input poll, and at the turn start; never while a turn's scope is open.
+ANNOUNCEMENT_WAIT_LINE = (
+    "Your action is waiting while the Dungeon Master finishes telling you "
+    "about the new place."
+)
+LOCAL_BUILD_WAIT_LINE = (
+    "Your action is waiting while your local model finishes part of the new "
+    "adventure. This usually takes a minute or two."
+)
+# Model-facing only, never shown: between the start narration and the
+# announcement the new place exists but cannot be reached. An ordinary system
+# message; the announcement's note closes it.
+BUILD_PREPARING_NOTE = (
+    "[The new adventure is being prepared; it is not reachable until it is "
+    "announced. Narrate preparation or other play, never arrival.]"
+)
+_announcement = None
+_announcement_guard = threading.Lock()
+_input_live_history = None
+
+
+class _AnnouncementLifecycle:
+    def __init__(self, record, scope, snapshot, note_message):
+        self.record = record
+        self.scope = scope
+        self.snapshot = snapshot
+        self.note_message = note_message
+        self.done = threading.Event()
+        self.reply = None
+        self.narration = None
+        self.error = None
+        self.worker = None
+
+
+def _announcement_status(_message):
+    """The announcement adds no status line of its own."""
+
+
+def _announcement_worker_main(lifecycle):
+    """Worker: generation only, no history or state writes."""
+    from utils.capture.live_provider_call import LiveProviderSuperseded
+
+    try:
+        content = _get_ai_response_impl(
+            lifecycle.snapshot,
+            prepare_history=False,
+            live_selected=True,
+            detached_context={
+                "scope": lifecycle.scope,
+                "status": _announcement_status,
+            },
+        )
+        parsed = json.loads(extract_json_from_codeblock(content))
+        narration = parsed.get("narration") if isinstance(parsed, dict) else None
+        actions = parsed.get("actions") if isinstance(parsed, dict) else None
+        if (
+            not isinstance(narration, str)
+            or not narration.strip()
+            or not isinstance(actions, list)
+            or actions != []
+        ):
+            raise ValueError("Module follow-up was not useful narration-only JSON")
+        narration = sanitize_text(narration).strip()
+        if not narration:
+            raise ValueError("Module follow-up narration became empty")
+        lifecycle.reply = content
+        lifecycle.narration = narration
+    except LiveProviderSuperseded:
+        lifecycle.error = "superseded"
+    except BaseException as exc:
+        lifecycle.error = "%s: %s" % (type(exc).__name__, exc)
+    finally:
+        lifecycle.done.set()
+
+
+def _build_record_current(record):
+    from utils.capture.live_provider_call import game_epoch
+
+    return game_epoch() == record.start_epoch
+
+
+def _record_build_failure(record, live_history):
+    """A failed build's line, in history as today's failed action records it."""
+    if any(
+        isinstance(message, dict) and message.get("message_id") == record.message_id
+        for message in live_history
+    ):
+        return
+    live_history.append(
+        {"role": "system", "content": record.line, "message_id": record.message_id}
+    )
+    _strictly_persist_conversation_history(live_history)
+
+
+def _start_announcement(record, live_history):
+    """Game thread: refresh the context for the new place, then generate the
+    announcement off-thread on a snapshot of the live list plus its note."""
+    global _announcement
+    from utils.capture.live_provider_call import (
+        LiveTurnScope,
+        register_announcement_scope,
+    )
+
+    require_staged_module_completions_drained()
+    rebuild_conversation_for_current_party(live_history)
+    note = (record.dm_note or "").strip()
+    note_message = {"role": "user", "content": note} if note else None
+    snapshot = copy.deepcopy(live_history)
+    if note_message is not None:
+        snapshot.append(dict(note_message))
+    scope = LiveTurnScope()
+    register_announcement_scope(scope)
+    lifecycle = _AnnouncementLifecycle(record, scope, snapshot, note_message)
+    worker = threading.Thread(
+        target=_announcement_worker_main,
+        args=(lifecycle,),
+        name="module-announcement-worker",
+        daemon=False,
+    )
+    lifecycle.worker = worker
+    _announcement = lifecycle
+    info(
+        "STATE_CHANGE: Announcing new module %s" % record.module_name,
+        category="module_management",
+    )
+    worker.start()
+    return lifecycle
+
+
+def _end_announcement(lifecycle):
+    global _announcement
+    from utils.capture.live_provider_call import clear_announcement_scope
+
+    clear_announcement_scope(lifecycle.scope)
+    with lifecycle.scope.lock:
+        lifecycle.scope.controls_open = False
+    lifecycle.scope.phase = "QUIESCENT"
+    lifecycle.scope.quiescent.set()
+    if _announcement is lifecycle:
+        _announcement = None
+
+
+def _apply_announcement(lifecycle, live_history):
+    """Game thread: [note][reply] into the live list, persisted, then shown.
+    A failed, stopped or stale announcement leaves nothing (the place stays
+    live; fail-forward, as today)."""
+    from core.managers.campaign_manager import _party_module_transition_lock
+
+    try:
+        if (
+            lifecycle.error is not None
+            or lifecycle.scope.is_superseded()
+            or not _build_record_current(lifecycle.record)
+        ):
+            log = info if lifecycle.error in (None, "superseded") else warning
+            log(
+                "Module announcement not applied (%s); the module is live and "
+                "the game continues" % (lifecycle.error or "stopped"),
+                category="module_management",
+            )
+            return False
+        followup_id = "module-followup-%s" % lifecycle.record.module_name
+        with _party_module_transition_lock():
+            if lifecycle.note_message is not None:
+                live_history.append(dict(lifecycle.note_message))
+            if not any(
+                isinstance(message, dict) and message.get("message_id") == followup_id
+                for message in live_history
+            ):
+                live_history.append({
+                    "role": "assistant",
+                    "content": lifecycle.reply,
+                    "message_id": followup_id,
+                })
+            saved = save_conversation_history(
+                live_history, strict=True, allow_compression=False,
+            )
+            if saved is not True:
+                raise OSError("Module announcement history did not report success")
+            _emit_committed_module_message(lifecycle.narration, followup_id)
+        return True
+    except Exception as apply_error:
+        error(
+            "Published module creation narration could not be delivered; the "
+            "module is live and the game continues",
+            exception=apply_error,
+            category="module_management",
+        )
+        return False
+    finally:
+        _end_announcement(lifecycle)
+
+
+def _show_wait_line(text):
+    """A wait line: the web and headless inputs show theirs at the enqueue;
+    a terminal prints it here."""
+    if not hasattr(sys.stdin, "queue"):
+        show_player_notice(text, color="yellow")
+
+
+def _start_next_due(live_history):
+    """Under _announcement_guard: record due failure lines, drop stale
+    records, and start the first due announcement (the rest wait)."""
+    from utils import build_job as jobs
+
+    records = jobs.take_due()
+    while records:
+        record = records.pop(0)
+        if not _build_record_current(record):
+            info(
+                "Dropped a stale module build record (%s)" % record.kind,
+                category="module_management",
+            )
+            continue
+        if record.kind == "failure":
+            _record_build_failure(record, live_history)
+            continue
+        jobs.put_back_due(records)
+        return _start_announcement(record, live_history)
+    return None
+
+
+def service_build_due(live_history, *, turn_start=False):
+    """Game-thread pump for a background build's due records (see above).
+
+    At the turn start (before the turn's scope opens and before the input is
+    written) an announcement that is generating, or due, is waited for and
+    applied first, so history reads [note][reply][input][reply]. The guard is
+    never held while the worker is waited for: a Load's supersession must be
+    able to reach it."""
+    from utils.capture.live_provider_call import get_live_turn_scope
+
+    if live_history is None or get_live_turn_scope() is not None:
+        return
+    shown = False
+    while True:
+        lifecycle = _announcement
+        if lifecycle is not None:
+            if not lifecycle.done.is_set():
+                if not turn_start:
+                    return
+                if not shown:
+                    _show_wait_line(ANNOUNCEMENT_WAIT_LINE)
+                    shown = True
+                lifecycle.done.wait()
+            _apply_announcement(lifecycle, live_history)
+        with _announcement_guard:
+            lifecycle = _start_next_due(live_history)
+        if lifecycle is None or not turn_start:
+            return
+
+
+def announcement_pending():
+    """True while an announcement is due or being written (the input waits)."""
+    from utils import build_job as jobs
+
+    lifecycle = _announcement
+    return (
+        lifecycle is not None and not lifecycle.done.is_set()
+    ) or jobs.has_due("announcement")
+
+
+def _bind_input_live_history(conversation_history):
+    """Bind the list the pumps write to right before the input wait (a loop
+    pass can rebind the list after the loop top)."""
+    global _input_live_history
+    _input_live_history = conversation_history
+    from utils import build_job as jobs
+
+    jobs.set_failure_presenter(_present_build_failure)
+    if _welcome_lifecycle is not None:
+        _welcome_lifecycle.live_history = conversation_history
+    from core.managers.status_manager import set_input_poll_hook
+
+    if hasattr(sys.stdin, "queue"):
+        set_input_poll_hook(_service_input_poll)
+
+
+def _service_input_poll():
+    service_welcome_lifecycle()
+    service_build_due(_input_live_history)
+
+
+def _wait_for_local_build_attempt(live_turn_scope):
+    """Q-J1: on a local model, a player turn that opens while a background
+    build's send is in flight waits for that send (the build waits for the
+    turn before its next one). On a remote model they overlap."""
+    from utils.capture.live_provider_call import local_build_attempt_in_flight
+
+    if not local_build_attempt_in_flight():
+        return
+    try:
+        status_manager.update_status(LOCAL_BUILD_WAIT_LINE, is_processing=True)
+    except Exception:
+        pass
+    _show_wait_line(LOCAL_BUILD_WAIT_LINE)
+    while local_build_attempt_in_flight() and not live_turn_scope.is_superseded():
+        time.sleep(0.25)
+
+
+def shutdown_build_due(reason="engine_stop"):
+    """Teardown: a due record that has not started is dropped; a running
+    announcement is superseded and its worker reaped; a finished one that was
+    not applied is discarded. The job itself stops on the quit's stop flag."""
+    scope = supersede_announcement(reason)
+    lifecycle = _announcement
+    if scope is None or lifecycle is None:
+        return
+    try:
+        lifecycle.done.wait()
+        _end_announcement(lifecycle)
+        worker = lifecycle.worker
+        if worker is not None and worker.is_alive():
+            worker.join()
+    except Exception:
+        pass
+
+
+def _present_build_failure(result, message_id):
+    """A failed background build's line, shown at once with today's words."""
+    from web.shared_state import emit_player_output
+
+    player_message = _action_failure_player_message(result)
+    emit_player_output(
+        {"type": "error", "content": player_message, "message_id": message_id}
+    )
+    return player_message
+
+
+def supersede_announcement(kind, operation_id=None):
+    """Load, Reset or quit, once accepted: drop the due records that have not
+    started, and stop a running announcement (its result is discarded).
+    Returns its scope, to wait for its quiescence, or None. Under the guard
+    the pump starts an announcement with, so none starts after this."""
+    from utils import build_job as jobs
+
+    with _announcement_guard:
+        jobs.drop_due()
+        lifecycle = _announcement
+        if lifecycle is None:
+            return None
+        # A finished one not yet applied is discarded too (never applied to
+        # the game being replaced).
+        lifecycle.scope.request_supersession(kind, operation_id)
+        return lifecycle.scope
+
+
 def opening_scene_pending():
     """True while a new game's opening scene is still being written (#1422 F4)."""
     lifecycle = _welcome_lifecycle
@@ -1639,6 +1992,7 @@ def exit_game():
     # #2018: the CLI quits between turns, so no build runs here today; the
     # flag is raised for a build that outlives its turn (J1b).
     request_build_stop("quit")
+    shutdown_build_due("quit")
     print("Fond farewell until we meet again!")
     exit()
 
@@ -7367,19 +7721,14 @@ def process_ai_response(
         narration = parsed_response.get("narration", "")
         sanitized_narration = sanitize_text(narration)
         narration_shown = False
-        # A reply whose only action is createNewModule narrates a module that
-        # does not exist yet, so its narration is held, as a transition holds
-        # its departure narration (#182). A published build is narrated by the
-        # DM's post-publish follow-up; a failed build shows only its system
-        # line. A reply that starts a fight (createEncounter, alone or after a
-        # prerequisite's updates) is held the same way: the combat opening
-        # narrates the fight from its encounterSummary (#1345, D-1345-1 A).
-        # The stored reply leaves out the narration that was not shown.
-        if (
-            len(actions) == 1
-            and isinstance(actions[0], dict)
-            and actions[0].get("action") == action_handler.ACTION_CREATE_NEW_MODULE
-        ) or any(
+        # A reply that starts a fight (createEncounter, alone or after a
+        # prerequisite's updates) is held: the combat opening narrates the
+        # fight from its encounterSummary (#1345, D-1345-1 A). The stored
+        # reply leaves out the narration that was not shown. #2021 J1b-2: a
+        # reply whose only action is createNewModule is no longer held; the
+        # build runs in the background and its narration says the way is
+        # being prepared; the DM announces the place once it is published.
+        if any(
             isinstance(action, dict)
             and action.get("action") == action_handler.ACTION_CREATE_ENCOUNTER
             for action in actions
@@ -7464,6 +7813,8 @@ def process_ai_response(
         # the encounter commits it once its fight is built, just before play,
         # and a fight that could not be set up spends nothing.
         encounter_payments = action_handler.stage_encounter_payments(actions)
+        # #2021 J1b-2: a module build started in the background this turn.
+        build_started = False
         # Execute accepted actions once, in the order the DM and referee approved.
         for action_index, action in enumerate(actions):
             if encounter_payments and action_index in encounter_payments["staged"]:
@@ -7563,6 +7914,12 @@ def process_ai_response(
                     conversation_history,
                     invocation_claim=invocation_claim,
                 )
+            if isinstance(result, dict) and result.get("status") == "build_started":
+                # #2021 J1b-2: the build runs in the background. As after a
+                # publish, later sibling actions are not run; the reply is
+                # stored below, with the model-facing preparing note after it.
+                build_started = True
+                break
             if isinstance(result, dict) and result.get("status") == "published":
                 # Module publication is an irreversible terminal action for
                 # this response; never execute later sibling actions. (P2b: the
@@ -7760,6 +8117,10 @@ def process_ai_response(
         # preventing any possibility of the history and game state becoming out of sync.
         assistant_message = {"role": "assistant", "content": response}
         conversation_history.append(assistant_message)
+        if build_started:
+            conversation_history.append(
+                {"role": "system", "content": BUILD_PREPARING_NOTE}
+            )
         save_conversation_history(conversation_history)
         
         # DELAYED ARCHIVING: Process any pending archive after the AI response is saved
@@ -10432,6 +10793,9 @@ def _main_game_loop(startup_authority, turn_authority):
             service_welcome_lifecycle()
         if _welcome_lifecycle is None:
             _flush_library_notices()
+        # #2021 J1b-2: a background build's due record (a failure line, or a
+        # published place's announcement, started here when it is due).
+        service_build_due(conversation_history)
 
         if needs_conversation_history_update:
             debug("STATE_CHANGE: Reloading conversation history from disk due to needs_conversation_history_update flag", category="conversation_management")
@@ -10562,6 +10926,10 @@ def _main_game_loop(startup_authority, turn_authority):
         # publishing that panel, so no ready status is sent here.
         from core.managers.checks_runtime import read_player_line
 
+        # #2021 J1b-2 (and #2028): the pumps that run while the input waits
+        # write to the list bound here, after every rebind above.
+        _bind_input_live_history(conversation_history)
+
         if player_data_current:
             current_hp = player_data_current.get("hitPoints", "N/A")
             max_hp = player_data_current.get("maxHitPoints", "N/A")
@@ -10640,6 +11008,11 @@ def _main_game_loop(startup_authority, turn_authority):
         # and its handback (discard + note removal) completes BEFORE this
         # input is processed, so two assistant turns can never interleave.
         finalize_welcome_before_player_turn()
+        # #2021 J1b-2: the list the input-poll pumps wrote to; then a due or
+        # running announcement is applied before this input is written.
+        if _input_live_history is not None:
+            conversation_history = _input_live_history
+        service_build_due(conversation_history, turn_start=True)
 
         party_tracker_data = load_json_file("party_tracker.json")
 
@@ -10689,6 +11062,7 @@ def _main_game_loop(startup_authority, turn_authority):
 
         live_turn_scope = open_live_turn_scope()
         level_up_publication_guard = None
+        _wait_for_local_build_attempt(live_turn_scope)
 
 
         # Old-format repairs are advisory and may invoke T018/T019/T087/T027.
