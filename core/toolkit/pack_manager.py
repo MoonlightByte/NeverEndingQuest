@@ -34,6 +34,14 @@ def checked_active_pack(name, default):
     return default
 
 
+def _same_pack_name(a, b):
+    """#1998: True when two pack names reach the same folder on Windows too:
+    compared without case, after Windows drops trailing dots and spaces."""
+    if not isinstance(a, str) or not isinstance(b, str):
+        return a == b
+    return a.rstrip(". ").casefold() == b.rstrip(". ").casefold()
+
+
 class PackManager:
     """Service for managing graphic packs"""
     
@@ -709,13 +717,13 @@ Created: {datetime.now().strftime("%Y-%m-%d")}
         Returns:
             Deletion result dictionary
         """
-        if pack_name == "photorealistic":
+        if _same_pack_name(pack_name, "photorealistic"):
             return {
                 "success": False,
                 "error": "Cannot delete the default pack"
             }
         
-        if pack_name == self.active_pack:
+        if _same_pack_name(pack_name, self.active_pack):
             return {
                 "success": False,
                 "error": "Cannot delete the active pack. Please activate another pack first."

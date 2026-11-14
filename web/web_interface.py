@@ -2109,7 +2109,7 @@ def get_monsters():
 def serve_pack_image(pack_name, filename):
     """Serve an image from a graphic pack"""
     from web.media_paths import refused_name  # #1998
-    refused = refused_name(pack_name=pack_name)
+    refused = refused_name(pack_name=pack_name, filename=filename)
     if refused:
         return jsonify(refused), 400
     from flask import send_from_directory
@@ -2130,7 +2130,7 @@ def serve_pack_image(pack_name, filename):
 def serve_pack_video(pack_name, filename):
     """Serve a video from a graphic pack"""
     from web.media_paths import refused_name  # #1998
-    refused = refused_name(pack_name=pack_name)
+    refused = refused_name(pack_name=pack_name, filename=filename)
     if refused:
         return jsonify(refused), 400
     from flask import send_from_directory
@@ -2201,7 +2201,7 @@ def generate_monsters():
         model = data.get('model', 'auto')
         monsters = data.get('monsters', [])
         from web.media_paths import refused_name  # #1998
-        refused = refused_name(pack_name=pack_name, monster_id=monsters)
+        refused = refused_name(pack_name=pack_name or None, monster_id=monsters, style=style)
         if refused:
             return jsonify(refused), 400
         
@@ -6158,7 +6158,7 @@ def fetch_npc_descriptions():
     module_name = data.get('module_name')
     npcs = data.get('npcs', [])
     from web.media_paths import refused_name  # #1998
-    refused = refused_name(module_name=module_name, npc_id=npcs)
+    refused = refused_name(module_name=module_name, npc_id=npcs, dict_items=('npc_id',))
     if refused:
         return jsonify(refused), 400
     if not module_name or not isinstance(npcs, list) or not npcs:
@@ -6344,7 +6344,7 @@ def generate_npc_portraits():
     style_prompt = data.get('style_prompt', '')
     npcs = data.get('npcs', [])
     from web.media_paths import refused_name  # #1998
-    refused = refused_name(module_name=module_name, pack_name=pack_name, npc_id=npcs)
+    refused = refused_name(module_name=module_name, pack_name=pack_name, npc_id=npcs, dict_items=('npc_id',))
     if refused:
         return jsonify(refused), 400
     
@@ -7008,7 +7008,7 @@ def handle_generate_unified_assets(data):
     assets = data.get('assets', [])
     options = data.get('options', {})
     from web.media_paths import refused_name  # #1998
-    refused = refused_name(module_name=module_name, asset_id=assets)
+    refused = refused_name(module_name=module_name, asset_id=assets, style=options.get('style', 'photorealistic'), dict_items=('asset_id',))
     if refused:
         emit('unified_generation_complete', {'success': False, 'message': refused['error'], 'reason': refused['reason']})
         return
