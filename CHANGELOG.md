@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 - On a hosted game, a connection problem now says it is on the host's side and asks you to wait, instead of naming OpenAI and asking you to check that you're online (#1995).
+- When making a picture or the Dungeon Master's voice fails for a moment, the game now tries once more and counts that try, instead of up to two hidden tries; pictures made in the toolkit now count toward the session's spending too (#1994).
 
 - When the game puts your last action back in the empty box after a turn it couldn't carry out, a line under the box now says so; it goes away when you change or send the words, and nothing is sent for you (#1990).
 

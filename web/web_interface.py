@@ -5154,17 +5154,21 @@ def handle_generate_image(data):
         from utils.file_operations import safe_read_json, safe_write_json
         
         # Initialize the OpenAI client (#1399: base_url pinned to the OpenAI API)
-        from utils.openai_client import openai_api_client
+        from utils.openai_client import call_with_counted_reissue, openai_api_client
         client = openai_api_client()
         
         # Try to generate image
         try:
-            # Generate image using DALL-E 3
-            response = client.images.generate(
-                model="dall-e-3",
-                prompt=prompt,
-                size="1024x1024",
-                n=1,
+            # Generate image using DALL-E 3 (#1994: one counted reissue on a
+            # brief failure; the client makes no hidden resends)
+            response = call_with_counted_reissue(
+                lambda: client.images.generate(
+                    model="dall-e-3",
+                    prompt=prompt,
+                    size="1024x1024",
+                    n=1,
+                ),
+                "image",
             )
             # Get the image URL
             image_url = response.data[0].url
@@ -5184,11 +5188,14 @@ def handle_generate_image(data):
                     return
                 
                 # Retry with sanitized prompt
-                response = client.images.generate(
-                    model="dall-e-3",
-                    prompt=sanitized_prompt,
-                    size="1024x1024",
-                    n=1,
+                response = call_with_counted_reissue(
+                    lambda: client.images.generate(
+                        model="dall-e-3",
+                        prompt=sanitized_prompt,
+                        size="1024x1024",
+                        n=1,
+                    ),
+                    "image",
                 )
                 image_url = response.data[0].url
             else:
@@ -5330,15 +5337,19 @@ def generate_tts():
             selected_model = TTS_MODEL
         
         # Initialize the OpenAI client (#1399: base_url pinned to the OpenAI API)
-        from utils.openai_client import openai_api_client
+        from utils.openai_client import call_with_counted_reissue, openai_api_client
         client = openai_api_client()
         
-        # Generate speech
-        response = client.audio.speech.create(
-            model=selected_model,
-            voice=selected_voice,
-            input=text,
-            speed=TTS_SPEED
+        # Generate speech (#1994: one counted reissue, only on a short wait;
+        # a longer one returns speech_unavailable so the button can retry)
+        response = call_with_counted_reissue(
+            lambda: client.audio.speech.create(
+                model=selected_model,
+                voice=selected_voice,
+                input=text,
+                speed=TTS_SPEED
+            ),
+            "speech", max_delay=5.0,
         )
         from utils.session_spend import record_other
         record_other("voice")  # #1388: billed per character, counted, not priced
