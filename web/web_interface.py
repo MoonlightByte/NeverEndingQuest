@@ -2201,7 +2201,7 @@ def generate_monsters():
         model = data.get('model', 'auto')
         monsters = data.get('monsters', [])
         from web.media_paths import refused_name  # #1998
-        refused = refused_name(pack_name=pack_name or None, monster_id=monsters, style=style)
+        refused = refused_name(pack_name=pack_name or None, monster_id=monsters, style=style if not pack_name else None)
         if refused:
             return jsonify(refused), 400
         
