@@ -313,5 +313,8 @@ call through the same transport and prints its phase timeline.
   `saves restore` joins its JSON to the end of a longer last line. To parse
   these results, use `serve`: the `state` event and the `list_saves` and
   `restore` commands are clean.
+- A world started with `--provider-gateway` refuses to start (exit code 2,
+  one `[SETUP]` line on stderr) when its saved provider is Local/Custom; the
+  provider, keys and endpoint belong to the host (#1995).
 - Saves are named to the second. A second `saves create` in the same second
   writes nothing, yet reports `ok: true` with "Save game already exists".

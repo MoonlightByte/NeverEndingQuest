@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- On a hosted game, the server now refuses changes to the AI provider, keys, local endpoint and updates, and does not serve the module toolkit; these belong to the host (#1995).
+
 - In fights where someone nearby has no character sheet yet, the game no longer shows an error about a missing file (#1984).
 
 - When the AI service can't be reached or refuses while the game is building a new adventure, the build now stops at the first failed step and says why in a "Connection problem:" or "Account problem:" notice, instead of carrying on; nothing in your game is changed (#1981).

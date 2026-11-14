@@ -64,3 +64,58 @@ def child_argv(argv):
     if _gateway is None:
         return argv
     return list(argv) + [FLAG, _gateway]
+
+
+# #1995: on a hosted world (operator gateway) the provider, keys, endpoint,
+# updates and the module toolkit belong to the host.
+HOSTED_ENDPOINT_TEST_DETAIL = "Not available on a hosted game: the host sets the AI service."
+HOSTED_UPDATES = "Updates come from the host."
+_HOSTED_TOOLKIT_PREFIXES = ("/toolkit", "/api/toolkit")
+
+
+def hosted_settings_refusal(emit, event):
+    """#1995: refuse a settings, update or toolkit socket event on a hosted
+    world. Called first in each handler, before any write or network call;
+    never echoes the request. Returns True when the event was refused."""
+    if _gateway is None:
+        return False
+    emit("settings_refused", {"event": event, "reason": "hosted"})
+    if event == "test_local_endpoint":
+        # The Settings page waits for this result.
+        emit("local_endpoint_test_result",
+             {"ok": False, "reason": "hosted", "detail": HOSTED_ENDPOINT_TEST_DETAIL})
+    elif event == "trigger_update":
+        emit("update_error", {"error": HOSTED_UPDATES})
+    return True
+
+
+def hosted_toolkit_path(path):
+    """#1995: True for a module toolkit page or API path on a hosted world."""
+    if _gateway is None:
+        return False
+    return any(path == p or path.startswith(p + "/") for p in _HOSTED_TOOLKIT_PREFIXES)
+
+
+def refuse_local_provider_on_gateway():
+    """#1995: a hosted world must send through the gateway. A saved
+    Local/Custom provider (written before the hosted guard, or by hand) would
+    send every request to that address instead, so the world refuses to start:
+    exit 2 with one [SETUP] line on stderr, before any bind or request. Call
+    it after take_from_argv; at import time the gateway is not known yet."""
+    if _gateway is None:
+        return
+    import sys
+    import model_config
+
+    if model_config.get_provider() != "lmstudio":
+        return
+    print(
+        "[SETUP] This world was started with %s, but its saved settings choose "
+        "Local/Custom (model_provider \"lmstudio\" in %s). A hosted world must use "
+        "the gateway. Set model_provider to openai, legacy or gemini in that file, "
+        "or remove it, then start the world again."
+        % (FLAG, model_config._USER_SETTINGS_FILE),
+        file=sys.stderr,
+    )
+    sys.stderr.flush()
+    raise SystemExit(2)

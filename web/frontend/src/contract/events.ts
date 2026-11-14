@@ -153,7 +153,7 @@ export const CLIENT_EVENT_ARITY = {
   trigger_update: 0,
 } as const satisfies Record<keyof ClientEvents, 0 | 1>;
 
-// ---------- server -> client (56) ----------
+// ---------- server -> client (57) ----------
 export interface RestoreResult {
   message: string;
   pending?: boolean;
@@ -243,7 +243,9 @@ export interface ServerEvents {
     has_key?: boolean; wait_seconds?: number | null; restart_needed?: boolean;
   };
   gemini_key_status: { has_key: boolean };
-  local_endpoint_test_result: { ok: boolean; detail: string };
+  local_endpoint_test_result: { ok: boolean; detail: string; reason?: 'hosted' };
+  /** #1995: a hosted world refused a provider, key, endpoint, update or toolkit event. */
+  settings_refused: { event: string; reason: 'hosted' };
   image_generated: { image_url: string; local_url?: string; prompt: string; request_id?: string; source_message_id?: string };
   image_generation_error: { message: string; request_id?: string; source_message_id?: string };
   token_update: {

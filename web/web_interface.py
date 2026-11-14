@@ -222,6 +222,9 @@ if _LOCAL_TOKEN:
 @app.before_request
 def require_operator_token_for_network_mode():
     """Protect every HTTP route whenever the operator explicitly enables LAN use."""
+    from utils.provider_gateway import hosted_toolkit_path
+    if hosted_toolkit_path(request.path):
+        return jsonify({'error': 'hosted', 'reason': 'hosted'}), 403
     if not _OPERATOR_TOKEN or session.get("operator_authenticated"):
         return None
     supplied = request.args.get("operator_token", "") or request.headers.get(
@@ -4761,6 +4764,9 @@ def handle_set_provider(data):
     like a Save and applied on the game thread at that scope's safe boundary,
     so one turn never runs on two providers.
     """
+    from utils.provider_gateway import hosted_settings_refusal
+    if hosted_settings_refusal(emit, 'set_model_provider'):
+        return
     try:
         import model_config
         provider = data.get('provider', 'legacy')
@@ -4870,6 +4876,9 @@ def handle_get_local_endpoint():
 @socketio.on('set_local_endpoint')
 def handle_set_local_endpoint(data):
     """Persist the Local/Custom endpoint. Applies live (openai_client reads it per call)."""
+    from utils.provider_gateway import hosted_settings_refusal
+    if hosted_settings_refusal(emit, 'set_local_endpoint'):
+        return
     try:
         import model_config
         data = data or {}
@@ -4936,6 +4945,9 @@ def handle_set_openai_key(data):
     key is applied at startup for ALL readers (see the boot-time
     apply_persisted_openai_key above).
     """
+    from utils.provider_gateway import hosted_settings_refusal
+    if hosted_settings_refusal(emit, 'set_openai_key'):
+        return
     try:
         import model_config, config as _cfg
         from utils.openai_key_check import REJECTED, check_openai_key
@@ -4991,6 +5003,9 @@ def handle_set_gemini_key(data):
     key applies after the next restart (the persisted key is re-applied at boot).
     Mirrors handle_set_openai_key.
     """
+    from utils.provider_gateway import hosted_settings_refusal
+    if hosted_settings_refusal(emit, 'set_gemini_key'):
+        return
     try:
         import model_config, config as _cfg
         api_key = ((data or {}).get('api_key') or '').strip()
@@ -5017,6 +5032,9 @@ def handle_test_local_endpoint(data):
     {ok, detail}. Never echoes the key. Does NOT use capture_and_fanout/the 67
     callsite paths.
     """
+    from utils.provider_gateway import hosted_settings_refusal
+    if hosted_settings_refusal(emit, 'test_local_endpoint'):
+        return
     data = data or {}
     base_url = (data.get('base_url') or '').strip()
     api_key = (data.get('api_key') or '').strip() or 'not-needed'
@@ -6852,6 +6870,9 @@ def simulate_build_process(params):
 @socketio.on('start_build')
 def handle_start_build(data):
     """Starts the module build process in a background thread."""
+    from utils.provider_gateway import hosted_settings_refusal
+    if hosted_settings_refusal(emit, 'start_build'):
+        return
     global build_process_thread
     if build_process_thread and build_process_thread.is_alive():
         emit('module_error', {'error': 'A build is already in progress.'})
@@ -6866,6 +6887,9 @@ def handle_start_build(data):
 @socketio.on('cancel_build')
 def handle_cancel_build():
     """Sets a flag to cancel the ongoing build process."""
+    from utils.provider_gateway import hosted_settings_refusal
+    if hosted_settings_refusal(emit, 'cancel_build'):
+        return
     global cancel_build_flag
     if build_process_thread and build_process_thread.is_alive():
         info("Cancellation request received for module build.")
@@ -6876,6 +6900,9 @@ def handle_cancel_build():
 @socketio.on('generate_unified_assets')
 def handle_generate_unified_assets(data):
     """Generate missing descriptions and images for module assets"""
+    from utils.provider_gateway import hosted_settings_refusal
+    if hosted_settings_refusal(emit, 'generate_unified_assets'):
+        return
     module_name = data.get('module_name')
     assets = data.get('assets', [])
     options = data.get('options', {})
@@ -7393,6 +7420,9 @@ def handle_generate_unified_assets(data):
 @socketio.on('trigger_update')
 def handle_trigger_update():
     """Handle auto-update request from client"""
+    from utils.provider_gateway import hosted_settings_refusal
+    if hosted_settings_refusal(emit, 'trigger_update'):
+        return
     if desktop_mode():
         emit('update_error', {'error': UPDATES_THROUGH_APP})
         return
@@ -7554,6 +7584,8 @@ def serve(selected_ui, toolkit=False, no_browser=False, bound_socket=None):
     script). With bound_socket (--port / --port-or-free: bind first, then
     serve) it serves on that socket; without one it binds config.WEB_PORT as
     before."""
+    from utils.provider_gateway import refuse_local_provider_on_gateway
+    refuse_local_provider_on_gateway()  # #1995: before any bind
     global _served_port
     app.config.update(PLAYER_UI=selected_ui, TOOLKIT_ONLY=toolkit)
     # Create templates directory if it doesn't exist
