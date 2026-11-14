@@ -595,6 +595,13 @@ class BuildFence:
         self.bound_turn = bound_turn
         self.start_epoch = start_epoch
         self.stop_requested = threading.Event()
+        # #2021 J1b-2: set only for a background job. Its yield before each
+        # send, whether a send is in flight (from the send to its return,
+        # under _scope_guard), and whether a player turn on a local model
+        # waits for that send.
+        self.build_yield = None
+        self.attempt_in_flight = False
+        self.local_wait = False
 
     @property
     def operation_id(self):
@@ -693,6 +700,9 @@ def _game_busy_operations(extra_scopes=None):
     welcome = get_active_welcome_scope()
     if welcome is not None:
         scopes.append(welcome)
+    announcement = get_active_announcement_scope()
+    if announcement is not None:
+        scopes.append(announcement)
     if extra_scopes is not None:
         scopes.extend(scope for scope in extra_scopes() if scope is not None)
     return tuple(
@@ -741,6 +751,63 @@ class BuildYield:
             started = time.monotonic()
             time.sleep(self.beat)
             self.waited += time.monotonic() - started
+
+
+def _current_build_fence():
+    """The background job's fence when this call runs inside its build scope
+    (an advisory child counts on its parent), else None."""
+    scope = get_live_provider_scope()
+    while scope is not None and not isinstance(scope, BuildProviderScope):
+        scope = getattr(scope, "parent", None)
+    fence = getattr(scope, "parent", None) if scope is not None else None
+    if isinstance(fence, BuildFence) and fence.build_yield is not None:
+        return fence
+    return None
+
+
+def begin_build_attempt():
+    """#2021 J1b-2: before one send of a background build (every Route P
+    send, its empty-response retries and reissues included, and every Route L
+    child): wait while the player's game is busy, then mark the send in
+    flight. The mark is set under _scope_guard after a last idle check, so a
+    player turn either opens first (and the build waits again) or sees the
+    send in flight. Returns the fence, or None outside a background build."""
+    fence = _current_build_fence()
+    if fence is None:
+        return None
+    build_yield = fence.build_yield
+    while True:
+        reason = build_yield.wait_before_attempt()
+        if reason == "superseded":
+            raise LiveProviderSuperseded("in-game build stopped")
+        with _scope_guard:
+            if reason == "idle" and _game_busy_operations(build_yield.extra_scopes):
+                continue
+            fence.attempt_in_flight = True
+        _provider_debug("BUILD_ATTEMPT_BEGIN reason=%s" % reason)
+        return fence
+
+
+def end_build_attempt(fence, sent=True):
+    """#2021 J1b-2: the send begun by begin_build_attempt returned (or was
+    never made); N and K reset only after a send."""
+    if fence is None:
+        return
+    with _scope_guard:
+        fence.attempt_in_flight = False
+    if sent:
+        fence.build_yield.attempt_sent()
+    _provider_debug("BUILD_ATTEMPT_END sent=%s" % bool(sent))
+
+
+def local_build_attempt_in_flight():
+    """True while a background build's send is in flight on a local model,
+    the case where a player turn waits for it (#2021 Q-J1)."""
+    fence = active_build_fence()
+    with _scope_guard:
+        return bool(
+            fence is not None and fence.local_wait and fence.attempt_in_flight
+        )
 
 
 # --- Lifecycle owner record (issue #270) ------------------------------------
@@ -1116,6 +1183,34 @@ def clear_welcome_scope(scope):
     with _scope_guard:
         if _welcome_scope is scope:
             _welcome_scope = None
+
+
+# --- Detached new-place announcement scope (#2021 J1b-2) ---------------------
+# After a background build publishes, the DM's announcement of the new place
+# runs on its own LiveTurnScope, registered here (not the player-turn
+# singleton, and not the welcome's slot, since the two can overlap). Every
+# place that reads the welcome scope reads this one too.
+_announcement_scope = None
+
+
+def register_announcement_scope(scope):
+    global _announcement_scope
+    with _scope_guard:
+        _announcement_scope = scope
+        return scope
+
+
+def get_active_announcement_scope():
+    with _scope_guard:
+        return _announcement_scope
+
+
+def clear_announcement_scope(scope):
+    """Clear only the exact registered announcement scope."""
+    global _announcement_scope
+    with _scope_guard:
+        if _announcement_scope is scope:
+            _announcement_scope = None
 
 
 def queue_live_save(execute, complete, operation_id=None, scope=None, cancel=None):
@@ -2085,6 +2180,8 @@ def call_live_provider(
             purpose=purpose, shown=shown,
         )
     finally:
+        # #2021 J1b-2: a child that was never started was never sent.
+        end_build_attempt(shown.pop("build_attempt", None), sent=False)
         _restore_covered_status(shown)
 
 
@@ -2353,6 +2450,10 @@ def _call_live_provider(
                 "Still working; checking the current adventure...",
             )
             continue
+        # #2021 J1b-2: a background build yields before each child. A mark
+        # a `continue` left behind (no child started) is ended first.
+        end_build_attempt(shown.pop("build_attempt", None), sent=False)
+        shown["build_attempt"] = begin_build_attempt()
         claim = getattr(scope, "claim_provider_generation", None)
         if claim is not None and not (
             claim(reserve=reserve) if reserve else claim()
@@ -2414,6 +2515,8 @@ def _call_live_provider(
                 ),
                 time.monotonic(),
             )
+            # #2021 J1b-2: no child, no send.
+            end_build_attempt(shown.pop("build_attempt", None), sent=False)
             if policy == "advisory" and not completion_required:
                 raise LiveProviderUnavailable(
                     task_id, {"error_class": "process_setup_unavailable"}
@@ -2533,6 +2636,7 @@ def _call_live_provider(
                     output = reader.output
                 _close_process_streams(process)
             writer.join()
+            end_build_attempt(shown.pop("build_attempt", None))
         phase_state = reader.snapshot()
         if superseded_error is None:
             try:

@@ -7439,10 +7439,7 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             # name and to publish (issue #708); it is not held here while the
             # module generates.
 
-            import contextlib as _contextlib
-
-            with module_build_usage_scope(build_id=build_id) as build_context, \
-                    _contextlib.ExitStack() as build_slot:
+            with module_build_usage_scope(build_id=build_id) as build_context:
                 build_id = str(build_context.build_id)
                 # #1981 PR C: arm this build's connection stop and give Route
                 # P its retry-notice hook (same stage and percentage).
@@ -7495,64 +7492,18 @@ Please use a valid location that exists in the current area ({current_area_id}) 
 
                 # #2021: one in-game build at a time, claimed before anything
                 # binds, so a refused second build leaves the running one's
-                # fence (its stop and in_flight) as it was. As before, the
-                # build is bound only under a live provider scope.
+                # fence (its stop and in_flight) as it was. J1b-2: every
+                # in-game build claims (bound to no turn: a Load, Reset or quit
+                # stops it, its starting turn's end does not) and runs as a
+                # background job; the turn returns at once.
                 from utils.capture.live_provider_call import (
+                    BuildYield,
                     claim_build_fence,
-                    get_live_provider_scope,
                     release_build_fence,
                 )
 
-                claimed_fence = None
-                bound_turn = get_live_provider_scope()
-                if bound_turn is not None:
-                    claimed_fence = claim_build_fence(bound_turn)
-                    if claimed_fence is None:
-                        mark_module_build_outcome("lock_unavailable")
-                        failure = module_failure(
-                            message=(
-                                "Module creation is busy; no game state was "
-                                "changed. Please retry shortly."
-                            )
-                        )
-                        terminal_progress(
-                            "failed", failure["response_data"]["error_message"]
-                        )
-                        return failure
-                    build_slot.callback(release_build_fence, claimed_fence)
-
-                # No cross-turn idempotency dedup: a createNewModule may carry
-                # only a narrative (no module_name), and the allocated final
-                # name may differ, so nothing can reliably match a retry to a
-                # prior build. A crash-then-recreate yields a harmless SPARE
-                # module the player can delete -- fail-forward, never a broken
-                # or corrupted game. No prior in-flight state ever BLOCKS a
-                # new build.
-                stitcher = get_module_stitcher()
-                try:
-                    # Builds into a hidden temp workspace and atomically swaps
-                    # the module into modules/<name> in one rename, updating
-                    # the advisory registry via the store-free helper. A
-                    # failure here NEVER touches live state -- the build simply
-                    # did not happen and the player keeps playing.
-                    success, module_name = ai_driven_module_creation(
-                        parameters,
-                        progress_callback=module_progress_callback,
-                        policy="game",
-                        prepare_candidate=(
-                            stitcher.build_publication_registry_bytes
-                        ),
-                        fence=claimed_fence,
-                    )
-                except ModuleCreationCancelledError:
-                    mark_module_build_outcome("not_generated")
-                    failure = module_failure()
-                    terminal_progress(
-                        "failed", failure["response_data"]["error_message"]
-                    )
-                    return failure
-                except ModuleCreationBusyError:
-                    # Module refresh stayed busy before anything was built.
+                claimed_fence = claim_build_fence(None)
+                if claimed_fence is None:
                     mark_module_build_outcome("lock_unavailable")
                     failure = module_failure(
                         message=(
@@ -7564,59 +7515,209 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         "failed", failure["response_data"]["error_message"]
                     )
                     return failure
-                except ModuleCreationFailedError as build_error:
-                    # The build reports its reason instead of returning a bare
-                    # failure (issue #130). Log the detail, but keep the
-                    # player-facing message sanitized: provider output must
-                    # not leak into the DM conversation.
-                    error(
-                        f"Module creation failed: {build_error}",
-                        exception=build_error,
-                        category="module_creation",
-                    )
-                    stopped = connection_failure()
-                    if stopped is not None:
-                        return stopped
-                    from utils.provider_errors import BuildCeilingReached
 
-                    ceiling = build_error.__cause__
-                    if isinstance(ceiling, BuildCeilingReached):
-                        # #2011: the reason stays in the debug log.
-                        debug(
-                            "MODULE_BUILD_END build=%s reason=ceiling bound=%s spent=%s"
-                            % (ceiling.build_id, ceiling.bound, ceiling.spent),
+                def run_build():
+                    # No cross-turn idempotency dedup: a createNewModule may carry
+                    # only a narrative (no module_name), and the allocated final
+                    # name may differ, so nothing can reliably match a retry to a
+                    # prior build. A crash-then-recreate yields a harmless SPARE
+                    # module the player can delete -- fail-forward, never a broken
+                    # or corrupted game. No prior in-flight state ever BLOCKS a
+                    # new build.
+                    stitcher = get_module_stitcher()
+                    try:
+                        # Builds into a hidden temp workspace and atomically swaps
+                        # the module into modules/<name> in one rename, updating
+                        # the advisory registry via the store-free helper. A
+                        # failure here NEVER touches live state -- the build simply
+                        # did not happen and the player keeps playing.
+                        success, module_name = ai_driven_module_creation(
+                            parameters,
+                            progress_callback=module_progress_callback,
+                            policy="game",
+                            prepare_candidate=(
+                                stitcher.build_publication_registry_bytes
+                            ),
+                            fence=claimed_fence,
+                            inputs=job_inputs,
+                        )
+                    except ModuleCreationCancelledError:
+                        mark_module_build_outcome("not_generated")
+                        failure = module_failure()
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+                    except ModuleCreationBusyError:
+                        # Module refresh stayed busy before anything was built.
+                        mark_module_build_outcome("lock_unavailable")
+                        failure = module_failure(
+                            message=(
+                                "Module creation is busy; no game state was "
+                                "changed. Please retry shortly."
+                            )
+                        )
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+                    except ModuleCreationFailedError as build_error:
+                        # The build reports its reason instead of returning a bare
+                        # failure (issue #130). Log the detail, but keep the
+                        # player-facing message sanitized: provider output must
+                        # not leak into the DM conversation.
+                        error(
+                            f"Module creation failed: {build_error}",
+                            exception=build_error,
                             category="module_creation",
                         )
-                    mark_module_build_outcome("not_generated")
-                    failure = module_failure()
-                    terminal_progress(
-                        "failed", failure["response_data"]["error_message"]
-                    )
-                    return failure
+                        stopped = connection_failure()
+                        if stopped is not None:
+                            return stopped
+                        from utils.provider_errors import BuildCeilingReached
 
-                if not success or not module_name:
-                    stopped = connection_failure()
-                    if stopped is not None:
-                        return stopped
-                    mark_module_build_outcome("not_generated")
-                    failure = module_failure()
-                    terminal_progress(
-                        "failed", failure["response_data"]["error_message"]
-                    )
-                    return failure
+                        ceiling = build_error.__cause__
+                        if isinstance(ceiling, BuildCeilingReached):
+                            # #2011: the reason stays in the debug log.
+                            debug(
+                                "MODULE_BUILD_END build=%s reason=ceiling bound=%s spent=%s"
+                                % (ceiling.build_id, ceiling.bound, ceiling.spent),
+                                category="module_creation",
+                            )
+                        mark_module_build_outcome("not_generated")
+                        failure = module_failure()
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
 
-                mark_module_build_outcome("published")
-                terminal_progress(
-                    "published",
-                    f"Module {module_name} was published successfully.",
-                    module_name,
-                )
+                    if not success or not module_name:
+                        stopped = connection_failure()
+                        if stopped is not None:
+                            return stopped
+                        mark_module_build_outcome("not_generated")
+                        failure = module_failure()
+                        terminal_progress(
+                            "failed", failure["response_data"]["error_message"]
+                        )
+                        return failure
+
+                    mark_module_build_outcome("published")
+                    terminal_progress(
+                        "published",
+                        f"Module {module_name} was published successfully.",
+                        module_name,
+                    )
+                    info(
+                        f"SUCCESS: Module '{module_name}' created and published",
+                        category="module_management",
+                    )
+                    return published_result(module_name)
+
+                def build_job():
+                    """The job's thread: the build, then one due record for
+                    the game thread (utils.build_job); the slot is released
+                    here, when the job ends, never by the turn."""
+                    from utils import build_job as jobs
+
+                    try:
+                        try:
+                            outcome = run_build()
+                        except Exception as job_error:
+                            error(
+                                "FAILURE: Unexpected module creation pipeline error",
+                                exception=job_error,
+                                category="module_management",
+                            )
+                            outcome = module_failure(recovery_required=True)
+                            terminal_progress(
+                                "failed", outcome["response_data"]["error_message"]
+                            )
+                        if claimed_fence.is_superseded() and outcome.get("status") != "published":
+                            # A Load, Reset or quit stopped the job: as for a
+                            # superseded turn, nothing is shown or recorded.
+                            return
+                        if outcome.get("status") == "published":
+                            data = outcome.get("response_data") or {}
+                            jobs.post_due(jobs.DueRecord(
+                                kind="announcement",
+                                build_id=build_id,
+                                start_epoch=claimed_fence.start_epoch,
+                                module_name=data.get("module_name"),
+                                dm_note=data.get("dm_note"),
+                            ))
+                            return
+                        # Shown at once where the game registered how; the
+                        # record is posted either way (the pump shows a line
+                        # that was not shown yet), so a failure is never lost.
+                        message_id = "module-build-failure-%s" % build_id
+                        line = jobs.present_failure(outcome, message_id)
+                        jobs.post_due(jobs.DueRecord(
+                            kind="failure",
+                            build_id=build_id,
+                            start_epoch=claimed_fence.start_epoch,
+                            line=line or None,
+                            message_id=message_id,
+                            result=outcome,
+                        ))
+                    finally:
+                        release_build_fence(claimed_fence)
+                        jobs.clear_job(threading.current_thread())
+                        try:
+                            from core.managers.status_manager import status_ready
+
+                            status_ready()
+                        except Exception:
+                            pass
+
+                try:
+                    import contextvars as _contextvars
+                    from utils import build_job as jobs
+                    from utils.build_inputs import take_build_inputs
+
+                    job_inputs = take_build_inputs()
+                    # Q-J1: on a local model a player turn waits for the
+                    # job's send in flight; on a remote one they overlap.
+                    claimed_fence.local_wait = job_inputs.provider == "lmstudio"
+                    claimed_fence.build_yield = BuildYield(claimed_fence)
+                    def job_entry():
+                        # The copied context keeps the usage context (and its
+                        # connection state); the turn's control scope and its
+                        # engine stop hook are cleared, so job code outside
+                        # the build's own scope never sees the closed turn.
+                        from core.nql.apply import engine_stop_check
+                        from utils.capture.live_provider_call import (
+                            _executing_control_scope,
+                        )
+
+                        _executing_control_scope.set(None)
+                        engine_stop_check.set(None)
+                        build_job()
+
+                    job = threading.Thread(
+                        target=_contextvars.copy_context().run,
+                        args=(job_entry,),
+                        name="module-build-job",
+                        daemon=False,
+                    )
+                    jobs.register_job(job, build_id)
+                    job.start()
+                except BaseException:
+                    release_build_fence(claimed_fence)
+                    raise
                 info(
-                    f"SUCCESS: Module '{module_name}' created and published",
+                    f"STATE_CHANGE: Module build {build_id} started in the background",
                     category="module_management",
                 )
-                needs_conversation_history_update = True
-                return published_result(module_name)
+                return {
+                    "status": "build_started",
+                    "success": True,
+                    "build_id": build_id,
+                    "state_changed": False,
+                    "retryable": False,
+                    "needs_dm_response": False,
+                    "response_data": {"build_id": build_id},
+                }
         except Exception as module_error:
             error(
                 "FAILURE: Unexpected module creation pipeline error",

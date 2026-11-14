@@ -297,6 +297,12 @@ class HeadlessSession:
             except Exception:
                 pass
             try:
+                shutdown_due = getattr(self._dm_main, "shutdown_build_due", None)
+                if shutdown_due is not None:
+                    shutdown_due("engine_stop")
+            except Exception:
+                pass
+            try:
                 from utils.capture.live_provider_call import abort_live_turn_scope
 
                 abort_live_turn_scope()
@@ -524,6 +530,15 @@ class HeadlessSession:
         if opening_scene:
             self.writer.emit("operation", name="input", status="accepted_deferred",
                              message="Your action is queued for after the opening scene.")
+        else:
+            # #2021 J1b-2: input waits for a new place's announcement.
+            try:
+                announcing = bool(self._dm_main and self._dm_main.announcement_pending())
+            except Exception:
+                announcing = False
+            if announcing:
+                self.writer.emit("operation", name="input", status="accepted_deferred",
+                                 message=self._dm_main.ANNOUNCEMENT_WAIT_LINE)
         from utils.capture.live_provider_call import get_live_turn_scope
         scope = get_live_turn_scope()
         if scope is not None and scope.purpose == "travel_recovery":
@@ -605,6 +620,15 @@ class HeadlessSession:
         operation_name = "Reset" if kind == "reset" else "Quit"
         # #2018: a running in-game build stops at its next check.
         request_build_stop(kind)
+        # #2021 J1b-2: a due announcement is dropped; a running one stops and
+        # the readline pump discards it, before the quit intent is latched.
+        try:
+            stop = getattr(self._dm_main, "supersede_announcement", None)
+            announcement_scope = stop(kind) if stop is not None else None
+        except Exception:
+            announcement_scope = None
+        if announcement_scope is not None:
+            announcement_scope.quiescent.wait(30)
 
         # #214: a background startup welcome must quiesce BEFORE the quit
         # intent is latched. The game thread is parked at the prompt, and its
@@ -1076,6 +1100,14 @@ class HeadlessSession:
                     return
                 # Validation is read-only and may overlap a turn boundary.
                 # Only now can the current scope reserve destructive work.
+                # #2021 J1b-2: a new place's announcement stops first.
+                try:
+                    stop = getattr(self._dm_main, "supersede_announcement", None)
+                    announcement_scope = stop("restore", command_id) if stop is not None else None
+                except Exception:
+                    announcement_scope = None
+                if announcement_scope is not None:
+                    announcement_scope.quiescent.wait(30)
                 turn_scopes = get_lifecycle_turn_scopes()
                 live_scope = turn_scopes[0] if turn_scopes else None
                 welcome_scope = get_active_welcome_scope()

@@ -21,7 +21,7 @@
 
 @MODULE_CREATION_GUIDELINES={
   two_parts:
-    1. Narration_Field: Your narrative hook for players - evocative in-character dialogue/description maintaining immersion
+    1. Narration_Field: Your narrative hook for players - evocative in-character dialogue/description maintaining immersion; departure or preparation only, never arrival (a later note says when the place is ready)
     2. Action_Parameters: Contains all technical module details in narrative field
   
   parameters_narrative_must_include:
