@@ -535,6 +535,28 @@ def _raise_if_build_stopped():
     raise_if_build_superseded()
 
 
+def is_build_stop(exc):
+    """#2012: True when ``exc`` is the build's own stop, never a model or
+    provider failure to retry or fall back on: the call limit (#2011), a
+    connection give-up (#1993), a read-only save stop (#654), and a Load,
+    Reset or Quit of an in-game build's turn (#2014). The last counts only
+    inside an in-game build (its BuildProviderScope); under a toolkit,
+    headless or standalone build it stays an ordinary failure."""
+    from utils.capture.live_provider_call import (
+        BuildProviderScope,
+        LiveProviderSuperseded,
+        get_live_provider_scope,
+    )
+    from utils.provider_errors import BuildCeilingReached, BuildConnectionStopped
+    from utils.transient_filesystem import ReadOnlySaveStop
+
+    if isinstance(exc, (BuildCeilingReached, BuildConnectionStopped, ReadOnlySaveStop)):
+        return True
+    return isinstance(exc, LiveProviderSuperseded) and isinstance(
+        get_live_provider_scope(), BuildProviderScope
+    )
+
+
 _ACCOUNT_CLASSES = frozenset({"bad_key", "out_of_quota"})
 
 

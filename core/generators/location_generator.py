@@ -932,19 +932,24 @@ _T026_RUNTIME_FIELD_DEFAULTS = {
 }
 
 
+def _t025_asks_model(field, props):
+    """#2012: the one rule for a T025 call: a creative field of the location
+    item schema (not a runtime default, not a structural field)."""
+    return (
+        field in props
+        and field not in _T026_RUNTIME_FIELD_DEFAULTS
+        and field not in _T026_STRUCTURAL_STUB_FIELDS
+    )
+
+
 def t025_repair_fields(schema=None):
     """#2011: the location fields T025's surgical repair may re-ask, at most
-    once each per location: every top field the repair does not fill in code
-    (the runtime defaults, and the structural fields every stub carries:
-    area_generator's and story-first's compile_world stubs set them all)."""
+    once each per location; #2012: exactly the fields _t025_asks_model is
+    true for, so the bound and the repair cannot disagree."""
     if schema is None:
         schema = LocationGenerator().schema
     props = _location_item_schema(schema).get("properties", {})
-    return tuple(
-        name for name in props
-        if name not in _T026_RUNTIME_FIELD_DEFAULTS
-        and name not in _T026_STRUCTURAL_STUB_FIELDS
-    )
+    return tuple(name for name in props if _t025_asks_model(name, props))
 
 
 def _t026_top_field(path: str) -> str:
@@ -995,13 +1000,26 @@ def _t026_surgical_repair_location(gen, location, stub, issues, item_schema, con
             fixed[field] = copy.deepcopy(stub[field])            # trusted structure, code-owned
         elif field in _T026_RUNTIME_FIELD_DEFAULTS:
             fixed[field] = copy.deepcopy(_T026_RUNTIME_FIELD_DEFAULTS[field])
-        else:
-            field_schema = props.get(field, {"type": "string"})
+        elif _t025_asks_model(field, props):
+            field_schema = props[field]
             try:
                 fixed[field] = gen.generate_field(field, field_schema, context)   # surgical agentic
-            except Exception:
+            except Exception as exc:
+                # #2012: the build's own stop ends the repair at once, and so
+                # does a failure that just stopped it (a connection give-up).
+                from utils.capture.multi_model_capture import (
+                    _raise_if_build_stopped,
+                    is_build_stop,
+                )
+
+                if is_build_stop(exc):
+                    raise
+                _raise_if_build_stopped()
                 fixed[field] = _t026_creative_floor(field_schema)  # last-resort valid floor
                 floored.append(field)
+        # #2012: a structural field the stub lacks, or a field outside the
+        # schema, is left as written; re-validation sends the location to the
+        # ladder's targeted replacement (T026 call 2), inside the bound.
     return fixed, floored
 
 
