@@ -9992,20 +9992,25 @@ def _prompt_date_display(world_conditions):
 
 
 def main_game_loop():
-    """#2021 J1b-2: an exception out of the loop (a crash, a KeyboardInterrupt)
-    stops a background build and its announcement at once, so the process
-    does not wait for a whole build on its way out."""
+    """#2021 J1b-2: any way out of the loop (a return: a read-only save, a
+    travel recovery exit, the recovery menu's Quit, a restore; or an exception:
+    a crash, a KeyboardInterrupt) stops a background build and its
+    announcement at once, so the process does not wait for a whole build on
+    its way out. A loop that returns to run a restore loses nothing: the
+    restore stops the build by its epoch anyway."""
+    crashed = True
     try:
-        return _main_game_loop_outer()
-    except BaseException:
+        result = _main_game_loop_outer()
+        crashed = False
+        return result
+    finally:
         try:
             from utils.capture.live_provider_call import request_build_stop
 
             request_build_stop("quit")
-            shutdown_build_due("crash")
+            shutdown_build_due("crash" if crashed else "loop_exit")
         except Exception:
             pass
-        raise
 
 
 def _main_game_loop_outer():
