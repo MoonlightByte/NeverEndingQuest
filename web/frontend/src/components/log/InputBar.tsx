@@ -11,7 +11,7 @@ import { RulesRollPanel } from '../log/RulesRollPanel'
  * #1732: a line the server never acknowledged comes back to the box with a
  * note (stores/unsentLine); it is not sent again by itself.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { emitC } from '../../services/socket'
 import { useTurnStatus } from './turnStatus'
 import { ThinkingMist, useDmBusy } from './ThinkingMist'
@@ -23,6 +23,9 @@ import type { TrayDie } from './DiceStrip'
 /** A dice-tray insertion: its sentence and, #1750, the same faces as typed dice. */
 export interface RollInsertion { id: number; text: string; dice?: TrayDie[] }
 
+/** #1990: the line under the box while it holds the words given back after a turn the game could not carry out. */
+export const RETURNED_WORDS_HINT = 'Your last action is back here; press Send to try again.'
+
 export function InputBar({ rollInsertion }: { rollInsertion?: RollInsertion } = {}) {
   const ember = useEmberDesktop()
   const turnStatus = useTurnStatus()
@@ -33,6 +36,13 @@ export function InputBar({ rollInsertion }: { rollInsertion?: RollInsertion } = 
   // (The lock/canSend gate itself lives in useComposerGating, which already
   // folds in destructiveAction + the #214 startup lifecycle -- see useUiMode.)
   const [draft, setDraft] = useState('')
+  // #1990: the current draft for effects, read outside any setDraft updater.
+  const draftRef = useRef(draft)
+  draftRef.current = draft
+  // #1990: the returned words this box took; the hint shows only while the box holds exactly them.
+  const [offered, setOffered] = useState<string | null>(null)
+  const hintId = useId()
+  const forgotten = useInputSuggestion((s) => s.forgotten)
   const inputRef = useRef<HTMLInputElement>(null)
   const insertedRoll = useRef<number | null>(null)
   // #1750: the tray sentence that filled an empty draft, with its typed dice;
@@ -52,11 +62,22 @@ export function InputBar({ rollInsertion }: { rollInsertion?: RollInsertion } = 
     inputRef.current?.focus()
   }, [rollInsertion])
   // #882: an offered action fills an empty draft only; a typed draft stays.
+  // #1990: decided here from the current draft, then both setters; a typed draft
+  // keeps its hint state, so an earlier hint stays only while still true.
   useEffect(() => {
     if (suggestion === null) return
-    const text = useInputSuggestion.getState().take()
-    if (text) setDraft((previous) => previous.trim() ? previous : text)
+    const taken = useInputSuggestion.getState().take()
+    if (!taken?.text || draftRef.current.trim()) return
+    setDraft(taken.text)
+    setOffered(taken.reason === 'lost_words' ? taken.text : null)
   }, [suggestion])
+  // #1990: Load, Reset or a new game drops the hint; the box text stays.
+  const seenForgotten = useRef(forgotten)
+  useEffect(() => {
+    if (seenForgotten.current === forgotten) return
+    seenForgotten.current = forgotten
+    setOffered(null)
+  }, [forgotten])
 
   // #1732: the unacknowledged line goes back in front of anything typed since.
   useEffect(() => {
@@ -82,12 +103,14 @@ export function InputBar({ rollInsertion }: { rollInsertion?: RollInsertion } = 
     // when the visual controls are enabled for exact surface parity.
     if (!input || !gating.canSend) return
     setUnsent(false)
+    setOffered(null)
     const tray = trayLine.current
     trayLine.current = null
     emitC('user_input', tray && input === tray.text ? { input, dice: tray.dice } : { input })
     setDraft('')
   }
 
+  const returned = offered !== null && draft === offered
   // #1118 item 4: a waiting check's panel sits above the text input, which stays:
   // the player can answer the check in words, ask a question first, or move on.
   // #1734: the panel is the ask, whether or not the narration asked. The box answers to
@@ -111,6 +134,7 @@ export function InputBar({ rollInsertion }: { rollInsertion?: RollInsertion } = 
           disabled={gating.locked}
           placeholder={rulesRoll ? `${rulesRoll.faces === 2 ? 'Your rolls' : 'Your roll'}, or what you do next...` : 'Enter your command...'}
           aria-label="Player input"
+          aria-describedby={returned ? hintId : undefined}
           className="neq-input-field min-w-0 flex-1 rounded border border-card bg-page px-3 py-2 font-log text-sm text-primary"
         />
         <button
@@ -122,6 +146,8 @@ export function InputBar({ rollInsertion }: { rollInsertion?: RollInsertion } = 
           {ember && <EmberIcon name="send" />}Send
         </button>
       </div>
+      {/* #1990: under the box; always rendered, so a screen reader says the hint once; polite, never focus. */}
+      <p id={hintId} className={returned ? 'neq-turn-status neq-input-returned' : 'neq-input-returned-empty'} aria-live="polite">{returned ? RETURNED_WORDS_HINT : ''}</p>
     </div>
     </>
   )

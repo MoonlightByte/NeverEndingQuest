@@ -26,6 +26,8 @@ export interface GameMessage {
   timestamp?: string;
   /** Stable server identity used to merge cache/live/reconnect delivery. */
   message_id?: string;
+  /** #1990: on an input_suggestion only; "lost_words" for words given back after a turn the game could not carry out. */
+  reason?: string;
 }
 
 export interface RequestMeta { request_id?: string }
