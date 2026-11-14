@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When a fight brings in more of a module's own creatures, the game now uses that module's own stats for them instead of making new ones, so they fight as the module describes and the fight starts sooner (#1997).
+
 - In the toolkit, building a module now stops at the first failed step when the AI service can't be reached or refuses, and says why, instead of carrying on (#1995).
 
 - On a hosted game, a connection problem now says it is on the host's side and asks you to wait, instead of naming OpenAI and asking you to check that you're online (#1995).

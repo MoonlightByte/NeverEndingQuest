@@ -879,7 +879,7 @@ def generate_encounter(encounter_data, occupant_response=_UNREAD):
     # the name the DM wrote (#293/typed-monster-key, D-KW-12, D-TMK-1).
     from core.combat.monster_keys import bestiary, monster_key
     place_occupants = _place_occupants(location, occupant_response)
-    listed = bestiary()
+    listed = bestiary(path_manager.module_name)  # #1997: the module's own monster files too
     used_names = set()
     new_keys = {}
     for monster_index, monster_type in enumerate(encounter_data["monsters"]):

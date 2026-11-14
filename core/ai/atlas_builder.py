@@ -62,7 +62,7 @@ def format_installed_module_references(current_module: str, modules_root: str = 
             raise ValueError("registry modules must be an object")
     except (OSError, ValueError) as exc:
         lines.append(f"Registry references unavailable ({type(exc).__name__}); no absence conclusion is supported.")
-        lines.append(_bestiary_keys_line())
+        lines.append(_bestiary_keys_line(current_module, modules_root))
         return "\n".join(lines)
     from core.generators.module_stitcher import ModuleStitcher
     for module in sorted(modules):
@@ -99,16 +99,19 @@ def format_installed_module_references(current_module: str, modules_root: str = 
             lines.append(f"  SOURCE DIAGNOSTIC: {issue['code']}: {issue['message']}")
         for issue in snapshot["read_errors"]:
             lines.append(f"  SOURCE READ: {issue['kind']}: {issue['source_file']}")
-    lines.append(_bestiary_keys_line())
+    lines.append(_bestiary_keys_line(current_module, modules_root))
     return "\n".join(lines)
 
 
-def _bestiary_keys_line() -> str:
-    """The standard monster keys a createEncounter may name in monsterKeys
-    (#293/typed-monster-key); stable, so it caches with this block."""
+def _bestiary_keys_line(current_module=None, modules_root: str = "modules") -> str:
+    """The monster keys a createEncounter may name in monsterKeys
+    (#293/typed-monster-key): the compendium's and the current module's own
+    monster files (#1997). Play writes only minted files (never listed) and
+    compendium keys (already listed), so the line changes only when the
+    module's own sheets are built, and stays the same from turn to turn."""
     from core.combat.monster_keys import bestiary_keys
 
-    return "bestiaryKeys: " + ", ".join(bestiary_keys())
+    return "bestiaryKeys: " + ", ".join(bestiary_keys(current_module, modules_root))
 
 def extract_location_info(location: Dict[str, Any], roster: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Extract key information from a location. Who is there comes from the
