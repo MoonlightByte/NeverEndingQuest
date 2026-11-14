@@ -245,7 +245,9 @@ def production_completion_gateway(request: StructuredRequest) -> CompletionPaylo
             temperature=request.temperature,
             **call_options,
         )
-    except (KeyboardInterrupt, SystemExit):
+    except (KeyboardInterrupt, SystemExit, BuildCeilingReached):
+        # #2011: the build's call limit is not a provider failure; it ends
+        # the build (the stage loop re-raises it too).
         raise
     except BaseException as exc:
         raise GatewayFailure(_provider_failure_class(exc)) from None
