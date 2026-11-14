@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When the game builds a new adventure during play, the build now has its own limit on AI calls, sized to the adventure, instead of drawing on your turn's (#2011).
+
 - When a fight brings in more of a module's own creatures, the game now uses that module's own stats for them instead of making new ones, so they fight as the module describes and the fight starts sooner (#1997).
 
 - In the toolkit, building a module now stops at the first failed step when the AI service can't be reached or refuses, and says why, instead of carrying on (#1995).
