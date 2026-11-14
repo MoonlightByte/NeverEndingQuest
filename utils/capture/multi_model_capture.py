@@ -514,6 +514,52 @@ def _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
         raise
 
 
+def _raise_if_build_stopped():
+    """#1993: raise BuildConnectionStopped when this build already stopped."""
+    from utils.openai_usage_tracker import build_connection_state
+    from utils.provider_errors import BuildConnectionStopped
+
+    build_state = build_connection_state()
+    if build_state is not None and build_state.stopped_class is not None:
+        raise BuildConnectionStopped(build_state.stopped_class, build_state.provider)
+
+
+_ACCOUNT_CLASSES = frozenset({"bad_key", "out_of_quota"})
+
+
+def _record_live_give_up(exc, live_policy, scope, provider):
+    """#1993: a live (Route L) call failed inside a build.
+
+    A required call, or an advisory call that must complete, ran the live
+    child's billed reissues, so its class stops the build. A plain advisory
+    call is one attempt for a fail-closed extra (T104, T123): only an account
+    class stops the build; a transient one does not count (Q1993-1 = A).
+    """
+    from utils.openai_usage_tracker import build_connection_state
+    from utils.provider_errors import connection_class
+
+    build_state = build_connection_state()
+    if build_state is None:
+        return
+    cls = connection_class(exc)
+    if not cls:
+        return
+    from utils.capture.live_provider_call import (
+        AdvisoryProviderScope,
+        get_live_provider_scope,
+    )
+
+    scope = scope if scope is not None else get_live_provider_scope()
+    completion_required = bool(
+        isinstance(scope, AdvisoryProviderScope) and scope.completion_required
+    )
+    if live_policy == "advisory" and not completion_required:
+        if cls in _ACCOUNT_CLASSES:
+            build_state.record_failure(cls, provider, reissued=False)
+        return
+    build_state.record_failure(cls, provider, reissued=True)
+
+
 def _route_p_reissue_on(primary_fn, provider, kwargs):
     """True when this call gets the game's counted reissue (#1963)."""
     from core.ai import api_client
@@ -653,6 +699,10 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     # Issue #654: after a read-only save stop, no model call is made, whatever
     # a caller's except clauses do. A no-op while no stop is recorded.
     raise_if_save_stopped()
+    # #1993: in a build that already gave up on a connection class, no call is
+    # made by either route: no live child is started and no request is sent.
+    # The check in _fire_primary_with_retry stays for its direct callers.
+    _raise_if_build_stopped()
     live_selected = kwargs.pop("_live_selected", None)
     # Detached execution context (issue #214): an off-thread caller (the
     # startup welcome) passes its own cancellable scope + status sink so its
@@ -729,19 +779,27 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     if live_policy:
         if primary_fn is not _api_client.create_completion:
             raise ValueError("live-selected calls require api_client.create_completion")
-        from utils.capture.live_provider_call import call_live_provider
+        from utils.capture.live_provider_call import (
+            LiveProviderCompletedError,
+            LiveProviderUnavailable,
+            call_live_provider,
+        )
 
         start = time.time()
-        response = call_live_provider(
-            task_id,
-            messages,
-            kwargs,
-            policy=live_policy,
-            scope=detached_scope,
-            status_emit=detached_status,
-            authority_check=authority_check,
-            purpose=wait_purpose,
-        )
+        try:
+            response = call_live_provider(
+                task_id,
+                messages,
+                kwargs,
+                policy=live_policy,
+                scope=detached_scope,
+                status_emit=detached_status,
+                authority_check=authority_check,
+                purpose=wait_purpose,
+            )
+        except (LiveProviderUnavailable, LiveProviderCompletedError) as exc:
+            _record_live_give_up(exc, live_policy, detached_scope, request_provider)
+            raise
         primary_latency = round(time.time() - start, 3)
         _track_module_primary(
             response, task_id, request_provider, requested_model
