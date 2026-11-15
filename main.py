@@ -1303,6 +1303,28 @@ def _start_announcement_drained(record, live_history):
     note = (record.dm_note or "").strip()
     note_message = {"role": "user", "content": note} if note else None
     snapshot = copy.deepcopy(live_history)
+    # #2030: the announcement carries the published module's references, as
+    # the next ordinary turn does: refreshed on a copy of the snapshot, each
+    # block in the old one's place, before the note, and kept only when the
+    # refresh completes. Any failure sends the snapshot as before (the live
+    # list is never changed here).
+    refreshed = copy.deepcopy(snapshot)
+    try:
+        if _refresh_module_context_blocks(refreshed, wait=False, in_place=True) is not None:
+            snapshot = refreshed
+        else:
+            warning(
+                "Module announcement context not refreshed (busy); sent as before",
+                category="module_management",
+            )
+    except _pump_transfers():
+        raise
+    except Exception as refresh_error:
+        warning(
+            "Module announcement context not refreshed (%s); sent as before"
+            % type(refresh_error).__name__,
+            category="module_management",
+        )
     if note_message is not None:
         snapshot.append(dict(note_message))
     scope = LiveTurnScope()
@@ -6788,6 +6810,21 @@ def prepare_conversation_for_ai_request(conversation_history):
     # Ordinary turns do not drain a completion. Refresh the advisory atlas
     # here too, before compression, rather than retaining the previous area's
     # labels. The returned snapshot is request-local, not persisted authority.
+    outcome.update(_refresh_module_context_blocks(conversation_history))
+    return outcome
+
+
+def _refresh_module_context_blocks(conversation_history, *, wait=True, in_place=False):
+    """Remove the current module's atlas and INSTALLED MODULE REFERENCES
+    blocks from conversation_history and append fresh ones at its end (#2030:
+    one body for the ordinary turn and the announcement's snapshot, so their
+    bytes cannot drift). Returns the facts the ordinary turn records. With
+    wait False (the announcement, under its guard) a busy module or a
+    transient filesystem error returns None after one pass instead of
+    waiting; conversation_history is then unchanged. With in_place (the
+    announcement) each fresh block takes the index of the old one, so the
+    request keeps the shape of an ordinary turn's; a block that was absent
+    is appended."""
     from core.managers.campaign_manager import _party_module_transition_lock
     from core.ai.atlas_builder import (
         atlas_cache_stamps, cached_atlas_for_module, format_atlas_for_conversation,
@@ -6808,8 +6845,22 @@ def prepare_conversation_for_ai_request(conversation_history):
                 busy = any(item["kind"] == "busy" for item in snapshot["read_errors"])
                 if not busy:
                     atlas = cached_atlas_for_module(module_name, snapshot=snapshot, stamps=atlas_stamps)
-                    outcome["atlas_stamps"] = atlas_stamps
                     installed_references = format_installed_module_references(module_name)
+                    if in_place:
+                        fresh_atlas = {
+                            "role": "system", "content": format_atlas_for_conversation(atlas),
+                        }
+                        _place_context_block(conversation_history, "COMPLETE MODULE WORLD ATLAS", fresh_atlas)
+                        _place_context_block(
+                            conversation_history, "=== INSTALLED MODULE REFERENCES ===",
+                            {"role": "system", "content": installed_references},
+                        )
+                        return {
+                            "atlas_stamps": atlas_stamps,
+                            "module_snapshot": snapshot,
+                            "installed_module_references": installed_references,
+                            "party_tracker_data": party,
+                        }
                     conversation_history[:] = [
                         message for message in conversation_history
                         if not (message.get("role") == "system" and
@@ -6822,17 +6873,36 @@ def prepare_conversation_for_ai_request(conversation_history):
                     conversation_history.append({
                         "role": "system", "content": installed_references,
                     })
-                    outcome["module_snapshot"] = snapshot
-                    outcome["installed_module_references"] = installed_references
-                    outcome["party_tracker_data"] = party
-                    return outcome
+                    return {
+                        "atlas_stamps": atlas_stamps,
+                        "module_snapshot": snapshot,
+                        "installed_module_references": installed_references,
+                        "party_tracker_data": party,
+                    }
         except OSError as exc:
             from utils.transient_filesystem import is_transient_filesystem_error
             if not is_transient_filesystem_error(exc):
                 raise
+        if not wait:
+            return None
         # Never wait while holding the party lock, and never turn repeated
         # sharing violations into an absent/corrupt destination.
         _interruptible_wait(0.25, get_live_provider_scope(), "Checking the travel map...")
+
+
+def _place_context_block(conversation_history, marker, fresh):
+    """The first system message holding marker becomes fresh, in its place;
+    any later one is removed. With none, fresh is appended."""
+    indexes = [
+        index for index, message in enumerate(conversation_history)
+        if message.get("role") == "system" and marker in message.get("content", "")
+    ]
+    if not indexes:
+        conversation_history.append(fresh)
+        return
+    conversation_history[indexes[0]] = fresh
+    for index in reversed(indexes[1:]):
+        del conversation_history[index]
 
 
 def _strictly_persist_conversation_history(conversation_history):
