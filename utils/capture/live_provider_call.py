@@ -2001,6 +2001,24 @@ def _synthesized_envelope(error_class, task_id, request_kwargs, operation_id,
     }
 
 
+def _spend_is_build(scope):
+    """#2033: a module build's generation for the session cost line: the
+    scope, or one it hangs from, is an in-game build's scope or carries
+    ``spend_build`` (the build's follow-up announcement). Read from the scope
+    object, so it holds after the announcement registry was cleared. Never
+    raises."""
+    try:
+        seen = 0
+        while scope is not None and seen < 16:
+            if isinstance(scope, BuildProviderScope) or getattr(scope, "spend_build", False) is True:
+                return True
+            scope = getattr(scope, "parent", None)
+            seen += 1
+    except Exception:
+        pass
+    return False
+
+
 def _spend_provider(request_provider):
     """The session cost line's provider kind (#1388): only OpenAI is priced.
     Legacy runs on the OpenAI API with the same key, so it counts as openai."""
@@ -2040,7 +2058,7 @@ def _is_stalled_failure(envelope):
     )
 
 
-def _record_unused_generation(output, phase_state, frozen_kwargs, operation_id, generation):
+def _record_unused_generation(output, phase_state, frozen_kwargs, operation_id, generation, build=False):
     """Count a generation whose result is not used (#1435): superseded, or
     dropped on an unreadable authority. A completed answer is a call; one
     stopped in a billed phase (#1342) is possibly billed. Never raises."""
@@ -2066,6 +2084,7 @@ def _record_unused_generation(output, phase_state, frozen_kwargs, operation_id, 
                 envelope["usage"],
                 provider=_spend_provider(frozen_kwargs.get("_request_provider")),
                 turn_key=operation_id,
+                build=build,
             )
             return
         probe = {
@@ -2075,7 +2094,7 @@ def _record_unused_generation(output, phase_state, frozen_kwargs, operation_id, 
             "error_code": envelope.get("error_code"),
         }
         if _is_billed_failure(probe):
-            record_possibly_billed(turn_key=operation_id)
+            record_possibly_billed(turn_key=operation_id, build=build)
     except Exception:
         pass
 
@@ -2244,6 +2263,7 @@ def _call_live_provider(
         # details remain developer-only so parallel workers cannot race narration.
         emit = lambda _message: None
     operation_id = scope.operation_id if scope is not None else str(uuid4())
+    spend_build = _spend_is_build(scope)
     frozen_messages = copy.deepcopy(messages)
     frozen_kwargs = copy.deepcopy(request_kwargs)
     if frozen_kwargs.get("_request_provider") == "lmstudio":
@@ -2647,10 +2667,14 @@ def _call_live_provider(
                 authority_unavailable = True
         if superseded_error is not None:
             # #1435: an answer that finished, or was stopped part-way, still costs.
-            _record_unused_generation(output, phase_state, frozen_kwargs, operation_id, generation)
+            _record_unused_generation(
+                output, phase_state, frozen_kwargs, operation_id, generation, build=spend_build
+            )
             raise superseded_error
         if output and authority_unavailable:
-            _record_unused_generation(output, phase_state, frozen_kwargs, operation_id, generation)
+            _record_unused_generation(
+                output, phase_state, frozen_kwargs, operation_id, generation, build=spend_build
+            )
             spend_recorded = True
         if output and not authority_unavailable:
             try:
@@ -2734,6 +2758,7 @@ def _call_live_provider(
                 envelope.get("usage"),
                 provider=_spend_provider(frozen_kwargs.get("_request_provider")),
                 turn_key=operation_id,
+                build=spend_build,
             )
             try:
                 _check_live_authority(scope, authority_check)
@@ -2805,7 +2830,7 @@ def _call_live_provider(
                     phase_state.get("endpoint") not in _ACK_ENDPOINTS
                 )
                 if possibly_billed and not spend_recorded:  # already counted as an unused generation
-                    record_possibly_billed(turn_key=operation_id)
+                    record_possibly_billed(turn_key=operation_id, build=spend_build)
                 exhausted = billed_reissues > _BILLED_REISSUE_LIMIT
             else:
                 free_reissues += 1
