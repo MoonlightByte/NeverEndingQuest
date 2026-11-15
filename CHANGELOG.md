@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The session cost line now includes the AI calls spent building a new adventure (#2033).
+
 - When the Dungeon Master starts building a new adventure, you keep playing while it is prepared, and the Dungeon Master tells you about the new place once it is ready (#2021).
 
 - A fight no longer makes a monster copy of someone from the story (#2010).
