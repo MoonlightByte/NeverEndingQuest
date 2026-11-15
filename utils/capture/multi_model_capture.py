@@ -651,9 +651,10 @@ def _route_p_spend_usage(response):
         return None
 
 
-def _route_p_record_spend(scope, model, provider, response=None, billed_error=None):
-    """#2033: count one Route P generation (or one possibly billed failure)
-    made under a live scope: a build's (or its announcement's) as the build's,
+def _route_p_record_spend(scope, model, provider, response=None, billed_error=None, empty=False):
+    """#2033: count one Route P generation (or one possibly billed failure:
+    a billed-class error, or an empty answer, which Route L also counts as a
+    possibly billed failure and not as a call) made under a live scope: a build's (or its announcement's) as the build's,
     any other as its turn's, keyed as Route L keys it. Outside any live scope
     (the toolkit, startup): nothing, as before. Never raises."""
     if scope is None:
@@ -664,6 +665,9 @@ def _route_p_record_spend(scope, model, provider, response=None, billed_error=No
 
         build = _spend_is_build(scope)
         turn_key = getattr(scope, "operation_id", None)
+        if empty:
+            record_possibly_billed(turn_key=turn_key, build=build)
+            return
         if billed_error is not None:
             from utils.openai_client import _possibly_billed
 
@@ -737,9 +741,10 @@ def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
             _route_p_record_spend(spend_scope, spend_model, provider, response=response)
             return response
         except ProviderEmptyResponse as exc:
-            # The provider answered (with no usable text): a generation, its
-            # usage not carried, so unpriced.
-            _route_p_record_spend(spend_scope, spend_model, provider, response=None)
+            # The provider answered with no usable text: possibly billed, as
+            # Route L counts an empty generation (never a call; its usage is
+            # not carried).
+            _route_p_record_spend(spend_scope, spend_model, provider, empty=True)
             if attempt >= max_attempts:
                 raise
             _get_error_logger().warning(
