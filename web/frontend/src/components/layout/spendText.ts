@@ -22,13 +22,21 @@ export function spendLineText(spend: Spend): string {
   return `${calls}, ${dollars(spend.usd)} for AI text${other}`
 }
 
-/** The hover breakdown: this turn, tokens, the unpriced counts, billed retries, the disclaimer. */
+/** The hover breakdown: this turn, the new adventure's build (when any), tokens, the unpriced counts, billed retries, the disclaimer. */
 export function spendHoverText(spend: Spend): string {
   const lines = [
     `This turn: ${spend.turn_calls} AI ${spend.turn_calls === 1 ? 'call' : 'calls'}` +
       (spend.provider_kind === 'openai' ? `, ${dollars(spend.turn_usd)}` : ''),
     `Tokens: ${spend.prompt.toLocaleString()} in (${spend.cached.toLocaleString()} cached), ${spend.completion.toLocaleString()} out`,
   ]
+  // #2033 (D-SPEND-LINE-1): a module build's own share, already inside the session figures; dollars as the turn line shows them.
+  if (spend.build_calls > 0) {
+    lines.push(
+      `New adventure being built: ${spend.build_calls} AI ${spend.build_calls === 1 ? 'call' : 'calls'}` +
+        (spend.provider_kind === 'openai' ? `, ${dollars(spend.build_usd)}` : '') +
+        ' (included in this session)',
+    )
+  }
   if (spend.portraits + spend.voice > 0) lines.push(`Images: ${spend.portraits}, voice clips: ${spend.voice} (not priced)`)
   if (spend.possibly_billed > 0) lines.push(`${spend.possibly_billed} ${spend.possibly_billed === 1 ? 'retry' : 'retries'} that failed part-way may also have been billed.`)
   if (spend.provider_kind === 'openai') lines.push(spendDisclaimer(spend.priced_at))
