@@ -25,6 +25,9 @@ _SESSION_FIELDS = (
     "unpriced", "possibly_billed", "portraits", "voice",
 )
 _TURN_FIELDS = ("turn_calls", "turn_usd")
+# #2033: what an in-game module build (and its follow-up announcement) cost,
+# also counted in the session fields above. Never in the turn fields.
+_BUILD_FIELDS = ("build_calls", "build_usd")
 
 _state = {}
 _turn_key = None
@@ -33,9 +36,10 @@ _failed = False
 
 
 def _zero():
-    values = {name: 0 for name in _SESSION_FIELDS + _TURN_FIELDS}
+    values = {name: 0 for name in _SESSION_FIELDS + _TURN_FIELDS + _BUILD_FIELDS}
     values["usd"] = 0.0
     values["turn_usd"] = 0.0
+    values["build_usd"] = 0.0
     return values
 
 
@@ -81,12 +85,14 @@ def _enter_turn(turn_key):
         _state["turn_usd"] = 0.0
 
 
-def record_generation(request_model, usage, *, provider="openai", turn_key=None):
+def record_generation(request_model, usage, *, provider="openai", turn_key=None, build=False):
     """Count one successful provider generation.
 
     ``request_model`` is the model id the request named; ``usage`` is the
     envelope's typed usage dict; ``turn_key`` is the live turn's operation id
-    (advisory calls share their turn's id). Never raises.
+    (advisory calls share their turn's id). ``build`` marks a module build's
+    generation (#2033): it counts in the session and build fields and never
+    in, or resets, the turn's. Never raises.
     """
     global _priced_at, _failed
     try:
@@ -98,9 +104,12 @@ def record_generation(request_model, usage, *, provider="openai", turn_key=None)
         if provider == "openai":
             usd, priced_at = _price(request_model, prompt, cached, completion)
         with _LOCK:
-            _enter_turn(turn_key)
+            if build:
+                _state["build_calls"] += 1
+            else:
+                _enter_turn(turn_key)
+                _state["turn_calls"] += 1
             _state["calls"] += 1
-            _state["turn_calls"] += 1
             _state["prompt"] += prompt
             _state["cached"] += cached
             _state["completion"] += completion
@@ -109,19 +118,24 @@ def record_generation(request_model, usage, *, provider="openai", turn_key=None)
                     _state["unpriced"] += 1
             else:
                 _state["usd"] += usd
-                _state["turn_usd"] += usd
+                if build:
+                    _state["build_usd"] += usd
+                else:
+                    _state["turn_usd"] += usd
                 _priced_at = max(_priced_at, priced_at)
     except Exception:
         _failed = True
 
 
-def record_possibly_billed(*, turn_key=None):
+def record_possibly_billed(*, turn_key=None, build=False):
     """Count one failed generation that may have been billed (#1342's billed
-    phases). Its usage is unknown, so it adds no dollars. Never raises."""
+    phases). Its usage is unknown, so it adds no dollars. A build's (#2033)
+    does not enter or reset the turn. Never raises."""
     global _failed
     try:
         with _LOCK:
-            _enter_turn(turn_key)
+            if not build:
+                _enter_turn(turn_key)
             _state["possibly_billed"] += 1
     except Exception:
         _failed = True
@@ -169,6 +183,8 @@ def snapshot(provider_kind="openai"):
         "possibly_billed": values["possibly_billed"],
         "portraits": values["portraits"],
         "voice": values["voice"],
+        "build_calls": values["build_calls"],
+        "build_usd": round(values["build_usd"], 4),
         "priced_at": priced_at or _catalog_date(),
         "provider_kind": provider_kind if provider_kind in ("openai", "gemini", "local") else "local",
         "available": not failed,
