@@ -96,12 +96,15 @@ def record_generation(request_model, usage, *, provider="openai", turn_key=None,
     """
     global _priced_at, _failed
     try:
-        usage = usage if isinstance(usage, dict) else {}
+        usage_known = isinstance(usage, dict)
+        usage = usage if usage_known else {}
         prompt = _count(usage.get("prompt_tokens"))
         cached = _count(usage.get("cached_tokens"))
         completion = _count(usage.get("completion_tokens"))
         usd, priced_at = (None, "")
-        if provider == "openai":
+        # #2033: usage the response did not carry (None, not a dict) is
+        # unpriced, never $0. Route L always passes a dict.
+        if provider == "openai" and usage_known:
             usd, priced_at = _price(request_model, prompt, cached, completion)
         with _LOCK:
             if build:

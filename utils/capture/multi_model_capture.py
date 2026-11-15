@@ -634,6 +634,54 @@ def _build_retry_notice(build_state, exc, provider, attempt, max_attempts):
             pass
 
 
+def _route_p_spend_usage(response):
+    """#2033: a Route P response's usage as the typed dict the session cost
+    line takes, read as Route L reads it (_primitive_usage); None when the
+    response carried none or only zero counts (unpriced). Never raises."""
+    try:
+        if getattr(response, "usage", None) is None:
+            return None
+        from utils.capture.live_provider_call import _primitive_usage
+
+        usage = _primitive_usage(response)
+        if not (usage.get("prompt_tokens") or usage.get("completion_tokens")):
+            return None
+        return usage
+    except Exception:
+        return None
+
+
+def _route_p_record_spend(scope, model, provider, response=None, billed_error=None):
+    """#2033: count one Route P generation (or one possibly billed failure)
+    made under a live scope: a build's (or its announcement's) as the build's,
+    any other as its turn's, keyed as Route L keys it. Outside any live scope
+    (the toolkit, startup): nothing, as before. Never raises."""
+    if scope is None:
+        return
+    try:
+        from utils.capture.live_provider_call import _spend_is_build, _spend_provider
+        from utils.session_spend import record_generation, record_possibly_billed
+
+        build = _spend_is_build(scope)
+        turn_key = getattr(scope, "operation_id", None)
+        if billed_error is not None:
+            from utils.openai_client import _possibly_billed
+
+            original = getattr(billed_error, "original_error", None) or billed_error
+            if _possibly_billed(original):
+                record_possibly_billed(turn_key=turn_key, build=build)
+            return
+        record_generation(
+            model,
+            _route_p_spend_usage(response),
+            provider=_spend_provider(provider),
+            turn_key=turn_key,
+            build=build,
+        )
+    except Exception:
+        pass
+
+
 def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
                            base_delay, provider, build_state):
     """_fire_primary_with_retry's attempts (#1963), unchanged."""
@@ -668,6 +716,10 @@ def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
             )
     attempt = 1
     reissues = 0
+    # #2033: the session cost line counts what this call spends under a live
+    # scope (a turn's, a build's, the announcement's); read once, here.
+    spend_scope = live.get_live_provider_scope()
+    spend_model = kwargs.get("model")
     while True:
         # #2021 J1b-2: a background build yields before each send (empty-
         # response retries and reissues included) and marks it in flight.
@@ -682,8 +734,12 @@ def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
                 # No phase stream in process: the whole call's time is an upper
                 # bound of the time to the first chunk, so the deadline errs long.
                 live.record_local_answer(base_url, time.monotonic() - started, chars)
+            _route_p_record_spend(spend_scope, spend_model, provider, response=response)
             return response
         except ProviderEmptyResponse as exc:
+            # The provider answered (with no usable text): a generation, its
+            # usage not carried, so unpriced.
+            _route_p_record_spend(spend_scope, spend_model, provider, response=None)
             if attempt >= max_attempts:
                 raise
             _get_error_logger().warning(
@@ -695,6 +751,7 @@ def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
             time.sleep(base_delay * attempt)
             attempt += 1
         except ProviderCallError as exc:
+            _route_p_record_spend(spend_scope, spend_model, provider, billed_error=exc)
             if not reissue_on or reissues >= live._BILLED_REISSUE_LIMIT:
                 raise
             delay = _route_p_reissue_delay(exc, reissues + 1)
