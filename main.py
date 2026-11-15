@@ -1306,6 +1306,10 @@ def _start_announcement_drained(record, live_history):
     if note_message is not None:
         snapshot.append(dict(note_message))
     scope = LiveTurnScope()
+    # #2033: the follow-up is the build's cost, not a turn's (the flag lives
+    # on the scope, so a generation recorded after the registry is cleared
+    # still counts as the build's).
+    scope.spend_build = True
     register_announcement_scope(scope)
     lifecycle = _AnnouncementLifecycle(record, scope, snapshot, note_message)
     worker = threading.Thread(

@@ -257,6 +257,8 @@ export interface ServerEvents {
       calls: number; usd: number; prompt: number; cached: number; completion: number;
       turn_calls: number; turn_usd: number; unpriced: number; possibly_billed: number;
       portraits: number; voice: number; priced_at: string;
+      /** #2033: what an in-game module build cost, already inside calls and usd. */
+      build_calls: number; build_usd: number;
       provider_kind: 'openai' | 'gemini' | 'local'; available: boolean;
     };
   };
