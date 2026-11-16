@@ -59,6 +59,10 @@ COMBAT_ROUND_SUMMARY = "combat_round_summary"
 # The turn after a dice submission: the engine asks the DM to narrate the
 # settled check; the player typed nothing.
 CHECK_CONTINUATION = "check_continuation"
+# #2039: a model-facing note the game writes about an in-game module build (the
+# dropped second build). No reader names this kind, so it changes no reader's
+# result; it marks the note as the game's, never as player speech.
+MODULE_BUILD = "module_build"
 
 SUMMARY_KINDS = (LOCATION_SUMMARY, CHRONICLE)
 MODULE_KINDS = (MODULE_TRANSITION, ARCHIVED_MODULE_TRANSITION)

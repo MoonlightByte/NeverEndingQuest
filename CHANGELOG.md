@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- If the Dungeon Master asks for a new adventure while one is already being prepared, your turn is no longer lost (#2039).
+
 - While a new adventure is being prepared, setting out for it keeps you where you are until it is ready (#2031).
 
 - When a new adventure is ready, the Dungeon Master now tells you plainly that you can travel there (#2030).
