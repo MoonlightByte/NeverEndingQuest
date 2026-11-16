@@ -117,16 +117,26 @@ def _body_keys(exc):
 
 
 def _arrival(exc, status):
-    """How the failure arrived: "status" (an HTTP error status), "stream_event"
-    (an error event inside an answered stream), or "other" (transport, empty
-    answer, anything else)."""
-    if isinstance(status, int):
+    """How the failure arrived:
+    "status"       an HTTP error status (>= 400);
+    "stream_event" an APIError with no status (openai raises one for an error
+                   event inside an answered stream), or the game's
+                   ResponsesStreamFailed;
+    "other"        anything else: transport, an empty answer, a 200 the SDK
+                   could not parse (APIResponseValidationError), ...
+    The http_status field keeps whatever status was found."""
+    if isinstance(status, int) and status >= 400:
         return "status"
     cause = getattr(exc, "original_error", None) or exc
     names = {base.__name__ for base in type(cause).__mro__}
     if "ResponsesStreamFailed" in names:
         return "stream_event"
-    if "APIError" in names and not names & _TRANSPORT_CLASSES:
+    if (
+        status is None
+        and "APIError" in names
+        and not names & _TRANSPORT_CLASSES
+        and "APIResponseValidationError" not in names
+    ):
         # openai raises a plain APIError (no status) for an error event in an
         # HTTP 200 stream (openai/_streaming.py).
         return "stream_event"
