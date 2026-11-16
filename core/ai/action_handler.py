@@ -7387,11 +7387,20 @@ Please use a valid location that exists in the current area ({current_area_id}) 
             return failure
 
         def published_result(module_name):
+            from utils.module_title import module_display_title
+
+            # The place by its display title, read from the published
+            # module's own declared name (#2030).
+            name = module_display_title(module_name)
             dm_note = (
-                "Dungeon Master Note: New module "
-                f"'{module_name}' has been successfully created and integrated "
-                "into the world. Provide a useful player-facing transition "
-                "narration and return no actions."
+                f"Dungeon Master Note: {name} is now ready: the party can "
+                f"travel there from here. In the story's voice, make it plain "
+                f"to the player that {name} can now be reached. If the party "
+                "is already on its way, the way ahead now leads there; if they "
+                "are doing something else, mention it as a place they can set "
+                f"out for when they choose. Do not narrate arriving at {name} "
+                "or anything inside it. Carry on from where the party is now. "
+                "Return no actions."
             )
             # P2b: atomic publish replaces the receipt subsystem. The module is
             # already live; always ask the DM to narrate its creation
