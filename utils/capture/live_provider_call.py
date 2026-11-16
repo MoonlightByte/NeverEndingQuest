@@ -1567,12 +1567,21 @@ def _primitive_error(exc, request_kwargs):
                 retry_after = float(raw) if raw is not None else None
             except (TypeError, ValueError):
                 retry_after = None
+    disposition = _error_disposition(exc, original, status, error_code)
+    # #2046: the typed fields the parent writes to the debug log (bounded,
+    # never the message text); ``error_type`` is kept as a recorded fact,
+    # not a match key.
+    from utils.provider_error_fields import error_fields
+
+    fields = error_fields(exc, disposition)
     return {
         "kind": "error",
         "error_class": type(exc).__name__,
         "cause_class": type(original).__name__ if original is not None else None,
         "error_code": error_code,
-        "disposition": _error_disposition(exc, original, status, error_code),
+        "error_type": fields.get("type"),
+        "error_fields": fields,
+        "disposition": disposition,
         "provider": str(getattr(exc, "provider", "") or request_kwargs.get("_request_provider", "")),
         "model": str(getattr(exc, "model", "") or request_kwargs.get("model", "")),
         "task_id": getattr(exc, "task_id", None) or request_kwargs.get("task_id"),
@@ -2800,6 +2809,14 @@ def _call_live_provider(
 
         failure_count += 1
         envelope = envelope if isinstance(envelope, dict) else {}
+        if isinstance(envelope.get("error_fields"), dict):
+            # #2046: the child's typed error fields, file only.
+            try:
+                from utils.provider_error_fields import fields_line
+
+                _provider_debug(fields_line("live", task_id, envelope["error_fields"]))
+            except Exception:
+                pass
         if envelope.get("error_code") == "runaway_output":
             # The stream consumer abandoned the answer (whitespace runaway or
             # past the callsite's output ceiling) and the identical request

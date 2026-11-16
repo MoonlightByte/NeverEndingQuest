@@ -49,8 +49,12 @@ class ProviderEmptyResponse(ProviderCallError):
         task_id=None,
         finish_reason=None,
         original_error=None,
+        incomplete_reason=None,
     ):
         self.finish_reason = finish_reason
+        # #2046: the Responses endpoint's own incomplete_details.reason, when
+        # the answer ended incomplete (a typed fact for the debug log).
+        self.incomplete_reason = incomplete_reason
         reason = finish_reason or "unknown"
         super().__init__(
             provider=provider,
@@ -251,6 +255,7 @@ def _normalize_provider_response(
             task_id=task_id,
             finish_reason=finish_reason,
             original_error=content_error,
+            incomplete_reason=getattr(response, "incomplete_reason", None),
         )
 
     usage = getattr(response, "usage", None)
@@ -591,13 +596,16 @@ def _enforce_provider_constraints(provider, model, temperature, kwargs):
 class _AssembledCompletion:
     """The completed answer assembled from a stream, in the ChatCompletion shape
     _normalize_provider_response already reads (choices, usage, id, model)."""
-    __slots__ = ("choices", "usage", "id", "model")
+    __slots__ = ("choices", "usage", "id", "model", "incomplete_reason")
 
-    def __init__(self, content, finish_reason, usage, response_id, model):
+    def __init__(self, content, finish_reason, usage, response_id, model,
+                 incomplete_reason=None):
         self.choices = [_Choice(_Message(content), finish_reason=finish_reason)]
         self.usage = usage
         self.id = response_id
         self.model = model
+        # #2046: the Responses endpoint's incomplete_details.reason, as sent.
+        self.incomplete_reason = incomplete_reason
 
 
 class ResponsesStreamFailed(Exception):
@@ -605,11 +613,16 @@ class ResponsesStreamFailed(Exception):
 
     Carries the structured ``code`` the provider sent so the child's
     classifier (`_structured_error_code`) reads it as it reads any SDK error;
-    the message text is never used for classification.
+    the message text is never used for classification. ``event_type`` (the
+    stream event's own type name), ``error_type`` and ``param`` are typed
+    facts for the debug log (#2046), never read for classification.
     """
 
-    def __init__(self, code, message):
+    def __init__(self, code, message, event_type=None, error_type=None, param=None):
         self.code = code
+        self.event_type = event_type
+        self.error_type = error_type
+        self.param = param
         super().__init__("%s: %s" % (code, message))
 
 
@@ -802,11 +815,14 @@ def _responses_stream_completion(client, messages, model, temperature, strip_tem
         elif kind == "response.failed":
             error = getattr(event.response, "error", None)
             raise ResponsesStreamFailed(
-                getattr(error, "code", None), getattr(error, "message", "")
+                getattr(error, "code", None), getattr(error, "message", ""),
+                event_type=kind, error_type=getattr(error, "type", None),
+                param=getattr(error, "param", None),
             )
         elif kind == "error":
             raise ResponsesStreamFailed(
-                getattr(event, "code", None), getattr(event, "message", "")
+                getattr(event, "code", None), getattr(event, "message", ""),
+                event_type=kind, param=getattr(event, "param", None),
             )
         else:
             _phase(phase_emit, "working", kind)
@@ -818,10 +834,12 @@ def _responses_stream_completion(client, messages, model, temperature, strip_tem
         # (defensive read of the final object; same text, never a second value).
         content = _final_answer_text(final)
     finish_reason = "stop"
+    incomplete_reason = None
     details = getattr(final, "incomplete_details", None)
     if getattr(final, "status", "") == "incomplete":
         reason = str(getattr(details, "reason", "") or "incomplete")
         finish_reason = _INCOMPLETE_FINISH_REASONS.get(reason, reason)
+        incomplete_reason = getattr(details, "reason", None)
     usage = getattr(final, "usage", None)
     input_details = getattr(usage, "input_tokens_details", None)
     output_details = getattr(usage, "output_tokens_details", None)
@@ -835,6 +853,7 @@ def _responses_stream_completion(client, messages, model, temperature, strip_tem
     return _AssembledCompletion(
         content, finish_reason, assembled_usage,
         str(getattr(final, "id", "") or ""), str(getattr(final, "model", "") or model),
+        incomplete_reason=incomplete_reason,
     )
 
 
