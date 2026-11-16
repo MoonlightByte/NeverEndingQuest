@@ -2666,10 +2666,15 @@ def update_monster_description():
 
 
 def _session_spend_snapshot():
-    """The typed session cost object for token_update (#1388): numbers only."""
+    """The typed session cost object for token_update (#1388): numbers only.
+    None on a hosted world (#2042, D-SPEND-LINE-2): the host's gateway is the
+    same signal as the #1995 guards, so no page build shows a cost line there."""
     import model_config
+    from utils.provider_gateway import gateway
     from utils.session_spend import snapshot
 
+    if gateway() is not None:
+        return None
     provider = model_config.get_provider()
     kind = "openai" if provider in ("openai", "legacy") else "gemini" if provider == "gemini" else "local"
     return snapshot(kind)
@@ -5820,12 +5825,15 @@ def send_output_to_clients():
                     from utils.openai_usage_tracker import get_usage_stats
                     stats = get_usage_stats()
                     # Send to UI silently
-                    socketio.emit('token_update', {
+                    update = {
                         'tpm': stats.get('tpm', 0),
                         'rpm': stats.get('rpm', 0),
                         'total_tokens': stats.get('total_tokens', 0),
-                        'spend': _session_spend_snapshot(),
-                    })
+                    }
+                    spend = _session_spend_snapshot()
+                    if spend is not None:  # #2042: a hosted world sends none
+                        update['spend'] = spend
+                    socketio.emit('token_update', update)
                 except:
                     # If anything fails, just send zeros (but don't spam)
                     try:

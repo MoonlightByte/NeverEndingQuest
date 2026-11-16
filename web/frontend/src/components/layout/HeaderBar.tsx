@@ -130,7 +130,8 @@ export function HeaderBar() {
       </div>
 
       <div className="neq-header-actions flex items-center gap-2">
-        <SpendLine />
+        {/* #2042 (D-SPEND-LINE-2): no session cost line on a hosted page build. */}
+        {isLocalEdition && <SpendLine />}
         <ConnectionDot />
         <button type="button" className={buttonClass} onClick={handleStart}
           disabled={!connected || isStarting || gameReady || recoveryRequired || restorePending}
