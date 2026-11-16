@@ -467,8 +467,31 @@ def _route_p_wait(seconds):
         time.sleep(min(_ROUTE_P_POLL_SECONDS, remaining))
 
 
+def _route_p_child_end(seq, model, provider, response, billed_error, empty):
+    """#2036: a helper process's attempt ``seq`` ends: done (a call), possibly
+    billed (an empty answer, or a billed-class error, as for a scoped call),
+    or failed (any other error: nothing counted). Never raises."""
+    try:
+        from utils import session_spend
+        from utils.capture.live_provider_call import _spend_provider
+
+        kind = _spend_provider(provider)
+        if empty:
+            session_spend.child_end(seq, "possibly_billed", model, kind)
+        elif billed_error is not None:
+            from utils.openai_client import _possibly_billed
+
+            original = getattr(billed_error, "original_error", None) or billed_error
+            phase = "possibly_billed" if _possibly_billed(original) else "failed"
+            session_spend.child_end(seq, phase, model, kind)
+        else:
+            session_spend.child_end(seq, "done", model, kind, _route_p_spend_usage(response))
+    except Exception:
+        pass
+
+
 def _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
-                             max_attempts=3, base_delay=0.6):
+                             max_attempts=3, base_delay=0.6, spend_scope=None):
     """Fire the primary provider call, retrying transient empty responses and,
     on an OpenAI-SDK provider, the failures the SDK itself would resend.
 
@@ -502,7 +525,7 @@ def _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
     try:
         return _fire_primary_attempts(
             primary_fn, messages, kwargs, task_id, max_attempts, base_delay,
-            provider, build_state,
+            provider, build_state, spend_scope=spend_scope,
         )
     except BaseException as exc:
         if build_state is not None:
@@ -637,27 +660,46 @@ def _build_retry_notice(build_state, exc, provider, attempt, max_attempts):
 def _route_p_spend_usage(response):
     """#2033: a Route P response's usage as the typed dict the session cost
     line takes, read as Route L reads it (_primitive_usage); None when the
-    response carried none or only zero counts (unpriced). Never raises."""
+    response carried none, or no prompt and no completion count (unpriced:
+    live_provider_call._spend_usage, the rule both routes share). Never raises."""
     try:
         if getattr(response, "usage", None) is None:
             return None
-        from utils.capture.live_provider_call import _primitive_usage
+        from utils.capture.live_provider_call import _primitive_usage, _spend_usage
 
-        usage = _primitive_usage(response)
-        if not (usage.get("prompt_tokens") or usage.get("completion_tokens")):
-            return None
-        return usage
+        return _spend_usage(_primitive_usage(response))
     except Exception:
         return None
 
 
-def _route_p_record_spend(scope, model, provider, response=None, billed_error=None, empty=False):
+def _route_p_child_sent(scope, model, provider):
+    """#2036: the seq of this attempt's ``sent`` line in a helper process with
+    a spend sink and no live scope; None anywhere else. Never raises."""
+    if scope is not None:
+        return None
+    try:
+        from utils import session_spend
+
+        if not session_spend.child_sink_set():
+            return None
+        from utils.capture.live_provider_call import _spend_provider
+
+        return session_spend.child_sent(model, _spend_provider(provider))
+    except Exception:
+        return None
+
+
+def _route_p_record_spend(scope, model, provider, response=None, billed_error=None, empty=False,
+                          child_seq=None):
     """#2033: count one Route P generation (or one possibly billed failure:
     a billed-class error, or an empty answer, which Route L also counts as a
     possibly billed failure and not as a call) made under a live scope: a build's (or its announcement's) as the build's,
     any other as its turn's, keyed as Route L keys it. Outside any live scope
-    (the toolkit, startup): nothing, as before. Never raises."""
+    (the toolkit, startup): nothing, as before; in a fight's helper process
+    (#2036: ``child_seq`` from its sink) the attempt's end line. Never raises."""
     if scope is None:
+        if child_seq is not None:
+            _route_p_child_end(child_seq, model, provider, response, billed_error, empty)
         return
     try:
         from utils.capture.live_provider_call import _spend_is_build, _spend_provider
@@ -687,7 +729,7 @@ def _route_p_record_spend(scope, model, provider, response=None, billed_error=No
 
 
 def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
-                           base_delay, provider, build_state):
+                           base_delay, provider, build_state, spend_scope=None):
     """_fire_primary_with_retry's attempts (#1963), unchanged."""
     from core.ai import api_client
     from core.ai.api_client import ProviderCallError, ProviderEmptyResponse
@@ -722,14 +764,22 @@ def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
     reissues = 0
     # #2033: the session cost line counts what this call spends under a live
     # scope (a turn's, a build's, the announcement's); read once, here.
-    spend_scope = live.get_live_provider_scope()
+    # #2036: a scope the caller named (_detached_scope: the welcome, the
+    # announcement, an NPC advisory scope) is that call's owner, not whatever
+    # turn is open globally.
+    if spend_scope is None:
+        spend_scope = live.get_live_provider_scope()
     spend_model = kwargs.get("model")
     while True:
         # #2021 J1b-2: a background build yields before each send (empty-
         # response retries and reissues included) and marks it in flight.
         build_attempt = live.begin_build_attempt()
+        child_seq = None
         try:
             started = time.monotonic()
+            # #2036: in a fight's helper process (no live scope, a sink set)
+            # the attempt is written as sent before it goes out.
+            child_seq = _route_p_child_sent(spend_scope, spend_model, provider)
             try:
                 response = primary_fn(messages=messages, **kwargs)
             finally:
@@ -738,13 +788,15 @@ def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
                 # No phase stream in process: the whole call's time is an upper
                 # bound of the time to the first chunk, so the deadline errs long.
                 live.record_local_answer(base_url, time.monotonic() - started, chars)
-            _route_p_record_spend(spend_scope, spend_model, provider, response=response)
+            _route_p_record_spend(spend_scope, spend_model, provider, response=response,
+                                  child_seq=child_seq)
             return response
         except ProviderEmptyResponse as exc:
             # The provider answered with no usable text: possibly billed, as
             # Route L counts an empty generation (never a call; its usage is
             # not carried).
-            _route_p_record_spend(spend_scope, spend_model, provider, empty=True)
+            _route_p_record_spend(spend_scope, spend_model, provider, empty=True,
+                                  child_seq=child_seq)
             if attempt >= max_attempts:
                 raise
             _get_error_logger().warning(
@@ -756,7 +808,8 @@ def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
             time.sleep(base_delay * attempt)
             attempt += 1
         except ProviderCallError as exc:
-            _route_p_record_spend(spend_scope, spend_model, provider, billed_error=exc)
+            _route_p_record_spend(spend_scope, spend_model, provider, billed_error=exc,
+                                  child_seq=child_seq)
             if not reissue_on or reissues >= live._BILLED_REISSUE_LIMIT:
                 raise
             delay = _route_p_reissue_delay(exc, reissues + 1)
@@ -912,7 +965,8 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     # still player-visible production accounting and must happen before this
     # capture-specific early return.
     elif request_provider == "lmstudio":
-        response = _fire_primary_with_retry(primary_fn, messages, kwargs, task_id)
+        response = _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
+                                            spend_scope=detached_scope)
         _track_module_primary(
             response, task_id, request_provider, requested_model
         )
@@ -921,7 +975,8 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     else:
         # Always fire the legacy primary call synchronously.
         start = time.time()
-        response = _fire_primary_with_retry(primary_fn, messages, kwargs, task_id)
+        response = _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
+                                            spend_scope=detached_scope)
         primary_latency = round(time.time() - start, 3)
 
         # Account before either capture-disabled return below. Diagnostic capture
