@@ -7187,10 +7187,12 @@ Please use a valid location that exists in the current area ({current_area_id}) 
         # announced, a second createNewModule is dropped alone, before anything
         # is reserved, claimed or shown: no effect, no error, no player line.
         # main gives the model one note (BUILD_DROPPED_NOTE) by the typed field.
+        # The id is read once under build_job's lock; with no id the action
+        # takes the normal path and the fence decides.
         from utils import build_job as open_builds
 
-        if open_builds.active_job() is not None or open_builds.has_due():
-            open_build = open_builds.active_build_id() or open_builds.due_build_id() or ""
+        open_build = open_builds.open_build_id()
+        if open_build is not None:
             debug(
                 f"STATE_CHANGE: createNewModule dropped; build {open_build} is "
                 "still being prepared",
