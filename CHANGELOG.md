@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- When a new adventure is ready, the Dungeon Master now tells you plainly that you can travel there (#2030).
+
 - The session cost line now includes the AI calls that prepare a fight (#2036).
 
 - The session cost line now includes the AI calls spent building a new adventure (#2033).
