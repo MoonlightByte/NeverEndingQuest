@@ -1255,9 +1255,12 @@ def _record_build_failure(record, live_history):
             for message in live_history
         ):
             return
-        live_history.append(
-            {"role": "system", "content": record.line, "message_id": record.message_id}
-        )
+        live_history.append({
+            "role": "system",
+            "content": record.line,
+            "message_id": record.message_id,
+            hm.MARKER_FIELD: hm.MODULE_BUILD,
+        })
     except Exception as append_error:
         warning(
             "A failed build's line could not be recorded: %s" % type(append_error).__name__,
@@ -1398,6 +1401,7 @@ def _apply_announcement(lifecycle, live_history):
                     "role": "assistant",
                     "content": lifecycle.reply,
                     "message_id": followup_id,
+                    hm.MARKER_FIELD: hm.MODULE_BUILD,
                 })
             # a4: the place is reachable from here on; the same ready fact as
             # the error path, by id, after the reply (the closer counts it).
@@ -1409,6 +1413,7 @@ def _apply_announcement(lifecycle, live_history):
                     "role": "user",
                     "content": BUILD_READY_NOTE % (lifecycle.record.module_name or ""),
                     "message_id": ready_id,
+                    hm.MARKER_FIELD: hm.MODULE_BUILD,
                 })
             saved = save_conversation_history(
                 live_history, strict=True, allow_compression=False,
@@ -1447,6 +1452,7 @@ def _record_build_ready(record, live_history):
                 "role": "user",
                 "content": BUILD_READY_NOTE % (record.module_name or ""),
                 "message_id": ready_id,
+                hm.MARKER_FIELD: hm.MODULE_BUILD,
             })
             try:
                 _strictly_persist_conversation_history(live_history)
@@ -1553,18 +1559,14 @@ def service_build_due(live_history, *, turn_start=False):
 
 def _dropped_note_present(history, build_id):
     """#2039: whether history already holds this open build's dropped note
-    after its preparing note (by message id only; the whole history when the
-    preparing note is not in it)."""
+    after its preparing note (read by hm.build_marker, #2052; the whole history
+    when the preparing note is not in it)."""
     start = 0
     for index, message in enumerate(history):
-        if (
-            isinstance(message, dict)
-            and message.get("message_id") == "module-build-preparing-%s" % build_id
-        ):
+        if hm.build_marker(message) == (build_id, "started"):
             start = index + 1
     return any(
-        isinstance(message, dict)
-        and message.get("message_id") == "module-build-dropped-%s" % build_id
+        hm.build_marker(message) == (build_id, "dropped")
         for message in history[start:]
     )
 
@@ -1572,7 +1574,9 @@ def _dropped_note_present(history, build_id):
 def close_open_build_notes(live_history):
     """Loop top, once nothing is building, due or announcing: a preparing note
     whose build was never announced, recorded as failed, or closed gets one
-    closing note (a Load of a save made mid-build, a restart). By id only."""
+    closing note (a Load of a save made mid-build, a restart). Read by
+    hm.build_marker (#2052): the typed field, or the id prefix on a note saved
+    before it; a dropped note never ends a build."""
     from utils import build_job as jobs
     from utils.capture.live_provider_call import get_live_turn_scope
 
@@ -1584,11 +1588,11 @@ def close_open_build_notes(live_history):
         or _announcement is not None
     ):
         return 0
-    ids = [
-        message.get("message_id") for message in live_history
-        if isinstance(message, dict) and isinstance(message.get("message_id"), str)
-    ]
-    present = set(ids)
+    states = {}
+    for message in live_history:
+        note = hm.build_marker(message)
+        if note is not None:
+            states.setdefault(note[0], set()).add(note[1])
     # A note before the latest summary (any compressor's own typed marker) is
     # skipped: a summary may have taken its follow-up, ready or closing note
     # while the note itself was kept (a build started before a move).
@@ -1599,28 +1603,24 @@ def close_open_build_notes(live_history):
         ):
             last_summary = index
     opened = [
-        message["message_id"][len("module-build-preparing-"):]
-        for index, message in enumerate(live_history)
-        if index > last_summary
-        and isinstance(message, dict)
-        and isinstance(message.get("message_id"), str)
-        and message["message_id"].startswith("module-build-preparing-")
+        note[0]
+        for note in (
+            hm.build_marker(message) if index > last_summary else None
+            for index, message in enumerate(live_history)
+        )
+        if note is not None and note[1] == "started"
     ]
     closed = 0
     for build_id in opened:
-        if (
-            "module-build-failure-%s" % build_id in present
-            or "module-followup-%s" % build_id in present
-            or "module-build-closed-%s" % build_id in present
-            or "module-build-ready-%s" % build_id in present
-        ):
+        if states.get(build_id, set()) & hm.BUILD_ENDS:
             continue
         live_history.append({
             "role": "user",
             "content": BUILD_CLOSED_NOTE,
             "message_id": "module-build-closed-%s" % build_id,
+            hm.MARKER_FIELD: hm.MODULE_BUILD,
         })
-        present.add("module-build-closed-%s" % build_id)
+        states.setdefault(build_id, set()).add("closed")
         closed += 1
     if closed:
         try:
@@ -8413,6 +8413,7 @@ def process_ai_response(
                 "role": "user",
                 "content": BUILD_PREPARING_NOTE,
                 "message_id": "module-build-preparing-%s" % build_started,
+                hm.MARKER_FIELD: hm.MODULE_BUILD,
             })
         if dropped_for_build is not None and not _dropped_note_present(
             conversation_history, dropped_for_build
