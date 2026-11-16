@@ -2058,6 +2058,20 @@ def _is_stalled_failure(envelope):
     )
 
 
+def _spend_usage(usage):
+    """#2035: the usage the session cost line is given. A reply that carried
+    no usage figures (every token count 0: _primitive_usage fills zeros) is
+    unpriced, as on Route P since #2033, never priced at $0. The envelope's
+    own usage dict is left as it is."""
+    if not isinstance(usage, dict):
+        return None
+    if not any(usage.get(key) for key in (
+        "prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens", "reasoning_tokens",
+    )):
+        return None
+    return usage
+
+
 def _record_unused_generation(output, phase_state, frozen_kwargs, operation_id, generation, build=False):
     """Count a generation whose result is not used (#1435): superseded, or
     dropped on an unreadable authority. A completed answer is a call; one
@@ -2081,7 +2095,7 @@ def _record_unused_generation(output, phase_state, frozen_kwargs, operation_id, 
         ):
             record_generation(
                 frozen_kwargs.get("model"),
-                envelope["usage"],
+                _spend_usage(envelope["usage"]),
                 provider=_spend_provider(frozen_kwargs.get("_request_provider")),
                 turn_key=operation_id,
                 build=build,
@@ -2755,7 +2769,7 @@ def _call_live_provider(
 
             record_generation(
                 frozen_kwargs.get("model"),
-                envelope.get("usage"),
+                _spend_usage(envelope.get("usage")),
                 provider=_spend_provider(frozen_kwargs.get("_request_provider")),
                 turn_key=operation_id,
                 build=spend_build,
