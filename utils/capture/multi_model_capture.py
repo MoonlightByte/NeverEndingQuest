@@ -660,16 +660,14 @@ def _build_retry_notice(build_state, exc, provider, attempt, max_attempts):
 def _route_p_spend_usage(response):
     """#2033: a Route P response's usage as the typed dict the session cost
     line takes, read as Route L reads it (_primitive_usage); None when the
-    response carried none or only zero counts (unpriced). Never raises."""
+    response carried none, or no prompt and no completion count (unpriced:
+    live_provider_call._spend_usage, the rule both routes share). Never raises."""
     try:
         if getattr(response, "usage", None) is None:
             return None
-        from utils.capture.live_provider_call import _primitive_usage
+        from utils.capture.live_provider_call import _primitive_usage, _spend_usage
 
-        usage = _primitive_usage(response)
-        if not (usage.get("prompt_tokens") or usage.get("completion_tokens")):
-            return None
-        return usage
+        return _spend_usage(_primitive_usage(response))
     except Exception:
         return None
 

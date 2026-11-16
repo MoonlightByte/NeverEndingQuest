@@ -2059,15 +2059,15 @@ def _is_stalled_failure(envelope):
 
 
 def _spend_usage(usage):
-    """#2035: the usage the session cost line is given. A reply that carried
-    no usage figures (every token count 0: _primitive_usage fills zeros) is
-    unpriced, as on Route P since #2033, never priced at $0. The envelope's
-    own usage dict is left as it is."""
+    """#2035: the usage the session cost line is given, on both routes (Route P
+    through _route_p_spend_usage). A reply with no prompt and no completion
+    count (none carried: _primitive_usage fills zeros) is unpriced, never
+    priced at $0; only those two counts are read, as they are what the price
+    uses (a total, cached or reasoning count alone does not make it priced).
+    The envelope's own usage dict is left as it is."""
     if not isinstance(usage, dict):
         return None
-    if not any(usage.get(key) for key in (
-        "prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens", "reasoning_tokens",
-    )):
+    if not (usage.get("prompt_tokens") or usage.get("completion_tokens")):
         return None
     return usage
 
