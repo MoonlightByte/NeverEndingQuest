@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- While a new adventure is being prepared, setting out for it keeps you where you are until it is ready (#2031).
+
 - When a new adventure is ready, the Dungeon Master now tells you plainly that you can travel there (#2030).
 
 - Building a new adventure makes one fewer AI call (#2032).
