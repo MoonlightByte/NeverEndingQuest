@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - While a new adventure is being prepared, the Dungeon Master keeps you where you are until it is ready (#2031).
 
+- Building a new adventure makes one fewer AI call (#2032).
+
 - The session cost line now includes the AI calls that prepare a fight (#2036).
 
 - The session cost line now includes the AI calls spent building a new adventure (#2033).
