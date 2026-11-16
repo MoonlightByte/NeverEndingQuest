@@ -57,6 +57,18 @@ def active_job():
         return _job[0] if _job is not None else None
 
 
+def active_build_id():
+    """The running job's build_id, or None."""
+    with _lock:
+        return _job[1] if _job is not None else None
+
+
+def due_build_id():
+    """The oldest due record's build_id, or None."""
+    with _lock:
+        return _due[0].build_id if _due else None
+
+
 def wait_for_job(timeout=None):
     """Join the running job, if any (teardown and tests)."""
     thread = active_job()

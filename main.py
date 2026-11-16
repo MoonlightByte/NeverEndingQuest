@@ -1145,6 +1145,16 @@ BUILD_PREPARING_NOTE = (
     "narrate arriving there yet, and never tell the player it cannot be "
     "reached.]"
 )
+# Model-facing only, never shown (#2039): a second createNewModule while a
+# build is open was dropped alone. Appended once per open build, after the
+# reply that carried it.
+BUILD_DROPPED_NOTE = (
+    "[Only one new adventure can be prepared at a time, so no second one was "
+    "started. The one already being prepared is the only new place on its way; "
+    "any other new place the party spoke of is not being prepared, and the "
+    "party can seek it again once the current one is ready. Put this right in "
+    "the story, never as a refusal from the game.]"
+)
 # Model-facing only: a preparing note whose build was never announced (a
 # quit or a Load mid-build). It must not deny the place: it may be live.
 BUILD_CLOSED_NOTE = (
@@ -1539,6 +1549,24 @@ def service_build_due(live_history, *, turn_start=False):
             lifecycle = _start_next_due(live_history)
         if lifecycle is None or not turn_start:
             return
+
+
+def _dropped_note_present(history, build_id):
+    """#2039: whether history already holds this open build's dropped note
+    after its preparing note (by message id only; the whole history when the
+    preparing note is not in it)."""
+    start = 0
+    for index, message in enumerate(history):
+        if (
+            isinstance(message, dict)
+            and message.get("message_id") == "module-build-preparing-%s" % build_id
+        ):
+            start = index + 1
+    return any(
+        isinstance(message, dict)
+        and message.get("message_id") == "module-build-dropped-%s" % build_id
+        for message in history[start:]
+    )
 
 
 def close_open_build_notes(live_history):
@@ -8063,6 +8091,8 @@ def process_ai_response(
         # #2021 J1b-2: the build_id of a module build started in the
         # background this turn.
         build_started = None
+        # #2039: the open build a dropped createNewModule named this turn.
+        dropped_for_build = None
         # Execute accepted actions once, in the order the DM and referee approved.
         for action_index, action in enumerate(actions):
             if encounter_payments and action_index in encounter_payments["staged"]:
@@ -8173,6 +8203,14 @@ def process_ai_response(
                     narration_shown = bool(str(sanitized_narration or "").strip())
                     response = unheld_response
                 break
+            if isinstance(result, dict) and result.get("dropped_for_build") is not None:
+                # #2039: a second build was dropped alone; the reply plays on.
+                # A held sole createNewModule is shown now, and stored whole.
+                dropped_for_build = str(result.get("dropped_for_build") or "")
+                if module_held:
+                    display_dm_narration(sanitized_narration)
+                    narration_shown = bool(str(sanitized_narration or "").strip())
+                    response = unheld_response
             if isinstance(result, dict) and result.get("status") == "published":
                 # Module publication is an irreversible terminal action for
                 # this response; never execute later sibling actions. (P2b: the
@@ -8375,6 +8413,15 @@ def process_ai_response(
                 "role": "user",
                 "content": BUILD_PREPARING_NOTE,
                 "message_id": "module-build-preparing-%s" % build_started,
+            })
+        if dropped_for_build is not None and not _dropped_note_present(
+            conversation_history, dropped_for_build
+        ):
+            conversation_history.append({
+                "role": "user",
+                "content": BUILD_DROPPED_NOTE,
+                "message_id": "module-build-dropped-%s" % dropped_for_build,
+                hm.MARKER_FIELD: hm.MODULE_BUILD,
             })
         save_conversation_history(conversation_history)
         

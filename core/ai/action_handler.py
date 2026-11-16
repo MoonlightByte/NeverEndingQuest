@@ -7183,6 +7183,28 @@ Please use a valid location that exists in the current area ({current_area_id}) 
     elif action_type == ACTION_CREATE_NEW_MODULE:
         debug("STATE_CHANGE: Processing createNewModule action", category="module_management")
 
+        # #2039: one in-game build at a time. While a build runs or waits to be
+        # announced, a second createNewModule is dropped alone, before anything
+        # is reserved, claimed or shown: no effect, no error, no player line.
+        # main gives the model one note (BUILD_DROPPED_NOTE) by the typed field.
+        from utils import build_job as open_builds
+
+        if open_builds.active_job() is not None or open_builds.has_due():
+            open_build = open_builds.active_build_id() or open_builds.due_build_id() or ""
+            debug(
+                f"STATE_CHANGE: createNewModule dropped; build {open_build} is "
+                "still being prepared",
+                category="module_management",
+            )
+            return {
+                "status": "dropped",
+                "success": True,
+                "state_changed": False,
+                "retryable": False,
+                "needs_dm_response": False,
+                "dropped_for_build": open_build,
+            }
+
         # Allocate before any optional module imports so even import/contract
         # failures have one correlated terminal payload. Reuse an already
         # active usage identity when this action is nested in its build scope.
