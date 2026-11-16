@@ -1571,9 +1571,14 @@ def _primitive_error(exc, request_kwargs):
     # #2046: the typed fields the parent writes to the debug log (bounded,
     # never the message text); ``error_type`` is kept as a recorded fact,
     # not a match key.
-    from utils.provider_error_fields import error_fields
+    try:
+        from utils.provider_error_fields import error_fields
 
-    fields = error_fields(exc, disposition)
+        fields = error_fields(exc, disposition)
+    except Exception:
+        # A logging aid never costs the envelope (or Route P's reissue rule,
+        # which also builds one).
+        fields = {}
     return {
         "kind": "error",
         "error_class": type(exc).__name__,
@@ -2809,7 +2814,7 @@ def _call_live_provider(
 
         failure_count += 1
         envelope = envelope if isinstance(envelope, dict) else {}
-        if isinstance(envelope.get("error_fields"), dict):
+        if isinstance(envelope.get("error_fields"), dict) and envelope["error_fields"]:
             # #2046: the child's typed error fields, file only.
             try:
                 from utils.provider_error_fields import fields_line
