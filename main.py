@@ -1131,16 +1131,18 @@ LOCAL_BUILD_WAIT_LINE = (
 )
 # Model-facing only, never shown: between the start narration and the
 # announcement the new place is still being built. It has no location yet, so
-# the party stays where it is in the game until the announcement (#2031); the
-# story may set out, and it must not refuse the player's travel toward it.
+# setting out for it moves the party nowhere in the game until the
+# announcement (#2031); other moves stay as usual. The story may set out, and
+# it must not refuse the player's travel toward it.
 # The announcement's ready note follows it.
 BUILD_PREPARING_NOTE = (
     "[The new adventure is still being prepared; the game will say when it is "
-    "ready. Until then the party stays at its current location in the game: "
-    "no transitionLocation, updatePartyTracker or updateTime for this journey, "
-    "and no createNewModule for it again. In the story the party may make "
-    "ready, set out on the first stretch of the way, or do anything else. "
-    "Never narrate arriving there yet, and never tell the player it cannot be "
+    "ready. Until then, setting out for it does not move the party in the "
+    "game: that reply carries no transitionLocation (not even to a place on "
+    "the way), no updatePartyTracker and no updateTime for that travel, and "
+    "no createNewModule for it again. In the story the party may make ready, "
+    "set out on the first stretch of the way, or do anything else. Never "
+    "narrate arriving there yet, and never tell the player it cannot be "
     "reached.]"
 )
 # Model-facing only: a preparing note whose build was never announced (a
