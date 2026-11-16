@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Building a new adventure makes one fewer AI call (#2032).
+
 - The session cost line now includes the AI calls that prepare a fight (#2036).
 
 - The session cost line now includes the AI calls spent building a new adventure (#2033).

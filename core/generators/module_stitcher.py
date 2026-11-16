@@ -2778,9 +2778,7 @@ Create atmospheric travel narration that leads into this adventure."""
                 + conflict_reason
             )
 
-        module_data["travelNarration"] = self._generate_travel_narration(
-            module_data
-        )
+        # The registry entry keeps travelNarration {}: nothing reads it (#2032).
         safety = _coerce_module_safety_result(
             self._validate_module_safety(
                 module_name,
@@ -3221,9 +3219,7 @@ Create atmospheric travel narration that leads into this adventure."""
 
             area_ids = set(module_data.get("areas", {}))
 
-            module_data["travelNarration"] = self._generate_travel_narration(
-                module_data
-            )
+            # The registry entry keeps travelNarration {}: nothing reads it (#2032).
             safety_result = _coerce_module_safety_result(
                 self._validate_module_safety(module_name, module_data)
             )
