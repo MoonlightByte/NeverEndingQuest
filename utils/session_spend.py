@@ -192,3 +192,198 @@ def snapshot(provider_kind="openai"):
         "provider_kind": provider_kind if provider_kind in ("openai", "gemini", "local") else "local",
         "available": not failed,
     }
+
+
+# --- #2036: a fight's helper processes report their spend to the game -------
+# The encounter builder (and the NPC builder inside it) and its monster
+# builders call the provider in their own processes, where no live scope is
+# open, so their calls never reached this counter. Each such process is given
+# a sink: the result directory its game-side waiter already made. Route P then
+# appends one line per attempt to <dir>/spend-<pid>-<run>.jsonl, and the game
+# reads every line once, before it removes the directory, under the scope that
+# was open when the fight started. A line holds numbers and the catalog id
+# only: no key, URL, prompt or reply text. It is never printed or logged.
+
+_CHILD_PHASES = ("sent", "done", "possibly_billed", "failed")
+_CHILD_PROVIDERS = ("openai", "gemini", "local")
+_CHILD_USAGE_KEYS = (
+    "prompt_tokens", "completion_tokens", "total_tokens", "cached_tokens", "reasoning_tokens",
+)
+_CHILD_TOKEN_CAP = 10_000_000
+_CHILD_MAX_BYTES = 1_000_000
+_CHILD_MAX_LINES = 10_000
+_CHILD_MODEL_MAX = 200
+_child_lock = threading.Lock()
+_child_sink = None  # (directory, run id) in a helper process; None elsewhere
+_child_seq = 0
+
+
+def set_child_sink(directory):
+    """Point this helper process's Route P spend lines at ``directory`` (a run
+    id is made here, once), or clear the sink with None."""
+    global _child_sink, _child_seq
+    import uuid
+
+    with _child_lock:
+        _child_sink = (str(directory), uuid.uuid4().hex) if directory else None
+        _child_seq = 0
+
+
+def child_sink_set():
+    return _child_sink is not None
+
+
+def _child_write(entry):
+    import json
+    import os
+
+    with _child_lock:
+        sink = _child_sink
+        if sink is None:
+            return None
+        directory, run = sink
+        if not os.path.isdir(directory):
+            return None  # stopped: the waiter already removed the directory
+        line = dict(entry, run=run)
+        path = os.path.join(directory, "spend-%d-%s.jsonl" % (os.getpid(), run))
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(line, separators=(",", ":")) + "\n")
+        return line
+
+
+def child_sent(model, provider):
+    """One Route P attempt is about to be sent from a helper process: write its
+    ``sent`` line and return its seq, or None without a sink. Never raises."""
+    global _child_seq
+    try:
+        with _child_lock:
+            if _child_sink is None:
+                return None
+            _child_seq += 1
+            seq = _child_seq
+        written = _child_write({
+            "seq": seq, "phase": "sent", "model": str(model or "")[:_CHILD_MODEL_MAX],
+            "provider": provider, "usage": None,
+        })
+        return seq if written is not None else None
+    except Exception:
+        return None
+
+
+def child_end(seq, phase, model, provider, usage=None):
+    """The end of attempt ``seq``: done (with usage or None), possibly_billed or
+    failed. Never raises."""
+    try:
+        if seq is None or phase not in _CHILD_PHASES[1:]:
+            return
+        _child_write({
+            "seq": seq, "phase": phase, "model": str(model or "")[:_CHILD_MODEL_MAX],
+            "provider": provider,
+            "usage": {key: int(usage.get(key) or 0) for key in _CHILD_USAGE_KEYS}
+            if isinstance(usage, dict) else None,
+        })
+    except Exception:
+        pass
+
+
+def _child_usage(value):
+    if value is None:
+        return True, None
+    if not isinstance(value, dict) or set(value) != set(_CHILD_USAGE_KEYS):
+        return False, None
+    for key in _CHILD_USAGE_KEYS:
+        count = value[key]
+        if type(count) is not int or count < 0 or count > _CHILD_TOKEN_CAP:
+            return False, None
+    return True, dict(value)
+
+
+def _child_line(raw):
+    import json
+
+    try:
+        line = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(line, dict):
+        return None
+    run, seq, phase = line.get("run"), line.get("seq"), line.get("phase")
+    model, provider = line.get("model"), line.get("provider")
+    if not (isinstance(run, str) and len(run) == 32 and all(c in "0123456789abcdef" for c in run)):
+        return None
+    if type(seq) is not int or seq < 0 or phase not in _CHILD_PHASES:
+        return None
+    if not isinstance(model, str) or len(model) > _CHILD_MODEL_MAX or provider not in _CHILD_PROVIDERS:
+        return None
+    ok, usage = _child_usage(line.get("usage"))
+    if not ok:
+        return None
+    return {"run": run, "seq": seq, "phase": phase, "model": model, "provider": provider, "usage": usage}
+
+
+def _child_file_lines(path):
+    """The accepted lines of one file, inside the bounds; a last line with no
+    newline is a partial write and is skipped."""
+    with open(path, "rb") as handle:
+        data = handle.read(_CHILD_MAX_BYTES + 1)
+    data = data[:_CHILD_MAX_BYTES]
+    rows = data.split(b"\n")
+    complete = rows[:-1]  # the piece after the last newline is partial (or empty)
+    out = []
+    for raw in complete[:_CHILD_MAX_LINES]:
+        try:
+            line = _child_line(raw.decode("utf-8"))
+        except UnicodeDecodeError:
+            line = None
+        if line is not None:
+            out.append(line)
+    return out
+
+
+def record_child_spend(directory, scope):
+    """Game side, before the helper's result directory is removed: count every
+    attempt its helpers wrote, under ``scope`` (the live scope read when the
+    fight started; None records nothing, as Route P). Paired by (run, seq):
+    done is a call, possibly_billed is possibly billed, failed is nothing, and
+    a sent with no end (the helper died or was stopped mid-attempt) is possibly
+    billed. Returns the number of attempts counted. Never raises."""
+    if scope is None or not directory:
+        return 0
+    try:
+        import glob
+        import os
+
+        from utils.capture.live_provider_call import _spend_is_build
+
+        attempts = {}
+        for path in sorted(glob.glob(os.path.join(directory, "spend-*.jsonl"))):
+            try:
+                if os.path.islink(path) or not os.path.isfile(path):
+                    continue
+                lines = _child_file_lines(path)
+            except OSError:
+                continue
+            for line in lines:
+                slot = attempts.setdefault((line["run"], line["seq"]), {})
+                slot.setdefault(line["phase"], line)
+        build = _spend_is_build(scope)
+        turn_key = getattr(scope, "operation_id", None)
+        counted = 0
+        for key in sorted(attempts):
+            slot = attempts[key]
+            if "done" in slot:
+                line = slot["done"]
+                record_generation(line["model"], line["usage"], provider=line["provider"],
+                                  turn_key=turn_key, build=build)
+            elif "possibly_billed" in slot:
+                record_possibly_billed(turn_key=turn_key, build=build)
+            elif "failed" in slot:
+                continue
+            elif "sent" in slot:
+                record_possibly_billed(turn_key=turn_key, build=build)
+            else:
+                continue
+            counted += 1
+        return counted
+    except Exception:
+        return 0

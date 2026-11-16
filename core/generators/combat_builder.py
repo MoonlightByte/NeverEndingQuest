@@ -1753,6 +1753,17 @@ def _write_result(result_file, status, encounter_id=None, encounter_file=None, d
 
 
 def main(argv=None):
+    """#2036: _main with this process's spend sink cleared on the way out,
+    however it ends (an in-process caller keeps no sink)."""
+    try:
+        return _main(argv)
+    finally:
+        from utils.session_spend import set_child_sink
+
+        set_child_sink(None)
+
+
+def _main(argv=None):
     """Build one encounter from the JSON on stdin.
 
     Exits 0 only when the encounter is saved, else 1. With --result-file the
@@ -1787,6 +1798,12 @@ def main(argv=None):
         held_allowed = []
     global _STOP_FILE
     _STOP_FILE = os.path.join(os.path.dirname(os.path.abspath(result_file)), "stop") if result_file else None
+    if result_file:
+        # #2036: this process's (and the NPC builder's) provider attempts are
+        # written to the result directory the game reads before removing it.
+        from utils.session_spend import set_child_sink
+
+        set_child_sink(os.path.dirname(os.path.abspath(result_file)))
     logging.debug("Starting combat encounter creation")
     
     # Read input from stdin

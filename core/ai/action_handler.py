@@ -6100,6 +6100,10 @@ def process_action(
             # #1894 D-1894-5 (A): the members the DM was told about earlier
             # in this turn are held this time; an argument, never saved.
             held_allowed = _party_held_allowed(invocation_claim, conversation_history)
+            # #2036: the scope the fight starts under, read once, here (as
+            # Route P reads it at a call's start); the builder helpers' spend
+            # is counted under it.
+            fight_spend_scope = get_live_provider_scope()
             builder_action = (
                 _with_party_held_opening(action, encounter_payments) if held_allowed else action
             )
@@ -6128,6 +6132,11 @@ def process_action(
                                      "person_on_monster_slot"):
                         rows = _refused_rows(result_path)
                 finally:
+                    # #2036: what the encounter builder and its monster
+                    # builders spent, counted once, before the directory goes.
+                    from utils.session_spend import record_child_spend
+
+                    record_child_spend(result_dir, fight_spend_scope)
                     shutil.rmtree(result_dir, ignore_errors=True)
                 return run, built_id, failure, rows, returns
 

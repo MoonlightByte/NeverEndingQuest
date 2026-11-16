@@ -456,6 +456,17 @@ def build_monster_file(monster_name, schema, party_level=1, path_manager=None, k
         return generated
 
 def main():
+    """#2036: _main with this process's spend sink cleared on the way out,
+    however it ends (an in-process caller keeps no sink)."""
+    try:
+        return _main()
+    finally:
+        from utils.session_spend import set_child_sink
+
+        set_child_sink(None)
+
+
+def _main():
     # Parse args. --party-level is optional for backward compatibility:
     # legacy callers that supply only the monster name still work and
     # fall back to the party_tracker.json read below.
@@ -475,6 +486,12 @@ def main():
                         help="#1529: stop without saving when this file exists "
                              "or its directory is gone.")
     args = parser.parse_args()
+    if args.stop_file:
+        # #2036: the stop file lives in the encounter builder's result
+        # directory; this process's provider attempts are written there.
+        from utils.session_spend import set_child_sink
+
+        set_child_sink(os.path.dirname(os.path.abspath(args.stop_file)))
 
     monster_name_arg = args.monster_name
     cli_party_level = args.party_level
