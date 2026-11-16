@@ -728,6 +728,28 @@ def _route_p_record_spend(scope, model, provider, response=None, billed_error=No
         pass
 
 
+def _route_p_log_error_fields(exc, task_id):
+    """#2046: the failed call's typed fields, in the game's log files only,
+    with the same field set and disposition rule as the live child. Never the
+    message text; logging never changes what happens next."""
+    try:
+        from utils.capture import live_provider_call as live
+        from utils.enhanced_logger import file_only
+        from utils.provider_error_fields import error_fields, fields_line
+
+        original = getattr(exc, "original_error", None)
+        disposition = live._error_disposition(
+            exc, original, live._http_status_of(original),
+            live._structured_error_code(exc, original),
+        )
+        file_only(
+            fields_line("inprocess", task_id, error_fields(exc, disposition)),
+            category="ai_routing",
+        )
+    except Exception:
+        pass
+
+
 def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
                            base_delay, provider, build_state, spend_scope=None):
     """_fire_primary_with_retry's attempts (#1963), unchanged."""
@@ -792,6 +814,7 @@ def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
                                   child_seq=child_seq)
             return response
         except ProviderEmptyResponse as exc:
+            _route_p_log_error_fields(exc, task_id)
             # The provider answered with no usable text: possibly billed, as
             # Route L counts an empty generation (never a call; its usage is
             # not carried).
@@ -808,6 +831,7 @@ def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
             time.sleep(base_delay * attempt)
             attempt += 1
         except ProviderCallError as exc:
+            _route_p_log_error_fields(exc, task_id)
             _route_p_record_spend(spend_scope, spend_model, provider, billed_error=exc,
                                   child_seq=child_seq)
             if not reissue_on or reissues >= live._BILLED_REISSUE_LIMIT:
