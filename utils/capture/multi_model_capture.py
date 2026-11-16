@@ -491,7 +491,7 @@ def _route_p_child_end(seq, model, provider, response, billed_error, empty):
 
 
 def _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
-                             max_attempts=3, base_delay=0.6):
+                             max_attempts=3, base_delay=0.6, spend_scope=None):
     """Fire the primary provider call, retrying transient empty responses and,
     on an OpenAI-SDK provider, the failures the SDK itself would resend.
 
@@ -525,7 +525,7 @@ def _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
     try:
         return _fire_primary_attempts(
             primary_fn, messages, kwargs, task_id, max_attempts, base_delay,
-            provider, build_state,
+            provider, build_state, spend_scope=spend_scope,
         )
     except BaseException as exc:
         if build_state is not None:
@@ -731,7 +731,7 @@ def _route_p_record_spend(scope, model, provider, response=None, billed_error=No
 
 
 def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
-                           base_delay, provider, build_state):
+                           base_delay, provider, build_state, spend_scope=None):
     """_fire_primary_with_retry's attempts (#1963), unchanged."""
     from core.ai import api_client
     from core.ai.api_client import ProviderCallError, ProviderEmptyResponse
@@ -766,7 +766,11 @@ def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
     reissues = 0
     # #2033: the session cost line counts what this call spends under a live
     # scope (a turn's, a build's, the announcement's); read once, here.
-    spend_scope = live.get_live_provider_scope()
+    # #2036: a scope the caller named (_detached_scope: the welcome, the
+    # announcement, an NPC advisory scope) is that call's owner, not whatever
+    # turn is open globally.
+    if spend_scope is None:
+        spend_scope = live.get_live_provider_scope()
     spend_model = kwargs.get("model")
     while True:
         # #2021 J1b-2: a background build yields before each send (empty-
@@ -963,7 +967,8 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     # still player-visible production accounting and must happen before this
     # capture-specific early return.
     elif request_provider == "lmstudio":
-        response = _fire_primary_with_retry(primary_fn, messages, kwargs, task_id)
+        response = _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
+                                            spend_scope=detached_scope)
         _track_module_primary(
             response, task_id, request_provider, requested_model
         )
@@ -972,7 +977,8 @@ def capture_and_fanout(task_id, primary_fn, messages, **kwargs):
     else:
         # Always fire the legacy primary call synchronously.
         start = time.time()
-        response = _fire_primary_with_retry(primary_fn, messages, kwargs, task_id)
+        response = _fire_primary_with_retry(primary_fn, messages, kwargs, task_id,
+                                            spend_scope=detached_scope)
         primary_latency = round(time.time() - start, 3)
 
         # Account before either capture-disabled return below. Diagnostic capture
