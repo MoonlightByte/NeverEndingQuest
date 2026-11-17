@@ -592,16 +592,36 @@ def _real_directory(path: str, real_root: str) -> Optional[os.stat_result]:
     root (no link, junction or reparse point; realpath's parent is the root),
     else None."""
     st = os.lstat(path)
-    if not stat.S_ISDIR(st.st_mode) or stat.S_ISLNK(st.st_mode) or os.path.islink(path):
-        return None
-    isjunction = getattr(os.path, "isjunction", None)
-    if isjunction is not None and isjunction(path):
-        return None
-    if getattr(st, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
+    if not _plain_directory(path, st):
         return None
     if os.path.dirname(os.path.realpath(path)) != real_root:
         return None
     return st
+
+
+def _plain_directory(path: str, st: os.stat_result) -> bool:
+    """True when the lstat st of path is a directory that is not a link, a
+    junction or any other reparse point."""
+    if not stat.S_ISDIR(st.st_mode) or stat.S_ISLNK(st.st_mode) or os.path.islink(path):
+        return False
+    isjunction = getattr(os.path, "isjunction", None)
+    if isjunction is not None and isjunction(path):
+        return False
+    if getattr(st, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
+        return False
+    return True
+
+
+def _extended_path(root: str) -> str:
+    """The Windows long-path form of an absolute path: the extended prefix
+    before a drive path, and the extended UNC prefix (in place of the two
+    leading backslashes) for a network share; a path already in an extended
+    or device form is returned unchanged."""
+    if root.startswith("\\\\?\\") or root.startswith("\\\\.\\"):
+        return root
+    if root.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + root[2:]
+    return "\\\\?\\" + root
 
 
 def _newest_mtime(path: str) -> Optional[float]:
@@ -628,8 +648,8 @@ def _remove_workspace(path: str) -> None:
     it clears the read-only bit (on the path and its parent) and retries once;
     anything else is raised. On Windows the extended path form is used."""
     root = os.path.abspath(path)
-    if os.name == "nt" and not root.startswith("\\\\?\\"):
-        root = "\\\\?\\" + root
+    if os.name == "nt":
+        root = _extended_path(root)
     retried = set()
 
     def handler(func, failed, exc_info):
@@ -658,15 +678,48 @@ def _drop_pipeline_state(path: str) -> None:
     a workspace the sweep touched (a removal that failed halfway) can never be
     adopted as a resumable build."""
     for entry in os.scandir(path):
-        if not entry.is_dir(follow_symlinks=False):
+        child = entry.path
+        story = os.path.join(child, ".story_first")
+        try:
+            if not _plain_directory(child, os.lstat(child)):
+                continue
+            if not _plain_directory(story, os.lstat(story)):
+                continue
+        except FileNotFoundError:
             continue
-        state = os.path.join(entry.path, ".story_first", "pipeline_state.json")
+        _remove_regular_file(path, entry.name)
+
+
+def _remove_regular_file(workspace: str, child_name: str) -> None:
+    """Remove <workspace>/<child>/.story_first/pipeline_state.json when it is a
+    regular file. On POSIX every step opens a directory fd with O_NOFOLLOW, so
+    a component swapped for a link after the checks is refused, never
+    followed; on Windows the plain path (its components were checked)."""
+    name = "pipeline_state.json"
+    flags = getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    if os.name == "nt" or not flags or os.open not in os.supports_dir_fd or os.remove not in os.supports_dir_fd:
+        state = os.path.join(workspace, child_name, ".story_first", name)
         try:
             st = os.lstat(state)
         except FileNotFoundError:
-            continue
+            return
         if stat.S_ISREG(st.st_mode):
             os.remove(state)
+        return
+    fds = []
+    try:
+        fds.append(os.open(workspace, os.O_RDONLY | flags))
+        fds.append(os.open(child_name, os.O_RDONLY | flags, dir_fd=fds[-1]))
+        fds.append(os.open(".story_first", os.O_RDONLY | flags, dir_fd=fds[-1]))
+        try:
+            st = os.stat(name, dir_fd=fds[-1], follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        if stat.S_ISREG(st.st_mode):
+            os.remove(name, dir_fd=fds[-1])
+    finally:
+        for fd in reversed(fds):
+            os.close(fd)
 
 
 def sweep_stale_build_workspaces(now: Optional[float] = None) -> list:
