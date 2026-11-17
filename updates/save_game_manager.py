@@ -704,6 +704,8 @@ class SaveGameManager:
             "modules/.module_orphan_quarantine/",
             # #2018: a module build's live workspace is never save data.
             "modules/" + _BUILD_WORKSPACE_PREFIX,
+            # #2052 J3c: the build record belongs to this folder, never a save.
+            "module_build_job.json",
             "modules/.runtime_quarantine/",
             ".runtime_locks/",
             "modules/conversation_history/pending_location_transition.json",
@@ -1511,6 +1513,12 @@ class SaveGameManager:
                         # build's publish holds: a build that started after
                         # the entry bump never publishes into this Load.
                         bump_game_epoch("restore")
+                        # #2052 J3c: the loaded world never had this
+                        # folder's build; its record goes (a build that
+                        # started before is already superseded above).
+                        from utils.build_record import remove_record_for_lifecycle
+
+                        remove_record_for_lifecycle("load")
                         # P2b: restore no longer consults the module-lifecycle
                         # store. Loading a save must NEVER be refused -- a
                         # published module is already live on disk regardless of

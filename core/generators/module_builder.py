@@ -300,6 +300,13 @@ def _run_managed_module_build(
             reservation = reserve_build_workspace(
                 requested_name, modules_dir="modules"
             )
+            # #2052 J3c: an in-game build's record names each attempt's
+            # workspace (still under module refresh; fail-forward).
+            from utils import build_record
+
+            in_game_build = build_record.current_in_game_build_id()
+            if in_game_build:
+                build_record.note_workspace(in_game_build, reservation.build_id)
         try:
             # Generate without the lock, into the private workspace.
             candidate(reservation.candidate_path, reservation.module_name)
@@ -809,6 +816,15 @@ class ModuleBuilder:
             routes = type_routes(out, self.config.module_name, self._provider_binding())
             if routes:
                 declaration["routes"] = routes
+            # #2052 J3c (owner D-MODGEN-JOB-6, option A): an in-game build
+            # stamps its build id into the candidate's declaration, before the
+            # publish rename, so a live module either carries it or does not
+            # exist. Every reader picks its own keys and ignores this one.
+            from utils.build_record import current_in_game_build_id
+
+            stamp = current_in_game_build_id()
+            if stamp:
+                declaration["buildId"] = stamp
             self._atomic_save_json("module_declaration.json", declaration)
             return True
         except (LiveProviderSuperseded, InvocationSupersededError, ReadOnlySaveStop):

@@ -564,6 +564,10 @@ def perform_reset_logic(only_if=None):
             from utils.capture.live_provider_call import bump_game_epoch
 
             bump_game_epoch("reset")
+            # #2052 J3c: a reset world has no build to carry on.
+            from utils.build_record import remove_record_for_lifecycle
+
+            remove_record_for_lifecycle("reset")
             return _perform_reset_logic_locked()
     finally:
         # The reset roster numbers its own [slot] rows; the old turn's pair

@@ -7645,6 +7645,11 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         return failure
 
                     mark_module_build_outcome("published")
+                    # #2052 J3c: the record says the place is live and not yet
+                    # announced (removed when the announcement lands).
+                    from utils import build_record
+
+                    build_record.mark_published(build_id, module_name)
                     terminal_progress(
                         "published",
                         f"Module {module_name} was published successfully.",
@@ -7678,7 +7683,14 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                         if claimed_fence.is_superseded() and outcome.get("status") != "published":
                             # A Load, Reset or quit stopped the job: as for a
                             # superseded turn, nothing is shown or recorded.
+                            # #2052 J3c: the build record stays (a quit keeps
+                            # it; a Load or Reset removes it itself).
                             return
+                        if outcome.get("status") != "published":
+                            # #2052 J3c: the build ended without a place.
+                            from utils import build_record
+
+                            build_record.remove_record(build_id, "build ended without a place")
                         if outcome.get("status") == "published":
                             data = outcome.get("response_data") or {}
                             jobs.post_due(jobs.DueRecord(
@@ -7718,6 +7730,11 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     from utils.build_inputs import take_build_inputs
 
                     job_inputs = take_build_inputs()
+                    # #2052 J3c: the build's record, before the job starts
+                    # (no key, URL or party names in it; fail-forward).
+                    from utils import build_record
+
+                    build_record.create_record(build_id, parameters, job_inputs)
                     # Q-J1: on a local model a player turn waits for the
                     # job's send in flight; on a remote one they overlap.
                     claimed_fence.local_wait = job_inputs.provider == "lmstudio"
@@ -7746,6 +7763,12 @@ Please use a valid location that exists in the current area ({current_area_id}) 
                     job.start()
                 except BaseException:
                     release_build_fence(claimed_fence)
+                    try:
+                        from utils import build_record as _record
+
+                        _record.remove_record(build_id, "job did not start")
+                    except Exception:
+                        pass
                     raise
                 info(
                     f"STATE_CHANGE: Module build {build_id} started in the background",
