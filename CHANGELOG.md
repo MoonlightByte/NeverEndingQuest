@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- If the AI service refuses a turn, the game now tries once more quietly, then tells you plainly and lets you reword it (#2046).
+
 - An unfinished new adventure left behind by a crash no longer keeps its name taken for good; the game clears it at a later start, once it is a day old (#2052).
 
 - The Dungeon Master no longer forgets an adventure that is still being prepared when older parts of the story are summarized (#2052).

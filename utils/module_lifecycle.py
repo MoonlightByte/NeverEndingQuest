@@ -56,6 +56,8 @@ _STORY_FIRST_FAILURE_CLASSES = frozenset(
         "capacity",
         "authentication",
         "pipeline",
+        # #2046: declined or not answered after the send layer's quiet retry.
+        "provider_declined",
     }
 )
 _STORY_FIRST_DIAGNOSTIC_FIELDS = frozenset({"invariant", "offending", "expectation"})

@@ -54,6 +54,42 @@ def _through_gateway(provider):
 _HOSTED_STATUS_NAME = "the game's AI service"
 
 
+# #2046 (OWNER D-FLAG-1, D-FLAG-2): a call the provider declines, or a
+# provider error that is a typed refusal-shaped event and nothing else, gets
+# one quiet retry in the send layer and then one plain line. Codes that name a
+# content refusal join CONTENT_DECLINED_CODES only once a recorded live refusal
+# shows them; until then a refusal is "not_answered".
+CONTENT_DECLINED_CODES = frozenset()
+QUIET_RETRY_CATEGORIES = ("content_declined", "not_answered")
+# A Responses stream event with one of these codes keeps its own handling
+# (reissued, or retried by the caller as today): it is not "not_answered".
+_STREAM_CODES_KEPT = frozenset(
+    {"server_error", "rate_limit_exceeded", "runaway_output", "stream_ended"}
+)
+# The owner's words, verbatim; the provider's name replaces "The AI service"
+# when it is known (never on a hosted game, where the host holds the account).
+_QUIET_RETRY_LINES = {
+    "content_declined": (
+        "%s declined to answer that turn. Nothing in your game was changed. "
+        "You can say it a different way and try again."
+    ),
+    "not_answered": (
+        "%s did not answer that turn. Nothing in your game was changed. "
+        "You can try again, or say it a different way."
+    ),
+}
+
+
+def quiet_retry_line(category, provider):
+    """The owner's sentence for a declined or unanswered turn, or None."""
+    template = _QUIET_RETRY_LINES.get(category)
+    if template is None:
+        return None
+    known = str(provider or "").lower() in _PROVIDER_NAMES
+    name = provider_display_name(provider) if known and not _through_gateway(provider) else "The AI service"
+    return _sentence(template % name)
+
+
 def status_provider_name(provider):
     """The name the player's wait line uses for ``provider``."""
     if _through_gateway(provider):
@@ -308,6 +344,71 @@ def _provider_error_codes(exc):
     return codes
 
 
+def _not_answered(exc):
+    """#2046: True for exactly two typed shapes, with no HTTP status:
+    an openai APIError that is not a transport class (an error event inside an
+    answered stream, as the SDK raises it), or the game's ResponsesStreamFailed
+    whose code is present and not one of _STREAM_CODES_KEPT. A live child's
+    envelope is read by the same rule from its typed fields. Never the text."""
+    for item in _provider_error_chain(exc):
+        envelope = getattr(item, "envelope", None)
+        if isinstance(envelope, dict):
+            if envelope.get("error_class") != "ProviderCallError":
+                return False
+            if envelope.get("http_status") is not None:
+                return False
+            cause = envelope.get("cause_class")
+            code = envelope.get("error_code")
+            if cause == "APIError":
+                return True
+            return (
+                cause == "ResponsesStreamFailed"
+                and isinstance(code, str) and bool(code)
+                and code.lower() not in _STREAM_CODES_KEPT
+            )
+    chain = list(_provider_error_chain(exc))
+    if any(type(item).__name__ == "ProviderEmptyResponse" for item in chain):
+        return False
+    for item in chain:
+        names = {base.__name__ for base in type(item).__mro__}
+        if "ResponsesStreamFailed" in names:
+            code = getattr(item, "code", None)
+            return (
+                isinstance(code, str) and bool(code)
+                and code.lower() not in _STREAM_CODES_KEPT
+            )
+        if (
+            (type(item).__module__ or "").split(".")[0] == "openai"
+            and "APIError" in names
+            and not names & _TRANSPORT_CLASSES
+            and "APIStatusError" not in names
+            and "APIResponseValidationError" not in names
+            and _provider_error_status(item) is None
+        ):
+            return True
+    return False
+
+
+def quiet_retry_category(exc_or_envelope):
+    """#2046: "content_declined" or "not_answered" for a failure the send
+    layer retries once quietly, else None. Accepts a live child's envelope."""
+    item = exc_or_envelope
+    if isinstance(item, dict):
+        item = _EnvelopeHolder(item)
+    try:
+        category = _classify_provider_error(item)["category"]
+    except Exception:
+        return None
+    return category if category in QUIET_RETRY_CATEGORIES else None
+
+
+class _EnvelopeHolder:
+    """A live child's envelope in the shape the classifier reads."""
+
+    def __init__(self, envelope):
+        self.envelope = envelope
+
+
 def _classify_provider_error(exc):
     """Classify a provider exception for retry policy and player messaging.
 
@@ -403,7 +504,20 @@ def _classify_provider_error(exc):
             "provider": provider,
         }
 
-    if status == 400 or matches("badrequesterror", "invalid_request_error"):
+    if any(code in CONTENT_DECLINED_CODES for code in codes):
+        # #2046: a typed content refusal (the set grows only from a recorded
+        # live refusal). The send layer already retried it once.
+        return {
+            "category": "content_declined",
+            "provider": provider,
+            "retryable": False,
+            "player_message": quiet_retry_line("content_declined", provider),
+            "retry_notice": None,
+        }
+
+    # #2046: 400 or a BadRequestError only. A stream error event carries the
+    # type invalid_request_error with no status; it is not a malformed request.
+    if status == 400 or matches("badrequesterror") or "badrequesterror" in name_blob:
         # The request itself was refused. Reissuing the same request cannot
         # heal it (#240): stop now and let the player change what they asked.
         return {
@@ -469,6 +583,17 @@ def _classify_provider_error(exc):
             "retry_notice": reissue_notice(
                 "retryable_transport", status, provider
             ),
+        }
+
+    if status is None and _not_answered(exc):
+        # #2046: the provider ended the call with a typed error event and no
+        # status. The send layer already retried it once; stop with the line.
+        return {
+            "category": "not_answered",
+            "provider": provider,
+            "retryable": False,
+            "player_message": quiet_retry_line("not_answered", provider),
+            "retry_notice": None,
         }
 
     return {
@@ -728,7 +853,14 @@ def connection_notice(cls, provider, moment):
 
 def provider_refusal_line(refusal, moment):
     """A classified refusal's text at ``moment``: the connection notice when it
-    has a class, else the existing account line (None when neither)."""
+    has a class, else the existing account line (None when neither). #2046: a
+    declined or unanswered call has the owner's line where the player acted and
+    nothing was applied (a turn, a level-up answer); every other moment keeps
+    its own line (None here)."""
+    if refusal.get("category") in QUIET_RETRY_CATEGORIES:
+        if moment in ("turn", "level_up"):
+            return quiet_retry_line(refusal.get("category"), refusal.get("provider"))
+        return None
     notice = connection_notice(refusal.get("connection_class"), refusal.get("provider"), moment)
     if notice is not None:
         return notice

@@ -467,6 +467,32 @@ def _route_p_wait(seconds):
         time.sleep(min(_ROUTE_P_POLL_SECONDS, remaining))
 
 
+def _route_p_quiet_category(exc):
+    """#2046: "content_declined" / "not_answered" for a Route P failure, else None."""
+    try:
+        from utils.provider_errors import quiet_retry_category
+
+        return quiet_retry_category(exc)
+    except Exception:
+        return None
+
+
+def _route_p_claim_quiet_retry(task_id):
+    """#2046: may this Route P call make its one quiet retry? T067/T065 in a
+    player turn share the turn's one; inside an in-game build the retry claims
+    one generation on the build's scope like the call's own claim (#2011), and
+    a refused claim sends nothing. Route P sends outside a build claim no turn
+    generation today, and neither does this retry."""
+    from utils.capture import live_provider_call as live
+
+    scope = live.get_live_provider_scope()
+    if not live._claim_quiet_retry(scope, task_id):
+        return False
+    if isinstance(scope, live.BuildProviderScope):
+        return bool(scope.claim_provider_generation())
+    return True
+
+
 def _route_p_child_end(seq, model, provider, response, billed_error, empty):
     """#2036: a helper process's attempt ``seq`` ends: done (a call), possibly
     billed (an empty answer, or a billed-class error, as for a scoped call),
@@ -482,7 +508,9 @@ def _route_p_child_end(seq, model, provider, response, billed_error, empty):
             from utils.openai_client import _possibly_billed
 
             original = getattr(billed_error, "original_error", None) or billed_error
-            phase = "possibly_billed" if _possibly_billed(original) else "failed"
+            phase = "possibly_billed" if (
+                _possibly_billed(original) or _route_p_quiet_category(billed_error)
+            ) else "failed"
             session_spend.child_end(seq, phase, model, kind)
         else:
             session_spend.child_end(seq, "done", model, kind, _route_p_spend_usage(response))
@@ -714,7 +742,8 @@ def _route_p_record_spend(scope, model, provider, response=None, billed_error=No
             from utils.openai_client import _possibly_billed
 
             original = getattr(billed_error, "original_error", None) or billed_error
-            if _possibly_billed(original):
+            # #2046: a declined or unanswered generation is possibly billed too.
+            if _possibly_billed(original) or _route_p_quiet_category(billed_error):
                 record_possibly_billed(turn_key=turn_key, build=build)
             return
         record_generation(
@@ -784,6 +813,9 @@ def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
             )
     attempt = 1
     reissues = 0
+    # #2046: the one quiet retry, its own count (not an empty-answer attempt
+    # and not a billed reissue).
+    quiet_retried = False
     # #2033: the session cost line counts what this call spends under a live
     # scope (a turn's, a build's, the announcement's); read once, here.
     # #2036: a scope the caller named (_detached_scope: the welcome, the
@@ -834,6 +866,18 @@ def _fire_primary_attempts(primary_fn, messages, kwargs, task_id, max_attempts,
             _route_p_log_error_fields(exc, task_id)
             _route_p_record_spend(spend_scope, spend_model, provider, billed_error=exc,
                                   child_seq=child_seq)
+            quiet_category = _route_p_quiet_category(exc)
+            if quiet_category is not None:
+                if quiet_retried or not _route_p_claim_quiet_retry(task_id):
+                    raise
+                quiet_retried = True
+                from utils.enhanced_logger import file_only
+
+                file_only(
+                    "PROVIDER_QUIET_RETRY task=%s category=%s" % (task_id, quiet_category),
+                    category="ai_routing",
+                )
+                continue
             if not reissue_on or reissues >= live._BILLED_REISSUE_LIMIT:
                 raise
             delay = _route_p_reissue_delay(exc, reissues + 1)
