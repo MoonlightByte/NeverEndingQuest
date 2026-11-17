@@ -59,10 +59,23 @@ COMBAT_ROUND_SUMMARY = "combat_round_summary"
 # The turn after a dice submission: the engine asks the DM to narrate the
 # settled check; the player typed nothing.
 CHECK_CONTINUATION = "check_continuation"
-# #2039: a model-facing note the game writes about an in-game module build (the
-# dropped second build). No reader names this kind, so it changes no reader's
-# result; it marks the note as the game's, never as player speech.
+# A model-facing note the game writes about an in-game module build (#2039:
+# the dropped second build; #2052: every build note). It marks the note as the
+# game's, never as player speech; build_marker reads its build and state.
 MODULE_BUILD = "module_build"
+# #2052: a build note's message_id prefix and the state it records. ready,
+# failed, closed and not_finished end a build; started and dropped do not (a
+# dropped note says a second build was refused while this one is still open).
+BUILD_NOTE_IDS = (
+    ("module-build-preparing-", "started"),
+    ("module-build-dropped-", "dropped"),
+    ("module-followup-", "ready"),
+    ("module-build-ready-", "ready"),
+    ("module-build-failure-", "failed"),
+    ("module-build-closed-", "closed"),
+    ("module-build-notfinished-", "not_finished"),
+)
+BUILD_ENDS = frozenset(("ready", "failed", "closed", "not_finished"))
 
 SUMMARY_KINDS = (LOCATION_SUMMARY, CHRONICLE)
 MODULE_KINDS = (MODULE_TRANSITION, ARCHIVED_MODULE_TRANSITION)
@@ -155,6 +168,27 @@ def message_round(message):
     """The combat round the game wrote on a history message, or None."""
     value = message.get(ROUND_FIELD) if isinstance(message, dict) else None
     return value if type(value) is int else None
+
+
+def build_marker(message):
+    """#2052: (build_id, state) of a build note, or None for any other message.
+
+    A note carrying the field is read only when its kind is MODULE_BUILD; one
+    written before the field existed (no field) is read by its message_id
+    prefix alone, as it always was. A message whose field names any other kind
+    is never a build note. The state is never read from content.
+    """
+    if not isinstance(message, dict):
+        return None
+    if MARKER_FIELD in message and message[MARKER_FIELD] != MODULE_BUILD:
+        return None
+    message_id = message.get("message_id")
+    if not isinstance(message_id, str):
+        return None
+    for prefix, state in BUILD_NOTE_IDS:
+        if message_id.startswith(prefix):
+            return message_id[len(prefix):], state
+    return None
 
 
 def is_marker(message, *kinds):
