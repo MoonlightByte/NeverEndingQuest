@@ -129,11 +129,27 @@ def _remove_file(path: str) -> None:
                 category="module_management")
 
 
+def _clear_leftover_temps(folder: str) -> None:
+    """Temp files of a writer that died mid-write. Every write runs under the
+    record lock, which no dead process holds, so any temp file present now is
+    a leftover (removed fail-forward)."""
+    prefix = RECORD_NAME + "."
+    try:
+        with os.scandir(folder) as entries:
+            names = [e.name for e in entries
+                     if e.name.startswith(prefix) and e.name.endswith(".tmp") and e.is_file(follow_symlinks=False)]
+    except OSError:
+        return
+    for name in names:
+        _remove_file(os.path.join(folder, name))
+
+
 def _write(data: Dict[str, Any]) -> bool:
-    """Whole-file atomic write; False (logged) on any failure, the old record
-    then stays as it was."""
+    """Whole-file atomic write, under the record lock; False (logged) on any
+    failure, the old record then stays as it was."""
     path = record_path()
     folder = os.path.dirname(path)
+    _clear_leftover_temps(folder)
     tmp = os.path.join(folder, "%s.%d.%s.tmp" % (RECORD_NAME, os.getpid(), uuid.uuid4().hex[:8]))
     try:
         with open(tmp, "w", encoding="utf-8") as handle:
