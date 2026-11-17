@@ -834,7 +834,9 @@ def discard_stale_workspace(workspace_hex: str) -> Optional[str]:
                     return "held"
                 if os.path.lexists(os.path.join(modules_root, name)):
                     return "appeared while checking; kept"
-                _remove_lock_file(workspace_hex)
+            # After the with block, as _sweep_one does: on Windows the
+            # unlink fails while the lock's handle is open.
+            _remove_lock_file(workspace_hex)
             return None
         reason = _sweep_one(modules_root, os.path.realpath(modules_root), name, None)
     except Exception as exc:

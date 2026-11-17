@@ -1156,12 +1156,15 @@ BUILD_DROPPED_NOTE = (
     "party can seek it again once the current one is ready. Put this right in "
     "the story, never as a refusal from the game.]"
 )
-# Model-facing only: a preparing note whose build was never announced (a
-# quit or a Load mid-build). It must not deny the place: it may be live.
-BUILD_CLOSED_NOTE = (
-    "[The adventure that was being prepared was never announced. Do not "
-    "announce it or narrate it as reached; if the party travels toward it, "
-    "the game says whether it can be reached.]"
+# Model-facing only (#2052 J3c, owner-approved words, D-MODGEN-JOB-6): the
+# Load closer's note for a preparing note whose build left no live module
+# (a Load mid-build, a quit or a crash). A live module carrying the build's
+# id gets BUILD_READY_NOTE instead. Old histories may hold a
+# "module-build-closed-" note: it still reads as an end (history_markers).
+BUILD_NOT_FINISHED_NOTE = (
+    "[The new adventure that was being prepared when this game was saved "
+    "was not finished. Tell the player it was not finished, in the story's "
+    "voice; do not narrate it as reached. The party may ask for it again.]"
 )
 # Model-facing only: a published place is live. Appended after an applied
 # announcement's reply (a4), and for an announcement that failed (an error or
@@ -1588,13 +1591,29 @@ def _dropped_note_present(history, build_id):
     )
 
 
+def _live_module_for_build(build_id):
+    """The live module whose declaration carries this build's id (#2052 J3c
+    stamp), else None; a lookup error counts as none (logged)."""
+    try:
+        from utils.build_record import find_module_by_build_id
+
+        return find_module_by_build_id(build_id)
+    except Exception as lookup_error:
+        warning(
+            "The build id lookup failed: %s" % type(lookup_error).__name__,
+            category="module_management",
+        )
+        return None
+
+
 def close_open_build_notes(live_history):
     """Loop top, once nothing is building, due or announcing: a preparing note
     whose build was never announced, recorded as failed, or closed gets one
     closing note (a Load of a save made mid-build, a restart). Read by
     hm.build_marker (#2052): the typed field, or the id prefix on a note saved
     before it; a dropped note never ends a build. Open ids come from
-    hm.open_build_ids."""
+    hm.open_build_ids. By the stamp (#2052 J3c): a live module carrying the
+    build's id gets the ready note; otherwise the not-finished note."""
     from utils import build_job as jobs
     from utils.capture.live_provider_call import get_live_turn_scope
 
@@ -1611,10 +1630,21 @@ def close_open_build_notes(live_history):
     # (hm.build_notes_to_keep), so an open id here was never settled.
     closed = 0
     for build_id in hm.open_build_ids(live_history):
+        module_name = _live_module_for_build(build_id)
+        if module_name:
+            content = BUILD_READY_NOTE % module_name
+            message_id = "module-build-ready-%s" % build_id
+        else:
+            content = BUILD_NOT_FINISHED_NOTE
+            message_id = "module-build-notfinished-%s" % build_id
+            debug(
+                "No live module carries build %s: the not-finished note" % build_id,
+                category="module_management",
+            )
         live_history.append({
             "role": "user",
-            "content": BUILD_CLOSED_NOTE,
-            "message_id": "module-build-closed-%s" % build_id,
+            "content": content,
+            "message_id": message_id,
             hm.MARKER_FIELD: hm.MODULE_BUILD,
         })
         closed += 1

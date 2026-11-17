@@ -328,12 +328,15 @@ def remove_record_for_lifecycle(reason: str) -> None:
 def find_module_by_build_id(build_id: str, modules_root: Optional[str] = None) -> Optional[str]:
     """The live module whose declaration (or set-aside declaration) carries
     buildId == build_id, else None. Real, visible folders only (no link,
-    junction or reparse point); read errors count as not found."""
+    junction or reparse point); read errors count as not found. The modules
+    folder is the game's own: cwd-relative "modules", as every module read
+    (with a data root the game has changed into it; without one it may
+    differ from the code folder that holds .runtime_locks)."""
     if not build_id:
         return None
     from utils.module_publish import _plain_directory
 
-    root = modules_root or os.path.join(data_root(), "modules")
+    root = modules_root or os.path.abspath("modules")
     try:
         with os.scandir(root) as entries:
             names = sorted(entry.name for entry in entries)
