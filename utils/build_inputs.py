@@ -85,6 +85,33 @@ def take_build_inputs():
     )
 
 
+def provider_usable(provider):
+    """#2052 J3c-3: True when a build on this provider can send: the
+    operator's gateway is set (every provider but lmstudio), or a real key is
+    stored or live in config for openai/legacy (the OpenAI key) or gemini, or
+    lmstudio has an endpoint base URL (its key is optional). Booleans only:
+    no key is returned, logged or compared."""
+    try:
+        import config as _cfg
+        import model_config
+        from utils.provider_gateway import gateway
+
+        provider = str(provider or "")
+        if provider == "lmstudio":
+            return bool((model_config.get_local_endpoint() or {}).get("base_url"))
+        if gateway() is not None:
+            return True
+        if provider in ("openai", "legacy"):
+            live = getattr(_cfg, "OPENAI_API_KEY", "")
+            return bool(model_config.has_openai_key() or (live and live != "your_openai_api_key_here"))
+        if provider == "gemini":
+            live = getattr(_cfg, "GEMINI_API_KEY", "")
+            return bool(model_config.has_gemini_key() or (live and live != "your_gemini_api_key_here"))
+    except Exception:
+        return False
+    return False
+
+
 @contextmanager
 def build_inputs(preset=None):
     """Take the inputs at a build's start; a nested build keeps the outer ones.

@@ -7761,6 +7761,18 @@ def shutdown():
     return jsonify({'status': 'stopping'}), 202
 
 
+def _serve_interrupted():
+    """#2052 J3c-3: Ctrl+C in the serve process's main thread is the player's
+    Quit. The game loop runs in a daemon thread whose finally never runs on
+    SIGINT, so the running build is stopped and its record removed here."""
+    try:
+        from utils.capture.live_provider_call import request_build_stop
+
+        request_build_stop("quit")
+    except Exception:
+        pass
+
+
 def serve(selected_ui, toolkit=False, no_browser=False, bound_socket=None):
     """Run the server in this process (run_web --serve, or this file as a
     script). With bound_socket (--port / --port-or-free: bind first, then
@@ -7785,7 +7797,14 @@ def serve(selected_ui, toolkit=False, no_browser=False, bound_socket=None):
         server = make_server(WEB_HOST, _served_port, app, threaded=True, fd=bound_socket.fileno())
         print(f"Serving at http://127.0.0.1:{_served_port}{_web_start_path()}")
         _server_serving.set()
-        server.serve_forever()
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            _serve_interrupted()
+            raise
+        # werkzeug's serve_forever returns on Ctrl+C (it catches the
+        # interrupt); a Load, Reset or /shutdown ends the process instead.
+        _serve_interrupted()
         return
     try:
         import config
@@ -7797,12 +7816,17 @@ def serve(selected_ui, toolkit=False, no_browser=False, bound_socket=None):
     
     # Run the Flask app with SocketIO
     _server_serving.set()
-    socketio.run(app,
-                host=WEB_HOST,
-                port=port,
-                debug=False,
-                use_reloader=False,
-                allow_unsafe_werkzeug=True)
+    try:
+        socketio.run(app,
+                    host=WEB_HOST,
+                    port=port,
+                    debug=False,
+                    use_reloader=False,
+                    allow_unsafe_werkzeug=True)
+    except KeyboardInterrupt:
+        _serve_interrupted()
+        raise
+    _serve_interrupted()
 
 
 if __name__ == '__main__':
