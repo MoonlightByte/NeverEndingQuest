@@ -582,9 +582,12 @@ def _remove_lock_file(build_id: str) -> None:
 
 
 def _data_modules_root() -> str:
-    """The game's modules folder as an absolute data-root path (NEQ_DATA_DIR,
-    else the game root: RUNTIME_LOCKS_DIR's parent), never the cwd's."""
-    return os.path.join(os.path.dirname(os.path.abspath(RUNTIME_LOCKS_DIR)), "modules")
+    """The game's modules folder, absolute: game_root()/modules, the folder
+    reserve_build_workspace and every module read use (#2052). The build
+    locks stay in RUNTIME_LOCKS_DIR."""
+    from utils.data_root import game_root
+
+    return os.path.join(game_root(), "modules")
 
 
 def _real_directory(path: str, real_root: str) -> Optional[os.stat_result]:
