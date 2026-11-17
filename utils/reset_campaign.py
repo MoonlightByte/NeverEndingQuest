@@ -565,9 +565,9 @@ def perform_reset_logic(only_if=None):
 
             bump_game_epoch("reset")
             # #2052 J3c: a reset world has no build to carry on.
-            from utils.build_record import remove_record_unlocked
+            from utils.build_record import remove_record_for_lifecycle
 
-            remove_record_unlocked("reset")
+            remove_record_for_lifecycle("reset")
             return _perform_reset_logic_locked()
     finally:
         # The reset roster numbers its own [slot] rows; the old turn's pair

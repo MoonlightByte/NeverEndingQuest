@@ -113,6 +113,12 @@ def read_record() -> Optional[Dict[str, Any]]:
         reason = "not a version %d record" % RECORD_VERSION
     if _valid(data):
         return data
+    version = data.get("version") if isinstance(data, dict) else None
+    if type(version) is int and version > RECORD_VERSION:
+        # A newer game's record: not ours to read or delete.
+        warning("Build record is version %d (newer than %d); left in place and not used"
+                % (version, RECORD_VERSION), category="module_management")
+        return None
     warning("Build record could not be used (%s); removed" % reason,
             category="module_management")
     _remove_file(path)
@@ -227,8 +233,24 @@ def create_record(build_id: str, parameters: Dict[str, Any], inputs: Any) -> boo
     return bool(ok)
 
 
+def _epoch_moved() -> bool:
+    """True when the running build's fence was claimed in an earlier game
+    epoch (a Load or Reset since): its record must not be written back."""
+    try:
+        from utils.capture.live_provider_call import active_build_fence, game_epoch
+
+        fence = active_build_fence()
+        return fence is not None and game_epoch() != fence.start_epoch
+    except Exception:
+        return False
+
+
 def _update(build_id: str, change) -> bool:
     def run():
+        if _epoch_moved():
+            debug("Build record not updated: a Load or Reset replaced the game",
+                  category="module_management")
+            return False
         data = read_record()
         if data is None or data.get("build_id") != str(build_id):
             return False
@@ -270,14 +292,35 @@ def remove_record(build_id: Optional[str] = None, reason: str = "") -> bool:
     return bool(_locked(run))
 
 
-def remove_record_unlocked(reason: str) -> None:
-    """Load and Reset: remove whatever record there is, without the record
-    lock (they hold the game's lifecycle locks; a build job writing at that
-    moment is already superseded by their epoch bump). Never raises."""
-    try:
+_LIFECYCLE_WAIT_SECONDS = 3.0
+
+
+def remove_record_for_lifecycle(reason: str) -> None:
+    """Load and Reset: remove whatever record there is, UNDER the record lock
+    (a short wait), so a build job's update in flight (read, then replace)
+    cannot write it back after this removal. The callers hold the transition
+    and refresh locks first: the order is always those, then the record lock.
+    A lock that times out or fails: the removal runs unlocked, logged. Never
+    raises."""
+    def remove():
         if os.path.lexists(record_path()):
             _remove_file(record_path())
             debug("Build record removed (%s)" % reason, category="module_management")
+
+    try:
+        from utils.path_transaction_lock import path_transaction_lock
+
+        with path_transaction_lock(_lock_target(), timeout_seconds=_LIFECYCLE_WAIT_SECONDS) as acquired:
+            if acquired is not None:
+                remove()
+                return
+        warning("Build record lock busy at %s; removed without it" % reason,
+                category="module_management")
+    except Exception as exc:
+        warning("Build record lock failed at %s (%s); removed without it" % (reason, type(exc).__name__),
+                category="module_management")
+    try:
+        remove()
     except Exception:
         pass
 

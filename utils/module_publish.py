@@ -822,7 +822,19 @@ def discard_stale_workspace(workspace_hex: str) -> Optional[str]:
             return "not a build workspace name"
         modules_root = _data_modules_root()
         if not os.path.lexists(os.path.join(modules_root, name)):
-            _remove_lock_file(workspace_hex)
+            # No folder: its lock file goes only under that lock. reserve
+            # takes the lock before its mkdir, so a held lock with no folder
+            # is a live reservation; unlinking its file would let another
+            # process lock a new file of the same name.
+            target = _build_lock_target(workspace_hex)
+            if path_transaction_lock_owned(target, suffix=_BUILD_LOCK_SUFFIX):
+                return "lock held by this thread"
+            with path_transaction_lock(target, timeout_seconds=0) as acquired:
+                if acquired is None:
+                    return "held"
+                if os.path.lexists(os.path.join(modules_root, name)):
+                    return "appeared while checking; kept"
+                _remove_lock_file(workspace_hex)
             return None
         reason = _sweep_one(modules_root, os.path.realpath(modules_root), name, None)
     except Exception as exc:

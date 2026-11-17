@@ -1467,10 +1467,12 @@ def _record_build_ready(record, live_history):
                 "message_id": ready_id,
                 hm.MARKER_FIELD: hm.MODULE_BUILD,
             })
-            # #2052 J3c: the ready note ends the build; its record goes.
-            _remove_build_record(record.build_id, "ready note recorded")
             try:
                 _strictly_persist_conversation_history(live_history)
+                # #2052 J3c: the ready note is saved, so the build has
+                # ended; its record goes (kept when the save failed: the
+                # place is still live and not yet noted on disk).
+                _remove_build_record(record.build_id, "ready note recorded")
             except _pump_transfers():
                 raise
             except Exception as persist_error:

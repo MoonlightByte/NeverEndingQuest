@@ -1516,9 +1516,9 @@ class SaveGameManager:
                         # #2052 J3c: the loaded world never had this
                         # folder's build; its record goes (a build that
                         # started before is already superseded above).
-                        from utils.build_record import remove_record_unlocked
+                        from utils.build_record import remove_record_for_lifecycle
 
-                        remove_record_unlocked("load")
+                        remove_record_for_lifecycle("load")
                         # P2b: restore no longer consults the module-lifecycle
                         # store. Loading a save must NEVER be refused -- a
                         # published module is already live on disk regardless of
