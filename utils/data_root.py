@@ -37,6 +37,19 @@ def install_root():
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+def game_root():
+    """The game's own folder (#2052): the working directory every game file
+    is read from. It equals NEQ_DATA_DIR once enter_data_root has run; a
+    headless --game-dir run has changed into its game folder; otherwise it
+    is the folder the game runs in. The build locks and the build record's
+    lock are in game_root()/.runtime_locks, so every process on one game
+    folder meets there; module_refresh_lock keeps its own place
+    (RUNTIME_LOCKS_DIR, fixed at import). The play path never changes
+    folder after startup; a tool that does must not call the startup sweep,
+    discard_stale_workspace or the build record."""
+    return os.path.abspath(os.getcwd())
+
+
 def resolve_data_root(argv_dir=None):
     """The data root as an absolute path, or None when none is configured."""
     value = argv_dir or os.environ.get("NEQ_DATA_DIR", "")

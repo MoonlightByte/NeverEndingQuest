@@ -3,8 +3,8 @@
 
 """The in-game module build's record, module_build_job.json (#2052 J3c).
 
-One record at most, in the data root (the folder that holds .runtime_locks:
-NEQ_DATA_DIR when set, else the game root). It says which build was running
+One record at most, in the game's own folder (utils.data_root.game_root: the
+working directory, which is NEQ_DATA_DIR once a data root is entered). It says which build was running
 or published-but-not-yet-announced when this game last ran, so a later start
 can carry it on (J3c-3) and a Load can tell the DM whether it exists (J3c-2).
 
@@ -29,8 +29,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
+from utils.data_root import game_root
 from utils.enhanced_logger import debug, warning
-from utils.module_refresh_lock import RUNTIME_LOCKS_DIR
 
 RECORD_NAME = "module_build_job.json"
 RECORD_VERSION = 1
@@ -39,17 +39,15 @@ DECLARATION_NAMES = ("module_declaration.json", "module_declaration.refused.json
 _WRITE_WAIT_SECONDS = 5.0
 
 
-def data_root() -> str:
-    """The absolute data root, resolved like the J3b sweep's modules root."""
-    return os.path.dirname(os.path.abspath(RUNTIME_LOCKS_DIR))
-
-
 def record_path() -> str:
-    return os.path.join(data_root(), RECORD_NAME)
+    return os.path.join(game_root(), RECORD_NAME)
 
 
 def _lock_target() -> str:
-    return os.path.join(RUNTIME_LOCKS_DIR, "module_build_job")
+    """The record lock, in the game folder's .runtime_locks (as the build
+    locks): two processes on one game folder meet there whatever their
+    RUNTIME_LOCKS_DIR. Resolved once per locked call."""
+    return os.path.join(game_root(), ".runtime_locks", "module_build_job")
 
 
 def url_sha256(url: Optional[str]) -> Optional[str]:
@@ -200,7 +198,7 @@ def _locked(fn):
 
 def _start_module() -> Optional[str]:
     try:
-        with open(os.path.join(data_root(), "party_tracker.json"), "r", encoding="utf-8") as handle:
+        with open(os.path.join(game_root(), "party_tracker.json"), "r", encoding="utf-8") as handle:
             module = json.load(handle).get("module")
     except (OSError, ValueError, AttributeError):
         return None
@@ -329,14 +327,12 @@ def find_module_by_build_id(build_id: str, modules_root: Optional[str] = None) -
     """The live module whose declaration (or set-aside declaration) carries
     buildId == build_id, else None. Real, visible folders only (no link,
     junction or reparse point); read errors count as not found. The modules
-    folder is the game's own: cwd-relative "modules", as every module read
-    (with a data root the game has changed into it; without one it may
-    differ from the code folder that holds .runtime_locks)."""
+    folder is the game's own (game_root()/modules), as every module read."""
     if not build_id:
         return None
     from utils.module_publish import _plain_directory
 
-    root = modules_root or os.path.abspath("modules")
+    root = modules_root or os.path.join(game_root(), "modules")
     try:
         with os.scandir(root) as entries:
             names = sorted(entry.name for entry in entries)
