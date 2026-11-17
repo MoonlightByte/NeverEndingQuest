@@ -673,12 +673,15 @@ def _remove_workspace(path: str) -> None:
         shutil.rmtree(root, onerror=lambda f, p, e: handler(f, p, e))
 
 
-def _drop_pipeline_state(path: str) -> None:
+def _drop_pipeline_state(path: str, expected: tuple) -> None:
     """Before removing a workspace: its story-first resume state goes first, so
     a workspace the sweep touched (a removal that failed halfway) can never be
-    adopted as a resumable build."""
-    for entry in os.scandir(path):
-        child = entry.path
+    adopted as a resumable build. ``expected``: the workspace's checked
+    (st_dev, st_ino); the removal refuses a folder that is not that one."""
+    with os.scandir(path) as entries:
+        children = [entry.name for entry in entries]
+    for child_name in children:
+        child = os.path.join(path, child_name)
         story = os.path.join(child, ".story_first")
         try:
             if not _plain_directory(child, os.lstat(child)):
@@ -687,14 +690,16 @@ def _drop_pipeline_state(path: str) -> None:
                 continue
         except FileNotFoundError:
             continue
-        _remove_regular_file(path, entry.name)
+        _remove_regular_file(path, child_name, expected)
 
 
-def _remove_regular_file(workspace: str, child_name: str) -> None:
+def _remove_regular_file(workspace: str, child_name: str, expected: tuple) -> None:
     """Remove <workspace>/<child>/.story_first/pipeline_state.json when it is a
     regular file. On POSIX every step opens a directory fd with O_NOFOLLOW, so
     a component swapped for a link after the checks is refused, never
-    followed; on Windows the plain path (its components were checked)."""
+    followed, and the workspace fd must be the checked folder (``expected``,
+    its (st_dev, st_ino)); on Windows the plain path (its components were
+    checked)."""
     name = "pipeline_state.json"
     flags = getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     if os.name == "nt" or not flags or os.open not in os.supports_dir_fd or os.unlink not in os.supports_dir_fd:
@@ -709,6 +714,9 @@ def _remove_regular_file(workspace: str, child_name: str) -> None:
     fds = []
     try:
         fds.append(os.open(workspace, os.O_RDONLY | flags))
+        opened = os.fstat(fds[0])
+        if (opened.st_dev, opened.st_ino) != tuple(expected):
+            raise OSError(errno.ESTALE, "the workspace changed after its checks")
         fds.append(os.open(child_name, os.O_RDONLY | flags, dir_fd=fds[-1]))
         fds.append(os.open(".story_first", os.O_RDONLY | flags, dir_fd=fds[-1]))
         try:
@@ -738,7 +746,8 @@ def sweep_stale_build_workspaces(now: Optional[float] = None) -> list:
         if not os.path.isdir(modules_root):
             return removed
         real_root = os.path.realpath(modules_root)
-        names = sorted(entry.name for entry in os.scandir(modules_root))
+        with os.scandir(modules_root) as entries:
+            names = sorted(entry.name for entry in entries)
     except Exception as exc:
         debug("Startup sweep skipped: %s" % type(exc).__name__, category="module_management")
         return removed
@@ -762,8 +771,10 @@ def sweep_stale_build_workspaces(now: Optional[float] = None) -> list:
     return removed
 
 
-def _sweep_one(modules_root: str, real_root: str, name: str, clock: float) -> Optional[str]:
-    """None when the workspace was removed, else the reason it was kept."""
+def _sweep_one(modules_root: str, real_root: str, name: str, clock: Optional[float]) -> Optional[str]:
+    """None when the workspace was removed, else the reason it was kept.
+    clock None: no age gate (discard_stale_workspace: the build record names
+    the workspace, so it is known to be that build's)."""
     path = os.path.join(modules_root, name)
     first = _real_directory(path, real_root)
     if first is None:
@@ -778,18 +789,47 @@ def _sweep_one(modules_root: str, real_root: str, name: str, clock: float) -> Op
         again = _real_directory(path, real_root)
         if again is None or (again.st_dev, again.st_ino) != (first.st_dev, first.st_ino):
             return "lock free; changed before removal"
-        newest = _newest_mtime(path)
-        if newest is None:
-            return "lock free; more than %d entries" % _SWEEP_MAX_ENTRIES
-        age = clock - newest
-        if age < 0:
-            return "lock free; newest change in the future (%.0f s)" % age
-        if age < _SWEEP_MIN_AGE_SECONDS:
-            return "lock free; newest change %.0f s ago" % age
+        age = 0.0
+        if clock is not None:
+            newest = _newest_mtime(path)
+            if newest is None:
+                return "lock free; more than %d entries" % _SWEEP_MAX_ENTRIES
+            age = clock - newest
+            if age < 0:
+                return "lock free; newest change in the future (%.0f s)" % age
+            if age < _SWEEP_MIN_AGE_SECONDS:
+                return "lock free; newest change %.0f s ago" % age
         try:
-            _drop_pipeline_state(path)
+            _drop_pipeline_state(path, (again.st_dev, again.st_ino))
             _remove_workspace(path)
         except Exception as exc:
             return "removal failed (lock free; age %.0f s): %s" % (age, type(exc).__name__)
     _remove_lock_file(build_id)
     return None
+
+
+def discard_stale_workspace(workspace_hex: str) -> Optional[str]:
+    """#2052 J3c: remove one hidden build workspace that a build record names
+    (an earlier process's attempt), as the startup sweep removes one but with
+    no age gate: the name rule and the real-directory checks, its build lock
+    taken with no wait (held: kept, a live process owns it), the same-inode
+    re-check, the pipeline state first, then the confined removal. None when
+    it was removed or was already gone, else the reason it was kept. Never
+    raises."""
+    name = "%s%s" % (_BUILD_WORKSPACE_PREFIX, workspace_hex)
+    try:
+        if not isinstance(workspace_hex, str) or not _BUILD_WORKSPACE_RE.fullmatch(name):
+            return "not a build workspace name"
+        modules_root = _data_modules_root()
+        if not os.path.lexists(os.path.join(modules_root, name)):
+            _remove_lock_file(workspace_hex)
+            return None
+        reason = _sweep_one(modules_root, os.path.realpath(modules_root), name, None)
+    except Exception as exc:
+        reason = "error %s" % type(exc).__name__
+    if reason is None:
+        info("Removed the unfinished new-adventure folder %s of an earlier session's build" % name,
+             category="module_management")
+    else:
+        debug("Kept %s: %s" % (name, reason), category="module_management")
+    return reason

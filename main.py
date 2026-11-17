@@ -1422,6 +1422,8 @@ def _apply_announcement(lifecycle, live_history):
             if saved is not True:
                 raise OSError("Module announcement history did not report success")
             _emit_committed_module_message(lifecycle.narration, followup_id)
+        # #2052 J3c: announced; the build record has done its work.
+        _remove_build_record(lifecycle.record.build_id, "announced")
         return True
     except Exception as apply_error:
         error(
@@ -1433,6 +1435,16 @@ def _apply_announcement(lifecycle, live_history):
         return False
     finally:
         _end_announcement(lifecycle)
+
+
+def _remove_build_record(build_id, reason):
+    """#2052 J3c: remove this build's record (fail-forward; never raises)."""
+    try:
+        from utils import build_record
+
+        build_record.remove_record(build_id, reason)
+    except Exception:
+        pass
 
 
 def _record_build_ready(record, live_history):
@@ -1455,6 +1467,8 @@ def _record_build_ready(record, live_history):
                 "message_id": ready_id,
                 hm.MARKER_FIELD: hm.MODULE_BUILD,
             })
+            # #2052 J3c: the ready note ends the build; its record goes.
+            _remove_build_record(record.build_id, "ready note recorded")
             try:
                 _strictly_persist_conversation_history(live_history)
             except _pump_transfers():
