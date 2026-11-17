@@ -50,14 +50,17 @@ import os
 import re
 import shutil
 import stat
+import sys
+import threading
 import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from utils.enhanced_logger import debug, error
-from utils.module_refresh_lock import assert_module_refresh_lock_owned
+from utils.enhanced_logger import debug, error, info, warning
+from utils.module_refresh_lock import RUNTIME_LOCKS_DIR, assert_module_refresh_lock_owned
+from utils.path_transaction_lock import path_transaction_lock, path_transaction_lock_owned
 from utils.transient_filesystem import (
     is_transient_filesystem_error,
     retry_transient_filesystem,
@@ -67,6 +70,16 @@ from utils.transient_filesystem import (
 _MODULE_NAME_RE = re.compile(r"^[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*$")
 
 _BUILD_WORKSPACE_PREFIX = ".module_build_"
+# #2052 J3b: exactly the name reserve_build_workspace writes (uuid4().hex).
+_BUILD_WORKSPACE_RE = re.compile(r"^\.module_build_[0-9a-f]{32}$")
+_BUILD_LOCK_SUFFIX = ".transaction.lock"
+# The startup sweep removes a leftover only when its lock is free AND nothing
+# in it changed for a day (a free lock alone is not proof: a Windows-native and
+# a WSL game do not see each other's locks; an older game version takes none).
+_SWEEP_MIN_AGE_SECONDS = 24 * 60 * 60
+_SWEEP_MAX_ENTRIES = 10_000
+_HELD_BUILD_LOCKS = {}
+_HELD_BUILD_LOCKS_GUARD = threading.Lock()
 
 _RENAME_ATTEMPTS = 3
 _RENAME_BACKOFF_SECONDS = 0.05
@@ -392,18 +405,27 @@ def reserve_build_workspace(
     build_id = uuid.uuid4().hex
     workspace = modules_root / f"{_BUILD_WORKSPACE_PREFIX}{build_id}"
     candidate_path = workspace / final_name
+    # #2052 J3b: the build's own lock BEFORE its workspace exists, held until
+    # publish_reserved or discard_reservation returns (the OS drops it if the
+    # process dies), so the startup sweep never takes a live workspace.
+    _acquire_build_lock(build_id)
     try:
         candidate_path.mkdir(parents=True, mode=0o700)
     except BaseException:
         _cleanup_orphan_workspace(workspace)
+        _release_build_lock(build_id)
         raise
     return BuildReservation(final_name, build_id, workspace, candidate_path)
 
 
 def discard_reservation(reservation: BuildReservation) -> None:
-    """Remove a reservation whose build failed. The lock is not needed: the
-    workspace is private to its build, and modules/<name> was never touched."""
-    _cleanup_orphan_workspace(reservation.workspace_path)
+    """Remove a reservation whose build failed. The refresh lock is not
+    needed: the workspace is private to its build, and modules/<name> was
+    never touched. The build's own lock is released after."""
+    try:
+        _cleanup_orphan_workspace(reservation.workspace_path)
+    finally:
+        _release_build_lock(reservation.build_id)
 
 
 def publish_reserved(
@@ -453,6 +475,7 @@ def publish_reserved(
         _replace_entry(candidate_path, modules_root / final_name)
     except BaseException:
         _cleanup_orphan_workspace(workspace)
+        _release_build_lock(build_id)
         raise
 
     # ---- THE MODULE IS NOW LIVE ON DISK; nothing below may raise ----
@@ -483,6 +506,7 @@ def publish_reserved(
                 category="module_management",
             )
     _cleanup_orphan_workspace(workspace)
+    _release_build_lock(build_id)
     debug(
         f"Atomically published module {final_name} (build {build_id})",
         category="module_management",
@@ -509,3 +533,210 @@ def _cleanup_orphan_workspace(workspace: Path) -> None:
             f"Left build workspace {workspace.name} for later sweep: {exc}",
             category="module_management",
         )
+
+
+# ----------------------------------------------------------------------------
+# #2052 J3b: the build lock and the startup sweep of stale build workspaces
+# ----------------------------------------------------------------------------
+def _build_lock_target(build_id: str) -> str:
+    """The lock identity of one build: under the data root's .runtime_locks,
+    never inside modules/."""
+    return os.path.join(RUNTIME_LOCKS_DIR, "module_build_%s" % build_id)
+
+
+def _acquire_build_lock(build_id: str) -> None:
+    lock = path_transaction_lock(_build_lock_target(build_id), timeout_seconds=5.0)
+    if lock.__enter__() is None:
+        lock.__exit__(None, None, None)
+        raise PublishError("The new build's lock could not be taken")
+    with _HELD_BUILD_LOCKS_GUARD:
+        _HELD_BUILD_LOCKS[build_id] = (lock, threading.get_ident())
+
+
+def _release_build_lock(build_id: str) -> None:
+    """Release this build's lock (once; on the thread that took it) and remove
+    its lock file. Best-effort: process death releases the lock anyway."""
+    with _HELD_BUILD_LOCKS_GUARD:
+        held = _HELD_BUILD_LOCKS.get(build_id)
+        if held is None or held[1] != threading.get_ident():
+            if held is not None:
+                debug(
+                    "Build lock %s not released here: another thread holds it" % build_id,
+                    category="module_management",
+                )
+            return
+        del _HELD_BUILD_LOCKS[build_id]
+    try:
+        held[0].__exit__(None, None, None)
+    except Exception as exc:
+        debug("Build lock %s release: %s" % (build_id, type(exc).__name__), category="module_management")
+        return
+    _remove_lock_file(build_id)
+
+
+def _remove_lock_file(build_id: str) -> None:
+    try:
+        os.remove(_build_lock_target(build_id) + _BUILD_LOCK_SUFFIX)
+    except OSError:
+        pass
+
+
+def _data_modules_root() -> str:
+    """The game's modules folder as an absolute data-root path (NEQ_DATA_DIR,
+    else the game root: RUNTIME_LOCKS_DIR's parent), never the cwd's."""
+    return os.path.join(os.path.dirname(os.path.abspath(RUNTIME_LOCKS_DIR)), "modules")
+
+
+def _real_directory(path: str, real_root: str) -> Optional[os.stat_result]:
+    """The entry's lstat when it is a real directory directly in the modules
+    root (no link, junction or reparse point; realpath's parent is the root),
+    else None."""
+    st = os.lstat(path)
+    if not stat.S_ISDIR(st.st_mode) or stat.S_ISLNK(st.st_mode) or os.path.islink(path):
+        return None
+    isjunction = getattr(os.path, "isjunction", None)
+    if isjunction is not None and isjunction(path):
+        return None
+    if getattr(st, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
+        return None
+    if os.path.dirname(os.path.realpath(path)) != real_root:
+        return None
+    return st
+
+
+def _newest_mtime(path: str) -> Optional[float]:
+    """The newest mtime in a workspace by an lstat walk that never follows a
+    link; None past _SWEEP_MAX_ENTRIES entries."""
+    newest = os.lstat(path).st_mtime
+    count = 0
+    stack = [path]
+    while stack:
+        with os.scandir(stack.pop()) as entries:
+            for entry in entries:
+                count += 1
+                if count > _SWEEP_MAX_ENTRIES:
+                    return None
+                st = entry.stat(follow_symlinks=False)
+                newest = max(newest, st.st_mtime)
+                if entry.is_dir(follow_symlinks=False) and not stat.S_ISLNK(st.st_mode):
+                    stack.append(entry.path)
+    return newest
+
+
+def _remove_workspace(path: str) -> None:
+    """rmtree confined to one workspace. A failure on a non-link path inside
+    it clears the read-only bit (on the path and its parent) and retries once;
+    anything else is raised. On Windows the extended path form is used."""
+    root = os.path.abspath(path)
+    if os.name == "nt" and not root.startswith("\\\\?\\"):
+        root = "\\\\?\\" + root
+    retried = set()
+
+    def handler(func, failed, exc_info):
+        failed_abs = os.path.abspath(failed)
+        inside = os.path.commonpath([failed_abs, root]) == root and failed_abs != root
+        if not inside or os.path.islink(failed_abs) or failed_abs in retried:
+            raise exc_info[1] if isinstance(exc_info, tuple) else exc_info
+        retried.add(failed_abs)
+        for target in (failed_abs, os.path.dirname(failed_abs)):
+            try:
+                mode = os.lstat(target).st_mode
+                if not stat.S_ISLNK(mode):
+                    os.chmod(target, stat.S_IMODE(mode) | stat.S_IWRITE | stat.S_IREAD | (stat.S_IEXEC if stat.S_ISDIR(mode) else 0))
+            except OSError:
+                pass
+        func(failed)
+
+    if sys.version_info >= (3, 12):
+        shutil.rmtree(root, onexc=lambda f, p, e: handler(f, p, e))
+    else:
+        shutil.rmtree(root, onerror=lambda f, p, e: handler(f, p, e))
+
+
+def _drop_pipeline_state(path: str) -> None:
+    """Before removing a workspace: its story-first resume state goes first, so
+    a workspace the sweep touched (a removal that failed halfway) can never be
+    adopted as a resumable build."""
+    for entry in os.scandir(path):
+        if not entry.is_dir(follow_symlinks=False):
+            continue
+        state = os.path.join(entry.path, ".story_first", "pipeline_state.json")
+        try:
+            st = os.lstat(state)
+        except FileNotFoundError:
+            continue
+        if stat.S_ISREG(st.st_mode):
+            os.remove(state)
+
+
+def sweep_stale_build_workspaces(now: Optional[float] = None) -> list:
+    """#2052 J3b, once at game start (reconcile_campaign_state, under
+    module_refresh_lock): remove the hidden build workspaces a dead session
+    left in the game's modules folder. A candidate is an entry named exactly
+    .module_build_<32 hex> that is a real directory in that folder. It is
+    removed only when its build lock is taken with no wait AND nothing in it
+    changed for _SWEEP_MIN_AGE_SECONDS (a future mtime counts as young). Every
+    failure is a skip; the sweep never raises. Returns the removed names."""
+    removed = []
+    try:
+        modules_root = _data_modules_root()
+        info("Startup sweep of unfinished new-adventure folders in %s" % modules_root,
+             category="module_management")
+        if not os.path.isdir(modules_root):
+            return removed
+        real_root = os.path.realpath(modules_root)
+        names = sorted(entry.name for entry in os.scandir(modules_root))
+    except Exception as exc:
+        debug("Startup sweep skipped: %s" % type(exc).__name__, category="module_management")
+        return removed
+    clock = time.time() if now is None else now
+    for name in names:
+        if not _BUILD_WORKSPACE_RE.fullmatch(name):
+            continue
+        try:
+            reason = _sweep_one(modules_root, real_root, name, clock)
+        except Exception as exc:
+            reason = "error %s" % type(exc).__name__
+        if reason is None:
+            removed.append(name)
+            info("Removed an unfinished new-adventure folder left by an earlier session: %s" % name,
+                 category="module_management")
+        elif reason.startswith("removal failed"):
+            warning("Could not remove the unfinished new-adventure folder %s (%s); a later start tries again"
+                    % (name, reason), category="module_management")
+        else:
+            debug("Startup sweep kept %s: %s" % (name, reason), category="module_management")
+    return removed
+
+
+def _sweep_one(modules_root: str, real_root: str, name: str, clock: float) -> Optional[str]:
+    """None when the workspace was removed, else the reason it was kept."""
+    path = os.path.join(modules_root, name)
+    first = _real_directory(path, real_root)
+    if first is None:
+        return "not a real directory in the modules folder"
+    build_id = name[len(_BUILD_WORKSPACE_PREFIX):]
+    target = _build_lock_target(build_id)
+    if path_transaction_lock_owned(target, suffix=_BUILD_LOCK_SUFFIX):
+        return "lock held by this thread"
+    with path_transaction_lock(target, timeout_seconds=0) as acquired:
+        if acquired is None:
+            return "lock held"
+        again = _real_directory(path, real_root)
+        if again is None or (again.st_dev, again.st_ino) != (first.st_dev, first.st_ino):
+            return "lock free; changed before removal"
+        newest = _newest_mtime(path)
+        if newest is None:
+            return "lock free; more than %d entries" % _SWEEP_MAX_ENTRIES
+        age = clock - newest
+        if age < 0:
+            return "lock free; newest change in the future (%.0f s)" % age
+        if age < _SWEEP_MIN_AGE_SECONDS:
+            return "lock free; newest change %.0f s ago" % age
+        try:
+            _drop_pipeline_state(path)
+            _remove_workspace(path)
+        except Exception as exc:
+            return "removal failed (lock free; age %.0f s): %s" % (age, type(exc).__name__)
+    _remove_lock_file(build_id)
+    return None

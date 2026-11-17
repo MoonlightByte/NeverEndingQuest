@@ -133,6 +133,15 @@ def _reconcile_campaign_state_locked() -> Dict[str, Any]:
     recovered_commit, recovery_result = recover_incomplete_refresh_commit()
     if recovered_commit:
         changes.append("modules/commit_state.json:rolled_back")
+    # #2052 J3b: hidden build workspaces a dead session left (a day old, lock
+    # free); never raises.
+    try:
+        from utils.module_publish import sweep_stale_build_workspaces
+
+        for swept in sweep_stale_build_workspaces():
+            changes.append("modules/%s:swept" % swept)
+    except Exception:
+        pass
 
     party_tracker = _load_json_dict(PARTY_TRACKER_FILE)
     raw_module_name = party_tracker.get("module", "")
