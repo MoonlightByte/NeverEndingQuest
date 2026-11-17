@@ -329,6 +329,7 @@ from utils.provider_errors import (  # noqa: E402
     PROVIDER_MAX_FAILURES,
     PROVIDER_RETRY_BASE_DELAY,
     PROVIDER_RETRY_MAX_DELAY,
+    QUIET_RETRY_CATEGORIES,
     account_refusal_message,
     classify_provider_error,
     provider_refusal_line,
@@ -11427,12 +11428,17 @@ def _main_game_loop(startup_authority, turn_authority):
 
         roll_settle = settle_pending_rolls(user_input_text, conversation_history)
         if roll_settle.get("providerError") is not None:
-            decision = provider_failure_policy(
-                classify_provider_error(roll_settle["providerError"]), 1, False)
+            roll_refusal = classify_provider_error(roll_settle["providerError"])
+            decision = provider_failure_policy(roll_refusal, 1, False)
             if decision["stop"]:
                 from utils.capture.live_provider_call import finish_live_turn_scope
 
-                show_player_notice(decision["player_message"])
+                # #2046: a declined or unanswered roll settle is the turn's line.
+                show_player_notice(
+                    provider_refusal_line(roll_refusal, "turn")
+                    if roll_refusal["category"] in QUIET_RETRY_CATEGORIES
+                    else decision["player_message"]
+                )
                 finish_live_turn_scope(live_turn_scope)
                 continue
         if not user_input_text.strip() and not roll_settle.get("settled"):
@@ -11730,8 +11736,12 @@ def _main_game_loop(startup_authority, turn_authority):
             if review_result["status"] != "accepted":
                 review_failure_message = review_result["player_message"]
                 review_failure_status = review_result["status"]
-                if review_result.get("connection_class"):
-                    # #1981: a connection class ends on the turn's notice.
+                if (
+                    review_result.get("connection_class")
+                    or review_result.get("category") in QUIET_RETRY_CATEGORIES
+                ):
+                    # #1981: a connection class ends on the turn's notice;
+                    # #2046: so does a declined or unanswered turn.
                     review_failure_message = provider_refusal_line(review_result, "turn")
                 conversation_history[:] = pre_turn_accepted_history
                 if not persist_t067_history_if_current(conversation_history):

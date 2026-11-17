@@ -43,6 +43,10 @@ _ALLOWED_FAILURE_CLASSES = frozenset(
         "provider",
         "capacity",
         "authentication",
+        # #2046: the provider declined or did not answer after the send
+        # layer's one quiet retry: the stage is not retried and the build
+        # fails (no fallback to the legacy generator).
+        "provider_declined",
     }
 )
 
@@ -189,6 +193,15 @@ def _provider_failure_class(exc: BaseException) -> str:
     # The shared provider wrapper intentionally exposes one stable exception
     # type.  Classification still needs the bounded underlying type/status so
     # a timeout or authentication failure is not flattened into "provider".
+    try:
+        # #2046: read on the wrapper (or the live child's envelope), as the
+        # send layer read it.
+        from utils.provider_errors import quiet_retry_category
+
+        if quiet_retry_category(exc) is not None:
+            return "provider_declined"
+    except Exception:
+        pass
     original = getattr(exc, "original_error", None)
     if isinstance(original, BaseException) and original is not exc:
         exc = original
@@ -420,6 +433,18 @@ def execute_structured_stage(
                 if isinstance(exc, SemanticCorrectionError)
                 else ()
             )
+            if failures[-1] == "provider_declined":
+                # #2046: the send layer already made its one quiet retry; the
+                # stage is not sent again and the build fails.
+                raise StageExecutionError(
+                    StageEvidence(
+                        stage=stage,
+                        attempts=attempt,
+                        result="rejected",
+                        failure_class="provider_declined",
+                        failure_classes=tuple(failures),
+                    ),
+                ) from None
     raise StageExecutionError(
         StageEvidence(
             stage=stage,

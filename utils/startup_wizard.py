@@ -2638,6 +2638,11 @@ def _startup_provider_failure(exc, failures, scope, pending, wait=None):
 
     failures += 1
     classification = classify_provider_error(exc)
+    if classification["category"] in ("content_declined", "not_answered"):
+        # #2046: the wizard keeps its own bounded loop and pause line for
+        # these (its tasks get no quiet retry in the send layer).
+        classification = dict(classification, category="unclassified", retryable=True,
+                              player_message=None, retry_notice=None)
     decision = provider_failure_policy(classification, failures, True)
     warning(f"Startup provider attempt {failures}/{PROVIDER_MAX_FAILURES} failed: {exc}",
             category="startup")

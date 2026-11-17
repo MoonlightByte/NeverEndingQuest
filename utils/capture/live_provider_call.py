@@ -300,11 +300,22 @@ class LiveTurnScope:
     # #2011: the generations this scope may spend. Every scope has the turn
     # ceiling except an in-game build's, which is its attempt bound.
     ceiling: int = _TURN_GENERATION_CEILING
+    # #2046: the one quiet retry T067 and T065 share in a player turn.
+    shared_quiet_retry_used: bool = False
 
     def next_generation(self):
         with self.lock:
             self.generation += 1
             return self.generation
+
+    def claim_shared_quiet_retry(self):
+        """#2046: test-and-set of the turn's one quiet retry for T067 and
+        T065 (a redraft in the same turn included); True only the first time."""
+        with self.lock:
+            if self.shared_quiet_retry_used:
+                return False
+            self.shared_quiet_retry_used = True
+            return True
 
     def claim_provider_generation(self, reserve=0):
         """Count one provider generation; False once the turn ceiling is spent (#1342),
@@ -1583,6 +1594,12 @@ def _primitive_error(exc, request_kwargs):
         "kind": "error",
         "error_class": type(exc).__name__,
         "cause_class": type(original).__name__ if original is not None else None,
+        # #2046: the cause's top package name (bounded), so the parent reads
+        # an openai APIError as the in-process rule does.
+        "cause_module": (
+            (type(original).__module__ or "").split(".")[0][:40]
+            if original is not None else None
+        ),
         "error_code": error_code,
         "error_type": fields.get("type"),
         "error_fields": fields,
@@ -2195,6 +2212,36 @@ def _provider_debug(message):
         pass
 
 
+_SHARED_QUIET_RETRY_TASKS = frozenset({"T067", "T065"})
+
+
+def _quiet_retry_category(envelope):
+    """#2046: the quiet-retry category of a child's error envelope, or None."""
+    try:
+        from utils.provider_errors import quiet_retry_category
+
+        return quiet_retry_category(envelope)
+    except Exception:
+        return None
+
+
+def _claim_quiet_retry(scope, task_id):
+    """#2046: may this call make its one quiet retry? T067 and T065 in the
+    player's turn share one per turn (a test-and-set on the turn scope); every
+    other call, and T067 outside a player turn (the welcome, an announcement),
+    has its own, which the caller holds as its own flag. A roll settle and a
+    level-up answer run their own tasks, so each has its own one."""
+    if task_id in _SHARED_QUIET_RETRY_TASKS:
+        turn = scope.parent if isinstance(scope, AdvisoryProviderScope) else scope
+        if (
+            turn is not None
+            and not isinstance(turn, BuildProviderScope)
+            and turn is get_live_turn_scope()
+        ):
+            return turn.claim_shared_quiet_retry()
+    return True
+
+
 def call_live_provider(
     task_id,
     messages,
@@ -2347,6 +2394,11 @@ def _call_live_provider(
         )
     failure_count = 0
     runaway_trips = 0
+    # #2046: the envelope of a declined or unanswered generation whose one
+    # quiet retry is pending or spent (the failure the caller sees if the
+    # retry cannot be sent).
+    quiet_envelope = None
+    quiet_pending = False
     # #1587: every claim of an advisory, reissues included, keeps the reserve. A
     # maintenance scope runs no required call, so it has nothing to keep.
     reserve = (
@@ -2506,6 +2558,15 @@ def _call_live_provider(
         if claim is not None and not (
             claim(reserve=reserve) if reserve else claim()
         ):
+            if quiet_pending:
+                # #2046: the quiet retry claims like any send; refused (the
+                # ceiling or an advisory's reserve), nothing is sent and the
+                # caller gets the original failure and its plain line.
+                _provider_debug(
+                    "PROVIDER_QUIET_RETRY_NOT_SENT task=%s operation=%s"
+                    % (task_id, operation_id)
+                )
+                raise LiveProviderCompletedError(task_id, quiet_envelope)
             # #1342: the turn spent its provider generations. Nothing is sent;
             # the caller's completed-refusal path ends the turn with one line.
             # #2011: the ceiling of the scope that counted the claim (an
@@ -2526,6 +2587,7 @@ def _call_live_provider(
                 task_id,
                 _limit_envelope("turn_call_ceiling", task_id, frozen_kwargs),
             )
+        quiet_pending = False
         generation = (
             scope.next_generation() if scope is not None else failure_count + 1
         )
@@ -2822,6 +2884,29 @@ def _call_live_provider(
                 _provider_debug(fields_line("live", task_id, envelope["error_fields"]))
             except Exception:
                 pass
+        quiet_category = _quiet_retry_category(envelope)
+        if quiet_category is not None:
+            # #2046: possibly billed, never priced (the provider ended the
+            # generation; no usage is carried).
+            if not spend_recorded:
+                from utils.session_spend import record_possibly_billed
+
+                record_possibly_billed(turn_key=operation_id, build=spend_build)
+                spend_recorded = True
+            if (
+                quiet_envelope is None
+                and not wizard_task
+                and not (policy == "advisory" and not completion_required)
+                and _claim_quiet_retry(scope, task_id)
+            ):
+                # One quiet retry: the same frozen request, no notice, no
+                # status reason, no card (D-FLAG-1).
+                quiet_envelope = envelope
+                quiet_pending = True
+                _provider_debug(
+                    "PROVIDER_QUIET_RETRY task=%s category=%s" % (task_id, quiet_category)
+                )
+                continue
         if envelope.get("error_code") == "runaway_output":
             # The stream consumer abandoned the answer (whitespace runaway or
             # past the callsite's output ceiling) and the identical request
