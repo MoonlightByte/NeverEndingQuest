@@ -697,7 +697,7 @@ def _remove_regular_file(workspace: str, child_name: str) -> None:
     followed; on Windows the plain path (its components were checked)."""
     name = "pipeline_state.json"
     flags = getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    if os.name == "nt" or not flags or os.open not in os.supports_dir_fd or os.remove not in os.supports_dir_fd:
+    if os.name == "nt" or not flags or os.open not in os.supports_dir_fd or os.unlink not in os.supports_dir_fd:
         state = os.path.join(workspace, child_name, ".story_first", name)
         try:
             st = os.lstat(state)
@@ -716,7 +716,7 @@ def _remove_regular_file(workspace: str, child_name: str) -> None:
         except FileNotFoundError:
             return
         if stat.S_ISREG(st.st_mode):
-            os.remove(name, dir_fd=fds[-1])
+            os.unlink(name, dir_fd=fds[-1])
     finally:
         for fd in reversed(fds):
             os.close(fd)
