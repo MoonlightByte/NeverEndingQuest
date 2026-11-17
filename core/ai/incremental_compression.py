@@ -33,13 +33,8 @@ from utils.capture.live_provider_call import (
 def _uncompressed_system_messages(window: List[Dict]) -> List[Dict]:
     """The system messages of a compression window, in order (#317). T020
     never summarises them (compress_messages skips them), so a compressed list
-    keeps them; dropping them left the saved history without its context.
-    A build note of role system (a build failure line) is not one of them: the
-    build-note rule decides it (hm.build_notes_to_keep, #2052)."""
-    return [
-        message for message in window
-        if message.get("role") == "system" and hm.build_marker(message) is None
-    ]
+    keeps them; dropping them left the saved history without its context."""
+    return [message for message in window if message.get("role") == "system"]
 
 
 class IncrementalLocationCompressor:
@@ -328,7 +323,9 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
         # Add compressed summary
         new_messages.append(compressed)
         # #2052: the window's open build notes, after the summary.
-        new_messages.extend(hm.build_notes_to_keep(current_segment[:end], messages))
+        new_messages.extend(
+            hm.build_notes_to_keep(current_segment[:end], messages, system_notes="omit")
+        )
         
         # Add remaining messages
         new_messages.extend(current_segment[end:])
@@ -427,7 +424,9 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
         # Add compressed summary
         new_messages.append(compressed)
         # #2052: the window's open build notes, after the summary.
-        new_messages.extend(hm.build_notes_to_keep(current_segment[:end], messages))
+        new_messages.extend(
+            hm.build_notes_to_keep(current_segment[:end], messages, system_notes="omit")
+        )
         
         # Add remaining messages (those not compressed)
         new_messages.extend(current_segment[end:])

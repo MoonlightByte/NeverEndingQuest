@@ -236,10 +236,13 @@ def compact_with_accepted_departure_summary(
         raise ValueError("departure conversation segment changed before compaction")
     result = list(conversation_history)
     # #2052: the segment's open build notes stay, after the summary (the
-    # summary first: the check above reads it at source_index).
+    # summary first: the check above reads it at source_index). T016 reads no
+    # system message, so a build failure line stays too.
     result[
         source_index : source_index + len(source_entries_before)
-    ] = [summary_entry] + hm.build_notes_to_keep(current_slice, conversation_history)
+    ] = [summary_entry] + hm.build_notes_to_keep(
+        current_slice, conversation_history, system_notes="keep"
+    )
     return result, summary_entry
 
 

@@ -198,7 +198,8 @@ def chunked_compression(conversation_file="modules/conversation_history/conversa
                 break
         
         # Perform the replacement
-        # #2052: the range's open build notes stay, after the chronicle.
+        # #2052: the range's open build notes stay, after the chronicle (its
+        # summariser reads every message, system ones included).
         kept_build_notes = hm.build_notes_to_keep(
             compressed_conversation[insert_position:last_msg_idx + 1], conversation_data
         )
