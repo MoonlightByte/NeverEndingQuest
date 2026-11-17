@@ -235,9 +235,11 @@ def compact_with_accepted_departure_summary(
     if current_slice not in (source_entries_before, normalized_source):
         raise ValueError("departure conversation segment changed before compaction")
     result = list(conversation_history)
+    # #2052: the segment's open build notes stay, after the summary (the
+    # summary first: the check above reads it at source_index).
     result[
         source_index : source_index + len(source_entries_before)
-    ] = [summary_entry]
+    ] = [summary_entry] + hm.build_notes_to_keep(current_slice, conversation_history)
     return result, summary_entry
 
 
