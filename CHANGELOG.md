@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Loading a game saved while a new adventure was being prepared now tells you plainly whether it was finished (#2052).
+
 - If the AI service refuses a turn, the game now tries once more quietly, then tells you plainly and lets you reword it (#2046).
 
 - An unfinished new adventure left behind by a crash no longer keeps its name taken for good; the game clears it at a later start, once it is a day old (#2052).
