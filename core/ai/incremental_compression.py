@@ -322,6 +322,10 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
 
         # Add compressed summary
         new_messages.append(compressed)
+        # #2052: the window's open build notes, after the summary.
+        new_messages.extend(
+            hm.build_notes_to_keep(current_segment[:end], messages, system_notes="omit")
+        )
         
         # Add remaining messages
         new_messages.extend(current_segment[end:])
@@ -419,6 +423,10 @@ Format as a flowing narrative in 2-3 paragraphs. Focus on what happened, not met
 
         # Add compressed summary
         new_messages.append(compressed)
+        # #2052: the window's open build notes, after the summary.
+        new_messages.extend(
+            hm.build_notes_to_keep(current_segment[:end], messages, system_notes="omit")
+        )
         
         # Add remaining messages (those not compressed)
         new_messages.extend(current_segment[end:])

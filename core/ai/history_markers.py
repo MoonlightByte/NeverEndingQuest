@@ -191,6 +191,74 @@ def build_marker(message):
     return None
 
 
+
+def open_build_ids(history):
+    """#2052: the build ids with a started note and no ending state
+    (BUILD_ENDS) for that id anywhere in history, in the order of their first
+    started note. No summary rule: the persisted compressors keep an open
+    build's start and an end whose start they did not summarize
+    (build_notes_to_keep), so a settled build never reads as open."""
+    states = {}
+    order = []
+    for message in history:
+        note = build_marker(message)
+        if note is None:
+            continue
+        if note[1] == "started" and note[0] not in order:
+            order.append(note[0])
+        states.setdefault(note[0], set()).add(note[1])
+    return [build_id for build_id in order if "started" in states[build_id] and not states[build_id] & BUILD_ENDS]
+
+
+def build_notes_to_keep(window, history, system_notes="rule"):
+    """#2052: the build notes of a compression window that the compacted
+    history keeps, in their order (the compressor puts them right after its
+    new summary).
+
+    A build's notes in the window are dropped when the window holds both its
+    started note and an ending note (settled inside the window), or when
+    history holds no started note for it at all (an orphan, as the in-turn
+    module follow-up). Every other build note is kept verbatim: an open
+    build's start and dropped note, and an end whose start lies outside the
+    window. Never kept: a role-assistant note (the announcement's follow-up;
+    the ready note beside it carries the end), so a kept note never puts two
+    assistant messages side by side.
+
+    A role-system note (a build failure line) follows the summariser that
+    reads the window: "rule" when it reads system messages (the chronicle),
+    "keep" when it does not (the departure summary, T016: the line is kept
+    whatever the rule says, or "that build failed" is lost), "omit" when the
+    compressor already keeps system messages itself (the rolling summary,
+    #317)."""
+    window_states = {}
+    for message in window:
+        note = build_marker(message)
+        if note is not None:
+            window_states.setdefault(note[0], set()).add(note[1])
+    started = set()
+    for message in history:
+        note = build_marker(message)
+        if note is not None and note[1] == "started":
+            started.add(note[0])
+    kept = []
+    for message in window:
+        note = build_marker(message)
+        if note is None or message.get("role") == "assistant":
+            continue
+        if message.get("role") == "system":
+            if system_notes == "omit":
+                continue
+            if system_notes == "keep":
+                kept.append(message)
+                continue
+        states = window_states[note[0]]
+        if "started" in states and states & BUILD_ENDS:
+            continue
+        if note[0] not in started:
+            continue
+        kept.append(message)
+    return kept
+
 def is_marker(message, *kinds):
     """Whether ``message`` is a game marker of one of ``kinds``."""
     return marker_kind(message) in kinds

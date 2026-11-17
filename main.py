@@ -1576,7 +1576,8 @@ def close_open_build_notes(live_history):
     whose build was never announced, recorded as failed, or closed gets one
     closing note (a Load of a save made mid-build, a restart). Read by
     hm.build_marker (#2052): the typed field, or the id prefix on a note saved
-    before it; a dropped note never ends a build."""
+    before it; a dropped note never ends a build. Open ids come from
+    hm.open_build_ids."""
     from utils import build_job as jobs
     from utils.capture.live_provider_call import get_live_turn_scope
 
@@ -1588,39 +1589,17 @@ def close_open_build_notes(live_history):
         or _announcement is not None
     ):
         return 0
-    states = {}
-    for message in live_history:
-        note = hm.build_marker(message)
-        if note is not None:
-            states.setdefault(note[0], set()).add(note[1])
-    # A note before the latest summary (any compressor's own typed marker) is
-    # skipped: a summary may have taken its follow-up, ready or closing note
-    # while the note itself was kept (a build started before a move).
-    last_summary = -1
-    for index, message in enumerate(live_history):
-        if isinstance(message, dict) and hm.is_marker(
-            message, hm.ROLLING_SUMMARY, *hm.SUMMARY_KINDS
-        ):
-            last_summary = index
-    opened = [
-        note[0]
-        for note in (
-            hm.build_marker(message) if index > last_summary else None
-            for index, message in enumerate(live_history)
-        )
-        if note is not None and note[1] == "started"
-    ]
+    # No summary rule (#2052): the persisted compressors keep an open build's
+    # notes and an end whose start they did not summarize
+    # (hm.build_notes_to_keep), so an open id here was never settled.
     closed = 0
-    for build_id in opened:
-        if states.get(build_id, set()) & hm.BUILD_ENDS:
-            continue
+    for build_id in hm.open_build_ids(live_history):
         live_history.append({
             "role": "user",
             "content": BUILD_CLOSED_NOTE,
             "message_id": "module-build-closed-%s" % build_id,
             hm.MARKER_FIELD: hm.MODULE_BUILD,
         })
-        states.setdefault(build_id, set()).add("closed")
         closed += 1
     if closed:
         try:

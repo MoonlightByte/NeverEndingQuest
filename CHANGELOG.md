@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The Dungeon Master no longer forgets an adventure that is still being prepared when older parts of the story are summarized (#2052).
+
 - On a hosted game the session cost line is no longer shown (#2042).
+
 - If the Dungeon Master asks for a new adventure while one is already being prepared, your turn is no longer lost (#2039).
 
 - While a new adventure is being prepared, setting out for it keeps you where you are until it is ready (#2031).

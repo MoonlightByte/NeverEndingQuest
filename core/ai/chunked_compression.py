@@ -198,12 +198,17 @@ def chunked_compression(conversation_file="modules/conversation_history/conversa
                 break
         
         # Perform the replacement
+        # #2052: the range's open build notes stay, after the chronicle (its
+        # summariser reads every message, system ones included).
+        kept_build_notes = hm.build_notes_to_keep(
+            compressed_conversation[insert_position:last_msg_idx + 1], conversation_data
+        )
         if end_transition_idx:
             # Keep the transition after our range
-            compressed_conversation[insert_position:last_msg_idx + 1] = [ai_chronicle_message]
+            compressed_conversation[insert_position:last_msg_idx + 1] = [ai_chronicle_message] + kept_build_notes
         else:
             # No transition to preserve
-            compressed_conversation[insert_position:last_msg_idx + 1] = [ai_chronicle_message]
+            compressed_conversation[insert_position:last_msg_idx + 1] = [ai_chronicle_message] + kept_build_notes
         
         # Save files
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
