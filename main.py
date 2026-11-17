@@ -1628,8 +1628,21 @@ def close_open_build_notes(live_history):
     # No summary rule (#2052): the persisted compressors keep an open build's
     # notes and an end whose start they did not summarize
     # (hm.build_notes_to_keep), so an open id here was never settled.
+    # #2052 J3c-3: the id a present build record names is not closed: its
+    # build is carried on, waits for its restart, or another process decides
+    # it; once the record goes, the next pass closes it.
+    recorded = None
+    try:
+        from utils import build_record
+
+        present = build_record.read_record()
+        recorded = present.get("build_id") if present else None
+    except Exception:
+        recorded = None
     closed = 0
     for build_id in hm.open_build_ids(live_history):
+        if build_id == recorded:
+            continue
         module_name = _live_module_for_build(build_id)
         if module_name:
             content = BUILD_READY_NOTE % module_name
@@ -1657,6 +1670,110 @@ def close_open_build_notes(live_history):
                 category="module_management",
             )
     return closed
+
+
+_build_restart_done = False
+
+
+def _discard_build_workspaces(workspaces):
+    """Discard a build record's old workspaces (J3c-1 discard_stale_workspace).
+    True when one is held by a live owner (its build lock is held)."""
+    from utils.module_publish import discard_stale_workspace
+
+    held = False
+    for workspace_hex in workspaces or []:
+        reason = discard_stale_workspace(workspace_hex)
+        if reason in ("held", "lock held", "lock held by this thread"):
+            held = True
+    return held
+
+
+def service_build_restart(live_history):
+    """#2052 J3c-3, at the loop top before the due pump and the closer: carry
+    on, once, the build a crash or kill interrupted (the build record's rules,
+    utils.build_record.decide_restart). Runs once per process: the flag is set
+    only once the record lock was taken (or found busy: another process
+    decides) and the rules applied; a closed gate leaves it for a later pass.
+    Returns the restarted build's id, else None. Never raises."""
+    global _build_restart_done
+    if _build_restart_done or live_history is None:
+        return None
+    try:
+        from utils import build_job as jobs
+        from utils.capture.live_provider_call import game_epoch, get_live_turn_scope
+
+        if (
+            get_live_turn_scope() is not None
+            or jobs.active_job() is not None
+            or jobs.has_due()
+            or _announcement is not None
+        ):
+            return None
+        import model_config
+
+        # On a local model the welcome's DM call does not wait for a build's
+        # send (only a player turn does): carry on after the welcome.
+        if model_config.get_provider() == "lmstudio" and _welcome_lifecycle is not None:
+            return None
+        from utils import build_record
+
+        try:
+            with open("party_tracker.json", "r", encoding="utf-8") as handle:
+                current_module = json.load(handle).get("module")
+        except (OSError, ValueError, AttributeError):
+            current_module = None
+        decision = build_record.decide_restart(live_history, current_module)
+        _build_restart_done = True
+        outcome = decision.get("outcome")
+        if outcome == "drop":
+            info(
+                "A new adventure that was being prepared is not carried on (%s)" % decision.get("reason"),
+                category="module_management",
+            )
+            _discard_build_workspaces(decision.get("workspaces"))
+            return None
+        if outcome == "announce":
+            from core.ai.action_handler import published_dm_note
+
+            module_name = decision["module_name"]
+            jobs.post_due(jobs.DueRecord(
+                kind="announcement",
+                build_id=decision["build_id"],
+                start_epoch=game_epoch(),
+                module_name=module_name,
+                dm_note=published_dm_note(module_name),
+            ))
+            info(
+                "A new adventure published before the game closed is announced now: %s" % module_name,
+                category="module_management",
+            )
+            return None
+        if outcome != "restart":
+            if outcome not in ("none", "busy"):
+                warning("Build restart not run (%s)" % decision.get("reason"), category="module_management")
+            return None
+        build_id = decision["build_id"]
+        if _discard_build_workspaces(decision.get("workspaces")):
+            info(
+                "Build %s is not carried on here: its workspace is in use by another process" % build_id,
+                category="module_management",
+            )
+            return None
+        from core.ai.action_handler import start_module_build_job
+
+        result = start_module_build_job(
+            {"action": "createNewModule", "parameters": decision["parameters"]},
+            restart={"build_id": build_id, "story_first": decision["story_first"]},
+        )
+        if not (isinstance(result, dict) and result.get("status") == "build_started"):
+            build_record.remove_record(build_id, "carried-on build did not start")
+            return None
+        info("Carrying on with build %s" % build_id, category="module_management")
+        return build_id
+    except Exception as restart_error:
+        _build_restart_done = True
+        warning("Build restart failed: %s" % type(restart_error).__name__, category="module_management")
+        return None
 
 
 def announcement_pending():
@@ -10063,6 +10180,10 @@ def _run_terminal_restore(request):
         while True:
             choice = _terminal_recovery_menu(manager)
             if choice.kind == 'quit':
+                # #2052 J3c-3: the player's Quit.
+                from utils.capture.live_provider_call import request_build_stop
+
+                request_build_stop("quit")
                 return False
             if choice.kind == 'restore':
                 folder = choice.folder
@@ -10097,17 +10218,24 @@ def main_game_loop():
     a crash, a KeyboardInterrupt) stops a background build and its
     announcement at once, so the process does not wait for a whole build on
     its way out. A loop that returns to run a restore loses nothing: the
-    restore stops the build by its epoch anyway."""
+    restore stops the build by its epoch anyway.
+    #2052 J3c-3: only a Ctrl+C (a deliberate Quit) passes "quit", which also
+    removes the running build's record; every other exit is "loop_exit" and
+    keeps it (an unexpected end is carried on at the next start)."""
     crashed = True
+    stop_kind = "loop_exit"
     try:
         result = _main_game_loop_outer()
         crashed = False
         return result
+    except KeyboardInterrupt:
+        stop_kind = "quit"
+        raise
     finally:
         try:
             from utils.capture.live_provider_call import request_build_stop
 
-            request_build_stop("quit")
+            request_build_stop(stop_kind)
             shutdown_build_due("crash" if crashed else "loop_exit")
         except Exception:
             pass
@@ -11147,6 +11275,9 @@ def _main_game_loop(startup_authority, turn_authority):
         # #2021 J1b-2: a background build's due record (a failure line, or a
         # published place's announcement, started here when it is due); then
         # a preparing note left open (no job, nothing due) is closed.
+        # #2052 J3c-3: first, once, a build an unexpected end interrupted is
+        # carried on (before the closer, which then skips its id).
+        service_build_restart(conversation_history)
         service_build_due(conversation_history)
         close_open_build_notes(conversation_history)
 
@@ -13828,6 +13959,10 @@ def main():
             if result.kind == 'reset':
                 continue
             if result.kind == 'quit':
+                # #2052 J3c-3: the player's Quit.
+                from utils.capture.live_provider_call import request_build_stop
+
+                request_build_stop("quit")
                 break
             if result.kind == 'restore':
                 from updates.save_game_manager import RestoreRequest

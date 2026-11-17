@@ -637,12 +637,40 @@ def _set_active_build_fence(fence):
         _active_build_fence = fence
 
 
+# #2052 J3c-3 (D-AUTH-1, the owner's host-stop ruling): the stop kinds that
+# are a deliberate Quit (the player's, the web's, a launcher's or the host's
+# /shutdown, the headless quit). Such a Quit removes the record of the build
+# this process is running while it is still running; anything else (a loop
+# exit on a crash, "loop_exit"; a Reset) keeps it. This line decides it.
+QUIT_KINDS = frozenset({"quit", "web_exit"})
+_stopped_build_id = None
+
+
 def request_build_stop(kind):
-    """A quit stops a running in-game build at its next check; no-op without one."""
+    """A quit stops a running in-game build at its next check; no-op without one.
+    A deliberate Quit (QUIT_KINDS) also removes that build's running record."""
+    global _stopped_build_id
     fence = active_build_fence()
     if fence is not None:
         fence.stop_requested.set()
         _provider_debug("BUILD_STOP %s" % kind)
+    try:
+        from utils import build_job as _jobs
+
+        build_id = _jobs.open_build_id()
+    except Exception:
+        build_id = None
+    if build_id is not None:
+        # A Quit after a loop exit already stopped (and maybe ended) the job
+        # still names the build it stopped (the terminal recovery menus).
+        _stopped_build_id = build_id
+    if kind in QUIT_KINDS:
+        try:
+            from utils import build_record as _record
+
+            _record.remove_running_for_quit(build_id or _stopped_build_id, kind)
+        except Exception:
+            pass
     return fence is not None
 
 

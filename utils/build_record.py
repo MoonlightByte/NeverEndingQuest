@@ -14,6 +14,11 @@ It never holds a secret or an address: no API key, no base URL (only its
 SHA-256), no party names. It is never part of a save or a Reset backup; a
 Load and a Reset remove it. A record that cannot be read is no record.
 
+A deliberate Quit (the player's or the host's) removes the running record of
+the build it stopped (remove_running_for_quit); a published one is kept. An
+unexpected end (a crash, a kill) keeps it, and the next start carries the
+build on once (J3c-3: decide_restart, then main.service_build_restart).
+
 Every write and removal is fail-forward: a failure is logged and the build
 and the game carry on (a missing record only means a crash cannot be
 carried on, as before J3c).
@@ -208,7 +213,14 @@ def _start_module() -> Optional[str]:
 def create_record(build_id: str, parameters: Dict[str, Any], inputs: Any) -> bool:
     """At a job's start: a new running record (replaces any older one).
     Field by field from the inputs: never the key, the URL or party names."""
-    narrative = parameters.get("narrative") if isinstance(parameters, dict) else None
+    from core.ai.module_creation_contract import CREATE_NEW_MODULE_PARAMETER_KEYS
+
+    # Only the contract's keys (J3c-3: the restart's parameters), never the
+    # raw action dict.
+    kept = {
+        key: parameters.get(key) if isinstance(parameters, dict) else None
+        for key in sorted(CREATE_NEW_MODULE_PARAMETER_KEYS)
+    }
     data = {
         "version": RECORD_VERSION,
         "build_id": str(build_id),
@@ -216,7 +228,7 @@ def create_record(build_id: str, parameters: Dict[str, Any], inputs: Any) -> boo
         "started_at": datetime.now(timezone.utc).isoformat(),
         "start_module": _start_module(),
         "restarts": 0,
-        "parameters": {"narrative": narrative if isinstance(narrative, str) else None},
+        "parameters": {k: (v if isinstance(v, str) else None) for k, v in kept.items()},
         "inputs": {
             "provider": getattr(inputs, "provider", None),
             "story_first": bool(getattr(inputs, "story_first", False)),
@@ -356,3 +368,184 @@ def find_module_by_build_id(build_id: str, modules_root: Optional[str] = None) -
             if isinstance(data, dict) and data.get("buildId") == str(build_id):
                 return name
     return None
+
+
+def remove_running_for_quit(build_id: Optional[str], kind: str) -> bool:
+    """J3c-3 (D-AUTH-1): a deliberate Quit stopped this process's build: its
+    record goes when it is still running; a published one is kept (the next
+    start announces it). Under the record lock (a short wait); fail-forward,
+    never raises."""
+    if not build_id:
+        return False
+
+    def run():
+        data = read_record()
+        if data is None or data.get("build_id") != str(build_id) or data.get("state") != "running":
+            return False
+        _remove_file(record_path())
+        debug("Build record removed (%s: a deliberate quit)" % kind, category="module_management")
+        return True
+
+    try:
+        return bool(_locked(run))
+    except Exception:
+        return False
+
+
+RESTART_MAX_AGE_SECONDS = 24 * 60 * 60
+
+
+def _archived_open_start(start_module: Any, build_id: str) -> bool:
+    """a9 L2 (iii): the start module's newest conversation archive holds an
+    OPEN start for build_id. Any doubt is False."""
+    try:
+        from core.ai import history_markers as hm
+        from core.managers.campaign_manager import _normalize_module_name as writer_name
+
+        name = writer_name(start_module)
+        folder = os.path.join(game_root(), "modules", "campaign_archives")
+        prefix = name + "_conversation_"
+        newest = None
+        with os.scandir(folder) as entries:
+            for entry in entries:
+                tail = entry.name[len(prefix):] if entry.name.startswith(prefix) else ""
+                if len(tail) == 8 and tail.endswith(".json") and tail[:3].isdigit():
+                    if newest is None or int(tail[:3]) > newest[0]:
+                        newest = (int(tail[:3]), entry.name)
+        if newest is None:
+            return False
+        with open(os.path.join(folder, newest[1]), "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        if not (isinstance(data, dict) and data.get("moduleName") == name
+                and isinstance(data.get("conversationHistory"), list)):
+            return False
+        return str(build_id) in hm.open_build_ids(data["conversationHistory"])
+    except Exception:
+        return False
+
+
+def _licensed(data: Dict[str, Any], live_history: Any, current_module: Any) -> bool:
+    """a8 s3.2 / a9 s1: L1 an open start for the id in the live history; L2
+    no note for the id in the live history, the current module differs from
+    start_module (reconcile's normalizer on both sides) and start_module's
+    archive holds an open start for it."""
+    from core.ai import history_markers as hm
+    from utils.reconcile_campaign_state import _normalize_module_name as same_name
+
+    build_id = data["build_id"]
+    history = live_history if isinstance(live_history, list) else []
+    if build_id in hm.open_build_ids(history):
+        return True
+    if any((hm.build_marker(message) or (None,))[0] == build_id for message in history):
+        return False
+    start = data.get("start_module")
+    if not isinstance(start, str) or not isinstance(current_module, str):
+        return False
+    try:
+        if same_name(start) == same_name(current_module):
+            return False
+    except Exception:
+        return False
+    return _archived_open_start(start, build_id)
+
+
+def _restart_refusal(data: Dict[str, Any], now: float) -> Optional[str]:
+    """Why a running record is not carried on, or None (a8 s3.3 rule 5 with
+    a9 s2 and a11 s4). The gateway check comes first (a12: a world under the
+    operator's gateway never restarts by itself)."""
+    from utils.provider_gateway import gateway
+
+    if gateway() is not None:
+        return "an operator-hosted world (gateway): no automatic restart"
+    if data.get("restarts") != 0:
+        return "already carried on once"
+    try:
+        started = datetime.fromisoformat(str(data.get("started_at")))
+        if started.tzinfo is None:
+            raise ValueError("naive")
+        if now - started.timestamp() > RESTART_MAX_AGE_SECONDS:
+            return "started more than 24 hours ago"
+    except (TypeError, ValueError, OverflowError):
+        return "start time unreadable"
+    from core.ai.module_creation_contract import (
+        ModuleCreationContractError,
+        validate_create_new_module_parameters,
+    )
+
+    try:
+        validate_create_new_module_parameters(data.get("parameters"))
+    except ModuleCreationContractError:
+        return "parameters not valid"
+    from utils.build_inputs import provider_usable, take_build_inputs
+
+    current = take_build_inputs()
+    inputs = data.get("inputs") if isinstance(data.get("inputs"), dict) else {}
+    if current.provider != inputs.get("provider"):
+        return "provider changed"
+    if current.provider == "lmstudio" and url_sha256(current.local_base_url) != inputs.get("local_base_url_sha256"):
+        return "local address changed"
+    if not provider_usable(current.provider):
+        return "no usable key"
+    if current.provider == "lmstudio" and current.local_model != inputs.get("local_model"):
+        debug("Build %s: model changed since the build started" % data["build_id"], category="module_management")
+    return None
+
+
+def decide_restart(live_history: Any, current_module: Any, now: Optional[float] = None) -> Dict[str, Any]:
+    """J3c-3 rules 1-5, under the record lock taken with NO wait. Returns
+    {"outcome": "busy"} (another process decides), {"outcome": "none"},
+    {"outcome": "drop", "reason", "build_id", "workspaces"} (record removed),
+    {"outcome": "announce", "build_id", "module_name"} (record marked
+    published), {"outcome": "restart", "build_id", "parameters", "story_first",
+    "workspaces"} (restarts 1 written, strictly), or {"outcome": "kept",
+    "reason"} (the restarts write failed). Never raises."""
+    import time
+
+    clock = time.time() if now is None else now
+    result: Dict[str, Any] = {"outcome": "none"}
+
+    def run():
+        data = read_record()
+        if data is None:
+            return
+        build_id = data["build_id"]
+        workspaces = [w for w in data["workspaces"] if isinstance(w, str)]
+
+        def drop(reason):
+            _remove_file(record_path())
+            result.update(outcome="drop", reason=reason, build_id=build_id, workspaces=workspaces)
+
+        if not _licensed(data, live_history, current_module):
+            return drop("not licensed")
+        module = find_module_by_build_id(build_id)
+        if module:
+            if data.get("state") != "published" or data.get("module_name") != module:
+                data["state"] = "published"
+                data["module_name"] = module
+                _write(data)
+            result.update(outcome="announce", build_id=build_id, module_name=module)
+            return
+        if data.get("state") == "published":
+            return drop("published, no live module")
+        reason = _restart_refusal(data, clock)
+        if reason:
+            return drop(reason)
+        data["restarts"] = 1
+        if not _write(data):
+            result.update(outcome="kept", reason="restarts not written")
+            return
+        inputs = data.get("inputs") if isinstance(data.get("inputs"), dict) else {}
+        result.update(outcome="restart", build_id=build_id, parameters=dict(data["parameters"]),
+                      story_first=bool(inputs.get("story_first")), workspaces=workspaces)
+
+    try:
+        from utils.path_transaction_lock import path_transaction_lock
+
+        with path_transaction_lock(_lock_target(), timeout_seconds=0) as acquired:
+            if acquired is None:
+                return {"outcome": "busy"}
+            run()
+    except Exception as exc:
+        warning("Build restart decision failed (%s)" % type(exc).__name__, category="module_management")
+        return {"outcome": "error", "reason": type(exc).__name__}
+    return result

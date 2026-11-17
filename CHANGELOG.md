@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- If the game closes unexpectedly while a new adventure is being prepared, it carries on with it once at the next start (#2052).
+
 - Loading a game saved while a new adventure was being prepared now tells you plainly whether it was finished (#2052).
 
 - If the AI service refuses a turn, the game now tries once more quietly, then tells you plainly and lets you reword it (#2046).
