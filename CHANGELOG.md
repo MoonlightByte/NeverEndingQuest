@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- An unfinished new adventure left behind by a crash no longer keeps its name taken for good; the game clears it at a later start, once it is a day old (#2052).
+
 - The Dungeon Master no longer forgets an adventure that is still being prepared when older parts of the story are summarized (#2052).
 
 - On a hosted game the session cost line is no longer shown (#2042).
