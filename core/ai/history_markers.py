@@ -204,7 +204,7 @@ def open_build_ids(history):
         note = build_marker(message)
         if note is None:
             continue
-        if note[1] == "started" and note[0] not in states:
+        if note[1] == "started" and note[0] not in order:
             order.append(note[0])
         states.setdefault(note[0], set()).add(note[1])
     return [build_id for build_id in order if "started" in states[build_id] and not states[build_id] & BUILD_ENDS]
