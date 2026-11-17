@@ -31,7 +31,6 @@ from typing import Any, Dict, Optional
 
 from utils.data_root import game_root
 from utils.enhanced_logger import debug, warning
-from utils.module_refresh_lock import RUNTIME_LOCKS_DIR
 
 RECORD_NAME = "module_build_job.json"
 RECORD_VERSION = 1
@@ -45,7 +44,10 @@ def record_path() -> str:
 
 
 def _lock_target() -> str:
-    return os.path.join(RUNTIME_LOCKS_DIR, "module_build_job")
+    """The record lock, in the game folder's .runtime_locks (as the build
+    locks): two processes on one game folder meet there whatever their
+    RUNTIME_LOCKS_DIR. Resolved once per locked call."""
+    return os.path.join(game_root(), ".runtime_locks", "module_build_job")
 
 
 def url_sha256(url: Optional[str]) -> Optional[str]:

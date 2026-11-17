@@ -41,8 +41,12 @@ def game_root():
     """The game's own folder (#2052): the working directory every game file
     is read from. It equals NEQ_DATA_DIR once enter_data_root has run; a
     headless --game-dir run has changed into its game folder; otherwise it
-    is the folder the game runs in. The lock files (.runtime_locks) stay
-    where module_refresh_lock puts them."""
+    is the folder the game runs in. The build locks and the build record's
+    lock are in game_root()/.runtime_locks, so every process on one game
+    folder meets there; module_refresh_lock keeps its own place
+    (RUNTIME_LOCKS_DIR, fixed at import). The play path never changes
+    folder after startup; a tool that does must not call the startup sweep,
+    discard_stale_workspace or the build record."""
     return os.path.abspath(os.getcwd())
 
 

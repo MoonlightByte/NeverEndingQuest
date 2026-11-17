@@ -59,7 +59,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from utils.enhanced_logger import debug, error, info, warning
-from utils.module_refresh_lock import RUNTIME_LOCKS_DIR, assert_module_refresh_lock_owned
+from utils.module_refresh_lock import assert_module_refresh_lock_owned
 from utils.path_transaction_lock import path_transaction_lock, path_transaction_lock_owned
 from utils.transient_filesystem import (
     is_transient_filesystem_error,
@@ -408,7 +408,7 @@ def reserve_build_workspace(
     # #2052 J3b: the build's own lock BEFORE its workspace exists, held until
     # publish_reserved or discard_reservation returns (the OS drops it if the
     # process dies), so the startup sweep never takes a live workspace.
-    _acquire_build_lock(build_id)
+    _acquire_build_lock(build_id, _game_locks_dir(str(modules_root.parent)))
     try:
         candidate_path.mkdir(parents=True, mode=0o700)
     except BaseException:
@@ -538,19 +538,29 @@ def _cleanup_orphan_workspace(workspace: Path) -> None:
 # ----------------------------------------------------------------------------
 # #2052 J3b: the build lock and the startup sweep of stale build workspaces
 # ----------------------------------------------------------------------------
-def _build_lock_target(build_id: str) -> str:
-    """The lock identity of one build: under the data root's .runtime_locks,
-    never inside modules/."""
-    return os.path.join(RUNTIME_LOCKS_DIR, "module_build_%s" % build_id)
+def _game_locks_dir(root: str) -> str:
+    """The .runtime_locks folder of the game folder ``root`` (the folder that
+    holds the modules folder the locks guard). Two processes on one game
+    folder meet there whatever their RUNTIME_LOCKS_DIR (#2052). With a data
+    root entered it is RUNTIME_LOCKS_DIR itself. module_refresh_lock keeps
+    its own place."""
+    return os.path.join(root, ".runtime_locks")
 
 
-def _acquire_build_lock(build_id: str) -> None:
-    lock = path_transaction_lock(_build_lock_target(build_id), timeout_seconds=5.0)
+def _build_lock_target(build_id: str, locks_dir: str) -> str:
+    """The lock identity of one build: in its game folder's .runtime_locks,
+    never inside modules/. The caller resolves locks_dir once per pass."""
+    return os.path.join(locks_dir, "module_build_%s" % build_id)
+
+
+def _acquire_build_lock(build_id: str, locks_dir: str) -> None:
+    target = _build_lock_target(build_id, locks_dir)
+    lock = path_transaction_lock(target, timeout_seconds=5.0)
     if lock.__enter__() is None:
         lock.__exit__(None, None, None)
         raise PublishError("The new build's lock could not be taken")
     with _HELD_BUILD_LOCKS_GUARD:
-        _HELD_BUILD_LOCKS[build_id] = (lock, threading.get_ident())
+        _HELD_BUILD_LOCKS[build_id] = (lock, threading.get_ident(), target)
 
 
 def _release_build_lock(build_id: str) -> None:
@@ -571,12 +581,12 @@ def _release_build_lock(build_id: str) -> None:
     except Exception as exc:
         debug("Build lock %s release: %s" % (build_id, type(exc).__name__), category="module_management")
         return
-    _remove_lock_file(build_id)
+    _remove_lock_file(held[2])
 
 
-def _remove_lock_file(build_id: str) -> None:
+def _remove_lock_file(target: str) -> None:
     try:
-        os.remove(_build_lock_target(build_id) + _BUILD_LOCK_SUFFIX)
+        os.remove(target + _BUILD_LOCK_SUFFIX)
     except OSError:
         pass
 
@@ -584,10 +594,19 @@ def _remove_lock_file(build_id: str) -> None:
 def _data_modules_root() -> str:
     """The game's modules folder, absolute: game_root()/modules, the folder
     reserve_build_workspace and every module read use (#2052). The build
-    locks stay in RUNTIME_LOCKS_DIR."""
+    locks are in game_root()/.runtime_locks (_game_locks_dir)."""
     from utils.data_root import game_root
 
     return os.path.join(game_root(), "modules")
+
+
+def _game_paths() -> tuple:
+    """(modules folder, build locks folder) of the game, from ONE game_root()
+    call: a sweep or a discard resolves them once, never per step."""
+    from utils.data_root import game_root
+
+    root = game_root()
+    return os.path.join(root, "modules"), _game_locks_dir(root)
 
 
 def _real_directory(path: str, real_root: str) -> Optional[os.stat_result]:
@@ -743,7 +762,7 @@ def sweep_stale_build_workspaces(now: Optional[float] = None) -> list:
     failure is a skip; the sweep never raises. Returns the removed names."""
     removed = []
     try:
-        modules_root = _data_modules_root()
+        modules_root, locks_dir = _game_paths()
         info("Startup sweep of unfinished new-adventure folders in %s" % modules_root,
              category="module_management")
         if not os.path.isdir(modules_root):
@@ -759,7 +778,7 @@ def sweep_stale_build_workspaces(now: Optional[float] = None) -> list:
         if not _BUILD_WORKSPACE_RE.fullmatch(name):
             continue
         try:
-            reason = _sweep_one(modules_root, real_root, name, clock)
+            reason = _sweep_one(modules_root, real_root, name, clock, locks_dir)
         except Exception as exc:
             reason = "error %s" % type(exc).__name__
         if reason is None:
@@ -774,7 +793,7 @@ def sweep_stale_build_workspaces(now: Optional[float] = None) -> list:
     return removed
 
 
-def _sweep_one(modules_root: str, real_root: str, name: str, clock: Optional[float]) -> Optional[str]:
+def _sweep_one(modules_root: str, real_root: str, name: str, clock: Optional[float], locks_dir: str) -> Optional[str]:
     """None when the workspace was removed, else the reason it was kept.
     clock None: no age gate (discard_stale_workspace: the build record names
     the workspace, so it is known to be that build's)."""
@@ -783,7 +802,7 @@ def _sweep_one(modules_root: str, real_root: str, name: str, clock: Optional[flo
     if first is None:
         return "not a real directory in the modules folder"
     build_id = name[len(_BUILD_WORKSPACE_PREFIX):]
-    target = _build_lock_target(build_id)
+    target = _build_lock_target(build_id, locks_dir)
     if path_transaction_lock_owned(target, suffix=_BUILD_LOCK_SUFFIX):
         return "lock held by this thread"
     with path_transaction_lock(target, timeout_seconds=0) as acquired:
@@ -807,7 +826,7 @@ def _sweep_one(modules_root: str, real_root: str, name: str, clock: Optional[flo
             _remove_workspace(path)
         except Exception as exc:
             return "removal failed (lock free; age %.0f s): %s" % (age, type(exc).__name__)
-    _remove_lock_file(build_id)
+    _remove_lock_file(target)
     return None
 
 
@@ -823,13 +842,13 @@ def discard_stale_workspace(workspace_hex: str) -> Optional[str]:
     try:
         if not isinstance(workspace_hex, str) or not _BUILD_WORKSPACE_RE.fullmatch(name):
             return "not a build workspace name"
-        modules_root = _data_modules_root()
+        modules_root, locks_dir = _game_paths()
         if not os.path.lexists(os.path.join(modules_root, name)):
             # No folder: its lock file goes only under that lock. reserve
             # takes the lock before its mkdir, so a held lock with no folder
             # is a live reservation; unlinking its file would let another
             # process lock a new file of the same name.
-            target = _build_lock_target(workspace_hex)
+            target = _build_lock_target(workspace_hex, locks_dir)
             if path_transaction_lock_owned(target, suffix=_BUILD_LOCK_SUFFIX):
                 return "lock held by this thread"
             with path_transaction_lock(target, timeout_seconds=0) as acquired:
@@ -839,9 +858,9 @@ def discard_stale_workspace(workspace_hex: str) -> Optional[str]:
                     return "appeared while checking; kept"
             # After the with block, as _sweep_one does: on Windows the
             # unlink fails while the lock's handle is open.
-            _remove_lock_file(workspace_hex)
+            _remove_lock_file(target)
             return None
-        reason = _sweep_one(modules_root, os.path.realpath(modules_root), name, None)
+        reason = _sweep_one(modules_root, os.path.realpath(modules_root), name, None, locks_dir)
     except Exception as exc:
         reason = "error %s" % type(exc).__name__
     if reason is None:
