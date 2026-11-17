@@ -1628,17 +1628,23 @@ def close_open_build_notes(live_history):
     # No summary rule (#2052): the persisted compressors keep an open build's
     # notes and an end whose start they did not summarize
     # (hm.build_notes_to_keep), so an open id here was never settled.
-    # #2052 J3c-3: the id a present build record names is not closed: its
-    # build is carried on, waits for its restart, or another process decides
-    # it; once the record goes, the next pass closes it.
+    # #2052 J3c-3: the id a present build record names is not closed while
+    # the record is genuinely someone's: this process's restart decision has
+    # not run yet (a closed gate, the lmstudio welcome), or it found the
+    # record lock busy or a workspace held (another process decides). Any
+    # other record that is still present (a restart that failed to start, a
+    # restarts write that failed, a job that died) no longer holds the
+    # closer: its id is closed as before.
     recorded = None
-    try:
-        from utils import build_record
+    if not _build_restart_done or _build_restart_claimed:
+        try:
+            from utils import build_record
 
-        present = build_record.read_record()
-        recorded = present.get("build_id") if present else None
-    except Exception:
-        recorded = None
+            if os.path.lexists(build_record.record_path()):
+                present = build_record.read_record()
+                recorded = present.get("build_id") if present else None
+        except Exception:
+            recorded = None
     closed = 0
     for build_id in hm.open_build_ids(live_history):
         if build_id == recorded:
@@ -1673,6 +1679,9 @@ def close_open_build_notes(live_history):
 
 
 _build_restart_done = False
+# Set when this process's decision found the record lock busy or a workspace
+# held: the record is another process's, so the closer keeps skipping its id.
+_build_restart_claimed = False
 
 
 def _discard_build_workspaces(workspaces):
@@ -1695,9 +1704,10 @@ def service_build_restart(live_history):
     only once the record lock was taken (or found busy: another process
     decides) and the rules applied; a closed gate leaves it for a later pass.
     Returns the restarted build's id, else None. Never raises."""
-    global _build_restart_done
+    global _build_restart_done, _build_restart_claimed
     if _build_restart_done or live_history is None:
         return None
+    decision = None
     try:
         from utils import build_job as jobs
         from utils.capture.live_provider_call import game_epoch, get_live_turn_scope
@@ -1717,14 +1727,18 @@ def service_build_restart(live_history):
             return None
         from utils import build_record
 
+        from utils.data_root import game_root
+
         try:
-            with open("party_tracker.json", "r", encoding="utf-8") as handle:
+            with open(os.path.join(game_root(), "party_tracker.json"), "r", encoding="utf-8") as handle:
                 current_module = json.load(handle).get("module")
         except (OSError, ValueError, AttributeError):
             current_module = None
         decision = build_record.decide_restart(live_history, current_module)
         _build_restart_done = True
         outcome = decision.get("outcome")
+        if outcome == "busy":
+            _build_restart_claimed = True
         if outcome == "drop":
             info(
                 "A new adventure that was being prepared is not carried on (%s)" % decision.get("reason"),
@@ -1741,7 +1755,14 @@ def service_build_restart(live_history):
                 build_id=decision["build_id"],
                 start_epoch=game_epoch(),
                 module_name=module_name,
-                dm_note=published_dm_note(module_name),
+                # Licensed by L2 (the build started in an earlier module and
+                # the party is elsewhere): today's hedged ready note, never
+                # "from here".
+                dm_note=(
+                    published_dm_note(module_name)
+                    if decision.get("licence") == "L1"
+                    else BUILD_READY_NOTE % module_name
+                ),
             ))
             info(
                 "A new adventure published before the game closed is announced now: %s" % module_name,
@@ -1754,6 +1775,7 @@ def service_build_restart(live_history):
             return None
         build_id = decision["build_id"]
         if _discard_build_workspaces(decision.get("workspaces")):
+            _build_restart_claimed = True
             info(
                 "Build %s is not carried on here: its workspace is in use by another process" % build_id,
                 category="module_management",
@@ -1773,6 +1795,15 @@ def service_build_restart(live_history):
     except Exception as restart_error:
         _build_restart_done = True
         warning("Build restart failed: %s" % type(restart_error).__name__, category="module_management")
+        if isinstance(decision, dict) and decision.get("outcome") == "restart":
+            # Best effort: a restart that raised leaves no record behind, so
+            # the closer closes its id on this session's next pass.
+            try:
+                from utils import build_record
+
+                build_record.remove_record(decision.get("build_id"), "carried-on build raised at its start")
+            except Exception:
+                pass
         return None
 
 

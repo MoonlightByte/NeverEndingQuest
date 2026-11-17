@@ -424,29 +424,29 @@ def _archived_open_start(start_module: Any, build_id: str) -> bool:
         return False
 
 
-def _licensed(data: Dict[str, Any], live_history: Any, current_module: Any) -> bool:
-    """a8 s3.2 / a9 s1: L1 an open start for the id in the live history; L2
-    no note for the id in the live history, the current module differs from
-    start_module (reconcile's normalizer on both sides) and start_module's
-    archive holds an open start for it."""
+def _licensed(data: Dict[str, Any], live_history: Any, current_module: Any) -> Optional[str]:
+    """a8 s3.2 / a9 s1: "L1" an open start for the id in the live history;
+    "L2" no note for the id in the live history, the current module differs
+    from start_module (reconcile's normalizer on both sides) and
+    start_module's archive holds an open start for it; else None."""
     from core.ai import history_markers as hm
     from utils.reconcile_campaign_state import _normalize_module_name as same_name
 
     build_id = data["build_id"]
     history = live_history if isinstance(live_history, list) else []
     if build_id in hm.open_build_ids(history):
-        return True
+        return "L1"
     if any((hm.build_marker(message) or (None,))[0] == build_id for message in history):
-        return False
+        return None
     start = data.get("start_module")
     if not isinstance(start, str) or not isinstance(current_module, str):
-        return False
+        return None
     try:
         if same_name(start) == same_name(current_module):
-            return False
+            return None
     except Exception:
-        return False
-    return _archived_open_start(start, build_id)
+        return None
+    return "L2" if _archived_open_start(start, build_id) else None
 
 
 def _restart_refusal(data: Dict[str, Any], now: float) -> Optional[str]:
@@ -495,8 +495,8 @@ def decide_restart(live_history: Any, current_module: Any, now: Optional[float] 
     """J3c-3 rules 1-5, under the record lock taken with NO wait. Returns
     {"outcome": "busy"} (another process decides), {"outcome": "none"},
     {"outcome": "drop", "reason", "build_id", "workspaces"} (record removed),
-    {"outcome": "announce", "build_id", "module_name"} (record marked
-    published), {"outcome": "restart", "build_id", "parameters", "story_first",
+    {"outcome": "announce", "build_id", "module_name", "licence"} (record
+    marked published; licence "L1" or "L2"), {"outcome": "restart", "build_id", "parameters", "story_first",
     "workspaces"} (restarts 1 written, strictly), or {"outcome": "kept",
     "reason"} (the restarts write failed). Never raises."""
     import time
@@ -515,7 +515,8 @@ def decide_restart(live_history: Any, current_module: Any, now: Optional[float] 
             _remove_file(record_path())
             result.update(outcome="drop", reason=reason, build_id=build_id, workspaces=workspaces)
 
-        if not _licensed(data, live_history, current_module):
+        licence = _licensed(data, live_history, current_module)
+        if not licence:
             return drop("not licensed")
         module = find_module_by_build_id(build_id)
         if module:
@@ -523,7 +524,7 @@ def decide_restart(live_history: Any, current_module: Any, now: Optional[float] 
                 data["state"] = "published"
                 data["module_name"] = module
                 _write(data)
-            result.update(outcome="announce", build_id=build_id, module_name=module)
+            result.update(outcome="announce", build_id=build_id, module_name=module, licence=licence)
             return
         if data.get("state") == "published":
             return drop("published, no live module")
