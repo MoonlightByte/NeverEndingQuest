@@ -1594,6 +1594,12 @@ def _primitive_error(exc, request_kwargs):
         "kind": "error",
         "error_class": type(exc).__name__,
         "cause_class": type(original).__name__ if original is not None else None,
+        # #2046: the cause's top package name (bounded), so the parent reads
+        # an openai APIError as the in-process rule does.
+        "cause_module": (
+            (type(original).__module__ or "").split(".")[0][:40]
+            if original is not None else None
+        ),
         "error_code": error_code,
         "error_type": fields.get("type"),
         "error_fields": fields,

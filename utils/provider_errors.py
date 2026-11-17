@@ -360,7 +360,8 @@ def _not_answered(exc):
             cause = envelope.get("cause_class")
             code = envelope.get("error_code")
             if cause == "APIError":
-                return True
+                # openai's, as in process (another package's APIError is not).
+                return envelope.get("cause_module") == "openai"
             return (
                 cause == "ResponsesStreamFailed"
                 and isinstance(code, str) and bool(code)
@@ -511,7 +512,9 @@ def _classify_provider_error(exc):
             "category": "content_declined",
             "provider": provider,
             "retryable": False,
-            "player_message": quiet_retry_line("content_declined", provider),
+            # The sentence comes only from provider_refusal_line at the turn
+            # and level-up moments; every other site keeps its own line.
+            "player_message": None,
             "retry_notice": None,
         }
 
@@ -592,7 +595,7 @@ def _classify_provider_error(exc):
             "category": "not_answered",
             "provider": provider,
             "retryable": False,
-            "player_message": quiet_retry_line("not_answered", provider),
+            "player_message": None,
             "retry_notice": None,
         }
 
