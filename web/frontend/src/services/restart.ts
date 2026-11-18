@@ -53,7 +53,8 @@ export async function reloadIfRestartPending(path = '/play/'): Promise<boolean> 
 
 /**
  * Poll after restore/reset/update and bound the wait instead of hanging forever.
- * Only a Load passes restoreOutcome; reset and update reloads keep the plain URL.
+ * Only a Load passes restoreOutcome, and only the page that sent the Load carries it on; reset and
+ * update reloads keep the plain URL.
  */
 export async function reloadWhenServerReady(path = '/play/', intervalMs = 1000, timeoutMs = 120_000, restoreOutcome?: RestoreReloadOutcome): Promise<void> {
   if (typeof window === 'undefined') return
@@ -64,7 +65,9 @@ export async function reloadWhenServerReady(path = '/play/', intervalMs = 1000, 
     const current = await readServerInstance()
     if (!current) observedUnavailable = true
     else if (hasServerRestarted(baseline, current, observedUnavailable)) {
-      navigateAfterRestart(path, restoreOutcome)
+      // Only the page that sent the Load holds a baseline (prepareForServerRestart, this tab's
+      // sessionStorage); another open page reloads without the outcome, so one Load sends one start.
+      navigateAfterRestart(path, baseline ? restoreOutcome : undefined)
       return
     }
     await new Promise<void>((resolve) => window.setTimeout(resolve, intervalMs))
