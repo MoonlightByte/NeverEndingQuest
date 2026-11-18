@@ -529,11 +529,14 @@ class ParallelConversationCompressor:
                 # Load the compressed system prompt
                 compressed_prompt_file = Path("prompts/system_prompt_compressed.txt")
                 if compressed_prompt_file.exists():
-                    with open(compressed_prompt_file, 'r', encoding='utf-8') as f:
-                        compressed_content = f.read()
+                    from utils.prompt_blocks import load_prompt
+                    from utils.provider_gateway import in_play_builds_allowed
+
+                    compressed_content = load_prompt(compressed_prompt_file)
 
                     # If module creation injection is enabled, append the module creation micro prompt
-                    if self.inject_module_creation:
+                    # (#2065: never on a hosted world, where no adventure is built in play)
+                    if self.inject_module_creation and in_play_builds_allowed():
                         # First try the new micro prompt file
                         module_creation_file = Path("prompts/module_creation_micro_prompt.txt")
                         # Fallback to old file if it exists
