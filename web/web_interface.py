@@ -270,6 +270,8 @@ from web.shared_state import (
 # Global variables for managing output
 game_output_queue = queue.Queue()
 debug_output_queue = queue.Queue()
+# #2067 (owner words D-UX-3): no party tracker yet is a first launch, not an error.
+PLAYER_DATA_NO_HERO_NOTICE = 'No hero yet. Start a game to make one.'
 user_input_queue = queue.Queue()
 # module_progress_queue imported from shared_state
 game_thread = None
@@ -3469,7 +3471,7 @@ def handle_action(data, _operation_id=None):
                     success, message = outcome
                     if success:
                         activity.save_completed()
-                        socketio.emit('system_message', {'content': f"Game saved: {message}"}, to=session_id)
+                        socketio.emit('system_message', {'content': message}, to=session_id)
                     else:
                         socketio.emit('error', {'message': f"Save failed: {message}"}, to=session_id)
 
@@ -3497,7 +3499,7 @@ def handle_action(data, _operation_id=None):
                     success, message = outcome
                     if success:
                         activity.save_completed()
-                        socketio.emit('system_message', {'content': f"Game saved: {message}"}, to=session_id)
+                        socketio.emit('system_message', {'content': message}, to=session_id)
                     else:
                         socketio.emit('error', {'message': f"Save failed: {message}"}, to=session_id)
 
@@ -3541,7 +3543,7 @@ def handle_action(data, _operation_id=None):
             success, message = manager.create_save_game(description, save_mode)
             if success:
                 activity.save_completed()
-                emit('system_message', {'content': f"Game saved: {message}"})
+                emit('system_message', {'content': message})
             else:
                 emit('error', {'message': f"Save failed: {message}"})
         except Exception as e:
@@ -3695,7 +3697,7 @@ def handle_action(data, _operation_id=None):
             else:
                 success, message = False, "Choose an existing save from the save list"
             if success:
-                emit('system_message', {'content': f"Save deleted: {message}"})
+                emit('system_message', {'content': message})
             else:
                 emit('error', {'message': f"Delete failed: {message}"})
         except Exception as e:
@@ -4011,7 +4013,7 @@ def handle_player_data_request(data=None):
             with open(party_tracker_path, 'r', encoding='utf-8') as f:
                 party_tracker = json.load(f)
         else:
-            emit('player_data_response', _ui_response(data, {'dataType': dataType, 'data': None, 'error': 'Party tracker not found'}))
+            emit('player_data_response', _ui_response(data, {'dataType': dataType, 'data': None, 'notice': PLAYER_DATA_NO_HERO_NOTICE}))
             return
         
         if dataType == 'stats' or dataType == 'inventory' or dataType == 'spells':

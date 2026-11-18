@@ -252,7 +252,8 @@ export function LoadDialog() {
     if (actionResult?.kind === 'restore'
       && actionResult.can_resume !== false
       && (actionResult.restart_required ?? (actionResult.restore_outcome === undefined || actionResult.can_resume === true))) {
-      void reloadWhenServerReady()
+      // #2067: the reloaded page starts the game itself only for selected_applied (services/restoreStart.ts).
+      void reloadWhenServerReady('/play/', 1000, 120_000, actionResult.restore_outcome)
     }
   }, [actionResult])
 

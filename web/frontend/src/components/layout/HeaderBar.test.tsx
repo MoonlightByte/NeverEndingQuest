@@ -89,7 +89,8 @@ describe('startup parity', () => {
     })
     render(<HeaderBar />)
 
-    expect(screen.getByText('Time Unknown [EM001:MG01]')).toBeTruthy()
+    // #2067: the ids leave the visible line and sit in its title.
+    expect(screen.getByText('Time Unknown').getAttribute('title')).toBe('EM001:MG01')
   })
 
   it('locks save, load, and reset while a confirmed campaign reset is pending', () => {
