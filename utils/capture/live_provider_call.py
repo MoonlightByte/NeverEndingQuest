@@ -311,11 +311,6 @@ class LiveTurnScope:
     accepted: bool = False
     # #2069: the past-ceiling record is written once per budget.
     past_ceiling_logged: bool = False
-    # #2069: what the last claim did, read by the send loop for its record:
-    # "ok", "past_ceiling" (the first claim past the ceiling in an accepted
-    # budget), "ceiling" (refused at the ceiling) or "hard" (refused at the
-    # accepted hard bound).
-    last_claim: str = None
 
     def next_generation(self):
         with self.lock:
@@ -333,21 +328,27 @@ class LiveTurnScope:
 
     def claim_provider_generation(self, reserve=0):
         """Count one provider generation; False once the turn ceiling is spent (#1342),
-        or once it would leave fewer than ``reserve`` generations (#204).
-        #2069: a required claim (no reserve) of an accepted reply is bounded
-        by _ACCEPTED_HARD_BOUND instead of the ceiling."""
+        or once it would leave fewer than ``reserve`` generations (#204)."""
+        return self.claim_provider_generation_detail(reserve) in ("ok", "past_ceiling")
+
+    def claim_provider_generation_detail(self, reserve=0):
+        """claim_provider_generation, returning what the claim did (#2069):
+        "ok"; "past_ceiling" (claimed, and the first claim past the ceiling in
+        an accepted budget); "ceiling" (refused at the ceiling, or at an
+        advisory's reserve); "hard" (refused at _ACCEPTED_HARD_BOUND). A
+        required claim (no reserve) of an accepted reply is bounded by
+        _ACCEPTED_HARD_BOUND instead of the ceiling. The kind is decided under
+        the lock and returned, so a concurrent claim cannot change it."""
         with self.lock:
             hard = not reserve and self.accepted
             bound = _ACCEPTED_HARD_BOUND if hard else self.ceiling
             if self.provider_generations + reserve >= bound:
-                self.last_claim = "hard" if hard else "ceiling"
-                return False
+                return "hard" if hard else "ceiling"
             self.provider_generations += 1
-            self.last_claim = "ok"
             if self.provider_generations > self.ceiling and not self.past_ceiling_logged:
                 self.past_ceiling_logged = True
-                self.last_claim = "past_ceiling"
-            return True
+                return "past_ceiling"
+            return "ok"
 
     def renew_generation_budget(self, reason):
         """Start a fresh ceiling inside this scope (#1468): combat spends one
@@ -457,6 +458,9 @@ class AdvisoryProviderScope:
     def claim_provider_generation(self, reserve=0):
         return self.parent.claim_provider_generation(reserve)
 
+    def claim_provider_generation_detail(self, reserve=0):
+        return self.parent.claim_provider_generation_detail(reserve)
+
     def is_superseded(self):
         return self.sealed.is_set() or self.parent.is_superseded()
 
@@ -505,14 +509,14 @@ class BuildProviderScope(LiveTurnScope):
         with self.lock:
             self.ceiling += int(n)
 
-    def claim_provider_generation(self, reserve=0):
+    def claim_provider_generation_detail(self, reserve=0):
         with self.lock:
             if self.end_reason == "ceiling":
-                return False
-            claimed = super().claim_provider_generation(reserve)
-            if not claimed and not reserve:
+                return "ceiling"
+            kind = super().claim_provider_generation_detail(reserve)
+            if kind in ("ceiling", "hard") and not reserve:
                 self.end_reason = "ceiling"
-            return claimed
+            return kind
 
     def is_superseded(self):
         with self.lock:
@@ -2615,10 +2619,31 @@ def _call_live_provider(
         # a `continue` left behind (no child started) is ended first.
         end_build_attempt(shown.pop("build_attempt", None), sent=False)
         shown["build_attempt"] = begin_build_attempt()
-        claim = getattr(scope, "claim_provider_generation", None)
-        if claim is not None and not (
-            claim(reserve=reserve) if reserve else claim()
-        ):
+        # #2069: the claim returns what it did, so the record below is this
+        # claim's own (a concurrent claim on the same scope cannot change it).
+        claim = getattr(scope, "claim_provider_generation_detail", None)
+        if claim is not None:
+            claim_kind = claim(reserve=reserve) if reserve else claim()
+        else:
+            claim_bool = getattr(scope, "claim_provider_generation", None)
+            claim_kind = (
+                None if claim_bool is None
+                else "ok" if (claim_bool(reserve=reserve) if reserve else claim_bool())
+                else "ceiling"
+            )
+        # #2011: the scope that counted the claim (an advisory child counts on
+        # its parent).
+        counted = scope.parent if isinstance(scope, AdvisoryProviderScope) else scope
+        if claim_kind in ("ceiling", "hard"):
+            if claim_kind == "hard":
+                # #2069: an accepted reply ran away past the hard bound; the
+                # same envelope and line as the ceiling, its own record (on the
+                # quiet retry's refusal too).
+                _provider_debug(
+                    "LIVE_PROVIDER_ACCEPTED_HARD_BOUND task=%s generations=%d operation=%s purpose=%s"
+                    % (task_id, _ACCEPTED_HARD_BOUND, operation_id,
+                       getattr(counted, "purpose", None))
+                )
             if quiet_pending:
                 # #2046: the quiet retry claims like any send; refused (the
                 # ceiling or an advisory's reserve), nothing is sent and the
@@ -2630,18 +2655,7 @@ def _call_live_provider(
                 raise LiveProviderCompletedError(task_id, quiet_envelope)
             # #1342: the turn spent its provider generations. Nothing is sent;
             # the caller's completed-refusal path ends the turn with one line.
-            # #2011: the ceiling of the scope that counted the claim (an
-            # advisory child counts on its parent).
-            counted = scope.parent if isinstance(scope, AdvisoryProviderScope) else scope
-            if getattr(counted, "last_claim", None) == "hard":
-                # #2069: an accepted reply ran away past the hard bound; the
-                # same envelope and line as the ceiling, its own record.
-                _provider_debug(
-                    "LIVE_PROVIDER_ACCEPTED_HARD_BOUND task=%s generations=%d operation=%s purpose=%s"
-                    % (task_id, _ACCEPTED_HARD_BOUND, operation_id,
-                       getattr(counted, "purpose", None))
-                )
-            else:
+            if claim_kind == "ceiling":
                 _provider_debug(
                     "LIVE_PROVIDER_TURN_CEILING task=%s generations=%d reserve=%d operation=%s purpose=%s"
                     % (task_id, getattr(counted, "ceiling", _TURN_GENERATION_CEILING), reserve,
@@ -2658,14 +2672,14 @@ def _call_live_provider(
                 _limit_envelope("turn_call_ceiling", task_id, frozen_kwargs),
             )
         quiet_pending = False
-        counted = scope.parent if isinstance(scope, AdvisoryProviderScope) else scope
-        if getattr(counted, "last_claim", None) == "past_ceiling":
+        if claim_kind == "past_ceiling":
             # #2069: once per budget, an accepted reply's calls passed the
-            # ceiling; nothing is shown, the record counts it.
+            # ceiling; nothing is shown, the record counts it (the generation
+            # that passed it is the ceiling's next one).
             _provider_debug(
                 "LIVE_PROVIDER_TURN_PAST_CEILING task=%s generations=%d operation=%s purpose=%s"
-                % (task_id, counted.provider_generations, operation_id,
-                   getattr(counted, "purpose", None))
+                % (task_id, getattr(counted, "ceiling", _TURN_GENERATION_CEILING) + 1,
+                   operation_id, getattr(counted, "purpose", None))
             )
         generation = (
             scope.next_generation() if scope is not None else failure_count + 1
