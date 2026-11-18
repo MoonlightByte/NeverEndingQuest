@@ -1,6 +1,7 @@
 /**
- * #2067: after a Load restarts the server, the page reloads with the typed outcome in its URL
- * (`/play/?restarted=<ms>&restore=<outcome>`, services/restart.ts). This module reads it once.
+ * #2067: after a Load restarts the server, the page that sent the Load reloads (`/play/?restarted=<ms>`)
+ * with the typed outcome handed over in this tab's sessionStorage (services/restart.ts), never in the
+ * URL, so a link cannot start a game. This module reads and removes it once.
  *
  * - selected_applied: say "Game loaded." and start the game without a click, with the same two
  *   calls the Start Game button makes, once the socket is connected and the first snapshot has arrived.
@@ -10,13 +11,13 @@
  * map of the typed outcome (the server's words, owner D-UX-3), never from the server's text.
  * - anything else (recovery_required never reloads; reset and update reloads carry nothing): nothing.
  *
- * The parameters leave the address bar at once, so a manual refresh or a bookmark never starts a
- * game. At most once per page load; no timer, no retry.
+ * `restarted` leaves the address bar at once. At most once per page load; no timer, no retry.
  */
 import { useDialogs, useSession } from '../stores'
 import { useConnectionNotice } from '../stores/connectionNotices'
 import { needsOpenaiKey } from '../components/settings/keySetupText'
 import { emitC } from './socket'
+import { RELOAD_RESTORE_OUTCOME_KEY } from './restart'
 
 export const RESTORE_RELOAD_LINES: Readonly<Record<string, string>> = {
   selected_applied: 'Game loaded.',
@@ -26,13 +27,19 @@ export const RESTORE_RELOAD_LINES: Readonly<Record<string, string>> = {
 
 let consumed = false
 
-/** Remove `restore` and `restarted` from the URL and return the outcome that was there. */
+/**
+ * Take the one-shot outcome from sessionStorage (always removed) and strip `restarted` from the URL.
+ * The outcome counts only on a restart reload (`restarted` present); a URL parameter is never read.
+ */
 function takeRestoreOutcome(): string | null {
   if (typeof window === 'undefined') return null
+  let outcome: string | null = null
+  try {
+    outcome = window.sessionStorage.getItem(RELOAD_RESTORE_OUTCOME_KEY)
+    window.sessionStorage.removeItem(RELOAD_RESTORE_OUTCOME_KEY)
+  } catch { outcome = null }
   const url = new URL(window.location.href)
-  const outcome = url.searchParams.get('restore')
-  if (outcome === null && !url.searchParams.has('restarted')) return null
-  url.searchParams.delete('restore')
+  if (!url.searchParams.has('restarted')) return null
   url.searchParams.delete('restarted')
   window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash)
   return outcome

@@ -1,6 +1,11 @@
 const RESTART_BASELINE_KEY = 'neq_restart_server_instance'
 /** #2067: the typed outcome of this tab's Load, kept beside the baseline until the reload. */
 const RESTORE_OUTCOME_KEY = 'neq_restart_restore_outcome'
+/**
+ * #2067: the one-shot hand-over to the reloaded page (services/restoreStart.ts reads and removes it).
+ * The outcome never travels in the URL, so a typed or shared link cannot start a game.
+ */
+export const RELOAD_RESTORE_OUTCOME_KEY = 'neq_reload_restore_outcome'
 
 export function hasServerRestarted(baseline: string | null, current: string | null, observedUnavailable = false): boolean {
   if (!current) return false
@@ -21,7 +26,12 @@ async function readServerInstance(): Promise<string | null> {
 export async function prepareForServerRestart(isCurrent: () => boolean = () => true): Promise<string | null> {
   if (typeof window === 'undefined') return null
   const instance = await readServerInstance()
-  if (isCurrent()) window.sessionStorage.setItem(RESTART_BASELINE_KEY, instance ?? 'unavailable')
+  if (isCurrent()) {
+    window.sessionStorage.setItem(RESTART_BASELINE_KEY, instance ?? 'unavailable')
+    // #2067: an earlier Load's outcome (its poll timed out) must not ride on this action's reload; a Load
+    // sets its own again through reloadWhenServerReady after this call.
+    window.sessionStorage.removeItem(RESTORE_OUTCOME_KEY)
+  }
   return instance
 }
 
@@ -32,8 +42,9 @@ function navigateAfterRestart(path: string): void {
   const restoreOutcome = window.sessionStorage.getItem(RESTORE_OUTCOME_KEY)
   window.sessionStorage.removeItem(RESTART_BASELINE_KEY)
   window.sessionStorage.removeItem(RESTORE_OUTCOME_KEY)
-  const restore = restoreOutcome ? `&restore=${encodeURIComponent(restoreOutcome)}` : ''
-  window.location.replace(`${path}?restarted=${Date.now()}${restore}`)
+  if (restoreOutcome) window.sessionStorage.setItem(RELOAD_RESTORE_OUTCOME_KEY, restoreOutcome)
+  else window.sessionStorage.removeItem(RELOAD_RESTORE_OUTCOME_KEY)
+  window.location.replace(`${path}?restarted=${Date.now()}`)
 }
 
 export function cancelPendingRestart(): void {

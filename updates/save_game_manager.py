@@ -185,10 +185,14 @@ SAVE_DELETED_LINE = "Save deleted."
 
 
 def _restore_failure_text(exc: BaseException) -> str:
-    """Today's failure text, without a host path: a path is read by type (OSError.filename)."""
-    if isinstance(exc, OSError) and exc.filename:
-        error(f"FAILURE: restore error with a path: {type(exc).__name__}: {exc}", category="save_game")
-        return f"Failed to restore save game: {exc.strerror or type(exc).__name__}"
+    """Today's failure text, without a host path. Every OSError is treated alike, by type: shutil.Error
+    and SameFileError carry paths in their text with no filename set. The full text goes to the log."""
+    if isinstance(exc, OSError):
+        error(f"FAILURE: restore error (OSError): {type(exc).__name__}: {exc}", category="save_game")
+        # strerror is only the OS's own message when errno is set; shutil.Error puts free text there.
+        reason = (exc.strerror if isinstance(exc.errno, int) and isinstance(exc.strerror, str)
+                  and not isinstance(exc, shutil.Error) else None)
+        return f"Failed to restore save game: {reason or type(exc).__name__}"
     return f"Failed to restore save game: {exc}"
 
 
