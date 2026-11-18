@@ -1156,6 +1156,72 @@ BUILD_DROPPED_NOTE = (
     "party can seek it again once the current one is ready. Put this right in "
     "the story, never as a refusal from the game.]"
 )
+# #2065 (D-HOSTED-1): no adventure is built during play on a hosted world.
+# Model-facing only, never shown; words for the owner's approval. Each lives
+# only here. HOSTED_BUILD_DROPPED_NOTE follows a reply whose build request was
+# dropped (once per turn); HOSTED_CAMPAIGN_END_SENTENCE is the hosted
+# campaign-end note, followed by hosted_unfinished_line's engine line.
+HOSTED_BUILD_DROPPED_NOTE = (
+    "[No new adventure can be made on this world, so none was built and none "
+    "is being prepared. Do not offer or start one again. Keep the story where "
+    "it is; if the party wants another adventure, take them to an unfinished "
+    "installed one through the usual module switch, or tell the players they "
+    "can choose another adventure from the menu. Never present this as a "
+    "refusal from the game.]"
+)
+HOSTED_CAMPAIGN_END_SENTENCE = (
+    "This adventure is complete and no new adventure can be built on this "
+    "world: suggest the unfinished installed adventures named below and take "
+    "the party to one through the usual module switch, by the id given, if "
+    "they choose it; if none is named, tell the players they can choose "
+    "another adventure from the game's adventure menu."
+)
+HOSTED_UNFINISHED_LIMIT = 5
+# T065's campaign-end fact on a hosted world (the local text is in
+# validate_ai_response): no new adventures, no builder.
+HOSTED_CAMPAIGN_END_VALIDATOR_NOTE = (
+    "CAMPAIGN END: the current module's main plot is complete, and the DM "
+    "was asked this turn to suggest the unfinished installed adventures "
+    "(reached by the module switch), or the game's adventure menu. Places, "
+    "people and events named inside such a suggestion are hooks, not "
+    "established facts or references; do not reject them as nonexistent or "
+    "unsupported. Actions still need existing targets and their usual rules."
+)
+
+
+def hosted_unfinished_line(current_module, completion_summary, modules_root="modules"):
+    """#2065: "Unfinished installed adventures: <id> ("<title>"), ..." or
+    "...: none". The modules the registry has joined (the INSTALLED MODULE
+    REFERENCES test), not the current one, not complete by
+    check_all_modules_plot_completion; sorted as the references list them;
+    at most HOSTED_UNFINISHED_LIMIT. The id is what the module switch takes."""
+    from pathlib import Path
+    from core.generators.module_stitcher import ModuleStitcher
+    from utils.path_encounter_analyzer import _read_json_object
+
+    current = str(current_module or "").replace(" ", "_")
+    try:
+        registry = _read_json_object(Path(modules_root) / "world_registry.json")
+        modules = registry.get("modules")
+        if not isinstance(modules, dict):
+            modules = {}
+    except (OSError, ValueError):
+        registry, modules = {}, {}
+    names = []
+    for module in sorted(modules):
+        if module.replace(" ", "_") == current:
+            continue
+        if not ModuleStitcher.is_joined_registry_module(registry, module):
+            continue
+        summary = (completion_summary or {}).get(module)
+        if isinstance(summary, dict) and summary.get("is_complete"):
+            continue
+        names.append('%s ("%s")' % (module, module.replace("_", " ")))
+        if len(names) == HOSTED_UNFINISHED_LIMIT:
+            break
+    return "Unfinished installed adventures: %s" % (", ".join(names) or "none")
+
+
 # Model-facing only (#2052 J3c, owner-approved words, D-MODGEN-JOB-6): the
 # Load closer's note for a preparing note whose build left no live module
 # (a Load mid-build, a quit or a crash). A live module carrying the build's
@@ -4723,6 +4789,37 @@ PARTY_NPCS_REFUSAL = (
 )
 
 
+def _strip_hosted_builds(response_text):
+    """#2065 (D-HOSTED-1): a DM draft without its build requests, for a hosted
+    world. Returns (text, removed, remaining): every action named
+    createNewModule, and every one-key object keyed createNewModule (the
+    malformed shape), removed; remaining is the count of other actions. Text
+    that does not parse, or holds no build request, is returned unchanged.
+    Called only where in-play builds are not allowed, before any check, T065
+    or storage sees the draft."""
+    if not isinstance(response_text, str):
+        return response_text, 0, None
+    try:
+        parsed = json.loads(response_text, object_pairs_hook=_reject_duplicate_json_keys)
+    except (ValueError, TypeError, DuplicateJSONKeyError):
+        return response_text, 0, None
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("actions"), list):
+        return response_text, 0, None
+    name = action_handler.ACTION_CREATE_NEW_MODULE
+    kept = [
+        action for action in parsed["actions"]
+        if not (
+            isinstance(action, dict)
+            and (action.get("action") == name or (len(action) == 1 and name in action))
+        )
+    ]
+    removed = len(parsed["actions"]) - len(kept)
+    if not removed:
+        return response_text, 0, len(kept)
+    parsed["actions"] = kept
+    return json.dumps(parsed, ensure_ascii=True), removed, len(kept)
+
+
 def validate_json_structure(response_text, *, party_tracker_data=None):
     """
     Pre-validate JSON structure before sending to AI validator.
@@ -5811,9 +5908,11 @@ def validate_ai_response(
         # #602: the DM's note for this turn carried the campaign-end prompt,
         # which asks for new adventures. Without this fact the grounding rules
         # reject the hooks that prompt demands.
+        from utils.provider_gateway import in_play_builds_allowed
         validation_messages_to_send = list(validation_messages_to_send) + [{
             "role": "system",
-            "content": (
+            # #2065: a hosted world builds nothing in play.
+            "content": HOSTED_CAMPAIGN_END_VALIDATOR_NOTE if not in_play_builds_allowed() else (
                 "CAMPAIGN END: the current module's main plot is complete, and the DM "
                 "was asked this turn to suggest what comes next: rumors and hooks for "
                 "NEW adventures in distant lands that do not exist yet (createNewModule "
@@ -6052,9 +6151,9 @@ def load_validation_prompt():
         prompt_file = "prompts/validation/validation_prompt_compressed.txt"
     else:
         prompt_file = "prompts/validation/validation_prompt.txt"
-    
-    with open(prompt_file, "r", encoding="utf-8") as file:
-        return file.read().strip()
+
+    from utils.prompt_blocks import load_prompt
+    return load_prompt(prompt_file).strip()
 
 def load_json_file(file_path):
     """Load a JSON file, with error handling and encoding sanitization"""
@@ -7450,6 +7549,14 @@ def process_ai_response(
         return result
 
     json_content = extract_json_from_codeblock(response)
+    # #2065: on a hosted world a build request never reaches publication, by
+    # whatever path the reply came (the review strips it first; this is the
+    # same strip for any other path). The turn's note follows the reply.
+    from utils.provider_gateway import in_play_builds_allowed
+    hosted_build_dropped = bool((review_context or {}).get("dropped_hosted"))
+    if not in_play_builds_allowed():
+        json_content, hosted_removed, _remaining = _strip_hosted_builds(json_content)
+        hosted_build_dropped = hosted_build_dropped or bool(hosted_removed)
     structure_ok, normalized_content, structure_error = validate_json_structure(
         json_content, party_tracker_data=party_tracker_data,
     )
@@ -8229,6 +8336,10 @@ def process_ai_response(
                     narration_shown = bool(str(sanitized_narration or "").strip())
                     response = unheld_response
                 break
+            if isinstance(result, dict) and result.get("dropped_hosted"):
+                # #2065 backstop: the handler dropped a build on a hosted world
+                # (the review's strip normally removes it first); the note follows.
+                hosted_build_dropped = True
             if isinstance(result, dict) and result.get("dropped_for_build") is not None:
                 # #2039: a second build was dropped alone; the reply plays on.
                 # A held sole createNewModule is shown now, and stored whole.
@@ -8448,6 +8559,15 @@ def process_ai_response(
                 "role": "user",
                 "content": BUILD_DROPPED_NOTE,
                 "message_id": "module-build-dropped-%s" % dropped_for_build,
+                hm.MARKER_FIELD: hm.MODULE_BUILD,
+            })
+        if hosted_build_dropped:
+            # #2065: once, after the reply whose build request was dropped. Its
+            # id is no build note's (hm.BUILD_NOTE_IDS), so no build reads it.
+            conversation_history.append({
+                "role": "user",
+                "content": HOSTED_BUILD_DROPPED_NOTE,
+                "message_id": "hosted-build-dropped-%s" % uuid4().hex,
                 hm.MARKER_FIELD: hm.MODULE_BUILD,
             })
         save_conversation_history(conversation_history)
@@ -9554,8 +9674,8 @@ def _prepare_rebuilt_history_for_t067(
     same ones the turn loop runs every turn (idempotent on an assembled history).
     """
     if main_system_prompt_text is None:
-        with open("prompts/system_prompt.txt", "r", encoding="utf-8") as file:
-            main_system_prompt_text = file.read()
+        from utils.prompt_blocks import load_prompt
+        main_system_prompt_text = load_prompt("prompts/system_prompt.txt")
     party_tracker_data = load_json_file("party_tracker.json") or {}
     module_name = (party_tracker_data.get("module", "") or "").replace(" ", "_")
     path_manager = ModulePathManager(module_name)
@@ -10877,8 +10997,8 @@ def _main_game_loop(startup_authority, turn_authority):
     debug("INITIALIZATION: Validation prompt loaded for both paths", category="initialization")
     
     # Load main system prompt for both paths - also needed in main loop
-    with open("prompts/system_prompt.txt", "r", encoding="utf-8") as file:
-        main_system_prompt_text = file.read()
+    from utils.prompt_blocks import load_prompt
+    main_system_prompt_text = load_prompt("prompts/system_prompt.txt")
     debug("INITIALIZATION: Main system prompt loaded for both paths", category="initialization")
     
     if party_tracker_data and party_tracker_data["worldConditions"].get("activeCombatEncounter"):
@@ -11595,7 +11715,14 @@ def _main_game_loop(startup_authority, turn_authority):
                     debug(f"STATE_CHANGE: The current module {current_module} has completed its plot - suggesting what comes next", category="module_management")
                     # Load the module creation prompt
                     import os
-                    if os.path.exists("prompts/generators/module_creation_prompt.txt"):
+                    from utils.provider_gateway import in_play_builds_allowed
+                    if not in_play_builds_allowed():
+                        # #2065: a hosted world builds nothing in play.
+                        module_creation_prompt = "\n\n%s\n%s" % (
+                            HOSTED_CAMPAIGN_END_SENTENCE,
+                            hosted_unfinished_line(current_module, completion_summary),
+                        )
+                    elif os.path.exists("prompts/generators/module_creation_prompt.txt"):
                         with open("prompts/generators/module_creation_prompt.txt", "r", encoding="utf-8") as f:
                             module_creation_prompt = "\n\n" + f.read()
                         debug(f"FILE_OP: Module creation prompt loaded ({len(module_creation_prompt)} characters)", category="module_management")
@@ -11645,7 +11772,12 @@ def _main_game_loop(startup_authority, turn_authority):
             if not should_inject_creation_prompt:
                 dm_note += f" Open plot points located in this area: {plot_here_str} (see ADVENTURE PLOT STATUS)."
             dm_note += f"{module_creation_prompt}"
-            module_creation_prompt_in_note = bool(module_creation_prompt)
+            # #2065: the hosted note is no module creation prompt (no full-model
+            # routing, no MODULE_CREATION_FIELD).
+            from utils.provider_gateway import in_play_builds_allowed
+            module_creation_prompt_in_note = (
+                bool(module_creation_prompt) and in_play_builds_allowed()
+            )
         else:
             dm_note = "Dungeon Master Note: Remember to take actions if necessary such as updating the plot, time, character sheets, and location if changes occur."
 
@@ -12155,6 +12287,8 @@ def _dm_review_context(reviewed, accepted_history, player_input, npc_voice_batch
         "npc_voice_batch": npc_voice_batch,
         "party_snapshot": copy.deepcopy(party_snapshot),
         "campaign_end": campaign_end,
+        # #2065: present only when a build request was dropped on a hosted world.
+        **({"dropped_hosted": True} if reviewed.get("dropped_hosted") else {}),
     }
 
 
@@ -12170,6 +12304,11 @@ def _review_fresh_membership_candidate(
     if turn_roster is None:
         turn_roster = action_handler.TurnRoster.get(action_handler.turn_key(invocation_claim))
     normalized, record = _normalize_dm_candidate(response, party)
+    from utils.provider_gateway import in_play_builds_allowed
+    if not in_play_builds_allowed() and _strip_hosted_builds(response)[1]:
+        # #2065: a build request on a hosted world goes through the review,
+        # which removes it before any check (never the unreviewed bypass).
+        normalized, record = False, None
     if not require_full_review and normalized and not membership_proposals(
         record["candidate"], party, turn_roster=turn_roster,
     ):
@@ -12700,14 +12839,31 @@ def _clarify_destination_candidate(party_tracker_data, module_snapshot):
     return json.dumps({"narration": question, "actions": []})
 
 
-def _review_dm_candidate(
+def _review_dm_candidate(initial_candidate, **kwargs):
+    """The shared review (_review_dm_candidate_body). #2065: on a hosted world
+    an accepted result whose drafts had a build request removed carries
+    "dropped_hosted": True (the turn's note and the rows read it)."""
+    hosted_drops = {"removed": 0, "redrafted": False}
+    result = _review_dm_candidate_body(
+        initial_candidate, hosted_drops=hosted_drops, **kwargs
+    )
+    if (
+        hosted_drops["removed"]
+        and isinstance(result, dict)
+        and result.get("status") == "accepted"
+    ):
+        result["dropped_hosted"] = True
+    return result
+
+
+def _review_dm_candidate_body(
     initial_candidate, *, accepted_history, player_input, party,
     validation_prompt, npc_voice_batch, invocation_claim,
     live_turn_scope, path_manager, location_graph, detached_context=None,
     normalization=None, module_snapshot=None, installed_module_references="",
     atlas_stamps=None,
     review_feedback=None, correction_reason=None, campaign_end,
-    turn_roster=None,
+    turn_roster=None, hosted_drops=None,
 ):
     """One detached correction owner (#193 D-NPC-PARTY-2..4).
 
@@ -12859,6 +13015,27 @@ def _review_dm_candidate(
                 ):
                     planner_projection = None
             require_current()
+            if normalization is None and hosted_drops is not None:
+                from utils.provider_gateway import in_play_builds_allowed
+                if not in_play_builds_allowed():
+                    # #2065: every draft loses its build requests before any
+                    # check, T065 or storage sees it.
+                    ai_response_content, removed, remaining = _strip_hosted_builds(
+                        ai_response_content
+                    )
+                    hosted_drops["removed"] += removed
+                    if removed and remaining == 0 and not hosted_drops["redrafted"]:
+                        # D-AUTH-1: a draft whose only action was the build
+                        # narrates a departure to a place that will never
+                        # exist; it is not shown. One redraft with the note,
+                        # counted as a rejected draft (the D-COST-4 limit).
+                        hosted_drops["redrafted"] = True
+                        retry_stage = "hosted_build"
+                        rejected_candidate = ai_response_content
+                        retry_correction = HOSTED_BUILD_DROPPED_NOTE
+                        retry_count += 1
+                        review_retry_status(retry_count)
+                        continue
             if normalization is None:
                 normalized, normalization = _normalize_dm_candidate(
                     ai_response_content, party
