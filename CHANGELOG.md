@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A turn the AI has already approved is no longer cut off part way for using too many AI calls: what the Dungeon Master said always plays out. A fight stopped because the AI kept giving the same unusable answer now says so, instead of saying the turn used too many AI calls (#2069).
+
 - On a hosted game, when the AI service keeps failing to answer, the message now says it is a problem on the game's side and not anything you did, and no longer mentions your tokens (#2068).
 
 - Loading a game saved while a new adventure was being prepared now tells you plainly whether it was finished (#2052).

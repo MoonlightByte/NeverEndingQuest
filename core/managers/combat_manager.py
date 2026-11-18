@@ -950,9 +950,11 @@ def _end_repeated_t044_failure(failures, failure, invocation_claim, provider, mo
 
     ``failure`` is the kind and the correction the game sent back ("json",
     "review"), or the kind, class and message of an error ("error"). The
-    model saw the correction and failed the same way again: the opening ends
-    on the ceiling's path (#1342, as #1949 and #1954), the fight is kept and
-    no reply is applied. A stop that came meanwhile wins.
+    model saw the correction and failed the same way again: the opening ends,
+    the fight is kept and no reply is applied. A stop that came meanwhile wins.
+    #2069 (OWNER D-TURN-1a): the AI's own unusable answer ("json", "review")
+    ends as "repeated_failure" with its own line; a repeated error keeps the
+    ceiling's path and line (#1342, as #1949 and #1954).
     """
     if failure not in failures:
         failures.add(failure)
@@ -964,7 +966,7 @@ def _end_repeated_t044_failure(failures, failure, invocation_claim, provider, mo
         category="combat_events",
     )
     envelope = _limit_envelope(
-        "turn_call_ceiling",
+        "repeated_failure" if failure[0] in ("json", "review") else "turn_call_ceiling",
         "T044",
         {"_request_provider": provider, "model": model},
     )
@@ -977,8 +979,11 @@ def _end_repeated_t040_failure(failures, kind, exc, invocation_claim, provider, 
     """#1954: keep a T040 failure; one this review already had ends it.
 
     The review's request never changes between tries, so the same failure
-    again cannot heal: the review ends on the ceiling's path (#1342, as
-    #1949 for T096), and nothing is applied. A stop that came meanwhile wins.
+    again cannot heal: the review ends and nothing is applied. A stop that
+    came meanwhile wins. #2069 (OWNER D-TURN-1a): an unusable verdict
+    ("verdict") ends as "repeated_failure" with its own line; any other
+    repeated error ("provider") keeps the ceiling's path and line (#1342, as
+    #1949 for T096).
     """
     failure = (kind, type(exc), str(exc))
     if failure not in failures:
@@ -995,7 +1000,7 @@ def _end_repeated_t040_failure(failures, kind, exc, invocation_claim, provider, 
     raise LiveProviderCompletedError(
         "T040",
         _limit_envelope(
-            "turn_call_ceiling",
+            "repeated_failure" if kind == "verdict" else "turn_call_ceiling",
             "T040",
             {"_request_provider": provider, "model": model},
         ),
