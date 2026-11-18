@@ -174,6 +174,37 @@ class RestoreOutcome:
         return self.disposition == "selected_applied", self.message
 
 
+# #2067 (owner words D-UX-3): one player line per typed Load disposition. recovery_required keeps
+# today's text and flow; its message is built by _restore_failure_text where it is made.
+RESTORE_PLAYER_LINES = {
+    "selected_applied": "Game loaded.",
+    "previous_restored": "That save could not be loaded. Your game is as it was before.",
+    "unchanged": "That save could not be loaded. Nothing in your game was changed.",
+}
+SAVE_DELETED_LINE = "Save deleted."
+
+
+def _restore_failure_text(exc: BaseException) -> str:
+    """Today's failure text, without a host path. Every OSError is treated alike, by type: shutil.Error
+    and SameFileError carry paths in their text with no filename set. The full text goes to the log."""
+    if isinstance(exc, OSError):
+        error(f"FAILURE: restore error (OSError): {type(exc).__name__}: {exc}", category="save_game")
+        # strerror is only the OS's own message when errno is set; shutil.Error puts free text there.
+        reason = (exc.strerror if isinstance(exc.errno, int) and isinstance(exc.strerror, str)
+                  and not isinstance(exc, shutil.Error) else None)
+        return f"Failed to restore save game: {reason or type(exc).__name__}"
+    return f"Failed to restore save game: {exc}"
+
+
+def _with_player_words(outcome: "RestoreOutcome") -> "RestoreOutcome":
+    """Give a typed outcome its fixed player line; the detail it replaces goes to the log."""
+    line = RESTORE_PLAYER_LINES.get(outcome.disposition)
+    if line is None or outcome.message == line:
+        return outcome
+    info(f"RESTORE: {outcome.disposition}: {outcome.message}", category="save_game")
+    return RestoreOutcome(outcome.disposition, line)
+
+
 @contextmanager
 def _active_combat_snapshot_lease(timeout_seconds=30.0, wait_callback=None):
     """Keep a save/restore snapshot outside every combat commit window."""
@@ -1409,19 +1440,18 @@ class SaveGameManager:
                 return False, "Failed to finalize save metadata"
             unfinished = None
             
-            success_msg = f"Save game created successfully: {save_path}"
-            success_msg += f"\nCopied {len(copied_files)} files"
-            if save_mode == "essential":
-                success_msg += " (essential files only)"
-            else:
-                success_msg += " (full save)"
+            # #2067: the player's line names no path, count or mode; those go to the log.
+            mode_text = "essential files only" if save_mode == "essential" else "full save"
+            info(
+                f"SUCCESS: Save game created: {save_path}; {len(copied_files)} files ({mode_text})",
+                category="save_game",
+            )
+            success_msg = f'Game saved: "{description}".' if description else "Game saved."
             if cache_omitted:
                 success_msg += (
-                    "\nGame saved. The on-screen transcript could not be included; "
+                    "\nThe on-screen transcript could not be included; "
                     "Load will recover available saved narration."
                 )
-            
-            info(f"SUCCESS: {success_msg}", category="save_game")
             return True, success_msg
             
         except ReadOnlySaveStop:
@@ -1472,6 +1502,14 @@ class SaveGameManager:
         return self.restore_save_game_outcome(save_folder).as_legacy_tuple()
 
     def restore_save_game_outcome(
+        self, save_folder: str, *, previous_clean: bool = True
+    ) -> RestoreOutcome:
+        """Replace one save timeline; the outcome carries the player's line (#2067)."""
+        return _with_player_words(
+            self._restore_save_game_outcome_core(save_folder, previous_clean=previous_clean)
+        )
+
+    def _restore_save_game_outcome_core(
         self, save_folder: str, *, previous_clean: bool = True
     ) -> RestoreOutcome:
         """Replace one save timeline under the shared campaign boundary."""
@@ -1588,7 +1626,7 @@ class SaveGameManager:
             # cannot erase an already verified disk disposition.
             return restore_outcome or RestoreOutcome(
                 "unchanged" if boundary_clean else "recovery_required",
-                f"Failed to restore save game: {exc}",
+                _restore_failure_text(exc),
             )
         finally:
             # A restored roster numbers its own [slot] rows; the old turn's
@@ -1769,12 +1807,12 @@ class SaveGameManager:
             )
             self._merge_saved_compression_cache(save_path)
             
-            success_msg = f"Save game restored successfully from: {save_folder}"
-            success_msg += f"\nRestored {len(source_files)} files"
-            success_msg += f"\nBackup created: {backup_dir}"
-            
-            info(f"SUCCESS: {success_msg}", category="save_game")
-            return RestoreOutcome("selected_applied", success_msg)
+            info(
+                f"SUCCESS: Save game restored from: {save_folder}; "
+                f"{len(source_files)} files; backup {backup_dir}",
+                category="save_game",
+            )
+            return RestoreOutcome("selected_applied", RESTORE_PLAYER_LINES["selected_applied"])
             
         except Exception as e:
             disposition = (
@@ -1799,11 +1837,10 @@ class SaveGameManager:
                         exception=rollback_exc,
                         category="save_game",
                     )
-            error_msg = f"Failed to restore save game: {str(e)}"
-            error(f"FAILURE: {error_msg}", category="save_game")
+            error(f"FAILURE: Failed to restore save game: {e}", category="save_game")
             if disposition == "previous_restored":
-                error_msg += "; previous game state was restored and verified"
-            return RestoreOutcome(disposition, error_msg)
+                info("RESTORE: previous game state was restored and verified", category="save_game")
+            return RestoreOutcome(disposition, _restore_failure_text(e))
     
     def delete_save_game(self, save_folder: str) -> Tuple[bool, str]:
         """Delete a save game"""
@@ -1816,7 +1853,7 @@ class SaveGameManager:
                 save_path = self._resolve_save_target(save_folder)
                 shutil.rmtree(save_path)
             info(f"SUCCESS: Deleted save game: {save_path}", category="save_game")
-            return True, f"Save game deleted: {save_folder}"
+            return True, SAVE_DELETED_LINE
             
         except Exception as e:
             error_msg = f"Failed to delete save game: {str(e)}"

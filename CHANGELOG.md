@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Once the Dungeon Master's reply has been approved, the turn now always plays out and is no longer cut off part way for using too many AI calls (#2069).
 
 - A fight that stops because the AI kept giving the same unusable answer now says so and tells you the fight is saved (#2069).
+- On a hosted game, the first screen no longer asks you to open Settings or set an API key (#2067).
+
+- After you load a saved game successfully, it now starts by itself instead of waiting for Start Game; if the save could not be loaded, the page says so (#2067).
+
+- On a hosted game, the Debug panel is no longer shown (#2067).
+
+- Saving, loading and deleting a save now say "Game saved.", "Game loaded." and "Save deleted." without file paths or file counts (#2067).
+
+- While a new adventure is being prepared during play, a progress line shows it and you can keep playing; if it fails, a short line says so until you close it (#2067).
+
+- The header no longer shows the place's internal ids (#2067).
+
+- Before a game has started, the character panel says no hero has been made yet instead of an error (#2067).
 
 - On a hosted game, when the AI service keeps failing to answer, the message now says it is a problem on the game's side and not anything you did, and no longer mentions your tokens (#2068).
 

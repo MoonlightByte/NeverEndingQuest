@@ -2000,7 +2000,7 @@ def apply_current_transition_action(operation_id, action_index):
         return "committed"
 
     if family == "deleteSave":
-        from updates.save_game_manager import SaveGameManager
+        from updates.save_game_manager import SAVE_DELETED_LINE, SaveGameManager
 
         outcome = SaveGameManager().apply_staged_delete(receipt)
         if outcome == "blocked_conflict":
@@ -2008,10 +2008,9 @@ def apply_current_transition_action(operation_id, action_index):
             checkpoint["phase"] = "blocked_conflict"
             _write_location_transition_checkpoint(checkpoint)
             return outcome
-        _publish_stable_transition_message(
-            receipt["message_id"],
-            "Save game deleted: %s" % receipt["save_folder"],
-        )
+        # #2067: the folder goes to the log; the story line names none.
+        info("SUCCESS: Deleted save game: %s" % receipt["save_folder"], category="save_game")
+        _publish_stable_transition_message(receipt["message_id"], SAVE_DELETED_LINE)
         record["status"] = "committed"
         deferred["cursor"] = action_index + 1
         deferred["receipts"].append(
