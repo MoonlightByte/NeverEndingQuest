@@ -1193,10 +1193,15 @@ def hosted_unfinished_line(current_module, completion_summary, modules_root="mod
     """#2065: "Unfinished installed adventures: <id> ("<title>"), ..." or
     "...: none". The modules the registry has joined (the INSTALLED MODULE
     REFERENCES test), not the current one, not complete by
-    check_all_modules_plot_completion; sorted as the references list them;
-    at most HOSTED_UNFINISHED_LIMIT. The id is what the module switch takes."""
+    check_all_modules_plot_completion; sorted alphabetically by registry id
+    (sorted(), the order format_installed_module_references lists them in);
+    at most HOSTED_UNFINISHED_LIMIT. The id is what the module switch takes;
+    the title is module_display_title's (the declared name, else the id with
+    spaces). completion_summary is keyed by the module's folder, so each id is
+    looked up in that form."""
     from pathlib import Path
     from core.generators.module_stitcher import ModuleStitcher
+    from utils.module_title import module_display_title
     from utils.path_encounter_analyzer import _read_json_object
 
     current = str(current_module or "").replace(" ", "_")
@@ -1213,10 +1218,10 @@ def hosted_unfinished_line(current_module, completion_summary, modules_root="mod
             continue
         if not ModuleStitcher.is_joined_registry_module(registry, module):
             continue
-        summary = (completion_summary or {}).get(module)
+        summary = (completion_summary or {}).get(module.replace(" ", "_"))
         if isinstance(summary, dict) and summary.get("is_complete"):
             continue
-        names.append('%s ("%s")' % (module, module.replace("_", " ")))
+        names.append('%s ("%s")' % (module, module_display_title(module, modules_root)))
         if len(names) == HOSTED_UNFINISHED_LIMIT:
             break
     return "Unfinished installed adventures: %s" % (", ".join(names) or "none")

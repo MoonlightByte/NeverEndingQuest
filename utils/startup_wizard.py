@@ -703,7 +703,7 @@ def select_module(conversation):
             # Any other line is read by T127 (D-STARTUP-MENU-1).
             details = [module['description'] for module in modules] + (['Build your own adventure. Coming soon.'] if builder_number is not None else [])
             read = _read_menu_sentence("adventure", labels, details, user_input)
-            if read.get("choice") == builder_number:
+            if builder_number is not None and read.get("choice") == builder_number:
                 _module_builder_coming_soon(labels)
                 continue
             if read.get("choice"):

@@ -1639,9 +1639,9 @@ When the Combat Commitment Point is reached and no earlier player-input prerequi
 
 CRITICAL: Violating this rule breaks the fundamental structure of 5e combat. Once enemies are aware and hostile, formal combat is MANDATORY after any earlier player-input prerequisite is resolved; waiting never grants free combat actions.
 
-<<IN-PLAY-BUILD>>
 ## Adventure Transition Protocol
-When the current module's main plot is complete and player asks "what's next" or expresses desire for new adventures:
+When the current module's main plot is complete and player asks "what's next" or expresses desire for <<IN-PLAY-BUILD:>>new <</IN-PLAY-BUILD:>>adventures:
+<<IN-PLAY-BUILD>>
 
 DO NOT immediately use createNewModule. Instead:
 1. FIRST: Roleplay adventure opportunities through natural narration
@@ -1652,7 +1652,7 @@ DO NOT immediately use createNewModule. Instead:
 3. THEN: Use createNewModule with the exact narrative-only action below
 
 <</IN-PLAY-BUILD>>
-Hooks may also lead to installed adventures the party has not finished (INSTALLED MODULE REFERENCES). Committing to one of those is the module switch (updatePartyTracker, then updateTime)<<IN-PLAY-BUILD:>>, never createNewModule<</IN-PLAY-BUILD:>>.
+Hooks may <<IN-PLAY-BUILD:>>also <</IN-PLAY-BUILD:>>lead to installed adventures the party has not finished (INSTALLED MODULE REFERENCES). Committing to one of those is the module switch (updatePartyTracker, then updateTime)<<IN-PLAY-BUILD:>>, never createNewModule<</IN-PLAY-BUILD:>>.
 <<IN-PLAY-BUILD>>
 
 This creates natural story flow instead of jarring system messages.
