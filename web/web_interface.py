@@ -3697,7 +3697,7 @@ def handle_action(data, _operation_id=None):
             else:
                 success, message = False, "Choose an existing save from the save list"
             if success:
-                emit('system_message', {'content': f"Save deleted: {message}"})
+                emit('system_message', {'content': message})
             else:
                 emit('error', {'message': f"Delete failed: {message}"})
         except Exception as e:

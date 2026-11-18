@@ -2,10 +2,12 @@
  * #2067: after a Load restarts the server, the page reloads with the typed outcome in its URL
  * (`/play/?restarted=<ms>&restore=<outcome>`, services/restart.ts). This module reads it once.
  *
- * - selected_applied: start the game without a click, with the same two calls the Start Game
- *   button makes, once the socket is connected and the first snapshot has arrived.
- * - previous_restored / unchanged: the chosen save could not be loaded; its notice was lost with
- *   the reload, so show the fixed line for that outcome and leave the game to the player.
+ * - selected_applied: say "Game loaded." and start the game without a click, with the same two
+ *   calls the Start Game button makes, once the socket is connected and the first snapshot has arrived.
+ * - previous_restored / unchanged: the chosen save could not be loaded; show the fixed line for that
+ *   outcome and leave the game to the player.
+ * The Load's own notice (restore_complete) is lost with the reload, so the line comes from this fixed
+ * map of the typed outcome (the server's words, owner D-UX-3), never from the server's text.
  * - anything else (recovery_required never reloads; reset and update reloads carry nothing): nothing.
  *
  * The parameters leave the address bar at once, so a manual refresh or a bookmark never starts a
@@ -16,7 +18,8 @@ import { useConnectionNotice } from '../stores/connectionNotices'
 import { needsOpenaiKey } from '../components/settings/keySetupText'
 import { emitC } from './socket'
 
-export const RESTORE_FAILED_LINES: Readonly<Record<string, string>> = {
+export const RESTORE_RELOAD_LINES: Readonly<Record<string, string>> = {
+  selected_applied: 'Game loaded.',
   previous_restored: 'That save could not be loaded. Your game is as it was before.',
   unchanged: 'That save could not be loaded. Nothing in your game was changed.',
 }
@@ -54,11 +57,9 @@ export function startAfterRestoreReload(): void {
   consumed = true
   const outcome = takeRestoreOutcome()
   if (outcome === null) return
-  const failedLine = RESTORE_FAILED_LINES[outcome]
-  if (failedLine) {
-    useConnectionNotice.getState().show(failedLine)
-    return
-  }
+  const line = RESTORE_RELOAD_LINES[outcome]
+  if (!line) return
+  useConnectionNotice.getState().show(line)
   if (outcome !== 'selected_applied') return
   let decided = false
   const decide = () => {
