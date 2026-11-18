@@ -40,6 +40,11 @@ export interface UpdateState {
   complete: string | null
 }
 
+const CLOSED_BUILD_LINE_KEY = 'neq_build_line_closed'
+function readClosedBuildLine(): string | null {
+  try { return typeof window === 'undefined' ? null : window.sessionStorage.getItem(CLOSED_BUILD_LINE_KEY) } catch { return null }
+}
+
 export interface ModuleOperationState {
   buildId: string | null
   stage: number
@@ -80,6 +85,8 @@ export interface DialogsState {
   keyGate: 'start' | 'load' | null
   update: UpdateState
   moduleOperation: ModuleOperationState | null
+  /** #2067: the failed build whose line the player closed (also kept in sessionStorage). */
+  dismissedBuildId: string | null
 
   openDialog: (name: Exclude<DialogName, null>) => void
   closeDialog: () => void
@@ -105,6 +112,7 @@ export interface DialogsState {
   updateError: (payload: ServerEvents['update_error']) => void
   updateComplete: (payload: ServerEvents['update_complete']) => void
   moduleProgress: (payload: ServerEvents['module_creation_progress']) => void
+  dismissModuleOperation: (buildId: string | null) => void
   applyOperationSnapshot: (payload: NonNullable<ServerEvents['ui_state_snapshot']['operations']>) => void
 }
 
@@ -139,6 +147,7 @@ export const useDialogs = create<DialogsState>((set) => ({
   keyGate: null,
   update: { running: false, log: [], error: null, complete: null },
   moduleOperation: null,
+  dismissedBuildId: readClosedBuildLine(),
 
   openDialog: (name) => set({ open: name }),
   closeDialog: () => set({ open: null }),
@@ -264,6 +273,11 @@ export const useDialogs = create<DialogsState>((set) => ({
       error: payload.error ?? null,
     } }
   }),
+  dismissModuleOperation: (buildId) => {
+    if (!buildId) return
+    try { window.sessionStorage.setItem(CLOSED_BUILD_LINE_KEY, buildId) } catch { /* storage may be blocked */ }
+    set({ dismissedBuildId: buildId })
+  },
   applyOperationSnapshot: (operations) => set((s) => {
     const next: Partial<DialogsState> = {}
     if (operations.restore && !operations.restore.pending) next.actionResult = { kind: 'restore', ...operations.restore }

@@ -110,7 +110,7 @@ export function HeaderBar() {
     ? `${location.currentLocation} (${location.currentArea})`
     : ''
   const locationDetails = location
-    ? `${location.time ? `${location.day} ${location.month} ${location.year} - ${location.time}` : 'Time Unknown'} ${location.currentLocationId ? `[${location.currentAreaId}:${location.currentLocationId}]` : ''}`
+    ? (location.time ? `${location.day} ${location.month} ${location.year} - ${location.time}` : 'Time Unknown')
     : ''
 
   return (
@@ -121,7 +121,7 @@ export function HeaderBar() {
 
       <div className="neq-header-location min-w-0 flex-1 text-center">
         {location ? (
-          <><div className="neq-location-name truncate font-log text-sm font-bold text-accent">{locationName}</div><div className="neq-location-details truncate font-log text-xs text-secondary">{locationDetails}</div></>
+          <><div className="neq-location-name truncate font-log text-sm font-bold text-accent">{locationName}</div><div className="neq-location-details truncate font-log text-xs text-secondary" title={location.currentLocationId ? `${location.currentAreaId}:${location.currentLocationId}` : undefined}>{locationDetails}</div></>
         ) : locationError ? (
           <div className="neq-location-name truncate font-log text-sm font-bold">Location Unknown</div>
         ) : (

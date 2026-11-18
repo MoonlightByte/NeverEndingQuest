@@ -40,6 +40,7 @@ import { EmberIcon } from './EmberIcon'
 import { useEmberViewport } from './useEmberViewport'
 import { invalidateMediaCaches } from '../party/media'
 import { resetNarrationAudio } from '../log/TtsButton'
+import { startAfterRestoreReload } from '../../services/restoreStart'
 import '../../theme/ember-desktop.css'
 import '../../theme/tavern-desktop-review.css'
 
@@ -51,7 +52,9 @@ function FirstRunBanner() {
   useEffect(() => { if (sessionMode !== 'disconnected') setDismissed(true) }, [sessionMode])
   // Legacy only exposes this first-run guidance before a game starts. A
   // resumed game must not gain a React-only row that shifts the entire log.
-  if (dismissed || sessionMode !== 'disconnected') return null
+  // #2067: the banner points at Settings and API keys, which a hosted page does not offer.
+  const isLocalEdition = (import.meta.env.VITE_EDITION ?? 'local') === 'local'
+  if (!isLocalEdition || dismissed || sessionMode !== 'disconnected') return null
   return <div className="ember-welcome-banner m-2 flex items-center gap-3 rounded-md border border-[#4a6da7] bg-[#2b3a55] px-3.5 py-2.5 text-[13px] leading-snug text-[#dde6f5]"><span className="flex-1">Welcome to NeverEndingQuest! Before you start, open <strong>Settings</strong> (gear icon, top right) to choose your AI provider. Want local/zero-cost or a custom server? Pick <strong>Local / Custom Server</strong>, paste your endpoint URL, then click <strong>Test Connection</strong>. You can also set your OpenAI API key there -- no file editing needed.</span><button type="button" onClick={() => { localStorage.setItem('neq_bannerDismissed', 'true'); setDismissed(true) }} className="rounded bg-[#4a6da7] px-3 py-1 text-xs text-white">Dismiss</button></div>
 }
 
@@ -102,6 +105,7 @@ function CenterColumn({ focused, onToggleFocus }: { focused: boolean; onToggleFo
       <div className="min-h-0 flex-1">
         <GameLog />
       </div>
+      <ModuleProgressOverlay />
       {ember && <div className="ember-dice-dock"><DiceStrip state={dice} onInsertRoll={insertRoll} /><div id="neq-dice-results-host" /></div>}
       <InputBar rollInsertion={rollInsertion} />
     </div>
@@ -111,6 +115,7 @@ function CenterColumn({ focused, onToggleFocus }: { focused: boolean; onToggleFo
 /** App shell: CSS grid of header / center column / right panel rail. */
 export function AppShell() {
   const [focused, setFocused] = useState(false)
+  useEffect(() => startAfterRestoreReload(), []) // #2067: after a Load's reload
   const ember = useEmberViewport()
   useEffect(() => { if (!ember) setFocused(false) }, [ember])
   const connected = useSession(state => state.connected)
@@ -182,7 +187,6 @@ export function AppShell() {
       <UpdateDialog />
       {/* Compression banner drives itself from compression_* events. */}
       <CompressionOverlay />
-      <ModuleProgressOverlay />
       <ExitOverlay />
     </EmberPresentation>
   )

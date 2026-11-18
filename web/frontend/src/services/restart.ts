@@ -23,9 +23,13 @@ export async function prepareForServerRestart(isCurrent: () => boolean = () => t
   return instance
 }
 
-function navigateAfterRestart(path: string): void {
+/** #2067: the typed outcome of a Load, carried to the reloaded page (services/restoreStart.ts). */
+export type RestoreReloadOutcome = 'selected_applied' | 'previous_restored' | 'unchanged' | 'recovery_required'
+
+function navigateAfterRestart(path: string, restoreOutcome?: RestoreReloadOutcome): void {
   window.sessionStorage.removeItem(RESTART_BASELINE_KEY)
-  window.location.replace(`${path}?restarted=${Date.now()}`)
+  const restore = restoreOutcome ? `&restore=${encodeURIComponent(restoreOutcome)}` : ''
+  window.location.replace(`${path}?restarted=${Date.now()}${restore}`)
 }
 
 export function cancelPendingRestart(): void {
@@ -47,8 +51,11 @@ export async function reloadIfRestartPending(path = '/play/'): Promise<boolean> 
   return false
 }
 
-/** Poll after restore/reset/update and bound the wait instead of hanging forever. */
-export async function reloadWhenServerReady(path = '/play/', intervalMs = 1000, timeoutMs = 120_000): Promise<void> {
+/**
+ * Poll after restore/reset/update and bound the wait instead of hanging forever.
+ * Only a Load passes restoreOutcome; reset and update reloads keep the plain URL.
+ */
+export async function reloadWhenServerReady(path = '/play/', intervalMs = 1000, timeoutMs = 120_000, restoreOutcome?: RestoreReloadOutcome): Promise<void> {
   if (typeof window === 'undefined') return
   const baseline = window.sessionStorage.getItem(RESTART_BASELINE_KEY)
   const deadline = Date.now() + timeoutMs
@@ -57,7 +64,7 @@ export async function reloadWhenServerReady(path = '/play/', intervalMs = 1000, 
     const current = await readServerInstance()
     if (!current) observedUnavailable = true
     else if (hasServerRestarted(baseline, current, observedUnavailable)) {
-      navigateAfterRestart(path)
+      navigateAfterRestart(path, restoreOutcome)
       return
     }
     await new Promise<void>((resolve) => window.setTimeout(resolve, intervalMs))

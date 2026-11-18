@@ -23,6 +23,9 @@ const TABS: ReadonlyArray<{ id: SheetTab; label: string }> = [
   { id: 'npcs', label: 'NPCs' },
 ]
 
+// #2067: the Debug view is for a player's own machine; a hosted page build does not show it.
+const isLocalEdition = (import.meta.env.VITE_EDITION ?? 'local') === 'local'
+
 export function RightPanelTabs() {
   const ember = useEmberDesktop()
   const [active, setActive] = useState<SheetTab>('character')
@@ -69,7 +72,7 @@ export function RightPanelTabs() {
           )
         })}
         {!ember && <><button type="button" onClick={() => useDialogs.getState().openDialog('journal')} className="neq-tab-button flex-1 border-b-2 border-r border-card px-1 py-2 font-chrome text-xs font-bold text-secondary hover:text-primary">Journal</button>
-        <button type="button" role="tab" aria-selected={active === 'debug'} onClick={() => setActive('debug')} className={'neq-tab-button flex-1 border-b-2 border-r border-card px-1 py-2 font-chrome text-xs font-bold ' + (active === 'debug' ? 'border-accent bg-panel text-accent' : 'border-card text-secondary hover:text-primary')}>Debug</button>
+        {isLocalEdition && <button type="button" role="tab" aria-selected={active === 'debug'} onClick={() => setActive('debug')} className={'neq-tab-button flex-1 border-b-2 border-r border-card px-1 py-2 font-chrome text-xs font-bold ' + (active === 'debug' ? 'border-accent bg-panel text-accent' : 'border-card text-secondary hover:text-primary')}>Debug</button>}
         <button type="button" role="tab" aria-selected={active === 'map'} onClick={() => setActive('map')} className={'neq-tab-button flex-1 border-b-2 px-1 py-2 font-chrome text-xs font-bold ' + (active === 'map' ? 'border-accent bg-panel text-accent' : 'border-card text-secondary hover:text-primary')}>Map</button>
         </>}
       </div>
@@ -78,11 +81,11 @@ export function RightPanelTabs() {
         {active === 'inventory' && <InventoryTab />}
         {active === 'spells' && <SpellsTab />}
         {active === 'npcs' && <NpcsTab />}
-        {active === 'debug' && <DebugTab />}
+        {isLocalEdition && active === 'debug' && <DebugTab />}
         {active === 'map' && <MapTab />}
       </div>
       {ember && <div className="ember-sheet-footer">
-        <button type="button" aria-pressed={active === 'debug'} onClick={() => setActive('debug')}><EmberIcon name="bug" />Debug</button>
+        {isLocalEdition && <button type="button" aria-pressed={active === 'debug'} onClick={() => setActive('debug')}><EmberIcon name="bug" />Debug</button>}
         <button type="button" onClick={() => useDialogs.getState().openDialog('journal')}><EmberIcon name="book" />Journal</button>
       </div>}
     </div>
