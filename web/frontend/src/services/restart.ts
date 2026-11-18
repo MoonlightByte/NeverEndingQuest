@@ -1,4 +1,6 @@
 const RESTART_BASELINE_KEY = 'neq_restart_server_instance'
+/** #2067: the typed outcome of this tab's Load, kept beside the baseline until the reload. */
+const RESTORE_OUTCOME_KEY = 'neq_restart_restore_outcome'
 
 export function hasServerRestarted(baseline: string | null, current: string | null, observedUnavailable = false): boolean {
   if (!current) return false
@@ -26,14 +28,18 @@ export async function prepareForServerRestart(isCurrent: () => boolean = () => t
 /** #2067: the typed outcome of a Load, carried to the reloaded page (services/restoreStart.ts). */
 export type RestoreReloadOutcome = 'selected_applied' | 'previous_restored' | 'unchanged' | 'recovery_required'
 
-function navigateAfterRestart(path: string, restoreOutcome?: RestoreReloadOutcome): void {
+function navigateAfterRestart(path: string): void {
+  const restoreOutcome = window.sessionStorage.getItem(RESTORE_OUTCOME_KEY)
   window.sessionStorage.removeItem(RESTART_BASELINE_KEY)
+  window.sessionStorage.removeItem(RESTORE_OUTCOME_KEY)
   const restore = restoreOutcome ? `&restore=${encodeURIComponent(restoreOutcome)}` : ''
   window.location.replace(`${path}?restarted=${Date.now()}${restore}`)
 }
 
 export function cancelPendingRestart(): void {
-  if (typeof window !== 'undefined') window.sessionStorage.removeItem(RESTART_BASELINE_KEY)
+  if (typeof window === 'undefined') return
+  window.sessionStorage.removeItem(RESTART_BASELINE_KEY)
+  window.sessionStorage.removeItem(RESTORE_OUTCOME_KEY)
 }
 
 /** A missed completion packet still converges when Socket.IO reconnects. */
@@ -59,15 +65,17 @@ export async function reloadIfRestartPending(path = '/play/'): Promise<boolean> 
 export async function reloadWhenServerReady(path = '/play/', intervalMs = 1000, timeoutMs = 120_000, restoreOutcome?: RestoreReloadOutcome): Promise<void> {
   if (typeof window === 'undefined') return
   const baseline = window.sessionStorage.getItem(RESTART_BASELINE_KEY)
+  // Only the page that sent the Load holds a baseline (prepareForServerRestart, this tab's sessionStorage);
+  // another open page reloads without the outcome, so one Load sends one start. Kept in storage, so the
+  // Socket.IO reconnect path (reloadIfRestartPending) carries it too when it reloads first.
+  if (baseline && restoreOutcome) window.sessionStorage.setItem(RESTORE_OUTCOME_KEY, restoreOutcome)
   const deadline = Date.now() + timeoutMs
   let observedUnavailable = false
   while (Date.now() < deadline) {
     const current = await readServerInstance()
     if (!current) observedUnavailable = true
     else if (hasServerRestarted(baseline, current, observedUnavailable)) {
-      // Only the page that sent the Load holds a baseline (prepareForServerRestart, this tab's
-      // sessionStorage); another open page reloads without the outcome, so one Load sends one start.
-      navigateAfterRestart(path, baseline ? restoreOutcome : undefined)
+      navigateAfterRestart(path)
       return
     }
     await new Promise<void>((resolve) => window.setTimeout(resolve, intervalMs))
