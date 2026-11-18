@@ -187,7 +187,7 @@ SAVE_DELETED_LINE = "Save deleted."
 def _restore_failure_text(exc: BaseException) -> str:
     """Today's failure text, without a host path: a path is read by type (OSError.filename)."""
     if isinstance(exc, OSError) and exc.filename:
-        error(f"FAILURE: restore error with a path: {exc!r}", category="save_game")
+        error(f"FAILURE: restore error with a path: {type(exc).__name__}: {exc}", category="save_game")
         return f"Failed to restore save game: {exc.strerror or type(exc).__name__}"
     return f"Failed to restore save game: {exc}"
 
