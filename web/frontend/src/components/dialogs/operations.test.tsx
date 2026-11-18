@@ -90,8 +90,10 @@ describe('terminal operation feedback', () => {
       error: 'disk error',
     })
     const { container } = render(<ModuleProgressOverlay />)
-    expect(screen.getByText('Publication Failed').style.color).toBe('rgb(255, 138, 128)')
-    expect(screen.getByText('Could not publish the next module.').parentElement?.style.color).toBe('rgb(255, 138, 128)')
-    expect((container.querySelector('.neq-module-progress-bar-parity') as HTMLElement).style.background).toContain('rgb(183, 28, 28)')
+    // #2067: a non-blocking line in the story column; the reason stays in the story's error card.
+    expect(screen.getByText('The new adventure could not be prepared.').style.color).toBe('rgb(255, 138, 128)')
+    expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy()
+    expect(screen.queryByText('Could not publish the next module.')).toBeNull()
+    expect(container.querySelector('[aria-modal="true"]')).toBeNull()
   })
 })
