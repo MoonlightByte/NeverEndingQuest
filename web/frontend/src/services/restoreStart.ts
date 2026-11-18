@@ -59,14 +59,22 @@ export function startAfterRestoreReload(): void {
   if (outcome === null) return
   const line = RESTORE_RELOAD_LINES[outcome]
   if (!line) return
-  useConnectionNotice.getState().show(line)
-  if (outcome !== 'selected_applied') return
   let decided = false
   const decide = () => {
     if (decided) return true
+    // The socket's connect handler clears notices (services/socket.ts), so the line waits for the
+    // connect and the first snapshot, like the start.
+    const s = useSession.getState()
+    if (!s.connected || s.serverInstanceId === null) return false
+    if (outcome !== 'selected_applied') {
+      decided = true
+      useConnectionNotice.getState().show(line)
+      return true
+    }
     const ready = readyToStart()
     if (ready === null) return false
     decided = true // before startRequested, whose store update re-enters the subscription
+    useConnectionNotice.getState().show(line)
     if (ready) {
       useSession.getState().startRequested()
       emitC('start_game', undefined)
