@@ -146,6 +146,15 @@ _HOSTED_ACCOUNT_REFUSAL = {
     "fix": "This is on the host's side, not yours: let the host know, or wait a few minutes",
 }
 _HOSTED_ACCOUNT_CATEGORIES = ("authentication_failed", "insufficient_quota", "model_access_denied")
+# #2068: the game's retry bound on a hosted game. The host's service failed
+# and the tokens are the host's, so the line names neither the provider nor
+# "your tokens" (plan-2068-r1 Q-2068-1, words with the owner).
+_HOSTED_BOUND_REFUSALS = {
+    "reissue_limit": {
+        "reason": "The game's AI service kept failing to answer, so the game stopped retrying",
+        "fix": "This is on the host's side, not yours: wait a few minutes",
+    },
+}
 
 _ACCOUNT_REFUSAL_MOMENTS = {
     # The turn loop's DM call: nothing from the turn has run yet.
@@ -175,6 +184,8 @@ def account_refusal_message(category, provider, moment):
         return None
     if category in _HOSTED_ACCOUNT_CATEGORIES and _through_gateway(provider):
         entry = _HOSTED_ACCOUNT_REFUSAL
+    elif category in _HOSTED_BOUND_REFUSALS and _through_gateway(provider):
+        entry = _HOSTED_BOUND_REFUSALS[category]
     else:
         entry = entry.get("overrides", {}).get(str(provider or "").lower(), entry)
     reason = entry["reason"] % {"name": provider_display_name(provider)}

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- On a hosted game, the message after too many retries no longer names the AI provider or mentions your tokens (#2068).
+
 - Loading a game saved while a new adventure was being prepared now tells you plainly whether it was finished (#2052).
 
 - If the AI service refuses a turn, the game now tries once more quietly, then tells you plainly and lets you reword it (#2046).
