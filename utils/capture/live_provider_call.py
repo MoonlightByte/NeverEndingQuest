@@ -210,7 +210,7 @@ _BILLED_PHASES = frozenset({"acknowledged", "working", "receiving", "done"})
 _TURN_GENERATION_CEILING = 24
 # #2069 (OWNER D-TURN-1a): once a reviewed reply is being applied, the turn
 # finishes. Its required calls may pass the ceiling up to this hard bound, a
-# runaway guard; the player sees nothing extra. Advisories keep the ceiling.
+# runaway guard; the player is shown nothing new. Advisories keep the ceiling.
 _ACCEPTED_HARD_BOUND = 48
 # #1587 (#204): advisory calls leave a budget's last generations to the required
 # calls after them: a first try plus the billed reissues one call may spend.
