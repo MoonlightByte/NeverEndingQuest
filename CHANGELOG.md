@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- On a hosted game, when the AI service keeps failing to answer, the message now says it is a problem on the game's side and not anything you did, and no longer mentions your tokens (#2068).
+
 - Loading a game saved while a new adventure was being prepared now tells you plainly whether it was finished (#2052).
 
 - If the AI service refuses a turn, the game now tries once more quietly, then tells you plainly and lets you reword it (#2046).
