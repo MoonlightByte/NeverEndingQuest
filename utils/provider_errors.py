@@ -146,15 +146,25 @@ _HOSTED_ACCOUNT_REFUSAL = {
     "fix": "This is on the host's side, not yours: let the host know, or wait a few minutes",
 }
 _HOSTED_ACCOUNT_CATEGORIES = ("authentication_failed", "insufficient_quota", "model_access_denied")
-# #2068: the game's retry bound on a hosted game. The host's service failed
-# and the tokens are the host's, so the line names neither the provider nor
-# "your tokens" (plan-2068-r1 Q-2068-1, words with the owner).
-_HOSTED_BOUND_REFUSALS = {
-    "reissue_limit": {
-        "reason": "The game's AI service kept failing to answer, so the game stopped retrying",
-        "fix": "This is on the host's side, not yours: wait a few minutes",
-    },
+# #2068 (OWNER D-UX-2): the game's retry bound on a hosted game, one full
+# text per moment (the reason/fix template cannot carry this shape). The
+# provider's name comes from provider_display_name in the brackets, left out
+# for an unknown provider; never "your tokens" (the tokens are the host's).
+_HOSTED_REISSUE_LIMIT_OPENING = "The game's AI service%s isn't answering right now, so "
+_HOSTED_REISSUE_LIMIT_LINES = {
+    "turn": "that turn didn't go through. This is a problem on the game's side, not anything you did. Nothing in your game was changed. You don't need to do anything except wait a few minutes, then send your action again. If it still doesn't work, come back a little later. Your adventure will be right where you left it.",
+    "after_narration": "that action could not be completed, and no further actions from that reply were applied. This is a problem on the game's side, not anything you did. You don't need to do anything except wait a few minutes, then continue. If it still doesn't work, come back a little later. Your adventure will be right where you left it.",
+    "welcome": "the DM couldn't open the scene. This is a problem on the game's side, not anything you did. Nothing in your game was changed. You don't need to do anything except wait a few minutes, then tell the DM what you do next. If it still doesn't work, come back a little later. Your adventure will be right where you left it.",
+    "followup": "the DM couldn't narrate what comes next. This is a problem on the game's side, not anything you did. What already happened in your game is kept. You don't need to do anything except wait a few minutes, then continue. If it still doesn't work, come back a little later. Your adventure will be right where you left it.",
+    "combat": "the fight couldn't go on. This is a problem on the game's side, not anything you did. The fight is saved as it stands. You don't need to do anything except wait a few minutes, then load your game to continue the fight. If it still doesn't work, come back a little later. Your adventure will be right where you left it.",
 }
+
+
+def _hosted_reissue_limit_line(provider, moment):
+    """The owner's hosted retry-bound text at ``moment`` (D-UX-2)."""
+    known = str(provider or "").lower() in _PROVIDER_NAMES
+    bracket = " (%s)" % provider_display_name(provider) if known else ""
+    return _HOSTED_REISSUE_LIMIT_OPENING % bracket + _HOSTED_REISSUE_LIMIT_LINES[moment]
 
 _ACCOUNT_REFUSAL_MOMENTS = {
     # The turn loop's DM call: nothing from the turn has run yet.
@@ -184,8 +194,8 @@ def account_refusal_message(category, provider, moment):
         return None
     if category in _HOSTED_ACCOUNT_CATEGORIES and _through_gateway(provider):
         entry = _HOSTED_ACCOUNT_REFUSAL
-    elif category in _HOSTED_BOUND_REFUSALS and _through_gateway(provider):
-        entry = _HOSTED_BOUND_REFUSALS[category]
+    elif category == "reissue_limit" and moment in _HOSTED_REISSUE_LIMIT_LINES and _through_gateway(provider):
+        return _hosted_reissue_limit_line(provider, moment)
     else:
         entry = entry.get("overrides", {}).get(str(provider or "").lower(), entry)
     reason = entry["reason"] % {"name": provider_display_name(provider)}
