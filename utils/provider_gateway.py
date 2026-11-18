@@ -59,6 +59,13 @@ def gateway():
     return _gateway
 
 
+def in_play_builds_allowed():
+    """#2065 (D-HOSTED-1): False on a hosted world. The one reader of the rule:
+    no adventure is built during play there, and the prompts leave the
+    builder out. Unset, nothing changes."""
+    return gateway() is None
+
+
 def child_argv(argv):
     """``argv`` for a child process, with the flag appended when it is set."""
     if _gateway is None:

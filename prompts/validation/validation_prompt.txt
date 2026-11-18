@@ -96,12 +96,14 @@ category names the rule you applied when valid is false, and is none when valid 
   "reason": "The assistant's response uses the 'transitionLocation' action when the player only asked about a nearby area without explicitly stating they want to go there. This action should only be used when the party deliberately moves to a new location. Provide your response again but do not include a 'transitionLocation' action."
 }
 
+<<IN-PLAY-BUILD>>
 // Example Response 5: False - Invalid createNewModule usage
 {
   "valid": false,
   "reason": "The assistant's response uses 'createNewModule' action when the player only asked a vague question like 'What next?' or 'What should we do?'. The createNewModule action should ONLY be used when the player explicitly commits to investigating a specific adventure hook. The assistant should have provided roleplay hooks and waited for player commitment. Try again without the createNewModule action."
 }
 
+<</IN-PLAY-BUILD>>
 // Example Response 6: True - Valid response with no action required
 {
   "valid": true,
@@ -211,6 +213,7 @@ levelUp is a standalone handoff: reject a mixed handoff and request a coherent c
 "restoreGame": Restore a timeline by its exact listed "saveFolder". It is a standalone lifecycle action and never a post-travel sibling.
 "listSaves": List the current save folders. Parameters must be empty.
 "deleteSave": Delete the exact listed "saveFolder" only after the player's explicit request.
+<<IN-PLAY-BUILD>>
 "createNewModule": Create new adventure module. This action should ONLY be used when:
 - Player explicitly agrees to investigate a SPECIFIC adventure hook ("Yes, let's investigate the haunted barrow", "We'll help those villagers", "Let's go to the Frostward Marches")
 - Player shows clear commitment to a particular quest or location
@@ -239,6 +242,7 @@ levelUp is a standalone handoff: reject a mixed handoff and request a coherent c
 
 Requires "narrative" parameter containing rich story description with embedded module parameters (name, type, level range, areas, themes).
 The parameters object MUST contain exactly the one key "narrative", whose value is a non-empty string. The exact action is {"action":"createNewModule","parameters":{"narrative":"[complete concept and labeled technical fields]"}}. Reject aliases such as moduleName/startingLocation, extra parameters, empty narrative, or any response that combines createNewModule with another action.
+<</IN-PLAY-BUILD>>
 "exitGame": Must be taken and only taken when the player requests to exit the play session.
 "storageInteraction": Judge item movement from the player's intent and accepted scene. Leaving owned items at the current location for later recovery is location storage, including an improvised cache or hiding place; it does not require a pre-existing container record or a purchased/manufactured box. Use storageInteraction for that deposit or retrieval. It owns the item movement; do not replace it with, or duplicate it by, an updateCharacterInfo removal or addition of the same items. Narration, updatePlot, or an updateCharacterInfo change note alone does not create a retrievable stored item. Do not demand a separate create action when the storage request already describes creating/using the cache. This action processes natural language storage requests and handles inventory transfers automatically. Should be used when players express intent to:
    - Store items in containers ("I put my gold in a chest", "I store extra gear here")

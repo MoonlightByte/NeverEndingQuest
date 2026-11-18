@@ -546,6 +546,18 @@ def _module_builder_coming_soon(labels):
     _print_startup_choices(labels)
 
 
+def _builder_option_shown():
+    """#2065 (D-HOSTED-1): the builder option is listed only where in-play
+    builds are allowed; a hosted world leaves it out of the menu and its prompt."""
+    from utils.provider_gateway import in_play_builds_allowed
+    return in_play_builds_allowed()
+
+
+def _builder_labels():
+    """The menu labels after the installed adventures: the builder option, or none."""
+    return [MODULE_BUILDER_OPTION] if _builder_option_shown() else []
+
+
 def _read_menu_sentence(menu, labels, details, line):
     """A menu answer code did not resolve, read by T127 (D-STARTUP-MENU-1): the
     numbered options as printed and the player's whole line; returns {"choice": n},
@@ -574,12 +586,15 @@ def present_module_options(conversation, modules):
             f"   Estimated play time: {module['play_time']}"
         )
     
-    module_list.append(
-        f"{len(modules) + 1}. **{MODULE_BUILDER_OPTION}**\n"
-        "   Build your own adventure. Coming soon."
-    )
+    if _builder_option_shown():
+        module_list.append(
+            f"{len(modules) + 1}. **{MODULE_BUILDER_OPTION}**\n"
+            "   Build your own adventure. Coming soon."
+        )
     modules_text = "\n\n".join(module_list)
     
+    builder_clause = ("; the last one, creating a new adventure with the module builder, is coming soon"
+                      if _builder_option_shown() else "")
     # AI prompt for module selection
     ai_prompt = f"""You are the Dungeon Master for NeverEndingQuest, a text-based adventure game based on the world's most popular 5th edition roleplaying game. Welcome the player and present the available modules.
 
@@ -596,14 +611,14 @@ Then mention these key features:
 Available Modules:
 {modules_text}
 
-Present EVERY listed option with its exact menu number; the last one, creating a new adventure with the module builder, is coming soon. Recommend an adventure
+Present EVERY listed option with its exact menu number{builder_clause}. Recommend an adventure
 only from its actual known level metadata; unknown is not level 1. Never choose
 for the player. Even a sole installed module needs the player's confirmation.
 
 Ask the player which module they'd like to play, and explain that they can type its number (1, 2, etc.) or its name, or simply say which adventure they want."""
     
     _present_startup_menu(conversation, ai_prompt, phase="startup_module_selection")
-    _print_startup_choices([module['display_name'] for module in modules] + [MODULE_BUILDER_OPTION])
+    _print_startup_choices([module['display_name'] for module in modules] + _builder_labels())
     
     return modules
 
@@ -646,8 +661,8 @@ def select_module(conversation):
             conversation.append({"role": "user", "content": user_input})
             
             # Try to parse as number
-            builder_number = len(modules) + 1
-            labels = [module['display_name'] for module in modules] + [MODULE_BUILDER_OPTION]
+            builder_number = len(modules) + 1 if _builder_option_shown() else None
+            labels = [module['display_name'] for module in modules] + _builder_labels()
             try:
                 choice_num = int(user_input)
                 if choice_num == builder_number:
@@ -659,7 +674,7 @@ def select_module(conversation):
                                           phase=selection_phase, location=None)
                     return selected
                 else:
-                    _say(f"Dungeon Master: Please choose a number between 1 and {builder_number}")
+                    _say(f"Dungeon Master: Please choose a number between 1 and {len(labels)}")
                     continue
             except ValueError:
                 pass
@@ -667,6 +682,10 @@ def select_module(conversation):
             # The number, or the adventure's whole name (D-KW-6).
             answer = _menu_key(user_input)
             if answer == _menu_key(MODULE_BUILDER_OPTION):
+                if builder_number is None:
+                    # #2065: no builder on a hosted world; a plain re-ask, no build.
+                    _say("Dungeon Master: I didn't understand that. Please enter the number (1, 2, etc.) or the adventure's full name as listed.")
+                    continue
                 _module_builder_coming_soon(labels)
                 continue
             matches = [module for module in modules
@@ -682,9 +701,9 @@ def select_module(conversation):
                 continue
             
             # Any other line is read by T127 (D-STARTUP-MENU-1).
-            details = [module['description'] for module in modules] + ['Build your own adventure. Coming soon.']
+            details = [module['description'] for module in modules] + (['Build your own adventure. Coming soon.'] if builder_number is not None else [])
             read = _read_menu_sentence("adventure", labels, details, user_input)
-            if read.get("choice") == builder_number:
+            if builder_number is not None and read.get("choice") == builder_number:
                 _module_builder_coming_soon(labels)
                 continue
             if read.get("choice"):

@@ -7183,6 +7183,25 @@ Please use a valid location that exists in the current area ({current_area_id}) 
     elif action_type == ACTION_CREATE_NEW_MODULE:
         debug("STATE_CHANGE: Processing createNewModule action", category="module_management")
 
+        # #2065 (D-HOSTED-1): no adventure is built during play on a hosted
+        # world. main removes the request from every draft first; this is the
+        # backstop. Dropped alone, before anything is reserved or shown.
+        from utils.provider_gateway import in_play_builds_allowed
+
+        if not in_play_builds_allowed():
+            debug(
+                "STATE_CHANGE: createNewModule dropped; no in-play builds on a hosted world",
+                category="module_management",
+            )
+            return {
+                "status": "dropped",
+                "success": True,
+                "state_changed": False,
+                "retryable": False,
+                "needs_dm_response": False,
+                "dropped_hosted": True,
+            }
+
         # #2039: one in-game build at a time. While a build runs or waits to be
         # announced, a second createNewModule is dropped alone, before anything
         # is reserved, claimed or shown: no effect, no error, no player line.
