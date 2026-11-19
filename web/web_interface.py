@@ -3252,9 +3252,11 @@ def handle_connect():
     # Send any queued messages
     _emit_pending_game_output(emit)
 
+    from utils.provider_gateway import browser_debug_allowed
     while not debug_output_queue.empty():
         msg = debug_output_queue.get()
-        emit('debug_output', msg)
+        if browser_debug_allowed():  # #2070: a hosted world sends none
+            emit('debug_output', msg)
     
     # Check for module progress updates
     while not module_progress_queue.empty():
@@ -5780,6 +5782,7 @@ def send_output_to_clients():
     timestamp = datetime.now().strftime("%H:%M:%S")
     print(f"DEBUG: [Web Interface] [{timestamp}] send_output_to_clients thread started")
     last_token_update = time.time()
+    from utils.provider_gateway import browser_debug_allowed
     
     while True:
         try:
@@ -5790,7 +5793,8 @@ def send_output_to_clients():
             while not debug_output_queue.empty():
                 try:
                     msg = debug_output_queue.get()
-                    socketio.emit('debug_output', msg)
+                    if browser_debug_allowed():  # #2070: a hosted world sends none
+                        socketio.emit('debug_output', msg)
                 except Exception:
                     # If queue operation or emit fails, just continue
                     break
@@ -5820,7 +5824,8 @@ def send_output_to_clients():
             
             # Try to send token updates every 2 seconds (completely isolated)
             current_time = time.time()
-            if current_time - last_token_update > 2:
+            # #2070: a hosted world sends no token_update (no zeros either).
+            if current_time - last_token_update > 2 and browser_debug_allowed():
                 last_token_update = current_time  # Update time FIRST to prevent retry loops
                 try:
                     # Try to import and get stats
@@ -5856,6 +5861,7 @@ def send_output_to_clients():
 def send_output_to_clients_original():
     """Send queued output to all connected clients"""
     last_token_update = time.time()
+    from utils.provider_gateway import browser_debug_allowed
     
     while True:
         try:
@@ -5872,14 +5878,15 @@ def send_output_to_clients_original():
             while not debug_output_queue.empty():
                 try:
                     msg = debug_output_queue.get()
-                    socketio.emit('debug_output', msg)
+                    if browser_debug_allowed():  # #2070
+                        socketio.emit('debug_output', msg)
                 except Exception:
                     # If queue operation or emit fails, just continue
                     break
             
             # Send token updates every 2 seconds
             current_time = time.time()
-            if current_time - last_token_update > 2:
+            if current_time - last_token_update > 2 and browser_debug_allowed():  # #2070
                 try:
                     from utils.token_tracker import get_tracker
                     tracker = get_tracker()
