@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Once the Dungeon Master's reply has been approved, the turn now always plays out and is no longer cut off part way for using too many AI calls (#2069).
+
+- A fight that stops because the AI kept giving the same unusable answer now says so and tells you the fight is saved (#2069).
+
 - On a hosted game, the first screen no longer asks you to open Settings or set an API key (#2067).
 
 - After you load a saved game successfully, it now starts by itself instead of waiting for Start Game; if the save could not be loaded, the page says so (#2067).

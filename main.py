@@ -2002,8 +2002,13 @@ def _run_startup_kickoff_once(
 ):
     global _kickoff_refusal_line, _kickoff_beat_kept
     from core.combat.invocation import InvocationSupersededError
-    from utils.capture.live_provider_call import LiveProviderCompletedError, LiveProviderSuperseded
+    from utils.capture.live_provider_call import (
+        LiveProviderCompletedError, LiveProviderSuperseded, clear_reply_accepted,
+    )
 
+    # #2069: every attempt shares its caller's scope; a recovery attempt's new
+    # draft is not the failed attempt's accepted reply.
+    clear_reply_accepted(reset_record=True)
     claim = claim_kickoff_lease(source=source)
     claim_status = claim.get("status")
     state = claim.get("state", startup_state)
@@ -8231,6 +8236,11 @@ def process_ai_response(
         build_started = None
         # #2039: the open build a dropped createNewModule named this turn.
         dropped_for_build = None
+        # #2069 (OWNER D-TURN-1a): the reply was reviewed and now applies, so
+        # its actions and follow-up finish; only a runaway bound stops them.
+        from utils.capture.live_provider_call import mark_reply_accepted
+
+        mark_reply_accepted()
         # Execute accepted actions once, in the order the DM and referee approved.
         for action_index, action in enumerate(actions):
             if encounter_payments and action_index in encounter_payments["staged"]:
@@ -8674,7 +8684,8 @@ def resolve_retryable_ai_result(
     """
     from core.combat.invocation import require_current_invocation
     from utils.capture.live_provider_call import (
-        LiveProviderCompletedError, LiveProviderSuperseded, get_live_provider_scope,
+        LiveProviderCompletedError, LiveProviderSuperseded, clear_reply_accepted,
+        get_live_provider_scope,
     )
 
     def review_authority_current(context):
@@ -8696,6 +8707,9 @@ def resolve_retryable_ai_result(
         isinstance(final_result, dict)
         and final_result.get("retryable") is True
     ):
+        # #2069: each pass makes a new draft that is not yet reviewed; the
+        # reply that went stale is no longer the accepted one.
+        clear_reply_accepted()
         if invocation_claim is not None:
             require_current_invocation(invocation_claim)
         review_context = final_result.get("review_context")
