@@ -180,6 +180,15 @@ _ACCOUNT_REFUSAL_MOMENTS = {
 }
 
 
+# #2069 (OWNER D-TURN-1a, replacing D-1945-1's ceiling line for these stops):
+# a fight stopped because the AI gave the same unusable answer again.
+REPEATED_FAILURE_COMBAT_LINE = (
+    "The AI kept giving the same unusable answer for this fight, so the game "
+    "stopped asking. The fight is saved as it stands; load your game to "
+    "continue it."
+)
+
+
 def account_refusal_message(category, provider, moment):
     """Curated player text for an account refusal at ``moment``, or None.
 
@@ -188,6 +197,10 @@ def account_refusal_message(category, provider, moment):
     """
     if not isinstance(category, str):
         return None
+    if category == "repeated_failure":
+        # #2069 (OWNER D-TURN-1a): only a fight stops on a repeat; its own
+        # line, verbatim. Any other moment keeps the caller's line.
+        return REPEATED_FAILURE_COMBAT_LINE if moment == "combat" else None
     entry = _ACCOUNT_REFUSALS.get(category)
     template = _ACCOUNT_REFUSAL_MOMENTS.get(moment)
     if entry is None or template is None:
@@ -468,7 +481,9 @@ def _classify_provider_error(exc):
     # #1342: a live call that hit its reissue limit, or a turn that hit its
     # generation ceiling. Checked first: the limit envelope can carry the 429
     # it ended on, and another attempt would spend the tokens the bound saved.
-    for bound in ("turn_call_ceiling", "reissue_limit"):
+    # #2069: a combat repeat stop ("repeated_failure") is a bound of the same
+    # kind: never retried, never an account or connection fault.
+    for bound in ("turn_call_ceiling", "reissue_limit", "repeated_failure"):
         if bound in codes:
             return {
                 "category": bound,
@@ -648,7 +663,7 @@ _BACKSTOP_CLASSES = frozenset(
 _CHILD_START_CLASSES = frozenset({"ProviderChildUnavailable", "process_setup_unavailable"})
 _CHILD_INTERNAL_PHASES = frozenset({None, "", "spawned", "payload_read"})
 _AFTER_SEND_PHASES = frozenset({"sent", "acknowledged", "working", "receiving", "done"})
-_BOUND_CODES = frozenset({"reissue_limit", "turn_call_ceiling", "advisory_reserve"})
+_BOUND_CODES = frozenset({"reissue_limit", "turn_call_ceiling", "advisory_reserve", "repeated_failure"})
 _TIMEOUT_NAMES = frozenset(
     {"apitimeouterror", "readtimeout", "writetimeout", "timeoutexception", "pooltimeout"}
 )

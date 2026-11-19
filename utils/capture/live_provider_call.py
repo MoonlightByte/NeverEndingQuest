@@ -208,6 +208,10 @@ _BILLED_PHASES = frozenset({"acknowledged", "working", "receiving", "done"})
 # #1342: provider generations one live turn scope may spend, reissues
 # included. Every scope (play turn, combat round, wizard) has the same bound.
 _TURN_GENERATION_CEILING = 24
+# #2069 (OWNER D-TURN-1a): once a reviewed reply is being applied, the turn
+# finishes. Its required calls may pass the ceiling up to this hard bound, a
+# runaway guard; the player is shown nothing new. Advisories keep the ceiling.
+_ACCEPTED_HARD_BOUND = 48
 # #1587 (#204): advisory calls leave a budget's last generations to the required
 # calls after them: a first try plus the billed reissues one call may spend.
 _REQUIRED_RESERVE = 1 + _BILLED_REISSUE_LIMIT
@@ -302,6 +306,11 @@ class LiveTurnScope:
     ceiling: int = _TURN_GENERATION_CEILING
     # #2046: the one quiet retry T067 and T065 share in a player turn.
     shared_quiet_retry_used: bool = False
+    # #2069: set when a reviewed reply's actions start to apply; cleared by a
+    # budget renewal, a #707 re-review pass and a kickoff attempt.
+    accepted: bool = False
+    # #2069: the past-ceiling record is written once per budget.
+    past_ceiling_logged: bool = False
 
     def next_generation(self):
         with self.lock:
@@ -320,22 +329,39 @@ class LiveTurnScope:
     def claim_provider_generation(self, reserve=0):
         """Count one provider generation; False once the turn ceiling is spent (#1342),
         or once it would leave fewer than ``reserve`` generations (#204)."""
+        return self.claim_provider_generation_detail(reserve) in ("ok", "past_ceiling")
+
+    def claim_provider_generation_detail(self, reserve=0):
+        """claim_provider_generation, returning what the claim did (#2069):
+        "ok"; "past_ceiling" (claimed, and the first claim past the ceiling in
+        an accepted budget); "ceiling" (refused at the ceiling, or at an
+        advisory's reserve); "hard" (refused at _ACCEPTED_HARD_BOUND). A
+        required claim (no reserve) of an accepted reply is bounded by
+        _ACCEPTED_HARD_BOUND instead of the ceiling. The kind is decided under
+        the lock and returned, so a concurrent claim cannot change it."""
         with self.lock:
-            if self.provider_generations + reserve >= self.ceiling:
-                return False
+            hard = not reserve and self.accepted
+            bound = _ACCEPTED_HARD_BOUND if hard else self.ceiling
+            if self.provider_generations + reserve >= bound:
+                return "hard" if hard else "ceiling"
             self.provider_generations += 1
-            return True
+            if self.provider_generations > self.ceiling and not self.past_ceiling_logged:
+                self.past_ceiling_logged = True
+                return "past_ceiling"
+            return "ok"
 
     def renew_generation_budget(self, reason):
         """Start a fresh ceiling inside this scope (#1468): combat spends one
         budget per player combat input and one for the after-fight scene.
-        Nothing else about the scope changes."""
+        #2069: the new budget is not an accepted reply's until one is applied."""
         with self.lock:
             _LOGGER.debug(
                 "LIVE_PROVIDER_BUDGET_RENEWED reason=%s spent=%d operation=%s",
                 reason, self.provider_generations, self.operation_id,
             )
             self.provider_generations = 0
+            self.accepted = False
+            self.past_ceiling_logged = False
 
     def request_supersession(self, kind, operation_id=None, owner=False):
         with self.lock:
@@ -432,6 +458,9 @@ class AdvisoryProviderScope:
     def claim_provider_generation(self, reserve=0):
         return self.parent.claim_provider_generation(reserve)
 
+    def claim_provider_generation_detail(self, reserve=0):
+        return self.parent.claim_provider_generation_detail(reserve)
+
     def is_superseded(self):
         return self.sealed.is_set() or self.parent.is_superseded()
 
@@ -460,6 +489,15 @@ class BuildProviderScope(LiveTurnScope):
     end_reason: str = None
 
     @property
+    def accepted(self):
+        """#2069: a build is never an accepted reply; its bound stays its own."""
+        return False
+
+    @accepted.setter
+    def accepted(self, value):
+        pass
+
+    @property
     def bound(self):
         return self.ceiling
 
@@ -471,14 +509,14 @@ class BuildProviderScope(LiveTurnScope):
         with self.lock:
             self.ceiling += int(n)
 
-    def claim_provider_generation(self, reserve=0):
+    def claim_provider_generation_detail(self, reserve=0):
         with self.lock:
             if self.end_reason == "ceiling":
-                return False
-            claimed = super().claim_provider_generation(reserve)
-            if not claimed and not reserve:
+                return "ceiling"
+            kind = super().claim_provider_generation_detail(reserve)
+            if kind in ("ceiling", "hard") and not reserve:
                 self.end_reason = "ceiling"
-            return claimed
+            return kind
 
     def is_superseded(self):
         with self.lock:
@@ -1012,6 +1050,33 @@ def get_live_turn_scope():
 def get_live_provider_scope():
     """Accepted callback authority takes precedence only in its execution context."""
     return _executing_control_scope.get() or get_live_turn_scope()
+
+
+def _counting_scope():
+    scope = get_live_provider_scope()
+    return scope.parent if isinstance(scope, AdvisoryProviderScope) else scope
+
+
+def mark_reply_accepted():
+    """#2069 (OWNER D-TURN-1a): a reviewed reply's actions start to apply, so
+    its required calls may pass the ceiling up to _ACCEPTED_HARD_BOUND. A build
+    scope ignores it. No scope: nothing to mark."""
+    scope = _counting_scope()
+    if scope is not None:
+        with scope.lock:
+            scope.accepted = True
+
+
+def clear_reply_accepted(reset_record=False):
+    """#2069: a new draft (a #707 re-review pass, a kickoff attempt) is not
+    an accepted reply. ``reset_record`` also resets the once-per-budget
+    past-ceiling record."""
+    scope = _counting_scope()
+    if scope is not None:
+        with scope.lock:
+            scope.accepted = False
+            if reset_record:
+                scope.past_ceiling_logged = False
 
 
 @contextmanager
@@ -2554,10 +2619,31 @@ def _call_live_provider(
         # a `continue` left behind (no child started) is ended first.
         end_build_attempt(shown.pop("build_attempt", None), sent=False)
         shown["build_attempt"] = begin_build_attempt()
-        claim = getattr(scope, "claim_provider_generation", None)
-        if claim is not None and not (
-            claim(reserve=reserve) if reserve else claim()
-        ):
+        # #2069: the claim returns what it did, so the record below is this
+        # claim's own (a concurrent claim on the same scope cannot change it).
+        claim = getattr(scope, "claim_provider_generation_detail", None)
+        if claim is not None:
+            claim_kind = claim(reserve=reserve) if reserve else claim()
+        else:
+            claim_bool = getattr(scope, "claim_provider_generation", None)
+            claim_kind = (
+                None if claim_bool is None
+                else "ok" if (claim_bool(reserve=reserve) if reserve else claim_bool())
+                else "ceiling"
+            )
+        # #2011: the scope that counted the claim (an advisory child counts on
+        # its parent).
+        counted = scope.parent if isinstance(scope, AdvisoryProviderScope) else scope
+        if claim_kind in ("ceiling", "hard"):
+            if claim_kind == "hard":
+                # #2069: an accepted reply ran away past the hard bound; the
+                # same envelope and line as the ceiling, its own record (on the
+                # quiet retry's refusal too).
+                _provider_debug(
+                    "LIVE_PROVIDER_ACCEPTED_HARD_BOUND task=%s generations=%d operation=%s purpose=%s"
+                    % (task_id, _ACCEPTED_HARD_BOUND, operation_id,
+                       getattr(counted, "purpose", None))
+                )
             if quiet_pending:
                 # #2046: the quiet retry claims like any send; refused (the
                 # ceiling or an advisory's reserve), nothing is sent and the
@@ -2569,14 +2655,12 @@ def _call_live_provider(
                 raise LiveProviderCompletedError(task_id, quiet_envelope)
             # #1342: the turn spent its provider generations. Nothing is sent;
             # the caller's completed-refusal path ends the turn with one line.
-            # #2011: the ceiling of the scope that counted the claim (an
-            # advisory child counts on its parent).
-            counted = scope.parent if isinstance(scope, AdvisoryProviderScope) else scope
-            _provider_debug(
-                "LIVE_PROVIDER_TURN_CEILING task=%s generations=%d reserve=%d operation=%s purpose=%s"
-                % (task_id, getattr(counted, "ceiling", _TURN_GENERATION_CEILING), reserve,
-                   operation_id, getattr(counted, "purpose", None))
-            )
+            if claim_kind == "ceiling":
+                _provider_debug(
+                    "LIVE_PROVIDER_TURN_CEILING task=%s generations=%d reserve=%d operation=%s purpose=%s"
+                    % (task_id, getattr(counted, "ceiling", _TURN_GENERATION_CEILING), reserve,
+                       operation_id, getattr(counted, "purpose", None))
+                )
             if reserve:
                 # #1587: the turn goes on without this advisory.
                 raise LiveProviderUnavailable(
@@ -2588,6 +2672,15 @@ def _call_live_provider(
                 _limit_envelope("turn_call_ceiling", task_id, frozen_kwargs),
             )
         quiet_pending = False
+        if claim_kind == "past_ceiling":
+            # #2069: once per budget, an accepted reply's calls passed the
+            # ceiling; nothing is shown, the record counts it (the generation
+            # that passed it is the ceiling's next one).
+            _provider_debug(
+                "LIVE_PROVIDER_TURN_PAST_CEILING task=%s generations=%d operation=%s purpose=%s"
+                % (task_id, getattr(counted, "ceiling", _TURN_GENERATION_CEILING) + 1,
+                   operation_id, getattr(counted, "purpose", None))
+            )
         generation = (
             scope.next_generation() if scope is not None else failure_count + 1
         )

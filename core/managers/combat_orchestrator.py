@@ -3921,8 +3921,8 @@ def execute_agentic_turn(
             if failure in window_failures:
                 # #1945: a failure this window already had, with no batch past
                 # the provider since. Asking again cannot heal it: the window
-                # ends on the ceiling's path (#1251, #1342), the turn kept. A
-                # stop that came meanwhile wins over the ceiling's line.
+                # ends, the turn kept (#1251). #2069 (OWNER D-TURN-1a): as a
+                # repeat stop with its own line. A stop that came meanwhile wins.
                 _require_current_invocation(invocation_claim)
                 record_combat_diagnostic(
                     record_type="window_outcome",
@@ -3939,7 +3939,7 @@ def execute_agentic_turn(
                 raise LiveProviderCompletedError(
                     "T096",
                     _limit_envelope(
-                        "turn_call_ceiling",
+                        "repeated_failure",
                         "T096",
                         {"_request_provider": intent_provider_name, "model": intent_model_name},
                     ),
@@ -4353,8 +4353,8 @@ def execute_agentic_turn(
             if logged:
                 if repeated:
                     # #1251: T096 returned a batch it was already refused for.
-                    # No further call: the window ends on the ceiling's path,
-                    # with the ceiling's line (#1342), and the turn is kept.
+                    # No further call: the window ends and the turn is kept.
+                    # #2069 (OWNER D-TURN-1a): as a repeat stop, its own line.
                     record_combat_diagnostic(
                         record_type="window_outcome",
                         callsite="T096",
@@ -4368,7 +4368,7 @@ def execute_agentic_turn(
                     raise LiveProviderCompletedError(
                         "T096",
                         _limit_envelope(
-                            "turn_call_ceiling",
+                            "repeated_failure",
                             "T096",
                             {"_request_provider": intent_provider_name, "model": intent_model_name},
                         ),
