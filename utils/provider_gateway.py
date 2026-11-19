@@ -66,6 +66,13 @@ def in_play_builds_allowed():
     return gateway() is None
 
 
+def browser_debug_allowed():
+    """#2070 (D-AUTH-1): False on a hosted world. The one reader of the rule:
+    the server's debug stream (debug_output) and its token counters
+    (token_update) are not sent to browsers there. Unset, nothing changes."""
+    return gateway() is None
+
+
 def child_argv(argv):
     """``argv`` for a child process, with the flag appended when it is set."""
     if _gateway is None:
