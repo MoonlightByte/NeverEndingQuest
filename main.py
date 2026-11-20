@@ -263,6 +263,18 @@ def _live_active_encounter(party_tracker):
     return live_encounter_id(party_tracker, strict=True)
 
 
+def _allowance_fight_live():
+    """#2072 (D-TURN-1): the play allowance's one live-fight read, used by the
+    loop gate, the web handlers, start_game and the page payload. It raises on
+    an unreadable encounter; play_allowance.fight_live() counts that as no fight."""
+    return _live_active_encounter(load_json_file("party_tracker.json")) is not None
+
+
+from utils import play_allowance as _play_allowance  # noqa: E402
+
+_play_allowance.set_fight_check(_allowance_fight_live)
+
+
 def _post_combat_world(party_tracker):
     """The tracker's worldConditions when it names where the party is, else None (#444)."""
     world = (
@@ -320,6 +332,7 @@ status_manager.set_callback(status_callback)
 # Provider error classification lives in utils/provider_errors.py (stdlib
 # only, unit tested). Re-exported here so existing call sites keep working.
 from utils.provider_errors import (  # noqa: E402
+    GATEWAY_PLAY_CODES,
     PROVIDER_MAX_FAILURES,
     PROVIDER_RETRY_BASE_DELAY,
     PROVIDER_RETRY_MAX_DELAY,
@@ -698,6 +711,9 @@ def _apply_welcome(lifecycle):
             # #1422 F4 (fail-forward): with player text waiting behind the
             # opening scene, its turn runs now instead of a recovery welcome.
             and not lifecycle.player_waiting
+            # #2072: the host's play-allowance refusal answers a resend the
+            # same way; its welcome line shows at once, with no second request.
+            and lifecycle.refusal_category not in GATEWAY_PLAY_CODES
             and current.get("status") == "kickoff_failed"
             and try_consume_forced_recovery(
                 current.get("startup_attempt_id", "")
@@ -11444,6 +11460,11 @@ def _main_game_loop(startup_authority, turn_authority):
         # #2021 J1b-2 (and #2028): the pumps that run while the input waits
         # write to the list bound here, after every rebind above.
         _bind_input_live_history(conversation_history)
+        # #2072: every path back to the prompt (a finished or ended turn, the
+        # loop's start) reads the play allowance for the pages; never waits.
+        from utils import play_allowance
+
+        play_allowance.read_and_publish_async(min_age=2.0)
 
         if player_data_current:
             current_hp = player_data_current.get("hitPoints", "N/A")
@@ -11498,6 +11519,8 @@ def _main_game_loop(startup_authority, turn_authority):
         else:
             print("[DEBUG] About to show basic input prompt")
             user_input_text = read_player_line(input, "User: ")
+        # #2072 a1: a web line the handler already checked and accepted.
+        read_accepted = play_allowance.take_read_note()
 
         # Skip processing if input is empty or only whitespace, unless a roll
         # waits: then a blank line lets the game roll (#1118 items 3 and 4).
@@ -11507,17 +11530,35 @@ def _main_game_loop(startup_authority, turn_authority):
         # empty line sends it, unless a roll or rest waits (then the blank line
         # is the roll's, #1118); a typed line is sent as typed.
         offered_now, held_offer = held_offer, None
+        offer_substituted = False
         if not user_input_text or not user_input_text.strip():
             if pending_rest() is None and not pending_checks():
                 if offered_now is None:
                     continue
                 user_input_text = offered_now
+                offer_substituted = True
                 empty_input_count = 0
             else:
                 user_input_text = ""
         else:
             # Reset counter on valid input
             empty_input_count = 0
+
+        # #2072: the resolved input (a held offer, or a blank line that settles
+        # a roll or rest) starts a turn only while the play allowance allows it;
+        # a live fight goes on (D-TURN-1). Checked before a pending welcome is
+        # superseded. A line the web handler accepted is not checked again.
+        if (not (read_accepted and not offer_substituted)
+                and play_allowance.refuses_turn()):
+            if offer_substituted:
+                held_offer = offered_now  # still offered after the pause
+            from web.shared_state import has_player_output_sink
+
+            refusal = play_allowance.refusal_line()
+            if refusal and not has_player_output_sink():
+                print(refusal)  # the terminal: printed only (no history, no ledger)
+            play_allowance.publish()
+            continue
 
         # #214 CR-1: the player acted. A still-pending welcome is superseded
         # and its handback (discard + note removal) completes BEFORE this

@@ -7,6 +7,8 @@ import { SettingsMenu } from '../settings/SettingsMenu'
 import { useUiMode } from '../../modes/useUiMode'
 import { SpendLine } from './SpendLine'
 import { needsOpenaiKey } from '../settings/keySetupText'
+import { useAllowance } from '../../stores/allowance'
+import { allowanceLocked } from './allowanceText'
 
 const injectedVersion = document
   .querySelector<HTMLMetaElement>('meta[name="neq-version"]')
@@ -43,6 +45,8 @@ export function HeaderBar() {
   const recoveryRequired = useSession((s) => s.restoreRecoveryRequired)
   const restorePending = useSession((s) => s.restorePending)
   const startupStatus = useSession((s) => s.startupStatus)
+  // #2072 (auditor 2c): Start is locked while free play is used or paused.
+  const startLockedByAllowance = allowanceLocked(useAllowance((s) => s.value))
   const version = useSession((s) => s.version)
   const location = useWorld((s) => s.location)
   const locationError = useWorld((s) => s.locationError)
@@ -67,7 +71,7 @@ export function HeaderBar() {
     return true
   }
   const handleStart = () => {
-    if (!connected || recoveryRequired || restorePending) return
+    if (!connected || recoveryRequired || restorePending || startLockedByAllowance) return
     if (keyGate('start')) return
     useSession.getState().startRequested()
     emitC('start_game', undefined)
@@ -134,7 +138,7 @@ export function HeaderBar() {
         {isLocalEdition && <SpendLine />}
         <ConnectionDot />
         <button type="button" className={buttonClass} onClick={handleStart}
-          disabled={!connected || isStarting || gameReady || recoveryRequired || restorePending}
+          disabled={!connected || isStarting || gameReady || recoveryRequired || restorePending || startLockedByAllowance}
           style={{ backgroundColor: isStarting ? '#1976d2' : '#2196f3', borderRadius: '3px', color: 'white', fontWeight: 700 }}>
           {gameReady ? 'Game Running' : isStarting ? 'Starting...' : startLabel}
         </button>

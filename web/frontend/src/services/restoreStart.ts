@@ -16,6 +16,8 @@
 import { useDialogs, useSession } from '../stores'
 import { useConnectionNotice } from '../stores/connectionNotices'
 import { needsOpenaiKey } from '../components/settings/keySetupText'
+import { allowanceLocked } from '../components/layout/allowanceText'
+import { useAllowance } from '../stores/allowance'
 import { emitC } from './socket'
 import { RELOAD_RESTORE_OUTCOME_KEY } from './restart'
 
@@ -26,6 +28,9 @@ export const RESTORE_RELOAD_LINES: Readonly<Record<string, string>> = {
 }
 
 let consumed = false
+// #2072: how long a hosted page waits for its first allowance before deciding the start without it.
+const ALLOWANCE_WAIT_MS = 5000
+let allowanceWaitOver = false
 
 /**
  * Take the one-shot outcome from sessionStorage (always removed) and strip `restarted` from the URL.
@@ -49,7 +54,12 @@ function readyToStart(): boolean | null {
   const s = useSession.getState()
   if (!s.connected || s.serverInstanceId === null) return null // wait for connect + first snapshot
   if (s.mode !== 'disconnected' || s.restorePending || s.restoreRecoveryRequired) return false
+  // #2072 (auditor 2c): free play used or paused: "Game loaded." shows and nothing starts.
   const isLocalEdition = (import.meta.env.VITE_EDITION ?? 'local') === 'local'
+  // A hosted page decides once its first allowance has come (the read runs after the connect), or after a short
+  // wait when none comes; the server refuses a locked start in any case.
+  if (!isLocalEdition && useAllowance.getState().value === null && !allowanceWaitOver) return null
+  if (allowanceLocked(useAllowance.getState().value)) return false
   if (!isLocalEdition) return true
   // Local: the header asks for the provider and key status on connect; decide once both are known,
   // so a page that would open the key gate on Start Game keeps Start Game instead.
@@ -91,5 +101,7 @@ export function startAfterRestoreReload(): void {
   if (decide()) return
   const stops: Array<() => void> = []
   const check = () => { if (decide()) stops.splice(0).forEach((stop) => stop()) }
-  stops.push(useSession.subscribe(check), useDialogs.subscribe(check))
+  stops.push(useSession.subscribe(check), useDialogs.subscribe(check), useAllowance.subscribe(check))
+  const wait = setTimeout(() => { allowanceWaitOver = true; check() }, ALLOWANCE_WAIT_MS)
+  stops.push(() => clearTimeout(wait))
 }

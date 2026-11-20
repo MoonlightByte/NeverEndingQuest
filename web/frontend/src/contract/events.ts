@@ -184,6 +184,24 @@ export interface WaitRecord {
   retryInMs: number | null;
 }
 
+/** #2072: one period of the hosted play allowance (typed; no money). */
+export interface PlayAllowancePeriod { used_fraction: number; minutes_left_estimate: number | null; resets_at: string | null }
+/** #2072: the hosted play allowance, sent only by a gateway world. `unavailable` after a failed read;
+ * `refused_input` only to the page whose line was refused; `refused_start` only to the page whose start was
+ * refused (nothing is starting). */
+export interface PlayAllowancePayload {
+  limited?: boolean
+  state?: 'ok' | 'player_limit' | 'paused_for_everyone' | 'paused_for_account'
+  day?: PlayAllowancePeriod
+  week?: PlayAllowancePeriod
+  resume_at?: string | null
+  unavailable?: boolean
+  refused_input?: string
+  refused_start?: boolean
+  /** A fight is live (D-TURN-1): the allowance locks neither the composer nor Start while it is true. */
+  fight_live?: boolean
+}
+
 export interface ServerEvents {
   roll_prompt: { prompt: RulesRollPrompt | null };
   connected: {
@@ -250,6 +268,7 @@ export interface ServerEvents {
   settings_refused: { event: string; reason: 'hosted' };
   image_generated: { image_url: string; local_url?: string; prompt: string; request_id?: string; source_message_id?: string };
   image_generation_error: { message: string; request_id?: string; source_message_id?: string };
+  play_allowance: PlayAllowancePayload;
   token_update: {
     tpm: number; rpm: number; total_tokens: number;
     /** #1388: the session cost line, typed numbers only (absent on the fallback emit). */

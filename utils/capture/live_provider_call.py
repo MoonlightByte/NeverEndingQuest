@@ -1594,6 +1594,11 @@ def _error_disposition(exc, original, status, error_code=None):
     """Classify from exception types/status/codes only; provider prose is never authority."""
     if type(exc).__name__ == "ProviderEmptyResponse":
         return "empty"
+    from utils.provider_errors import gateway_play_refusal
+
+    if any(gateway_play_refusal(item) for item in (original, exc) if item is not None):
+        # #2072: the host's play-allowance backstop is never reissued.
+        return "deterministic"
     if isinstance(error_code, str):
         from utils.provider_errors import QUOTA_ERROR_CODES
 

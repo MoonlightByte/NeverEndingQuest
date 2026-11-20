@@ -1,6 +1,7 @@
 import { useRulesRoll } from '../../stores/rulesRoll'
 import { useInputSuggestion } from '../../stores/inputSuggestion'
 import { useUnsentLine } from '../../stores/unsentLine'
+import { useAllowance } from '../../stores/allowance'
 import { RulesRollPanel } from '../log/RulesRollPanel'
 /**
  * InputBar -- player text input + Send button (plan Task 4.4b).
@@ -79,6 +80,16 @@ export function InputBar({ rollInsertion }: { rollInsertion?: RollInsertion } = 
     setOffered(null)
   }, [forgotten])
 
+  // #2072 (a1 c): a line the server refused for the play allowance comes back only into an empty box;
+  // anything typed since is never overwritten.
+  const refusedLine = useAllowance((s) => s.refused)
+  useEffect(() => {
+    if (refusedLine === null) return
+    const text = useAllowance.getState().takeRefused()
+    if (!text || draftRef.current.trim()) return
+    setDraft(text)
+  }, [refusedLine])
+
   // #1732: the unacknowledged line goes back in front of anything typed since.
   useEffect(() => {
     if (unsentLine === null) return
@@ -121,6 +132,7 @@ export function InputBar({ rollInsertion }: { rollInsertion?: RollInsertion } = 
     {rulesRoll && <RulesRollPanel key={rulesRoll.id} prompt={rulesRoll} />}
     <div className="neq-input-container shrink-0 border-t border-card bg-[#333] p-[10px]">
       {unsent && <p className="neq-turn-status neq-input-unsent" role="alert">Not sent: the connection to the game dropped. Your line is back in the box; press Send to try again.</p>}
+      {gating.allowanceLine && <p className="neq-turn-status neq-allowance-line" role="status" data-testid="allowance-line">{gating.allowanceLine}</p>}
       {turnStatus && <p className={dmBusy ? 'neq-turn-status neq-turn-status--busy' : 'neq-turn-status'} role="status"><ThinkingMist />{turnStatus}</p>}
       <div className="flex items-center">
         <input
