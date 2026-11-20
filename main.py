@@ -320,6 +320,7 @@ status_manager.set_callback(status_callback)
 # Provider error classification lives in utils/provider_errors.py (stdlib
 # only, unit tested). Re-exported here so existing call sites keep working.
 from utils.provider_errors import (  # noqa: E402
+    GATEWAY_PLAY_CODES,
     PROVIDER_MAX_FAILURES,
     PROVIDER_RETRY_BASE_DELAY,
     PROVIDER_RETRY_MAX_DELAY,
@@ -698,6 +699,9 @@ def _apply_welcome(lifecycle):
             # #1422 F4 (fail-forward): with player text waiting behind the
             # opening scene, its turn runs now instead of a recovery welcome.
             and not lifecycle.player_waiting
+            # #2072: the host's play-allowance refusal answers a resend the
+            # same way; its welcome line shows at once, with no second request.
+            and lifecycle.refusal_category not in GATEWAY_PLAY_CODES
             and current.get("status") == "kickoff_failed"
             and try_consume_forced_recovery(
                 current.get("startup_attempt_id", "")

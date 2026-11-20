@@ -8,7 +8,8 @@ import type { PlayAllowancePayload, PlayAllowancePeriod } from '../../contract/e
 const SAVED = ' Your adventure is saved.'
 
 function clock(iso: string): string {
-  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  // Some engines put a narrow or no-break space before AM/PM; the approved words use a plain space.
+  return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/[\u202f\u00a0]/g, ' ')
 }
 
 function weekday(iso: string): string {
