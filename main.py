@@ -9425,6 +9425,35 @@ def _engine_timed_candidate(candidate, travel_minutes):
     return json.dumps(data), minutes
 
 
+_TRACKER_PLACE_KEYS = ("currentAreaId", "currentArea", "currentLocationId", "currentLocation")
+
+
+def _module_switch_facts(party_tracker, module, projection, chosen_by):
+    """Travel facts for a proposed cross-module switch (D-MODSWITCH-4).
+
+    The destination the engine resolved, under destination names (the
+    vocabulary of the same-module route facts), and where the party is now:
+    the switch is not applied yet. Read by T065's travel note, the redraft
+    note and T114's route_facts.
+    """
+    world = (party_tracker or {}).get("worldConditions") or {}
+    return {
+        "reason_code": "module_switch_proposed",
+        "module": module,
+        "destination_area_id": projection.get("currentAreaId"),
+        "destination_area_name": projection.get("currentArea"),
+        "destination_location_id": projection.get("currentLocationId"),
+        "destination_location_name": projection.get("currentLocation"),
+        "destination_chosen_by": chosen_by,
+        "party_has_moved": False,
+        "party_now_module": (party_tracker or {}).get("module"),
+        "party_now_area_id": world.get("currentAreaId"),
+        "party_now_area_name": world.get("currentArea"),
+        "party_now_location_id": world.get("currentLocationId"),
+        "party_now_location_name": world.get("currentLocation"),
+    }
+
+
 def _build_dm_review_request(
     accepted_history, latest_candidate, review_feedback, planner_projection,
     *, module_snapshot=None, installed_module_references="", atlas_stamps=None,
@@ -13292,6 +13321,14 @@ def _review_dm_candidate_body(
                     != str(party_tracker_data.get("module") or "")
                 ):
                     try:
+                        # D-MODSWITCH-4: who chose the place, from the reply's
+                        # own four place keys, read before anything resolves.
+                        destination_chosen_by = (
+                            "reply"
+                            if any(str(first_candidate_params.get(key) or "").strip()
+                                   for key in _TRACKER_PLACE_KEYS)
+                            else "engine"
+                        )
                         while True:
                             try:
                                 target_projection = action_handler.resolve_cross_module_target_projection(
@@ -13304,9 +13341,15 @@ def _review_dm_candidate_body(
                                     raise
                                 from utils.capture.live_provider_call import _interruptible_wait
                                 _interruptible_wait(0.25, scope, "Checking the travel map...")
-                        first_candidate_params.update(target_projection)
-                        ai_response_content = json.dumps(response_data)
-                        planner_projection = {"module": candidate_module, **target_projection}
+                        # D-MODSWITCH-4: the reply keeps the DM's own shape (it is
+                        # what T065/T114 review and what history stores); staging
+                        # resolves the same place again from the reply's
+                        # parameters. The resolved destination travels only in
+                        # the facts note, named as a destination.
+                        planner_projection = _module_switch_facts(
+                            party_tracker_data, candidate_module, target_projection,
+                            destination_chosen_by,
+                        )
                     except OSError as exc:
                         return content_unavailable()
                     except action_handler.ModuleNotJoinedError as exc:
