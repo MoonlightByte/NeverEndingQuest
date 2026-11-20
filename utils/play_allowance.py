@@ -386,6 +386,11 @@ def _schedule(value, seq=None):
 def _on_timer():
     global _timer, _timer_fired
     with _lock:
+        # Only the current timer reads (threading.Timer is a Thread). A timer
+        # that a newer time replaced, or that was cancelled, while it fired
+        # returns: the newer timer's own firing does the read.
+        if _timer is not threading.current_thread():
+            return
         _timer, _timer_fired = None, True
     if _stopping is not None and _stopping():
         return
