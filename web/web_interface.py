@@ -3315,13 +3315,8 @@ def _play_allowance_refuses(refused_input=None):
     """#2072: True when a new submission must not start a turn (a good read
     says the player cannot play and no fight is live, D-TURN-1). The state goes
     to this client only; a refused line goes back to its composer."""
-    if play_allowance.allows_turn():
+    if not play_allowance.refuses_turn():
         return False
-    try:
-        if dm_main._live_active_encounter(dm_main.load_json_file('party_tracker.json')) is not None:
-            return False
-    except Exception:
-        pass
     play_allowance.publish(to=request.sid, refused_input=refused_input)
     return True
 
@@ -4034,9 +4029,10 @@ def handle_start_game():
         _emit_game_resumed()
         return
     # #2072 (auditor 2c): starting a game is gated like a submission; a game
-    # already running was rejoined above. No game runs here, so no fight is live.
+    # already running was rejoined above. A game saved or loaded mid-fight
+    # starts by resuming that fight (D-TURN-1), so a live fight on disk starts.
     from utils import play_allowance as _allowance
-    if not _allowance.allows_turn():
+    if _allowance.refuses_turn():
         _allowance.publish(to=request.sid, refused_start=True)
         return
     

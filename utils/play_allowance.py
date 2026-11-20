@@ -23,9 +23,9 @@ import threading
 import time
 from datetime import datetime, timezone
 
-# --- The host contract (#2072). Q1, still open with the host: the read is this
-# path joined to the gateway base URL, with the world's token from the OpenAI
-# key slot (the scene-image client). A different answer is a change here only.
+# --- The host contract (#2072), confirmed by the host (#315 comment
+# 7031057773): the read is this path joined to the gateway base URL, with the
+# world's own token as Bearer from the OpenAI key slot (the scene-image client).
 READ_PATH = "/play-allowance"
 
 
@@ -44,6 +44,10 @@ FRESH_SECONDS = 10.0
 # The shown-time re-read: never sooner than this, and this long after the time.
 TIMER_FLOOR_SECONDS = 60.0
 TIMER_SLACK_SECONDS = 5.0
+# When the shown-time read still says locked with the same time (clock skew, a
+# host that lags), at most these follow-up reads, counted from that read, then
+# none until a new time, an ok or a reconnect (Orchestration D-AUTH-1).
+FOLLOWUP_READ_SECONDS = (120.0, 300.0, 900.0)
 # A backstop refusal triggers one read; repeats within this window do not.
 BACKSTOP_READ_SECONDS = 2.0
 
@@ -63,6 +67,9 @@ _publisher = None         # callable(payload, to) set by the web server
 _stopping = None          # callable() -> bool set by the web server
 _timer = None
 _timer_time = None        # the shown time the last timer was set for
+_timer_fired = False      # the timer for _timer_time has fired (follow-ups may follow)
+_followups = 0            # follow-up reads armed for _timer_time
+_fight_check = None       # callable() -> bool set by the game: a fight is live
 _read_note = False
 _last_backstop_read = 0.0
 
@@ -189,7 +196,7 @@ def _store(seq, value):
         if _stored is not None and _stored["seq"] > seq:
             return False
         _stored = {"seq": seq, "at": time.monotonic(), "value": value}
-    _schedule(value)
+    _schedule(value, seq)
     return True
 
 
@@ -206,6 +213,29 @@ def _fresh_value():
         if _stored is not None and time.monotonic() - _stored["at"] < FRESH_SECONDS:
             return True, _stored["value"]
     return False, None
+
+
+def set_fight_check(check):
+    """The game's own read of a live fight (main.py registers it)."""
+    global _fight_check
+    _fight_check = check
+
+
+def fight_live():
+    """True while a fight is live (D-TURN-1: it goes on whatever the allowance
+    says). An unreadable encounter counts as no fight, so the gates refuse."""
+    if _fight_check is None:
+        return False
+    try:
+        return bool(_fight_check())
+    except Exception:
+        return False
+
+
+def refuses_turn():
+    """The one gate condition (the loop, the web handlers and start_game): a
+    good read says this player cannot play, and no fight is live."""
+    return not allows_turn() and not fight_live()
 
 
 def allows_turn():
@@ -235,6 +265,7 @@ def payload(refused_input=None, refused_start=False):
         data = {"unavailable": True}
     else:
         data = dict(value)
+        data["fight_live"] = fight_live()  # at publish time, from the gates' own read
     if refused_input is not None:
         data["refused_input"] = str(refused_input)
     if refused_start:
@@ -314,27 +345,38 @@ def shown_time(value):
     return None
 
 
-def _schedule(value):
+def _schedule(value, seq=None):
     """One daemon timer per distinct shown time (a1 b): never sooner than the
-    floor, nothing when the time is the one already set (or fired), none when
-    there is no time."""
-    global _timer, _timer_time
+    floor, nothing when the time is the one already set, none when there is no
+    time. After that timer has fired and a read still gives the same time, at
+    most len(FOLLOWUP_READ_SECONDS) follow-up reads. Only the newest stored
+    read schedules, and nothing is armed once the server is stopping."""
+    global _timer, _timer_time, _timer_fired, _followups
     if value is None:
         return  # a failed read leaves any timer as it was
     try:
         moment = shown_time(value) if value.get("state") != "ok" else None
     except ValueError:
         moment = None
+    stopping = _stopping is not None and _stopping()
     with _lock:
+        if seq is not None and (_stored is None or _stored["seq"] != seq):
+            return  # an older read finishing late never arms a timer
         if moment is not None and moment == _timer_time:
-            return
-        if _timer is not None:
-            _timer.cancel()
-        _timer, _timer_time = None, moment
-        if moment is None:
-            return
-        delay = max(TIMER_FLOOR_SECONDS,
-                    (moment - datetime.now(timezone.utc)).total_seconds() + TIMER_SLACK_SECONDS)
+            if (_timer is not None or not _timer_fired or stopping
+                    or _followups >= len(FOLLOWUP_READ_SECONDS)):
+                return
+            delay = FOLLOWUP_READ_SECONDS[_followups] - (
+                FOLLOWUP_READ_SECONDS[_followups - 1] if _followups else 0.0)
+            _followups += 1
+        else:
+            if _timer is not None:
+                _timer.cancel()
+            _timer, _timer_time, _timer_fired, _followups = None, moment, False, 0
+            if moment is None or stopping:
+                return
+            delay = max(TIMER_FLOOR_SECONDS,
+                        (moment - datetime.now(timezone.utc)).total_seconds() + TIMER_SLACK_SECONDS)
         timer = threading.Timer(delay, _on_timer)
         timer.daemon = True
         _timer = timer
@@ -342,6 +384,9 @@ def _schedule(value):
 
 
 def _on_timer():
+    global _timer, _timer_fired
+    with _lock:
+        _timer, _timer_fired = None, True
     if _stopping is not None and _stopping():
         return
     read()
@@ -401,8 +446,9 @@ def refusal_line():
 
 def _reset_for_rows():
     """Row/test helper: forget everything (no timer left running)."""
-    global _stored, _warned, _timer_time, _read_note, _last_backstop_read
+    global _stored, _warned, _timer_time, _read_note, _last_backstop_read, _timer_fired, _followups
     cancel_timer()
     with _lock:
         _stored, _warned, _timer_time, _read_note, _last_backstop_read = None, False, None, False, 0.0
+        _timer_fired, _followups = False, 0
 

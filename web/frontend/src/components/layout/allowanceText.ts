@@ -21,9 +21,10 @@ export function allowanceShown(value: PlayAllowancePayload | null): value is Pla
   return !!value && !value.unavailable && value.limited === true && !!value.day && !!value.week && !!value.state
 }
 
-/** True when a new submission (or a start) is locked by the allowance. */
+/** True when a new submission (or a start) is locked by the allowance. A live fight goes on (D-TURN-1): while the
+ * server says one is live, nothing is locked and no composer line shows; the bars still show. */
 export function allowanceLocked(value: PlayAllowancePayload | null): boolean {
-  return allowanceShown(value) && value.state !== 'ok'
+  return allowanceShown(value) && value.state !== 'ok' && value.fight_live !== true
 }
 
 function weekUsed(value: PlayAllowancePayload & { week: PlayAllowancePeriod }): boolean {

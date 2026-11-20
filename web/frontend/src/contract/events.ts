@@ -198,6 +198,8 @@ export interface PlayAllowancePayload {
   unavailable?: boolean
   refused_input?: string
   refused_start?: boolean
+  /** A fight is live (D-TURN-1): the allowance locks neither the composer nor Start while it is true. */
+  fight_live?: boolean
 }
 
 export interface ServerEvents {

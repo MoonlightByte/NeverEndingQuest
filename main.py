@@ -263,6 +263,18 @@ def _live_active_encounter(party_tracker):
     return live_encounter_id(party_tracker, strict=True)
 
 
+def _allowance_fight_live():
+    """#2072 (D-TURN-1): the play allowance's one live-fight read, used by the
+    loop gate, the web handlers, start_game and the page payload. It raises on
+    an unreadable encounter; play_allowance.fight_live() counts that as no fight."""
+    return _live_active_encounter(load_json_file("party_tracker.json")) is not None
+
+
+from utils import play_allowance as _play_allowance  # noqa: E402
+
+_play_allowance.set_fight_check(_allowance_fight_live)
+
+
 def _post_combat_world(party_tracker):
     """The tracker's worldConditions when it names where the party is, else None (#444)."""
     world = (
@@ -11537,8 +11549,7 @@ def _main_game_loop(startup_authority, turn_authority):
         # a live fight goes on (D-TURN-1). Checked before a pending welcome is
         # superseded. A line the web handler accepted is not checked again.
         if (not (read_accepted and not offer_substituted)
-                and not play_allowance.allows_turn()
-                and _live_active_encounter(load_json_file("party_tracker.json")) is None):
+                and play_allowance.refuses_turn()):
             if offer_substituted:
                 held_offer = offered_now  # still offered after the pause
             from web.shared_state import has_player_output_sink
