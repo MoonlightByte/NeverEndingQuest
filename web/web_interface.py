@@ -1439,7 +1439,9 @@ class WebInput:
                 return ''
             # #2072 a1: tell the game loop whether this line was checked and
             # accepted by the web handler (input() drops the str subclass).
-            play_allowance.note_read(isinstance(user_input, play_allowance.AcceptedLine))
+            from utils import play_allowance as _allowance
+
+            _allowance.note_read(isinstance(user_input, _allowance.AcceptedLine))
             if isinstance(user_input, str):
                 return user_input + '\n'
             return str(user_input) + '\n'
@@ -3309,11 +3311,10 @@ def _play_refusal_text(exc, what):
     return "%s." % what
 
 
-def _play_allowance_refuses(refused_input=None, start=False):
+def _play_allowance_refuses(refused_input=None):
     """#2072: True when a new submission must not start a turn (a good read
     says the player cannot play and no fight is live, D-TURN-1). The state goes
-    to this client only; a refused line goes back to its composer, and a refused
-    start tells the page that nothing is starting."""
+    to this client only; a refused line goes back to its composer."""
     if play_allowance.allows_turn():
         return False
     try:
@@ -3321,7 +3322,7 @@ def _play_allowance_refuses(refused_input=None, start=False):
             return False
     except Exception:
         pass
-    play_allowance.publish(to=request.sid, refused_input=refused_input, refused_start=start)
+    play_allowance.publish(to=request.sid, refused_input=refused_input)
     return True
 
 
@@ -4033,8 +4034,10 @@ def handle_start_game():
         _emit_game_resumed()
         return
     # #2072 (auditor 2c): starting a game is gated like a submission; a game
-    # already running was rejoined above.
-    if _play_allowance_refuses(start=True):
+    # already running was rejoined above. No game runs here, so no fight is live.
+    from utils import play_allowance as _allowance
+    if not _allowance.allows_turn():
+        _allowance.publish(to=request.sid, refused_start=True)
         return
     
     # Uninstall debug interceptor to prevent competing stdout redirections
