@@ -1604,6 +1604,12 @@ def _record_last_move_escorts(checkpoint):
     every completed move ([] when nobody came along), so the key always means
     the last move; the same value is written once (a resumed completion)."""
     module = str(checkpoint.get("module_name") or "")
+    # A cross-module move's checkpoint names the module left; the record is
+    # where the party arrived, so it takes the target module (#2081 C7).
+    handoff = checkpoint.get("module_handoff")
+    target = handoff.get("target_projection") if isinstance(handoff, dict) else None
+    if isinstance(target, dict) and target.get("module"):
+        module = str(target["module"])
     destination = str(checkpoint.get("destination_location_id") or "")
     if not module or not destination:
         return
