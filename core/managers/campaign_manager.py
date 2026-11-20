@@ -2306,6 +2306,13 @@ class CampaignManager:
                 raise OSError(
                     "Party module changed before transition publication"
                 )
+            # U2 backstop for every caller (the root path, the transition
+            # actions, the legacy updatePartyTracker, a host's own switch):
+            # never move the party out of a live fight. Fail-open on an
+            # unreadable encounter file, as staging.
+            from core.managers.combat_state import live_encounter_id
+            if live_encounter_id(persisted):
+                raise OSError("cross-module travel while a fight is live")
             original = copy.deepcopy(persisted)
             self.stage_module_completion_intent(
                 module_name,

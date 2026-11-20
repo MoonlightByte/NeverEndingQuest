@@ -637,6 +637,11 @@ def _new_current_transition_checkpoint(
     }
 
 
+# U2: the typed refusal for a module switch while a fight is live (staging and
+# CampaignManager.publish_party_module_transition say the same).
+LIVE_FIGHT_SWITCH_REFUSAL = "cross-module travel while a fight is live"
+
+
 class ModuleNotJoinedError(ValueError):
     """The destination module is installed but not joined to the world (#720),
     or the value is not a module id at all (#1287): then the joined ids are
@@ -783,6 +788,11 @@ def stage_cross_module_root_checkpoint(
     target_module = str(parameters.get("module") or "")
     if not source_module or not target_module or source_module == target_module:
         raise ValueError("cross-module travel requires a different module")
+    # U2: no switch while a fight is live; before anything is resolved or
+    # written. An unreadable encounter file reads as not live (fail-open).
+    from core.managers.combat_state import live_encounter_id
+    if live_encounter_id(party_tracker_data):
+        raise ValueError(LIVE_FIGHT_SWITCH_REFUSAL)
     target_values = resolve_cross_module_target_projection(
         target_module, parameters
     )

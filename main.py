@@ -252,21 +252,15 @@ def _active_combat_recovery(party_tracker):
 
 
 def _live_active_encounter(party_tracker):
-    """Return the tracker's active encounter id while that fight is live (#230)."""
+    """Return the tracker's active encounter id while that fight is live (#230).
+
+    The turn router's read: combat_state.live_encounter_id, strict (an
+    unreadable encounter file raises, as before)."""
     if not isinstance(party_tracker, dict):
         return None
-    encounter_id = (
-        (party_tracker.get("worldConditions") or {})
-        .get("activeCombatEncounter", "")
-    )
-    if not encounter_id:
-        return None
-    from core.managers.combat_state import active_encounter_is_live
+    from core.managers.combat_state import live_encounter_id
 
-    encounter = safe_json_load(
-        os.path.join("modules", "encounters", f"encounter_{encounter_id}.json")
-    )
-    return encounter_id if active_encounter_is_live(encounter) else None
+    return live_encounter_id(party_tracker, strict=True)
 
 
 def _post_combat_world(party_tracker):
