@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- If the game is closed before its page opens, the story on screen is still there when you come back (#2086).
+
 - On a hosted game, the top of the play page now shows how much free play is left today and this week (#2072).
 
 - On a hosted game, when today's or this week's free play is used, or free play is paused, Send and Start are greyed out and a line says when you can play again; a turn already under way still finishes (#2072).
