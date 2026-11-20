@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- You can no longer leave for another adventure in the middle of a fight (#2081).
+
+- Going back to an adventure you left now puts you where you left it, unless that place is gone; games saved before this change still start you at the adventure's beginning (#2081).
+
 - Once the Dungeon Master's reply has been approved, the turn now always plays out and is no longer cut off part way for using too many AI calls (#2069).
 
 - A fight that stops because the AI kept giving the same unusable answer now says so and tells you the fight is saved (#2069).
