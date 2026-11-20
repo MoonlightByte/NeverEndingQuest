@@ -314,6 +314,11 @@ startup_phase = ""
 MESSAGE_CACHE_FILE = "modules/conversation_history/game_interface_cache.json"
 MESSAGE_CACHE_SIZE = 15  # Keep last 15 messages
 message_cache = deque(maxlen=MESSAGE_CACHE_SIZE)
+# #2086: True once the deque holds the cache file's lines (a load, or the
+# per-line path that reads the file as its base) or a deliberate clear of them.
+# In memory only; a Load/Reset restore sets it False. The shutdown save writes
+# the deque only when it is True. Guarded by message_cache_lock.
+_message_cache_loaded = False
 # #1373: lines shown live whose cache write failed, oldest first. Guarded by
 # message_cache_lock; merged into every read of the file, so a reconnect
 # serves what the player saw, until a write succeeds or a Load/Reset.
@@ -381,6 +386,9 @@ def _begin_web_restore(manager, message, previous_clean=True):
     # Taken before _ui_operation_lock: writers hold message_cache_lock first.
     with message_cache_lock:
         _unpersisted_messages.clear()
+        # #2086: the restore replaces the file; the deque no longer describes
+        # it, so a shutdown before the process exits must not write it back.
+        _set_message_cache_loaded(False)
     with _ui_operation_lock:
         _restore_manager = manager
         _ui_operations['restore'] = {
@@ -693,6 +701,7 @@ def load_message_cache(on_recovery=None):
                     cached_messages = candidate
                 cached_messages = _with_unpersisted(cached_messages)[-MESSAGE_CACHE_SIZE:]
                 message_cache = deque(cached_messages, maxlen=MESSAGE_CACHE_SIZE)
+                _set_message_cache_loaded(True)  # #2086
             finally:
                 atomic_writer.release_lock(MESSAGE_CACHE_FILE)
     except Exception as e:
@@ -701,6 +710,21 @@ def load_message_cache(on_recovery=None):
     if notice is not None and on_recovery is not None:
         on_recovery(notice)
     return cached_messages
+
+def _set_message_cache_loaded(value):
+    """#2086: record whether the deque describes the cache file."""
+    global _message_cache_loaded
+    with message_cache_lock:
+        _message_cache_loaded = value is True
+
+
+def message_cache_loaded():
+    """#2086: True once the on-screen story was loaded from its file (or written
+    through the per-line path, or deliberately cleared) in this process. A host's
+    stop hook asks this before saving; the shutdown save does the same."""
+    with message_cache_lock:
+        return _message_cache_loaded is True
+
 
 def save_message_cache():
     """Save message cache to file"""
@@ -767,6 +791,7 @@ def _message_cache_matches(message):
                 durable = _with_unpersisted(durable)
                 message_cache.clear()
                 message_cache.extend(durable[-MESSAGE_CACHE_SIZE:])
+                _set_message_cache_loaded(True)  # #2086
             else:
                 durable = _with_unpersisted([])
             for cached in durable:
@@ -836,6 +861,7 @@ def _cache_message(message, *, commit_guard=None):
                 with commit_guard() if commit_guard is not None else nullcontext():
                     message_cache.clear()
                     message_cache.extend(base)
+                    _set_message_cache_loaded(True)  # #2086: the deque is the file
                 return "duplicate"
             candidate = (base + [dict(message)])[-MESSAGE_CACHE_SIZE:]
             # The cache is not game state: a read-only cache fails this write
@@ -850,11 +876,13 @@ def _cache_message(message, *, commit_guard=None):
                 on_read_only="fail",
             ):
                 _keep_unpersisted(message, base, commit_guard)
+                _set_message_cache_loaded(True)  # #2086: the file's base, plus the line
                 return "failed"
             _unpersisted_messages.clear()
             with commit_guard() if commit_guard is not None else nullcontext():
                 message_cache.clear()
                 message_cache.extend(candidate)
+                _set_message_cache_loaded(True)  # #2086: the deque is the file
         except LiveProviderSuperseded:
             raise
         except Exception:
@@ -975,6 +1003,7 @@ def clear_message_log():
     file); its lines must not stay above the new game, here or in a browser."""
     with message_cache_lock:
         message_cache.clear()
+        _set_message_cache_loaded(True)  # #2086: a deliberate clear
         save_message_cache()
     socketio.emit('message_log_cleared', {})
 
@@ -3819,6 +3848,7 @@ def handle_action(data, _operation_id=None):
                         _begin_web_restore(manager, 'Resetting the campaign.')
                         reset_campaign.perform_reset_logic()
                         message_cache.clear()
+                        _set_message_cache_loaded(True)  # #2086: a deliberate clear
                         save_message_cache()
                         return (True, 'reset')
                     except Exception as exc:
@@ -3871,6 +3901,7 @@ def handle_action(data, _operation_id=None):
             # Clear the message cache on campaign reset
             global message_cache
             message_cache.clear()
+            _set_message_cache_loaded(True)  # #2086: a deliberate clear
             save_message_cache()
             emit('reset_complete', {'message': 'Campaign has been reset. Reloading...'})
             release_lifecycle_owner(_operation_id, restarting=True)
@@ -7819,7 +7850,12 @@ def shutdown():
                 break
             time.sleep(0.25)
         try:
-            save_message_cache()
+            if message_cache_loaded():
+                save_message_cache()
+            else:
+                # #2086: never loaded (no page, no line) or a restore replaced
+                # the file: the deque is not the player's story; keep the file.
+                print("INFO: MESSAGE_CACHE: shutdown save skipped; the on-screen story was never loaded")
         except Exception as exc:
             print(f"ERROR saving the message cache at shutdown: {exc}")
         print("INFO: Shutdown requested by the launcher; the game is quiet. Exiting.")
