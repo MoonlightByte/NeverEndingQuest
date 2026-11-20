@@ -228,7 +228,7 @@ def set_publisher(publisher, stopping=None):
     _publisher, _stopping = publisher, stopping
 
 
-def payload(refused_input=None):
+def payload(refused_input=None, refused_start=False):
     """The page's play_allowance payload from the stored value."""
     found, value = current()
     if not found or value is None:
@@ -237,16 +237,18 @@ def payload(refused_input=None):
         data = dict(value)
     if refused_input is not None:
         data["refused_input"] = str(refused_input)
+    if refused_start:
+        data["refused_start"] = True
     return data
 
 
-def publish(to=None, refused_input=None):
+def publish(to=None, refused_input=None, refused_start=False):
     """Send the stored value to every page, or to one client (to=sid). Only a
-    refusal to its sender carries refused_input."""
+    refusal to its sender carries refused_input or refused_start."""
     if not enabled() or _publisher is None:
         return
     try:
-        _publisher(payload(refused_input if to is not None else None), to)
+        _publisher(payload(refused_input if to is not None else None, refused_start and to is not None), to)
     except Exception:
         pass
 

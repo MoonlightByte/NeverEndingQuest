@@ -3296,10 +3296,24 @@ def _post_player_line(content):
     emit('game_output', message)
 
 
-def _play_allowance_refuses(refused_input=None):
+def _play_refusal_text(exc, what):
+    """#2072: the host's play-allowance refusal on a direct SDK call (scene image,
+    speech): its code only, never the body's message; the pages get a fresh read."""
+    from utils.provider_errors import gateway_play_refusal
+
+    code = gateway_play_refusal(exc)
+    if code is None:
+        return None
+    play_allowance.after_backstop()
+    info("PLAY_ALLOWANCE_BACKSTOP %s code=%s" % (what, code), category="play_allowance")
+    return "%s." % what
+
+
+def _play_allowance_refuses(refused_input=None, start=False):
     """#2072: True when a new submission must not start a turn (a good read
     says the player cannot play and no fight is live, D-TURN-1). The state goes
-    to this client only; a refused line goes back to its composer."""
+    to this client only; a refused line goes back to its composer, and a refused
+    start tells the page that nothing is starting."""
     if play_allowance.allows_turn():
         return False
     try:
@@ -3307,7 +3321,7 @@ def _play_allowance_refuses(refused_input=None):
             return False
     except Exception:
         pass
-    play_allowance.publish(to=request.sid, refused_input=refused_input)
+    play_allowance.publish(to=request.sid, refused_input=refused_input, refused_start=start)
     return True
 
 
@@ -4020,7 +4034,7 @@ def handle_start_game():
         return
     # #2072 (auditor 2c): starting a game is gated like a submission; a game
     # already running was rejoined above.
-    if _play_allowance_refuses():
+    if _play_allowance_refuses(start=True):
         return
     
     # Uninstall debug interceptor to prevent competing stdout redirections
@@ -5376,7 +5390,7 @@ def handle_generate_image(data):
         _emit_late_image_answer('image_generated', answer)
         
     except Exception as e:
-        error_msg = f"Image generation failed: {str(e)}"
+        error_msg = _play_refusal_text(e, "Image generation failed") or f"Image generation failed: {str(e)}"
         print(f"ERROR: {error_msg}")
         _emit_late_image_answer('image_generation_error', {
             'message': error_msg,
@@ -5457,7 +5471,7 @@ def generate_tts():
         )
         
     except Exception as e:
-        error_msg = f"TTS generation failed: {str(e)}"
+        error_msg = _play_refusal_text(e, "TTS generation failed") or f"TTS generation failed: {str(e)}"
         print(f"ERROR: {error_msg}")
         # #1786: the provider's words stay in this log; the player gets the DM's notice.
         return jsonify({'error': 'Speech is unavailable.', 'code': 'speech_unavailable',

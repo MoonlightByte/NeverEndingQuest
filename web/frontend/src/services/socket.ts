@@ -261,7 +261,11 @@ on('system_message', (p) => {
 on('error', (p) => useLog.getState().append({ type: 'error', content: p.message }))
 on('token_update', (t) => useLog.getState().setTokens(t))
 // #2072: the hosted play allowance (a gateway world only; memory only).
-on('play_allowance', (p) => useAllowance.getState().receive(p))
+on('play_allowance', (p) => {
+  useAllowance.getState().receive(p)
+  // #2072: the server refused this page's start (free play used or paused): nothing is starting.
+  if (p.refused_start && useSession.getState().mode === 'starting') useSession.setState({ mode: 'disconnected' })
+})
 on('image_generated', (p) => useLog.getState().addImage(p))
 on('image_generation_error', (p) => useLog.getState().imageFailed(p))
 

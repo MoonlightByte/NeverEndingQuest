@@ -187,7 +187,8 @@ export interface WaitRecord {
 /** #2072: one period of the hosted play allowance (typed; no money). */
 export interface PlayAllowancePeriod { used_fraction: number; minutes_left_estimate: number | null; resets_at: string | null }
 /** #2072: the hosted play allowance, sent only by a gateway world. `unavailable` after a failed read;
- * `refused_input` only to the page whose line was refused. */
+ * `refused_input` only to the page whose line was refused; `refused_start` only to the page whose start was
+ * refused (nothing is starting). */
 export interface PlayAllowancePayload {
   limited?: boolean
   state?: 'ok' | 'player_limit' | 'paused_for_everyone' | 'paused_for_account'
@@ -196,6 +197,7 @@ export interface PlayAllowancePayload {
   resume_at?: string | null
   unavailable?: boolean
   refused_input?: string
+  refused_start?: boolean
 }
 
 export interface ServerEvents {
