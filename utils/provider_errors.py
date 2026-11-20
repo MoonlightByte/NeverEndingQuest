@@ -107,15 +107,12 @@ def _sentence(text):
 # renders them for the moment the refusal reaches the player. Each reason and
 # fix stays on one source line.
 _ACCOUNT_REFUSALS = {
-    # #1342: the game's own bounds on a player's tokens, not account faults,
-    # but they reach the player at the same moments and end the same way.
+    # #1342: the game's own bound on a player's tokens, not an account fault,
+    # but it reaches the player at the same moments and ends the same way.
+    # (turn_call_ceiling has its own texts, #2068 D-UX-4.)
     "reissue_limit": {
         "reason": "%(name)s kept failing to answer, so the game stopped retrying to save your tokens",
         "fix": "Wait a minute, or check that provider's status",
-    },
-    "turn_call_ceiling": {
-        "reason": "That turn needed more AI calls than one turn is allowed, so the game stopped it to save your tokens",
-        "fix": "Wait a moment",
     },
     "insufficient_quota": {
         "reason": "%(name)s refused the request: your account is out of funds or quota",
@@ -166,6 +163,30 @@ def _hosted_reissue_limit_line(provider, moment):
     bracket = " (%s)" % provider_display_name(provider) if known else ""
     return _HOSTED_REISSUE_LIMIT_OPENING % bracket + _HOSTED_REISSUE_LIMIT_LINES[moment]
 
+
+# #2068 (OWNER D-UX-4): the game's own turn bound, one full text per moment,
+# on a hosted game and on the player's own machine; only the limit sentence
+# differs. No provider is named: this is the game's own stop, not a failure.
+_TURN_CALL_CEILING_OPENING = "The game stopped this reply because it was taking much longer than it should, so "
+_TURN_CALL_CEILING_LIMIT = {
+    "hosted": "This is a limit the game sets for itself, not anything you did.",
+    "local": "This is a limit the game sets to save your tokens, not anything you did.",
+}
+_TURN_CALL_CEILING_LINES = {
+    "turn": ("that turn didn't go through.", "Nothing in your game was changed. Just send your action again when you're ready."),
+    "after_narration": ("that action could not be completed, and no further actions from that reply were applied.", "What already happened in your game is kept. Just continue when you're ready."),
+    "welcome": ("the DM couldn't open the scene.", "Nothing in your game was changed. Just tell the DM what you do next when you're ready."),
+    "followup": ("the DM couldn't narrate what comes next.", "What already happened in your game is kept. Just continue when you're ready."),
+    "combat": ("the fight couldn't go on.", "The fight is saved as it stands. Just load your game to continue the fight."),
+}
+_TURN_CALL_CEILING_ENDING = "If it happens again, try a simpler action, or come back a little later. Your adventure will be right where you left it."
+
+
+def _turn_call_ceiling_line(provider, moment):
+    what, then = _TURN_CALL_CEILING_LINES[moment]
+    limit = _TURN_CALL_CEILING_LIMIT["hosted" if _through_gateway(provider) else "local"]
+    return " ".join((_TURN_CALL_CEILING_OPENING + what, limit, then, _TURN_CALL_CEILING_ENDING))
+
 _ACCOUNT_REFUSAL_MOMENTS = {
     # The turn loop's DM call: nothing from the turn has run yet.
     "turn": "%s. Nothing in your game was changed. %s, then try that action again.",
@@ -201,6 +222,9 @@ def account_refusal_message(category, provider, moment):
         # #2069 (OWNER D-TURN-1a): only a fight stops on a repeat; its own
         # line, verbatim. Any other moment keeps the caller's line.
         return REPEATED_FAILURE_COMBAT_LINE if moment == "combat" else None
+    if category == "turn_call_ceiling":
+        # #2068 (OWNER D-UX-4): its own text at each moment.
+        return _turn_call_ceiling_line(provider, moment) if moment in _TURN_CALL_CEILING_LINES else None
     entry = _ACCOUNT_REFUSALS.get(category)
     template = _ACCOUNT_REFUSAL_MOMENTS.get(moment)
     if entry is None or template is None:
