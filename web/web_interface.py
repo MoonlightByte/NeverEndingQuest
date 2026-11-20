@@ -890,6 +890,11 @@ def _cache_message(message, *, commit_guard=None):
                 message,
                 base if base is not None else _with_unpersisted(list(message_cache)),
                 commit_guard)
+            if base is not None:
+                # #2086: the file's base, plus the line (as the write-failed
+                # branch above). base is None only if the raise came before or
+                # during the read: then the deque is old memory, so no change.
+                _set_message_cache_loaded(True)
             return "failed"
         finally:
             if acquired:
