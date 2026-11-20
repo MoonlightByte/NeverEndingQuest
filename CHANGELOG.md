@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.7] - 2026-11-20
+
 - If the game is closed before its page opens, the story on screen is still there when you come back (#2086).
 
 - On a hosted game, the top of the play page now shows how much free play is left today and this week (#2072).
