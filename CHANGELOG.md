@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Going back to an adventure you left now puts you where you left it, unless that place is gone; games saved before this change still start you at the adventure's beginning (#2081).
 
+- When the game stops a turn that was taking much longer than it should, the message now says it is the game's own limit and not anything you did, and what to do next (#2068).
+
 - Once the Dungeon Master's reply has been approved, the turn now always plays out and is no longer cut off part way for using too many AI calls (#2069).
 
 - A fight that stops because the AI kept giving the same unusable answer now says so and tells you the fight is saved (#2069).
