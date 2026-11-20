@@ -521,10 +521,9 @@ Use updatePartyTracker action with module change:
 ```
 
 ### AUTOMATIC STARTING LOCATION HANDLING
-- The system automatically determines the starting location for each module from the world registry
-- You only need to provide the module name in the updatePartyTracker action
-- The starting location (including area and location IDs) will be set automatically
-- Only include location parameters if you need to override the default starting location for special circumstances
+- On a switch to another adventure you only need to provide the module name in the updatePartyTracker action
+- The starting location (including area and location IDs) will be set automatically: where the party last left that adventure, or its entry on a first visit
+- Only include location parameters when the player named a specific place there
 
 ### MODULE TRAVEL NARRATION:
 1. **Travel Description**: Use atmospheric travel narration describing the journey
