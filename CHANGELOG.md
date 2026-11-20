@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Asking to go to an adventure meant for higher levels now gets a warning in the story first; if you still want to go, you go (#2081).
+
 - You can no longer leave for another adventure in the middle of a fight (#2081).
 
 - Going back to an adventure you left now puts you where you left it, unless that place is gone; games saved before this change still start you at the adventure's beginning (#2081).

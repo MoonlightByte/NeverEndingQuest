@@ -538,6 +538,9 @@ Use updatePartyTracker action with module change:
 - Travel narration uses AI-generated atmospheric descriptions
 - Return visits include accumulated adventure history
 
+### LEVEL RANGE:
+When every party member's level in Party stats is below an adventure's [Level a-b] in INSTALLED MODULE REFERENCES, the first reply to a request to go there warns in the story that the place is beyond them and makes no move; once the player insists, the switch is made as usual, and a level range is never a reason to refuse it.
+
 ### HANDLING AMBIGUOUS TRAVEL REQUESTS:
 When players use vague travel phrases after discussing other modules:
 - "Let's go" - Ask for clarification: "Where would you like to travel? Within [Current Module] or to another region?"

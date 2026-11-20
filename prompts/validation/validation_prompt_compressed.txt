@@ -128,6 +128,8 @@ NARRATIVE ELABORATION: Location descriptions and NPC sketches are starting seeds
   valid_updatePartyTracker: ["I travel to Frostward_Peaks","Take us to Desert Crown module"]
   invalid_use_transitionLocation: ["Let's go"(same module),"I leave inn","We travel to forest"]
   rule: Module name mentioned = updatePartyTracker; Location in current module = transitionLocation
+  levelRange: When every party member's level in Party stats is below an adventure's [Level a-b] in INSTALLED MODULE REFERENCES, the first reply to a request to go there warns in the story that the place is beyond them and makes no move; once the player insists, the switch is made as usual, and a level range is never a reason to refuse it.
+  levelWarning: A reply that warns about the level and makes no move is valid only as the first reply to a request to go there; once the player has been warned and still asks to go, the reply must make the switch (updatePartyTracker, then updateTime).
 }
 
 @COMBAT_RULES={
