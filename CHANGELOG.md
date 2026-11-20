@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - On a hosted game, if free play runs out in the middle of a turn, one line in the story says so and what was kept (#2072).
 
+- On a hosted game, a fight already under way can always be played to its end while free play is used or paused, including after a reload or when starting a game saved mid-fight (#2072).
+
+- On a hosted game, if play has not come back at the time the page showed, the page checks again a few times over the next 15 minutes, then a reload checks again (#2072).
+
 - Asking to go to an adventure meant for higher levels now gets a warning in the story first; if you still want to go, you go (#2081).
 
 - You can no longer leave for another adventure in the middle of a fight (#2081).
