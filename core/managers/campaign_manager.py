@@ -94,6 +94,7 @@ from utils.module_refresh_lock import module_refresh_lock
 from utils.path_transaction_lock import path_transaction_lock
 from utils.commit_state import recover_incomplete_refresh_commit
 from utils.enhanced_logger import debug, info, warning, error, game_event, set_script_name
+from utils import return_points
 
 # Set script name for logging
 set_script_name(__name__)
@@ -1701,6 +1702,7 @@ def _default_campaign_data() -> Dict[str, Any]:
         "hubs": {},
         "relationships": {},
         "artifacts": {},
+        "returnPoints": {},
         "worldState": {
             "keepOwnership": False,
             "majorDecisions": [],
@@ -3421,6 +3423,9 @@ class CampaignManager:
                         completion_id=completion_id,
                         operation="completion",
                         expected_work=copy.deepcopy(work),
+                        return_point=return_points.point_from_tracker(
+                            party_tracker_data, module_name
+                        ),
                     )
             except BaseException as completion_exc:
                 try:
@@ -3482,8 +3487,13 @@ class CampaignManager:
         completion_id: Optional[str] = None,
         operation: str = "completion",
         expected_work: Optional[Dict[str, Any]] = None,
+        return_point: Optional[Dict[str, str]] = None,
     ) -> None:
-        """Crash-recoverably commit summary and campaign projection."""
+        """Crash-recoverably commit summary and campaign projection.
+
+        return_point: where the party left module_name (utils.return_points),
+        written to campaign.json returnPoints in this same transaction; None
+        leaves the key as it is (a regeneration, or a tracker with no place)."""
         module_name = _normalize_module_name(module_name)
         paths = _module_completion_paths(
             self.campaign_file,
@@ -3562,6 +3572,7 @@ class CampaignManager:
             ("artifacts", {}),
             ("hubs", {}),
             ("worldState", {}),
+            (return_points.KEY, {}),
         ):
             if not isinstance(updated_campaign.get(field), type(default)):
                 updated_campaign[field] = copy.deepcopy(default)
@@ -3571,6 +3582,9 @@ class CampaignManager:
         # separately.
         if module_name not in updated_campaign["completedModules"]:
             updated_campaign["completedModules"].append(module_name)
+        # D-MODSWITCH-1: where the party left it, for a later return.
+        if return_point is not None:
+            return_points.record(updated_campaign, module_name, return_point)
         self._handle_module_completion_export(
             module_name,
             summary,

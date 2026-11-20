@@ -707,15 +707,23 @@ def resolve_cross_module_target_projection(target_module, parameters):
                 busy = any(item["kind"] == "busy" for item in snapshot["read_errors"])
                 raise OSError(errno.EAGAIN if busy else errno.EIO, "Target module records could not be verified")
             raise ValueError("Target module has no live destination records")
-        default_location_id, default_location_name, default_area_id, default_area_name = (
-            get_module_starting_location(target_module, snapshot=snapshot)
-        )
-        supplied = {
-            "currentAreaId": str(default_area_id),
-            "currentArea": "",
-            "currentLocationId": str(default_location_id),
-            "currentLocation": "",
-        }
+        # D-MODSWITCH-1: a return lands where the party left this module,
+        # when that place still exists here under its saved name; else the
+        # declared entry, as before (and for a save older than the key).
+        from utils import return_points
+        returned = return_points.resolve(target_module, snapshot)
+        if returned is not None:
+            supplied = {key: str(value) for key, value in returned.items()}
+        else:
+            default_location_id, default_location_name, default_area_id, default_area_name = (
+                get_module_starting_location(target_module, snapshot=snapshot)
+            )
+            supplied = {
+                "currentAreaId": str(default_area_id),
+                "currentArea": "",
+                "currentLocationId": str(default_location_id),
+                "currentLocation": "",
+            }
     if not supplied["currentAreaId"] or not supplied["currentLocationId"]:
         raise ValueError(
             "an explicit module destination requires both currentAreaId and "
