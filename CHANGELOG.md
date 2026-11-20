@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Asking to go to an adventure meant for higher levels now gets a warning in the story first; if you still want to go, you go (#2081).
+
+- You can no longer leave for another adventure in the middle of a fight (#2081).
+
+- Going back to an adventure you left now puts you where you left it, unless that place is gone; games saved before this change still start you at the adventure's beginning (#2081).
+
 ## [1.2.6] - 2026-11-19
 
 - When the game stops a turn that was taking much longer than it should, the message now says it is the game's own limit and not anything you did, and what to do next (#2068).

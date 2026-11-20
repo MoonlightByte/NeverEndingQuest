@@ -634,6 +634,37 @@ def active_encounter_is_live(encounter):
     return not (all_hostiles_resolved(encounter) or all_party_resolved(encounter))
 
 
+def live_encounter_id(party_tracker, *, strict=False):
+    """The tracker's active encounter id while that fight is live, else None.
+
+    Reads worldConditions.activeCombatEncounter and the encounter file
+    modules/encounters/encounter_<id>.json (cwd-relative, as every module
+    reader), judged by active_encounter_is_live. A missing or non-object
+    file is not live. An unreadable file (corrupt JSON, an OS error) is not
+    live either (fail-open) unless ``strict``: then the read error is raised,
+    as the turn router has always done. A public helper: a switch that does
+    not go through the DM route calls it to refuse a fight in its own words.
+    """
+    if not isinstance(party_tracker, Mapping):
+        return None
+    world = party_tracker.get("worldConditions")
+    encounter_id = world.get("activeCombatEncounter", "") if isinstance(world, Mapping) else ""
+    if not isinstance(encounter_id, str) or not encounter_id:
+        return None
+    import os
+    from utils.encoding_utils import safe_json_load
+
+    path = os.path.join("modules", "encounters", f"encounter_{encounter_id}.json")
+    try:
+        encounter = safe_json_load(path)
+    except Exception:
+        if strict:
+            raise
+        _LOGGER.warning("live_encounter_id: encounter %s unreadable; read as not live", encounter_id)
+        return None
+    return encounter_id if active_encounter_is_live(encounter) else None
+
+
 def ensure_combatant_ids(encounter):
     """Upgrade a roster with persisted unique IDs and deterministic tie breaks."""
     if not isinstance(encounter, dict):

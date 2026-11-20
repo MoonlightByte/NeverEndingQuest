@@ -637,6 +637,11 @@ def _new_current_transition_checkpoint(
     }
 
 
+# U2: the typed refusal for a module switch while a fight is live (staging and
+# CampaignManager.publish_party_module_transition say the same).
+LIVE_FIGHT_SWITCH_REFUSAL = "cross-module travel while a fight is live"
+
+
 class ModuleNotJoinedError(ValueError):
     """The destination module is installed but not joined to the world (#720),
     or the value is not a module id at all (#1287): then the joined ids are
@@ -702,15 +707,23 @@ def resolve_cross_module_target_projection(target_module, parameters):
                 busy = any(item["kind"] == "busy" for item in snapshot["read_errors"])
                 raise OSError(errno.EAGAIN if busy else errno.EIO, "Target module records could not be verified")
             raise ValueError("Target module has no live destination records")
-        default_location_id, default_location_name, default_area_id, default_area_name = (
-            get_module_starting_location(target_module, snapshot=snapshot)
-        )
-        supplied = {
-            "currentAreaId": str(default_area_id),
-            "currentArea": "",
-            "currentLocationId": str(default_location_id),
-            "currentLocation": "",
-        }
+        # D-MODSWITCH-1: a return lands where the party left this module,
+        # when that place still exists here under its saved name; else the
+        # declared entry, as before (and for a save older than the key).
+        from utils import return_points
+        returned = return_points.resolve(target_module, snapshot)
+        if returned is not None:
+            supplied = {key: str(value) for key, value in returned.items()}
+        else:
+            default_location_id, default_location_name, default_area_id, default_area_name = (
+                get_module_starting_location(target_module, snapshot=snapshot)
+            )
+            supplied = {
+                "currentAreaId": str(default_area_id),
+                "currentArea": "",
+                "currentLocationId": str(default_location_id),
+                "currentLocation": "",
+            }
     if not supplied["currentAreaId"] or not supplied["currentLocationId"]:
         raise ValueError(
             "an explicit module destination requires both currentAreaId and "
@@ -783,6 +796,11 @@ def stage_cross_module_root_checkpoint(
     target_module = str(parameters.get("module") or "")
     if not source_module or not target_module or source_module == target_module:
         raise ValueError("cross-module travel requires a different module")
+    # U2: no switch while a fight is live; before anything is resolved or
+    # written. An unreadable encounter file reads as not live (fail-open).
+    from core.managers.combat_state import live_encounter_id
+    if live_encounter_id(party_tracker_data):
+        raise ValueError(LIVE_FIGHT_SWITCH_REFUSAL)
     target_values = resolve_cross_module_target_projection(
         target_module, parameters
     )
@@ -1586,6 +1604,12 @@ def _record_last_move_escorts(checkpoint):
     every completed move ([] when nobody came along), so the key always means
     the last move; the same value is written once (a resumed completion)."""
     module = str(checkpoint.get("module_name") or "")
+    # A cross-module move's checkpoint names the module left; the record is
+    # where the party arrived, so it takes the target module (#2081 C7).
+    handoff = checkpoint.get("module_handoff")
+    target = handoff.get("target_projection") if isinstance(handoff, dict) else None
+    if isinstance(target, dict) and target.get("module"):
+        module = str(target["module"])
     destination = str(checkpoint.get("destination_location_id") or "")
     if not module or not destination:
         return
