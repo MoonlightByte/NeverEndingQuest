@@ -35,6 +35,7 @@ import { StorageModal } from '../dialogs/StorageModal'
 import { UpdateDialog } from '../dialogs/UpdateDialog'
 import { CompressionOverlay } from '../dialogs/CompressionOverlay'
 import { ModuleProgressOverlay } from '../dialogs/ModuleProgressOverlay'
+import { PlayAllowanceBars } from './PlayAllowanceBars'
 import { EmberPresentation, useEmberDesktop } from './EmberPresentation'
 import { EmberIcon } from './EmberIcon'
 import { useEmberViewport } from './useEmberViewport'
@@ -163,6 +164,7 @@ export function AppShell() {
       >
         <header style={{ gridArea: 'header' }}>
           <HeaderBar />
+          <PlayAllowanceBars />
         </header>
         <main className="neq-main-area min-h-0" style={{ gridArea: 'main' }}>
           <CenterColumn focused={focused} onToggleFocus={() => setFocused(value => !value)} />

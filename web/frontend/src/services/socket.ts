@@ -2,6 +2,7 @@ import { isTransientNotice, useConnectionNotice } from '../stores/connectionNoti
 import { useRulesRoll } from '../stores/rulesRoll'
 import { useInputSuggestion } from '../stores/inputSuggestion'
 import { useUnsentLine } from '../stores/unsentLine'
+import { useAllowance } from '../stores/allowance'
 /**
  * services/socket.ts -- the ONLY module in src/ allowed to import socket.io-client.
  * It owns the connection to the Flask-SocketIO server (:8357, default /socket.io
@@ -168,6 +169,7 @@ socket.on('connect', () => {
 socket.on('disconnect', () => {
   connectionLive = false
   useRulesRoll.getState().setPrompt(null)
+  useAllowance.getState().clear()
   useSession.getState().setConnected(false)
   // #214 F10: a welcome clear emitted while disconnected is lost; drop the
   // placeholder now - a still-active welcome's next heartbeat restores it.
@@ -258,6 +260,8 @@ on('system_message', (p) => {
 })
 on('error', (p) => useLog.getState().append({ type: 'error', content: p.message }))
 on('token_update', (t) => useLog.getState().setTokens(t))
+// #2072: the hosted play allowance (a gateway world only; memory only).
+on('play_allowance', (p) => useAllowance.getState().receive(p))
 on('image_generated', (p) => useLog.getState().addImage(p))
 on('image_generation_error', (p) => useLog.getState().imageFailed(p))
 

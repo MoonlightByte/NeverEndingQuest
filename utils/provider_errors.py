@@ -27,6 +27,47 @@ QUOTA_ERROR_CODES = frozenset({
     "credit_balance_exhausted",
 })
 
+# #2072: the host's play-allowance backstop (HTTP 429). The host contract, in
+# one place (Q4 with the host): this error TYPE with one of these CODES, read
+# from typed fields only, on the OpenAI and the genai shape. Checked before the
+# status classes and never retried; nothing else of the body is read.
+GATEWAY_PLAY_ERROR_TYPE = "neq_gateway"
+GATEWAY_PLAY_CODES = frozenset({"gateway_play_limit", "gateway_play_paused"})
+
+
+def _gateway_play_pairs(item):
+    """(type, code) pairs from one failure's typed fields."""
+    pairs = []
+    if isinstance(item, dict):
+        pairs.append((item.get("error_type"), item.get("error_code")))
+        return pairs
+    envelope = getattr(item, "envelope", None)
+    if isinstance(envelope, dict):
+        pairs.append((envelope.get("error_type"), envelope.get("error_code")))
+    pairs.append((getattr(item, "type", None), getattr(item, "code", None)))
+    # openai: body is the error object (or {"error": {...}}); google-genai:
+    # details is the parsed response JSON.
+    for holder in (getattr(item, "body", None), getattr(item, "details", None)):
+        if isinstance(holder, dict):
+            detail = holder.get("error")
+            detail = detail if isinstance(detail, dict) else holder
+            pairs.append((detail.get("type"), detail.get("code")))
+    return pairs
+
+
+def gateway_play_refusal(exc_or_envelope):
+    """The backstop code (gateway_play_limit / gateway_play_paused) when this
+    failure is the host's play-allowance refusal, else None. Type AND code."""
+    items = [exc_or_envelope]
+    if not isinstance(exc_or_envelope, dict):
+        items = list(_provider_error_chain(exc_or_envelope))
+    for item in items:
+        for kind, code in _gateway_play_pairs(item):
+            if (isinstance(kind, str) and kind.lower() == GATEWAY_PLAY_ERROR_TYPE
+                    and isinstance(code, str) and code.lower() in GATEWAY_PLAY_CODES):
+                return code.lower()
+    return None
+
 _PROVIDER_NAMES = {
     "openai": "OpenAI",
     "legacy": "OpenAI",
@@ -113,6 +154,15 @@ _ACCOUNT_REFUSALS = {
     "reissue_limit": {
         "reason": "%(name)s kept failing to answer, so the game stopped retrying to save your tokens",
         "fix": "Wait a minute, or check that provider's status",
+    },
+    # #2072 (owner D-UX-5): the host's play-allowance backstop.
+    "gateway_play_limit": {
+        "reason": "Your free play ran out",
+        "fix": "Wait until your free play comes back",
+    },
+    "gateway_play_paused": {
+        "reason": "Free play is paused",
+        "fix": "Wait until free play comes back",
     },
     "insufficient_quota": {
         "reason": "%(name)s refused the request: your account is out of funds or quota",
@@ -502,6 +552,24 @@ def _classify_provider_error(exc):
     def matches(*needles):
         return any(needle in code_blob for needle in needles)
 
+    # #2072: the host's play-allowance backstop, by type and code, before
+    # every other check (its 429 is never a rate limit); never retried.
+    play_refusal = gateway_play_refusal(exc)
+    if play_refusal is not None:
+        try:
+            from utils import play_allowance
+
+            play_allowance.after_backstop()
+        except Exception:
+            pass
+        return {
+            "category": play_refusal,
+            "retryable": False,
+            "player_message": account_refusal_message(play_refusal, provider, "turn"),
+            "retry_notice": None,
+            "provider": provider,
+        }
+
     # #1342: a live call that hit its reissue limit, or a turn that hit its
     # generation ceiling. Checked first: the limit envelope can carry the 429
     # it ended on, and another attempt would spend the tokens the bound saved.
@@ -774,6 +842,8 @@ def _envelope_of(item):
 
 def _envelope_class(envelope):
     """connection_class for a live-child envelope (typed fields only)."""
+    if gateway_play_refusal(envelope) is not None:
+        return None  # #2072: the account line, never a connection notice
     if "connection_class" in envelope:
         # A bound (reissue_limit) carries the class of its last failure.
         return envelope["connection_class"]
@@ -844,6 +914,8 @@ def connection_class(exc_or_envelope):
     envelope = _envelope_of(exc_or_envelope)
     if envelope is not None:
         return _envelope_class(envelope)
+    if gateway_play_refusal(exc_or_envelope) is not None:
+        return None  # #2072: the account line, never a connection notice
     status = None
     codes = []
     names = set()

@@ -215,6 +215,19 @@ engineio.payload.Payload.max_decode_packets = SOCKET_MAX_DECODE_PACKETS = 96
 socketio = SocketIO(app, cors_allowed_origins=None)
 _served_port = None   # the bound port when this process binds its own socket (#1681/#1682)
 _shutdown_requested = threading.Event()
+# #2072: the play allowance (gateway worlds only): its page event, sent to every
+# page or to one client, and the exit flag its shown-time timer checks.
+from utils import play_allowance
+
+
+def _publish_play_allowance(payload, to=None):
+    if to is None:
+        socketio.emit('play_allowance', payload)
+    else:
+        socketio.emit('play_allowance', payload, to=to)
+
+
+play_allowance.set_publisher(_publish_play_allowance, _shutdown_requested.is_set)
 if _LOCAL_TOKEN:
     app.wsgi_app = LocalGuard(app.wsgi_app, _LOCAL_TOKEN, lambda: _served_port)
 
@@ -1424,6 +1437,9 @@ class WebInput:
                 raise LiveProviderSuperseded('An accepted lifecycle control stopped gameplay')
             if user_input is None:
                 return ''
+            # #2072 a1: tell the game loop whether this line was checked and
+            # accepted by the web handler (input() drops the str subclass).
+            play_allowance.note_read(isinstance(user_input, play_allowance.AcceptedLine))
             if isinstance(user_input, str):
                 return user_input + '\n'
             return str(user_input) + '\n'
@@ -3252,6 +3268,8 @@ def handle_connect():
     # Send any queued messages
     _emit_pending_game_output(emit)
 
+    # #2072: the play allowance for this page (gateway only; never waits).
+    play_allowance.read_and_publish_async(to=request.sid)
     from utils.provider_gateway import browser_debug_allowed
     while not debug_output_queue.empty():
         msg = debug_output_queue.get()
@@ -3278,6 +3296,21 @@ def _post_player_line(content):
     emit('game_output', message)
 
 
+def _play_allowance_refuses(refused_input=None):
+    """#2072: True when a new submission must not start a turn (a good read
+    says the player cannot play and no fight is live, D-TURN-1). The state goes
+    to this client only; a refused line goes back to its composer."""
+    if play_allowance.allows_turn():
+        return False
+    try:
+        if dm_main._live_active_encounter(dm_main.load_json_file('party_tracker.json')) is not None:
+            return False
+    except Exception:
+        pass
+    play_allowance.publish(to=request.sid, refused_input=refused_input)
+    return True
+
+
 @socketio.on('submit_check_roll')
 def handle_check_roll(data):
     activity.touch()
@@ -3288,6 +3321,10 @@ def handle_check_roll(data):
         if not isinstance(data, dict) or 'faces' not in data:
             raise ValueError('Choose Roll for me or enter individual dice results.')
         faces = data['faces']
+        if _play_allowance_refuses():
+            # #2072: the check stays pending until play resumes.
+            emit('roll_prompt', {'prompt': rules_roll_prompt.current()})
+            return
 
         def enqueue(line):
             # #1118 item 4 (#1116): the panel's dice are the player's reply,
@@ -3295,7 +3332,7 @@ def handle_check_roll(data):
             # "Roll for me" posts nothing: the receipt shows the game's dice.
             if faces:
                 _post_player_line('I rolled ' + ' and '.join(f'{face} on a d20' for face in faces) + '.')
-            user_input_queue.put(line)
+            user_input_queue.put(play_allowance.AcceptedLine(line))
 
         rules_roll_prompt.submit(data.get('id'), faces, enqueue)
     except ValueError as exc:
@@ -3329,10 +3366,13 @@ def handle_user_input(data):
         from core.managers.checks_runtime import parse_faces
         faces = parse_faces(user_input, pending_roll['faces'])
         if faces is not None:
+            if _play_allowance_refuses(user_input or None):
+                return
             if faces:
                 _post_player_line(user_input)
             try:
-                rules_roll_prompt.submit(pending_roll['id'], faces or None, user_input_queue.put)
+                rules_roll_prompt.submit(pending_roll['id'], faces or None,
+                                         lambda line: user_input_queue.put(play_allowance.AcceptedLine(line)))
             except ValueError:
                 # A spent token: the first submission settles the check.
                 pass
@@ -3340,6 +3380,9 @@ def handle_user_input(data):
                 warning(f'Check roll submission failed: {type(exc).__name__}: {exc}', category='web_interface')
             return
     if not user_input.strip():
+        return
+    # #2072: before the line is posted or supersedes anything.
+    if _play_allowance_refuses(user_input):
         return
     # #214 CR-1: supersede a pending background welcome AT THE ENQUEUE
     # BOUNDARY, before the game thread can pop this text - the game thread
@@ -3361,7 +3404,7 @@ def handle_user_input(data):
     # Commit the player-visible ledger entry before releasing the command to
     # the game thread, so a fast local response cannot appear above its input.
     _post_player_line(user_input)
-    user_input_queue.put(user_input)
+    user_input_queue.put(play_allowance.AcceptedLine(user_input))
     if opening_scene:
         emit('system_message', {'content': 'Your action is queued for after the opening scene.'})
     else:
@@ -3974,6 +4017,10 @@ def handle_start_game():
         # Browser reopened on a live game: reconnect this client instead of
         # erroring out (issue #122 -- this error was the literal report title).
         _emit_game_resumed()
+        return
+    # #2072 (auditor 2c): starting a game is gated like a submission; a game
+    # already running was rejoined above.
+    if _play_allowance_refuses():
         return
     
     # Uninstall debug interceptor to prevent competing stdout redirections
@@ -7746,6 +7793,7 @@ def shutdown():
     if _shutdown_requested.is_set():
         return jsonify({'status': 'stopping'}), 202
     _shutdown_requested.set()
+    play_allowance.cancel_timer()  # #2072
 
     def stop_when_quiet():
         try:

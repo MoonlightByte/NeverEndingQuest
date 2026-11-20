@@ -437,6 +437,12 @@ def _route_p_reissue_delay(exc, reissue):
             # Not resent even when the server says x-should-retry: true (the
             # library would): no resend pays the bill (#1963, R18c).
             return None
+        from utils.provider_errors import gateway_play_refusal
+
+        if gateway_play_refusal(original) is not None:
+            # #2072: the host's play-allowance backstop is never resent,
+            # whatever x-should-retry says.
+            return None
         should_retry = headers.get("x-should-retry") if headers is not None else None
         if should_retry == "false":
             return None

@@ -16,6 +16,8 @@
 import { useDialogs, useSession } from '../stores'
 import { useConnectionNotice } from '../stores/connectionNotices'
 import { needsOpenaiKey } from '../components/settings/keySetupText'
+import { allowanceLocked } from '../components/layout/allowanceText'
+import { useAllowance } from '../stores/allowance'
 import { emitC } from './socket'
 import { RELOAD_RESTORE_OUTCOME_KEY } from './restart'
 
@@ -49,6 +51,8 @@ function readyToStart(): boolean | null {
   const s = useSession.getState()
   if (!s.connected || s.serverInstanceId === null) return null // wait for connect + first snapshot
   if (s.mode !== 'disconnected' || s.restorePending || s.restoreRecoveryRequired) return false
+  // #2072 (auditor 2c): free play used or paused: "Game loaded." shows and nothing starts.
+  if (allowanceLocked(useAllowance.getState().value)) return false
   const isLocalEdition = (import.meta.env.VITE_EDITION ?? 'local') === 'local'
   if (!isLocalEdition) return true
   // Local: the header asks for the provider and key status on connect; decide once both are known,
