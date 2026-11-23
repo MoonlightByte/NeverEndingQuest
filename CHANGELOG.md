@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In character creation, the guide can now ask for your class, species, background, ability scores or starting gear before they are chosen (#2090).
+
 ## [1.2.7] - 2026-11-20
 
 - If the game is closed before its page opens, the story on screen is still there when you come back (#2086).

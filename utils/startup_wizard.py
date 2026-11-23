@@ -1175,7 +1175,8 @@ def _scoped_intent(conversations, proposal, rescoped, persist=None):
         return True
     open_ids = creation_scope.open_choice_ids(intent)
     # #1325: the narration's typed claims against the response's own intent; a correct turn costs no call.
-    problems = creation_scope.turn_problems(intent, proposal["choice_turn"])
+    problems = creation_scope.turn_problems(intent, proposal["choice_turn"], decision=proposal["decision"],
+                                            starting_equipment=proposal.get("starting_equipment"))
     if problems:
         raise StartupScopeRefusal(problems, open_ids)
     if proposal["decision"] == "finalize_character":
