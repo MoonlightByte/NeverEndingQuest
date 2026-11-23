@@ -125,8 +125,8 @@ may write at finalize, and what to ask next. class_key, species_key and
 background_key are the scope's keys. choices maps a choice id of the current scope
 to all its picks, as the scope gives them (spells by key); a pick the player
 delegated to you and then approved counts as chosen. A list you send replaces the
-whole list, and [] clears it. considering lists the class, species and background keys the
-player is asking about but has not chosen. When the intent changes the scope,
+whole list, and [] clears it. considering lists the class, species and background
+keys the player is asking about but has not chosen. When the intent changes the scope,
 the engine appends the new scope item and asks again for the same answer: answer
 from the new scope. A startup_choices_dropped item lists picks a switch removed;
 ask again for any the new build still needs. A startup_choice_refusal item names

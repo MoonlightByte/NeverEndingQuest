@@ -1038,7 +1038,7 @@ def test_a_complete_intent_shows_the_engine_built_summary_once(scoped, monkeypat
     previews = [json.loads(m["content"]) for m in conversation if '"startup_sheet_preview"' in m.get("content", "")]
     assert len(previews) == 1 and previews[0]["untyped"] == []
     summary = previews[0]["summary"]
-    assert summary.startswith("Human Fighter, Soldier background") and "- Strength 16 (+3)" in summary
+    assert summary.startswith("Name: not chosen yet\nHuman Fighter, Soldier background") and "- Strength 16 (+3)" in summary
     assert "itemdef:" not in summary and "fighter." not in summary
     assert capsys.readouterr().out.count(summary) == 1
 
@@ -1248,7 +1248,7 @@ def test_package_and_slot_picks_have_a_typed_place_on_interview_turns():
          "background.acolyte.starting-equipment"})
     from utils.startup_prompt_builder import build_character_creation_system_prompt
     text = " ".join(build_character_creation_system_prompt(scoped=True).split())
-    assert "Record package and slot picks in starting_equipment as soon as the player gives them" in text
+    assert "Record package and slot picks in starting_equipment as the player gives them." in text
 
 
 def test_finalize_needs_every_package_and_slot_pick(wizard, authored):
@@ -1268,8 +1268,8 @@ def test_an_approval_after_the_sheet_preview_must_finalize():
     # for ideal, bond and flaw text it had just written; T128 demanded finalize 8 times before a handback.
     from utils.startup_prompt_builder import build_character_creation_system_prompt
     engine = " ".join(build_character_creation_system_prompt(scoped=True).split())
-    assert ("When the player approves the whole build, finalize with your proposed creative fields; do not ask "
-            "approval for details you add at finalize.") in engine
+    assert ("When the player approves the whole build, finalize with the creative fields still unwritten; do "
+            "not ask approval for details you add at finalize.") in engine
     assert "do not ask approval for details you add at finalize" not in build_character_creation_system_prompt()
 
 
@@ -1282,7 +1282,7 @@ def test_the_engine_author_offers_only_the_scope_options():
     assert ("Offer only a choice's option_keys from the scope; a skill the background grants is never "
             "offered.") in " ".join(prompt.split())
     assert "a skill the background grants" not in build_character_creation_system_prompt()
-    assert hashlib.sha256(prompt.encode()).hexdigest()[:12] == "0bd21ad0cfd1"
+    assert hashlib.sha256(prompt.encode()).hexdigest()[:12] == "75c91a89105b"
 
 
 def test_the_engine_author_asks_one_choice_per_turn_for_a_new_player():
