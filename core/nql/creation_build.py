@@ -66,35 +66,45 @@ def roll_ability_scores(rng: Any = None) -> Dict[str, Any]:
     return {"rolled": [sum(sorted(d)[1:]) for d in dice], "dice": dice}
 
 
-def _ability_scores(b: _Build, background: Dict[str, Any], rolled: Optional[List[int]]) -> Dict[str, int]:
-    """Base scores by the declared method, then the background's issued increase (max 20; p.21, p.83)."""
-    spec = b.intent.get("ability_scores") or {}
+def base_scores(d: _Data, spec: Dict[str, Any], rolled: Optional[List[int]]
+                ) -> Tuple[Optional[Dict[str, int]], Optional[Dict[str, Any]]]:
+    """The base scores of a declared method and assignment, or the one typed problem (p.21): (scores, None) or
+    (None, problem). No background is needed."""
     if "rolled" in spec:  # numbers never come from intent (S1)
-        raise BuildRefusal([{"field": "intent.ability_scores.rolled", "problem": "the engine's roll item is the only source"}])
-    methods = b.d.origins.get("ability_score_methods") or {}
+        return None, {"field": "intent.ability_scores.rolled", "problem": "the engine's roll item is the only source"}
+    methods = d.origins.get("ability_score_methods") or {}
     method = spec.get("method")
     assignment = spec.get("assignment") if isinstance(spec.get("assignment"), dict) else {}
     if set(assignment) != set(ABILITIES):  # the schema's six lowercase keys, matched exactly (N2)
-        raise BuildRefusal([{"field": "intent.ability_scores.assignment", "problem": "keys must be %s" % ", ".join(ABILITIES)}])
+        return None, {"field": "intent.ability_scores.assignment", "problem": "keys must be %s" % ", ".join(ABILITIES)}
     base = {a: assignment.get(a) for a in ABILITIES}
     if any(type(v) is not int for v in base.values()):
-        raise BuildRefusal([{"field": "intent.ability_scores.assignment", "problem": "six whole-number scores"}])
+        return None, {"field": "intent.ability_scores.assignment", "problem": "six whole-number scores"}
     if method == "standard_array":
         if sorted(base.values()) != sorted(methods.get("standard_array") or []):
-            raise BuildRefusal([{"field": "intent.ability_scores", "problem": "not a permutation of the standard array"}])
+            return None, {"field": "intent.ability_scores", "problem": "not a permutation of the standard array"}
     elif method == "point_buy":
         costs = (methods.get("point_cost") or {}).get("costs") or {}
         if any(str(v) not in costs for v in base.values()):
-            raise BuildRefusal([{"field": "intent.ability_scores", "problem": "a point-buy score outside 8-15"}])
+            return None, {"field": "intent.ability_scores", "problem": "a point-buy score outside 8-15"}
         if sum(costs[str(v)] for v in base.values()) > (methods.get("point_cost") or {}).get("budget", 27):
-            raise BuildRefusal([{"field": "intent.ability_scores", "problem": "point-buy cost over the budget"}])
+            return None, {"field": "intent.ability_scores", "problem": "point-buy cost over the budget"}
     elif method == "random":
         # The engine's persisted roll item is the only source (N1); intent never carries numbers.
         if not isinstance(rolled, list) or sorted(base.values()) != sorted(rolled):
-            raise BuildRefusal([{"field": "intent.ability_scores", "problem": "not the engine-rolled set"}])
+            return None, {"field": "intent.ability_scores", "problem": "not the engine-rolled set"}
     else:
-        raise BuildRefusal([{"field": "intent.ability_scores.method", "problem": "not a listed method"}])
-    scores = dict(b.source("abilities.base", "intent.ability_scores (%s)" % method, base))
+        return None, {"field": "intent.ability_scores.method", "problem": "not a listed method"}
+    return base, None
+
+
+def _ability_scores(b: _Build, background: Dict[str, Any], rolled: Optional[List[int]]) -> Dict[str, int]:
+    """Base scores by the declared method, then the background's issued increase (max 20; p.21, p.83)."""
+    spec = b.intent.get("ability_scores") or {}
+    base, problem = base_scores(b.d, spec, rolled)
+    if problem:
+        raise BuildRefusal([problem])
+    scores = dict(b.source("abilities.base", "intent.ability_scores (%s)" % spec.get("method"), base))
     bid = "background.%s.ability-scores" % background["key"]
     choice = (b.picked(bid) or [None])[0]
     abilities = list(background.get("ability_keys") or [])

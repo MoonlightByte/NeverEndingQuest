@@ -277,11 +277,11 @@ def background_tool_id(background: Dict[str, Any]) -> str:
     return "background.%s.%s" % (background["key"], _slug(tool.get("name") or category or "tool"))
 
 
-def issued_points(intent: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+def issued_points(intent: Dict[str, Any], data: Optional[_Data] = None) -> Dict[str, Dict[str, Any]]:
     """Every choice id the intent opens, with its typed entry, in order: the class's level-1 points and the
     sub-picks of the options the intent took; the background feat's spell picks; the standard languages
     once a species is named."""
-    d = _Data()
+    d = data if data is not None else _Data()
     if not d.ok:
         return {}
     intent = intent or {}
@@ -384,10 +384,10 @@ def _species_points(key: Any, picks: Dict[str, Any], cls: str, d: _Data) -> Dict
     return out
 
 
-def choice_problems(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
+def choice_problems(intent: Dict[str, Any], data: Optional[_Data] = None) -> List[Dict[str, Any]]:
     """The typed refusals of an intent's picks: an id the scope did not issue, an option it does not
     offer, or more picks than the point's count. Empty when every pick is in scope."""
-    issued = issued_points(intent)
+    issued = issued_points(intent, data)
     problems = []
     for cid, picked in (intent.get("choices") or {}).items():
         point = issued.get(cid)
@@ -405,45 +405,23 @@ def choice_problems(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     return problems
 
 
-# #2090: what an interview asks for that no choice id stands for, under the names the request already uses.
-# Code constants, compared whole; never derived from a schema, so a new field does not widen what asks accepts.
-_ASK_INTENT_KEYS = {"class": "class_key", "class_key": "class_key", "species": "species_key",
-                    "species_key": "species_key", "background": "background_key", "background_key": "background_key"}
-_ASK_CREATIVE = ("name", "alignment", "personality_traits", "ideals", "bonds", "flaws", "backstory", "appearance")
-_ASK_REQUIRED = {"ability_scores": ("ability_scores.method", "ability_scores.assignment"),
-                 "ability_scores.method": ("ability_scores.method",),
-                 "ability_scores.assignment": ("ability_scores.assignment",),
-                 "background_package": ("starting_equipment.background_package",),
-                 "starting_equipment.background_package": ("starting_equipment.background_package",)}
-ASK_IDS = frozenset(_ASK_INTENT_KEYS) | frozenset(_ASK_CREATIVE) | frozenset(_ASK_REQUIRED)
-_SLOT_ID_PREFIX = "starting_equipment.slot:"
+# #2090: the ids an interview asks for that no choice id stands for, under the names the request already uses.
+# Code constants, only for the log (an id not listed is logged as "other").
+ASK_IDS = frozenset((
+    "class", "class_key", "species", "species_key", "background", "background_key", "name", "alignment",
+    "personality_traits", "ideals", "bonds", "flaws", "backstory", "appearance", "ability_scores",
+    "ability_scores.method", "ability_scores.assignment", "background_package", "class_package",
+    "starting_equipment.background_package", "starting_equipment.class_package"))
 
 
-def _open_asks(intent: Dict[str, Any], asks: List[str], starting_equipment) -> set:
-    """The asks among these that name something open without a choice id (#2090): an identity key still null,
-    a creative field (written at finalize, so always open before it), and what unanswered_required lists."""
-    found = {cid for cid in asks if cid in _ASK_CREATIVE
-             or (cid in _ASK_INTENT_KEYS and intent.get(_ASK_INTENT_KEYS[cid]) is None)}
-    rest = [cid for cid in asks if cid not in found]
-    if not rest:
-        return found
-    needed = {entry["id"] for entry in unanswered_required(creation_scope(intent) or {}, intent, starting_equipment)}
-    # A slot may be asked by the id listed or by its bare id; both come from the engine's own list.
-    slots = {s for s in needed if s.startswith(_SLOT_ID_PREFIX)}
-    slots |= {s[len(_SLOT_ID_PREFIX):] for s in slots}
-    found.update(cid for cid in rest
-                 if cid in slots or any(n in needed for n in _ASK_REQUIRED.get(cid, ())))
-    return found
-
-
-def turn_problems(intent: Dict[str, Any], choice_turn: Dict[str, Any], *, decision: Optional[str] = None,
-                  starting_equipment: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-    """The typed contradictions of a response's choice_turn with its own intent (#1325): a refusal under an id
-    the scope did not issue or of an option the scope offers, and a question about an id that is not open.
-    A choice the player changes is reopened by clearing its picks in intent, then asked. Before finalize an ask
-    may also name what has no choice id and is still open (_open_asks, #2090)."""
+def turn_problems(intent: Dict[str, Any], choice_turn: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """The typed contradictions of a response's choice_turn with the intent it leaves (#1325): a refusal under an
+    id the scope did not issue or of an option the scope offers, and a question about an issued choice that is
+    already full. A choice the player changes is reopened by sending its id with [], then asked. An ask that names
+    no issued choice id (a class, a name, the gear) is a question and never a contradiction: such an id cannot be
+    cleared, so refusing it would leave no way to ask (D-CREATE-FLEX-3)."""
     issued = issued_points(intent)
-    open_ids = open_choice_ids(intent)
+    picks = intent.get("choices") or {}
     problems = []
     for item in choice_turn.get("refused") or []:
         point = issued.get(item["choice_id"])
@@ -453,10 +431,10 @@ def turn_problems(intent: Dict[str, Any], choice_turn: Dict[str, Any], *, decisi
         allowed = _allowed(point, intent, issued)
         if allowed is not None and item["value"] in allowed:  # a free pick has no list to contradict
             problems.append({"choice_id": item["choice_id"], "problem": "refused_offered", "value": item["value"]})
-    asked = [cid for cid in choice_turn.get("asks") or [] if cid not in open_ids]
-    if asked:
-        also_open = set() if decision == "finalize_character" else _open_asks(intent, asked, starting_equipment)
-        problems.extend({"choice_id": cid, "problem": "asked_not_open"} for cid in asked if cid not in also_open)
+    for cid in choice_turn.get("asks") or []:
+        held = list(picks.get(cid) or [])
+        if cid in issued and len(held) >= issued[cid]["count"]:
+            problems.append({"choice_id": cid, "problem": "asked_not_open", "held": held})
     return problems
 
 
@@ -468,10 +446,10 @@ def _allowed(point: Dict[str, Any], intent: Dict[str, Any], issued: Dict[str, Di
     return point.get("option_keys") or []
 
 
-def open_choice_ids(intent: Dict[str, Any]) -> List[str]:
+def open_choice_ids(intent: Dict[str, Any], data: Optional[_Data] = None) -> List[str]:
     """The issued ids whose picks are still short of their count."""
     picks = intent.get("choices") or {}
-    return [cid for cid, point in issued_points(intent).items() if len(picks.get(cid) or []) < point["count"]]
+    return [cid for cid, point in issued_points(intent, data).items() if len(picks.get(cid) or []) < point["count"]]
 
 
 def open_choices(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -694,9 +672,9 @@ def _use_text(scope: Dict[str, Any]) -> str:
               "Record the player's choices in intent, picking options by the keys given here.")
 
 
-def creation_scope(intent: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+def creation_scope(intent: Optional[Dict[str, Any]], data: Optional[_Data] = None) -> Optional[Dict[str, Any]]:
     """The scope item for a typed intent, or None when a data file cannot be read."""
-    d = _Data()
+    d = data if data is not None else _Data()
     if not d.ok:
         return None
     intent = intent or {}
@@ -714,7 +692,7 @@ def creation_scope(intent: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]
         scope["species"] = _species_facts(sp, d)
     if bg:
         scope["background"] = _background_facts(bg, d)
-    issued = issued_points(intent)
+    issued = issued_points(intent, d)
     if issued:
         scope["choices"] = list(issued.values())
     considering = intent.get("considering") or {}

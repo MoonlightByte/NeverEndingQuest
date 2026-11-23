@@ -388,10 +388,31 @@ def _package_items(option: Dict[str, Any], label: str) -> List[Tuple[str, Dict[s
     return [(label, item) for item in option.get("items") or [] if isinstance(item, dict)]
 
 
+def package_slots(items: List[Tuple[str, Dict[str, Any]]]) -> Dict[str, Dict[str, Any]]:
+    """The packages' slots, each with its item entry."""
+    return {item["slot"]: item for _, item in items if isinstance(item.get("slot"), str)}
+
+
+def slot_pick_problem(slot: Any, item: Dict[str, Any], pick: Dict[str, Any]) -> Optional[str]:
+    """Why this pick cannot fill this slot, or None. The pick kind comes from the entry's shape: a slot with
+    choose_one is a catalog pick, one with no catalog id a named pick."""
+    if isinstance(item.get("choose_one"), list):
+        if pick.get("catalog_id") not in item["choose_one"]:
+            return "slot %r is a catalog pick: give catalog_id, one of %s" % (slot, _legal(item["choose_one"]))
+    elif not isinstance(pick.get("display_name"), str) or "catalog_id" in pick:
+        return ("slot %r is a named pick: give display_name, the player's own choice of %s, "
+                "not a catalog_id" % (slot, json.dumps(item.get("uncatalogued"))))
+    return None
+
+
+def outside_items(equipped: Any, catalog_ids: List[str]) -> List[Any]:
+    """The equipped ids that are not catalog items of the chosen packages."""
+    return [i for i in equipped or [] if i not in catalog_ids]
+
+
 def _slot_problems(items: List[Tuple[str, Dict[str, Any]]], picks: List[Any]) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
-    """The typed pick for each slot of the chosen packages, and every problem with the picks. The pick kind
-    comes from the entry's shape: a slot with choose_one is a catalog pick, one with no catalog id a named pick."""
-    slots = {item["slot"]: item for _, item in items if isinstance(item.get("slot"), str)}
+    """The typed pick for each slot of the chosen packages, and every problem with the picks."""
+    slots = package_slots(items)
     chosen: Dict[str, Dict[str, Any]] = {}
     problems = []
     for pick in picks:
@@ -402,17 +423,12 @@ def _slot_problems(items: List[Tuple[str, Dict[str, Any]]], picks: List[Any]) ->
                             % (slot, _legal(slots)))
         elif slot in chosen:
             problems.append("slot_picks names slot %r twice; give one pick per slot" % slot)
-        elif isinstance(item.get("choose_one"), list):
-            if pick.get("catalog_id") not in item["choose_one"]:
-                problems.append("slot %r is a catalog pick: give catalog_id, one of %s"
-                                % (slot, _legal(item["choose_one"])))
+        else:
+            problem = slot_pick_problem(slot, item, pick)
+            if problem:
+                problems.append(problem)
             else:
                 chosen[slot] = pick
-        elif not isinstance(pick.get("display_name"), str) or "catalog_id" in pick:
-            problems.append("slot %r is a named pick: give display_name, the player's own choice of %s, "
-                            "not a catalog_id" % (slot, json.dumps(item.get("uncatalogued"))))
-        else:
-            chosen[slot] = pick
     for slot, item in slots.items():
         if slot not in chosen and not any(p.get("slot") == slot for p in picks):
             kind = ("catalog_id, one of %s" % _legal(item["choose_one"]) if isinstance(item.get("choose_one"), list)
@@ -503,7 +519,7 @@ def grant_starting_packages(sheet: Dict[str, Any], origin: Dict[str, Any], picks
     unknown = [cid for cid in catalog_ids if item_catalog.entry(cid) is None]
     if unknown:
         raise ValueError("the package data names catalog ids the item catalog lacks: %s" % _legal(unknown))
-    outside = [i for i in picks.get("equipped") or [] if i not in catalog_ids]
+    outside = outside_items(picks.get("equipped"), catalog_ids)
     if outside:
         raise ValueError("starting_equipment.equipped lists %s, not catalog items of the chosen packages; "
                          "equipped ids are among %s" % (_legal(outside), _legal(catalog_ids)))
