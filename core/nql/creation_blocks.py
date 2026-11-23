@@ -236,8 +236,9 @@ def still_lost(lost: Dict[str, List[Any]], held: Dict[str, Any], standing: Dict[
 
 
 def _switch(facts: _Facts, blocks: Dict[str, Any], key: str, value: Any, held: Dict[str, Any]) -> None:
-    """Set an identity key. A change from one value to another drops the gear of the old one (its picks are
-    no longer issued, so _settle drops them); a change back to the held value brings back what the player had under it. Arrival (from null) drops nothing."""
+    """Set an identity key. A change from one value to another drops the gear of the old one and the picks it
+    issued; a change back to the held value brings back what the player had under it. Arrival (from null) drops
+    nothing."""
     intent, equipment = blocks["intent"], blocks["starting_equipment"]
     old = intent[key]
     if value == old:
@@ -249,7 +250,11 @@ def _switch(facts: _Facts, blocks: Dict[str, Any], key: str, value: Any, held: D
             equipment[kind + "_package"] = None
             equipment["slot_picks"] = [p for p in equipment["slot_picks"] if p.get("slot") not in mine]
             equipment["equipped"] = []
+    before = set(creation_scope.issued_points(intent, facts.d)) if old is not None else set()
     intent[key] = value
+    if old is not None:
+        after = creation_scope.issued_points(intent, facts.d)
+        intent["choices"] = {c: p for c, p in intent["choices"].items() if c not in before or c in after}
     if value is None or value != held["intent"][key]:
         return
     issued = creation_scope.issued_points(held["intent"], facts.d)

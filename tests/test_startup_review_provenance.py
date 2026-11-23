@@ -727,11 +727,24 @@ def _engine_finalize(authored):
             "choice_turn": _NO_CLAIMS}
 
 
-def run_interview(wizard, authored, monkeypatch, *, review, stop_after_rejection=False):
+def _shown_build(wizard, proposal, approval):
+    """A history in which the game has shown the player this build's summary, and the player's approval of it."""
+    from core.nql import creation_blocks
+    conversation = []
+    blocks = creation_blocks.merge(creation_blocks.empty(), creation_blocks.empty(), dict(proposal, creative=None)).standing
+    assert wizard._sheet_preview(conversation, blocks, None)
+    conversation.append({"role": "user", "content": approval})
+    proposal["confirmation"]["player_message_index"] = len(conversation) - 1
+    return conversation
+
+
+def run_interview(wizard, authored, monkeypatch, *, review, stop_after_rejection=False, shown=None):
     from utils.capture.live_provider_call import LiveProviderSuperseded
     proposal = _engine_finalize(authored)
+    conversation = _shown_build(wizard, copy.deepcopy(proposal) if shown is None else shown,
+                                "I approve Alden's complete current build.")
+    proposal["confirmation"]["player_message_index"] = len(conversation) - 1
     original = copy.deepcopy(proposal)
-    conversation = [{"role": "user", "content": "I approve Alden's complete current build."}]
     commits = []
     author_requests = []
     reviewer_requests = []
@@ -745,6 +758,7 @@ def run_interview(wizard, authored, monkeypatch, *, review, stop_after_rejection
             return json.dumps(review(payload))
         author_requests.append(copy.deepcopy(messages))
         if stop_after_rejection and any("Rejected startup proposal" in m["content"] or '"rejected_proposal"' in m["content"]
+                                        or '"startup_choice_refusal"' in m["content"]
                                         for m in messages if m["role"] == "system"):
             raise LiveProviderSuperseded("test-only stop after observed rejection")
         return json.dumps(proposal)
@@ -837,18 +851,19 @@ def test_invalid_consent_or_schema_cannot_reach_review(wizard, authored, monkeyp
         return proposal
 
     engine_finalize = _engine_finalize
+    shown = engine_finalize(authored)
     monkeypatch.setitem(globals(), "_engine_finalize", lambda a: defective(engine_finalize(a)))
     if defect == "index":
-        # run_interview uses 0; intercept parsing's reference instead.
+        # run_interview uses the approval's index; intercept parsing's reference instead.
         monkeypatch.setattr(wizard, "_latest_player_index", lambda messages: 99)
     result, conversation, commits, authors, reviewers = run_interview(
         wizard, authored, monkeypatch, review=lambda p: pytest.fail("Review must not run"),
-        stop_after_rejection=True)
+        stop_after_rejection=True, shown=shown)
     assert result is None and not commits and not reviewers
-    rejection = next(m["content"] for m in authors[-1]
-                     if m["role"] == "system" and "Rejected startup proposal" in m["content"])
-    if defect == "refusal":
-        assert "The engine cannot build this character" in rejection
+    rejection = next(m["content"] for m in authors[-1] if m["role"] == "system"
+                     and ("Rejected startup proposal" in m["content"] or '"startup_choice_refusal"' in m["content"]))
+    if defect == "refusal":  # the ability scores are one block, refused by the engine's own rule (D-CREATE-FLEX-3)
+        assert [p["choice_id"] for p in json.loads(rejection)["problems"]] == ["ability_scores.assignment"]
 
 
 def test_fenced_json_uses_real_startup_parser_without_changing_probe(wizard, authored):
@@ -876,7 +891,7 @@ def test_superseded_review_cannot_publish(wizard, authored, monkeypatch):
         return json.dumps(proposal)
 
     monkeypatch.setattr(wizard, "get_ai_response", model)
-    conversation = [{"role": "user", "content": "I approve the complete build."}]
+    conversation = _shown_build(wizard, proposal, "I approve the complete build.")
     with pytest.raises(LiveProviderSuperseded):
         wizard.ai_character_interview(conversation, {"name": "The_Thornwood_Watch"})
     assert not any(m["role"] == "assistant" for m in conversation)
@@ -1099,13 +1114,19 @@ def test_unanswered_required_lists_what_no_choice_id_stands_for():
 @pytest.mark.parametrize("value", ["", "   "])
 def test_an_empty_creative_field_is_a_schema_retry_not_a_build_refusal(wizard, authored, field, value):
     # Leg 1: every captured finalize left flaws empty. The author fills it (proposing one for approval).
-    from utils.startup_contract import parse_startup_response
+    # A reply may leave it out (D-CREATE-FLEX-3); the finalize check runs on the merged build.
+    from core.nql import creation_blocks
+    from utils.startup_contract import check_finalize, parse_startup_response
     proposal = _engine_finalize(authored)
-    proposal["creative"][field] = value
+
+    def finalize(creative):
+        parsed = parse_startup_response(json.dumps(dict(proposal, creative=creative)), latest_user_index=0, scoped=True)
+        merged = creation_blocks.merge(creation_blocks.empty(), creation_blocks.empty(), parsed)
+        check_finalize(dict(parsed, creative=merged.standing["creative"]))
+
     with pytest.raises(ValueError):
-        parse_startup_response(json.dumps(proposal), latest_user_index=0, scoped=True)
-    proposal["creative"][field] = "Too proud to retreat"
-    assert parse_startup_response(json.dumps(proposal), latest_user_index=0, scoped=True)
+        finalize(dict(proposal["creative"], **{field: value}))
+    finalize(dict(proposal["creative"], **{field: "Too proud to retreat"}))
 
 
 @pytest.mark.parametrize("value, mode", [("engine", "engine"), ("whole", "whole"), ("sectioned", "engine"),
@@ -1163,15 +1184,16 @@ def test_a_pick_outside_the_scope_is_refused_typed_and_never_reviewed(scoped, mo
     assert "startup_choice_refusal" not in _purposes(conversation)  # the saved history keeps only the published turn
 
 
-def test_scope_items_are_saved_only_when_the_turn_publishes(scoped, monkeypatch):
-    # A turn whose response never publishes leaves the saved history's scope state as it was (r3.1 T4). The
-    # cleric turn re-scopes, then every answer is refused by the contract until the handback.
+def test_a_handback_keeps_the_blocks_and_one_scope_for_them(scoped, monkeypatch):
+    # The cleric turn re-scopes, then every answer is refused by the contract until the handback. What the player
+    # gave stands (D-CREATE-FLEX-3), with the one scope of it saved beside the handback.
     answers = [_scoped_turn(SCOPED_BLANK), _scoped_turn(SCOPED_CLERIC)] + ["{}"] * 12
     conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte."])
     assert len(calls) >= 3 and {task for task, _ in calls} == {"T092"}
     states = scoped._system_records(conversation, "startup_scope_state")
-    assert states and all((s.get("intent") or {}).get("class_key") != "cleric" for s in states)
-    assert len(scoped._system_records(conversation, "startup_creation_scope")) == 1  # only the menu's
+    assert [(s.get("intent") or {}).get("class_key") for s in states] == [None, "cleric"]
+    assert len(scoped._system_records(conversation, "startup_creation_scope")) == 2
+    assert scoped._system_records(conversation, "startup_turn_handback")[-1]["blocks"]["intent"]["class_key"] == "cleric"
 
 
 def test_scope_state_is_not_a_checkpoint_and_belongs_to_its_startup(scoped, monkeypatch):
@@ -1260,7 +1282,7 @@ def test_the_engine_author_offers_only_the_scope_options():
     assert ("Offer only a choice's option_keys from the scope; a skill the background grants is never "
             "offered.") in " ".join(prompt.split())
     assert "a skill the background grants" not in build_character_creation_system_prompt()
-    assert hashlib.sha256(prompt.encode()).hexdigest()[:12] == "834b56434e59"
+    assert hashlib.sha256(prompt.encode()).hexdigest()[:12] == "0bd21ad0cfd1"
 
 
 def test_the_engine_author_asks_one_choice_per_turn_for_a_new_player():
@@ -1433,6 +1455,12 @@ def test_the_preview_summary_shows_hit_points_and_the_saved_line_shows_armor_cla
     assert startup_wizard._saved_defense_line({"armorClass": 17}) == ""
 
 
+def _open_turn(wizard, conversation, proposal):
+    """One scoped reply checked against the history, its scope already asked again for."""
+    proposal = dict(proposal, confirmation={"player_message_index": None, "whole_build_approved": False})
+    return wizard._scoped_turn(conversation, conversation, proposal, wizard._new_turn(conversation), True)
+
+
 @pytest.mark.parametrize("intent, cid, key, expected", [
     # desktop L5 turn 5: "choose how Sage improves her abilities:" with no options in the reply.
     ({"class_key": "fighter", "species_key": "dwarf", "background_key": "sage", "choices": {}},
@@ -1444,7 +1472,7 @@ def test_the_preview_summary_shows_hit_points_and_the_saved_line_shows_armor_cla
 def test_the_open_choices_record_carries_each_open_choice_with_its_options(wizard, intent, cid, key, expected):
     conversation = [{"role": "system", "content": json.dumps(creation_scope_item(intent))}]
     proposal = {"decision": "continue_interview", "intent": intent, "choice_turn": _NO_CLAIMS}
-    assert wizard._scoped_intent([conversation], proposal, rescoped=True) is False
+    assert _open_turn(wizard, conversation, proposal) is False
     record = json.loads(conversation[-1]["content"])
     assert record["task_purpose"] == "startup_open_choices"
     entry = next(e for e in record["open_choices"] if e["id"] == cid)
@@ -1469,8 +1497,8 @@ def test_a_wizard_open_choices_record_names_spells_and_points_prepared_at_the_sp
     intent = {"class_key": "wizard", "species_key": "elf", "background_key": "sage",
               "choices": {"wizard.spellcasting.spellbook": ["alarm", "shield"]}}
     conversation = [{"role": "system", "content": json.dumps(creation_scope_item(intent))}]
-    assert wizard._scoped_intent([conversation], {"decision": "continue_interview", "intent": intent,
-                                                  "choice_turn": _NO_CLAIMS}, rescoped=True) is False
+    assert _open_turn(wizard, conversation, {"decision": "continue_interview", "intent": intent,
+                                             "choice_turn": _NO_CLAIMS}) is False
     record = {e["id"]: e for e in json.loads(conversation[-1]["content"])["open_choices"]}
     prepared = record["wizard.spellcasting.prepared-spells"]
     assert prepared["from_choice"] == "wizard.spellcasting.spellbook" and prepared["options"] == ["Alarm", "Shield"]
