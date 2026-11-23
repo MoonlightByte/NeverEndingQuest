@@ -168,13 +168,49 @@ def _char_schema():
     return safe_json_load("schemas/char_schema.json") or {}
 
 
+class StartupContractError(ValueError):
+    """A contract refusal with a fixed code for the log (#2090). ``kind`` and ``detail`` never hold reply text;
+    the message, which can, goes only to the author."""
+
+    def __init__(self, message, kind, detail=()):
+        super().__init__(message)
+        self.kind = kind
+        self.detail = list(detail)
+
+
+def _property_names(schema):
+    """Every property name a schema declares."""
+    if isinstance(schema, list):
+        return set().union(*map(_property_names, schema)) if schema else set()
+    if not isinstance(schema, dict):
+        return set()
+    properties = schema.get("properties")
+    names = set(properties) if isinstance(properties, dict) else set()
+    return names.union(*map(_property_names, schema.values()))
+
+
+def _safe_errors(errors, schema):
+    """The errors as [path, validator] (and the missing names for required): schema names only, "*" for a key
+    the reply made up and "#" for an index."""
+    known = _property_names(schema)
+    out = []
+    for error in errors:
+        entry = [".".join("#" if isinstance(part, int) else part if part in known else "*"
+                          for part in error.absolute_path) or "$", error.validator]
+        if error.validator == "required":
+            entry.append([name for name in error.validator_value if name not in error.instance])
+        if entry not in out:
+            out.append(entry)
+    return out
+
+
 def _validate(value, schema):
     errors = list(Draft7Validator(schema).iter_errors(value))
     if errors:
-        raise ValueError("; ".join(
+        raise StartupContractError("; ".join(
             f"{'.'.join(map(str, error.absolute_path)) or '$'}: {error.message}"
             for error in errors
-        ))
+        ), "schema", _safe_errors(errors, schema))
     return value
 
 
@@ -183,11 +219,11 @@ def _parse_object(text, schema):
         raise ValueError("Startup response must be JSON text")
     extracted = extract_json_object(text)
     if extracted is None:
-        raise ValueError("Startup response must contain one JSON object")
+        raise StartupContractError("Startup response must contain one JSON object", "no_json")
     try:
         value = json.loads(extracted)
     except (TypeError, json.JSONDecodeError) as exc:
-        raise ValueError(f"Invalid startup JSON: {exc}") from exc
+        raise StartupContractError(f"Invalid startup JSON: {exc}", "bad_json") from exc
     return _validate(value, schema)
 
 
@@ -233,28 +269,29 @@ def _check_engine_response(value, latest_user_index):
         if (confirmation["whole_build_approved"] is not True
                 or type(index) is not int or type(latest_user_index) is not int
                 or index != latest_user_index):
-            raise ValueError("Finalization requires whole-build approval of the latest actual player input")
+            raise StartupContractError("Finalization requires whole-build approval of the latest actual player input", "finalize_approval")
         equipment = value["starting_equipment"]
         if (value["creative"] is None or equipment is None
                 or equipment["background_package"] is None or equipment["class_package"] is None):
-            raise ValueError("Finalization requires creative (name, alignment, personality_traits, ideals, bonds, "
-                             "flaws) and starting_equipment (the chosen package keys, slot_picks and equipped)")
+            raise StartupContractError(
+                "Finalization requires creative (name, alignment, personality_traits, ideals, bonds, "
+                "flaws) and starting_equipment (the chosen package keys, slot_picks and equipped)", "finalize_fields")
         intent = value["intent"]
         missing = [k for k in ("class_key", "species_key", "background_key", "ability_scores") if intent.get(k) is None]
         if missing or (intent["ability_scores"] or {}).get("assignment") is None:
-            raise ValueError("Finalization requires the intent's class_key, species_key, background_key and "
-                             "ability_scores (method and assignment)")
+            raise StartupContractError("Finalization requires the intent's class_key, species_key, background_key and "
+                                       "ability_scores (method and assignment)", "finalize_intent")
     elif confirmation["whole_build_approved"]:
-        raise ValueError("An interview response cannot approve the build")
+        raise StartupContractError("An interview response cannot approve the build", "approve_interview")
     elif value["creative"] is not None:
         # starting_equipment may be partial before finalization (amendment 2): picks are recorded as given.
-        raise ValueError("An interview response has creative null; it is set at finalization")
+        raise StartupContractError("An interview response has creative null; it is set at finalization", "creative_set")
     elif value["decision"] == "pause_setup" and (
             type(index) is not int or type(latest_user_index) is not int
             or index != latest_user_index):
-        raise ValueError("A pause must cite the latest actual player input, which asked to stop")
+        raise StartupContractError("A pause must cite the latest actual player input, which asked to stop", "pause_index")
     elif index is not None and (type(index) is not int or index != latest_user_index):
-        raise ValueError("Confirmation reference must be null or the latest actual player input")
+        raise StartupContractError("Confirmation reference must be null or the latest actual player input", "confirm_index")
     return value
 
 

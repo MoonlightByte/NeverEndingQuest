@@ -405,10 +405,43 @@ def choice_problems(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     return problems
 
 
-def turn_problems(intent: Dict[str, Any], choice_turn: Dict[str, Any]) -> List[Dict[str, Any]]:
+# #2090: what an interview asks for that no choice id stands for, under the names the request already uses.
+# Code constants, compared whole; never derived from a schema, so a new field does not widen what asks accepts.
+_ASK_INTENT_KEYS = {"class": "class_key", "class_key": "class_key", "species": "species_key",
+                    "species_key": "species_key", "background": "background_key", "background_key": "background_key"}
+_ASK_CREATIVE = ("name", "alignment", "personality_traits", "ideals", "bonds", "flaws", "backstory", "appearance")
+_ASK_REQUIRED = {"ability_scores": ("ability_scores.method", "ability_scores.assignment"),
+                 "ability_scores.method": ("ability_scores.method",),
+                 "ability_scores.assignment": ("ability_scores.assignment",),
+                 "background_package": ("starting_equipment.background_package",),
+                 "starting_equipment.background_package": ("starting_equipment.background_package",)}
+ASK_IDS = frozenset(_ASK_INTENT_KEYS) | frozenset(_ASK_CREATIVE) | frozenset(_ASK_REQUIRED)
+_SLOT_ID_PREFIX = "starting_equipment.slot:"
+
+
+def _open_asks(intent: Dict[str, Any], asks: List[str], starting_equipment) -> set:
+    """The asks among these that name something open without a choice id (#2090): an identity key still null,
+    a creative field (written at finalize, so always open before it), and what unanswered_required lists."""
+    found = {cid for cid in asks if cid in _ASK_CREATIVE
+             or (cid in _ASK_INTENT_KEYS and intent.get(_ASK_INTENT_KEYS[cid]) is None)}
+    rest = [cid for cid in asks if cid not in found]
+    if not rest:
+        return found
+    needed = {entry["id"] for entry in unanswered_required(creation_scope(intent) or {}, intent, starting_equipment)}
+    # A slot may be asked by the id listed or by its bare id; both come from the engine's own list.
+    slots = {s for s in needed if s.startswith(_SLOT_ID_PREFIX)}
+    slots |= {s[len(_SLOT_ID_PREFIX):] for s in slots}
+    found.update(cid for cid in rest
+                 if cid in slots or any(n in needed for n in _ASK_REQUIRED.get(cid, ())))
+    return found
+
+
+def turn_problems(intent: Dict[str, Any], choice_turn: Dict[str, Any], *, decision: Optional[str] = None,
+                  starting_equipment: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """The typed contradictions of a response's choice_turn with its own intent (#1325): a refusal under an id
     the scope did not issue or of an option the scope offers, and a question about an id that is not open.
-    A choice the player changes is reopened by clearing its picks in intent, then asked."""
+    A choice the player changes is reopened by clearing its picks in intent, then asked. Before finalize an ask
+    may also name what has no choice id and is still open (_open_asks, #2090)."""
     issued = issued_points(intent)
     open_ids = open_choice_ids(intent)
     problems = []
@@ -420,9 +453,10 @@ def turn_problems(intent: Dict[str, Any], choice_turn: Dict[str, Any]) -> List[D
         allowed = _allowed(point, intent, issued)
         if allowed is not None and item["value"] in allowed:  # a free pick has no list to contradict
             problems.append({"choice_id": item["choice_id"], "problem": "refused_offered", "value": item["value"]})
-    for cid in choice_turn.get("asks") or []:
-        if cid not in open_ids:
-            problems.append({"choice_id": cid, "problem": "asked_not_open"})
+    asked = [cid for cid in choice_turn.get("asks") or [] if cid not in open_ids]
+    if asked:
+        also_open = set() if decision == "finalize_character" else _open_asks(intent, asked, starting_equipment)
+        problems.extend({"choice_id": cid, "problem": "asked_not_open"} for cid in asked if cid not in also_open)
     return problems
 
 

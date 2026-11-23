@@ -36,7 +36,7 @@ from utils.startup_prompt_builder import (
     ORIGINS_FILE, STARTUP_RULES_REFERENCE_PURPOSE, build_startup_rules_reference,
 )
 from utils.startup_contract import (
-    parse_startup_response, parse_startup_review, parse_startup_checkpoint,
+    StartupContractError, parse_startup_response, parse_startup_review, parse_startup_checkpoint,
 )
 from core.nql import creation_build, creation_scope
 from utils.character_sheet_contract import (
@@ -49,7 +49,7 @@ import config
 from utils.encoding_utils import safe_json_load
 from utils.file_operations import safe_write_json
 from utils.module_path_manager import ModulePathManager
-from utils.enhanced_logger import debug, info, warning, error, set_script_name
+from utils.enhanced_logger import debug, info, warning, error, file_only, set_script_name
 from core.managers.status_manager import (
     status_manager, status_processing_ai, status_validating,
     status_loading, status_ready, status_saving
@@ -1115,6 +1115,29 @@ class StartupScopeRefusal(ValueError):
                                 "does not offer, and ask only about open choice ids.")}
 
 
+def _log_rejection(count, stage, exc, intent=None):
+    """One log-file line per rejected T092 reply, with typed reasons only (#2090). Never the console (#1241:
+    the player's narration stream in web mode), and never reply text: an id is logged only when the engine
+    knows it, and an exception without a fixed code gives its class alone."""
+    try:
+        kind, detail = type(exc).__name__, []
+        if isinstance(exc, StartupScopeRefusal):
+            known = set(creation_scope.issued_points(intent or {})) | creation_scope.ASK_IDS
+            kind = "scope"
+            detail = [[p["problem"], p["choice_id"] if p["choice_id"] in known else "other"] for p in exc.problems]
+            detail.append(["open", len(exc.open_ids)])
+        elif isinstance(exc, StartupContractError):
+            kind, detail = exc.kind, exc.detail
+        shown = detail[:20] + ([["more", len(detail) - 20]] if len(detail) > 20 else [])
+        file_only(f"STARTUP_REJECT task=T092 n={count} stage={stage} kind={kind} detail={json.dumps(shown)}",
+                  category="startup")
+    except Exception as fault:  # logging never changes the turn, and its own failure is reported (NEQ-OPS-05)
+        try:
+            file_only(f"STARTUP_REJECT line failed: {type(fault).__name__}", category="startup")
+        except Exception:
+            pass
+
+
 def _scoped_intent(conversations, proposal, rescoped, persist=None):
     """Apply the engine scope to a parsed scoped response (D-CREATE-COST-4 section 1, section 3).
 
@@ -1175,7 +1198,8 @@ def _scoped_intent(conversations, proposal, rescoped, persist=None):
         return True
     open_ids = creation_scope.open_choice_ids(intent)
     # #1325: the narration's typed claims against the response's own intent; a correct turn costs no call.
-    problems = creation_scope.turn_problems(intent, proposal["choice_turn"])
+    problems = creation_scope.turn_problems(intent, proposal["choice_turn"], decision=proposal["decision"],
+                                            starting_equipment=proposal.get("starting_equipment"))
     if problems:
         raise StartupScopeRefusal(problems, open_ids)
     if proposal["decision"] == "finalize_character":
@@ -1697,9 +1721,11 @@ def ai_character_interview(conversation, module):
                 }, ensure_ascii=False)}]
                 raw = get_ai_response(request, {"type": "json_object"},
                                       persist_response=False, live_scope=scope)
+                stage = "parse"
                 try:
                     authored_proposal = copy.deepcopy(
                         parse_startup_response(raw, latest_user_index=current_index, scoped=scoped))
+                    stage = "scope"
                     if scoped:
                         if _scoped_intent([correction_context, turn_items], authored_proposal, rescoped,
                                           persist=lambda record: _persist_system_record(conversation, record, scope)):
@@ -1707,8 +1733,9 @@ def ai_character_interview(conversation, module):
                             continue
                     if (authored_proposal["decision"] == "pause_setup"
                             and current_index in _paused_player_indexes(conversation)):
-                        raise ValueError("That request to stop was already honored; the player is "
-                                         "back, so continue the interview")
+                        raise StartupContractError("That request to stop was already honored; the player is "
+                                                   "back, so continue the interview", "pause_repeat")
+                    stage = "prepare"
                     roll = _ability_roll(correction_context)
                     proposal, provenance = _prepare_startup_proposal(
                         authored_proposal, live_scope=scope, rolled=roll["rolled"] if roll else None)
@@ -1729,6 +1756,7 @@ def ai_character_interview(conversation, module):
                     if _startup_review_mode() == "engine":
                         review = {"accepted": True}
                     else:
+                        stage = "review"
                         # #1278's review over the engine-built sheet, against the reference a scoped history lacks.
                         review_request = copy.deepcopy(request)
                         _append_startup_rules_reference(review_request)
@@ -1739,12 +1767,14 @@ def ai_character_interview(conversation, module):
                 except StartupScopeRefusal as exc:
                     rejected += 1
                     rescoped = False
+                    _log_rejection(rejected, stage, exc, authored_proposal["intent"])
                     correction_context.append({"role": "system", "content": json.dumps(
                         dict(exc.record(), rejected_response=raw), ensure_ascii=False)})
                     continue
                 except ValueError as exc:
                     rejected += 1
                     rescoped = False
+                    _log_rejection(rejected, stage, exc)
                     correction_context.append({"role": "system", "content": (
                         f"Rejected startup proposal (not approved): {exc}. "
                         f"Correct this response using the retained player choices: {raw}"
