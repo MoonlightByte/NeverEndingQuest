@@ -393,7 +393,7 @@ def _merge_choices(facts, held, out, sent, gear, previous, problems, leftovers) 
         for problem in bad:
             problems.append(problem)
             key = problem["choice_id"]
-            sent.pop(key)
+            sent.pop(key, None)  # one id can have two problems (too many, and one not offered)
             intent["choices"].pop(key, None)
             if key in before:
                 intent["choices"][key] = before[key]
