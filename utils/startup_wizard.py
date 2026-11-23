@@ -1147,7 +1147,7 @@ def _build_summary(blocks, rolled, creative):
     except creation_build.BuildRefusal:
         return None   # the ability scores are not set yet: nothing to preview
     built["hit_points"] = expected_starting_hit_points(sheet, intent)[0]
-    return creation_build.render_sheet_summary(sheet, built), built
+    return creation_build.render_sheet_summary(sheet, built, creative=creative, gear=creation_blocks.gear_lines(blocks)), built
 
 
 def _last_summary(conversation):
@@ -1370,7 +1370,8 @@ def _turn_drops(turn):
 def _dropped_item(dropped):
     return {"role": "system", "content": json.dumps({
         "task_purpose": "startup_choices_dropped", "dropped": dropped,
-        "instruction": "These picks belong to an earlier choice; the current scope does not issue them.",
+        "instruction": ("The game removed these recorded picks because they no longer belong to this build. Ask again for "
+                        "any the build still needs."),
     }, ensure_ascii=False)}
 
 
@@ -1437,6 +1438,61 @@ def _handback_items(conversation, turn):
         items[1]["content"] = json.dumps(record, ensure_ascii=False)
     dropped = _turn_drops(turn)
     return items + ([_dropped_item(dropped)] if dropped else [])
+
+
+CONTRACT_PURPOSE = "startup_author_contract"
+
+
+def _append_contract(conversation, content):
+    """Append the author contract, with a typed record after it that marks it as one, unless it is already the
+    history's latest (so the latest is always the current one, after a downgrade too)."""
+    marked = _contract_positions(conversation)[0]
+    if marked and conversation[marked[-1]].get("content") == content:
+        return
+    conversation.append({"role": "system", "content": content})
+    conversation.append({"role": "system", "content": json.dumps({
+        "task_purpose": CONTRACT_PURPOSE, "instruction": "The preceding system message is the creation contract."})})
+
+
+def _system_record(message):
+    """The JSON object of a system message, or None."""
+    if message.get("role") != "system":
+        return None
+    try:
+        record = json.loads(message.get("content", ""))
+    except (TypeError, ValueError):
+        return None
+    return record if isinstance(record, dict) else None
+
+
+def _contract_positions(conversation):
+    """(indexes of the author contracts, indexes of the other plain system messages). A contract is recognized by
+    position: the plain system message directly before the record the code writes beside it."""
+    marked, plain = [], []
+    for index, message in enumerate(conversation):
+        if message.get("role") != "system" or _system_record(message) is not None:
+            continue
+        follows = _system_record(conversation[index + 1]) if index + 1 < len(conversation) else None
+        known = (follows or {}).get("task_purpose") in (CONTRACT_PURPOSE, "startup_character_interview")
+        (marked if known else plain).append(index)
+    return marked, plain
+
+
+def _current_contract_only(conversation):
+    """The request's copy of the interview with each superseded contract replaced by a short item at the same index
+    (D-CREATE-FLEX-3), so no message index moves; the saved history is never changed. A plain system message that
+    cannot be recognized as one stays, and the log says so."""
+    marked, plain = _contract_positions(conversation)
+    if len(marked) < 2:
+        return list(conversation)
+    if plain and plain[0] < marked[-1]:
+        file_only("STARTUP_CONTRACT kept %d unmarked plain system messages" % sum(p < marked[-1] for p in plain), category="startup")
+    out = list(conversation)
+    for index in marked[:-1]:
+        out[index] = {"role": "system", "content": json.dumps({
+            "task_purpose": "startup_superseded_contract",
+            "instruction": "An earlier version of the creation contract was here; the later one replaces it."})}
+    return out
 
 
 def _append_system_once(conversation, content):
@@ -1887,7 +1943,7 @@ def ai_character_interview(conversation, module):
     # typed intent; an interview begun before this continues here and re-asks the typed intent it lacks
     # (never derived from old prose). STARTUP_REVIEW_MODE selects only the review.
     scoped = True
-    _append_system_once(conversation, build_character_creation_system_prompt(scoped=scoped))
+    _append_contract(conversation, build_character_creation_system_prompt(scoped=scoped))
     _append_system_once(conversation, json.dumps({
         "task_purpose": "startup_character_interview",
         "selected_adventure": module,
@@ -1934,10 +1990,10 @@ def ai_character_interview(conversation, module):
                     "phase": (_startup_progress(conversation) or {}).get("phase", "interview"),
                     "character_saved": False, "adventure_ready": False,
                 }
-                request = correction_context + [{"role": "system", "content": json.dumps({
+                request = _current_contract_only(correction_context) + [{"role": "system", "content": json.dumps({
                     "latest_user_index": current_index, "committed_facts": facts,
                     "blocks": creation_blocks.state(turn["standing"]),
-                    "instruction": "Return the complete startup response object, not a bare sheet.",
+                    "instruction": "Return one startup response object with the blocks you add or change, not a bare sheet.",
                 }, ensure_ascii=False)}]
                 raw = get_ai_response(request, {"type": "json_object"},
                                       persist_response=False, live_scope=scope)

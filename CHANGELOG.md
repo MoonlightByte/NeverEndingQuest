@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Starting gear always comes from the class package you chose; before, the game could record one package and give the gear of another (#2092).
 
+- The character summary you approve now also shows the name, the details you gave and the starting gear, and the game saves the character only after it has shown you that summary (#2090).
+
 ## [1.2.7] - 2026-11-20
 
 - If the game is closed before its page opens, the story on screen is still there when you come back (#2086).

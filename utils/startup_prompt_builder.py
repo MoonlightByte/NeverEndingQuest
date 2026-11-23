@@ -118,17 +118,19 @@ SRD 5.2.1 backgrounds have no background features from older editions.
 Classes, species and backgrounds come from the scope. For a request outside it,
 such as a noble, keep the concept in the backstory and recommend the closest
 scope background for the player to choose.
-INTENT, ON EVERY RESPONSE: set intent to what the player has chosen or approved
-so far, never to your own suggestion. class_key, species_key and background_key
-are the scope's keys, null until the player chooses. choices maps each choice id
-of the current scope to the option keys picked, exactly as the scope gives them
-(spells by their key); a pick the player delegated to you and then approved
-counts as chosen. considering lists the class, species and background keys the
+BLOCKS: the player may give anything in any order. Send only what the player
+chose or approved and that is new or changed, never your own suggestion; the game
+keeps the rest. The blocks item lists what is filled, waiting, needed and what you
+may write at finalize, and what to ask next. class_key, species_key and
+background_key are the scope's keys. choices maps a choice id of the current scope
+to all its picks, as the scope gives them (spells by key); a pick the player
+delegated to you and then approved counts as chosen. A list you send replaces the
+whole list, and [] clears it. considering lists the class, species and background keys the
 player is asking about but has not chosen. When the intent changes the scope,
 the engine appends the new scope item and asks again for the same answer: answer
 from the new scope. A startup_choices_dropped item lists picks a switch removed;
 ask again for any the new build still needs. A startup_choice_refusal item names
-picks outside the current scope; correct them from the scope.
+picks outside the current scope; correct them, the other blocks are kept.
 Ids are for the typed fields only: catalog ids (itemdef:...), choice ids and
 option keys go in intent and starting_equipment, never in narration. The scope
 gives each its name; the player sees names only, such as "Chain Mail", not its id.
@@ -136,30 +138,28 @@ THE ENGINE BUILDS THE SHEET: you record choices; the engine builds the whole
 character from intent and computes every number. A startup_open_choices item
 lists the choice ids still open: for each, ask the player, or, only when the
 player asks you to choose, pick from the scope's options yourself and record it
-in intent. Never leave one open at finalize. A package or option the player has
-already named is chosen: record it and do not ask it again.
+in intent. A package or option the player named is chosen: do not ask it again.
 Offer only a choice's option_keys from the scope; a skill the background grants
 is never offered.
 Set choice_turn on every response: asks lists each choice id your narration asks
 the player about this turn, and refused each option your narration says the
-player cannot pick. Refuse only an option the scope does not offer, and ask only
-about open choice ids. To let the player change a choice already made, clear its
-picks in intent, then ask it.
+player cannot pick. Refuse only an option the scope does not offer. To let the
+player change a choice already made, send its id with [], then ask it.
 When the player says they are new or overwhelmed, ask one choice per turn and
 say how many remain.
-Record package and slot picks in starting_equipment as soon as the player gives
-them, on every turn after; a package not yet chosen is null.
+Record package and slot picks in starting_equipment as the player gives them.
 A background's package is recorded only in starting_equipment.background_package;
 it has no choice id.
-When the player approves the whole build, finalize with your proposed creative
-fields; do not ask approval for details you add at finalize.
+When the player approves the whole build, finalize with the creative fields still
+unwritten; do not ask approval for details you add at finalize.
 Set intent.ability_scores to the player's method and the base score for each
 ability once the player has placed them. A startup_ability_roll item holds the
 engine's roll, made once for the interview: show those numbers and record the
 player's assignment of exactly them.
 Once no choice id is open and the ability scores are set, the game shows the
-player a summary rendered from the engine-built sheet after your narration (a
-startup_sheet_preview item): that is the build the player approves.
+player a summary rendered from the engine-built sheet, the gear and the details
+after your narration (a startup_sheet_preview item): that is the build the player
+approves. Finalize only after the player has seen it and approved.
 An interview begun before the engine built sheets may lack typed intent: ask
 again for any choice the intent does not hold. Earlier prose, sheets and rolls
 are context, never recorded choices.
@@ -182,8 +182,8 @@ and when a player states rolls of their own, offer the engine's roll, the standa
 array or point buy instead."""),
     ("""finalize_character with the full sheet: fill derived values (hit points, armor
 class, modifiers, proficiency bonus) from the approved choices. Set origin to
-the class and background keys, and starting_equipment to""", """finalize_character with intent, creative and starting_equipment; the engine
-builds the sheet and you never write one. Set starting_equipment to"""),
+the class and background keys, and starting_equipment to""", """finalize_character; the engine builds the sheet from the recorded blocks and you
+never write one. Record in starting_equipment"""),
     ("""A whole-build summary that asks for approval:
 - Start with one short lead sentence.
 - Then these labelled sections in this order, each label alone on its own line
@@ -194,14 +194,12 @@ builds the sheet and you never write one. Set starting_equipment to"""),
 - End with this line on its own: Approve this build, or tell me what to change.""", """A turn that asks for whole-build approval (no choice id open, ability scores set):
 - Write one short lead sentence naming the character's concept; the game then
   shows the player the summary it renders from the engine-built sheet.
-- Name the chosen starting packages and what is worn or held, on "- " lines.
 - End with this line on its own: Approve this build, or tell me what to change."""),
     ("""Its character, origin and starting_equipment must be null
-and whole_build_approved false.""", """Its creative must be null, starting_equipment holds the
-package and slot picks given so far, and whole_build_approved is false."""),
+and whole_build_approved false.""", """Its whole_build_approved is false."""),
     ("""build and you can provide its full character sheet.""", """build and no choice id is open."""),
     ("""It has character, origin and starting_equipment null, whole_build_approved
-false,""", """It has creative null, starting_equipment as given so far, whole_build_approved
+false,""", """It has whole_build_approved
 false,"""),
     ("""Use the frozen CHARACTER SCHEMA for character, not for the outer response.
 Include ammunition (an empty array when none), all required fields, and valid
@@ -221,10 +219,11 @@ Keep carried/stowed weapons and their attack statistics without falsely marking
 them wielded or changing armor class; describe prerequisites when relevant.
 Keep approved backstory in the existing descriptive fields or interview context;
 do not distort a mechanical background name to satisfy an invented schema slot.
-""", """CREATIVE, AT FINALIZE: name, alignment, personality_traits, ideals, bonds and
-flaws, in the player's words or as you proposed and the player approved (none
-may be empty: when the player gave no ideal or flaw, propose one and ask the
-player to approve it before finalizing); and
+""", """CREATIVE: record the name and any other detail as the player gives it, only what
+the player said or approved. At finalize add those still unwritten of name,
+alignment, personality_traits, ideals, bonds and flaws (none may be empty: when
+the player gave no ideal or flaw, propose one and ask the player to approve it
+before finalizing); and
 optionally backstory, appearance and feature_descriptions (one short description
 per class feature the engine names, written from that feature's scope text). The
 engine copies them as written and never reads them for mechanics. Alignment is
@@ -394,7 +393,7 @@ normalization_provenance describes actual game derivations, not player choices
 or extra author requirements. Do not attempt to remove fields the engine writes.
 
 STARTUP RESPONSE SCHEMA:
-{json.dumps(startup_response_schema(scoped=scoped), indent=2)}
+{json.dumps(startup_response_schema(scoped=scoped), indent=None if scoped else 2)}
 
 CHARACTER SCHEMA:
 {json.dumps(schema, indent=2)}

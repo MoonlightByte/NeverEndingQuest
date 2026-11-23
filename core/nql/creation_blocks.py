@@ -173,6 +173,38 @@ def waiting(blocks: Dict[str, Any], facts: Optional[_Facts] = None) -> List[str]
     return [p["slot"] for p in gear["waiting_slots"]] + list(gear["waiting_worn"])
 
 
+def gear_lines(blocks: Dict[str, Any]) -> List[str]:
+    """The starting gear chosen so far in names, one line per package, slot and what is worn; only filled blocks."""
+    facts = _Facts()
+    gear = _gear(facts, blocks)
+    picked = {p["slot"]: p for p in gear["slots"]}
+    lines = []
+    for kind in ("class", "background"):
+        option = _package_option(facts, kind, blocks)
+        label = "%s package" % kind.capitalize()
+        if option is None:
+            lines.append("%s: not chosen yet" % label)
+            continue
+        names = []
+        for _, item in _package_items(option, kind):
+            slot = item.get("slot") if isinstance(item.get("slot"), str) else None
+            pick = picked.get(slot)
+            if slot and pick is None:
+                name = "%s (not chosen yet)" % (item.get("uncatalogued") or "one of: %s" % ", ".join(
+                    facts.d.catalog.get(i, i) for i in item.get("choose_one") or []))
+            elif slot:
+                name = pick.get("display_name") or facts.d.catalog.get(pick.get("catalog_id"), "")
+            else:
+                name = facts.d.catalog.get(item.get("catalog_id")) or item.get("uncatalogued") or ""
+            count = int(item.get("quantity") or 1)
+            names.append("%s x%d" % (name, count) if count > 1 else name)
+        gold = int((option.get("coins") or {}).get("gp") or 0)
+        lines.append("%s %s: %s" % (label, blocks["starting_equipment"][kind + "_package"], ", ".join(
+            [n for n in names if n] + (["%d gold" % gold] if gold else []))))
+    worn = [facts.d.catalog.get(i, i) for i in gear["worn"]]
+    return lines + ["Worn or held: %s" % (", ".join(worn) if worn else "nothing chosen yet")]
+
+
 # --- dropping what no longer belongs ---
 
 def _values(blocks: Dict[str, Any]) -> Dict[str, List[Any]]:

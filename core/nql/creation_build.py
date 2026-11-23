@@ -454,9 +454,15 @@ def _species_trait_names(sheet: Dict[str, Any], built: Optional[Dict[str, Any]])
     return [t.get("name") for t in sheet.get("racialTraits") or [] if isinstance(t, dict) and t.get("name") not in folded]
 
 
-def render_sheet_summary(sheet: Dict[str, Any], built: Optional[Dict[str, Any]] = None) -> str:
+DETAIL_LABELS = (("alignment", "Alignment"), ("personality_traits", "Personality"), ("ideals", "Ideals"), ("bonds", "Bonds"),
+                 ("flaws", "Flaws"), ("appearance", "Appearance"), ("backstory", "Backstory"))
+
+
+def render_sheet_summary(sheet: Dict[str, Any], built: Optional[Dict[str, Any]] = None, *,
+                         creative: Optional[Dict[str, Any]] = None, gear: Optional[List[str]] = None) -> str:
     """The build summary the player approves, rendered from the engine-built sheet (D2, #1275): names and
-    numbers only, never an id. Gear comes from the chosen packages when the character is saved."""
+    numbers only, never an id. creative: the details given so far, shown as written; gear: the lines for the
+    starting gear chosen so far."""
     def mod(score: int) -> str:
         return "%+d" % ((score - 10) // 2)
     abilities = sheet.get("abilities") or {}
@@ -464,7 +470,9 @@ def render_sheet_summary(sheet: Dict[str, Any], built: Optional[Dict[str, Any]] 
     spells = casting.get("spells") or {}
     proficiencies = sheet.get("proficiencies") or {}
     senses = sheet.get("senses") or {}
-    lines = ["%s %s, %s background" % (sheet.get("race"), sheet.get("class"), sheet.get("background")),
+    creative = creative or {}
+    lines = ["Name: %s" % (creative.get("name") or "not chosen yet"),
+             "%s %s, %s background" % (sheet.get("race"), sheet.get("class"), sheet.get("background")),
              "Size %s, speed %s ft%s" % (sheet.get("size"), sheet.get("speed"),
                                          ", darkvision %s ft" % senses["darkvision"] if senses.get("darkvision") else ""),
              "", "Ability scores:"]
@@ -493,5 +501,9 @@ def render_sheet_summary(sheet: Dict[str, Any], built: Optional[Dict[str, Any]] 
         items = [str(i) for i in items or [] if i]
         if items:
             lines += ["", label] + ["- %s" % i for i in items]
-    lines += ["", "Starting gear comes from your chosen packages when the character is saved."]
+    if gear:
+        lines += ["", "Starting gear:"] + ["- %s" % line for line in gear]
+    details = ["- %s: %s" % (label, creative[field]) for field, label in DETAIL_LABELS if creative.get(field)]
+    if details:
+        lines += ["", "Details:"] + details
     return "\n".join(lines)
