@@ -36,7 +36,7 @@ from utils.startup_prompt_builder import (
     ORIGINS_FILE, STARTUP_RULES_REFERENCE_PURPOSE, build_startup_rules_reference,
 )
 from utils.startup_contract import (
-    StartupContractError, check_finalize, creation_alignments, parse_startup_response, parse_startup_review,
+    Settled, StartupContractError, check_finalize, creation_alignments, parse_startup_response, parse_startup_review,
     parse_startup_checkpoint,
 )
 from core.nql import creation_blocks, creation_build, creation_scope
@@ -1238,7 +1238,8 @@ def _log_rejection(count, stage, exc, intent=None):
         kind, detail = type(exc).__name__, []
         if isinstance(exc, StartupScopeRefusal):
             known = set(creation_scope.issued_points(intent or {})) | creation_scope.ASK_IDS | {
-                "ability_scores.assignment", "starting_equipment.equipped"}
+                "ability_scores.assignment", "starting_equipment.equipped",
+                "starting_equipment.slot_picks", "starting_equipment.class_package"}
             kind = "scope"
             detail = [[p["problem"], p["choice_id"] if p["choice_id"] in known else "other"] for p in exc.problems]
             detail.append(["open", len(exc.open_ids)])
@@ -1270,7 +1271,7 @@ def _earlier_choice_ids(conversation):
     return found
 
 
-def _log_notes(proposal, merged, held):
+def _log_notes(proposal, merged, held, settled=None):
     """One log-file line for what a reply carried that is not a rejection: counts and the engine's own ids only."""
     try:
         known = set(creation_scope.issued_points(merged.standing["intent"]))
@@ -1279,10 +1280,14 @@ def _log_notes(proposal, merged, held):
         unwritten = [f if f in creation_scope.ASK_IDS else "other" for f in merged.unwritten]
         before = creation_scope.repeated_for_room(held["intent"])
         room = len([r for r in creation_scope.repeated_for_room(merged.standing["intent"]) if r not in before])
-        if asks or unwritten or merged.aside or absent or room:
-            file_only("STARTUP_NOTE task=T092 asks_without_id=%d unwritten=%s aside=%s absent=%s repeated_for_room=%d"
-                      % (asks, json.dumps(unwritten), json.dumps(merged.aside), json.dumps(absent), room),
-                      category="startup")
+        claims = len([c for c in (proposal.get("choice_turn") or {}).get("refused") or []
+                      if c["choice_id"] in creation_scope.MENU_IDS])
+        notes = settled.notes[:20] if settled is not None else []
+        if asks or unwritten or merged.aside or absent or room or claims or notes:
+            file_only("STARTUP_NOTE task=T092 asks_without_id=%d unwritten=%s aside=%s absent=%s repeated_for_room=%d "
+                      "menu_claims=%d settled=%s"
+                      % (asks, json.dumps(unwritten), json.dumps(merged.aside), json.dumps(absent), room, claims,
+                         json.dumps(notes)), category="startup")
     except Exception as fault:  # logging never changes the turn, and its own failure is reported (NEQ-OPS-05)
         try:
             file_only(f"STARTUP_NOTE line failed: {type(fault).__name__}", category="startup")
@@ -1290,7 +1295,16 @@ def _log_notes(proposal, merged, held):
             pass
 
 
-def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persist=None):
+def _unread_item(places):
+    """For the author's next request only, never saved: the parts of its reply the game did not read."""
+    return {"role": "system", "content": json.dumps({
+        "task_purpose": "startup_parts_not_read", "places": places,
+        "instruction": ("The game does not read these parts of your last reply. Nothing in them is recorded, whatever the "
+                        "narration said; ask the player again for anything the blocks item still lists as needed."),
+    }, ensure_ascii=False)}
+
+
+def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persist=None, settled=None):
     """Merge a parsed scoped response into the turn's blocks and check it against the engine scope
     (D-CREATE-COST-4 section 1, section 3; D-CREATE-FLEX-3). turn holds this turn's held and standing blocks.
 
@@ -1305,7 +1319,11 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
     merged = creation_blocks.merge(turn["held"], turn["standing"], proposal, rolled=roll["rolled"] if roll else None,
                                    previous=lambda: _earlier_choice_ids(correction_context),
                                    alignments=creation_alignments())
-    _log_notes(proposal, merged, turn["held"])
+    _log_notes(proposal, merged, turn["held"], settled)
+    turn["unread_parts"] = list(settled.unread) if settled is not None else []
+    if turn["unread_parts"]:
+        correction_context.append(_unread_item(turn["unread_parts"]))
+    problems_sent = (list(settled.refused) if settled is not None else []) + merged.problems
     turn["standing"] = merged.standing
     turn["lost"].update(merged.dropped)
     turn["leftovers"] = merged.leftovers
@@ -1333,6 +1351,12 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
         _append_scope([correction_context, turn_items], scope, intent)
         ask_again = True
     if ask_again and not rescoped:
+        if settled is not None and settled.refused:  # no rejection, but the author learns what was left out and why
+            correction_context.append({"role": "system", "content": json.dumps({
+                "task_purpose": "startup_blocks_refused", "problems": settled.refused,
+                "instruction": ("These blocks of your reply were left out, for the problem named; the rest is held. "
+                                "Correct them in the same answer, or leave them out and ask the player.")},
+                ensure_ascii=False)})
         partly = [p for p in merged.problems if p.get("kept")]
         if partly:  # no rejection, but the author learns which option it placed under the wrong id
             correction_context.append({"role": "system", "content": json.dumps({
@@ -1342,8 +1366,8 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
                 ensure_ascii=False)})
         return True
     open_ids = creation_scope.open_choice_ids(intent)
-    if merged.problems:
-        raise StartupScopeRefusal(merged.problems, [])
+    if problems_sent:
+        raise StartupScopeRefusal(problems_sent, [])
     # #1325: the narration's typed claims against the blocks the response leaves; a correct turn costs no call.
     problems = creation_scope.turn_problems(intent, proposal.get("choice_turn") or {})
     if problems:
@@ -1974,6 +1998,17 @@ STARTUP_HANDBACK_NOTICE = (
 )
 
 
+def _still_needed_text(blocks):
+    """The lines under the fixed notice of a handed-back turn (D-CREATE-FLEX-3): what the build still needs, and what
+    the first of it offers, in names. A failure leaves the fixed notice alone."""
+    try:
+        lines = creation_blocks.still_needed_lines(blocks)
+        return "\n\n" + "\n".join(lines) if lines else ""
+    except Exception as fault:  # logged with its class only (NEQ-OPS-05)
+        file_only(f"STARTUP_NOTE still needed failed: {type(fault).__name__}", category="startup")
+        return ""
+
+
 def ai_character_interview(conversation, module):
     """One agent-authored, independently reviewed startup turn at a time."""
     from utils.capture.live_provider_call import (
@@ -1999,11 +2034,14 @@ def ai_character_interview(conversation, module):
         else:
             warning("Startup creation scope unavailable; the interview continues without it", category="startup")
     _say("\nDungeon Master: Let's build your character together.", flush=True)  # #1422 F1
+    unread_parts = []  # of the last published or handed-back reply; told to the author once, never saved
     while True:
         scope = open_live_turn_scope()
         try:
             save_startup_conversation(conversation, live_scope=scope)
             correction_context = copy.deepcopy(conversation)
+            if unread_parts:
+                correction_context.append(_unread_item(unread_parts))
             rejected = 0
             rescoped = False  # one re-scope per T092 response chain (r3 section 3.2)
             turn_items = []  # scope, state and drop items made this turn; saved only when it publishes (T4)
@@ -2013,17 +2051,19 @@ def ai_character_interview(conversation, module):
                     # Fail forward: hand the turn back unpublished; nothing is approved or saved.
                     if scope.is_superseded():
                         raise LiveProviderSuperseded("startup review superseded")
+                    unread_parts = turn.get("unread_parts") or []
+                    notice = STARTUP_HANDBACK_NOTICE + _still_needed_text(turn["standing"])
                     conversation.extend(_handback_items(conversation, turn))
                     conversation.append({"role": "system", "content": json.dumps({
                         "task_purpose": HANDBACK_PURPOSE,
                         "blocks": turn["standing"],
                         "rejected_outputs": rejected,
-                        "notice_shown_to_player": STARTUP_HANDBACK_NOTICE,
+                        "notice_shown_to_player": notice,
                         "instruction": ("No proposal for the player's previous message was published or "
                                         "approved. Answer the player's next message with the retained choices."),
                     }, ensure_ascii=False)})
                     save_startup_conversation(conversation, live_scope=scope)
-                    _say(f"\nDungeon Master: {STARTUP_HANDBACK_NOTICE}")
+                    _say(f"\nDungeon Master: {notice}")
                     break
                 current_index = _latest_player_index(conversation)
                 facts = {
@@ -2039,13 +2079,15 @@ def ai_character_interview(conversation, module):
                 raw = get_ai_response(request, {"type": "json_object"},
                                       persist_response=False, live_scope=scope)
                 stage = "parse"
+                settled = Settled()
                 try:
-                    authored_proposal = copy.deepcopy(
-                        parse_startup_response(raw, latest_user_index=current_index, scoped=scoped))
+                    authored_proposal = copy.deepcopy(parse_startup_response(
+                        raw, latest_user_index=current_index, scoped=scoped, settled=settled))
                     stage = "scope"
                     if scoped:
                         if _scoped_turn(correction_context, turn_items, authored_proposal, turn, rescoped,
-                                        persist=lambda record: _persist_system_record(conversation, record, scope)):
+                                        persist=lambda record: _persist_system_record(conversation, record, scope),
+                                        settled=settled):
                             rescoped = True
                             continue
                     if (authored_proposal["decision"] == "pause_setup"
@@ -2117,6 +2159,7 @@ def ai_character_interview(conversation, module):
                     continue
                 if scope.is_superseded():
                     raise LiveProviderSuperseded("startup review superseded")
+                unread_parts = turn.get("unread_parts") or []
                 lines = (_change_lines(conversation, turn)
                          if scoped and proposal["decision"] != "finalize_character" else [])
                 conversation.extend(_items_to_save(conversation, turn_items, turn))

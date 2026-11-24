@@ -251,10 +251,130 @@ def _parse_object(text, schema):
     return _validate(value, schema)
 
 
-def parse_startup_response(text, *, latest_user_index, scoped=False):
+# The most faults of one reply that are settled one by one; a reply with more is refused whole.
+SETTLE_LIMIT = 60
+
+
+class Settled:
+    """What a scoped reply's check settled at its own place (#2090 B3). unread: the dotted places whose content was not
+    read, for the author's next request only; refused: the blocks left out, as typed problems; notes: the same for the
+    log, in schema names only."""
+
+    def __init__(self):
+        self.unread, self.refused, self.notes = [], [], []
+
+
+def _at(value, path):
+    for part in path:
+        value = value[part]
+    return value
+
+
+def _settle_reply(value, schema, settled):
+    """Settle every fault of a scoped reply that costs only its own place: a key or part the game does not read is set
+    aside, a block it cannot take is left out and reported. False when one of them is none of these, or they are too
+    many: the whole reply is then refused."""
+    known = _property_names(schema)
+    for _ in range(SETTLE_LIMIT):
+        errors = sorted(Draft7Validator(schema).iter_errors(value), key=lambda e: (len(e.absolute_path), list(map(str, e.absolute_path))))
+        if not errors:
+            return True
+        if not _settle_one(value, errors[0], settled, known):
+            return False
+    return False
+
+
+def _settle_one(value, error, settled, known):
+    path = list(error.absolute_path)
+    top = path[0] if path else None
+    interview = isinstance(value, dict) and value.get("decision") == "continue_interview"
+    if top == "confirmation" and not interview:
+        return False  # what approves or pauses is never repaired
+    if top not in (None, "confirmation", "intent", "starting_equipment", "choice_turn"):
+        return False
+
+    def note(kind, at):
+        settled.notes.append([kind, ".".join("#" if isinstance(p, int) else p if p in known else "*" for p in at)])
+
+    def aside(at):
+        """Take a part the game does not read out. Nothing there (null) is nothing to report."""
+        gone = _at(value, at[:-1]).pop(at[-1])
+        if gone is not None and top != "confirmation":  # its faults on an interview turn mean nothing to the author
+            settled.unread.append(".".join(map(str, at)))
+        note("aside", at)
+        return True
+
+    def refuse(at, choice_id, **more):
+        """Leave a block out that the narration may claim: one typed problem."""
+        gone = _at(value, at[:-1]).pop(at[-1])
+        settled.refused.append(dict({"choice_id": choice_id, "problem": "not_offered", "options": [gone]}, **more))
+        note("refused", at)
+        return True
+
+    if error.validator == "additionalProperties":
+        for key in [k for k in error.instance if k not in error.schema["properties"]]:
+            aside(path + [key])
+        return True
+    if error.validator == "required":
+        blank = {"confirmation": {"player_message_index": None, "whole_build_approved": False}}
+        if path == ["confirmation"]:
+            blank = blank["confirmation"]
+        elif path == ["intent", "considering"]:
+            blank = {"class_keys": [], "species_keys": [], "background_keys": []}
+        elif path == ["choice_turn"]:
+            blank = {"asks": [], "refused": []}
+        elif path[:2] == ["choice_turn", "refused"] and len(path) == 3:
+            return aside(path)  # half a claim is none
+        elif path or not interview:
+            return False
+        missing = [name for name in error.validator_value if name not in error.instance]
+        if any(name not in blank for name in missing):
+            return False
+        error.instance.update({name: copy.deepcopy(blank[name]) for name in missing})
+        note("absent", path + missing[:1])
+        return True
+    if not path:
+        return False
+    if top == "confirmation":
+        if path[1:] and path[1] not in ("player_message_index", "whole_build_approved"):
+            return False
+        aside(path[:2])  # what is taken out is absent, and reads as null and false
+        return True
+    if top == "choice_turn":
+        return aside(path[:3])
+    if error.instance is None and not isinstance(path[-1], int):
+        return aside(path)  # nothing sent: it keeps what is recorded
+    if top == "intent" and len(path) > 1:
+        field = path[1]
+        if field in ("class_key", "species_key", "background_key"):
+            return refuse(path[:2], field, offered=[k for k in error.schema.get("enum") or [] if k is not None])
+        if field == "considering":
+            return aside(path[:3])
+        if field == "choices" and len(path) > 2:
+            return refuse(path[:3], path[2], problem="not_a_list")
+        if field == "ability_scores":
+            if path[2:] == ["method"]:
+                return refuse(path[:2], "ability_scores", offered=list(error.schema.get("enum") or []))
+            if path[2:] == ["assignment"]:
+                return refuse(path, "ability_scores.assignment", problem="refused", why="the assignment is an object of the six scores")
+            return len(path) == 2 and refuse(path, "ability_scores", problem="refused", why="ability_scores is an object")
+    if top == "starting_equipment" and len(path) > 1:
+        return refuse(path[:2], "starting_equipment." + path[1], problem="refused", why="wrong type")
+    return False
+
+
+def parse_startup_response(text, *, latest_user_index, scoped=False, settled=None):
     """Check wire shape/reference; the caller supplies its actual user index.
     scoped: the engine path (D-CREATE-COST-5): the response carries the blocks it adds or changes (D-CREATE-FLEX-3)
-    instead of a sheet; the caller merges them, then calls check_finalize."""
+    instead of a sheet; the caller merges them, then calls check_finalize. settled (a Settled): a fault that costs only
+    its own place is settled there and reported in it (#2090 B3), instead of refusing the reply."""
+    if scoped and settled is not None:
+        schema = _scoped_reply_schema()
+        sent = _parse_object(text, {})
+        value = copy.deepcopy(sent)
+        if not _settle_reply(value, schema, settled):
+            _validate(sent, schema)  # refused whole, for all that was sent
+        return _check_engine_response(value, latest_user_index, settled)
     value = _parse_object(text, _scoped_reply_schema() if scoped else startup_response_schema())
     if scoped:
         return _check_engine_response(value, latest_user_index)
@@ -286,7 +406,7 @@ def parse_startup_response(text, *, latest_user_index, scoped=False):
     return value
 
 
-def _check_engine_response(value, latest_user_index):
+def _check_engine_response(value, latest_user_index, settled=None):
     confirmation = value["confirmation"]
     index = confirmation["player_message_index"]
     if value["decision"] == "finalize_character":
@@ -301,6 +421,10 @@ def _check_engine_response(value, latest_user_index):
             or index != latest_user_index):
         raise StartupContractError("A pause must cite the latest actual player input, which asked to stop", "pause_index")
     elif index is not None and (type(index) is not int or index != latest_user_index):
+        if settled is not None:
+            confirmation["player_message_index"] = None  # it approves nothing here
+            settled.notes.append(["aside", "confirmation.player_message_index"])
+            return value
         raise StartupContractError("Confirmation reference must be null or the latest actual player input", "confirm_index")
     return value
 
