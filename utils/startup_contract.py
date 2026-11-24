@@ -155,12 +155,36 @@ def startup_response_schema(*, scoped=False):
         for field in ("character", "origin"):
             del schema["properties"][field]
             schema["required"].remove(field)
+        # D-CREATE-FLEX-3: a reply names only what it adds or changes; a key left out keeps what is recorded.
+        schema["required"] = ["version", "decision", "narration", "confirmation"]
+        intent["required"] = []
+        intent["properties"]["ability_scores"]["required"] = []
+        creative["required"] = []
+        schema["properties"]["starting_equipment"]["required"] = []
         # D-CREATE-COST-5 amendment 2 (D-ALLCLASS-2): package and slot picks are recorded as the player gives
         # them, so an interview turn may carry a partial starting_equipment; a package not yet chosen is null.
         packages = schema["properties"]["starting_equipment"]["properties"]
         for key in ("background_package", "class_package"):
             packages[key] = {"type": ["string", "null"]}
     return schema
+
+
+def _scoped_reply_schema():
+    """What a scoped reply is checked against before it is merged: the wire schema, except that the blocks checked
+    one at a time (creation_blocks.merge) are only of the right JSON kind, so a bad one costs no other block."""
+    schema = startup_response_schema(scoped=True)
+    properties = schema["properties"]
+    properties["creative"] = {"type": ["object", "null"]}
+    properties["intent"]["properties"]["ability_scores"]["properties"]["assignment"] = {"type": ["object", "null"]}
+    gear = properties["starting_equipment"]["properties"]
+    gear["slot_picks"] = {"type": ["array", "null"], "items": {"type": "object"}}
+    gear["equipped"] = {"type": ["array", "null"]}
+    return schema
+
+
+def creation_alignments():
+    """The character schema's alignments, or an empty list."""
+    return list(((_char_schema().get("properties") or {}).get("alignment") or {}).get("enum") or [])
 
 
 def _char_schema():
@@ -229,9 +253,9 @@ def _parse_object(text, schema):
 
 def parse_startup_response(text, *, latest_user_index, scoped=False):
     """Check wire shape/reference; the caller supplies its actual user index.
-    scoped: the engine path (D-CREATE-COST-5): the response carries intent and, at finalize, creative and
-    starting_equipment instead of a sheet."""
-    value = _parse_object(text, startup_response_schema(scoped=scoped))
+    scoped: the engine path (D-CREATE-COST-5): the response carries the blocks it adds or changes (D-CREATE-FLEX-3)
+    instead of a sheet; the caller merges them, then calls check_finalize."""
+    value = _parse_object(text, _scoped_reply_schema() if scoped else startup_response_schema())
     if scoped:
         return _check_engine_response(value, latest_user_index)
     confirmation = value["confirmation"]
@@ -270,22 +294,8 @@ def _check_engine_response(value, latest_user_index):
                 or type(index) is not int or type(latest_user_index) is not int
                 or index != latest_user_index):
             raise StartupContractError("Finalization requires whole-build approval of the latest actual player input", "finalize_approval")
-        equipment = value["starting_equipment"]
-        if (value["creative"] is None or equipment is None
-                or equipment["background_package"] is None or equipment["class_package"] is None):
-            raise StartupContractError(
-                "Finalization requires creative (name, alignment, personality_traits, ideals, bonds, "
-                "flaws) and starting_equipment (the chosen package keys, slot_picks and equipped)", "finalize_fields")
-        intent = value["intent"]
-        missing = [k for k in ("class_key", "species_key", "background_key", "ability_scores") if intent.get(k) is None]
-        if missing or (intent["ability_scores"] or {}).get("assignment") is None:
-            raise StartupContractError("Finalization requires the intent's class_key, species_key, background_key and "
-                                       "ability_scores (method and assignment)", "finalize_intent")
-    elif confirmation["whole_build_approved"]:
+    elif confirmation["whole_build_approved"] and value["decision"] == "pause_setup":
         raise StartupContractError("An interview response cannot approve the build", "approve_interview")
-    elif value["creative"] is not None:
-        # starting_equipment may be partial before finalization (amendment 2): picks are recorded as given.
-        raise StartupContractError("An interview response has creative null; it is set at finalization", "creative_set")
     elif value["decision"] == "pause_setup" and (
             type(index) is not int or type(latest_user_index) is not int
             or index != latest_user_index):
@@ -293,6 +303,21 @@ def _check_engine_response(value, latest_user_index):
     elif index is not None and (type(index) is not int or index != latest_user_index):
         raise StartupContractError("Confirmation reference must be null or the latest actual player input", "confirm_index")
     return value
+
+
+def check_finalize(value):
+    """A finalize's blocks, as the reply and the recorded ones leave them together."""
+    equipment, creative = value["starting_equipment"], value["creative"]
+    if (any(not creative.get(k) for k in ("name", "alignment", "personality_traits", "ideals", "bonds", "flaws"))
+            or equipment["background_package"] is None or equipment["class_package"] is None):
+        raise StartupContractError(
+            "Finalization requires creative (name, alignment, personality_traits, ideals, bonds, "
+            "flaws) and starting_equipment (the chosen package keys, slot_picks and equipped)", "finalize_fields")
+    intent = value["intent"]
+    missing = [k for k in ("class_key", "species_key", "background_key", "ability_scores") if intent.get(k) is None]
+    if missing or (intent["ability_scores"] or {}).get("assignment") is None:
+        raise StartupContractError("Finalization requires the intent's class_key, species_key, background_key and "
+                                   "ability_scores (method and assignment)", "finalize_intent")
 
 
 def parse_startup_review(text, *, decision=None):

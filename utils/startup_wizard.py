@@ -36,9 +36,10 @@ from utils.startup_prompt_builder import (
     ORIGINS_FILE, STARTUP_RULES_REFERENCE_PURPOSE, build_startup_rules_reference,
 )
 from utils.startup_contract import (
-    StartupContractError, parse_startup_response, parse_startup_review, parse_startup_checkpoint,
+    StartupContractError, check_finalize, creation_alignments, parse_startup_response, parse_startup_review,
+    parse_startup_checkpoint,
 )
-from core.nql import creation_build, creation_scope
+from core.nql import creation_blocks, creation_build, creation_scope
 from utils.character_sheet_contract import (
     extract_json_object,
     repair_required_ammunition_field,
@@ -1050,6 +1051,7 @@ def _ability_roll(conversation):
 
 ENGINE_BUILD_PURPOSE = "startup_engine_build"
 SHEET_PREVIEW_PURPOSE = "startup_sheet_preview"
+HANDBACK_PURPOSE = "startup_turn_handback"
 
 
 def _persist_system_record(conversation, record, live_scope):
@@ -1058,24 +1060,123 @@ def _persist_system_record(conversation, record, live_scope):
     save_startup_conversation(conversation, live_scope=live_scope)
 
 
-def _sheet_preview(conversation, intent):
-    """Once no choice id is open, the engine builds the sheet for the published intent and the player sees
-    the summary rendered from it (D2); the author gets it as a typed startup_sheet_preview item. Returns the
-    summary text when it changed since the last preview, else None."""
-    from core.nql import creation_build
+def _held_blocks(conversation):
+    """(the blocks this interview's published turns left, what reading them back dropped). Read in order from this
+    startup's items only: a published reply's intent and starting_equipment are the whole merged blocks (an older
+    reply restated them whole), its creative is what that turn added, and a handback's blocks replace all three.
+    Nothing is read from prose; the result is checked again, since the data can have changed."""
+    progress = _startup_progress(conversation) or {}
+    startup_id, start = progress.get("startup_id"), 0
+    if startup_id is not None and startup_id != _first_startup_id(conversation):
+        start = next((i for i, m in enumerate(conversation) if startup_id in _checkpoint_ids([m])), None)
+        if start is None:
+            # No checkpoint carries this startup's id: nothing up to the last checkpoint is known to be its own.
+            start = max((i + 1 for i, m in enumerate(conversation) if _checkpoint_ids([m])), default=0)
+            file_only("STARTUP_NOTE task=T092 startup_without_checkpoint=1", category="startup")
+    blocks = creation_blocks.empty()
+    for message in conversation[start:]:
+        role = message.get("role")
+        if role not in ("assistant", "system"):
+            continue
+        try:
+            item = json.loads(message.get("content", ""))
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(item, dict):
+            continue
+        if role == "system":
+            kept = item.get("blocks")
+            if item.get("task_purpose") == HANDBACK_PURPOSE and isinstance(kept, dict):
+                blocks = creation_blocks.empty()
+                _fold_blocks(blocks, kept)
+        elif isinstance(item.get("intent"), dict):
+            conflict = item.get("decision") == "finalize_character"
+            _fold_blocks(blocks, item, drop_name=conflict)
+    roll = _ability_roll(conversation)
+    return creation_blocks.settle(blocks, rolled=roll["rolled"] if roll else None)
+
+
+def _checkpoint_ids(messages):
+    """The startup ids of the checkpoint records among these messages."""
+    found = []
+    for message in messages:
+        try:
+            record = json.loads(message.get("content", "")) if message.get("role") == "system" else None
+        except (TypeError, ValueError):
+            continue
+        if isinstance(record, dict) and "startup_checkpoint_version" in record:
+            found.append(record.get("startup_id"))
+    return found
+
+
+def _fold_blocks(blocks, item, drop_name=False):
+    """Fold one saved item's typed blocks in; a key an older save lacks leaves what is there. drop_name: the item is a
+    finalize that was not committed (its name was taken), so its name is not settled."""
+    intent = item.get("intent") if isinstance(item.get("intent"), dict) else {}
+    for key, kind in (("class_key", str), ("species_key", str), ("background_key", str), ("considering", dict)):
+        if key in intent and (intent[key] is None or isinstance(intent[key], kind)):
+            blocks["intent"][key] = copy.deepcopy(intent[key]) if intent[key] or kind is str else blocks["intent"][key]
+    if isinstance(intent.get("choices"), dict):
+        blocks["intent"]["choices"] = {cid: list(picks) for cid, picks in intent["choices"].items()
+                                       if isinstance(picks, list) and picks}
+    if "ability_scores" in intent and (intent["ability_scores"] is None or isinstance(intent["ability_scores"], dict)):
+        scores = intent["ability_scores"]
+        blocks["intent"]["ability_scores"] = ({"method": scores["method"], "assignment": copy.deepcopy(scores.get("assignment"))}
+                                              if scores and scores.get("method") else None)
+    gear = item.get("starting_equipment")
+    if isinstance(gear, dict):
+        for key in ("background_package", "class_package"):
+            if key in gear and (gear[key] is None or isinstance(gear[key], str)):
+                blocks["starting_equipment"][key] = gear[key]
+        if isinstance(gear.get("slot_picks"), list):
+            blocks["starting_equipment"]["slot_picks"] = [copy.deepcopy(p) for p in gear["slot_picks"] if isinstance(p, dict)]
+        if isinstance(gear.get("equipped"), list):
+            blocks["starting_equipment"]["equipped"] = list(gear["equipped"])
+    creative = item.get("creative")
+    if isinstance(creative, dict):
+        creation_blocks.fold_creative(blocks["creative"], creative)
+        if drop_name:
+            blocks["creative"].pop("name", None)
+
+
+def _build_summary(blocks, rolled, creative):
+    """The engine-rendered summary of these blocks (D2), or None while a choice is open or the ability scores are
+    not set. Only filled blocks are shown; creative is the details to show."""
+    blocks = creation_blocks.checked(blocks)
+    intent = blocks["intent"]
     if creation_scope.open_choice_ids(intent):
         return None
-    roll = _ability_roll(conversation)
     try:
-        sheet, built = creation_build.build_level_one_sheet(
-            intent, None, rolled=roll["rolled"] if roll else None, preview=True)
+        sheet, built = creation_build.build_level_one_sheet(intent, None, rolled=rolled, preview=True)
     except creation_build.BuildRefusal:
         return None   # the ability scores are not set yet: nothing to preview
     built["hit_points"] = expected_starting_hit_points(sheet, intent)[0]
-    summary = creation_build.render_sheet_summary(sheet, built)
+    return creation_build.render_sheet_summary(sheet, built, creative=creative, gear=creation_blocks.gear_lines(blocks)), built
+
+
+def _last_summary(conversation):
+    """The summary this interview last showed the player, or None."""
     previews = _scope_states(conversation, SHEET_PREVIEW_PURPOSE)
-    if previews and previews[-1].get("summary") == summary:
+    return previews[-1].get("summary") if previews else None
+
+
+def _summary_shown(conversation, blocks, rolled, held):
+    """True when the player has been shown these blocks: the last saved summary equals the one rendered now, leaving
+    out details this reply newly wrote (D-ALLCLASS-3), but never the name: the player sees it before the character
+    is saved. None when there is no summary to show yet."""
+    creative = {k: v for k, v in blocks["creative"].items() if k == "name" or k in held["creative"]}
+    rendered = _build_summary(blocks, rolled, creative)
+    return None if rendered is None else rendered[0] == _last_summary(conversation)
+
+
+def _sheet_preview(conversation, blocks, rolled):
+    """Once no choice id is open, the engine builds the sheet for the published blocks and the player sees
+    the summary rendered from it (D2); the author gets it as a typed startup_sheet_preview item. Returns the
+    summary text when it changed since the last preview, else None."""
+    rendered = _build_summary(blocks, rolled, blocks["creative"])
+    if rendered is None or rendered[0] == _last_summary(conversation):
         return None
+    summary, built = rendered
     conversation.append({"role": "system", "content": json.dumps({
         "task_purpose": SHEET_PREVIEW_PURPOSE,
         "startup_id": (_startup_progress(conversation) or {}).get("startup_id"),
@@ -1110,9 +1211,10 @@ class StartupScopeRefusal(ValueError):
     def record(self):
         return {"task_purpose": "startup_choice_refusal", "problems": self.problems,
                 "open_choice_ids": self.open_ids,
-                "instruction": ("Correct these picks from the current scope; a finalize needs every "
-                                "issued choice id filled with its count. Refuse only an option the scope "
-                                "does not offer, and ask only about open choice ids.")}
+                "instruction": ("Correct these picks from the current scope; the rest of the reply's blocks are kept. A "
+                                "finalize needs every issued choice id filled with its count. Refuse only an option "
+                                "the scope does not offer. To ask again about a choice that is held, first send its "
+                                "id with [].")}
 
 
 def _log_rejection(count, stage, exc, intent=None):
@@ -1122,7 +1224,8 @@ def _log_rejection(count, stage, exc, intent=None):
     try:
         kind, detail = type(exc).__name__, []
         if isinstance(exc, StartupScopeRefusal):
-            known = set(creation_scope.issued_points(intent or {})) | creation_scope.ASK_IDS
+            known = set(creation_scope.issued_points(intent or {})) | creation_scope.ASK_IDS | {
+                "ability_scores.assignment", "starting_equipment.equipped"}
             kind = "scope"
             detail = [[p["problem"], p["choice_id"] if p["choice_id"] in known else "other"] for p in exc.problems]
             detail.append(["open", len(exc.open_ids)])
@@ -1138,89 +1241,263 @@ def _log_rejection(count, stage, exc, intent=None):
             pass
 
 
-def _scoped_intent(conversations, proposal, rescoped, persist=None):
-    """Apply the engine scope to a parsed scoped response (D-CREATE-COST-4 section 1, section 3).
+class StartupSummaryRefusal(StartupContractError):
+    """A finalize of a build whose summary the player has not been shown (D-CREATE-FLEX-3, question 6)."""
 
-    Picks the previous scope issued and the new intent's scope does not (a switch) are dropped
-    into one typed startup_choices_dropped item. A changed scope is appended; returns True when
-    T092 must be asked again for the same answer (at most once per response chain; a rejection starts a
-    new chain). Picks outside the scope, and a finalize with open choice ids, raise StartupScopeRefusal.
-    conversations are the turn's request base and its pending items: the saved history gets the items only
-    when the turn publishes (r3.1, T4). The ability roll is the exception: persist saves it the moment it
-    is made, so no handback or restart rolls again (amendment 1f, N7)."""
-    intent = proposal["intent"]
-    # Every id an earlier scope of this interview issued: a pick under one the new scope does not issue
-    # is a switch's leftover (dropped), not a refusal.
-    previous = set()
-    for state in _scope_states(conversations[0]):
-        previous.update(creation_scope.issued_points(state.get("intent")))
-    issued = creation_scope.issued_points(intent)
-    dropped = {cid: picks for cid, picks in (intent.get("choices") or {}).items()
-               if cid in previous and cid not in issued}
-    if dropped:
-        intent["choices"] = {cid: picks for cid, picks in intent["choices"].items() if cid not in dropped}
-        for conversation in conversations:
-            conversation.append({"role": "system", "content": json.dumps({
-                "task_purpose": "startup_choices_dropped", "dropped": dropped,
-                "instruction": "These picks belong to an earlier choice; the current scope does not issue them.",
-            }, ensure_ascii=False)})
-    # #1368: the background package is recorded only in starting_equipment; the same pick mirrored under
-    # background.<key>.starting-equipment (the class package's shape) is redundant and is dropped.
-    mirror = "background.%s.starting-equipment" % intent.get("background_key")
-    held = (proposal.get("starting_equipment") or {}).get("background_package")
-    if held is not None and (intent.get("choices") or {}).get(mirror) == [held]:
-        intent["choices"] = {cid: picks for cid, picks in intent["choices"].items() if cid != mirror}
-    # A refused intent never becomes the scope: picks are checked before any scope is appended.
-    problems = creation_scope.choice_problems(intent)
-    if problems:
-        raise StartupScopeRefusal(problems, [])
+    def __init__(self):
+        super().__init__("The player has not been shown the summary of this build. Use continue_interview now: the game "
+                         "shows the summary after your narration, and the player then approves it", "summary_not_shown")
+
+
+def _earlier_choice_ids(conversation):
+    """Every choice id an earlier scope of this interview issued."""
+    found = set()
+    for state in _scope_states(conversation):
+        found.update(creation_scope.issued_points(state.get("intent")))
+    return found
+
+
+def _log_notes(proposal, merged):
+    """One log-file line for what a reply carried that is not a rejection: counts and the engine's own ids only."""
+    try:
+        known = set(creation_scope.issued_points(merged.standing["intent"]))
+        asks = len([c for c in (proposal.get("choice_turn") or {}).get("asks") or [] if c not in known])
+        absent = [k for k in ("intent", "starting_equipment", "creative", "choice_turn") if k not in proposal]
+        unwritten = [f if f in creation_scope.ASK_IDS else "other" for f in merged.unwritten]
+        if asks or unwritten or merged.aside or absent:
+            file_only("STARTUP_NOTE task=T092 asks_without_id=%d unwritten=%s aside=%s absent=%s"
+                      % (asks, json.dumps(unwritten), json.dumps(merged.aside), json.dumps(absent)), category="startup")
+    except Exception as fault:  # logging never changes the turn, and its own failure is reported (NEQ-OPS-05)
+        try:
+            file_only(f"STARTUP_NOTE line failed: {type(fault).__name__}", category="startup")
+        except Exception:
+            pass
+
+
+def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persist=None):
+    """Merge a parsed scoped response into the turn's blocks and check it against the engine scope
+    (D-CREATE-COST-4 section 1, section 3; D-CREATE-FLEX-3). turn holds this turn's held and standing blocks.
+
+    The valid blocks stand whatever else the response got wrong. A class, species or background that arrived or
+    changed opens its scope; returns True when T092 must be asked again for the same answer (at most once per
+    response chain; a rejection starts a new chain). A pick sent with its new parent is checked against the new
+    scope: a valid one is kept, an invalid one is left out without a refusal on that first ask. Otherwise a refused block, a contradicted claim, or a finalize with open choice ids raises
+    StartupScopeRefusal. correction_context is the turn's request base, turn_items its pending items: the saved
+    history gets them only when the turn publishes (r3.1, T4). The ability roll is the exception: persist
+    saves it the moment it is made, so no handback or restart rolls again (amendment 1f, N7)."""
+    roll = _ability_roll(correction_context)
+    merged = creation_blocks.merge(turn["held"], turn["standing"], proposal, rolled=roll["rolled"] if roll else None,
+                                   previous=lambda: _earlier_choice_ids(correction_context),
+                                   alignments=creation_alignments())
+    _log_notes(proposal, merged)
+    turn["standing"] = merged.standing
+    turn["lost"].update(merged.dropped)
+    turn["leftovers"] = merged.leftovers
+    intent = creation_blocks.checked(merged.standing)["intent"]
+    shown = dict(_turn_drops(turn), **merged.leftovers)
+    if shown and shown != turn.get("shown"):
+        turn["shown"] = shown
+        correction_context.append(_dropped_item(shown))
     ask_again = False
-    if ((intent.get("ability_scores") or {}).get("method") == "random"
-            and _ability_roll(conversations[0]) is None):
+    if (intent.get("ability_scores") or {}).get("method") == "random" and roll is None:
         # The engine rolls once, the first time the player's method is random; the author assigns the
         # rolled numbers and never invents its own (amendment 1f).
-        from core.nql.creation_build import roll_ability_scores
         record = dict({"task_purpose": ABILITY_ROLL_PURPOSE,
-                       "startup_id": (_startup_progress(conversations[0]) or {}).get("startup_id")},
-                      **roll_ability_scores(),
+                       "startup_id": (_startup_progress(correction_context) or {}).get("startup_id")},
+                      **creation_build.roll_ability_scores(),
                       instruction=("The engine rolled these six ability scores (four d6, highest three). Show them "
                                    "and assign them as the player wishes; they are never rolled again or replaced."))
-        conversations[0].append({"role": "system", "content": json.dumps(record, ensure_ascii=False)})
+        correction_context.append({"role": "system", "content": json.dumps(record, ensure_ascii=False)})
         if persist is not None:
             persist(record)
         ask_again = True
     scope = creation_scope.creation_scope(intent)
-    current = _creation_scope_current(conversations[0])
+    current = _creation_scope_current(correction_context)
     if scope is not None and (current is None or current.get("scope_id") != scope["scope_id"]):
-        _append_scope(conversations, scope, intent)
+        _append_scope([correction_context, turn_items], scope, intent)
         ask_again = True
     if ask_again and not rescoped:
         return True
     open_ids = creation_scope.open_choice_ids(intent)
-    # #1325: the narration's typed claims against the response's own intent; a correct turn costs no call.
-    problems = creation_scope.turn_problems(intent, proposal["choice_turn"], decision=proposal["decision"],
-                                            starting_equipment=proposal.get("starting_equipment"))
+    if merged.problems:
+        raise StartupScopeRefusal(merged.problems, [])
+    # #1325: the narration's typed claims against the blocks the response leaves; a correct turn costs no call.
+    problems = creation_scope.turn_problems(intent, proposal.get("choice_turn") or {})
     if problems:
         raise StartupScopeRefusal(problems, open_ids)
+    rolled = roll["rolled"] if roll else None
     if proposal["decision"] == "finalize_character":
         if open_ids:
             raise StartupScopeRefusal([], open_ids)
+        _check_finalize_details(proposal, merged)
+        _write_blocks(proposal, turn, whole=True)
+        check_finalize(proposal)
+        if (not creation_blocks.needed(merged.standing)
+                and _summary_shown(correction_context, merged.standing, rolled, turn["held"]) is False):
+            raise StartupSummaryRefusal()
         return False
-    reported = _scope_states(conversations[0], OPEN_CHOICES_PURPOSE)
+    if proposal["confirmation"]["whole_build_approved"]:
+        # A finalize that was meant must not be published as a claim. Before the player has seen the summary, the
+        # turn is published instead and the game shows it.
+        if not creation_blocks.needed(merged.standing) and _summary_shown(
+                correction_context, merged.standing, rolled, turn["held"]):
+            raise StartupContractError("An interview response cannot approve the build", "approve_interview")
+        proposal["confirmation"]["whole_build_approved"] = False
+    _write_blocks(proposal, turn)
+    reported = _scope_states(correction_context, OPEN_CHOICES_PURPOSE)
     if not reported or reported[-1].get("open_choice_ids") != open_ids:
         # Amendment 2: the engine reports what is still open, as typed ids (their options are in the scope).
         # The author asks the player for each, or picks itself only when the player delegates; never filled
         # silently, and never read from the player's words by code.
         record = {"task_purpose": OPEN_CHOICES_PURPOSE,
-                  "startup_id": (_startup_progress(conversations[0]) or {}).get("startup_id"),
+                  "startup_id": (_startup_progress(correction_context) or {}).get("startup_id"),
                   "open_choice_ids": open_ids,
                   "open_choices": creation_scope.open_choices(intent),
                   "instruction": ("Each open choice id is answered in intent from its options listed here: ask the player, "
                                   "or choose yourself only when the player asks you to choose. Finalize only when "
                                   "none are open.")}
-        for conversation in conversations:
+        for conversation in (correction_context, turn_items):
             conversation.append({"role": "system", "content": json.dumps(record, ensure_ascii=False)})
     return False
+
+
+def _new_turn(conversation):
+    """The blocks one player turn works on: held (what is published), standing (with this turn's replies) and what
+    was dropped (on reading the history back, and by this turn's replies)."""
+    held, unread = _held_blocks(conversation)
+    return {"held": held, "standing": copy.deepcopy(held), "unread": unread, "lost": {}, "leftovers": {}}
+
+
+def _turn_drops(turn):
+    return dict(turn["unread"], **creation_blocks.still_lost(turn["lost"], turn["held"], turn["standing"]))
+
+
+def _dropped_item(dropped):
+    return {"role": "system", "content": json.dumps({
+        "task_purpose": "startup_choices_dropped", "dropped": dropped,
+        "instruction": ("The game removed these recorded picks because they no longer belong to this build. Ask again for "
+                        "any the build still needs."),
+    }, ensure_ascii=False)}
+
+
+def _check_finalize_details(proposal, merged):
+    """A detail this finalize sent that could not be written is a correction, never a silent omission."""
+    if "name" in merged.unwritten:
+        from updates.update_character_info import name_refusal
+        name = proposal["creative"]["name"]
+        raise ValueError(f"The character name cannot be used: {name_refusal(name) if isinstance(name, str) else 'not text'}. "
+                         "Choose another name.")
+    if merged.unwritten:
+        raise StartupContractError("creative fields that cannot be written: %s" % ", ".join(merged.unwritten), "creative_field")
+
+
+def _write_blocks(proposal, turn, whole=False):
+    """Put the merged blocks into the proposal: what is published and saved. whole: a finalize, which carries only
+    filled gear and every detail; an interview turn carries all the blocks and only the details it added."""
+    standing = creation_blocks.checked(turn["standing"]) if whole else turn["standing"]
+    proposal["intent"] = copy.deepcopy(standing["intent"])
+    proposal["starting_equipment"] = copy.deepcopy(standing["starting_equipment"])
+    creative = standing["creative"] if whole else {
+        k: v for k, v in standing["creative"].items() if v != turn["held"]["creative"].get(k)}
+    proposal["creative"] = copy.deepcopy(creative) or (None if not whole else {})
+    proposal.setdefault("choice_turn", {"asks": [], "refused": []})
+    if whole:
+        # Every package is known now, so what still waits belongs to none of them.
+        waited = creation_blocks.waiting(turn["standing"])
+        if waited:
+            turn["leftovers"] = dict(turn["leftovers"], **{"starting_equipment.waiting": waited})
+
+
+def _items_to_save(conversation, turn_items, turn):
+    """This turn's pending items for the saved history: of its scopes only the last, and none when the history
+    already ends with that one; what the turn dropped; and the rest as they are."""
+    last, others = None, []
+    for item in turn_items:
+        record = json.loads(item["content"])
+        if record.get("task_purpose") == creation_scope.SCOPE_PURPOSE:
+            last = [item]
+        elif record.get("task_purpose") == SCOPE_STATE_PURPOSE and last is not None:
+            last.append(item)
+        else:
+            others.append(item)
+    out = []
+    current = _creation_scope_current(conversation)
+    if last and (current is None or current.get("scope_id") != json.loads(last[0]["content"])["scope_id"]):
+        out += last
+    dropped = dict(_turn_drops(turn), **turn["leftovers"])
+    if dropped:
+        out.append(_dropped_item(dropped))
+    reports = [i for i in others if json.loads(i["content"]).get("task_purpose") == OPEN_CHOICES_PURPOSE]
+    return out + [i for i in others if i not in reports] + reports[-1:]
+
+
+def _handback_items(conversation, turn):
+    """What a handed-back turn keeps beside its record: the scope of the blocks left standing, once."""
+    items = []
+    intent = creation_blocks.checked(turn["standing"])["intent"]
+    scope, current = creation_scope.creation_scope(intent), _creation_scope_current(conversation)
+    if scope is not None and (current is None or current.get("scope_id") != scope["scope_id"]):
+        _append_scope([items], scope, intent)
+        record = json.loads(items[1]["content"])
+        record["startup_id"] = (_startup_progress(conversation) or {}).get("startup_id")
+        items[1]["content"] = json.dumps(record, ensure_ascii=False)
+    dropped = _turn_drops(turn)
+    return items + ([_dropped_item(dropped)] if dropped else [])
+
+
+CONTRACT_PURPOSE = "startup_author_contract"
+
+
+def _append_contract(conversation, content):
+    """Append the author contract, with a typed record after it that marks it as one, unless it is already the
+    history's latest (so the latest is always the current one, after a downgrade too)."""
+    marked = _contract_positions(conversation)[0]
+    if marked and conversation[marked[-1]].get("content") == content:
+        return
+    conversation.append({"role": "system", "content": content})
+    conversation.append({"role": "system", "content": json.dumps({
+        "task_purpose": CONTRACT_PURPOSE, "instruction": "The preceding system message is the creation contract."})})
+
+
+def _system_record(message):
+    """The JSON object of a system message, or None."""
+    if message.get("role") != "system":
+        return None
+    try:
+        record = json.loads(message.get("content", ""))
+    except (TypeError, ValueError):
+        return None
+    return record if isinstance(record, dict) else None
+
+
+def _contract_positions(conversation):
+    """(indexes of the author contracts, indexes of the other plain system messages). A contract is recognized by
+    position: the plain system message directly before the record the code writes beside it."""
+    marked, plain = [], []
+    for index, message in enumerate(conversation):
+        if message.get("role") != "system" or _system_record(message) is not None:
+            continue
+        follows = _system_record(conversation[index + 1]) if index + 1 < len(conversation) else None
+        known = (follows or {}).get("task_purpose") in (CONTRACT_PURPOSE, "startup_character_interview")
+        (marked if known else plain).append(index)
+    return marked, plain
+
+
+def _current_contract_only(conversation):
+    """The request's copy of the interview with each superseded contract replaced by a short item at the same index
+    (D-CREATE-FLEX-3), so no message index moves; the saved history is never changed. A plain system message that
+    cannot be recognized as one stays, and the log says so."""
+    marked, plain = _contract_positions(conversation)
+    if len(marked) < 2:
+        return list(conversation)
+    if plain and plain[0] < marked[-1]:
+        file_only("STARTUP_CONTRACT kept %d unmarked plain system messages" % sum(p < marked[-1] for p in plain), category="startup")
+    out = list(conversation)
+    for index in marked[:-1]:
+        out[index] = {"role": "system", "content": json.dumps({
+            "task_purpose": "startup_superseded_contract",
+            "instruction": "An earlier version of the creation contract was here; the later one replaces it."})}
+    return out
 
 
 def _append_system_once(conversation, content):
@@ -1671,7 +1948,7 @@ def ai_character_interview(conversation, module):
     # typed intent; an interview begun before this continues here and re-asks the typed intent it lacks
     # (never derived from old prose). STARTUP_REVIEW_MODE selects only the review.
     scoped = True
-    _append_system_once(conversation, build_character_creation_system_prompt(scoped=scoped))
+    _append_contract(conversation, build_character_creation_system_prompt(scoped=scoped))
     _append_system_once(conversation, json.dumps({
         "task_purpose": "startup_character_interview",
         "selected_adventure": module,
@@ -1694,13 +1971,16 @@ def ai_character_interview(conversation, module):
             rejected = 0
             rescoped = False  # one re-scope per T092 response chain (r3 section 3.2)
             turn_items = []  # scope, state and drop items made this turn; saved only when it publishes (T4)
+            turn = _new_turn(conversation)
             while True:
                 if rejected >= STARTUP_TURN_REJECTION_LIMIT:
                     # Fail forward: hand the turn back unpublished; nothing is approved or saved.
                     if scope.is_superseded():
                         raise LiveProviderSuperseded("startup review superseded")
+                    conversation.extend(_handback_items(conversation, turn))
                     conversation.append({"role": "system", "content": json.dumps({
-                        "task_purpose": "startup_turn_handback",
+                        "task_purpose": HANDBACK_PURPOSE,
+                        "blocks": turn["standing"],
                         "rejected_outputs": rejected,
                         "notice_shown_to_player": STARTUP_HANDBACK_NOTICE,
                         "instruction": ("No proposal for the player's previous message was published or "
@@ -1715,9 +1995,10 @@ def ai_character_interview(conversation, module):
                     "phase": (_startup_progress(conversation) or {}).get("phase", "interview"),
                     "character_saved": False, "adventure_ready": False,
                 }
-                request = correction_context + [{"role": "system", "content": json.dumps({
+                request = _current_contract_only(correction_context) + [{"role": "system", "content": json.dumps({
                     "latest_user_index": current_index, "committed_facts": facts,
-                    "instruction": "Return the complete startup response object, not a bare sheet.",
+                    "blocks": creation_blocks.state(turn["standing"]),
+                    "instruction": "Return one startup response object with the blocks you add or change, not a bare sheet.",
                 }, ensure_ascii=False)}]
                 raw = get_ai_response(request, {"type": "json_object"},
                                       persist_response=False, live_scope=scope)
@@ -1727,8 +2008,8 @@ def ai_character_interview(conversation, module):
                         parse_startup_response(raw, latest_user_index=current_index, scoped=scoped))
                     stage = "scope"
                     if scoped:
-                        if _scoped_intent([correction_context, turn_items], authored_proposal, rescoped,
-                                          persist=lambda record: _persist_system_record(conversation, record, scope)):
+                        if _scoped_turn(correction_context, turn_items, authored_proposal, turn, rescoped,
+                                        persist=lambda record: _persist_system_record(conversation, record, scope)):
                             rescoped = True
                             continue
                     if (authored_proposal["decision"] == "pause_setup"
@@ -1767,7 +2048,7 @@ def ai_character_interview(conversation, module):
                 except StartupScopeRefusal as exc:
                     rejected += 1
                     rescoped = False
-                    _log_rejection(rejected, stage, exc, authored_proposal["intent"])
+                    _log_rejection(rejected, stage, exc, turn["standing"]["intent"])
                     correction_context.append({"role": "system", "content": json.dumps(
                         dict(exc.record(), rejected_response=raw), ensure_ascii=False)})
                     continue
@@ -1800,7 +2081,7 @@ def ai_character_interview(conversation, module):
                     continue
                 if scope.is_superseded():
                     raise LiveProviderSuperseded("startup review superseded")
-                conversation.extend(turn_items)
+                conversation.extend(_items_to_save(conversation, turn_items, turn))
                 conversation.append({"role": "assistant", "content": json.dumps(proposal, ensure_ascii=False)})
                 summary = None
                 if proposal["decision"] == "finalize_character" and "engine_build" in provenance:
@@ -1810,7 +2091,7 @@ def ai_character_interview(conversation, module):
                          "startup_id": (_startup_progress(conversation) or {}).get("startup_id")},
                         **provenance["engine_build"]), ensure_ascii=False)})
                 elif proposal["decision"] == "continue_interview" and scoped:
-                    summary = _sheet_preview(conversation, proposal["intent"])
+                    summary = _sheet_preview(conversation, turn["standing"], roll["rolled"] if roll else None)
                 if proposal["decision"] == "finalize_character":
                     notice = _starting_gear_notice(proposal["character"], provenance)
                     if notice:
@@ -1828,6 +2109,9 @@ def ai_character_interview(conversation, module):
                             f"Character identity conflict: {exc}. Ask the player for a distinct "
                             "name, retaining the rest of the build. Nothing was overwritten."
                         )})
+                        # The taken name is not settled; the next reply of this turn starts from what is saved.
+                        turn_items = []
+                        turn = _new_turn(conversation)
                         continue
                     # #1422 F5: the reply to the player's approval, shown only once
                     # the build is saved (a name conflict above continues instead).
