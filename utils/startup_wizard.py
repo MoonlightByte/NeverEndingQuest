@@ -1318,6 +1318,13 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
         _append_scope([correction_context, turn_items], scope, intent)
         ask_again = True
     if ask_again and not rescoped:
+        partly = [p for p in merged.problems if p.get("kept")]
+        if partly:  # no rejection, but the author learns which option it placed under the wrong id
+            correction_context.append({"role": "system", "content": json.dumps({
+                "task_purpose": "startup_choices_partly_kept", "problems": partly,
+                "instruction": ("The options under kept are held; those under options are not offered by that choice id "
+                                "and were left out. A choice the new scope opened may be where they belong.")},
+                ensure_ascii=False)})
         return True
     open_ids = creation_scope.open_choice_ids(intent)
     if merged.problems:
