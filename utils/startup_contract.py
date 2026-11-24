@@ -257,12 +257,11 @@ SETTLE_LIMIT = 60
 
 
 class Settled:
-    """What a scoped reply's check settled at its own place (#2090 B3). unread: the dotted places whose content was not
-    read, for the author's next request only; refused: the blocks left out, as typed problems; notes: the same for the
-    log, in schema names only."""
+    """What a scoped reply's check settled at its own place (#2090 B3). refused: the blocks left out, as typed
+    problems; notes: every settled place for the log, in schema names only."""
 
     def __init__(self):
-        self.unread, self.refused, self.notes = [], [], []
+        self.refused, self.notes = [], []
 
 
 def _at(value, path):
@@ -302,15 +301,10 @@ def _settle_one(value, error, settled, known):
         settled.notes.append([kind, ".".join("#" if isinstance(p, int) else p if p in known else "*" for p in at)])
 
     def aside(at):
-        """Take a part the game does not read out. Nothing there (null) is nothing to report."""
-        parent = _at(value, at[:-1])
-        gone = parent.pop(at[-1])
-        if not _empty(gone) and top != "confirmation":  # its faults on an interview turn mean nothing to the author
-            settled.unread.append(".".join(map(str, at)))
+        """Take a part out that records nothing."""
+        gone = _at(value, at[:-1]).pop(at[-1])
         # A claim taken out goes unchecked (#1325), so it is counted by itself.
-        note("claim" if at[:2] == ["choice_turn", "refused"] and not _empty(gone) else "aside", at)
-        if at[:-1] == ["intent", "ability_scores"] and not parent:
-            value["intent"].pop("ability_scores")  # nothing left is nothing sent
+        note("claim" if at[:2] == ["choice_turn", "refused"] and len(at) < 4 and not _empty(gone) else "aside", at)
         return True
 
     def refuse(at, choice_id, **more):
@@ -324,13 +318,14 @@ def _settle_one(value, error, settled, known):
         extra = [k for k in error.instance if k not in error.schema["properties"]]
         if path == ["intent", "ability_scores"] and not all(_empty(error.instance[k]) for k in extra):
             return refuse(path, "ability_scores", problem="refused", why="ability_scores holds method and assignment only")
-        # An interview turn goes on and the author is told. What ends it saves or leaves: a value there may be the
-        # player's last change, so it is refused (a part that records nothing is not).
-        ends = not interview and top != "choice_turn" and path[:2] != ["intent", "considering"]
+        # A value here may be the player's choice, which the narration may call recorded: it is refused, on every
+        # turn. A part that records nothing either way is not.
+        records = top not in ("confirmation", "choice_turn") and path[:2] != ["intent", "considering"]
         for key in extra:
             place = path + [key]
-            if ends and not _empty(error.instance[key]):
-                refuse(place, ".".join(map(str, place)), problem="not_read", why="the game does not read this part")
+            if records and not _empty(error.instance[key]):
+                refuse(place, ".".join(map(str, place)), problem="not_read",
+                       why="the game does not read this part; send what it holds in its own field, or leave it out")
             else:
                 aside(place)
         return True

@@ -1295,16 +1295,6 @@ def _log_notes(proposal, merged, held, settled=None):
             pass
 
 
-def _unread_item(places):
-    """For the author's next request only, never saved: the parts of its reply the game did not read."""
-    return {"role": "system", "content": json.dumps({
-        "task_purpose": "startup_parts_not_read", "places": places,
-        "instruction": ("The game does not read these parts of your last reply. Nothing in them is recorded, whatever the "
-                        "narration said. If one was meant to set or change a choice, send it again in its own field, or "
-                        "ask the player."),
-    }, ensure_ascii=False)}
-
-
 def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persist=None, settled=None):
     """Merge a parsed scoped response into the turn's blocks and check it against the engine scope
     (D-CREATE-COST-4 section 1, section 3; D-CREATE-FLEX-3). turn holds this turn's held and standing blocks.
@@ -1321,9 +1311,6 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
                                    previous=lambda: _earlier_choice_ids(correction_context),
                                    alignments=creation_alignments())
     _log_notes(proposal, merged, turn["held"], settled)
-    turn["unread_parts"] = list(settled.unread) if settled is not None else []
-    if turn["unread_parts"]:
-        correction_context.append(_unread_item(turn["unread_parts"]))
     problems_sent = (list(settled.refused) if settled is not None else []) + merged.problems
     turn["standing"] = merged.standing
     turn["lost"].update(merged.dropped)
@@ -2037,14 +2024,11 @@ def ai_character_interview(conversation, module):
         else:
             warning("Startup creation scope unavailable; the interview continues without it", category="startup")
     _say("\nDungeon Master: Let's build your character together.", flush=True)  # #1422 F1
-    unread_parts = []  # of the last published or handed-back reply; told to the author once, never saved
     while True:
         scope = open_live_turn_scope()
         try:
             save_startup_conversation(conversation, live_scope=scope)
             correction_context = copy.deepcopy(conversation)
-            if unread_parts:
-                correction_context.append(_unread_item(unread_parts))
             rejected = 0
             rescoped = False  # one re-scope per T092 response chain (r3 section 3.2)
             turn_items = []  # scope, state and drop items made this turn; saved only when it publishes (T4)
@@ -2054,7 +2038,6 @@ def ai_character_interview(conversation, module):
                     # Fail forward: hand the turn back unpublished; nothing is approved or saved.
                     if scope.is_superseded():
                         raise LiveProviderSuperseded("startup review superseded")
-                    unread_parts = turn.get("unread_parts") or []
                     notice = STARTUP_HANDBACK_NOTICE + _still_needed_text(turn["standing"])
                     conversation.extend(_handback_items(conversation, turn))
                     conversation.append({"role": "system", "content": json.dumps({
@@ -2162,7 +2145,6 @@ def ai_character_interview(conversation, module):
                     continue
                 if scope.is_superseded():
                     raise LiveProviderSuperseded("startup review superseded")
-                unread_parts = turn.get("unread_parts") or []
                 lines = (_change_lines(conversation, turn)
                          if scoped and proposal["decision"] != "finalize_character" else [])
                 conversation.extend(_items_to_save(conversation, turn_items, turn))
