@@ -1162,8 +1162,9 @@ def _last_summary(conversation):
 
 def _summary_shown(conversation, blocks, rolled, held):
     """True when the player has been shown these blocks: the last saved summary equals the one rendered now, leaving
-    out details this reply newly wrote (D-ALLCLASS-3). None when there is no summary to show yet."""
-    creative = {k: v for k, v in blocks["creative"].items() if k in held["creative"]}
+    out details this reply newly wrote (D-ALLCLASS-3), but never the name: the player sees it before the character
+    is saved. None when there is no summary to show yet."""
+    creative = {k: v for k, v in blocks["creative"].items() if k == "name" or k in held["creative"]}
     rendered = _build_summary(blocks, rolled, creative)
     return None if rendered is None else rendered[0] == _last_summary(conversation)
 

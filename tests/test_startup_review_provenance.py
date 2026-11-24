@@ -731,7 +731,8 @@ def _shown_build(wizard, proposal, approval):
     """A history in which the game has shown the player this build's summary, and the player's approval of it."""
     from core.nql import creation_blocks
     conversation = []
-    blocks = creation_blocks.merge(creation_blocks.empty(), creation_blocks.empty(), dict(proposal, creative=None)).standing
+    blocks = creation_blocks.merge(creation_blocks.empty(), creation_blocks.empty(), dict(
+        proposal, creative={"name": proposal["creative"]["name"]})).standing
     assert wizard._sheet_preview(conversation, blocks, None)
     conversation.append({"role": "user", "content": approval})
     proposal["confirmation"]["player_message_index"] = len(conversation) - 1
@@ -1268,8 +1269,8 @@ def test_an_approval_after_the_sheet_preview_must_finalize():
     # for ideal, bond and flaw text it had just written; T128 demanded finalize 8 times before a handback.
     from utils.startup_prompt_builder import build_character_creation_system_prompt
     engine = " ".join(build_character_creation_system_prompt(scoped=True).split())
-    assert ("When the player approves the whole build, finalize with the creative fields still unwritten; do "
-            "not ask approval for details you add at finalize.") in engine
+    assert ("When the player approves the whole build, finalize, writing the creative fields not yet "
+            "recorded; do not ask approval for details you add at finalize.") in engine
     assert "do not ask approval for details you add at finalize" not in build_character_creation_system_prompt()
 
 
@@ -1282,7 +1283,7 @@ def test_the_engine_author_offers_only_the_scope_options():
     assert ("Offer only a choice's option_keys from the scope; a skill the background grants is never "
             "offered.") in " ".join(prompt.split())
     assert "a skill the background grants" not in build_character_creation_system_prompt()
-    assert hashlib.sha256(prompt.encode()).hexdigest()[:12] == "75c91a89105b"
+    assert hashlib.sha256(prompt.encode()).hexdigest()[:12] == "fb0e3d6cbcb7"
 
 
 def test_the_engine_author_asks_one_choice_per_turn_for_a_new_player():

@@ -150,8 +150,8 @@ say how many remain.
 Record package and slot picks in starting_equipment as the player gives them.
 A background's package is recorded only in starting_equipment.background_package;
 it has no choice id.
-When the player approves the whole build, finalize with the creative fields still
-unwritten; do not ask approval for details you add at finalize.
+When the player approves the whole build, finalize, writing the creative fields not
+yet recorded; do not ask approval for details you add at finalize.
 Set intent.ability_scores to the player's method and the base score for each
 ability once the player has placed them. A startup_ability_roll item holds the
 engine's roll, made once for the interview: show those numbers and record the
