@@ -1374,6 +1374,8 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
     if problems:
         raise StartupScopeRefusal(problems, open_ids)
     rolled = roll["rolled"] if roll else None
+    if proposal["decision"] == "pause_setup":
+        _check_finalize_details(proposal, merged)  # the player leaves: a detail that was not written is not passed over
     if proposal["decision"] == "finalize_character":
         if open_ids:
             raise StartupScopeRefusal([], open_ids)
@@ -1442,7 +1444,7 @@ def _dropped_item(dropped):
 
 
 def _check_finalize_details(proposal, merged):
-    """A detail this finalize sent that could not be written is a correction, never a silent omission."""
+    """A detail this finalize or pause sent that could not be written is a correction, never a silent omission."""
     if "name" in merged.unwritten:
         from updates.update_character_info import name_refusal
         name = proposal["creative"]["name"]
