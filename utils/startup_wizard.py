@@ -2706,12 +2706,6 @@ def auto_fix_character_data(character_data):
                     elif item.get("armor_category") == "heavy":
                         item["ac_base"] = 16  # Chain mail
     
-    # Fix ability scores that are too low (5th edition of the world's most popular roleplaying game minimum is usually 8)
-    if "abilities" in character_data and isinstance(character_data["abilities"], dict):
-        for ability, score in character_data["abilities"].items():
-            if isinstance(score, int) and score < 8:
-                character_data["abilities"][ability] = 8
-    
     # Fix proficiency bonus for level 1 characters
     if character_data.get("level") == 1 and character_data.get("proficiencyBonus", 0) != 2:
         character_data["proficiencyBonus"] = 2
