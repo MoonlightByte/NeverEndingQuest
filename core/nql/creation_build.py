@@ -211,6 +211,16 @@ def _resistances(b: _Build, intent: Dict[str, Any]) -> List[str]:
     return out
 
 
+def _proficiency_field(source: Any, pick: Any) -> Optional[str]:
+    """"skills" or "tools" for a pick of a choice whose typed source is skills and tools only, else None."""
+    parts = [part.strip() for part in source.split(" | ")] if isinstance(source, str) else []
+    heads = [part.split(":", 1)[0] for part in parts]
+    if any(head not in ("skills", "tools") for head in heads):
+        return None
+    return next((head for head, part in zip(heads, parts)
+                 if pick in (leveling_choices.resolve_options(part, {}, "", 1) or [])), None)
+
+
 def _species_picks(b: _Build, species: Dict[str, Any]) -> Dict[str, Any]:
     """What the species' picked choices grant: lineage cantrips, speed and darkvision; Keen Senses and
     Skillful skills; the Versatile Origin feat and its sub-picks (Skilled: skills or tools)."""
@@ -218,7 +228,6 @@ def _species_picks(b: _Build, species: Dict[str, Any]) -> Dict[str, Any]:
     grants = species.get("grants") if isinstance(species.get("grants"), dict) else {}
     out["cantrips"] += [b.source("spellcasting.cantrips", "origins.species[%s].grants.cantrips" % species["key"], k)
                         for k in grants.get("cantrips") or []]
-    skill_names = set(leveling_choices.resolve_options("skills:all", {}, "", 1) or [])
     for choice in grants.get("choices") or []:
         cid = "species.%s.%s" % (species["key"], _slug(choice["name"]))
         picks = b.picked(cid)
@@ -242,7 +251,10 @@ def _species_picks(b: _Build, species: Dict[str, Any]) -> Dict[str, Any]:
                         continue
                     sid = "%s.%s.%s" % (cid, _slug(name), _slug(sub["name"]))
                     for p in b.picked(sid):
-                        key = "skills" if p in skill_names else "tools"
+                        key = _proficiency_field(sub.get("option_source"), p)
+                        if key is None:  # a kind the builder does not file yet: never a tool
+                            b.gap(sid, "%s %s" % (name, sub["name"]), sid)
+                            continue
                         out[key].append(b.source(key if key == "skills" else "proficiencies.tools", sid, p))
                 text = next((f.get("text") for f in b.d.origins.get("origin_feats") or [] if f.get("name") == name), "")
                 out["feats"].append({"name": b.source("feats", cid, name), "description": text or "",
