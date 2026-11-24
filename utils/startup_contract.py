@@ -372,8 +372,15 @@ def parse_startup_response(text, *, latest_user_index, scoped=False, settled=Non
         schema = _scoped_reply_schema()
         sent = _parse_object(text, {})
         value = copy.deepcopy(sent)
-        if not _settle_reply(value, schema, settled):
-            _validate(sent, schema)  # refused whole, for all that was sent
+        try:
+            clean = _settle_reply(value, schema, settled)
+        except Exception as fault:  # a shape nobody thought of: refused whole, logged with its class only (NEQ-OPS-05)
+            from utils.enhanced_logger import file_only
+            file_only(f"STARTUP_NOTE settle failed: {type(fault).__name__}", category="startup")
+            clean = False
+        if not clean:
+            settled.__init__()
+            value = _validate(sent, schema)  # refused whole, for all that was sent
         return _check_engine_response(value, latest_user_index, settled)
     value = _parse_object(text, _scoped_reply_schema() if scoped else startup_response_schema())
     if scoped:

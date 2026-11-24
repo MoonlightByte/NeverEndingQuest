@@ -745,6 +745,7 @@ def still_needed_lines(blocks: Dict[str, Any]) -> List[str]:
     labels, first = [], None
     for item in needed(blocks, facts=facts):
         offered: List[str] = []
+        left = 0
         if item in IDENTITY:
             label = item[:-len("_key")]
             offered = [{"class_key": lambda k: _class_name(facts, k), "species_key": lambda k: facts.d.species()[k]["name"],
@@ -758,15 +759,16 @@ def still_needed_lines(blocks: Dict[str, Any]) -> List[str]:
             offered = list(_METHODS.values()) if item.endswith(".method") else []
         elif item in issued:
             left = issued[item]["count"] - len(opened[item]["chosen"])
-            label = _choice_label(facts, intent, item, issued) + (" (%d)" % left if left > 1 else "")
+            label = _choice_label(facts, intent, item, issued)
             chosen = [_option_name(facts, issued[item], p) for p in opened[item]["chosen"]]
             offered = [o for o in opened[item].get("options") or [] if o not in chosen]
         else:
             label = item  # "name"
-        if label not in labels:
-            labels.append(label)
+        counted = label + (" (%d)" % left if left > 1 else "")
+        if counted not in labels:
+            labels.append(counted)
         if first is None:
-            first = (label.split(" (")[0] if item in issued else label, offered)
+            first = (label, offered)
     if not labels:
         return []
     lines = ["Still needed: %s." % ", ".join(labels)]
