@@ -311,7 +311,9 @@ def change_lines(found: List[Change]) -> List[str]:
         if change.kind == "recorded":
             lines.append("Recorded: %s %s" % (change.label, ", ".join(change.new)))
         elif change.kind == "changed":
-            values = ": %s to %s" % (", ".join(change.old), ", ".join(change.new)) if change.new else ""
+            # An item's name may hold a comma ("Crossbow, Light"): then the list is set apart with semicolons.
+            sep = "; " if any("," in n for n in change.old + change.new) else ", "
+            values = ": %s to %s" % (sep.join(change.old), sep.join(change.new)) if change.new else ""
             lines.append("Changed: %s%s" % (change.label, values))
     return lines
 

@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The personality details the guide proposes can now be shown in the character summary before you approve it (#2090).
 
+- The character summary now lists which spells are prepared when that differs from the spells known, and a spellcasting ability you picked (#2090).
+
 - Wielding one of a starting stack (one of two daggers) now works: the new character holds that one and carries the rest, and the summary before the save says when a chosen item is carried because the hands are full (#2096).
 
 - In character creation, choosing the same thing twice, or a skill, tool or language you already have from another choice, no longer uses up a pick: the game asks for a different one (#2095).
