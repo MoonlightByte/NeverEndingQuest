@@ -225,6 +225,115 @@ def gear_lines(blocks: Dict[str, Any], sheet: Optional[Dict[str, Any]] = None) -
                                             "; carried (hands full): %s" % names[True] if names[True] else "")]
 
 
+# --- what a published turn recorded (D-CREATE-FLEX-6) ---
+
+_METHODS = {"standard_array": "Standard Array", "point_buy": "Point Buy", "random": "Rolled"}
+
+
+class Change(NamedTuple):
+    kind: str           # "recorded" | "changed" | "removed"
+    label: str
+    old: List[str]
+    new: List[str]
+
+
+def changes(before: Dict[str, Any], after: Dict[str, Any]) -> List[Change]:
+    """What the published blocks gained or replaced, in names from the data: a class, species or background set or
+    changed, and a recorded pick replaced or taken away. Never a first pick, a growing list, a detail or what left
+    with its class, species or background."""
+    facts = _Facts()
+    if not facts.ok:
+        return []
+    old, new = checked(before, facts), checked(after, facts)
+    was, now = old["intent"], new["intent"]
+    out = []
+    for key, label, names in (("class_key", "class", lambda k: _class_name(facts, k)),
+                              ("species_key", "species", lambda k: facts.d.species()[k]["name"]),
+                              ("background_key", "background", lambda k: facts.d.backgrounds()[k]["name"])):
+        if now[key] is not None and now[key] != was[key]:
+            out.append(Change("changed" if was[key] else "recorded", label, [names(was[key])] if was[key] else [],
+                              [names(now[key])]))
+    issued, issued_before = creation_scope.issued_points(now, facts.d), creation_scope.issued_points(was, facts.d)
+    package_id = facts.class_package_id(now["class_key"])
+    for cid, point in issued.items():
+        had, has = was["choices"].get(cid) or [], now["choices"].get(cid) or []
+        if cid == package_id or cid not in issued_before:
+            continue
+        out += _replaced(_choice_label(facts, now, cid, issued), [_option_name(facts, point, p) for p in had if p not in has],
+                         [_option_name(facts, point, p) for p in has if p not in had])
+    gear, gear_before = new["starting_equipment"], old["starting_equipment"]
+    for kind in ("class", "background"):
+        if was[kind + "_key"] == now[kind + "_key"]:
+            values = [[g[kind + "_package"]] if g[kind + "_package"] else [] for g in (gear_before, gear)]
+            if values[0] != values[1]:
+                out += _replaced("%s package" % kind.capitalize(), *values)
+    out += _slot_changes(facts, old, new)
+    scores, scores_before = now["ability_scores"] or {}, was["ability_scores"] or {}
+    if scores_before.get("method") and scores.get("method") != scores_before["method"]:
+        out += _replaced("Ability score method", [_METHODS[scores_before["method"]]],
+                         [_METHODS[scores["method"]]] if scores.get("method") else [])
+    elif scores_before.get("assignment") and scores.get("assignment") != scores_before["assignment"]:
+        out.append(Change("changed" if scores.get("assignment") else "removed", "Ability scores", [], []))
+    return out
+
+
+def change_lines(found: List[Change]) -> List[str]:
+    """The player's lines. A removal has no line yet (its words are the owner's)."""
+    lines = []
+    for change in found:
+        if change.kind == "recorded":
+            lines.append("Recorded: %s %s" % (change.label, ", ".join(change.new)))
+        elif change.kind == "changed":
+            values = ": %s to %s" % (", ".join(change.old), ", ".join(change.new)) if change.new else ""
+            lines.append("Changed: %s%s" % (change.label, values))
+    return lines
+
+
+def _replaced(label: str, gone: List[str], came: List[str]) -> List[Change]:
+    """Something went: it was replaced, or only taken away. Nothing went: a pick was added, which is no change."""
+    return [Change("changed" if came else "removed", label, gone, came)] if gone else []
+
+
+def _class_name(facts: _Facts, key: str) -> str:
+    return ((facts.d.progression.get("classes") or {}).get(key) or {}).get("name") or key.capitalize()
+
+
+def _choice_label(facts: _Facts, intent: Dict[str, Any], cid: str, issued: Dict[str, Dict[str, Any]]) -> str:
+    """The choice's name; where two issued choices share it, with where this one comes from."""
+    point = issued[cid]
+    if [p["name"] for p in issued.values()].count(point["name"]) < 2:
+        return point["name"]
+    source = point.get("feature")
+    if not source and cid.startswith("species."):
+        source = facts.d.species()[intent["species_key"]]["name"]
+    if not source:
+        ref = (facts.d.backgrounds()[intent["background_key"]].get("feat_ref") or {}).get("feat_key")
+        source = next((f["name"] for f in facts.d.choices["feats"] if f.get("key") == ref), None)
+    return "%s (%s)" % (point["name"], source) if source else point["name"]
+
+
+def _option_name(facts: _Facts, point: Dict[str, Any], pick: Any) -> str:
+    spell = point.get("from_spellbook") or isinstance(point.get("options"), list)
+    return facts.d.spell_name.get(pick, str(pick)) if spell else str(pick)
+
+
+def _slot_changes(facts: _Facts, old: Dict[str, Any], new: Dict[str, Any]) -> List[Change]:
+    bound = _bound_pick(facts, new)  # its tool pick's line says it
+    was = {p["slot"]: p for p in old["starting_equipment"]["slot_picks"]}
+    items = startup_rows.package_slots(_chosen_items(facts, new))
+    out = []
+
+    def name(pick):
+        return pick.get("display_name") or facts.d.catalog.get(pick.get("catalog_id"), "")
+
+    for pick in new["starting_equipment"]["slot_picks"]:
+        slot = pick["slot"]
+        if slot in was and was[slot] != pick and not (bound and slot == bound["slot"]):
+            label = items[slot].get("uncatalogued") or slot.rsplit(".", 1)[-1].replace("_", " ").capitalize()
+            out += _replaced(label, [name(was[slot])], [name(pick)])
+    return out
+
+
 # --- dropping what no longer belongs ---
 
 def _values(blocks: Dict[str, Any]) -> Dict[str, List[Any]]:
