@@ -1151,7 +1151,7 @@ def _build_summary(blocks, rolled, creative):
     except creation_build.BuildRefusal:
         return None   # the ability scores are not set yet: nothing to preview
     built["hit_points"] = expected_starting_hit_points(sheet, intent)[0]
-    return creation_build.render_sheet_summary(sheet, built, creative=creative, gear=creation_blocks.gear_lines(blocks)), built
+    return creation_build.render_sheet_summary(sheet, built, creative=creative, gear=creation_blocks.gear_lines(blocks, sheet)), built
 
 
 def _last_summary(conversation):

@@ -188,8 +188,9 @@ def waiting(blocks: Dict[str, Any], facts: Optional[_Facts] = None) -> List[str]
     return [p["slot"] for p in gear["waiting_slots"]] + list(gear["waiting_worn"])
 
 
-def gear_lines(blocks: Dict[str, Any]) -> List[str]:
-    """The starting gear chosen so far in names, one line per package, slot and what is worn; only filled blocks."""
+def gear_lines(blocks: Dict[str, Any], sheet: Optional[Dict[str, Any]] = None) -> List[str]:
+    """The starting gear chosen so far in names, one line per package, slot and what is worn; only filled blocks.
+    With the sheet, an item the hand rule would leave carried is said to be."""
     facts = _Facts()
     gear = _gear(facts, blocks)
     picked = {p["slot"]: p for p in gear["slots"]}
@@ -216,8 +217,12 @@ def gear_lines(blocks: Dict[str, Any]) -> List[str]:
         gold = int((option.get("coins") or {}).get("gp") or 0)
         lines.append("%s %s: %s" % (label, blocks["starting_equipment"][kind + "_package"], ", ".join(
             [n for n in names if n] + (["%d gold" % gold] if gold else []))))
-    worn = [facts.d.catalog.get(i, i) for i in gear["worn"]]
-    return lines + ["Worn or held: %s" % (", ".join(worn) if worn else "nothing chosen yet")]
+    worn = [(i, False) for i in gear["worn"]]
+    if sheet is not None and worn:
+        worn = startup_rows.worn_preview(sheet, _chosen_items(facts, blocks), gear["slots"], gear["worn"])
+    names = {full: ", ".join(facts.d.catalog.get(i, i) for i, carried in worn if carried is full) for full in (False, True)}
+    return lines + ["Worn or held: %s%s" % (names[False] or "nothing chosen yet",
+                                            "; carried (hands full): %s" % names[True] if names[True] else "")]
 
 
 # --- dropping what no longer belongs ---

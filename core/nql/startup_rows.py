@@ -410,6 +410,42 @@ def outside_items(equipped: Any, catalog_ids: List[str]) -> List[Any]:
     return [i for i in equipped or [] if i not in catalog_ids]
 
 
+def _worn_apart(merged: List[Dict[str, Any]], equipped: Any) -> List[Dict[str, Any]]:
+    """The merged items with each worn one of a stack as its own entry of 1 (the engine wears exactly one), once for
+    each time the id is listed, and never more than the stack holds. The rest comes first: a transfer takes the
+    first row of a name."""
+    out = []
+    for m in merged:
+        kind, identity = m["identity"]
+        times = list(equipped or []).count(identity) if kind == "catalog" else 0
+        if not times or item_catalog.entry(identity).get("kind") == "ammunition":
+            out.append(m)
+            continue
+        worn = min(times, m["quantity"])
+        if m["quantity"] > worn:
+            out.append(dict(m, quantity=m["quantity"] - worn))
+        out += [dict(m, quantity=1, worn=True) for _ in range(worn)]
+    return out
+
+
+def worn_preview(sheet: Dict[str, Any], items: List[Tuple[str, Dict[str, Any]]], picks: List[Dict[str, Any]],
+                 equipped: Any) -> List[Tuple[str, bool]]:
+    """What a grant of these packages would save as worn: (catalog id, carried because the hands are full), in row
+    order. The same rows and the same hand rule as the save; items whose slot is not picked yet are left out."""
+    chosen = {p["slot"]: p for p in picks}
+    ready = [i for i in items if not isinstance(i[1].get("slot"), str) or i[1]["slot"] in chosen]
+    trial = copy.deepcopy(sheet)
+    trial["equipment"] = []
+    for m in _worn_apart(_merged(ready, chosen), equipped):
+        if m.get("worn"):
+            entry = item_catalog.entry(m["identity"][1])
+            item = {"id": acquisition.next_item_id(trial, entry), "name": entry["name"]}
+            trial["equipment"].append(dict(acquisition.row_from_views(item, None, entry), equipped=True))
+    from core.nql.armor_class import PROJECTION_LOCATION
+    release_carried(trial, PROJECTION_LOCATION)
+    return [(row["catalog_id"], row["equipped"] is not True) for row in trial["equipment"]]
+
+
 def _slot_problems(items: List[Tuple[str, Dict[str, Any]]], picks: List[Any]) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
     """The typed pick for each slot of the chosen packages, and every problem with the picks."""
     slots = package_slots(items)
@@ -523,6 +559,7 @@ def grant_starting_packages(sheet: Dict[str, Any], origin: Dict[str, Any], picks
     if outside:
         raise ValueError("starting_equipment.equipped lists %s, not catalog items of the chosen packages; "
                          "equipped ids are among %s" % (_legal(outside), _legal(catalog_ids)))
+    merged = _worn_apart(merged, picks.get("equipped"))
 
     cid = genesis.character_id(sheet)
     reserved = set(genesis.held_ids_on_disk())
@@ -596,7 +633,7 @@ def grant_starting_packages(sheet: Dict[str, Any], origin: Dict[str, Any], picks
             stock_ids.append(m["id"])
             continue
         row = acquisition.row_from_views(view, definitions.get(entry["id"]), entry)
-        row["equipped"] = row["catalog_id"] in (picks.get("equipped") or [])
+        row["equipped"] = bool(m.get("worn"))
         granted["equipment"].append(row)
     report = {
         "source": "core.nql.startup_rows.grant_starting_packages",
