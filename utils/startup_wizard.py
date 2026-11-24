@@ -1060,12 +1060,13 @@ def _persist_system_record(conversation, record, live_scope):
     save_startup_conversation(conversation, live_scope=live_scope)
 
 
-def _held_blocks(conversation, published_only=False):
+def _held_blocks(conversation, published=None):
     """(the blocks this interview's published turns left, what reading them back dropped). Read in order from this
     startup's items only: a published reply's intent and starting_equipment are the whole merged blocks (an older
     reply restated them whole), its creative is what that turn added, and a handback's blocks replace all three.
-    Nothing is read from prose; the result is checked again, since the data can have changed. published_only leaves
-    out a handback and a finalize that was not committed: what the player was last answered with."""
+    Nothing is read from prose; the result is checked again, since the data can have changed. With published
+    (a list), only published turns are read, no handback and no finalize that was not committed, and the blocks each
+    of them left are added to the list: what the player was answered with, turn by turn."""
     progress = _startup_progress(conversation) or {}
     startup_id, start = progress.get("startup_id"), 0
     if startup_id is not None and startup_id != _first_startup_id(conversation):
@@ -1087,14 +1088,16 @@ def _held_blocks(conversation, published_only=False):
             continue
         if role == "system":
             kept = item.get("blocks")
-            if item.get("task_purpose") == HANDBACK_PURPOSE and isinstance(kept, dict) and not published_only:
+            if item.get("task_purpose") == HANDBACK_PURPOSE and isinstance(kept, dict) and published is None:
                 blocks = creation_blocks.empty()
                 _fold_blocks(blocks, kept)
         elif isinstance(item.get("intent"), dict):
             conflict = item.get("decision") == "finalize_character"
-            if conflict and published_only:
+            if conflict and published is not None:
                 continue
             _fold_blocks(blocks, item, drop_name=conflict)
+            if published is not None:
+                published.append(copy.deepcopy(blocks))
     roll = _ability_roll(conversation)
     return creation_blocks.settle(blocks, rolled=roll["rolled"] if roll else None)
 
@@ -1388,11 +1391,13 @@ def _new_turn(conversation):
 
 
 def _change_lines(conversation, turn):
-    """The short factual lines for what this published turn recorded or replaced (D-CREATE-FLEX-6), against the last
-    published reply: a handed-back pick shows when it is published. Nothing is saved; a failure never loses the turn."""
+    """The short factual lines for what this published turn recorded or replaced (D-CREATE-FLEX-6), against what the
+    published turns before it left: a handed-back pick shows when it is published. Read before the reply is added to
+    the conversation. Nothing is saved; a failure never loses the turn."""
     try:
-        return creation_blocks.change_lines(
-            creation_blocks.changes(_held_blocks(conversation, published_only=True)[0], turn["standing"]))
+        published = []
+        before = _held_blocks(conversation, published)[0]
+        return creation_blocks.change_lines(creation_blocks.changes(published, before, turn["standing"]))
     except Exception as fault:  # logged with its class only (NEQ-OPS-05)
         file_only(f"STARTUP_NOTE change lines failed: {type(fault).__name__}", category="startup")
         return []
