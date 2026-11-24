@@ -404,10 +404,16 @@ def _held_skills(intent: Dict[str, Any], issued: Dict[str, Dict[str, Any]], d: _
                                   for p in picks.get(cid) or []}
 
 
+def _asks_spell_list(feat: Optional[Dict[str, Any]]) -> bool:
+    """A feat with a choice whose options bring picks of their own (then): not asked under a species yet (#2104)."""
+    return any(sub.get("then") for sub in (feat or {}).get("choices") or [])
+
+
 def _species_points(key: Any, picks: Dict[str, Any], cls: str, d: _Data) -> Dict[str, Dict[str, Any]]:
     """The species' level-1 choices from its typed grants (D-CREATE-COST-5): species.<key>.<slug(choice)>,
     the size when the species offers two, a lineage's spellcasting ability once the lineage is picked, and
-    the sub-picks of a Versatile Origin feat that has them."""
+    the sub-picks of a Versatile Origin feat that has them. A feat whose spell list is itself a pick is not offered
+    there until that list can be asked (#2102)."""
     species = d.species().get(key)
     grants = (species or {}).get("grants")
     if not isinstance(grants, dict):
@@ -430,6 +436,9 @@ def _species_points(key: Any, picks: Dict[str, Any], cls: str, d: _Data) -> Dict
             entry = {"option_keys": [o["name"] for o in choice["options"]]}
         else:
             entry = _resolved({"option_source": choice.get("option_source")}, cls, d)
+        if choice.get("kind") == "feat" and isinstance(entry.get("option_keys"), list):
+            unasked = {f.get("name") for f in d.choices["feats"] if _asks_spell_list(f)}
+            entry["option_keys"] = [k for k in entry["option_keys"] if k not in unasked]
         out[cid] = dict({"id": cid, "kind": choice.get("kind") or "species_option", "name": choice["name"],
                          "count": 1, "section": "S2", "text": traits.get(choice.get("trait") or choice["name"]),
                          "page": page}, **entry)
@@ -440,9 +449,9 @@ def _species_points(key: Any, picks: Dict[str, Any], cls: str, d: _Data) -> Dict
         if choice.get("kind") == "feat":
             for name in picks.get(cid) or []:
                 feat = next((f for f in d.choices["feats"] if f.get("name") == name), None)
+                if _asks_spell_list(feat):
+                    continue  # none of its picks is asked without its list
                 for sub in (feat or {}).get("choices") or []:
-                    if sub.get("then"):
-                        continue  # a feat whose list is itself a pick (Magic Initiate) is offered whole: not typed
                     sid = "%s.%s.%s" % (cid, _slug(name), _slug(sub["name"]))
                     out[sid] = _point_entry(sid, sub, cls, d, "S2")
     return out

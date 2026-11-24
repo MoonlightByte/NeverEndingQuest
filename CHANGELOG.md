@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- A human's Versatile trait no longer offers Magic Initiate in character creation, because its spells could not be chosen there yet; a background that gives Magic Initiate still does, and a spellcasting ability is no longer listed as a tool (#2102).
+
 - In character creation, a small mistake in one part of the guide's reply no longer loses the choices you made in the rest of it, and when a turn still fails the game lists what your character still needs (#2090).
 
 - In character creation, a short line now confirms your class, species and background when they are recorded, and any recorded pick that is replaced, so a change you did not ask for is seen at once (#2090).
