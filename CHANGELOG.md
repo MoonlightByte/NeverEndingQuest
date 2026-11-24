@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Wielding one of a starting stack (one of two daggers) now works: the new character holds that one and carries the rest, and the summary before the save says when a chosen item is carried because the hands are full (#2096).
+
+- In character creation, choosing the same thing twice, or a skill, tool or language you already have from another choice, no longer uses up a pick: the game asks for a different one (#2095).
+
+- A new character's Expertise must be in a skill the character has (#2097).
+
+- A Soldier's gaming set in the starting gear is always the kind chosen for the tool proficiency (#2090).
+
+- In character creation, when a list you gave has one option the game does not offer, the others are kept instead of the whole list being lost (#2090).
+
 - In character creation, the guide can now ask for your class, species, background, ability scores or starting gear before they are chosen (#2090).
 
 - In character creation you can give your character's details in any order, a few or many at a time: the game keeps each one as you give it, and checks it, even when the guide's reply had a mistake somewhere else (#2090).

@@ -85,6 +85,10 @@ class _Data:
                           if k != "_metadata" and isinstance(v, dict) and v.get("name")}
         self.spell_name = {k: n for n, k in self.spell_key.items()}
         self.ok = bool(self.origins and self.choices and self.catalog and self.spell_key)
+        # The skills, tools and languages, as the keys every pick of one uses.
+        self.proficiencies = frozenset(
+            name for source in ("skills:all", "tools:all", "languages:all")
+            for name in leveling_choices.resolve_options(source, {}, "", 1) or []) if self.ok else frozenset()
 
     def classes(self) -> Dict[str, Any]:
         return self.choices["choice_points"]
@@ -303,16 +307,6 @@ def issued_points(intent: Dict[str, Any], data: Optional[_Data] = None) -> Dict[
                         sid = "%s.%s.%s" % (cid, _slug(option), _slug(sub["name"]))
                         out[sid] = _point_entry(sid, sub, cls, d)
     background = d.backgrounds().get(intent.get("background_key"))
-    granted = set((background or {}).get("skill_keys") or [])
-    if granted:
-        # A class skill pick never offers a skill the background already grants (typed set difference).
-        for cid, entry in out.items():
-            if entry.get("kind") == "skill" and isinstance(entry.get("option_keys"), list):
-                excluded = [k for k in entry["option_keys"] if k in granted]
-                entry["option_keys"] = [k for k in entry["option_keys"] if k not in granted]
-                if excluded:
-                    # Typed, so a review never asks for them back (all-class B3, dplay-AC-rogue round 6).
-                    entry["excluded_granted"] = excluded
     if background and _ability_options(background):
         bid = "background.%s.ability-scores" % background["key"]
         out[bid] = {"id": bid, "kind": "ability_scores", "name": "Ability Score Increases", "count": 1, "section": "S1",
@@ -337,7 +331,77 @@ def issued_points(intent: Dict[str, Any], data: Optional[_Data] = None) -> Dict[
             "id": "languages.standard", "kind": "language", "name": "Standard Languages", "count": 2, "section": "S2",
             "option_keys": standard, "text": d.origins["languages_rule"]["passages"][0],
             "page": d.choices["languages"]["source"]["page"]}
+    granted = _granted(intent, d)
+    if granted:
+        # No skill or tool pick (a class's, a species's, a feat's) offers what the background or class already
+        # grants (typed set difference).
+        for entry in out.values():
+            if _is_proficiency(entry, d):
+                excluded = [k for k in entry["option_keys"] if k in granted]
+                entry["option_keys"] = [k for k in entry["option_keys"] if k not in granted]
+                if excluded:
+                    # Typed, so a review never asks for them back (all-class B3, dplay-AC-rogue round 6).
+                    entry["excluded_granted"] = excluded
     return out
+
+
+def _granted(intent: Dict[str, Any], d: _Data) -> set:
+    """The skills and tools the class and background grant without a pick (typed keys)."""
+    background = d.backgrounds().get(intent.get("background_key")) or {}
+    traits = d.choices["class_traits"].get(intent.get("class_key")) or {}
+    return set(background.get("skill_keys") or []) | set(background.get("tool_keys") or []) | set(
+        traits.get("tool_proficiencies") or [])
+
+
+def _is_proficiency(point: Dict[str, Any], d: _Data) -> bool:
+    """A point whose every option is a skill, a tool or a language (Expertise is not one: it needs the skill)."""
+    keys = point.get("option_keys")
+    return bool(isinstance(keys, list) and keys and point.get("kind") != "expertise"
+                and all(k in d.proficiencies for k in keys))
+
+
+def distinct(picks: Any) -> List[Any]:
+    """The picks with a repeated option once (#2095): a repeat fills nothing."""
+    out: List[Any] = []
+    for pick in picks or []:
+        if pick not in out:
+            out.append(pick)
+    return out
+
+
+def _elsewhere(intent: Dict[str, Any], issued: Dict[str, Dict[str, Any]], d: _Data) -> Dict[str, Dict[Any, List[str]]]:
+    """For each issued skill, tool or language choice: its options another such choice holds, with the holders'
+    ids. One with fewer than its count of options left over is not in it: it may repeat one, so that no choice is
+    left without enough options (#2095)."""
+    points = {cid: point for cid, point in issued.items() if _is_proficiency(point, d)}
+    picks = intent.get("choices") or {}
+    out = {}
+    for cid, point in points.items():
+        held: Dict[Any, List[str]] = {}
+        for other in points:
+            for pick in distinct(picks.get(other)) if other != cid else ():
+                held.setdefault(pick, []).append(other)
+        if len([k for k in point["option_keys"] if k not in held]) >= point["count"]:
+            out[cid] = held
+    return out
+
+
+def repeated_for_room(intent: Dict[str, Any]) -> List[Tuple[str, Any]]:
+    """The picks that repeat another choice's because their choice had too few other options."""
+    d = _Data()
+    issued = issued_points(intent, d)
+    ruled = _elsewhere(intent, issued, d) if issued else {}
+    picks = intent.get("choices") or {}
+    points = [cid for cid in issued if _is_proficiency(issued[cid], d)]
+    return [(cid, pick) for cid in points if cid not in ruled for pick in distinct(picks.get(cid))
+            if any(pick in (picks.get(other) or []) for other in points if other != cid)]
+
+
+def _held_skills(intent: Dict[str, Any], issued: Dict[str, Dict[str, Any]], d: _Data) -> set:
+    """The skills the build holds: the background's and every skill pick."""
+    picks = intent.get("choices") or {}
+    return _granted(intent, d) | {p for cid, point in issued.items() if _is_proficiency(point, d)
+                                  for p in picks.get(cid) or []}
 
 
 def _species_points(key: Any, picks: Dict[str, Any], cls: str, d: _Data) -> Dict[str, Dict[str, Any]]:
@@ -384,10 +448,15 @@ def _species_points(key: Any, picks: Dict[str, Any], cls: str, d: _Data) -> Dict
     return out
 
 
-def choice_problems(intent: Dict[str, Any], data: Optional[_Data] = None) -> List[Dict[str, Any]]:
+def choice_problems(intent: Dict[str, Any], data: Optional[_Data] = None,
+                    stood: Optional[Dict[str, List[Any]]] = None) -> List[Dict[str, Any]]:
     """The typed refusals of an intent's picks: an id the scope did not issue, an option it does not
-    offer, or more picks than the point's count. Empty when every pick is in scope."""
-    issued = issued_points(intent, data)
+    offer, a repeated option, or more picks than the point's count; then (#2095) a skill, tool or language another
+    choice already holds; then Expertise in a skill the build does not hold (#2097). A later kind is judged only
+    when no earlier one is left, so on the picks that stay. Empty when every pick is in scope.
+    stood: the picks that stood before a reply; they win over newly sent ones, and the issued order breaks a tie."""
+    d = data if data is not None else _Data()
+    issued = issued_points(intent, d)
     problems = []
     for cid, picked in (intent.get("choices") or {}).items():
         point = issued.get(cid)
@@ -395,6 +464,11 @@ def choice_problems(intent: Dict[str, Any], data: Optional[_Data] = None) -> Lis
             problems.append({"choice_id": cid, "problem": "not_issued"})
             continue
         picked = list(picked or [])
+        unique = distinct(picked)
+        if len(unique) < len(picked):
+            problems.append({"choice_id": cid, "problem": "repeated",
+                             "options": distinct(p for p in unique if picked.count(p) > 1)})
+            picked = unique
         if len(picked) > point["count"]:
             problems.append({"choice_id": cid, "problem": "too_many", "count": point["count"], "picked": len(picked)})
         allowed = _allowed(point, intent, issued)
@@ -402,7 +476,58 @@ def choice_problems(intent: Dict[str, Any], data: Optional[_Data] = None) -> Lis
             outside = [p for p in picked if p not in allowed]
             if outside:
                 problems.append({"choice_id": cid, "problem": "not_offered", "options": outside})
+    return problems or _repeat_problems(intent, issued, d, stood or {}) or _expertise_problems(intent, issued, d)
+
+
+def _repeat_problems(intent, issued, d, stood) -> List[Dict[str, Any]]:
+    picks = intent.get("choices") or {}
+    ruled = _elsewhere(intent, issued, d) if issued else {}
+    order = {cid: n for n, cid in enumerate(issued)}
+
+    def is_new(cid: str, pick: Any) -> bool:
+        return pick not in (stood.get(cid) or [])
+
+    def keeps(other: str, cid: str, pick: Any) -> bool:
+        if is_new(other, pick) != is_new(cid, pick):
+            return is_new(cid, pick)
+        return other in ruled and order[other] < order[cid]  # one that may repeat takes nothing from another
+
+    problems = []
+    for cid, held in ruled.items():
+        taken = {pick: [o for o in held.get(pick) or [] if keeps(o, cid, pick)] for pick in picks.get(cid) or []}
+        lost = [pick for pick, by in taken.items() if by]
+        if lost:
+            problems.append({"choice_id": cid, "problem": "already_held", "options": lost,
+                             "held_by": distinct(o for pick in lost for o in taken[pick])})
     return problems
+
+
+def _expertise_problems(intent, issued, d) -> List[Dict[str, Any]]:
+    picks = intent.get("choices") or {}
+    problems = []
+    for cid, point in issued.items():
+        if point.get("kind") == "expertise" and picks.get(cid):
+            missing = [p for p in picks[cid] if p not in _held_skills(intent, issued, d)]
+            if missing:
+                problems.append({"choice_id": cid, "problem": "skill_not_held", "options": missing})
+    return problems
+
+
+def _available(cid: str, intent: Dict[str, Any], issued: Dict[str, Dict[str, Any]], d: _Data) -> Optional[List[Any]]:
+    """A choice's options that its pick would be accepted from now; all of them when too few would be left."""
+    allowed = _allowed(issued[cid], intent, issued)
+    if allowed is None:
+        return None
+    if issued[cid].get("kind") == "expertise":
+        picks = intent.get("choices") or {}
+        if any(len(distinct(picks.get(c))) < p["count"] for c, p in issued.items()
+               if _is_proficiency(p, d) and any(k in allowed for k in p["option_keys"])):
+            return allowed  # a skill can still be taken
+        held = _held_skills(intent, issued, d)
+        left = [k for k in allowed if k in held]
+        return left if len(left) >= issued[cid]["count"] else allowed
+    held = _elsewhere(intent, issued, d).get(cid) or {}
+    return [k for k in allowed if k not in held]
 
 
 # #2090: the ids an interview asks for that no choice id stands for, under the names the request already uses.
@@ -420,7 +545,8 @@ def turn_problems(intent: Dict[str, Any], choice_turn: Dict[str, Any]) -> List[D
     already full. A choice the player changes is reopened by sending its id with [], then asked. An ask that names
     no issued choice id (a class, a name, the gear) is a question and never a contradiction: such an id cannot be
     cleared, so refusing it would leave no way to ask (D-CREATE-FLEX-3)."""
-    issued = issued_points(intent)
+    d = _Data()
+    issued = issued_points(intent, d)
     picks = intent.get("choices") or {}
     problems = []
     for item in choice_turn.get("refused") or []:
@@ -428,11 +554,11 @@ def turn_problems(intent: Dict[str, Any], choice_turn: Dict[str, Any]) -> List[D
         if point is None:
             problems.append({"choice_id": item["choice_id"], "problem": "refused_not_issued"})
             continue
-        allowed = _allowed(point, intent, issued)
+        allowed = _available(item["choice_id"], intent, issued, d)
         if allowed is not None and item["value"] in allowed:  # a free pick has no list to contradict
             problems.append({"choice_id": item["choice_id"], "problem": "refused_offered", "value": item["value"]})
     for cid in choice_turn.get("asks") or []:
-        held = list(picks.get(cid) or [])
+        held = distinct(picks.get(cid))
         if cid in issued and len(held) >= issued[cid]["count"]:
             problems.append({"choice_id": cid, "problem": "asked_not_open", "held": held})
     return problems
@@ -449,7 +575,7 @@ def _allowed(point: Dict[str, Any], intent: Dict[str, Any], issued: Dict[str, Di
 def open_choice_ids(intent: Dict[str, Any], data: Optional[_Data] = None) -> List[str]:
     """The issued ids whose picks are still short of their count."""
     picks = intent.get("choices") or {}
-    return [cid for cid, point in issued_points(intent, data).items() if len(picks.get(cid) or []) < point["count"]]
+    return [cid for cid, point in issued_points(intent, data).items() if len(distinct(picks.get(cid))) < point["count"]]
 
 
 def open_choices(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -458,7 +584,7 @@ def open_choices(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
     package choice lists each package's items and gold; a free pick names its option source."""
     picks = intent.get("choices") or {}
     d = _Data()
-    points = issued_points(intent)
+    points = issued_points(intent, d)
 
     def names(point: Dict[str, Any], keys: List[str]) -> List[str]:
         # A spell option row carries its key and name; the player sees names (#1275).
@@ -468,7 +594,7 @@ def open_choices(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     out = []
     for cid, point in points.items():
-        if len(picks.get(cid) or []) >= point["count"]:
+        if len(distinct(picks.get(cid))) >= point["count"]:
             continue
         entry = {"id": cid, "name": point.get("name"), "count": point["count"],
                  "chosen": list(picks.get(cid) or [])}
@@ -481,7 +607,7 @@ def open_choices(intent: Dict[str, Any]) -> List[Dict[str, Any]]:
         elif isinstance(point.get("options"), dict):
             entry["packages"] = _packages(point["options"], d)
         elif isinstance(point.get("option_keys"), list):
-            entry["options"] = names(point, list(point["option_keys"]))
+            entry["options"] = names(point, _available(cid, intent, points, d))
         elif point.get("free_pick"):
             entry["free_pick"] = point.get("option_source") or True
         out.append(entry)

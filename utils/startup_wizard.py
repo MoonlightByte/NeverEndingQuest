@@ -1151,7 +1151,7 @@ def _build_summary(blocks, rolled, creative):
     except creation_build.BuildRefusal:
         return None   # the ability scores are not set yet: nothing to preview
     built["hit_points"] = expected_starting_hit_points(sheet, intent)[0]
-    return creation_build.render_sheet_summary(sheet, built, creative=creative, gear=creation_blocks.gear_lines(blocks)), built
+    return creation_build.render_sheet_summary(sheet, built, creative=creative, gear=creation_blocks.gear_lines(blocks, sheet)), built
 
 
 def _last_summary(conversation):
@@ -1199,6 +1199,11 @@ def _append_scope(conversations, scope, intent):
         conversation.append({"role": "system", "content": json.dumps(record, ensure_ascii=False)})
 
 
+# The author never swaps in another pick by itself (#2095, #2097).
+ASK_FOR_ANOTHER = ("For already_held or skill_not_held, ask the player for a different one; choose only when the player "
+                   "asked you to choose.")
+
+
 class StartupScopeRefusal(ValueError):
     """A scoped response's picks the engine refuses (typed; no reviewer call)."""
 
@@ -1211,10 +1216,11 @@ class StartupScopeRefusal(ValueError):
     def record(self):
         return {"task_purpose": "startup_choice_refusal", "problems": self.problems,
                 "open_choice_ids": self.open_ids,
-                "instruction": ("Correct these picks from the current scope; the rest of the reply's blocks are kept. A "
+                "instruction": ("Correct these picks from the current scope; the rest of the reply's blocks, and the options "
+                                "under kept, are kept. A "
                                 "finalize needs every issued choice id filled with its count. Refuse only an option "
                                 "the scope does not offer. To ask again about a choice that is held, first send its "
-                                "id with [].")}
+                                "id with []. " + ASK_FOR_ANOTHER)}
 
 
 def _log_rejection(count, stage, exc, intent=None):
@@ -1257,16 +1263,19 @@ def _earlier_choice_ids(conversation):
     return found
 
 
-def _log_notes(proposal, merged):
+def _log_notes(proposal, merged, held):
     """One log-file line for what a reply carried that is not a rejection: counts and the engine's own ids only."""
     try:
         known = set(creation_scope.issued_points(merged.standing["intent"]))
         asks = len([c for c in (proposal.get("choice_turn") or {}).get("asks") or [] if c not in known])
         absent = [k for k in ("intent", "starting_equipment", "creative", "choice_turn") if k not in proposal]
         unwritten = [f if f in creation_scope.ASK_IDS else "other" for f in merged.unwritten]
-        if asks or unwritten or merged.aside or absent:
-            file_only("STARTUP_NOTE task=T092 asks_without_id=%d unwritten=%s aside=%s absent=%s"
-                      % (asks, json.dumps(unwritten), json.dumps(merged.aside), json.dumps(absent)), category="startup")
+        before = creation_scope.repeated_for_room(held["intent"])
+        room = len([r for r in creation_scope.repeated_for_room(merged.standing["intent"]) if r not in before])
+        if asks or unwritten or merged.aside or absent or room:
+            file_only("STARTUP_NOTE task=T092 asks_without_id=%d unwritten=%s aside=%s absent=%s repeated_for_room=%d"
+                      % (asks, json.dumps(unwritten), json.dumps(merged.aside), json.dumps(absent), room),
+                      category="startup")
     except Exception as fault:  # logging never changes the turn, and its own failure is reported (NEQ-OPS-05)
         try:
             file_only(f"STARTUP_NOTE line failed: {type(fault).__name__}", category="startup")
@@ -1289,7 +1298,7 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
     merged = creation_blocks.merge(turn["held"], turn["standing"], proposal, rolled=roll["rolled"] if roll else None,
                                    previous=lambda: _earlier_choice_ids(correction_context),
                                    alignments=creation_alignments())
-    _log_notes(proposal, merged)
+    _log_notes(proposal, merged, turn["held"])
     turn["standing"] = merged.standing
     turn["lost"].update(merged.dropped)
     turn["leftovers"] = merged.leftovers
@@ -1317,6 +1326,13 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
         _append_scope([correction_context, turn_items], scope, intent)
         ask_again = True
     if ask_again and not rescoped:
+        partly = [p for p in merged.problems if p.get("kept")]
+        if partly:  # no rejection, but the author learns which option it placed under the wrong id
+            correction_context.append({"role": "system", "content": json.dumps({
+                "task_purpose": "startup_choices_partly_kept", "problems": partly,
+                "instruction": ("The options under kept are held; those under options were left out, for the problem named. "
+                                "A choice the new scope opened may be where they belong. " + ASK_FOR_ANOTHER)},
+                ensure_ascii=False)})
         return True
     open_ids = creation_scope.open_choice_ids(intent)
     if merged.problems:
