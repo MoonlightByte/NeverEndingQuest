@@ -539,10 +539,16 @@ ASK_IDS = frozenset((
     "starting_equipment.background_package", "starting_equipment.class_package"))
 
 
+# The ids a claim may name an identity by, beside the schema's own keys (#2090 B3).
+MENU_IDS = {"class": "class_key", "class_key": "class_key", "species": "species_key", "species_key": "species_key",
+            "background": "background_key", "background_key": "background_key"}
+
+
 def turn_problems(intent: Dict[str, Any], choice_turn: Dict[str, Any]) -> List[Dict[str, Any]]:
     """The typed contradictions of a response's choice_turn with the intent it leaves (#1325): a refusal under an
     id the scope did not issue or of an option the scope offers, and a question about an issued choice that is
-    already full. A choice the player changes is reopened by sending its id with [], then asked. An ask that names
+    already full. A refusal under a menu id is a contradiction only when its value is one of that menu's keys and the
+    build has none yet (keys only: a name is the author's own words, D-KW-12). A choice the player changes is reopened by sending its id with [], then asked. An ask that names
     no issued choice id (a class, a name, the gear) is a question and never a contradiction: such an id cannot be
     cleared, so refusing it would leave no way to ask (D-CREATE-FLEX-3)."""
     d = _Data()
@@ -551,6 +557,12 @@ def turn_problems(intent: Dict[str, Any], choice_turn: Dict[str, Any]) -> List[D
     problems = []
     for item in choice_turn.get("refused") or []:
         point = issued.get(item["choice_id"])
+        if point is None and item["choice_id"] in MENU_IDS:
+            key = MENU_IDS[item["choice_id"]]
+            menu = {"class_key": d.classes, "species_key": d.species, "background_key": d.backgrounds}[key]()
+            if intent.get(key) is None and item["value"] in menu:
+                problems.append({"choice_id": item["choice_id"], "problem": "refused_offered", "value": item["value"]})
+            continue
         if point is None:
             problems.append({"choice_id": item["choice_id"], "problem": "refused_not_issued"})
             continue

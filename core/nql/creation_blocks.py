@@ -513,7 +513,7 @@ def merge(held: Dict[str, Any], standing: Dict[str, Any], reply: Dict[str, Any],
             _switch(facts, out, key, sent[key] if sent[key] else held["intent"][key], held)
     lost.update(_lost(stood, _values(out)))
     if "considering" in sent:
-        intent["considering"] = copy.deepcopy(sent["considering"])
+        intent["considering"] = dict(intent["considering"], **copy.deepcopy(sent["considering"]))
     _merge_scores(facts, held, intent, sent, rolled, problems, aside)
     gear = reply.get("starting_equipment") or {}
     _merge_choices(facts, held, out, sent.get("choices") or {}, gear, previous, problems, leftovers, lost)
@@ -727,6 +727,56 @@ def needed(blocks: Dict[str, Any], *, facts: Optional[_Facts] = None, scope: Opt
     out += creation_scope.open_choice_ids(intent, facts.d)
     out += [e["id"] for e in creation_scope.unanswered_required(scope, intent, full["starting_equipment"])]
     return out + ([] if blocks["creative"].get("name") else ["name"])
+
+
+LIST_LIMIT = 20
+
+
+def still_needed_lines(blocks: Dict[str, Any]) -> List[str]:
+    """What the build still needs, for the player, in names; then what the first of it offers (a longer list is asked
+    for). Empty when nothing is needed."""
+    facts = _Facts()
+    if not facts.ok:
+        return []
+    intent = checked(blocks, facts)["intent"]
+    issued = creation_scope.issued_points(intent, facts.d)
+    opened = {entry["id"]: entry for entry in creation_scope.open_choices(intent)}
+    package_id = facts.class_package_id(intent["class_key"])
+    labels, first = [], None
+    for item in needed(blocks, facts=facts):
+        offered: List[str] = []
+        left = 0
+        if item in IDENTITY:
+            label = item[:-len("_key")]
+            offered = [{"class_key": lambda k: _class_name(facts, k), "species_key": lambda k: facts.d.species()[k]["name"],
+                        "background_key": lambda k: facts.d.backgrounds()[k]["name"]}[item](k)
+                       for k in {"class_key": facts.d.classes, "species_key": facts.d.species,
+                                 "background_key": facts.d.backgrounds}[item]()]
+        elif item == package_id or item.startswith("starting_equipment."):
+            label = "starting gear"
+        elif item.startswith("ability_scores."):
+            label = "ability scores"
+            offered = list(_METHODS.values()) if item.endswith(".method") else []
+        elif item in issued:
+            left = issued[item]["count"] - len(opened[item]["chosen"])
+            label = _choice_label(facts, intent, item, issued)
+            chosen = [_option_name(facts, issued[item], p) for p in opened[item]["chosen"]]
+            offered = [o for o in opened[item].get("options") or [] if o not in chosen]
+        else:
+            label = item  # "name"
+        counted = label + (" (%d)" % left if left > 1 else "")
+        if counted not in labels:
+            labels.append(counted)
+        if first is None:
+            first = (label, offered)
+    if not labels:
+        return []
+    lines = ["Still needed: %s." % ", ".join(labels)]
+    if len(first[1]) > LIST_LIMIT:
+        lines.append("Ask for the list of %s." % first[0])
+    elif first[1]:
+        lines.append("For %s you can choose: %s." % (first[0], ("; " if any("," in o for o in first[1]) else ", ").join(first[1])))
+    return lines
 
 
 def state(blocks: Dict[str, Any]) -> Dict[str, Any]:

@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In character creation, a small mistake in one part of the guide's reply no longer loses the choices you made in the rest of it, and when a turn still fails the game lists what your character still needs (#2090).
+
 - In character creation, a short line now confirms your class, species and background when they are recorded, and any recorded pick that is replaced, so a change you did not ask for is seen at once (#2090).
 
 - The personality details the guide proposes can now be shown in the character summary before you approve it (#2090).
