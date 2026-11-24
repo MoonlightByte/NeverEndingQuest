@@ -312,6 +312,9 @@ def _settle(facts: _Facts, blocks: Dict[str, Any], rolled: Optional[List[int]]) 
     scores = intent["ability_scores"]
     if scores and scores.get("assignment") is not None and creation_build.base_scores(facts.d, scores, rolled)[1]:
         scores["assignment"] = None
+    bound = _bound_pick(facts, blocks)
+    if bound:  # a pick that stood for the bound slot and is not the tool pick is gone, and reported as dropped
+        equipment["slot_picks"] = [p for p in equipment["slot_picks"] if p == bound or p.get("slot") != bound["slot"]]
     while True:
         gear = _gear(facts, blocks)
         if not gear["gone"] and not gear["refused"]:
@@ -619,5 +622,7 @@ def state(blocks: Dict[str, Any]) -> Dict[str, Any]:
         out["waiting"] = wait
     repeats = creation_scope.repeated_for_room(intent)
     if repeats:
-        out["adds_nothing_new"] = [{"choice_id": cid, "option": pick} for cid, pick in repeats]
+        out["adds_nothing_new"] = {
+            "picks": [{"choice_id": cid, "option": pick} for cid, pick in repeats],
+            "meaning": "Each is also held by another choice, so it gives the character nothing more; tell the player."}
     return out

@@ -519,6 +519,10 @@ def _available(cid: str, intent: Dict[str, Any], issued: Dict[str, Dict[str, Any
     if allowed is None:
         return None
     if issued[cid].get("kind") == "expertise":
+        picks = intent.get("choices") or {}
+        if any(len(distinct(picks.get(c))) < p["count"] for c, p in issued.items()
+               if _is_proficiency(p, d) and any(k in allowed for k in p["option_keys"])):
+            return allowed  # a skill can still be taken
         held = _held_skills(intent, issued, d)
         left = [k for k in allowed if k in held]
         return left if len(left) >= issued[cid]["count"] else allowed

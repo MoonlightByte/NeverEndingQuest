@@ -1199,6 +1199,11 @@ def _append_scope(conversations, scope, intent):
         conversation.append({"role": "system", "content": json.dumps(record, ensure_ascii=False)})
 
 
+# The author never swaps in another pick by itself (#2095, #2097).
+ASK_FOR_ANOTHER = ("For already_held or skill_not_held, ask the player for a different one; choose only when the player "
+                   "asked you to choose.")
+
+
 class StartupScopeRefusal(ValueError):
     """A scoped response's picks the engine refuses (typed; no reviewer call)."""
 
@@ -1215,7 +1220,7 @@ class StartupScopeRefusal(ValueError):
                                 "under kept, are kept. A "
                                 "finalize needs every issued choice id filled with its count. Refuse only an option "
                                 "the scope does not offer. To ask again about a choice that is held, first send its "
-                                "id with [].")}
+                                "id with []. " + ASK_FOR_ANOTHER)}
 
 
 def _log_rejection(count, stage, exc, intent=None):
@@ -1326,7 +1331,7 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
             correction_context.append({"role": "system", "content": json.dumps({
                 "task_purpose": "startup_choices_partly_kept", "problems": partly,
                 "instruction": ("The options under kept are held; those under options were left out, for the problem named. "
-                                "A choice the new scope opened may be where they belong.")},
+                                "A choice the new scope opened may be where they belong. " + ASK_FOR_ANOTHER)},
                 ensure_ascii=False)})
         return True
     open_ids = creation_scope.open_choice_ids(intent)
