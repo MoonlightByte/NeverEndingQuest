@@ -1211,7 +1211,8 @@ class StartupScopeRefusal(ValueError):
     def record(self):
         return {"task_purpose": "startup_choice_refusal", "problems": self.problems,
                 "open_choice_ids": self.open_ids,
-                "instruction": ("Correct these picks from the current scope; the rest of the reply's blocks are kept. A "
+                "instruction": ("Correct these picks from the current scope; the rest of the reply's blocks, and the options "
+                                "under kept, are kept. A "
                                 "finalize needs every issued choice id filled with its count. Refuse only an option "
                                 "the scope does not offer. To ask again about a choice that is held, first send its "
                                 "id with [].")}

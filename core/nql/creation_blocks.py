@@ -284,12 +284,13 @@ def _settle(facts: _Facts, blocks: Dict[str, Any], rolled: Optional[List[int]]) 
         problems = creation_scope.choice_problems(intent, facts.d)
         if not problems:
             break
-        for problem in problems:
+        # What is no longer offered goes first; what is left may then fit its count.
+        for problem in [p for p in problems if p["problem"] == "not_offered"] or problems:
             picks = intent["choices"].get(problem["choice_id"])
             if picks is None:
                 continue
-            rest = ([p for p in picks if p not in problem["options"]] if problem["problem"] == "not_offered" else
-                    picks[:problem["count"]] if problem["problem"] == "too_many" else [])
+            # A list that is too long is dropped whole: the engine never chooses among the player's picks.
+            rest = [p for p in picks if p not in problem["options"]] if problem["problem"] == "not_offered" else []
             intent["choices"].pop(problem["choice_id"])
             if rest:
                 intent["choices"][problem["choice_id"]] = rest
@@ -424,16 +425,29 @@ def _merge_choices(facts, held, out, sent, gear, previous, problems, leftovers) 
             before.pop(key, None)
             sent.pop(key)
     while True:
-        bad = [p for p in creation_scope.choice_problems(intent, facts.d) if p["choice_id"] in sent]
+        bad: Dict[str, List[Dict[str, Any]]] = {}
+        for problem in creation_scope.choice_problems(intent, facts.d):
+            if problem["choice_id"] in sent:
+                bad.setdefault(problem["choice_id"], []).append(problem)
         if not bad:
             return
-        for problem in bad:
-            problems.append(problem)
-            key = problem["choice_id"]
-            sent.pop(key, None)  # one id can have two problems (too many, and one not offered)
+        for key, found in bad.items():  # one id can have two problems (too many, and one not offered)
+            kept = _good_part(sent.pop(key), found, before.get(key) or [])
+            problems += [dict(p, kept=list(kept)) for p in found if p["problem"] == "not_offered"] if kept else found
             intent["choices"].pop(key, None)
-            if key in before:
+            if kept:
+                intent["choices"][key] = kept
+            elif key in before:
                 intent["choices"][key] = before[key]
+
+
+def _good_part(picks: List[Any], found: List[Dict[str, Any]], stood: List[Any]) -> List[Any]:
+    """What is kept of a refused list: the options its choice offers, when they fit its count (a list too long keeps
+    none: the engine never chooses among the player's picks) and take nothing the player already had."""
+    outside = [o for p in found if p["problem"] == "not_offered" for o in p["options"]]
+    good = [p for p in picks if p not in outside]
+    limit = next((p["count"] for p in found if p["problem"] == "too_many"), len(good))
+    return good if outside and len(good) <= limit and all(p in good for p in stood) else []
 
 
 def _merge_gear(facts, held, out, gear, problems, aside, leftovers) -> None:

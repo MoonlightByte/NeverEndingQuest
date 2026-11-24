@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In character creation, when a list you gave has one option the game does not offer, the others are kept instead of the whole list being lost (#2090).
+
 - In character creation, the guide can now ask for your class, species, background, ability scores or starting gear before they are chosen (#2090).
 
 - In character creation you can give your character's details in any order, a few or many at a time: the game keeps each one as you give it, and checks it, even when the guide's reply had a mistake somewhere else (#2090).
