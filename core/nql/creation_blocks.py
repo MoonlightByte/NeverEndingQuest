@@ -516,7 +516,10 @@ def _merge_gear(facts, held, out, gear, problems, aside, leftovers) -> None:
         if field == "slot_picks":
             bound = _bound_pick(facts, out)
             other = [p for p in equipment[field] if bound and p.get("slot") == bound["slot"] and p != bound]
-            aside += ["starting_equipment.slot:%s" % bound["slot"]] if other else []
+            if other:  # the tool pick decides it: the author changes that pick or tells the player
+                problems.append({"choice_id": "starting_equipment.slot:%s" % bound["slot"], "problem": "follows_choice",
+                                 "follows": creation_scope.background_tool_id(facts.backgrounds[out["intent"]["background_key"]]),
+                                 "held": [bound["display_name"]]})
             equipment[field] = [p for p in equipment[field] if p not in other]
         sorted_gear = _gear(facts, out)
         if field == "slot_picks":
