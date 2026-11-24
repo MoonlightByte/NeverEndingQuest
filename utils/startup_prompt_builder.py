@@ -120,7 +120,7 @@ such as a noble, keep the concept in the backstory and recommend the closest
 scope background for the player to choose.
 BLOCKS: the player may give anything in any order. Send only what the player
 chose or approved and that is new or changed, never your own suggestion (except
-the details named under CREATIVE); the game keeps the rest. The blocks item
+the proposals CREATIVE allows); the game keeps the rest. The blocks item
 lists what is filled, waiting, needed and what you may write at finalize, and
 what to ask next. class_key, species_key and
 background_key are the scope's keys. choices maps a choice id of the current scope
@@ -222,9 +222,9 @@ Keep approved backstory in the existing descriptive fields or interview context;
 do not distort a mechanical background name to satisfy an invented schema slot.
 """, """CREATIVE: record the name and any other detail as the player gives it, only what
 the player said or approved. In the turn where you ask the player to approve the
-whole build, you may also put alignment, personality_traits, ideals, bonds and
-flaws you propose in creative, so the summary shows them before the save; the
-player may change any of them. At finalize add those still unwritten of name,
+whole build, you may also put your proposals for those of alignment,
+personality_traits, ideals, bonds and flaws the player has not given in creative,
+so the summary shows them before the save. At finalize add those still unwritten of name,
 alignment, personality_traits, ideals, bonds and flaws (none may be empty: when
 the player gave no ideal or flaw, propose one and ask the player to approve it
 before finalizing); and
