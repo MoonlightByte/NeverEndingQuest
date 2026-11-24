@@ -1325,8 +1325,8 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
         if partly:  # no rejection, but the author learns which option it placed under the wrong id
             correction_context.append({"role": "system", "content": json.dumps({
                 "task_purpose": "startup_choices_partly_kept", "problems": partly,
-                "instruction": ("The options under kept are held; those under options are not offered by that choice id "
-                                "and were left out. A choice the new scope opened may be where they belong.")},
+                "instruction": ("The options under kept are held; those under options were left out, for the problem named. "
+                                "A choice the new scope opened may be where they belong.")},
                 ensure_ascii=False)})
         return True
     open_ids = creation_scope.open_choice_ids(intent)
