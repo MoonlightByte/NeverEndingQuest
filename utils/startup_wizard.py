@@ -1300,7 +1300,8 @@ def _unread_item(places):
     return {"role": "system", "content": json.dumps({
         "task_purpose": "startup_parts_not_read", "places": places,
         "instruction": ("The game does not read these parts of your last reply. Nothing in them is recorded, whatever the "
-                        "narration said; ask the player again for anything the blocks item still lists as needed."),
+                        "narration said. If one was meant to set or change a choice, send it again in its own field, or "
+                        "ask the player."),
     }, ensure_ascii=False)}
 
 

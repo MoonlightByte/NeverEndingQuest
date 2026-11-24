@@ -513,7 +513,7 @@ def merge(held: Dict[str, Any], standing: Dict[str, Any], reply: Dict[str, Any],
             _switch(facts, out, key, sent[key] if sent[key] else held["intent"][key], held)
     lost.update(_lost(stood, _values(out)))
     if "considering" in sent:
-        intent["considering"] = copy.deepcopy(sent["considering"])
+        intent["considering"] = dict(intent["considering"], **copy.deepcopy(sent["considering"]))
     _merge_scores(facts, held, intent, sent, rolled, problems, aside)
     gear = reply.get("starting_equipment") or {}
     _merge_choices(facts, held, out, sent.get("choices") or {}, gear, previous, problems, leftovers, lost)

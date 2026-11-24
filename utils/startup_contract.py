@@ -176,6 +176,7 @@ def _scoped_reply_schema():
     properties = schema["properties"]
     properties["creative"] = {"type": ["object", "null"]}
     properties["intent"]["properties"]["ability_scores"]["properties"]["assignment"] = {"type": ["object", "null"]}
+    properties["intent"]["properties"]["considering"]["required"] = []  # a part left out keeps what is recorded
     gear = properties["starting_equipment"]["properties"]
     gear["slot_picks"] = {"type": ["array", "null"], "items": {"type": "object"}}
     gear["equipped"] = {"type": ["array", "null"]}
@@ -270,6 +271,10 @@ def _at(value, path):
     return value
 
 
+def _empty(value):
+    return value is None or value in ("", [], {})
+
+
 def _settle_reply(value, schema, settled):
     """Settle every fault of a scoped reply that costs only its own place: a key or part the game does not read is set
     aside, a block it cannot take is left out and reported. False when one of them is none of these, or they are too
@@ -298,10 +303,14 @@ def _settle_one(value, error, settled, known):
 
     def aside(at):
         """Take a part the game does not read out. Nothing there (null) is nothing to report."""
-        gone = _at(value, at[:-1]).pop(at[-1])
-        if gone is not None and top != "confirmation":  # its faults on an interview turn mean nothing to the author
+        parent = _at(value, at[:-1])
+        gone = parent.pop(at[-1])
+        if not _empty(gone) and top != "confirmation":  # its faults on an interview turn mean nothing to the author
             settled.unread.append(".".join(map(str, at)))
-        note("aside", at)
+        # A claim taken out goes unchecked (#1325), so it is counted by itself.
+        note("claim" if at[:2] == ["choice_turn", "refused"] and not _empty(gone) else "aside", at)
+        if at[:-1] == ["intent", "ability_scores"] and not parent:
+            value["intent"].pop("ability_scores")  # nothing left is nothing sent
         return True
 
     def refuse(at, choice_id, **more):
@@ -312,15 +321,23 @@ def _settle_one(value, error, settled, known):
         return True
 
     if error.validator == "additionalProperties":
-        for key in [k for k in error.instance if k not in error.schema["properties"]]:
-            aside(path + [key])
+        extra = [k for k in error.instance if k not in error.schema["properties"]]
+        if path == ["intent", "ability_scores"] and not all(_empty(error.instance[k]) for k in extra):
+            return refuse(path, "ability_scores", problem="refused", why="ability_scores holds method and assignment only")
+        # An interview turn goes on and the author is told. What ends it saves or leaves: a value there may be the
+        # player's last change, so it is refused (a part that records nothing is not).
+        ends = not interview and top != "choice_turn" and path[:2] != ["intent", "considering"]
+        for key in extra:
+            place = path + [key]
+            if ends and not _empty(error.instance[key]):
+                refuse(place, ".".join(map(str, place)), problem="not_read", why="the game does not read this part")
+            else:
+                aside(place)
         return True
     if error.validator == "required":
         blank = {"confirmation": {"player_message_index": None, "whole_build_approved": False}}
         if path == ["confirmation"]:
             blank = blank["confirmation"]
-        elif path == ["intent", "considering"]:
-            blank = {"class_keys": [], "species_keys": [], "background_keys": []}
         elif path == ["choice_turn"]:
             blank = {"asks": [], "refused": []}
         elif path[:2] == ["choice_turn", "refused"] and len(path) == 3:
