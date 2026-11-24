@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In character creation, choosing the same thing twice, or a skill, tool or language you already have from another choice, no longer uses up a pick: the game asks for a different one (#2095).
+
+- A new character's Expertise must be in a skill the character has (#2097).
+
+- A Soldier's gaming set in the starting gear is always the kind chosen for the tool proficiency (#2090).
+
 - In character creation, when a list you gave has one option the game does not offer, the others are kept instead of the whole list being lost (#2090).
 
 - In character creation, the guide can now ask for your class, species, background, ability scores or starting gear before they are chosen (#2090).

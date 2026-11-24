@@ -90,6 +90,17 @@ def _chosen_items(facts: _Facts, blocks: Dict[str, Any]) -> List[tuple]:
     return out
 
 
+def _bound_pick(facts: _Facts, blocks: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The slot a background's tool choice binds ("same as above"), filled with the player's own tool pick once that
+    is known and the chosen package has the slot. Never the other way: a slot's text says nothing about the tool."""
+    background = facts.backgrounds.get(blocks["intent"].get("background_key")) or {}
+    slot = (background.get("tool_choice") or {}).get("binds_slot")
+    if not slot or slot not in startup_rows.package_slots(_chosen_items(facts, blocks)):
+        return None
+    picks = blocks["intent"]["choices"].get(creation_scope.background_tool_id(background))
+    return {"slot": slot, "display_name": picks[0]} if picks else None
+
+
 def _slot_state(facts: _Facts, blocks: Dict[str, Any], pick: Dict[str, Any]) -> tuple:
     """("filled" | "waiting" | "gone" | "refused", why). gone: its owner is known and is another."""
     slot = pick.get("slot")
@@ -139,8 +150,12 @@ def _gear(facts: _Facts, blocks: Dict[str, Any]) -> Dict[str, Any]:
     """The gear blocks sorted by state: filled picks and worn ids, the waiting ones, and the rest."""
     equipment = blocks["starting_equipment"]
     out: Dict[str, Any] = {"slots": [], "worn": [], "waiting_slots": [], "waiting_worn": [], "gone": [], "refused": []}
-    seen = set()
+    bound = _bound_pick(facts, blocks)
+    seen = {bound["slot"]} if bound else set()
+    out["slots"] += [bound] if bound else []
     for pick in equipment.get("slot_picks") or []:
+        if bound and pick.get("slot") == bound["slot"]:
+            continue
         state, why = _slot_state(facts, blocks, pick)
         if isinstance(pick.get("slot"), str) and pick["slot"] in seen:
             state, why = "refused", "slot_picks names slot %r twice; give one pick per slot" % pick.get("slot")
@@ -284,16 +299,7 @@ def _settle(facts: _Facts, blocks: Dict[str, Any], rolled: Optional[List[int]]) 
         problems = creation_scope.choice_problems(intent, facts.d)
         if not problems:
             break
-        # What is no longer offered goes first; what is left may then fit its count.
-        for problem in [p for p in problems if p["problem"] == "not_offered"] or problems:
-            picks = intent["choices"].get(problem["choice_id"])
-            if picks is None:
-                continue
-            # A list that is too long is dropped whole: the engine never chooses among the player's picks.
-            rest = [p for p in picks if p not in problem["options"]] if problem["problem"] == "not_offered" else []
-            intent["choices"].pop(problem["choice_id"])
-            if rest:
-                intent["choices"][problem["choice_id"]] = rest
+        _drop_refused(intent["choices"], problems)
     _tie_class_package(facts, blocks)
     for kind in ("class", "background"):
         if equipment[kind + "_package"] is not None and _package_option(facts, kind, blocks) is None:
@@ -307,6 +313,17 @@ def _settle(facts: _Facts, blocks: Dict[str, Any], rolled: Optional[List[int]]) 
             break
         equipment["slot_picks"] = gear["slots"] + gear["waiting_slots"]
         equipment["equipped"] = gear["worn"] + gear["waiting_worn"]
+
+
+def _drop_refused(choices: Dict[str, Any], problems: List[Dict[str, Any]]) -> None:
+    """Take the refused picks out. What is no longer offered, repeated or not held goes first; what is left may then
+    fit its count. A list that is too long is dropped whole: the engine never chooses among the player's picks."""
+    for problem in [p for p in problems if "options" in p] or problems:
+        picks = choices.pop(problem["choice_id"], None) or []
+        rest = (creation_scope.distinct(picks) if problem["problem"] == "repeated" else
+                [p for p in picks if p not in problem["options"]] if "options" in problem else [])
+        if rest:
+            choices[problem["choice_id"]] = rest
 
 
 def settle(blocks: Dict[str, Any], *, rolled: Optional[List[int]] = None) -> tuple:
@@ -355,12 +372,13 @@ def merge(held: Dict[str, Any], standing: Dict[str, Any], reply: Dict[str, Any],
         intent["considering"] = copy.deepcopy(sent["considering"])
     _merge_scores(facts, held, intent, sent, rolled, problems, aside)
     gear = reply.get("starting_equipment") or {}
-    _merge_choices(facts, held, out, sent.get("choices") or {}, gear, previous, problems, leftovers)
+    _merge_choices(facts, held, out, sent.get("choices") or {}, gear, previous, problems, leftovers, lost)
     _merge_gear(facts, held, out, gear, problems, aside, leftovers)
     if facts.ok:
         now = _values(out)
         _settle(facts, out, rolled)
-        lost.update(_lost(now, _values(out)))
+        for key, values in _lost(now, _values(out)).items():
+            lost[key] = lost.get(key, []) + values
     unwritten = _merge_creative(held, out["creative"], reply.get("creative") or {}, alignments)
     return Merge(out, problems, unwritten, aside, lost, leftovers)
 
@@ -391,7 +409,7 @@ def _merge_scores(facts, held, intent, sent, rolled, problems, aside) -> None:
     intent["ability_scores"] = now if now["method"] else None
 
 
-def _merge_choices(facts, held, out, sent, gear, previous, problems, leftovers) -> None:
+def _merge_choices(facts, held, out, sent, gear, previous, problems, leftovers, lost) -> None:
     intent, equipment = out["intent"], out["starting_equipment"]
     before = copy.deepcopy(intent["choices"])
     sent = dict(sent)
@@ -411,7 +429,7 @@ def _merge_choices(facts, held, out, sent, gear, previous, problems, leftovers) 
         del sent[mirror]
     for key, picks in sent.items():
         if picks:
-            intent["choices"][key] = list(picks)
+            intent["choices"][key] = creation_scope.distinct(picks)  # a repeat fills nothing: the choice stays open
         else:
             intent["choices"].pop(key, None)
     if not facts.d.ok:
@@ -424,27 +442,39 @@ def _merge_choices(facts, held, out, sent, gear, previous, problems, leftovers) 
             leftovers[key] = intent["choices"].pop(key)
             before.pop(key, None)
             sent.pop(key)
+    refused: List[Dict[str, Any]] = []
+    kept: Dict[str, List[Any]] = {}
     while True:
+        found_now = creation_scope.choice_problems(intent, facts.d, before)
         bad: Dict[str, List[Dict[str, Any]]] = {}
-        for problem in creation_scope.choice_problems(intent, facts.d):
+        for problem in found_now:
             if problem["choice_id"] in sent:
                 bad.setdefault(problem["choice_id"], []).append(problem)
+        if found_now and not bad:
+            # What stood and cannot stay beside what was sent goes now, so the rest is judged on what is left.
+            was = copy.deepcopy(intent["choices"])
+            _drop_refused(intent["choices"], found_now)
+            for key, values in _lost(was, intent["choices"]).items():
+                lost[key] = lost.get(key, []) + values
+            continue
         if not bad:
-            return
+            break
         for key, found in bad.items():  # one id can have two problems (too many, and one not offered)
-            kept = _good_part(sent.pop(key), found, before.get(key) or [])
-            problems += [dict(p, kept=list(kept)) for p in found if p["problem"] == "not_offered"] if kept else found
-            intent["choices"].pop(key, None)
-            if kept:
-                intent["choices"][key] = kept
-            elif key in before:
+            kept[key] = _good_part(intent["choices"].pop(key), found, before.get(key) or [])
+            refused += [p for p in found if p["problem"] != "too_many"] if kept[key] else found
+            if kept[key]:
+                intent["choices"][key] = list(kept[key])  # judged again: what is kept can meet a later rule
+                continue
+            sent.pop(key)
+            if key in before:
                 intent["choices"][key] = before[key]
+    problems += [dict(p, kept=list(kept[p["choice_id"]])) if kept[p["choice_id"]] else p for p in refused]
 
 
 def _good_part(picks: List[Any], found: List[Dict[str, Any]], stood: List[Any]) -> List[Any]:
     """What is kept of a refused list: the options its choice offers, when they fit its count (a list too long keeps
     none: the engine never chooses among the player's picks) and take nothing the player already had."""
-    outside = [o for p in found if p["problem"] == "not_offered" for o in p["options"]]
+    outside = [o for p in found for o in p.get("options") or []]
     good = [p for p in picks if p not in outside]
     limit = next((p["count"] for p in found if p["problem"] == "too_many"), len(good))
     return good if outside and len(good) <= limit and all(p in good for p in stood) else []
@@ -478,6 +508,11 @@ def _merge_gear(facts, held, out, gear, problems, aside, leftovers) -> None:
             equipment[field] = copy.deepcopy(old[field])
             continue
         before, equipment[field] = equipment[field], copy.deepcopy(gear[field])
+        if field == "slot_picks":
+            bound = _bound_pick(facts, out)
+            other = [p for p in equipment[field] if bound and p.get("slot") == bound["slot"] and p != bound]
+            aside += ["starting_equipment.slot:%s" % bound["slot"]] if other else []
+            equipment[field] = [p for p in equipment[field] if p not in other]
         sorted_gear = _gear(facts, out)
         if field == "slot_picks":
             for _, pick, _ in sorted_gear["gone"]:
@@ -574,4 +609,7 @@ def state(blocks: Dict[str, Any]) -> Dict[str, Any]:
     wait = waiting(blocks, facts)
     if wait:
         out["waiting"] = wait
+    repeats = creation_scope.repeated_for_room(intent)
+    if repeats:
+        out["adds_nothing_new"] = [{"choice_id": cid, "option": pick} for cid, pick in repeats]
     return out

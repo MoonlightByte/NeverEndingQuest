@@ -1258,16 +1258,19 @@ def _earlier_choice_ids(conversation):
     return found
 
 
-def _log_notes(proposal, merged):
+def _log_notes(proposal, merged, held):
     """One log-file line for what a reply carried that is not a rejection: counts and the engine's own ids only."""
     try:
         known = set(creation_scope.issued_points(merged.standing["intent"]))
         asks = len([c for c in (proposal.get("choice_turn") or {}).get("asks") or [] if c not in known])
         absent = [k for k in ("intent", "starting_equipment", "creative", "choice_turn") if k not in proposal]
         unwritten = [f if f in creation_scope.ASK_IDS else "other" for f in merged.unwritten]
-        if asks or unwritten or merged.aside or absent:
-            file_only("STARTUP_NOTE task=T092 asks_without_id=%d unwritten=%s aside=%s absent=%s"
-                      % (asks, json.dumps(unwritten), json.dumps(merged.aside), json.dumps(absent)), category="startup")
+        before = creation_scope.repeated_for_room(held["intent"])
+        room = len([r for r in creation_scope.repeated_for_room(merged.standing["intent"]) if r not in before])
+        if asks or unwritten or merged.aside or absent or room:
+            file_only("STARTUP_NOTE task=T092 asks_without_id=%d unwritten=%s aside=%s absent=%s repeated_for_room=%d"
+                      % (asks, json.dumps(unwritten), json.dumps(merged.aside), json.dumps(absent), room),
+                      category="startup")
     except Exception as fault:  # logging never changes the turn, and its own failure is reported (NEQ-OPS-05)
         try:
             file_only(f"STARTUP_NOTE line failed: {type(fault).__name__}", category="startup")
@@ -1290,7 +1293,7 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
     merged = creation_blocks.merge(turn["held"], turn["standing"], proposal, rolled=roll["rolled"] if roll else None,
                                    previous=lambda: _earlier_choice_ids(correction_context),
                                    alignments=creation_alignments())
-    _log_notes(proposal, merged)
+    _log_notes(proposal, merged, turn["held"])
     turn["standing"] = merged.standing
     turn["lost"].update(merged.dropped)
     turn["leftovers"] = merged.leftovers
