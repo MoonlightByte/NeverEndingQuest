@@ -458,6 +458,13 @@ DETAIL_LABELS = (("alignment", "Alignment"), ("personality_traits", "Personality
                  ("flaws", "Flaws"), ("appearance", "Appearance"), ("backstory", "Backstory"))
 
 
+def picked_ability(sheet: Dict[str, Any], intent: Dict[str, Any]) -> Optional[str]:
+    """The sheet's spellcasting ability when it is a pick (a feat's or a lineage's), None when the class sets it."""
+    traits = _Data().choices["class_traits"].get(intent.get("class_key")) or {}
+    ability = sheet["spellcasting"]["ability"]
+    return None if ability == "N/A" or (traits.get("spellcasting_ability") or {}).get("ability") else ability
+
+
 def render_sheet_summary(sheet: Dict[str, Any], built: Optional[Dict[str, Any]] = None, *,
                          creative: Optional[Dict[str, Any]] = None, gear: Optional[List[str]] = None) -> str:
     """The build summary the player approves, rendered from the engine-built sheet (D2, #1275): names and
@@ -496,6 +503,10 @@ def render_sheet_summary(sheet: Dict[str, Any], built: Optional[Dict[str, Any]] 
         ("Feats:", [f.get("name") for f in sheet.get("feats") or []]),
         ("Cantrips:", spells.get("cantrips")),
         ("Level 1 spells:", spells.get("level1")),
+        # Only where the list above is not it (a wizard's spellbook); the ability only where it is a pick.
+        ("Prepared:", [] if set(casting.get("preparedSpells") or []) == set(spells.get("level1") or [])
+         else casting.get("preparedSpells")),
+        ("Spellcasting ability:", [(built or {}).get("picked_ability")]),
     ]
     for label, items in sections:
         items = [str(i) for i in items or [] if i]
