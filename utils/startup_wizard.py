@@ -1068,7 +1068,11 @@ def _held_blocks(conversation):
     progress = _startup_progress(conversation) or {}
     startup_id, start = progress.get("startup_id"), 0
     if startup_id is not None and startup_id != _first_startup_id(conversation):
-        start = next(i for i, m in enumerate(conversation) if startup_id in _checkpoint_ids([m]))
+        start = next((i for i, m in enumerate(conversation) if startup_id in _checkpoint_ids([m])), None)
+        if start is None:
+            # No checkpoint carries this startup's id: nothing up to the last checkpoint is known to be its own.
+            start = max((i + 1 for i, m in enumerate(conversation) if _checkpoint_ids([m])), default=0)
+            file_only("STARTUP_NOTE task=T092 startup_without_checkpoint=1", category="startup")
     blocks = creation_blocks.empty()
     for message in conversation[start:]:
         role = message.get("role")
@@ -1275,8 +1279,8 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
 
     The valid blocks stand whatever else the response got wrong. A class, species or background that arrived or
     changed opens its scope; returns True when T092 must be asked again for the same answer (at most once per
-    response chain; a rejection starts a new chain), and what the response guessed under the new scope is set
-    aside. Otherwise a refused block, a contradicted claim, or a finalize with open choice ids raises
+    response chain; a rejection starts a new chain). A pick sent with its new parent is checked against the new
+    scope: a valid one is kept, an invalid one is left out without a refusal on that first ask. Otherwise a refused block, a contradicted claim, or a finalize with open choice ids raises
     StartupScopeRefusal. correction_context is the turn's request base, turn_items its pending items: the saved
     history gets them only when the turn publishes (r3.1, T4). The ability roll is the exception: persist
     saves it the moment it is made, so no handback or restart rolls again (amendment 1f, N7)."""
@@ -1410,7 +1414,7 @@ def _items_to_save(conversation, turn_items, turn):
         record = json.loads(item["content"])
         if record.get("task_purpose") == creation_scope.SCOPE_PURPOSE:
             last = [item]
-        elif record.get("task_purpose") == SCOPE_STATE_PURPOSE:
+        elif record.get("task_purpose") == SCOPE_STATE_PURPOSE and last is not None:
             last.append(item)
         else:
             others.append(item)
