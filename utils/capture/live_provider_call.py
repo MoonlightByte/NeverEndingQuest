@@ -204,6 +204,12 @@ _MAX_BACKOFF_SECONDS = 8.0
 # was charged; a free one failed before acknowledgment and cost no tokens.
 _BILLED_REISSUE_LIMIT = 2
 _FREE_REISSUE_LIMIT = 6
+# #2090: a Local/Custom setup reply (T092) that never starts is reissued on its
+# own count. A try right after a silent one waits less for its first chunk;
+# the last one waits in full again. Same total as three full waits.
+_LOCAL_SILENT_TASK_IDS = frozenset({"T092"})
+_LOCAL_SILENT_REISSUE_LIMIT = 4
+_LOCAL_SILENT_WAIT_SECONDS = 60.0
 _BILLED_PHASES = frozenset({"acknowledged", "working", "receiving", "done"})
 # #1342: provider generations one live turn scope may spend, reissues
 # included. Every scope (play turn, combat round, wizard) has the same bound.
@@ -2462,6 +2468,11 @@ def _call_live_provider(
         frozen_kwargs["timeout"] = httpx.Timeout(
             request_deadline, connect=_CONNECT_SECONDS
         )
+    local_silent_task = (
+        request_provider == "lmstudio"
+        and task_id in _LOCAL_SILENT_TASK_IDS
+        and not completion_required
+    )
     failure_count = 0
     runaway_trips = 0
     # #2046: the envelope of a declined or unanswered generation whose one
@@ -2479,7 +2490,10 @@ def _call_live_provider(
     )
     billed_reissues = 0
     free_reissues = 0
-    # #1981: the bucket the last failure was counted in ("billed" or "free").
+    silent_reissues = 0
+    last_silent = False
+    # #1981: the bucket the last failure was counted in ("billed", "free" or
+    # #2090 "silent").
     last_bucket = {"kind": None}
     logical_started = time.monotonic()
     notices_shown = set()
@@ -2519,6 +2533,10 @@ def _call_live_provider(
         if state is None:
             reader = current_reader["reader"]
             state = reader.snapshot() if reader is not None else None
+        if last_bucket["kind"] == "silent" and last_silent:
+            return failure_count + 1 + max(
+                0, _LOCAL_SILENT_REISSUE_LIMIT - silent_reissues
+            )
         phase = (state or {}).get("current")
         if phase == "failed" and last_bucket["kind"] is not None:
             billed = last_bucket["kind"] == "billed"
@@ -2730,6 +2748,7 @@ def _call_live_provider(
                     task_id, {"error_class": "process_setup_unavailable"}
                 )
             failure_count += 1
+            last_silent = False
             retry_wait(
                 _delay_for_error({}, failure_count),
                 wizard_heartbeat if wizard_task else (
@@ -2745,6 +2764,13 @@ def _call_live_provider(
             else _WIZARD_BACKSTOP_SECONDS
             if wizard_task and not completion_required
             else request_deadline
+        )
+        # #2090: only the wait for a first chunk is shorter, never the silence
+        # allowed after one.
+        first_chunk_limit = (
+            _LOCAL_SILENT_WAIT_SECONDS
+            if last_silent and silent_reissues < _LOCAL_SILENT_REISSUE_LIMIT
+            else generation_limit
         )
         # The request is written by its own thread on a pipe that communicate()
         # never sees. communicate(input=..., timeout=...) registers stdin for
@@ -2819,9 +2845,13 @@ def _call_live_provider(
                     idle_reference = started + float(state["last_progress"])
                 else:
                     idle_reference = started
+                silence_limit = (
+                    first_chunk_limit if state["last_progress"] is None
+                    else generation_limit
+                )
                 if (
-                    generation_limit is not None
-                    and now - idle_reference >= generation_limit
+                    silence_limit is not None
+                    and now - idle_reference >= silence_limit
                 ):
                     backstop_exhausted = True
                     break
@@ -2952,6 +2982,7 @@ def _call_live_provider(
                 _check_live_authority(scope, authority_check)
             except OSError:
                 failure_count += 1
+                last_silent = False
                 retry_wait(
                     _delay_for_error({}, failure_count),
                     "Still working; checking the current adventure...",
@@ -3040,7 +3071,27 @@ def _call_live_provider(
             # billed bound too; on a chat endpoint (no acknowledgment event)
             # the provider may have been working, so it may also be billed.
             stalled = _is_stalled_failure(envelope)
-            if _is_billed_failure(envelope) or stalled:
+            # #2090: typed by the absence of a first chunk, never by text.
+            last_silent = (
+                local_silent_task
+                and stalled
+                and envelope.get("error_class") == "ProviderChildGenerationBackstop"
+                and phase_state.get("last_progress") is None
+            )
+            if last_silent:
+                silent_reissues += 1
+                last_bucket["kind"] = "silent"
+                _provider_debug(
+                    "LIVE_PROVIDER_LOCAL_SILENT task=%s silent=%d limit=%d waited=%.1f operation=%s"
+                    % (task_id, silent_reissues, _LOCAL_SILENT_REISSUE_LIMIT,
+                       time.monotonic() - started, operation_id)
+                )
+                from utils.session_spend import record_possibly_billed
+
+                if not spend_recorded:
+                    record_possibly_billed(turn_key=operation_id, build=spend_build)
+                exhausted = silent_reissues > _LOCAL_SILENT_REISSUE_LIMIT
+            elif _is_billed_failure(envelope) or stalled:
                 billed_reissues += 1
                 last_bucket["kind"] = "billed"
                 from utils.session_spend import record_possibly_billed
