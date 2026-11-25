@@ -31,7 +31,7 @@ register_callsite("T124", "utils/startup_wizard.py", 826)
 from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
 from utils.startup_prompt_builder import build_character_creation_system_prompt as _build_character_creation_system_prompt
-from utils.startup_prompt_builder import build_startup_review_prompt
+from utils.startup_prompt_builder import GUIDE_SPEAK, GUIDE_WHO, build_startup_review_prompt
 from utils.startup_prompt_builder import (
     ORIGINS_FILE, STARTUP_RULES_REFERENCE_PURPOSE, build_startup_rules_reference,
 )
@@ -464,8 +464,9 @@ def _present_startup_menu(conversation, prompt, *, phase="startup_interview"):
     """Keep catalog presentation separate from retained interview instructions."""
     request = [
         {"role": "system", "content": (
+            f"{GUIDE_WHO}\n{GUIDE_SPEAK}\n"
             "Present only the supplied startup menu in plain ASCII prose. "
-            "Preserve every supplied option and its exact number. Do not choose "
+            "Preserve every option and its exact menu number. Do not choose "
             "for the player, create a character, or claim anything was saved. "
             "This is menu presentation, not a character interview; do not emit JSON."
         )},
@@ -569,8 +570,8 @@ def present_module_options(conversation, modules, fact=""):
                        if 'min' in level_range and 'max' in level_range else 'Level range unknown')
         module_list.append(
             f"{i}. **{module['display_name']}** ({level_label})\n"
-            f"   {module['description']}\n"
-            f"   Estimated play time: {module['play_time']}"
+            f"   {module['description']}"
+            + (f"\n   Estimated play time: {module['play_time']}" if module['play_time'] != 'Unknown' else "")
         )
     
     if _builder_option_shown():
@@ -583,8 +584,8 @@ def present_module_options(conversation, modules, fact=""):
     builder_clause = ("; the last one, creating a new adventure with the module builder, is coming soon"
                       if _builder_option_shown() else "")
     # AI prompt for module selection
-    ai_prompt = f"""You are the Dungeon Master for NeverEndingQuest, a text-based adventure game based on the world's most popular 5th edition roleplaying game. Welcome the player in your own words and present the available modules.
-You may mention these key features:
+    ai_prompt = f"""Welcome the player to NeverEndingQuest in a few warm sentences of your own, then present the available modules. Leave out what is unknown. Tell each adventure by its name and levels, not by its number of areas.
+You may draw on a few of these, never as a list:
 - AI-powered storytelling that adapts to your choices
 - Turn-based tactical combat with dice rolling
 - Character progression from level 1 to 20
@@ -1570,7 +1571,7 @@ def _author_request(context, module, turn, since, tail):
     if dropped:
         note["dropped"] = dropped
     handback = of(HANDBACK_PURPOSE, replies[-1] if replies else -1)
-    if handback:
+    if handback and "facts" not in tail:  # the plain words request is about this handback, never an older one
         note["handback"] = {k: handback[-1][1].get(k) for k in ("rejected_outputs", "instruction")}
     # Their instruction is for the request right after; later ones may ask for something else.
     answers = [r if i >= since else {k: v for k, v in r.items() if k != "instruction"}
@@ -2100,8 +2101,7 @@ def ai_character_interview(conversation, module):
                                         "approved. Answer the player's next message with the retained choices."),
                     }, ensure_ascii=False)})
                     save_startup_conversation(conversation, live_scope=scope)
-                    # Without the record just saved: its instruction is for the player's next message.
-                    words = _handback_words(_author_request(conversation[:-1], module, turn, len(conversation), {
+                    words = _handback_words(_author_request(conversation, module, turn, len(conversation), {
                         "facts": notice, "blocks": creation_blocks.state(turn["standing"]),
                         "instruction": ("For this reply only, answer in plain words, no JSON, as the player will read it. "
                                         "Nothing from it is recorded. Tell the player what is kept and what is still "

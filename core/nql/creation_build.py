@@ -478,7 +478,7 @@ def _species_trait_names(sheet: Dict[str, Any], built: Optional[Dict[str, Any]])
 
 
 DETAIL_LABELS = (("alignment", "Alignment"), ("personality_traits", "Personality"), ("ideals", "Ideals"), ("bonds", "Bonds"),
-                 ("flaws", "Flaws"), ("appearance", "Appearance"), ("backstory", "Backstory"))
+                 ("flaws", "Flaws"))
 
 
 def picked_ability(sheet: Dict[str, Any], intent: Dict[str, Any]) -> Optional[str]:

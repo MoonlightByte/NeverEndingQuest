@@ -27,7 +27,7 @@ from core.nql.startup_rows import _package_items
 
 IDENTITY = ("class_key", "species_key", "background_key")
 PACKAGES = ("background_package", "class_package")
-NEXT_LIMIT = 3
+NEXT_LIMIT = 2
 
 
 def empty() -> Dict[str, Any]:
@@ -275,7 +275,8 @@ def _lost(before: Dict[str, List[Any]], after: Dict[str, List[Any]]) -> Dict[str
 
 def still_lost(lost: Dict[str, List[Any]], held: Dict[str, Any], standing: Dict[str, Any]) -> Dict[str, List[Any]]:
     """Of what a turn's replies dropped: what the player had when the turn began and has nothing in place of now."""
-    was, now = _values(held), _values(standing)
+    # checked() adds the slot the tool choice fills; what is stored (waiting gear too) comes first.
+    was, now = _values(held), dict(_values(checked(standing)), **_values(standing))
     out = {key: [v for v in values if v in was.get(key, [])] for key, values in lost.items()
            if key not in now or key == "starting_equipment.equipped"}
     return {key: values for key, values in _lost(out, now).items()}
@@ -702,7 +703,7 @@ def state(blocks: Dict[str, Any]) -> Dict[str, Any]:
     filled.update({f: v for f, v in blocks["creative"].items() if f != "name"})
     need = needed(blocks, facts=facts)
     out = {"filled": filled, "needed": need,
-           "may_write_at_finalize": [f for f in creation_build.CREATIVE_FIELDS + ("backstory", "appearance")
+           "may_write_at_finalize": [f for f in creation_build.CREATIVE_FIELDS
                                      if f != "name" and f not in blocks["creative"]],
            "next": need[:NEXT_LIMIT]}
     if any((intent.get("considering") or {}).values()):
