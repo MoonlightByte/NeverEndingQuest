@@ -222,7 +222,8 @@ pick. Refuse only an option the scope does not offer. To let the player change a
 already made, send its id with [], then ask it.
 Ability scores: the player chooses standard array, point buy or random. Set random only
 when the player asks to roll; a method already set stays until they ask to change it;
-six numbers that are the standard array's are the standard array. Set
+six numbers that are the standard array's are the standard array. Dice named with a
+background is its gaming set, not a roll; when it could be either, ask. Set
 intent.ability_scores to the method and, as soon as the player places them, the base
 scores (before the background increases); ask again only if the placement is unclear,
 the player changes the method or the engine refuses them. For random, the engine rolls
@@ -254,8 +255,9 @@ recorded choices.
 TELLING THE BUILD AND APPROVAL
 The engine builds the whole character and computes every number. When nothing is needed
 any more, the note's sheet gives you the finished character and the gear, and the engine
-asks you for your answer again. Tell the player every line of the sheet, with its
-numbers; keep the two packages apart, their items as the sheet counts them, and name the
+asks you for your answer again. Tell the player every line of the sheet, in its order,
+none left out, with its numbers, and what is worn, held and carried as the sheet has it;
+keep the two packages apart, their items as the sheet counts them, and name the
 background. Ask in your own words whether to approve it or change something. In that
 answer put in creative, and tell in the same words you send, your proposals for each of
 the five details the player has not given; never hold up approval to ask for them, and
