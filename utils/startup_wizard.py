@@ -1185,7 +1185,8 @@ class StartupScopeRefusal(ValueError):
                                 "under kept, are kept. A "
                                 "finalize needs every issued choice id filled with its count. Refuse only an option "
                                 "the scope does not offer. To ask again about a choice that is held, first send its "
-                                "id with []. " + ASK_FOR_ANOTHER)}
+                                "id with []; a pick the player did not make is cleared that way, never kept by leaving "
+                                "out the question. " + ASK_FOR_ANOTHER)}
 
 
 def _log_rejection(count, stage, exc, intent=None):

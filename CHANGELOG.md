@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In character creation, the guide no longer puts on file a choice it only suggested, listed or asked about; it waits for your answer (#2090).
+
 - In character creation, when the AI provider is unavailable, the game now says so beside the story, with the provider's name, and tries again by itself every 16 seconds within the turn's limit; "Setup paused" is now a notice from the game (#2090).
 
 - In character creation, when OpenAI sends nothing back for about 20 seconds, the game now says beside the story that OpenAI isn't responding, that this is not the game's fault or yours, and when it tries again; the pause after the last try gives the same reason (#2090).
