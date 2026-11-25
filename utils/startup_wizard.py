@@ -231,15 +231,6 @@ def reset_foreign_save(module_name):
     return True
 
 
-def _saved_defense_line(character):
-    """The saved sheet's armor class and hit points for the post-save line (dplay-AC-difficult turn 18): the
-    engine-projected values, which the interview preview cannot show before the gear is granted."""
-    ac, hp = character.get("armorClass"), character.get("maxHitPoints")
-    if type(ac) is not int or type(hp) is not int:
-        return ""
-    return f" Armor class {ac}, hit points {hp}."
-
-
 def run_startup_sequence():
     """Resume the shared setup, publishing success only from verified files."""
     from utils.capture.live_provider_call import LiveProviderSuperseded
@@ -268,13 +259,7 @@ def run_startup_sequence():
             character = safe_json_load(ModulePathManager(module["name"]).get_character_unified_path(name))
         if not _startup_build_ready(module["name"], character):
             raise LiveProviderSuperseded("Startup state changed before handoff")
-        from core.nql.acquisition import balance
-        interviewed = _startup_interview_started(conversation)  # the main DM opens it with the sheet in its history
         cleanup_startup_conversation()
-        if interviewed:
-            return True
-        _say(f"\nDungeon Master: Your character setup is saved and verified. Welcome, {character['name']}! "
-              f"You have {balance(character)['gold']} gold.{_saved_defense_line(character)}")
         return True
     except LiveProviderSuperseded:
         raise
@@ -535,6 +520,9 @@ def _say(text, flush=False):
 MODULE_BUILDER_OPTION = "Create a new adventure (module builder)"
 
 
+UNREAD_FACT = "The player's last line could not be read. Ask again which they want; do not welcome them again."
+
+
 def _builder_fact():
     return ("The player chose the module builder. It is coming soon and cannot be used yet. Tell the player this, "
             "do not welcome them again, and present the adventures again.")
@@ -696,7 +684,7 @@ def select_module(conversation):
                 _say(f"Dungeon Master: {read['question']}")
                 continue
             
-            _say("Dungeon Master: I didn't understand that. Please enter the number (1, 2, etc.) or the adventure's full name as listed.")
+            present_module_options(conversation, modules, UNREAD_FACT)
             
         except KeyboardInterrupt:
             raise
@@ -833,7 +821,7 @@ def select_or_create_character(conversation, module):
                                           f"The character file of {selected_char['name']} is unavailable. Tell the player this.")
                 continue
 
-            _say("Dungeon Master: I didn't understand that. Please enter the character's number or full name as listed, or 'new' to create a new character.")
+            present_character_options(conversation, characters, module_name, UNREAD_FACT)
             
         except KeyboardInterrupt:
             raise
@@ -1526,6 +1514,8 @@ def _said(message):
             reply = json.loads(message.get("content", ""))
         except (TypeError, ValueError):
             return message
+        if isinstance(reply, dict) and reply.get("decision") == "finalize_character":
+            return None  # not saved (a taken name, an interrupted commit), so the player never heard it
         if isinstance(reply, dict) and isinstance(reply.get("narration"), str):
             return _reply_words(reply["narration"], reply.get("decision"))
     return message
@@ -1547,11 +1537,11 @@ def _author_request(context, module, turn, since, tail):
     current = _creation_scope_current(context)
     if current is not None:
         request.append({"role": "system", "content": json.dumps(current, ensure_ascii=False)})
-    request += [m for m in map(_said, context) if m is not None]
-
     start = _startup_start(context)
+    request += [m for m in map(_said, context[start:]) if m is not None]
+
     own = [(i, _system_record(m)) for i, m in enumerate(context) if i >= start and _system_record(m) is not None]
-    replies = [i for i, m in enumerate(context) if m.get("role") == "assistant"]
+    replies = [i for i, m in enumerate(context) if m.get("role") == "assistant" and _said(m) is not None]
     player = max((i for i, m in enumerate(context) if m.get("role") == "user"), default=-1)
     of = lambda purpose, after: [(i, r) for i, r in own if i > after and r.get("task_purpose") == purpose]  # noqa: E731
     note = dict({"task_purpose": "startup_current_note"}, **tail)

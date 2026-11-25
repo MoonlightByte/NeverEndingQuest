@@ -1452,9 +1452,7 @@ def test_the_preview_summary_shows_hit_points_and_the_saved_line_shows_armor_cla
     assert built["hit_points"] == 8 + (con - 10) // 2   # cleric d8 maximum + Constitution modifier
     assert "Hit points %d" % built["hit_points"] in creation_build.render_sheet_summary(sheet, built)
     assert "armor class" not in creation_build.render_sheet_summary(sheet, built)
-    assert startup_wizard._saved_defense_line({"armorClass": 17, "maxHitPoints": 12}) == \
-        " Armor class 17, hit points 12."
-    assert startup_wizard._saved_defense_line({"armorClass": 17}) == ""
+    assert not hasattr(startup_wizard, "_saved_defense_line")  # #2090: the DM tells the saved sheet, no printed line
 
 
 def _open_turn(wizard, conversation, proposal):
