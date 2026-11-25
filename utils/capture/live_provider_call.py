@@ -317,6 +317,8 @@ class LiveTurnScope:
     accepted: bool = False
     # #2069: the past-ceiling record is written once per budget.
     past_ceiling_logged: bool = False
+    # #2090: the provider-unavailable line of the last setup call, or None.
+    outage_line: str = None
 
     def next_generation(self):
         with self.lock:
@@ -2220,6 +2222,22 @@ def _record_unused_generation(output, phase_state, frozen_kwargs, operation_id, 
         pass
 
 
+def _outage_class(envelope):
+    """#2090: the connection class of a try that found the provider
+    unavailable, or None. Typed only: an HTTP 5xx or 408, or a failed
+    connection on which nothing was sent."""
+    from utils.provider_errors import connection_class
+
+    status = envelope.get("http_status")
+    cls = connection_class(envelope)
+    if cls == "service_error" and isinstance(status, int) and (status >= 500 or status == 408):
+        return cls
+    if (cls == "no_connection" and envelope.get("cause_class")
+            and _billing_phase(envelope) in ("connecting", "connected", "secured")):
+        return cls
+    return None
+
+
 def _limit_envelope(error_class, task_id, request_kwargs):
     """Terminal envelope for a #1342 bound; classified non-retryable upstream."""
     return {
@@ -2491,6 +2509,10 @@ def _call_live_provider(
     billed_reissues = 0
     free_reissues = 0
     silent_reissues = 0
+    # #2090: this call's claimed tries, and how many found the provider
+    # unavailable (an HTTP 5xx or 408, or no connection to send on).
+    claimed_tries = 0
+    outage_tries = 0
     last_silent = False
     # #1981: the bucket the last failure was counted in ("billed", "free" or
     # #2090 "silent").
@@ -2690,11 +2712,15 @@ def _call_live_provider(
                     task_id,
                     _limit_envelope("advisory_reserve", task_id, frozen_kwargs),
                 )
-            raise LiveProviderCompletedError(
-                task_id,
-                _limit_envelope("turn_call_ceiling", task_id, frozen_kwargs),
+            limit = _limit_envelope("turn_call_ceiling", task_id, frozen_kwargs)
+            # #2090: what this call's own tries met before the refusal.
+            limit["tries_met"] = (
+                "none" if not claimed_tries
+                else outage_class if outage_tries == claimed_tries else "other"
             )
+            raise LiveProviderCompletedError(task_id, limit)
         quiet_pending = False
+        claimed_tries += 1
         if claim_kind == "past_ceiling":
             # #2069: once per budget, an accepted reply's calls passed the
             # ceiling; nothing is shown, the record counts it (the generation
@@ -3105,6 +3131,8 @@ def _call_live_provider(
             else:
                 free_reissues += 1
                 last_bucket["kind"] = "free"
+                outage_class = _outage_class(envelope)
+                outage_tries += outage_class is not None
                 exhausted = free_reissues > _FREE_REISSUE_LIMIT
             if exhausted:
                 _provider_debug(
@@ -3118,6 +3146,8 @@ def _call_live_provider(
 
                 # #1981: the give-up names what failed last, not the bound.
                 limit["connection_class"] = connection_class(envelope)
+                if outage_tries == claimed_tries:
+                    limit["outage"] = True
                 if policy == "advisory" and not completion_required:
                     raise LiveProviderUnavailable(task_id, limit)
                 raise LiveProviderCompletedError(task_id, limit)

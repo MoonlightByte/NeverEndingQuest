@@ -270,7 +270,10 @@ def run_startup_sequence():
 
         told = isinstance(stop, StartupCancelled) and stop.args  # the guide's own pause words
         if not told and _input_control_kind() != "reset" and not reset_unfinished():
-            _say("Dungeon Master: Setup paused. Your choices are retained.")
+            from utils.player_notice import show_player_notice
+
+            # An operational notice, not the DM's voice.
+            show_player_notice("Setup paused. Your choices are retained.")
         raise StartupCancelled() from None
 
 
@@ -3026,6 +3029,7 @@ def _startup_configuration_handback(exc, provider, revision, scope):
     message = configuration_required_message(exc)
     if message is None:
         return False
+    scope.outage_line = None  # #2090: the provider answered
     _emit_startup_phase("startup_configuration_required")
     # Web Settings stays usable while the normal command row remains busy.
     # Console mode uses its existing input owner for an explicit retry/cancel.
@@ -3073,6 +3077,22 @@ def _startup_provider_pause(player_message, scope):
     scope.renew_generation_budget("startup_pause")
 
 
+def _startup_outage_wait(line, scope):
+    """#2090: the provider is unavailable: say so in the status line, count down
+    and return for the next try. Load, Reset, Exit and Save work as in any wait."""
+    from utils.capture.live_provider_call import _interruptible_wait, drain_live_saves
+    from utils.provider_errors import PROVIDER_RETRY_MAX_DELAY
+
+    first = int(PROVIDER_RETRY_MAX_DELAY)
+    for left in range(first, 0, -1):
+        drain_live_saves(scope)
+        text = f"{line} The game will retry in {left} second{'' if left == 1 else 's'}."
+        # The web counts down; a console or headless run hears it once.
+        _interruptible_wait(1, scope, text, lambda shown: (
+            web_mode or left == first) and status_manager.update_status(shown, True))
+    status_processing_ai()
+
+
 def _startup_provider_failure(exc, failures, scope, pending, wait=None):
     """One completed startup provider error (#1267); returns the count to carry.
 
@@ -3086,10 +3106,18 @@ def _startup_provider_failure(exc, failures, scope, pending, wait=None):
     startedAt}) lets the web show the retry wait (#1271)."""
     from utils.capture.live_provider_call import _interruptible_wait
     from utils.provider_errors import (
-        PROVIDER_MAX_FAILURES, classify_provider_error, provider_failure_policy,
+        PROVIDER_MAX_FAILURES, classify_provider_error, outage_line, provider_failure_policy,
         provider_retry_delay,
     )
 
+    # #2090: the remembered line is for this failure only; every kind forgets it.
+    remembered, scope.outage_line = getattr(scope, "outage_line", None), None
+    envelope = getattr(exc, "envelope", None) or {}
+    if envelope.get("outage") is True:
+        scope.outage_line = outage_line(envelope.get("connection_class"), envelope.get("provider"))
+        if scope.outage_line:
+            _startup_outage_wait(scope.outage_line, scope)
+            return failures
     failures += 1
     classification = classify_provider_error(exc)
     if classification["category"] in ("content_declined", "not_answered"):
@@ -3098,6 +3126,11 @@ def _startup_provider_failure(exc, failures, scope, pending, wait=None):
         classification = dict(classification, category="unclassified", retryable=True,
                               player_message=None, retry_notice=None)
     decision = provider_failure_policy(classification, failures, True)
+    if classification["category"] == "turn_call_ceiling":
+        # #2090: an outage that used up the turn's tries ends on its own reason.
+        met = envelope.get("tries_met")
+        line = remembered if met == "none" else outage_line(met, envelope.get("provider"))
+        decision["player_message"] = line or decision["player_message"]
     warning(f"Startup provider attempt {failures}/{PROVIDER_MAX_FAILURES} failed: {exc}",
             category="startup")
     if failures >= PROVIDER_MAX_FAILURES or (
@@ -3187,6 +3220,7 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                     response_format=response_format,
                     **{k: v for k, v in main_cfg.items() if k != "model"},
                 )
+                scope.outage_line = None  # #2090: the provider answered
                 content = response.choices[0].message.content
                 if not isinstance(content, str) or not content.strip():
                     raise ValueError("Provider returned no usable startup response")
@@ -3344,6 +3378,7 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
                 )
                 if scope.is_superseded():
                     raise LiveProviderSuperseded("Startup location superseded")
+                scope.outage_line = None  # #2090: the provider answered
                 raw = response.choices[0].message.content or ""
                 try:
                     candidate = _validate_starting_location(extract_json_object(sanitize_json_string(raw)))
