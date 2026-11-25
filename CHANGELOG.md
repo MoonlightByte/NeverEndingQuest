@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In character creation, a small extra part that the guide repeats in its reply, which the game does not use, no longer stops your turn (#2090).
+
 - A rolled ability score below 8 is now saved as you rolled it; before, the summary showed the rolled score but the saved character had 8 (#2107).
 
 - A human's Versatile trait no longer offers Magic Initiate in character creation, because its spells could not be chosen there yet; a background that gives Magic Initiate still does, and a spellcasting ability is no longer listed as a tool (#2102).
