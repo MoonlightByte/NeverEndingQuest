@@ -1529,6 +1529,8 @@ def _said(message):
 
 # Facts the guide still has to tell: they stay in the note until the turn publishes.
 KEPT_FACTS = ("startup_starting_gear", "startup_name_conflict")
+ASK_WITH_OPTIONS = (" When your words ask for an open choice or package, give its options, or, when the list is long, "
+                    "the ones you suggest and an offer of the rest.")
 
 
 def _author_request(context, module, turn, since, tail):
@@ -1555,6 +1557,9 @@ def _author_request(context, module, turn, since, tail):
     opens = creation_scope.open_choices(intent)
     if opens:
         note["open_choices"] = opens
+    if "facts" not in tail and tail["blocks"]["needed"]:
+        # After the choices, where it is read last; not in the tail, which T124 reads too.
+        note["instruction"] = note.pop("instruction") + ASK_WITH_OPTIONS
     roll = _ability_roll(context)
     if roll:
         note["ability_roll"] = {k: v for k, v in roll.items() if k not in ("task_purpose", "startup_id")}
