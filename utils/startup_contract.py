@@ -276,6 +276,16 @@ def _empty(value):
     return value is None or value in ("", [], {})
 
 
+def _holds_nothing(value):
+    """Empty all the way down: what a part the game does not read records when it is left out. A zero or a false is a
+    value. Not for a part the game reads, where an empty list can clear what is recorded."""
+    if isinstance(value, dict):
+        value = list(value.values())
+    if isinstance(value, list):
+        return all(map(_holds_nothing, value))
+    return value is None or value == ""
+
+
 def _echo(schema, key, sent):
     """True when a sent key is a keyword of the schema at that place, with that schema's own value (or one of its listed
     values): "type": "object". The reply repeats the form; it cannot be a player's choice (D-CREATE-FLEX-14)."""
@@ -331,14 +341,16 @@ def _settle_one(value, error, settled, known, schema):
             extra.remove(key)
             error.instance.pop(key)
             note("echo", path + [key])
-        if path == ["intent", "ability_scores"] and not all(_empty(error.instance[k]) for k in extra):
+        # What ends on a player's approval keeps the shallow rule: a clear sent at a wrong place is corrected there.
+        nothing = _empty if value.get("decision") == "finalize_character" else _holds_nothing
+        if path == ["intent", "ability_scores"] and not all(map(nothing, (error.instance[k] for k in extra))):
             return refuse(path, "ability_scores", problem="refused", why="ability_scores holds method and assignment only")
         # A value here may be the player's choice, which the narration may call recorded: it is refused. Sent again at
         # the same place it is set aside, but never on a finalize. A part that records nothing either way is not.
         records = top not in ("confirmation", "choice_turn") and path[:2] != ["intent", "considering"]
         for key in extra:
             place = path + [key]
-            if not records or _empty(error.instance[key]):
+            if not records or nothing(error.instance[key]):
                 aside(place)
             elif tuple(place) in settled.told and value.get("decision") != "finalize_character":
                 error.instance.pop(key)
