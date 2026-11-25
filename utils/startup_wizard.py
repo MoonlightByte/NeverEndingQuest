@@ -3015,6 +3015,10 @@ def _startup_provider_pause(player_message, scope):
         raise StartupCancelled() from None
     if scope.is_superseded():
         raise LiveProviderSuperseded("startup provider wait superseded")
+    # #2090: the player's answer starts a fresh call budget, as a combat input
+    # does (#1468). Otherwise the pause repeats unsent once the turn's calls
+    # are spent.
+    scope.renew_generation_budget("startup_pause")
 
 
 def _startup_provider_failure(exc, failures, scope, pending, wait=None):
