@@ -546,11 +546,25 @@ def _merge_scores(facts, held, intent, sent, rolled, problems, aside) -> None:
         else:
             trial = {"method": now["method"], "assignment": new["assignment"]}
             refused = creation_build.base_scores(facts.d, trial, rolled)[1] if facts.ok else None
-            if refused:
+            if refused and _summary_echo(facts, held["intent"], now, new["assignment"]):
+                aside.append("ability_scores.summary_echo")  # the shown totals sent back: nothing changed
+            elif refused:
                 problems.append({"choice_id": "ability_scores.assignment", "problem": "refused", "why": refused["problem"]})
             else:
                 now = copy.deepcopy(trial)
     intent["ability_scores"] = now if now["method"] else None
+
+
+def _summary_echo(facts, held, now, sent) -> bool:
+    """Whether a refused assignment is the held base scores with the held background increase added, score for score:
+    what the summary shows. Only while the held scores still stand."""
+    if not now.get("assignment") or now != held["ability_scores"] or held["background_key"] is None:
+        return False
+    background = facts.d.backgrounds().get(held["background_key"]) or {}
+    picks = held["choices"].get("background.%s.ability-scores" % held["background_key"]) or [None]
+    raised = creation_build.raised_scores(background, picks[0], now["assignment"])
+    return (raised is not None and isinstance(sent, dict) and sent == raised[0]
+            and all(type(v) is int for v in sent.values()))
 
 
 def _merge_choices(facts, held, out, sent, gear, previous, problems, leftovers, lost) -> None:

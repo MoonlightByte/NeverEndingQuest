@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In character creation, when the guide repeats the ability scores from your character summary, the game now keeps the scores you chose instead of stopping your turn over them (#2090).
+
 - In character creation, a small extra part that the guide repeats in its reply, which the game does not use, no longer stops your turn (#2090).
 
 - A rolled ability score below 8 is now saved as you rolled it; before, the summary showed the rolled score but the saved character had 8 (#2107).
