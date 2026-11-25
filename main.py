@@ -10770,10 +10770,6 @@ def _main_game_loop(startup_authority, turn_authority):
         from utils.startup_wizard import startup_required, run_startup_sequence, StartupCancelled
 
         if startup_required():
-            print("[D20] Welcome to your 5th Edition Adventure! [D20]")
-            print("It looks like this is your first time, or you need to set up a character.")
-            print("Let's get you ready for adventure!\n")
-
             try:
                 success = run_startup_sequence()
             except StartupCancelled:
@@ -14047,9 +14043,6 @@ def main():
         from utils.startup_wizard import startup_required, run_startup_sequence, StartupCancelled
         
         if startup_required():
-            print("[D20] Welcome to your 5th Edition Adventure! [D20]")
-            print("It looks like this is your first time, or you need to set up a character.")
-            print("Let's get you ready for adventure!\n")
             
             try:
                 success = run_startup_sequence()
@@ -14059,7 +14052,6 @@ def main():
                 print("[ERROR] Setup was cancelled or failed. Exiting...")
                 return
             
-            print("Setup complete! Your adventure begins now...\n")
     
     except Exception as e:
         warning(f"INITIALIZATION: Startup wizard had an issue", category="startup")

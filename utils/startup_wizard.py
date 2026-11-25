@@ -226,8 +226,9 @@ def reset_foreign_save(module_name):
         return False
     from web.shared_state import message_log_reset
     message_log_reset()
-    _say("Dungeon Master: This save belonged to another adventure, so the campaign was reset "
-          f"first, as Reset does. The old game is backed up in {backup_dir}.")
+    from utils.player_notice import show_player_notice
+    show_player_notice("This save belonged to another adventure, so the campaign was reset "
+                       f"first, as Reset does. The old game is backed up in {backup_dir}.")
     return True
 
 
@@ -1013,7 +1014,7 @@ def _persist_system_record(conversation, record, live_scope):
     save_startup_conversation(conversation, live_scope=live_scope)
 
 
-def _startup_start(conversation):
+def _startup_start(conversation, log=False):
     """Where this startup's items begin in the history."""
     progress = _startup_progress(conversation) or {}
     startup_id, start = progress.get("startup_id"), 0
@@ -1022,7 +1023,8 @@ def _startup_start(conversation):
         if start is None:
             # No checkpoint carries this startup's id: nothing up to the last checkpoint is known to be its own.
             start = max((i + 1 for i, m in enumerate(conversation) if _checkpoint_ids([m])), default=0)
-            file_only("STARTUP_NOTE task=T092 startup_without_checkpoint=1", category="startup")
+            if log:
+                file_only("STARTUP_NOTE task=T092 startup_without_checkpoint=1", category="startup")
     return start
 
 
@@ -1032,7 +1034,7 @@ def _held_blocks(conversation):
     reply restated them whole), its creative is what that turn added, and a handback's blocks replace all three.
     Nothing is read from prose; the result is checked again, since the data can have changed."""
     blocks = creation_blocks.empty()
-    for message in conversation[_startup_start(conversation):]:
+    for message in conversation[_startup_start(conversation, log=True):]:
         role = message.get("role")
         if role not in ("assistant", "system"):
             continue
@@ -1570,7 +1572,9 @@ def _author_request(context, module, turn, since, tail):
     handback = of(HANDBACK_PURPOSE, replies[-1] if replies else -1)
     if handback:
         note["handback"] = {k: handback[-1][1].get(k) for k in ("rejected_outputs", "instruction")}
-    answers = [r for p in KEPT_FACTS for _i, r in of(p, player)[-1:]]
+    # Their instruction is for the request right after; later ones may ask for something else.
+    answers = [r if i >= since else {k: v for k, v in r.items() if k != "instruction"}
+               for p in KEPT_FACTS for i, r in of(p, player)[-1:]]
     for message in context[since:]:
         record = _system_record(message)
         if record is None:
@@ -2096,7 +2100,8 @@ def ai_character_interview(conversation, module):
                                         "approved. Answer the player's next message with the retained choices."),
                     }, ensure_ascii=False)})
                     save_startup_conversation(conversation, live_scope=scope)
-                    words = _handback_words(_author_request(conversation, module, turn, len(conversation), {
+                    # Without the record just saved: its instruction is for the player's next message.
+                    words = _handback_words(_author_request(conversation[:-1], module, turn, len(conversation), {
                         "facts": notice, "blocks": creation_blocks.state(turn["standing"]),
                         "instruction": ("For this reply only, answer in plain words, no JSON, as the player will read it. "
                                         "Nothing from it is recorded. Tell the player what is kept and what is still "
@@ -2163,7 +2168,7 @@ def ai_character_interview(conversation, module):
                     else:
                         stage = "review"
                         # #1278's review over the engine-built sheet, against the reference a scoped history lacks.
-                        review_request = _current_contract_only(correction_context) + [
+                        review_request = _current_contract_only(correction_context[:asked]) + [
                             {"role": "system", "content": json.dumps(tail, ensure_ascii=False)}]
                         _append_startup_rules_reference(review_request)
                         review = _review_startup_response(

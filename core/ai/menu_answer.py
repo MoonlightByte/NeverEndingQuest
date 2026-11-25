@@ -6,7 +6,7 @@
 The startup adventure and character menus resolve a bare in-range number, the
 whole listed name (D-KW-6) and "new" in code, with no call. Any other line is
 read by T127 (D-KW-16): the model reads the player's words against the numbered
-options exactly as printed and returns one typed answer, and code acts on it.
+options and returns one typed answer, and code acts on it.
 
 - ``choice``: the number of the one option the line picks; code checks that it
   is one of the listed numbers and takes the same path as that typed number.
@@ -16,9 +16,9 @@ options exactly as printed and returns one typed answer, and code acts on it.
 
 Code never reads the player's line: it goes to the model whole. A reply that
 breaks the contract, an out-of-range number or any provider failure is
-``unavailable``, and the menu prints its own "I didn't understand" line. The
-call is one bounded attempt outside the live turn path, so a provider that is
-down never stalls the menu."""
+``unavailable``, and the guide presents the menu again. The read is one bounded
+attempt outside the live turn path, so it never stalls the menu; the menu call
+after an unread line is an ordinary provider call and can wait."""
 import json
 from typing import Any, Dict, List
 
@@ -79,7 +79,7 @@ def check_answer(raw: Any, numbers: List[int]) -> Dict[str, Any]:
 
 
 def request_payload(menu: str, options: List[Dict[str, Any]], line: str) -> Dict[str, Any]:
-    """The T127 request: the menu, its numbered options as printed and the
+    """The T127 request: the menu, its numbered options and the
     player's whole line (nothing sliced, NEQ-LEDGER-08)."""
     return {"menu": menu, "options": options, "playerLine": line}
 
