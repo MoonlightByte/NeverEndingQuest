@@ -1022,11 +1022,8 @@ def _persist_system_record(conversation, record, live_scope):
     save_startup_conversation(conversation, live_scope=live_scope)
 
 
-def _held_blocks(conversation):
-    """(the blocks this interview's published turns left, what reading them back dropped). Read in order from this
-    startup's items only: a published reply's intent and starting_equipment are the whole merged blocks (an older
-    reply restated them whole), its creative is what that turn added, and a handback's blocks replace all three.
-    Nothing is read from prose; the result is checked again, since the data can have changed."""
+def _startup_start(conversation):
+    """Where this startup's items begin in the history."""
     progress = _startup_progress(conversation) or {}
     startup_id, start = progress.get("startup_id"), 0
     if startup_id is not None and startup_id != _first_startup_id(conversation):
@@ -1035,8 +1032,16 @@ def _held_blocks(conversation):
             # No checkpoint carries this startup's id: nothing up to the last checkpoint is known to be its own.
             start = max((i + 1 for i, m in enumerate(conversation) if _checkpoint_ids([m])), default=0)
             file_only("STARTUP_NOTE task=T092 startup_without_checkpoint=1", category="startup")
+    return start
+
+
+def _held_blocks(conversation):
+    """(the blocks this interview's published turns left, what reading them back dropped). Read in order from this
+    startup's items only: a published reply's intent and starting_equipment are the whole merged blocks (an older
+    reply restated them whole), its creative is what that turn added, and a handback's blocks replace all three.
+    Nothing is read from prose; the result is checked again, since the data can have changed."""
     blocks = creation_blocks.empty()
-    for message in conversation[start:]:
+    for message in conversation[_startup_start(conversation):]:
         role = message.get("role")
         if role not in ("assistant", "system"):
             continue
@@ -1505,6 +1510,90 @@ def _current_contract_only(conversation):
     return out
 
 
+def _reply_words(narration, decision="continue_interview"):
+    """What the guide said, in the form of its replies: its decision and its words, no blocks."""
+    return {"role": "assistant", "content": json.dumps({"decision": decision, "narration": narration}, ensure_ascii=False)}
+
+
+def _said(message):
+    """The message of the conversation this saved one is sent as, or None: the player's words, the guide's words."""
+    if message.get("role") == "system":
+        record = _system_record(message) or {}
+        words = record.get("notice_shown_to_player") if record.get("task_purpose") == HANDBACK_PURPOSE else None
+        return _reply_words(words) if isinstance(words, str) and words else None
+    if message.get("role") == "assistant":
+        try:
+            reply = json.loads(message.get("content", ""))
+        except (TypeError, ValueError):
+            return message
+        if isinstance(reply, dict) and isinstance(reply.get("narration"), str):
+            return _reply_words(reply["narration"], reply.get("decision"))
+    return message
+
+
+# Facts the guide still has to tell: they stay in the note until the turn publishes.
+KEPT_FACTS = ("startup_starting_gear", "startup_name_conflict")
+
+
+def _author_request(context, module, turn, since, tail):
+    """The T092 request (#2090), read from the turn's request base; nothing is written. In order: the instructions, the
+    one current reference, the conversation in words only, and last the current note, which replaces every older one.
+    since: where the engine's answer to the reply just sent begins in context. tail: the note's facts of this turn."""
+    marked = _contract_positions(context)[0]
+    chosen = json.loads(json.dumps(module))
+    opened = [m for m in context if (_system_record(m) or {}).get("task_purpose") == "startup_character_interview"]
+    request = [context[i] for i in marked[-1:]]
+    request += ([m for m in opened if _system_record(m).get("selected_adventure") == chosen] or opened)[-1:]
+    current = _creation_scope_current(context)
+    if current is not None:
+        request.append({"role": "system", "content": json.dumps(current, ensure_ascii=False)})
+    request += [m for m in map(_said, context) if m is not None]
+
+    start = _startup_start(context)
+    own = [(i, _system_record(m)) for i, m in enumerate(context) if i >= start and _system_record(m) is not None]
+    replies = [i for i, m in enumerate(context) if m.get("role") == "assistant"]
+    player = max((i for i, m in enumerate(context) if m.get("role") == "user"), default=-1)
+    of = lambda purpose, after: [(i, r) for i, r in own if i > after and r.get("task_purpose") == purpose]  # noqa: E731
+    note = dict({"task_purpose": "startup_current_note"}, **tail)
+    intent = creation_blocks.checked(turn["standing"])["intent"]
+    opens = creation_scope.open_choices(intent)
+    if opens:
+        note["open_choices"] = opens
+    roll = _ability_roll(context)
+    if roll:
+        note["ability_roll"] = {k: v for k, v in roll.items() if k not in ("task_purpose", "startup_id")}
+    last = _last_summary(context)
+    if last and not creation_blocks.needed(turn["standing"]) and _summary_shown(
+            last, turn["standing"], roll["rolled"] if roll else None):
+        note["sheet"] = _engine_part(last)
+    # What the last published reply lost may not have been told yet, so drops reach one published reply back; of this
+    # turn's only the latest counts.
+    drops = of("startup_choices_dropped", replies[-2] if len(replies) > 1 else -1)
+    dropped = {}
+    for _i, record in [d for d in drops if d[0] < player] + [d for d in drops if d[0] > player][-1:]:
+        dropped.update(record.get("dropped") or {})
+    if dropped:
+        note["dropped"] = dropped
+    handback = of(HANDBACK_PURPOSE, replies[-1] if replies else -1)
+    if handback:
+        note["handback"] = {k: handback[-1][1].get(k) for k in ("rejected_outputs", "instruction")}
+    answers = [r for p in KEPT_FACTS for _i, r in of(p, player)[-1:]]
+    for message in context[since:]:
+        record = _system_record(message)
+        if record is None:
+            answers.append(message["content"])
+        elif record.get("task_purpose") == SHEET_PREVIEW_PURPOSE:
+            answers.append(record["instruction"])
+        elif record.get("task_purpose") not in KEPT_FACTS + (
+                creation_scope.SCOPE_PURPOSE, SCOPE_STATE_PURPOSE, OPEN_CHOICES_PURPOSE, ABILITY_ROLL_PURPOSE,
+                "startup_choices_dropped") and "startup_checkpoint_version" not in record:
+            answers.append(record)
+    if answers:
+        note["engine_answer"] = answers
+    request.append({"role": "system", "content": json.dumps(note, ensure_ascii=False)})
+    return request
+
+
 def _append_system_once(conversation, content):
     """Append a code-authored system message unless the identical one is already there (#1277).
 
@@ -1939,13 +2028,9 @@ STARTUP_LOCATION_REJECTION_LIMIT = 4
 STARTUP_HANDBACK_NOTICE = "Your last replies could not be used. The choices so far are kept and no character has been saved."
 
 
-def _handback_words(conversation, scope):
+def _handback_words(request, scope):
     """The guide's one plain reply to a handed-back turn; no block is read from it. A reply in the usual JSON shape
     gives its narration."""
-    request = _current_contract_only(conversation) + [{"role": "system", "content": (
-        "For this reply only, answer in plain words, no JSON, as the player will read it. Nothing from it is recorded. "
-        "From the startup_turn_handback facts above, tell the player what is kept and what is still needed, and ask what "
-        "to adjust.")}]
     for _ in range(2):  # an empty or unusable reply is asked once more, then nothing is said
         text = get_ai_response(request, persist_response=False, live_scope=scope).strip()
         try:
@@ -2002,6 +2087,7 @@ def ai_character_interview(conversation, module):
             rescoped = gear_given = False  # one re-scope per T092 response chain (r3 section 3.2)
             turn_items = []  # scope, state and drop items made this turn; saved only when it publishes (T4)
             turn = _new_turn(conversation)
+            since = len(correction_context)
             while True:
                 if rejected >= STARTUP_TURN_REJECTION_LIMIT:
                     # Fail forward: hand the turn back unpublished; nothing is approved or saved.
@@ -2013,12 +2099,16 @@ def ai_character_interview(conversation, module):
                         "task_purpose": HANDBACK_PURPOSE,
                         "blocks": turn["standing"],
                         "rejected_outputs": rejected,
-                        "notice_shown_to_player": notice,
                         "instruction": ("No proposal for the player's previous message was published or "
                                         "approved. Answer the player's next message with the retained choices."),
                     }, ensure_ascii=False)})
                     save_startup_conversation(conversation, live_scope=scope)
-                    words = _handback_words(conversation, scope)
+                    words = _handback_words(_author_request(conversation, module, turn, len(conversation), {
+                        "facts": notice, "blocks": creation_blocks.state(turn["standing"]),
+                        "instruction": ("For this reply only, answer in plain words, no JSON, as the player will read it. "
+                                        "Nothing from it is recorded. Tell the player what is kept and what is still "
+                                        "needed, and ask what to adjust."),
+                    }), scope)
                     if words:
                         _say(f"\nDungeon Master: {words}")
                         record = json.loads(conversation[-1]["content"])
@@ -2032,13 +2122,15 @@ def ai_character_interview(conversation, module):
                     "phase": (_startup_progress(conversation) or {}).get("phase", "interview"),
                     "character_saved": False, "adventure_ready": False,
                 }
-                request = _current_contract_only(correction_context) + [{"role": "system", "content": json.dumps({
-                    "latest_user_index": current_index, "committed_facts": facts,
+                tail = {
+                    "latest_user_index": current_index, "committed_facts": copy.deepcopy(facts),
                     "blocks": creation_blocks.state(turn["standing"]),
                     "instruction": "Return one startup response object with the blocks you add or change, not a bare sheet.",
-                }, ensure_ascii=False)}]
-                raw = get_ai_response(request, {"type": "json_object"},
-                                      persist_response=False, live_scope=scope)
+                }
+                asked = len(correction_context)  # what is added from here is the engine's answer to the next reply
+                raw = get_ai_response(_author_request(correction_context, module, turn, since, tail),
+                                      {"type": "json_object"}, persist_response=False, live_scope=scope)
+                since = asked
                 stage = "parse"
                 settled = Settled(turn["not_read"])
                 try:
@@ -2078,7 +2170,8 @@ def ai_character_interview(conversation, module):
                     else:
                         stage = "review"
                         # #1278's review over the engine-built sheet, against the reference a scoped history lacks.
-                        review_request = copy.deepcopy(request)
+                        review_request = _current_contract_only(correction_context) + [
+                            {"role": "system", "content": json.dumps(tail, ensure_ascii=False)}]
                         _append_startup_rules_reference(review_request)
                         review = _review_startup_response(
                             review_request, proposal, facts, authored_proposal=authored_proposal,
@@ -2146,10 +2239,11 @@ def ai_character_interview(conversation, module):
                     except FileExistsError as exc:
                         _set_startup_progress(conversation, live_scope=scope, phase="interview",
                                               candidate=None, character_path=None)
-                        correction_context.append({"role": "system", "content": (
-                            f"Character identity conflict: {exc}. Ask the player for a distinct "
-                            "name, retaining the rest of the build. Nothing was overwritten."
-                        )})
+                        correction_context.append({"role": "system", "content": json.dumps({
+                            "task_purpose": "startup_name_conflict",
+                            "facts": f"Character identity conflict: {exc}. Ask the player for a distinct "
+                                     "name, retaining the rest of the build. Nothing was overwritten.",
+                        }, ensure_ascii=False)})
                         # The taken name is not settled; the next reply of this turn starts from what is saved.
                         turn_items = []
                         turn = _new_turn(conversation)

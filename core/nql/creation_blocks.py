@@ -685,28 +685,28 @@ def still_needed_lines(blocks: Dict[str, Any]) -> List[str]:
 
 def state(blocks: Dict[str, Any]) -> Dict[str, Any]:
     """The request-only item: what is filled, what waits, what is needed, what may be written at finalize, and the
-    first few to ask next. Long text and spell picks are listed only as held."""
+    first few to ask next, with the values: no other place of the request holds them."""
     facts = _Facts()
     full = checked(blocks, facts)
     intent, equipment = full["intent"], full["starting_equipment"]
-    issued = creation_scope.issued_points(intent, facts.d)
     filled: Dict[str, Any] = {k: intent[k] for k in IDENTITY if intent[k] is not None}
     if blocks["creative"].get("name"):
         filled["name"] = blocks["creative"]["name"]
     for cid, picks in intent["choices"].items():
-        spell = (issued.get(cid) or {}).get("kind") in ("cantrip", "prepared_spells", "spell_known")
-        filled[cid] = "held" if spell or len(picks) > 4 else picks
+        filled[cid] = picks
     if intent["ability_scores"]:
         filled["ability_scores"] = intent["ability_scores"]
     for key in ("background_package", "class_package", "slot_picks", "equipped"):
         if equipment[key]:
             filled["starting_equipment." + key] = equipment[key]
-    filled.update({f: "held" for f in blocks["creative"] if f != "name"})
+    filled.update({f: v for f, v in blocks["creative"].items() if f != "name"})
     need = needed(blocks, facts=facts)
     out = {"filled": filled, "needed": need,
            "may_write_at_finalize": [f for f in creation_build.CREATIVE_FIELDS + ("backstory", "appearance")
                                      if f != "name" and f not in blocks["creative"]],
            "next": need[:NEXT_LIMIT]}
+    if any((intent.get("considering") or {}).values()):
+        out["considering"] = intent["considering"]
     wait = waiting(blocks, facts)
     if wait:
         out["waiting"] = wait
