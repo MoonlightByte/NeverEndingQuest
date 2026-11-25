@@ -98,15 +98,10 @@ def base_scores(d: _Data, spec: Dict[str, Any], rolled: Optional[List[int]]
     return base, None
 
 
-def _ability_scores(b: _Build, background: Dict[str, Any], rolled: Optional[List[int]]) -> Dict[str, int]:
-    """Base scores by the declared method, then the background's issued increase (max 20; p.21, p.83)."""
-    spec = b.intent.get("ability_scores") or {}
-    base, problem = base_scores(b.d, spec, rolled)
-    if problem:
-        raise BuildRefusal([problem])
-    scores = dict(b.source("abilities.base", "intent.ability_scores (%s)" % spec.get("method"), base))
-    bid = "background.%s.ability-scores" % background["key"]
-    choice = (b.picked(bid) or [None])[0]
+def raised_scores(background: Dict[str, Any], choice: Optional[str], base: Dict[str, int]
+                  ) -> Optional[Tuple[Dict[str, int], Dict[str, int]]]:
+    """(the scores with the background's chosen increase, max 20, and the increase) (p.21, p.83), or None when the
+    choice is not one the background issues."""
     abilities = list(background.get("ability_keys") or [])
     increases: Dict[str, int] = {}
     if choice == "+1 each":
@@ -118,9 +113,25 @@ def _ability_scores(b: _Build, background: Dict[str, Any], rolled: Optional[List
                 if first != second and choice == "+2 %s, +1 %s" % (first, second):
                     increases = {first.lower(): 2, second.lower(): 1}
     if choice not in _ability_options(background):
-        raise BuildRefusal([{"field": bid, "problem": "no issued ability increase picked"}])
+        return None
+    scores = dict(base)
     for ability, amount in increases.items():
         scores[ability] = min(20, scores[ability] + amount)
+    return scores, increases
+
+
+def _ability_scores(b: _Build, background: Dict[str, Any], rolled: Optional[List[int]]) -> Dict[str, int]:
+    """Base scores by the declared method, then the background's issued increase (max 20; p.21, p.83)."""
+    spec = b.intent.get("ability_scores") or {}
+    base, problem = base_scores(b.d, spec, rolled)
+    if problem:
+        raise BuildRefusal([problem])
+    b.source("abilities.base", "intent.ability_scores (%s)" % spec.get("method"), base)
+    bid = "background.%s.ability-scores" % background["key"]
+    raised = raised_scores(background, (b.picked(bid) or [None])[0], base)
+    if raised is None:
+        raise BuildRefusal([{"field": bid, "problem": "no issued ability increase picked"}])
+    scores, increases = raised
     b.source("abilities", bid, increases)
     return scores
 
