@@ -986,6 +986,9 @@ def outage_line(cls, provider):
                          "This is not your fault." % status_provider_name(provider))
     if cls == "no_connection":
         return connection_give_up_line(cls, provider).replace(" Wait a few minutes.", "")
+    if cls == "no_answer":
+        return _sentence("%s isn't responding. This is not the game's fault or yours."
+                         % status_provider_name(provider))
     return None
 
 

@@ -3141,6 +3141,8 @@ def _startup_provider_failure(exc, failures, scope, pending, wait=None):
         met = envelope.get("tries_met")
         line = remembered if met == "none" else outage_line(met, envelope.get("provider"))
         decision["player_message"] = line or decision["player_message"]
+    elif classification["category"] == "reissue_limit" and envelope.get("connection_class") == "no_answer":
+        decision["player_message"] = outage_line("no_answer", envelope.get("provider")) or decision["player_message"]
     warning(f"Startup provider attempt {failures}/{PROVIDER_MAX_FAILURES} failed: {exc}",
             category="startup")
     if failures >= PROVIDER_MAX_FAILURES or (

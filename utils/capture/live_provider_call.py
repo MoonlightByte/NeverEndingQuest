@@ -85,6 +85,9 @@ _HEARTBEAT_SECONDS = 10.0
 _WATCHDOG_SECONDS = 600.0
 _WIZARD_READ_INACTIVITY_SECONDS = 40.0
 _WIZARD_BACKSTOP_SECONDS = 180.0
+# #2090: setup on OpenAI says the provider is silent after this many seconds
+# without data (seen at the 20 s heartbeat). Display only: no try ends on it.
+_WIZARD_SILENCE_NOTICE_SECONDS = 15.0
 _WIZARD_TASK_IDS = frozenset({"T092", "T093", "T124"})
 # TCP connect bound per resolved address: the OpenAI SDK default, which the
 # in-process path already uses. A bare float deadline is also the connect
@@ -2587,7 +2590,48 @@ def _call_live_provider(
 
         _safe_emit(deliver, text)
 
+    # #2090: whether the last try failed without an answer; the line shown last.
+    silence = {"failed": False, "line": None}
+
+    def silence_line(wait=None):
+        """#2090: setup's status while OpenAI is silent, or None. ``wait`` is
+        the wait before the next try; without it a try is running."""
+        if not wizard_task or completion_required or request_provider != "openai":
+            return None
+        reader = current_reader["reader"]
+        state = reader.snapshot() if reader is not None else {}
+        attempt, left = failure_count + 1, wait
+        if wait is None:
+            since = state.get("last_progress")
+            limit = _WIZARD_READ_INACTIVITY_SECONDS
+            if since is None:
+                since = (state.get("phases") or {}).get("sent")
+                if state.get("endpoint") in _ACK_ENDPOINTS:
+                    limit = _ACK_BACKSTOP_SECONDS
+            if since is None or state.get("current") == "failed":
+                return None
+            quiet = time.monotonic() - current_reader["started"] - since
+            if quiet < _WIZARD_SILENCE_NOTICE_SECONDS and (
+                not silence["failed"] or state.get("current") == "receiving"
+            ):
+                return None
+            attempt, left = attempt + 1, limit - quiet
+        from utils.provider_errors import outage_line
+
+        left, bound = max(1, round(left)), attempt_bound(state)
+        seconds = "%d second%s" % (left, "" if left == 1 else "s")
+        silence["line"] = outage_line("no_answer", request_provider) + (
+            " The game will retry in %s (attempt %d of %d)." % (seconds, attempt, bound)
+            if attempt <= bound else
+            " The game will wait %s for an answer (attempt %d of %d)." % (
+                seconds.replace(" ", " more "), bound, bound)
+        )
+        return silence["line"]
+
     def wizard_heartbeat():
+        line = silence_line()
+        if line is not None:
+            return line
         elapsed = max(1, int(time.monotonic() - logical_started))
         if purpose == "adventure_choice":
             return "Still preparing your adventure choices (%d seconds elapsed)..." % elapsed
@@ -2624,10 +2668,12 @@ def _call_live_provider(
             return
         from core.managers.status_manager import status_manager
 
-        record = wait_record(retry_until)
+        # #2090: the page shows a wait record instead of the line, so the
+        # silence line goes out without one.
+        record = None if message == silence["line"] else wait_record(retry_until)
         if "before" not in shown:
             shown["before"] = status_manager.get_status_detail()
-        shown["record"] = record
+        shown["record"] = record or shown.get("record")
         _safe_emit(lambda text: status_manager.update_status(text, True, wait=record), message)
 
     def retry_wait(seconds, message):
@@ -3014,6 +3060,10 @@ def _call_live_provider(
                     "Still working; checking the current adventure...",
                 )
                 continue
+            if silence["line"] is not None:
+                # #2090: the silence line must not stay under the next call.
+                silence["failed"] = False
+                emit_status(wizard_heartbeat())
             if failure_announced:
                 restored = "Connection to %s restored. Continuing." % provider_name
                 notify_player_once("restored", restored)
@@ -3031,6 +3081,10 @@ def _call_live_provider(
 
         failure_count += 1
         envelope = envelope if isinstance(envelope, dict) else {}
+        if wizard_task:
+            from utils.provider_errors import connection_class
+
+            silence["failed"] = connection_class(envelope) == "no_answer"
         if isinstance(envelope.get("error_fields"), dict) and envelope["error_fields"]:
             # #2046: the child's typed error fields, file only.
             try:
@@ -3237,9 +3291,10 @@ def _call_live_provider(
             else:
                 emit_status("%s %s" % (turn_heartbeat(generation), reason))
             failure_announced = True
+        delay = _delay_for_error(envelope, failure_count)
         retry_wait(
-            _delay_for_error(envelope, failure_count),
-            wizard_heartbeat if wizard_task else (
+            delay,
+            (silence["failed"] and silence_line(delay) or wizard_heartbeat) if wizard_task else (
                 lambda: turn_heartbeat(generation)
             ),
         )
