@@ -270,21 +270,23 @@ def run_startup_sequence():
             character = safe_json_load(ModulePathManager(module["name"]).get_character_unified_path(name))
         if not _startup_build_ready(module["name"], character):
             raise LiveProviderSuperseded("Startup state changed before handoff")
-        # D-PKG-8: the engine purse; a character the interview created starts with it.
         from core.nql.acquisition import balance
-        purse = "You start with" if _startup_interview_started(conversation) else "You have"
+        interviewed = _startup_interview_started(conversation)  # the main DM opens it with the sheet in its history
         cleanup_startup_conversation()
+        if interviewed:
+            return True
         _say(f"\nDungeon Master: Your character setup is saved and verified. Welcome, {character['name']}! "
-              f"{purse} {balance(character)['gold']} gold.{_saved_defense_line(character)}")
+              f"You have {balance(character)['gold']} gold.{_saved_defense_line(character)}")
         return True
     except LiveProviderSuperseded:
         raise
-    except (StartupCancelled, KeyboardInterrupt, EOFError):
+    except (StartupCancelled, KeyboardInterrupt, EOFError) as stop:
         # #341: a headless Reset ends input the same way as Quit, then removes
         # the unfinished interview; it must not be told its choices are kept.
         from utils.shipped_modules import reset_unfinished
 
-        if _input_control_kind() != "reset" and not reset_unfinished():
+        told = isinstance(stop, StartupCancelled) and stop.args  # the guide's own pause words
+        if not told and _input_control_kind() != "reset" and not reset_unfinished():
             _say("Dungeon Master: Setup paused. Your choices are retained.")
         raise StartupCancelled() from None
 
@@ -1060,13 +1062,11 @@ def _persist_system_record(conversation, record, live_scope):
     save_startup_conversation(conversation, live_scope=live_scope)
 
 
-def _held_blocks(conversation, published=None):
+def _held_blocks(conversation):
     """(the blocks this interview's published turns left, what reading them back dropped). Read in order from this
     startup's items only: a published reply's intent and starting_equipment are the whole merged blocks (an older
     reply restated them whole), its creative is what that turn added, and a handback's blocks replace all three.
-    Nothing is read from prose; the result is checked again, since the data can have changed. With published
-    (a list), only published turns are read, no handback and no finalize that was not committed, and the blocks each
-    of them left are added to the list: what the player was answered with, turn by turn."""
+    Nothing is read from prose; the result is checked again, since the data can have changed."""
     progress = _startup_progress(conversation) or {}
     startup_id, start = progress.get("startup_id"), 0
     if startup_id is not None and startup_id != _first_startup_id(conversation):
@@ -1088,16 +1088,11 @@ def _held_blocks(conversation, published=None):
             continue
         if role == "system":
             kept = item.get("blocks")
-            if item.get("task_purpose") == HANDBACK_PURPOSE and isinstance(kept, dict) and published is None:
+            if item.get("task_purpose") == HANDBACK_PURPOSE and isinstance(kept, dict):
                 blocks = creation_blocks.empty()
                 _fold_blocks(blocks, kept)
         elif isinstance(item.get("intent"), dict):
-            conflict = item.get("decision") == "finalize_character"
-            if conflict and published is not None:
-                continue
-            _fold_blocks(blocks, item, drop_name=conflict)
-            if published is not None:
-                published.append(copy.deepcopy(blocks))
+            _fold_blocks(blocks, item, drop_name=item.get("decision") == "finalize_character")
     roll = _ability_roll(conversation)
     return creation_blocks.settle(blocks, rolled=roll["rolled"] if roll else None)
 
@@ -1162,36 +1157,40 @@ def _build_summary(blocks, rolled, creative):
 
 
 def _last_summary(conversation):
-    """The summary this interview last showed the player, or None."""
+    """The summary this interview last gave the guide, or None."""
     previews = _scope_states(conversation, SHEET_PREVIEW_PURPOSE)
     return previews[-1].get("summary") if previews else None
 
 
-def _summary_shown(conversation, blocks, rolled, held):
-    """True when the player has been shown these blocks: the last saved summary equals the one rendered now, leaving
-    out details this reply newly wrote (D-ALLCLASS-3), but never the name: the player sees it before the character
-    is saved. None when there is no summary to show yet."""
-    creative = {k: v for k, v in blocks["creative"].items() if k == "name" or k in held["creative"]}
-    rendered = _build_summary(blocks, rolled, creative)
-    return None if rendered is None else rendered[0] == _last_summary(conversation)
+def _engine_part(summary):
+    """A summary without its details, which the guide writes: the part a build is compared by."""
+    return (summary or "").split("\n\nDetails:\n")[0]
 
 
-def _sheet_preview(conversation, blocks, rolled):
-    """Once no choice id is open, the engine builds the sheet for the published blocks and the player sees
-    the summary rendered from it (D2); the author gets it as a typed startup_sheet_preview item. Returns the
-    summary text when it changed since the last preview, else None."""
+def _summary_shown(last, blocks, rolled):
+    """True when the engine gave the guide this build: last, the last summary given, equals the one rendered now, the
+    details aside. None when there is no summary yet."""
     rendered = _build_summary(blocks, rolled, blocks["creative"])
-    if rendered is None or rendered[0] == _last_summary(conversation):
-        return None
-    summary, built = rendered
-    conversation.append({"role": "system", "content": json.dumps({
-        "task_purpose": SHEET_PREVIEW_PURPOSE,
-        "startup_id": (_startup_progress(conversation) or {}).get("startup_id"),
-        "summary": summary, "untyped": built["untyped"],
-        "instruction": ("The game showed the player this summary of the engine-built sheet after your "
-                        "narration. It is the build the player approves; never restate it differently."),
-    }, ensure_ascii=False)})
-    return summary
+    return None if rendered is None else _engine_part(rendered[0]) == _engine_part(last)
+
+
+def _sheet_preview(conversations, blocks, rolled):
+    """Once nothing is needed, the engine builds the sheet and gives the guide its summary as a typed
+    startup_sheet_preview item, in each list (the first is read for the last one). True when it was new."""
+    shown = _summary_shown(_last_summary(conversations[0]), blocks, rolled)
+    if shown is not False or creation_blocks.needed(blocks):
+        return False
+    summary, built = _build_summary(blocks, rolled, blocks["creative"])
+    for conversation in conversations:
+        conversation.append({"role": "system", "content": json.dumps({
+            "task_purpose": SHEET_PREVIEW_PURPOSE,
+            "startup_id": (_startup_progress(conversations[0]) or {}).get("startup_id"),
+            "summary": summary, "untyped": built["untyped"],
+            "instruction": ("The engine built this character. Answer again with continue_interview: tell the player "
+                            "the whole build, or after an earlier one what changed, in your own words with these names "
+                            "and numbers, and ask for approval."),
+        }, ensure_ascii=False)})
+    return True
 
 
 def _append_scope(conversations, scope, intent):
@@ -1256,11 +1255,11 @@ def _log_rejection(count, stage, exc, intent=None):
 
 
 class StartupSummaryRefusal(StartupContractError):
-    """A finalize of a build whose summary the player has not been shown (D-CREATE-FLEX-3, question 6)."""
+    """A finalize of a build the guide had not been given before the player's message (D-CREATE-FLEX-3, question 6)."""
 
     def __init__(self):
-        super().__init__("The player has not been shown the summary of this build. Use continue_interview now: the game "
-                         "shows the summary after your narration, and the player then approves it", "summary_not_shown")
+        super().__init__("The player has not heard this build, or a recorded detail changed. Use continue_interview now: tell "
+                         "it, and the player then approves it", "summary_not_shown")
 
 
 def _earlier_choice_ids(conversation):
@@ -1363,6 +1362,10 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
     if problems:
         raise StartupScopeRefusal(problems, open_ids)
     rolled = roll["rolled"] if roll else None
+    told = None if creation_blocks.needed(merged.standing) else _summary_shown(turn["summary"], merged.standing, rolled)
+    was, now = turn["held"]["creative"], merged.standing["creative"]
+    if told and any(was.get(k) and was[k] != now.get(k) for k, _ in creation_build.DETAIL_LABELS):
+        told = False  # a detail recorded before this player message changed
     if proposal["decision"] == "pause_setup":
         _check_finalize_details(proposal, merged)  # the player leaves: a detail that was not written is not passed over
     if proposal["decision"] == "finalize_character":
@@ -1371,17 +1374,19 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
         _check_finalize_details(proposal, merged)
         _write_blocks(proposal, turn, whole=True)
         check_finalize(proposal)
-        if (not creation_blocks.needed(merged.standing)
-                and _summary_shown(correction_context, merged.standing, rolled, turn["held"]) is False):
+        if told is False:
+            _sheet_preview([correction_context, turn_items], merged.standing, rolled)
             raise StartupSummaryRefusal()
         return False
     if proposal["confirmation"]["whole_build_approved"]:
-        # A finalize that was meant must not be published as a claim. Before the player has seen the summary, the
-        # turn is published instead and the game shows it.
-        if not creation_blocks.needed(merged.standing) and _summary_shown(
-                correction_context, merged.standing, rolled, turn["held"]):
+        # A finalize that was meant must not be published as a claim. Before the guide had the build, the turn is
+        # published instead and the guide tells it.
+        if told:
             raise StartupContractError("An interview response cannot approve the build", "approve_interview")
         proposal["confirmation"]["whole_build_approved"] = False
+    if proposal["decision"] == "continue_interview" and _sheet_preview(
+            [correction_context, turn_items], merged.standing, rolled):
+        return True
     _write_blocks(proposal, turn)
     reported = _scope_states(correction_context, OPEN_CHOICES_PURPOSE)
     if not reported or reported[-1].get("open_choice_ids") != open_ids:
@@ -1405,20 +1410,7 @@ def _new_turn(conversation):
     dropped (on reading the history back, and by this turn's replies) and the places corrected as not read."""
     held, unread = _held_blocks(conversation)
     return {"held": held, "standing": copy.deepcopy(held), "unread": unread, "lost": {}, "leftovers": {},
-            "not_read": set()}
-
-
-def _change_lines(conversation, turn):
-    """The short factual lines for what this published turn recorded or replaced (D-CREATE-FLEX-6), against what the
-    published turns before it left: a handed-back pick shows when it is published. Read before the reply is added to
-    the conversation. Nothing is saved; a failure never loses the turn."""
-    try:
-        published = []
-        before = _held_blocks(conversation, published)[0]
-        return creation_blocks.change_lines(creation_blocks.changes(published, before, turn["standing"]))
-    except Exception as fault:  # logged with its class only (NEQ-OPS-05)
-        file_only(f"STARTUP_NOTE change lines failed: {type(fault).__name__}", category="startup")
-        return []
+            "not_read": set(), "summary": _last_summary(conversation)}
 
 
 def _turn_drops(turn):
@@ -1952,7 +1944,7 @@ def _starting_gear_facts(proposal, provenance):
 
 
 def _starting_gear_notice(character, provenance):
-    """The plain notice for a character saved without starting gear (end state (d)), or None."""
+    """What the guide is given for a character saved without starting gear (end state (d)), or None."""
     from core.nql import apply
     packages = provenance.get("starting_packages") or {}
     name, binary = character.get("name"), apply.binary_path()
@@ -1984,15 +1976,30 @@ STARTUP_TURN_REJECTION_LIMIT = 4
 # a B2-iv class matching the limit above); provider errors don't count. After
 # this many in a row the party starts at the plot's starting area (D-1270-2).
 STARTUP_LOCATION_REJECTION_LIMIT = 4
-STARTUP_HANDBACK_NOTICE = (
-    "I could not finish that build yet. Your choices so far "
-    "are kept and no character has been saved. Tell me what to adjust, or say "
-    "continue and I will try again."
-)
+STARTUP_HANDBACK_NOTICE = "Your last replies could not be used. The choices so far are kept and no character has been saved."
+
+
+def _handback_words(conversation, scope):
+    """The guide's one plain reply to a handed-back turn; no block is read from it. A reply in the usual JSON shape
+    gives its narration."""
+    request = _current_contract_only(conversation) + [{"role": "system", "content": (
+        "For this reply only, answer in plain words, no JSON, as the player will read it. Nothing from it is recorded. "
+        "From the startup_turn_handback facts above, tell the player what is kept and what is still needed, and ask what "
+        "to adjust.")}]
+    for _ in range(2):  # an empty or unusable reply is asked once more, then nothing is said
+        text = get_ai_response(request, persist_response=False, live_scope=scope).strip()
+        try:
+            value = json.loads(extract_json_object(text) or text)
+        except ValueError:
+            value = {"narration": text}
+        words = value.get("narration") if isinstance(value, dict) else None
+        if isinstance(words, str) and words.strip():
+            return words.strip()
+    return ""
 
 
 def _still_needed_text(blocks):
-    """The lines under the fixed notice of a handed-back turn (D-CREATE-FLEX-3): what the build still needs, and what
+    """The facts under the notice of a handed-back turn (D-CREATE-FLEX-3): what the build still needs, and what
     the first of it offers, in names. A failure leaves the fixed notice alone."""
     try:
         lines = creation_blocks.still_needed_lines(blocks)
@@ -2026,14 +2033,13 @@ def ai_character_interview(conversation, module):
             _append_scope([conversation], menu, None)
         else:
             warning("Startup creation scope unavailable; the interview continues without it", category="startup")
-    _say("\nDungeon Master: Let's build your character together.", flush=True)  # #1422 F1
     while True:
         scope = open_live_turn_scope()
         try:
             save_startup_conversation(conversation, live_scope=scope)
             correction_context = copy.deepcopy(conversation)
             rejected = 0
-            rescoped = False  # one re-scope per T092 response chain (r3 section 3.2)
+            rescoped = gear_given = False  # one re-scope per T092 response chain (r3 section 3.2)
             turn_items = []  # scope, state and drop items made this turn; saved only when it publishes (T4)
             turn = _new_turn(conversation)
             while True:
@@ -2052,7 +2058,13 @@ def ai_character_interview(conversation, module):
                                         "approved. Answer the player's next message with the retained choices."),
                     }, ensure_ascii=False)})
                     save_startup_conversation(conversation, live_scope=scope)
-                    _say(f"\nDungeon Master: {notice}")
+                    words = _handback_words(conversation, scope)
+                    if words:
+                        _say(f"\nDungeon Master: {words}")
+                        record = json.loads(conversation[-1]["content"])
+                        record["notice_shown_to_player"] = words
+                        conversation[-1]["content"] = json.dumps(record, ensure_ascii=False)
+                        save_startup_conversation(conversation, live_scope=scope)
                     break
                 current_index = _latest_player_index(conversation)
                 facts = {
@@ -2148,24 +2160,24 @@ def ai_character_interview(conversation, module):
                     continue
                 if scope.is_superseded():
                     raise LiveProviderSuperseded("startup review superseded")
-                lines = (_change_lines(conversation, turn)
-                         if scoped and proposal["decision"] != "finalize_character" else [])
+                notice = (_starting_gear_notice(proposal["character"], provenance)
+                          if proposal["decision"] == "finalize_character" else None)
+                if notice and not gear_given:  # the guide tells it in the same answer, asked once more
+                    gear_given = True
+                    correction_context.append({"role": "system", "content": json.dumps({
+                        "task_purpose": "startup_starting_gear", "facts": notice,
+                        "instruction": "Send the same finalize_character again; its narration tells the player this."},
+                        ensure_ascii=False)})
+                    continue
                 conversation.extend(_items_to_save(conversation, turn_items, turn))
                 conversation.append({"role": "assistant", "content": json.dumps(proposal, ensure_ascii=False)})
-                summary = None
                 if proposal["decision"] == "finalize_character" and "engine_build" in provenance:
                     # Written before the approved checkpoint and the archive move, so it survives handoff.
                     conversation.append({"role": "system", "content": json.dumps(dict(
                         {"task_purpose": ENGINE_BUILD_PURPOSE,
                          "startup_id": (_startup_progress(conversation) or {}).get("startup_id")},
                         **provenance["engine_build"]), ensure_ascii=False)})
-                elif proposal["decision"] == "continue_interview" and scoped:
-                    summary = _sheet_preview(conversation, turn["standing"], roll["rolled"] if roll else None)
                 if proposal["decision"] == "finalize_character":
-                    notice = _starting_gear_notice(proposal["character"], provenance)
-                    if notice:
-                        # Shown once, before the approved checkpoint: a restart after it loses nothing.
-                        _say(f"\nDungeon Master: {notice}", flush=True)  # #1422 F1
                     _set_startup_progress(conversation, live_scope=scope, phase="approved",
                                           candidate=proposal["character"], character_path=None)
                     try:
@@ -2189,13 +2201,9 @@ def ai_character_interview(conversation, module):
                     return proposal["character"]
                 _set_startup_progress(conversation, live_scope=scope, phase="interview")
                 _say(f"\nDungeon Master: {proposal['narration']}")
-                for line in lines:
-                    _say(f"\n{line}")
-                if summary:
-                    _say(f"\n{summary}")
                 if proposal["decision"] == "pause_setup":
-                    # The reviewed typed decision, never the player's words (#855).
-                    raise StartupCancelled()
+                    # The reviewed typed decision, never the player's words (#855); the guide has said it.
+                    raise StartupCancelled("told")
                 break
         except LiveProviderSuperseded:
             raise

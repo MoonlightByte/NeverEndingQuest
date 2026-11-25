@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In character creation, the guide now tells you everything in its own words, the finished character included: the game no longer prints its own lists, summaries and notices beside it, and you still answer the menus by number, by name or in your own words (#2090).
+
 - Character creation on your own AI server asks again more times when the server goes silent before it waits for you. With any provider, your next message after that wait now always sends the request again (#2090).
 
 - In character creation, when the guide repeats the ability scores from your character summary, the game now keeps the scores you chose instead of stopping your turn over them (#2090).
