@@ -258,10 +258,12 @@ SETTLE_LIMIT = 60
 
 class Settled:
     """What a scoped reply's check settled at its own place (#2090 B3). refused: the blocks left out, as typed
-    problems; notes: every settled place for the log, in schema names only."""
+    problems; unread: the places (key paths) of those that were not read; notes: every settled place for the log, in
+    schema names only. told: the places an earlier reply to the same player message was corrected for as not read."""
 
-    def __init__(self):
-        self.refused, self.notes = [], []
+    def __init__(self, told=()):
+        self.told = frozenset(told)
+        self.refused, self.unread, self.notes = [], [], []
 
 
 def _at(value, path):
@@ -274,6 +276,15 @@ def _empty(value):
     return value is None or value in ("", [], {})
 
 
+def _echo(schema, key, sent):
+    """True when a sent key is a keyword of the schema at that place, with that schema's own value (or one of its listed
+    values): "type": "object". The reply repeats the form; it cannot be a player's choice (D-CREATE-FLEX-14)."""
+    if key not in schema:
+        return False
+    held = schema[key]
+    return any(type(one) is type(sent) and one == sent for one in [held] + (held if isinstance(held, list) else []))
+
+
 def _settle_reply(value, schema, settled):
     """Settle every fault of a scoped reply that costs only its own place: a key or part the game does not read is set
     aside, a block it cannot take is left out and reported. False when one of them is none of these, or they are too
@@ -283,12 +294,12 @@ def _settle_reply(value, schema, settled):
         errors = sorted(Draft7Validator(schema).iter_errors(value), key=lambda e: (len(e.absolute_path), list(map(str, e.absolute_path))))
         if not errors:
             return True
-        if not _settle_one(value, errors[0], settled, known):
+        if not _settle_one(value, errors[0], settled, known, schema):
             return False
     return False
 
 
-def _settle_one(value, error, settled, known):
+def _settle_one(value, error, settled, known, schema):
     path = list(error.absolute_path)
     top = path[0] if path else None
     interview = isinstance(value, dict) and value.get("decision") == "continue_interview"
@@ -316,18 +327,26 @@ def _settle_one(value, error, settled, known):
 
     if error.validator == "additionalProperties":
         extra = [k for k in error.instance if k not in error.schema["properties"]]
+        for key in [k for k in extra if _echo(error.schema, k, error.instance[k])]:
+            extra.remove(key)
+            error.instance.pop(key)
+            note("echo", path + [key])
         if path == ["intent", "ability_scores"] and not all(_empty(error.instance[k]) for k in extra):
             return refuse(path, "ability_scores", problem="refused", why="ability_scores holds method and assignment only")
-        # A value here may be the player's choice, which the narration may call recorded: it is refused, on every
-        # turn. A part that records nothing either way is not.
+        # A value here may be the player's choice, which the narration may call recorded: it is refused. Sent again at
+        # the same place it is set aside, but never on a finalize. A part that records nothing either way is not.
         records = top not in ("confirmation", "choice_turn") and path[:2] != ["intent", "considering"]
         for key in extra:
             place = path + [key]
-            if records and not _empty(error.instance[key]):
+            if not records or _empty(error.instance[key]):
+                aside(place)
+            elif tuple(place) in settled.told and value.get("decision") != "finalize_character":
+                error.instance.pop(key)
+                note("unread", place)
+            else:
+                settled.unread.append(tuple(place))
                 refuse(place, ".".join(map(str, place)), problem="not_read",
                        why="the game does not read this part; send what it holds in its own field, or leave it out")
-            else:
-                aside(place)
         return True
     if error.validator == "required":
         blank = {"confirmation": {"player_message_index": None, "whole_build_approved": False}}
@@ -363,6 +382,10 @@ def _settle_one(value, error, settled, known):
         if field == "considering":
             return aside(path[:3])
         if field == "choices" and len(path) > 2:
+            if len(path) == 3 and _echo(schema["properties"]["intent"]["properties"]["choices"], path[2], error.instance):
+                value["intent"]["choices"].pop(path[2])
+                note("echo", path)
+                return True
             return refuse(path[:3], path[2], problem="not_a_list")
         if field == "ability_scores":
             if path[2:] == ["method"]:
@@ -391,7 +414,7 @@ def parse_startup_response(text, *, latest_user_index, scoped=False, settled=Non
             file_only(f"STARTUP_NOTE settle failed: {type(fault).__name__}", category="startup")
             clean = False
         if not clean:
-            settled.__init__()
+            settled.__init__(settled.told)
             value = _validate(sent, schema)  # refused whole, for all that was sent
         return _check_engine_response(value, latest_user_index, settled)
     value = _parse_object(text, _scoped_reply_schema() if scoped else startup_response_schema())

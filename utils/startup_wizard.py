@@ -1311,6 +1311,8 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
                                    previous=lambda: _earlier_choice_ids(correction_context),
                                    alignments=creation_alignments())
     _log_notes(proposal, merged, turn["held"], settled)
+    if settled is not None:
+        turn["not_read"].update(settled.unread)  # each is told to the author below
     problems_sent = (list(settled.refused) if settled is not None else []) + merged.problems
     turn["standing"] = merged.standing
     turn["lost"].update(merged.dropped)
@@ -1399,10 +1401,11 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
 
 
 def _new_turn(conversation):
-    """The blocks one player turn works on: held (what is published), standing (with this turn's replies) and what
-    was dropped (on reading the history back, and by this turn's replies)."""
+    """The blocks one player turn works on: held (what is published), standing (with this turn's replies), what was
+    dropped (on reading the history back, and by this turn's replies) and the places corrected as not read."""
     held, unread = _held_blocks(conversation)
-    return {"held": held, "standing": copy.deepcopy(held), "unread": unread, "lost": {}, "leftovers": {}}
+    return {"held": held, "standing": copy.deepcopy(held), "unread": unread, "lost": {}, "leftovers": {},
+            "not_read": set()}
 
 
 def _change_lines(conversation, turn):
@@ -2065,7 +2068,7 @@ def ai_character_interview(conversation, module):
                 raw = get_ai_response(request, {"type": "json_object"},
                                       persist_response=False, live_scope=scope)
                 stage = "parse"
-                settled = Settled()
+                settled = Settled(turn["not_read"])
                 try:
                     authored_proposal = copy.deepcopy(parse_startup_response(
                         raw, latest_user_index=current_index, scoped=scoped, settled=settled))
