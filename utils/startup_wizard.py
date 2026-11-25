@@ -244,8 +244,6 @@ def run_startup_sequence():
     """Resume the shared setup, publishing success only from verified files."""
     from utils.capture.live_provider_call import LiveProviderSuperseded
 
-    # flush=True publishes this line as its own card before the next one (#1422 F1).
-    _say("\nDungeon Master: Welcome! Choose your adventure, then build your character.", flush=True)
     initialize_game_files_from_bu()
     try:
         conversation = initialize_startup_conversation()
@@ -531,22 +529,16 @@ def _say(text, flush=False):
     print(text, flush=flush)
 
 
-def _print_startup_choices(labels):
-    """Print the exact numbered choices under the presented menu."""
-    _say("\n".join(f"{i}. {label}" for i, label in enumerate(labels, 1)))
-
-
 # D-STARTUP-MENU-1 (#1260): the adventure menu lists the module builder as its
 # last option. It is not stitched in yet: choosing it says so and shows the menu
 # again; nothing here imports or starts the builder.
 MODULE_BUILDER_OPTION = "Create a new adventure (module builder)"
 
 
-def _module_builder_coming_soon(labels):
-    """The builder option: a coming-soon line and the menu again (no builder path)."""
-    _say("Dungeon Master: Creating a new adventure with the module builder is coming soon. "
-          "For now, please choose one of the installed adventures.")
-    _print_startup_choices(labels)
+def _builder_fact():
+    return ("The player chose the module builder. It is coming soon and cannot be used yet. Tell the player this, "
+            "do not welcome them again, and present the adventures again.")
+
 
 
 def _builder_option_shown():
@@ -571,7 +563,7 @@ def _read_menu_sentence(menu, labels, details, line):
     return read_menu_answer(request_payload(menu, options, line))
 
 
-def present_module_options(conversation, modules):
+def present_module_options(conversation, modules, fact=""):
     """Show available modules to player using AI"""
     if not modules:
         _say("Error: No valid modules found!")
@@ -599,11 +591,8 @@ def present_module_options(conversation, modules):
     builder_clause = ("; the last one, creating a new adventure with the module builder, is coming soon"
                       if _builder_option_shown() else "")
     # AI prompt for module selection
-    ai_prompt = f"""You are the Dungeon Master for NeverEndingQuest, a text-based adventure game based on the world's most popular 5th edition roleplaying game. Welcome the player and present the available modules.
-
-Start with: "Welcome to NeverEndingQuest! This adventure game uses the SRD 5.2.1 rules (based on the world's most popular 5th edition roleplaying game) to bring you an immersive text-based fantasy experience."
-
-Then mention these key features:
+    ai_prompt = f"""You are the Dungeon Master for NeverEndingQuest, a text-based adventure game based on the world's most popular 5th edition roleplaying game. Welcome the player in your own words and present the available modules.
+You may mention these key features:
 - AI-powered storytelling that adapts to your choices
 - Turn-based tactical combat with dice rolling
 - Character progression from level 1 to 20
@@ -620,8 +609,7 @@ for the player. Even a sole installed module needs the player's confirmation.
 
 Ask the player which module they'd like to play, and explain that they can type its number (1, 2, etc.) or its name, or simply say which adventure they want."""
     
-    _present_startup_menu(conversation, ai_prompt, phase="startup_module_selection")
-    _print_startup_choices([module['display_name'] for module in modules] + _builder_labels())
+    _present_startup_menu(conversation, f"{fact}\n\n{ai_prompt}" if fact else ai_prompt, phase="startup_module_selection")
     
     return modules
 
@@ -633,12 +621,12 @@ def select_module(conversation):
         _say("Error: No modules available. Please add modules to the modules/ directory.")
         return None
     
-    checkpoint = _startup_progress(conversation)
+    checkpoint, lost = _startup_progress(conversation), ""
     if checkpoint and checkpoint.get('module'):
         for module in modules:
             if module['name'] == checkpoint['module']:
                 return module
-        _say("Dungeon Master: Your selected adventure is no longer installed. Please choose an available adventure; your character choices are retained.")
+        lost = "The adventure chosen before is no longer installed; the player's character choices are kept. Tell the player this."
 
     # Module replacement invalidates location readiness, not player approval.
     # Resume the existing commit/read-back path for an already approved build.
@@ -648,7 +636,7 @@ def select_module(conversation):
     ) else 'interview'
     
     # Present options to player
-    presented_modules = present_module_options(conversation, modules)
+    presented_modules = present_module_options(conversation, modules, lost)
     if not presented_modules:
         return None
     
@@ -669,27 +657,20 @@ def select_module(conversation):
             try:
                 choice_num = int(user_input)
                 if choice_num == builder_number:
-                    _module_builder_coming_soon(labels)
+                    present_module_options(conversation, modules, _builder_fact())
                     continue
                 if 1 <= choice_num <= len(modules):
                     selected = modules[choice_num - 1]
                     _set_startup_progress(conversation, module=selected['name'],
                                           phase=selection_phase, location=None)
                     return selected
-                else:
-                    _say(f"Dungeon Master: Please choose a number between 1 and {len(labels)}")
-                    continue
             except ValueError:
                 pass
             
             # The number, or the adventure's whole name (D-KW-6).
             answer = _menu_key(user_input)
-            if answer == _menu_key(MODULE_BUILDER_OPTION):
-                if builder_number is None:
-                    # #2065: no builder on a hosted world; a plain re-ask, no build.
-                    _say("Dungeon Master: I didn't understand that. Please enter the number (1, 2, etc.) or the adventure's full name as listed.")
-                    continue
-                _module_builder_coming_soon(labels)
+            if builder_number is not None and answer == _menu_key(MODULE_BUILDER_OPTION):
+                present_module_options(conversation, modules, _builder_fact())
                 continue
             matches = [module for module in modules
                        if answer in {_menu_key(module['display_name']),
@@ -699,15 +680,12 @@ def select_module(conversation):
                 _set_startup_progress(conversation, module=selected['name'],
                                       phase=selection_phase, location=None)
                 return selected
-            if len(matches) > 1:
-                _say("Dungeon Master: That name matches more than one adventure. Please choose its displayed number.")
-                continue
             
             # Any other line is read by T127 (D-STARTUP-MENU-1).
             details = [module['description'] for module in modules] + (['Build your own adventure. Coming soon.'] if builder_number is not None else [])
             read = _read_menu_sentence("adventure", labels, details, user_input)
             if builder_number is not None and read.get("choice") == builder_number:
-                _module_builder_coming_soon(labels)
+                present_module_options(conversation, modules, _builder_fact())
                 continue
             if read.get("choice"):
                 selected = modules[read["choice"] - 1]
@@ -761,7 +739,7 @@ def scan_existing_characters(module_name):
     
     return characters
 
-def present_character_options(conversation, characters, module_name):
+def present_character_options(conversation, characters, module_name, fact=""):
     """Show existing characters and option to create new one"""
     if not characters:
         # #1368: no model call. This note is not a menu, so the menu prompt answered
@@ -787,10 +765,9 @@ Existing Characters:
 
 {len(characters) + 1}. Create a new character
 
-Be helpful and explain that they can type the character's number or name, or "new" (or {len(characters) + 1}) to create a fresh character, or simply say which they want."""
+Give every option with its exact number. Be helpful and explain that they can type the character's number or name, or "new" (or {len(characters) + 1}) to create a fresh character, or simply say which they want."""
     
-    _present_startup_menu(conversation, ai_prompt)
-    _print_startup_choices([char['name'] for char in characters] + ['Create a new character'])
+    _present_startup_menu(conversation, f"{fact}\n\n{ai_prompt}" if fact else ai_prompt)
     
     return characters
 
@@ -821,56 +798,41 @@ def select_or_create_character(conversation, module):
             if _menu_key(user_input) == 'new':
                 return create_new_character(conversation, module)
             
-            # Try to parse as number
+            # The number, or the character's whole name (D-KW-6).
+            selected_char = None
+            answer = _menu_key(user_input)
             try:
                 choice_num = int(user_input)
-                if choice_num == len(characters) + 1:
-                    return create_new_character(conversation, module)
-                if 1 <= choice_num <= len(characters):
-                    selected_char = characters[choice_num - 1]
-                    _say(f"Dungeon Master: Excellent! You've selected {selected_char['name']}!")
-                    chosen = _use_existing_startup_character(conversation, module, selected_char)
-                    if chosen:
-                        return chosen
-                    continue
-                else:
-                    _say(f"Dungeon Master: Please choose a number between 1 and {len(characters) + 1}; {len(characters) + 1} or 'new' creates a character")
-                    continue
             except ValueError:
-                pass
-            
-            # The number, or the character's whole name (D-KW-6).
-            answer = _menu_key(user_input)
+                choice_num = 0
             named = [char for char in characters if _menu_key(char['name']) == answer]
-            if len(named) > 1:
-                _say("Dungeon Master: That name matches more than one character. Please choose its displayed number.")
-                continue
-            matched = named[0] if named else None
-            if matched is not None:
-                _say(f"Dungeon Master: Excellent! You've selected {matched['name']}!")
-                chosen = _use_existing_startup_character(conversation, module, matched)
-                if chosen:
-                    return chosen
-                continue
-            
-            # Any other line is read by T127 (D-STARTUP-MENU-1).
-            labels = [char['name'] for char in characters] + ['Create a new character']
-            details = [f"Level {char['level']} {char['race']} {char['class']}" for char in characters]
-            details.append('Make a brand new character for this adventure')
-            read = _read_menu_sentence("character", labels, details, user_input)
-            if read.get("choice") == len(characters) + 1:
+            if choice_num == len(characters) + 1:
                 return create_new_character(conversation, module)
-            if read.get("choice"):
-                selected_char = characters[read["choice"] - 1]
-                _say(f"Dungeon Master: Excellent! You've selected {selected_char['name']}!")
+            if 1 <= choice_num <= len(characters):
+                selected_char = characters[choice_num - 1]
+            elif len(named) == 1:
+                selected_char = named[0]
+            else:
+                # Any other line is read by T127 (D-STARTUP-MENU-1).
+                labels = [char['name'] for char in characters] + ['Create a new character']
+                details = [f"Level {char['level']} {char['race']} {char['class']}" for char in characters]
+                details.append('Make a brand new character for this adventure')
+                read = _read_menu_sentence("character", labels, details, user_input)
+                if read.get("choice") == len(characters) + 1:
+                    return create_new_character(conversation, module)
+                if read.get("choice"):
+                    selected_char = characters[read["choice"] - 1]
+                elif read.get("question"):
+                    _say(f"Dungeon Master: {read['question']}")
+                    continue
+            if selected_char is not None:
                 chosen = _use_existing_startup_character(conversation, module, selected_char)
                 if chosen:
                     return chosen
+                present_character_options(conversation, characters, module_name,
+                                          f"The character file of {selected_char['name']} is unavailable. Tell the player this.")
                 continue
-            if read.get("question"):
-                _say(f"Dungeon Master: {read['question']}")
-                continue
-            
+
             _say("Dungeon Master: I didn't understand that. Please enter the character's number or full name as listed, or 'new' to create a new character.")
             
         except KeyboardInterrupt:
@@ -908,8 +870,6 @@ def _use_existing_startup_character(conversation, module, selected):
                 category="startup")
         character = None
     if not isinstance(character, dict) or not character.get("name"):
-        _say("Dungeon Master: That character file is unavailable. "
-              "Please choose another character, or type 'new' to create one.")
         return None
     with _startup_operation() as scope:
         _set_startup_progress(conversation, live_scope=scope, phase="approved",
