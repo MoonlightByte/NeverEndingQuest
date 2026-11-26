@@ -442,6 +442,7 @@ def _asked_and_sent(facts, standing, out, reply, problems) -> None:
         return
     issued = creation_scope.issued_points(out["intent"], facts.d)
     before = standing["intent"]["choices"]
+    reverted = False
     for cid in dict.fromkeys(a for a in asks if isinstance(a, str)):
         point = issued.get(cid)
         now = creation_scope.distinct(out["intent"]["choices"].get(cid))
@@ -454,7 +455,9 @@ def _asked_and_sent(facts, standing, out, reply, problems) -> None:
         else:
             out["intent"]["choices"].pop(cid, None)
         problems.append({"choice_id": cid, "problem": "asked_and_sent", "options": sent})
-    _tie_class_package(facts, out)
+        reverted = True
+    if reverted:
+        _tie_class_package(facts, out)
 
 
 def _merge_scores(facts, held, intent, sent, rolled, problems, aside) -> None:

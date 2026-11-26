@@ -1192,10 +1192,11 @@ class StartupScopeRefusal(ValueError):
                                 "the scope does not offer. To ask again about a choice that is held, first send its "
                                 "id with []; a pick the player did not make is cleared that way, never kept by leaving "
                                 "out the question. " + ASK_FOR_ANOTHER + " "
-                                "For asked_and_sent, the picks you sent for a choice you also asked are not kept: keep the "
-                                "question, and send them only when the player takes them. For asked_not_open, the choice is "
-                                "already full: if the player named its picks, drop the question; if not, send its id with [] and "
-                                "ask the player, never telling those picks as chosen.")}
+                                "For asked_and_sent, the picks you sent for a choice you also asked are not kept: if the player "
+                                "named them in their message, send them again without that question; if not, keep the question "
+                                "and send them only when the player takes them, never telling them as chosen. For asked_not_open,"
+                                " the choice is already full: if the player named its picks, drop the question; if not, send its "
+                                "id with [] and ask the player, never telling those picks as chosen.")}
 
 
 def _log_rejection(count, stage, exc, intent=None):
