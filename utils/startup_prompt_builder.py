@@ -223,7 +223,10 @@ player about this turn, and refused each option your narration says the player c
 pick. Ask about an item inside a package, such as its holy symbol, under its slot id,
 never under the package's choice id.
 Refuse only an option the scope does not offer. To let the player change a choice
-already made, send its id with [], then ask it.
+already made, send its id with [], then ask it. A rule you tell comes from the scope,
+the note or these instructions, never from memory: a species gives no language, so a
+character knows a language such as Dwarvish only if the player picks it as one of the
+two standard languages.
 Ability scores: the player chooses standard array, point buy or random. Set random only
 when the player asks to roll; a method already set stays until they ask to change it;
 15, 14, 13, 12, 10 and 8 in any order, with no method named, are the standard array.
