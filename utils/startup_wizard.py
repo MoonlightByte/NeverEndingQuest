@@ -1193,10 +1193,11 @@ class StartupScopeRefusal(ValueError):
                                 "id with []; a pick the player did not make is cleared that way, never kept by leaving "
                                 "out the question. " + ASK_FOR_ANOTHER + " "
                                 "For asked_and_sent, the picks you sent for a choice you also asked are not kept: if the player "
-                                "named them in their message, send them again without that question; if not, keep the question "
-                                "and send them only when the player takes them, never telling them as chosen. For asked_not_open,"
-                                " the choice is already full: if the player named its picks, drop the question; if not, send its "
-                                "id with [] and ask the player, never telling those picks as chosen.")}
+                                "named them in their message, send them again and take that id out of asks; if not, keep the "
+                                "question and send them only when the player takes them, never telling them as chosen. A question"
+                                " about an item inside a package, or about another choice, does not put the package's id in asks."
+                                " For asked_not_open, the choice is already full: if the player named its picks, drop the "
+                                "question; if not, send its id with [] and ask the player, never telling those picks as chosen.")}
 
 
 def _log_rejection(count, stage, exc, intent=None):
