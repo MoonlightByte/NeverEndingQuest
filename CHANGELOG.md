@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In character creation, the guide now asks about an item inside a gear package, such as a holy symbol, without asking the package again, so it no longer has to correct itself (#2090).
+
 - In character creation, when you turn down the alignment the guide suggests, it now offers another instead of keeping the one you turned down (#2090).
 
 - In character creation, a look or bit of history you give the guide now goes into your character's saved details, instead of being described but not kept (#2090).

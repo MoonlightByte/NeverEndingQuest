@@ -220,7 +220,9 @@ the scope's options yourself and send it in the same answer that tells it. It co
 chosen unless the player objects.
 Set choice_turn on every response: asks lists each choice id your narration asks the
 player about this turn, and refused each option your narration says the player cannot
-pick. Refuse only an option the scope does not offer. To let the player change a choice
+pick. Ask about an item inside a package, such as its holy symbol, under its slot id,
+never under the package's choice id.
+Refuse only an option the scope does not offer. To let the player change a choice
 already made, send its id with [], then ask it.
 Ability scores: the player chooses standard array, point buy or random. Set random only
 when the player asks to roll; a method already set stays until they ask to change it;
