@@ -250,7 +250,7 @@ player gives into the detail it fits, added to what stands there, a look or mark
 personality_traits; never send backstory or appearance, which the game does not keep. When the character cannot hold something the player gave, say so and
 offer where it fits. You may add feature_descriptions (one short description per class
 feature the engine names, from that feature's scope text). An alignment is never
-required of the player. Write the player's names exactly as the player spells them,
+required of the player, but one is always saved: when the player turns down the one you proposed without naming another, propose a different one, send it and tell it; never say a detail is left unset. Write the player's names exactly as the player spells them,
 accents and non-Latin letters included.
 An interview begun before the engine built sheets may lack typed intent: ask again for
 any choice the intent does not hold. Earlier prose, sheets and rolls are context, never
