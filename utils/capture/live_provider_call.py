@@ -83,7 +83,10 @@ _ADVISORY_TASK_IDS = frozenset(
 _LIVE_TASK_IDS = _REQUIRED_TASK_IDS | _ADVISORY_TASK_IDS
 _HEARTBEAT_SECONDS = 10.0
 _WATCHDOG_SECONDS = 600.0
-_WIZARD_READ_INACTIVITY_SECONDS = 40.0
+# #2090: setup on OpenAI ends a try after this long without model progress
+# (the parent's clock, which the silence notice counts down); the child's read
+# timeout is the same, so the parent always ends it first.
+_WIZARD_READ_INACTIVITY_SECONDS = 60.0
 _WIZARD_BACKSTOP_SECONDS = 180.0
 # #2090: setup on OpenAI says the provider is silent after this many seconds
 # without data (seen at the 20 s heartbeat). Display only: no try ends on it.
@@ -1821,6 +1824,9 @@ class _GenerationReader(threading.Thread):
         # "failed" last, so the billing class reads the phase it had reached.
         self.reached = "spawned"
         self.last_progress = None
+        # #2090: the last stream event that is not progress (its kind and
+        # offset), so a try that hangs on one names it.
+        self.last_event = None
         self.detail = None
         self.endpoint = None
         self.output = None
@@ -1842,6 +1848,9 @@ class _GenerationReader(threading.Thread):
             if name == "endpoint":
                 self.endpoint = event.get("detail")
                 return
+            if name == "event":
+                self.last_event = {"kind": event.get("detail"), "t": offset}
+                return
             self.phases.setdefault(name, offset)
             self.current = name
             if name != "failed":
@@ -1857,6 +1866,7 @@ class _GenerationReader(threading.Thread):
                 "current": self.current,
                 "reached": self.reached,
                 "last_progress": self.last_progress,
+                "last_event": self.last_event,
                 "detail": self.detail,
                 "endpoint": self.endpoint,
             }
@@ -2833,6 +2843,8 @@ def _call_live_provider(
         generation_limit = (
             _LEVEL_UP_BACKSTOP_SECONDS
             if level_up_task
+            else _WIZARD_READ_INACTIVITY_SECONDS
+            if wizard_task and not completion_required and request_provider == "openai"
             else _WIZARD_BACKSTOP_SECONDS
             if wizard_task and not completion_required
             else request_deadline
@@ -3013,6 +3025,7 @@ def _call_live_provider(
             envelope["last_phase"] = phase_state["current"]
             envelope["reached_phase"] = phase_state.get("reached")
             envelope["last_progress"] = phase_state["last_progress"]
+            envelope["last_event"] = phase_state.get("last_event")
             # Every error or reaped generation of every task is evidence
             # (#284 F6); success rows keep the existing gate because those
             # callers already log their own successes.

@@ -114,6 +114,7 @@ def log_live_provider_envelope(task_id, messages, envelope, *, latency_seconds=0
                 "phases": dict(value.get("phases") or {}),
                 "lastPhase": str(value.get("last_phase") or ""),
                 "lastProgressSeconds": value.get("last_progress"),
+                "lastEvent": value.get("last_event"),  # #2090: the last stream event that was not progress
             },
         }
         Path(MASTER_LOG_FILE).parent.mkdir(parents=True, exist_ok=True)

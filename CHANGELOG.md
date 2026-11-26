@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In character creation, when OpenAI stops answering, the game now retries when its countdown ends instead of waiting without end (#2090).
+
 - In character creation, saying you want to start over now begins a new character with nothing of the old one kept, instead of pausing setup (#2090).
 
 - In character creation, the build you are shown lists what your character wears and what they hold on separate lines, and the guide asks for the part you have not said (#2090).
