@@ -423,6 +423,7 @@ def merge(held: Dict[str, Any], standing: Dict[str, Any], reply: Dict[str, Any],
     gear = reply.get("starting_equipment") or {}
     _merge_choices(facts, held, out, sent.get("choices") or {}, gear, previous, problems, leftovers, lost)
     _merge_gear(facts, held, out, gear, problems, aside, leftovers)
+    _asked_and_sent(facts, standing, out, reply, problems)
     if facts.ok:
         now = _values(out)
         _settle(facts, out, rolled)
@@ -430,6 +431,30 @@ def merge(held: Dict[str, Any], standing: Dict[str, Any], reply: Dict[str, Any],
             lost[key] = lost.get(key, []) + values
     unwritten = _merge_creative(held, out["creative"], reply.get("creative") or {}, alignments)
     return Merge(out, problems, unwritten, aside, lost, leftovers)
+
+
+def _asked_and_sent(facts, standing, out, reply, problems) -> None:
+    """#2090 (D-AUTH-1): a reply that asks the player about a choice and fills it in the same answer guessed it. Its
+    picks for that id are not kept: the value before this reply stands, and the problem names what was sent. A
+    choice the reply leaves short of its count, or that was full before this reply, is not this case."""
+    asks = (reply.get("choice_turn") or {}).get("asks") or []
+    if not asks:
+        return
+    issued = creation_scope.issued_points(out["intent"], facts.d)
+    before = standing["intent"]["choices"]
+    for cid in dict.fromkeys(a for a in asks if isinstance(a, str)):
+        point = issued.get(cid)
+        now = creation_scope.distinct(out["intent"]["choices"].get(cid))
+        was = creation_scope.distinct(before.get(cid))
+        if point is None or len(now) < point["count"] or len(was) >= point["count"]:
+            continue
+        sent = list(out["intent"]["choices"].get(cid) or [])
+        if cid in before:
+            out["intent"]["choices"][cid] = copy.deepcopy(before[cid])
+        else:
+            out["intent"]["choices"].pop(cid, None)
+        problems.append({"choice_id": cid, "problem": "asked_and_sent", "options": sent})
+    _tie_class_package(facts, out)
 
 
 def _merge_scores(facts, held, intent, sent, rolled, problems, aside) -> None:

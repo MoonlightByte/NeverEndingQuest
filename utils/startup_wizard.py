@@ -1191,7 +1191,11 @@ class StartupScopeRefusal(ValueError):
                                 "finalize needs every issued choice id filled with its count. Refuse only an option "
                                 "the scope does not offer. To ask again about a choice that is held, first send its "
                                 "id with []; a pick the player did not make is cleared that way, never kept by leaving "
-                                "out the question. " + ASK_FOR_ANOTHER)}
+                                "out the question. " + ASK_FOR_ANOTHER + " "
+                                "For asked_and_sent, the picks you sent for a choice you also asked are not kept: keep the "
+                                "question, and send them only when the player takes them. For asked_not_open, the choice is "
+                                "already full: if the player named its picks, drop the question; if not, send its id with [] and "
+                                "ask the player, never telling those picks as chosen.")}
 
 
 def _log_rejection(count, stage, exc, intent=None):
@@ -1307,6 +1311,9 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
     if scope is not None and (current is None or current.get("scope_id") != scope["scope_id"]):
         _append_scope([correction_context, turn_items], scope, intent)
         ask_again = True
+    if ask_again and not rescoped and any(p.get("problem") == "asked_and_sent" for p in merged.problems):
+        # #2090: a choice asked and filled in one answer is told now; the new scope is already in the request.
+        raise StartupScopeRefusal(problems_sent, [])
     if ask_again and not rescoped:
         if settled is not None and settled.refused:  # no rejection, but the author learns what was left out and why
             correction_context.append({"role": "system", "content": json.dumps({
