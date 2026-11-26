@@ -87,6 +87,8 @@ STARTUP_INTENT_SCHEMA = _object_schema({
             "strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")}),
             type=["object", "null"]),
     }), type=["object", "null"]),
+    # The player wants to start over: the engine clears the build but the adventure and a roll already made.
+    "start_over": {"type": ["boolean", "null"]},
 })
 
 # What the narration asks and refuses this turn, as typed claims the engine checks against the scope (#1325):

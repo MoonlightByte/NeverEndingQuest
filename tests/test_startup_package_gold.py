@@ -582,10 +582,19 @@ def _g4b_disclosed(wizard, monkeypatch, tmp_path):
         events.append(("progress", changes.get("phase")))
         return inner(conversation, **changes)
 
+    given = wizard._starting_gear_notice
+
+    def gear(character, provenance):
+        notice = given(character, provenance)
+        if notice:
+            events.append(("gear", notice))
+        return notice
+
     monkeypatch.setattr(wizard, "_set_startup_progress", progress)
+    monkeypatch.setattr(wizard, "_starting_gear_notice", gear)
     out = _Ordered(events)
     with redirect_stdout(out):
-        _, conversation, commits, _, _ = run_interview(wizard, _bram(), monkeypatch, review=review)
+        _, conversation, commits, authors, _ = run_interview(wizard, _bram(), monkeypatch, review=review)
     facts = reviews[0]["committed_facts"]
     assert facts["origin"] == {"class_key": "fighter", "background_key": "soldier"}
     assert facts["starting_equipment"] == BRAM_PICKS
@@ -594,14 +603,17 @@ def _g4b_disclosed(wizard, monkeypatch, tmp_path):
     assert REVIEWER_LINE in startup_prompt_builder.build_startup_review_prompt()
     # The engine-built sheet keeps its unarmored base (10 + Dex 17's +3) when no armor can be projected.
     assert commits[0]["currency"]["gold"] == 0 and commits[0]["armorClass"] == 13
-    notice = ("Dungeon Master: The rules engine could not run, so Bram Holloway starts with no gold, no starting "
+    notice = ("The rules engine could not run, so Bram Holloway starts with no gold, no starting "
               f"gear and no weapons. To play with them, make sure {apply.binary_path()} runs on this computer, "
               "reset the campaign, and create the character again; otherwise you can play on without them.")
-    assert out.getvalue().count(notice) == 1
-    # Shown before the approved checkpoint is written (FF R3 N4).
-    shown_at = next(i for i, (kind, text) in enumerate(events) if kind == "print" and notice in "\n" + text)
-    approved_at = events.index(("progress", "approved"))
-    assert shown_at < approved_at
+    # #2090: nothing is printed; the guide has the facts in its current note, on the request whose answer is committed.
+    assert notice not in out.getvalue()
+    answer = json.loads(authors[-1][-1]["content"]).get("engine_answer") or []
+    assert [a["facts"] for a in answer if a.get("task_purpose") == "startup_starting_gear"] == [notice]
+    assert not any(notice in m["content"] for m in authors[0])
+    # Given before the approved checkpoint is written (FF R3 N4).
+    given_at = [i for i, (kind, _text) in enumerate(events) if kind == "gear"]
+    assert given_at and given_at[0] < events.index(("progress", "approved"))
 
 
 def test_g4b_reviewer_gets_the_disclosed_outcome(wizard, monkeypatch, tmp_path):
@@ -619,7 +631,8 @@ def test_mutant_notice_after_the_approved_checkpoint(wizard, monkeypatch, tmp_pa
     def approved_then_notice(conversation, **changes):
         record = real_progress(conversation, **changes)
         if changes.get("phase") == "approved" and "args" in held:
-            print(f"\nDungeon Master: {real_notice(*held['args'])}")
+            conversation.append({"role": "system", "content": json.dumps({
+                "task_purpose": "startup_starting_gear", "facts": real_notice(*held["args"])})})
         return record
 
     monkeypatch.setattr(wizard, "_starting_gear_notice", defer)

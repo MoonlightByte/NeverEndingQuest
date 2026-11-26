@@ -429,9 +429,9 @@ def _worn_apart(merged: List[Dict[str, Any]], equipped: Any) -> List[Dict[str, A
 
 
 def worn_preview(sheet: Dict[str, Any], items: List[Tuple[str, Dict[str, Any]]], picks: List[Dict[str, Any]],
-                 equipped: Any) -> List[Tuple[str, bool]]:
-    """What a grant of these packages would save as worn: (catalog id, carried because the hands are full), in row
-    order. The same rows and the same hand rule as the save; items whose slot is not picked yet are left out."""
+                 equipped: Any) -> List[Tuple[str, bool, bool]]:
+    """What a grant of these packages would save as worn: (catalog id, carried because the hands are full, in hand),
+    in row order. The same rows and the same hand rule as the save; items whose slot is not picked yet are left out."""
     chosen = {p["slot"]: p for p in picks}
     ready = [i for i in items if not isinstance(i[1].get("slot"), str) or i[1]["slot"] in chosen]
     trial = copy.deepcopy(sheet)
@@ -443,7 +443,11 @@ def worn_preview(sheet: Dict[str, Any], items: List[Tuple[str, Dict[str, Any]]],
             trial["equipment"].append(dict(acquisition.row_from_views(item, None, entry), equipped=True))
     from core.nql.armor_class import PROJECTION_LOCATION
     release_carried(trial, PROJECTION_LOCATION)
-    return [(row["catalog_id"], row["equipped"] is not True) for row in trial["equipment"]]
+    # In hand as the engine reads these rows (#1520 held_hands); a carried row holds none.
+    world = genesis.build_world([copy.deepcopy(trial)], PROJECTION_LOCATION)
+    ids = world.item_ids.get(genesis.character_id(trial)) or {}
+    return [(row["catalog_id"], row["equipped"] is not True, bool(world.held_hands.get(ids.get(index, ""))))
+            for index, row in enumerate(trial["equipment"])]
 
 
 def _slot_problems(items: List[Tuple[str, Dict[str, Any]]], picks: List[Any]) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:

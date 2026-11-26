@@ -31,7 +31,7 @@ register_callsite("T124", "utils/startup_wizard.py", 826)
 from jsonschema import validate, ValidationError
 from core.generators.module_stitcher import ModuleStitcher
 from utils.startup_prompt_builder import build_character_creation_system_prompt as _build_character_creation_system_prompt
-from utils.startup_prompt_builder import build_startup_review_prompt
+from utils.startup_prompt_builder import GUIDE_SPEAK, GUIDE_WHO, build_startup_review_prompt
 from utils.startup_prompt_builder import (
     ORIGINS_FILE, STARTUP_RULES_REFERENCE_PURPOSE, build_startup_rules_reference,
 )
@@ -226,26 +226,16 @@ def reset_foreign_save(module_name):
         return False
     from web.shared_state import message_log_reset
     message_log_reset()
-    _say("Dungeon Master: This save belonged to another adventure, so the campaign was reset "
-          f"first, as Reset does. The old game is backed up in {backup_dir}.")
+    from utils.player_notice import show_player_notice
+    show_player_notice("This save belonged to another adventure, so the campaign was reset "
+                       f"first, as Reset does. The old game is backed up in {backup_dir}.")
     return True
-
-
-def _saved_defense_line(character):
-    """The saved sheet's armor class and hit points for the post-save line (dplay-AC-difficult turn 18): the
-    engine-projected values, which the interview preview cannot show before the gear is granted."""
-    ac, hp = character.get("armorClass"), character.get("maxHitPoints")
-    if type(ac) is not int or type(hp) is not int:
-        return ""
-    return f" Armor class {ac}, hit points {hp}."
 
 
 def run_startup_sequence():
     """Resume the shared setup, publishing success only from verified files."""
     from utils.capture.live_provider_call import LiveProviderSuperseded
 
-    # flush=True publishes this line as its own card before the next one (#1422 F1).
-    _say("\nDungeon Master: Welcome! Choose your adventure, then build your character.", flush=True)
     initialize_game_files_from_bu()
     try:
         conversation = initialize_startup_conversation()
@@ -270,22 +260,21 @@ def run_startup_sequence():
             character = safe_json_load(ModulePathManager(module["name"]).get_character_unified_path(name))
         if not _startup_build_ready(module["name"], character):
             raise LiveProviderSuperseded("Startup state changed before handoff")
-        # D-PKG-8: the engine purse; a character the interview created starts with it.
-        from core.nql.acquisition import balance
-        purse = "You start with" if _startup_interview_started(conversation) else "You have"
         cleanup_startup_conversation()
-        _say(f"\nDungeon Master: Your character setup is saved and verified. Welcome, {character['name']}! "
-              f"{purse} {balance(character)['gold']} gold.{_saved_defense_line(character)}")
         return True
     except LiveProviderSuperseded:
         raise
-    except (StartupCancelled, KeyboardInterrupt, EOFError):
+    except (StartupCancelled, KeyboardInterrupt, EOFError) as stop:
         # #341: a headless Reset ends input the same way as Quit, then removes
         # the unfinished interview; it must not be told its choices are kept.
         from utils.shipped_modules import reset_unfinished
 
-        if _input_control_kind() != "reset" and not reset_unfinished():
-            _say("Dungeon Master: Setup paused. Your choices are retained.")
+        told = isinstance(stop, StartupCancelled) and stop.args  # the guide's own pause words
+        if not told and _input_control_kind() != "reset" and not reset_unfinished():
+            from utils.player_notice import show_player_notice
+
+            # An operational notice, not the DM's voice.
+            show_player_notice("Setup paused. Your choices are retained.")
         raise StartupCancelled() from None
 
 
@@ -475,8 +464,9 @@ def _present_startup_menu(conversation, prompt, *, phase="startup_interview"):
     """Keep catalog presentation separate from retained interview instructions."""
     request = [
         {"role": "system", "content": (
+            f"{GUIDE_WHO}\n{GUIDE_SPEAK}\n"
             "Present only the supplied startup menu in plain ASCII prose. "
-            "Preserve every supplied option and its exact number. Do not choose "
+            "Preserve every option and its exact menu number. Do not choose "
             "for the player, create a character, or claim anything was saved. "
             "This is menu presentation, not a character interview; do not emit JSON."
         )},
@@ -529,22 +519,19 @@ def _say(text, flush=False):
     print(text, flush=flush)
 
 
-def _print_startup_choices(labels):
-    """Print the exact numbered choices under the presented menu."""
-    _say("\n".join(f"{i}. {label}" for i, label in enumerate(labels, 1)))
-
-
 # D-STARTUP-MENU-1 (#1260): the adventure menu lists the module builder as its
 # last option. It is not stitched in yet: choosing it says so and shows the menu
 # again; nothing here imports or starts the builder.
 MODULE_BUILDER_OPTION = "Create a new adventure (module builder)"
 
 
-def _module_builder_coming_soon(labels):
-    """The builder option: a coming-soon line and the menu again (no builder path)."""
-    _say("Dungeon Master: Creating a new adventure with the module builder is coming soon. "
-          "For now, please choose one of the installed adventures.")
-    _print_startup_choices(labels)
+UNREAD_FACT = "The player's last line could not be read. Ask again which they want; do not welcome them again."
+
+
+def _builder_fact():
+    return ("The player chose the module builder. It is coming soon and cannot be used yet. Tell the player this, "
+            "do not welcome them again, and present the adventures again.")
+
 
 
 def _builder_option_shown():
@@ -569,7 +556,7 @@ def _read_menu_sentence(menu, labels, details, line):
     return read_menu_answer(request_payload(menu, options, line))
 
 
-def present_module_options(conversation, modules):
+def present_module_options(conversation, modules, fact=""):
     """Show available modules to player using AI"""
     if not modules:
         _say("Error: No valid modules found!")
@@ -583,8 +570,8 @@ def present_module_options(conversation, modules):
                        if 'min' in level_range and 'max' in level_range else 'Level range unknown')
         module_list.append(
             f"{i}. **{module['display_name']}** ({level_label})\n"
-            f"   {module['description']}\n"
-            f"   Estimated play time: {module['play_time']}"
+            f"   {module['description']}"
+            + (f"\n   Estimated play time: {module['play_time']}" if module['play_time'] != 'Unknown' else "")
         )
     
     if _builder_option_shown():
@@ -597,11 +584,8 @@ def present_module_options(conversation, modules):
     builder_clause = ("; the last one, creating a new adventure with the module builder, is coming soon"
                       if _builder_option_shown() else "")
     # AI prompt for module selection
-    ai_prompt = f"""You are the Dungeon Master for NeverEndingQuest, a text-based adventure game based on the world's most popular 5th edition roleplaying game. Welcome the player and present the available modules.
-
-Start with: "Welcome to NeverEndingQuest! This adventure game uses the SRD 5.2.1 rules (based on the world's most popular 5th edition roleplaying game) to bring you an immersive text-based fantasy experience."
-
-Then mention these key features:
+    ai_prompt = f"""Welcome the player to NeverEndingQuest in a few warm sentences of your own, then present the available modules. Leave out what is unknown. Tell each adventure by its name and levels, not by its number of areas.
+You may draw on a few of these, never as a list:
 - AI-powered storytelling that adapts to your choices
 - Turn-based tactical combat with dice rolling
 - Character progression from level 1 to 20
@@ -618,8 +602,7 @@ for the player. Even a sole installed module needs the player's confirmation.
 
 Ask the player which module they'd like to play, and explain that they can type its number (1, 2, etc.) or its name, or simply say which adventure they want."""
     
-    _present_startup_menu(conversation, ai_prompt, phase="startup_module_selection")
-    _print_startup_choices([module['display_name'] for module in modules] + _builder_labels())
+    _present_startup_menu(conversation, f"{fact}\n\n{ai_prompt}" if fact else ai_prompt, phase="startup_module_selection")
     
     return modules
 
@@ -631,12 +614,12 @@ def select_module(conversation):
         _say("Error: No modules available. Please add modules to the modules/ directory.")
         return None
     
-    checkpoint = _startup_progress(conversation)
+    checkpoint, lost = _startup_progress(conversation), ""
     if checkpoint and checkpoint.get('module'):
         for module in modules:
             if module['name'] == checkpoint['module']:
                 return module
-        _say("Dungeon Master: Your selected adventure is no longer installed. Please choose an available adventure; your character choices are retained.")
+        lost = "The adventure chosen before is no longer installed; the player's character choices are kept. Tell the player this."
 
     # Module replacement invalidates location readiness, not player approval.
     # Resume the existing commit/read-back path for an already approved build.
@@ -646,7 +629,7 @@ def select_module(conversation):
     ) else 'interview'
     
     # Present options to player
-    presented_modules = present_module_options(conversation, modules)
+    presented_modules = present_module_options(conversation, modules, lost)
     if not presented_modules:
         return None
     
@@ -667,27 +650,20 @@ def select_module(conversation):
             try:
                 choice_num = int(user_input)
                 if choice_num == builder_number:
-                    _module_builder_coming_soon(labels)
+                    present_module_options(conversation, modules, _builder_fact())
                     continue
                 if 1 <= choice_num <= len(modules):
                     selected = modules[choice_num - 1]
                     _set_startup_progress(conversation, module=selected['name'],
                                           phase=selection_phase, location=None)
                     return selected
-                else:
-                    _say(f"Dungeon Master: Please choose a number between 1 and {len(labels)}")
-                    continue
             except ValueError:
                 pass
             
             # The number, or the adventure's whole name (D-KW-6).
             answer = _menu_key(user_input)
-            if answer == _menu_key(MODULE_BUILDER_OPTION):
-                if builder_number is None:
-                    # #2065: no builder on a hosted world; a plain re-ask, no build.
-                    _say("Dungeon Master: I didn't understand that. Please enter the number (1, 2, etc.) or the adventure's full name as listed.")
-                    continue
-                _module_builder_coming_soon(labels)
+            if builder_number is not None and answer == _menu_key(MODULE_BUILDER_OPTION):
+                present_module_options(conversation, modules, _builder_fact())
                 continue
             matches = [module for module in modules
                        if answer in {_menu_key(module['display_name']),
@@ -697,15 +673,12 @@ def select_module(conversation):
                 _set_startup_progress(conversation, module=selected['name'],
                                       phase=selection_phase, location=None)
                 return selected
-            if len(matches) > 1:
-                _say("Dungeon Master: That name matches more than one adventure. Please choose its displayed number.")
-                continue
             
             # Any other line is read by T127 (D-STARTUP-MENU-1).
             details = [module['description'] for module in modules] + (['Build your own adventure. Coming soon.'] if builder_number is not None else [])
             read = _read_menu_sentence("adventure", labels, details, user_input)
             if builder_number is not None and read.get("choice") == builder_number:
-                _module_builder_coming_soon(labels)
+                present_module_options(conversation, modules, _builder_fact())
                 continue
             if read.get("choice"):
                 selected = modules[read["choice"] - 1]
@@ -716,7 +689,7 @@ def select_module(conversation):
                 _say(f"Dungeon Master: {read['question']}")
                 continue
             
-            _say("Dungeon Master: I didn't understand that. Please enter the number (1, 2, etc.) or the adventure's full name as listed.")
+            present_module_options(conversation, modules, UNREAD_FACT)
             
         except KeyboardInterrupt:
             raise
@@ -759,7 +732,7 @@ def scan_existing_characters(module_name):
     
     return characters
 
-def present_character_options(conversation, characters, module_name):
+def present_character_options(conversation, characters, module_name, fact=""):
     """Show existing characters and option to create new one"""
     if not characters:
         # #1368: no model call. This note is not a menu, so the menu prompt answered
@@ -785,10 +758,9 @@ Existing Characters:
 
 {len(characters) + 1}. Create a new character
 
-Be helpful and explain that they can type the character's number or name, or "new" (or {len(characters) + 1}) to create a fresh character, or simply say which they want."""
+Give every option with its exact number. Be helpful and explain that they can type the character's number or name, or "new" (or {len(characters) + 1}) to create a fresh character, or simply say which they want."""
     
-    _present_startup_menu(conversation, ai_prompt)
-    _print_startup_choices([char['name'] for char in characters] + ['Create a new character'])
+    _present_startup_menu(conversation, f"{fact}\n\n{ai_prompt}" if fact else ai_prompt)
     
     return characters
 
@@ -819,57 +791,42 @@ def select_or_create_character(conversation, module):
             if _menu_key(user_input) == 'new':
                 return create_new_character(conversation, module)
             
-            # Try to parse as number
+            # The number, or the character's whole name (D-KW-6).
+            selected_char = None
+            answer = _menu_key(user_input)
             try:
                 choice_num = int(user_input)
-                if choice_num == len(characters) + 1:
-                    return create_new_character(conversation, module)
-                if 1 <= choice_num <= len(characters):
-                    selected_char = characters[choice_num - 1]
-                    _say(f"Dungeon Master: Excellent! You've selected {selected_char['name']}!")
-                    chosen = _use_existing_startup_character(conversation, module, selected_char)
-                    if chosen:
-                        return chosen
-                    continue
-                else:
-                    _say(f"Dungeon Master: Please choose a number between 1 and {len(characters) + 1}; {len(characters) + 1} or 'new' creates a character")
-                    continue
             except ValueError:
-                pass
-            
-            # The number, or the character's whole name (D-KW-6).
-            answer = _menu_key(user_input)
+                choice_num = 0
             named = [char for char in characters if _menu_key(char['name']) == answer]
-            if len(named) > 1:
-                _say("Dungeon Master: That name matches more than one character. Please choose its displayed number.")
-                continue
-            matched = named[0] if named else None
-            if matched is not None:
-                _say(f"Dungeon Master: Excellent! You've selected {matched['name']}!")
-                chosen = _use_existing_startup_character(conversation, module, matched)
-                if chosen:
-                    return chosen
-                continue
-            
-            # Any other line is read by T127 (D-STARTUP-MENU-1).
-            labels = [char['name'] for char in characters] + ['Create a new character']
-            details = [f"Level {char['level']} {char['race']} {char['class']}" for char in characters]
-            details.append('Make a brand new character for this adventure')
-            read = _read_menu_sentence("character", labels, details, user_input)
-            if read.get("choice") == len(characters) + 1:
+            if choice_num == len(characters) + 1:
                 return create_new_character(conversation, module)
-            if read.get("choice"):
-                selected_char = characters[read["choice"] - 1]
-                _say(f"Dungeon Master: Excellent! You've selected {selected_char['name']}!")
+            if 1 <= choice_num <= len(characters):
+                selected_char = characters[choice_num - 1]
+            elif len(named) == 1:
+                selected_char = named[0]
+            else:
+                # Any other line is read by T127 (D-STARTUP-MENU-1).
+                labels = [char['name'] for char in characters] + ['Create a new character']
+                details = [f"Level {char['level']} {char['race']} {char['class']}" for char in characters]
+                details.append('Make a brand new character for this adventure')
+                read = _read_menu_sentence("character", labels, details, user_input)
+                if read.get("choice") == len(characters) + 1:
+                    return create_new_character(conversation, module)
+                if read.get("choice"):
+                    selected_char = characters[read["choice"] - 1]
+                elif read.get("question"):
+                    _say(f"Dungeon Master: {read['question']}")
+                    continue
+            if selected_char is not None:
                 chosen = _use_existing_startup_character(conversation, module, selected_char)
                 if chosen:
                     return chosen
+                present_character_options(conversation, characters, module_name,
+                                          f"The character file of {selected_char['name']} is unavailable. Tell the player this.")
                 continue
-            if read.get("question"):
-                _say(f"Dungeon Master: {read['question']}")
-                continue
-            
-            _say("Dungeon Master: I didn't understand that. Please enter the character's number or full name as listed, or 'new' to create a new character.")
+
+            present_character_options(conversation, characters, module_name, UNREAD_FACT)
             
         except KeyboardInterrupt:
             raise
@@ -906,8 +863,6 @@ def _use_existing_startup_character(conversation, module, selected):
                 category="startup")
         character = None
     if not isinstance(character, dict) or not character.get("name"):
-        _say("Dungeon Master: That character file is unavailable. "
-              "Please choose another character, or type 'new' to create one.")
         return None
     with _startup_operation() as scope:
         _set_startup_progress(conversation, live_scope=scope, phase="approved",
@@ -1060,13 +1015,8 @@ def _persist_system_record(conversation, record, live_scope):
     save_startup_conversation(conversation, live_scope=live_scope)
 
 
-def _held_blocks(conversation, published=None):
-    """(the blocks this interview's published turns left, what reading them back dropped). Read in order from this
-    startup's items only: a published reply's intent and starting_equipment are the whole merged blocks (an older
-    reply restated them whole), its creative is what that turn added, and a handback's blocks replace all three.
-    Nothing is read from prose; the result is checked again, since the data can have changed. With published
-    (a list), only published turns are read, no handback and no finalize that was not committed, and the blocks each
-    of them left are added to the list: what the player was answered with, turn by turn."""
+def _startup_start(conversation, log=False):
+    """Where this startup's items begin in the history."""
     progress = _startup_progress(conversation) or {}
     startup_id, start = progress.get("startup_id"), 0
     if startup_id is not None and startup_id != _first_startup_id(conversation):
@@ -1074,9 +1024,18 @@ def _held_blocks(conversation, published=None):
         if start is None:
             # No checkpoint carries this startup's id: nothing up to the last checkpoint is known to be its own.
             start = max((i + 1 for i, m in enumerate(conversation) if _checkpoint_ids([m])), default=0)
-            file_only("STARTUP_NOTE task=T092 startup_without_checkpoint=1", category="startup")
+            if log:
+                file_only("STARTUP_NOTE task=T092 startup_without_checkpoint=1", category="startup")
+    return start
+
+
+def _held_blocks(conversation):
+    """(the blocks this interview's published turns left, what reading them back dropped). Read in order from this
+    startup's items only: a published reply's intent and starting_equipment are the whole merged blocks (an older
+    reply restated them whole), its creative is what that turn added, and a handback's blocks replace all three.
+    Nothing is read from prose; the result is checked again, since the data can have changed."""
     blocks = creation_blocks.empty()
-    for message in conversation[start:]:
+    for message in conversation[_startup_start(conversation, log=True):]:
         role = message.get("role")
         if role not in ("assistant", "system"):
             continue
@@ -1088,16 +1047,13 @@ def _held_blocks(conversation, published=None):
             continue
         if role == "system":
             kept = item.get("blocks")
-            if item.get("task_purpose") == HANDBACK_PURPOSE and isinstance(kept, dict) and published is None:
+            if item.get("task_purpose") == HANDBACK_PURPOSE and isinstance(kept, dict):
                 blocks = creation_blocks.empty()
                 _fold_blocks(blocks, kept)
         elif isinstance(item.get("intent"), dict):
-            conflict = item.get("decision") == "finalize_character"
-            if conflict and published is not None:
-                continue
-            _fold_blocks(blocks, item, drop_name=conflict)
-            if published is not None:
-                published.append(copy.deepcopy(blocks))
+            if item["intent"].get("start_over") is True:
+                blocks = creation_blocks.empty()  # the player started over: nothing before it stands
+            _fold_blocks(blocks, item, drop_name=item.get("decision") == "finalize_character")
     roll = _ability_roll(conversation)
     return creation_blocks.settle(blocks, rolled=roll["rolled"] if roll else None)
 
@@ -1162,36 +1118,40 @@ def _build_summary(blocks, rolled, creative):
 
 
 def _last_summary(conversation):
-    """The summary this interview last showed the player, or None."""
+    """The summary this interview last gave the guide, or None."""
     previews = _scope_states(conversation, SHEET_PREVIEW_PURPOSE)
     return previews[-1].get("summary") if previews else None
 
 
-def _summary_shown(conversation, blocks, rolled, held):
-    """True when the player has been shown these blocks: the last saved summary equals the one rendered now, leaving
-    out details this reply newly wrote (D-ALLCLASS-3), but never the name: the player sees it before the character
-    is saved. None when there is no summary to show yet."""
-    creative = {k: v for k, v in blocks["creative"].items() if k == "name" or k in held["creative"]}
-    rendered = _build_summary(blocks, rolled, creative)
-    return None if rendered is None else rendered[0] == _last_summary(conversation)
+def _engine_part(summary):
+    """A summary without its details, which the guide writes: the part a build is compared by."""
+    return (summary or "").split("\n\nDetails:\n")[0]
 
 
-def _sheet_preview(conversation, blocks, rolled):
-    """Once no choice id is open, the engine builds the sheet for the published blocks and the player sees
-    the summary rendered from it (D2); the author gets it as a typed startup_sheet_preview item. Returns the
-    summary text when it changed since the last preview, else None."""
+def _summary_shown(last, blocks, rolled):
+    """True when the engine gave the guide this build: last, the last summary given, equals the one rendered now, the
+    details aside. None when there is no summary yet."""
     rendered = _build_summary(blocks, rolled, blocks["creative"])
-    if rendered is None or rendered[0] == _last_summary(conversation):
-        return None
-    summary, built = rendered
-    conversation.append({"role": "system", "content": json.dumps({
-        "task_purpose": SHEET_PREVIEW_PURPOSE,
-        "startup_id": (_startup_progress(conversation) or {}).get("startup_id"),
-        "summary": summary, "untyped": built["untyped"],
-        "instruction": ("The game showed the player this summary of the engine-built sheet after your "
-                        "narration. It is the build the player approves; never restate it differently."),
-    }, ensure_ascii=False)})
-    return summary
+    return None if rendered is None else _engine_part(rendered[0]) == _engine_part(last)
+
+
+def _sheet_preview(conversations, blocks, rolled):
+    """Once nothing is needed, the engine builds the sheet and gives the guide its summary as a typed
+    startup_sheet_preview item, in each list (the first is read for the last one). True when it was new."""
+    shown = _summary_shown(_last_summary(conversations[0]), blocks, rolled)
+    if shown is not False or creation_blocks.needed(blocks):
+        return False
+    summary, built = _build_summary(blocks, rolled, blocks["creative"])
+    for conversation in conversations:
+        conversation.append({"role": "system", "content": json.dumps({
+            "task_purpose": SHEET_PREVIEW_PURPOSE,
+            "startup_id": (_startup_progress(conversations[0]) or {}).get("startup_id"),
+            "summary": summary, "untyped": built["untyped"],
+            "instruction": ("The engine built this character. Answer again with continue_interview: tell the player "
+                            "the whole build, or after an earlier one what changed, in your own words with these names "
+                            "and numbers, and ask for approval."),
+        }, ensure_ascii=False)})
+    return True
 
 
 def _append_scope(conversations, scope, intent):
@@ -1207,7 +1167,10 @@ def _append_scope(conversations, scope, intent):
 
 
 # The author never swaps in another pick by itself (#2095, #2097).
-ASK_FOR_ANOTHER = ("For already_held or skill_not_held, ask the player for a different one; choose only when the player "
+ASK_FOR_ANOTHER = ("For already_held, ask the player for a different one. For skill_not_held, the pick is early, not"
+                   " wrong: leave it out, never list it under refused, ask for the skill if it is still open, and "
+                   "send the pick with that choice's other picks once the build holds the skill; ask for a different"
+                   " one only if the player's skills are chosen without it. In both, choose only when the player "
                    "asked you to choose.")
 
 
@@ -1227,7 +1190,14 @@ class StartupScopeRefusal(ValueError):
                                 "under kept, are kept. A "
                                 "finalize needs every issued choice id filled with its count. Refuse only an option "
                                 "the scope does not offer. To ask again about a choice that is held, first send its "
-                                "id with []. " + ASK_FOR_ANOTHER)}
+                                "id with []; a pick the player did not make is cleared that way, never kept by leaving "
+                                "out the question. " + ASK_FOR_ANOTHER + " "
+                                "For asked_and_sent, the picks you sent for a choice you also asked are not kept: if the player "
+                                "named them in their message, send them again and take that id out of asks; if not, keep the "
+                                "question and send them only when the player takes them, never telling them as chosen. A question"
+                                " about an item inside a package, or about another choice, does not put the package's id in asks."
+                                " For asked_not_open, the choice is already full: if the player named its picks, drop the "
+                                "question; if not, send its id with [] and ask the player, never telling those picks as chosen.")}
 
 
 def _log_rejection(count, stage, exc, intent=None):
@@ -1256,11 +1226,11 @@ def _log_rejection(count, stage, exc, intent=None):
 
 
 class StartupSummaryRefusal(StartupContractError):
-    """A finalize of a build whose summary the player has not been shown (D-CREATE-FLEX-3, question 6)."""
+    """A finalize of a build the guide had not been given before the player's message (D-CREATE-FLEX-3, question 6)."""
 
     def __init__(self):
-        super().__init__("The player has not been shown the summary of this build. Use continue_interview now: the game "
-                         "shows the summary after your narration, and the player then approves it", "summary_not_shown")
+        super().__init__("The player has not heard this build, or a recorded detail changed. Use continue_interview now: tell "
+                         "it, and the player then approves it", "summary_not_shown")
 
 
 def _earlier_choice_ids(conversation):
@@ -1307,6 +1277,9 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
     history gets them only when the turn publishes (r3.1, T4). The ability roll is the exception: persist
     saves it the moment it is made, so no handback or restart rolls again (amendment 1f, N7)."""
     roll = _ability_roll(correction_context)
+    if (proposal.get("intent") or {}).get("start_over") is True:
+        # The player starts over: nothing held comes back in this turn, and nothing old is told as dropped.
+        turn.update(held=creation_blocks.empty(), lost={}, unread={}, start_over=True)
     merged = creation_blocks.merge(turn["held"], turn["standing"], proposal, rolled=roll["rolled"] if roll else None,
                                    previous=lambda: _earlier_choice_ids(correction_context),
                                    alignments=creation_alignments())
@@ -1340,6 +1313,9 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
     if scope is not None and (current is None or current.get("scope_id") != scope["scope_id"]):
         _append_scope([correction_context, turn_items], scope, intent)
         ask_again = True
+    if ask_again and not rescoped and any(p.get("problem") == "asked_and_sent" for p in merged.problems):
+        # #2090: a choice asked and filled in one answer is told now; the new scope is already in the request.
+        raise StartupScopeRefusal(problems_sent, [])
     if ask_again and not rescoped:
         if settled is not None and settled.refused:  # no rejection, but the author learns what was left out and why
             correction_context.append({"role": "system", "content": json.dumps({
@@ -1363,6 +1339,10 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
     if problems:
         raise StartupScopeRefusal(problems, open_ids)
     rolled = roll["rolled"] if roll else None
+    told = None if creation_blocks.needed(merged.standing) else _summary_shown(turn["summary"], merged.standing, rolled)
+    was, now = turn["held"]["creative"], merged.standing["creative"]
+    if told and any(was.get(k) and was[k] != now.get(k) for k, _ in creation_build.DETAIL_LABELS):
+        told = False  # a detail recorded before this player message changed
     if proposal["decision"] == "pause_setup":
         _check_finalize_details(proposal, merged)  # the player leaves: a detail that was not written is not passed over
     if proposal["decision"] == "finalize_character":
@@ -1371,17 +1351,19 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
         _check_finalize_details(proposal, merged)
         _write_blocks(proposal, turn, whole=True)
         check_finalize(proposal)
-        if (not creation_blocks.needed(merged.standing)
-                and _summary_shown(correction_context, merged.standing, rolled, turn["held"]) is False):
+        if told is False:
+            _sheet_preview([correction_context, turn_items], merged.standing, rolled)
             raise StartupSummaryRefusal()
         return False
     if proposal["confirmation"]["whole_build_approved"]:
-        # A finalize that was meant must not be published as a claim. Before the player has seen the summary, the
-        # turn is published instead and the game shows it.
-        if not creation_blocks.needed(merged.standing) and _summary_shown(
-                correction_context, merged.standing, rolled, turn["held"]):
+        # A finalize that was meant must not be published as a claim. Before the guide had the build, the turn is
+        # published instead and the guide tells it.
+        if told:
             raise StartupContractError("An interview response cannot approve the build", "approve_interview")
         proposal["confirmation"]["whole_build_approved"] = False
+    if proposal["decision"] == "continue_interview" and _sheet_preview(
+            [correction_context, turn_items], merged.standing, rolled):
+        return True
     _write_blocks(proposal, turn)
     reported = _scope_states(correction_context, OPEN_CHOICES_PURPOSE)
     if not reported or reported[-1].get("open_choice_ids") != open_ids:
@@ -1405,20 +1387,7 @@ def _new_turn(conversation):
     dropped (on reading the history back, and by this turn's replies) and the places corrected as not read."""
     held, unread = _held_blocks(conversation)
     return {"held": held, "standing": copy.deepcopy(held), "unread": unread, "lost": {}, "leftovers": {},
-            "not_read": set()}
-
-
-def _change_lines(conversation, turn):
-    """The short factual lines for what this published turn recorded or replaced (D-CREATE-FLEX-6), against what the
-    published turns before it left: a handed-back pick shows when it is published. Read before the reply is added to
-    the conversation. Nothing is saved; a failure never loses the turn."""
-    try:
-        published = []
-        before = _held_blocks(conversation, published)[0]
-        return creation_blocks.change_lines(creation_blocks.changes(published, before, turn["standing"]))
-    except Exception as fault:  # logged with its class only (NEQ-OPS-05)
-        file_only(f"STARTUP_NOTE change lines failed: {type(fault).__name__}", category="startup")
-        return []
+            "not_read": set(), "summary": _last_summary(conversation)}
 
 
 def _turn_drops(turn):
@@ -1449,6 +1418,8 @@ def _write_blocks(proposal, turn, whole=False):
     filled gear and every detail; an interview turn carries all the blocks and only the details it added."""
     standing = creation_blocks.checked(turn["standing"]) if whole else turn["standing"]
     proposal["intent"] = copy.deepcopy(standing["intent"])
+    if turn.get("start_over"):
+        proposal["intent"]["start_over"] = True  # read back as the point the build began again
     proposal["starting_equipment"] = copy.deepcopy(standing["starting_equipment"])
     creative = standing["creative"] if whole else {
         k: v for k, v in standing["creative"].items() if v != turn["held"]["creative"].get(k)}
@@ -1551,6 +1522,99 @@ def _current_contract_only(conversation):
             "task_purpose": "startup_superseded_contract",
             "instruction": "An earlier version of the creation contract was here; the later one replaces it."})}
     return out
+
+
+def _reply_words(narration, decision="continue_interview"):
+    """What the guide said, in the form of its replies: its decision and its words, no blocks."""
+    return {"role": "assistant", "content": json.dumps({"decision": decision, "narration": narration}, ensure_ascii=False)}
+
+
+def _said(message):
+    """The message of the conversation this saved one is sent as, or None: the player's words, the guide's words."""
+    if message.get("role") == "system":
+        record = _system_record(message) or {}
+        words = record.get("notice_shown_to_player") if record.get("task_purpose") == HANDBACK_PURPOSE else None
+        return _reply_words(words) if isinstance(words, str) and words else None
+    if message.get("role") == "assistant":
+        try:
+            reply = json.loads(message.get("content", ""))
+        except (TypeError, ValueError):
+            return message
+        if isinstance(reply, dict) and reply.get("decision") == "finalize_character":
+            return None  # not saved (a taken name, an interrupted commit), so the player never heard it
+        if isinstance(reply, dict) and isinstance(reply.get("narration"), str):
+            return _reply_words(reply["narration"], reply.get("decision"))
+    return message
+
+
+# Facts the guide still has to tell: they stay in the note until the turn publishes.
+KEPT_FACTS = ("startup_starting_gear", "startup_name_conflict")
+ASK_WITH_OPTIONS = (" When your words ask for an open choice or package, give its options, or, when the list is long, "
+                    "the ones you suggest and an offer of the rest.")
+
+
+def _author_request(context, module, turn, since, tail):
+    """The T092 request (#2090), read from the turn's request base; nothing is written. In order: the instructions, the
+    one current reference, the conversation in words only, and last the current note, which replaces every older one.
+    since: where the engine's answer to the reply just sent begins in context. tail: the note's facts of this turn."""
+    marked = _contract_positions(context)[0]
+    chosen = json.loads(json.dumps(module))
+    opened = [m for m in context if (_system_record(m) or {}).get("task_purpose") == "startup_character_interview"]
+    request = [context[i] for i in marked[-1:]]
+    request += ([m for m in opened if _system_record(m).get("selected_adventure") == chosen] or opened)[-1:]
+    current = _creation_scope_current(context)
+    if current is not None:
+        request.append({"role": "system", "content": json.dumps(current, ensure_ascii=False)})
+    start = _startup_start(context)
+    request += [m for m in map(_said, context[start:]) if m is not None]
+
+    own = [(i, _system_record(m)) for i, m in enumerate(context) if i >= start and _system_record(m) is not None]
+    replies = [i for i, m in enumerate(context) if m.get("role") == "assistant" and _said(m) is not None]
+    player = max((i for i, m in enumerate(context) if m.get("role") == "user"), default=-1)
+    of = lambda purpose, after: [(i, r) for i, r in own if i > after and r.get("task_purpose") == purpose]  # noqa: E731
+    note = dict({"task_purpose": "startup_current_note"}, **tail)
+    intent = creation_blocks.checked(turn["standing"])["intent"]
+    opens = creation_scope.open_choices(intent)
+    if opens:
+        note["open_choices"] = opens
+    if "facts" not in tail and tail["blocks"]["needed"]:
+        # After the choices, where it is read last; not in the tail, which T124 reads too.
+        note["instruction"] = note.pop("instruction") + ASK_WITH_OPTIONS
+    roll = _ability_roll(context)
+    if roll:
+        note["ability_roll"] = {k: v for k, v in roll.items() if k not in ("task_purpose", "startup_id")}
+    last = _last_summary(context)
+    if last and not creation_blocks.needed(turn["standing"]) and _summary_shown(
+            last, turn["standing"], roll["rolled"] if roll else None):
+        note["sheet"] = _engine_part(last)
+    # What the last published reply lost may not have been told yet, so drops reach one published reply back; of this
+    # turn's only the latest counts.
+    drops = of("startup_choices_dropped", replies[-2] if len(replies) > 1 else -1)
+    dropped = {}
+    for _i, record in [d for d in drops if d[0] < player] + [d for d in drops if d[0] > player][-1:]:
+        dropped.update(record.get("dropped") or {})
+    if dropped:
+        note["dropped"] = dropped
+    handback = of(HANDBACK_PURPOSE, replies[-1] if replies else -1)
+    if handback and "facts" not in tail:  # the plain words request is about this handback, never an older one
+        note["handback"] = {k: handback[-1][1].get(k) for k in ("rejected_outputs", "instruction")}
+    # Their instruction is for the request right after; later ones may ask for something else.
+    answers = [r if i >= since else {k: v for k, v in r.items() if k != "instruction"}
+               for p in KEPT_FACTS for i, r in of(p, player)[-1:]]
+    for message in context[since:]:
+        record = _system_record(message)
+        if record is None:
+            answers.append(message["content"])
+        elif record.get("task_purpose") == SHEET_PREVIEW_PURPOSE:
+            answers.append(record["instruction"])
+        elif record.get("task_purpose") not in KEPT_FACTS + (
+                creation_scope.SCOPE_PURPOSE, SCOPE_STATE_PURPOSE, OPEN_CHOICES_PURPOSE, ABILITY_ROLL_PURPOSE,
+                "startup_choices_dropped") and "startup_checkpoint_version" not in record:
+            answers.append(record)
+    if answers:
+        note["engine_answer"] = answers
+    request.append({"role": "system", "content": json.dumps(note, ensure_ascii=False)})
+    return request
 
 
 def _append_system_once(conversation, content):
@@ -1952,7 +2016,7 @@ def _starting_gear_facts(proposal, provenance):
 
 
 def _starting_gear_notice(character, provenance):
-    """The plain notice for a character saved without starting gear (end state (d)), or None."""
+    """What the guide is given for a character saved without starting gear (end state (d)), or None."""
     from core.nql import apply
     packages = provenance.get("starting_packages") or {}
     name, binary = character.get("name"), apply.binary_path()
@@ -1984,15 +2048,26 @@ STARTUP_TURN_REJECTION_LIMIT = 4
 # a B2-iv class matching the limit above); provider errors don't count. After
 # this many in a row the party starts at the plot's starting area (D-1270-2).
 STARTUP_LOCATION_REJECTION_LIMIT = 4
-STARTUP_HANDBACK_NOTICE = (
-    "I could not finish that build yet. Your choices so far "
-    "are kept and no character has been saved. Tell me what to adjust, or say "
-    "continue and I will try again."
-)
+STARTUP_HANDBACK_NOTICE = "Your last replies could not be used. The choices so far are kept and no character has been saved."
+
+
+def _handback_words(request, scope):
+    """The guide's one plain reply to a handed-back turn; no block is read from it. A reply in the usual JSON shape
+    gives its narration."""
+    for _ in range(2):  # an empty or unusable reply is asked once more, then nothing is said
+        text = get_ai_response(request, persist_response=False, live_scope=scope).strip()
+        try:
+            value = json.loads(extract_json_object(text) or text)
+        except ValueError:
+            value = {"narration": text}
+        words = value.get("narration") if isinstance(value, dict) else None
+        if isinstance(words, str) and words.strip():
+            return words.strip()
+    return ""
 
 
 def _still_needed_text(blocks):
-    """The lines under the fixed notice of a handed-back turn (D-CREATE-FLEX-3): what the build still needs, and what
+    """The facts under the notice of a handed-back turn (D-CREATE-FLEX-3): what the build still needs, and what
     the first of it offers, in names. A failure leaves the fixed notice alone."""
     try:
         lines = creation_blocks.still_needed_lines(blocks)
@@ -2026,16 +2101,16 @@ def ai_character_interview(conversation, module):
             _append_scope([conversation], menu, None)
         else:
             warning("Startup creation scope unavailable; the interview continues without it", category="startup")
-    _say("\nDungeon Master: Let's build your character together.", flush=True)  # #1422 F1
     while True:
         scope = open_live_turn_scope()
         try:
             save_startup_conversation(conversation, live_scope=scope)
             correction_context = copy.deepcopy(conversation)
             rejected = 0
-            rescoped = False  # one re-scope per T092 response chain (r3 section 3.2)
+            rescoped = gear_given = False  # one re-scope per T092 response chain (r3 section 3.2)
             turn_items = []  # scope, state and drop items made this turn; saved only when it publishes (T4)
             turn = _new_turn(conversation)
+            since = len(correction_context)
             while True:
                 if rejected >= STARTUP_TURN_REJECTION_LIMIT:
                     # Fail forward: hand the turn back unpublished; nothing is approved or saved.
@@ -2047,12 +2122,22 @@ def ai_character_interview(conversation, module):
                         "task_purpose": HANDBACK_PURPOSE,
                         "blocks": turn["standing"],
                         "rejected_outputs": rejected,
-                        "notice_shown_to_player": notice,
                         "instruction": ("No proposal for the player's previous message was published or "
                                         "approved. Answer the player's next message with the retained choices."),
                     }, ensure_ascii=False)})
                     save_startup_conversation(conversation, live_scope=scope)
-                    _say(f"\nDungeon Master: {notice}")
+                    words = _handback_words(_author_request(conversation, module, turn, len(conversation), {
+                        "facts": notice, "blocks": creation_blocks.state(turn["standing"]),
+                        "instruction": ("For this reply only, answer in plain words, no JSON, as the player will read it. "
+                                        "Nothing from it is recorded. Tell the player what is kept and what is still "
+                                        "needed, and ask what to adjust."),
+                    }), scope)
+                    if words:
+                        _say(f"\nDungeon Master: {words}")
+                        record = json.loads(conversation[-1]["content"])
+                        record["notice_shown_to_player"] = words
+                        conversation[-1]["content"] = json.dumps(record, ensure_ascii=False)
+                        save_startup_conversation(conversation, live_scope=scope)
                     break
                 current_index = _latest_player_index(conversation)
                 facts = {
@@ -2060,13 +2145,15 @@ def ai_character_interview(conversation, module):
                     "phase": (_startup_progress(conversation) or {}).get("phase", "interview"),
                     "character_saved": False, "adventure_ready": False,
                 }
-                request = _current_contract_only(correction_context) + [{"role": "system", "content": json.dumps({
-                    "latest_user_index": current_index, "committed_facts": facts,
+                tail = {
+                    "latest_user_index": current_index, "committed_facts": copy.deepcopy(facts),
                     "blocks": creation_blocks.state(turn["standing"]),
                     "instruction": "Return one startup response object with the blocks you add or change, not a bare sheet.",
-                }, ensure_ascii=False)}]
-                raw = get_ai_response(request, {"type": "json_object"},
-                                      persist_response=False, live_scope=scope)
+                }
+                asked = len(correction_context)  # what is added from here is the engine's answer to the next reply
+                raw = get_ai_response(_author_request(correction_context, module, turn, since, tail),
+                                      {"type": "json_object"}, persist_response=False, live_scope=scope)
+                since = asked
                 stage = "parse"
                 settled = Settled(turn["not_read"])
                 try:
@@ -2106,7 +2193,8 @@ def ai_character_interview(conversation, module):
                     else:
                         stage = "review"
                         # #1278's review over the engine-built sheet, against the reference a scoped history lacks.
-                        review_request = copy.deepcopy(request)
+                        review_request = _current_contract_only(correction_context[:asked]) + [
+                            {"role": "system", "content": json.dumps(tail, ensure_ascii=False)}]
                         _append_startup_rules_reference(review_request)
                         review = _review_startup_response(
                             review_request, proposal, facts, authored_proposal=authored_proposal,
@@ -2148,24 +2236,24 @@ def ai_character_interview(conversation, module):
                     continue
                 if scope.is_superseded():
                     raise LiveProviderSuperseded("startup review superseded")
-                lines = (_change_lines(conversation, turn)
-                         if scoped and proposal["decision"] != "finalize_character" else [])
+                notice = (_starting_gear_notice(proposal["character"], provenance)
+                          if proposal["decision"] == "finalize_character" else None)
+                if notice and not gear_given:  # the guide tells it in the same answer, asked once more
+                    gear_given = True
+                    correction_context.append({"role": "system", "content": json.dumps({
+                        "task_purpose": "startup_starting_gear", "facts": notice,
+                        "instruction": "Send the same finalize_character again; its narration tells the player this."},
+                        ensure_ascii=False)})
+                    continue
                 conversation.extend(_items_to_save(conversation, turn_items, turn))
                 conversation.append({"role": "assistant", "content": json.dumps(proposal, ensure_ascii=False)})
-                summary = None
                 if proposal["decision"] == "finalize_character" and "engine_build" in provenance:
                     # Written before the approved checkpoint and the archive move, so it survives handoff.
                     conversation.append({"role": "system", "content": json.dumps(dict(
                         {"task_purpose": ENGINE_BUILD_PURPOSE,
                          "startup_id": (_startup_progress(conversation) or {}).get("startup_id")},
                         **provenance["engine_build"]), ensure_ascii=False)})
-                elif proposal["decision"] == "continue_interview" and scoped:
-                    summary = _sheet_preview(conversation, turn["standing"], roll["rolled"] if roll else None)
                 if proposal["decision"] == "finalize_character":
-                    notice = _starting_gear_notice(proposal["character"], provenance)
-                    if notice:
-                        # Shown once, before the approved checkpoint: a restart after it loses nothing.
-                        _say(f"\nDungeon Master: {notice}", flush=True)  # #1422 F1
                     _set_startup_progress(conversation, live_scope=scope, phase="approved",
                                           candidate=proposal["character"], character_path=None)
                     try:
@@ -2174,10 +2262,11 @@ def ai_character_interview(conversation, module):
                     except FileExistsError as exc:
                         _set_startup_progress(conversation, live_scope=scope, phase="interview",
                                               candidate=None, character_path=None)
-                        correction_context.append({"role": "system", "content": (
-                            f"Character identity conflict: {exc}. Ask the player for a distinct "
-                            "name, retaining the rest of the build. Nothing was overwritten."
-                        )})
+                        correction_context.append({"role": "system", "content": json.dumps({
+                            "task_purpose": "startup_name_conflict",
+                            "facts": f"Character identity conflict: {exc}. Ask the player for a distinct "
+                                     "name, retaining the rest of the build. Nothing was overwritten.",
+                        }, ensure_ascii=False)})
                         # The taken name is not settled; the next reply of this turn starts from what is saved.
                         turn_items = []
                         turn = _new_turn(conversation)
@@ -2189,13 +2278,9 @@ def ai_character_interview(conversation, module):
                     return proposal["character"]
                 _set_startup_progress(conversation, live_scope=scope, phase="interview")
                 _say(f"\nDungeon Master: {proposal['narration']}")
-                for line in lines:
-                    _say(f"\n{line}")
-                if summary:
-                    _say(f"\n{summary}")
                 if proposal["decision"] == "pause_setup":
-                    # The reviewed typed decision, never the player's words (#855).
-                    raise StartupCancelled()
+                    # The reviewed typed decision, never the player's words (#855); the guide has said it.
+                    raise StartupCancelled("told")
                 break
         except LiveProviderSuperseded:
             raise
@@ -2974,6 +3059,7 @@ def _startup_configuration_handback(exc, provider, revision, scope):
     message = configuration_required_message(exc)
     if message is None:
         return False
+    scope.outage_line = None  # #2090: the provider answered
     _emit_startup_phase("startup_configuration_required")
     # Web Settings stays usable while the normal command row remains busy.
     # Console mode uses its existing input owner for an explicit retry/cancel.
@@ -3021,6 +3107,22 @@ def _startup_provider_pause(player_message, scope):
     scope.renew_generation_budget("startup_pause")
 
 
+def _startup_outage_wait(line, scope):
+    """#2090: the provider is unavailable: say so in the status line, count down
+    and return for the next try. Load, Reset, Exit and Save work as in any wait."""
+    from utils.capture.live_provider_call import _interruptible_wait, drain_live_saves
+    from utils.provider_errors import PROVIDER_RETRY_MAX_DELAY
+
+    first = int(PROVIDER_RETRY_MAX_DELAY)
+    for left in range(first, 0, -1):
+        drain_live_saves(scope)
+        text = f"{line} The game will retry in {left} second{'' if left == 1 else 's'}."
+        # The web counts down; a console or headless run hears it once.
+        _interruptible_wait(1, scope, text, lambda shown: (
+            web_mode or left == first) and status_manager.update_status(shown, True))
+    status_processing_ai()
+
+
 def _startup_provider_failure(exc, failures, scope, pending, wait=None):
     """One completed startup provider error (#1267); returns the count to carry.
 
@@ -3034,10 +3136,18 @@ def _startup_provider_failure(exc, failures, scope, pending, wait=None):
     startedAt}) lets the web show the retry wait (#1271)."""
     from utils.capture.live_provider_call import _interruptible_wait
     from utils.provider_errors import (
-        PROVIDER_MAX_FAILURES, classify_provider_error, provider_failure_policy,
+        PROVIDER_MAX_FAILURES, classify_provider_error, outage_line, provider_failure_policy,
         provider_retry_delay,
     )
 
+    # #2090: the remembered line is for this failure only; every kind forgets it.
+    remembered, scope.outage_line = getattr(scope, "outage_line", None), None
+    envelope = getattr(exc, "envelope", None) or {}
+    if envelope.get("outage") is True:
+        scope.outage_line = outage_line(envelope.get("connection_class"), envelope.get("provider"))
+        if scope.outage_line:
+            _startup_outage_wait(scope.outage_line, scope)
+            return failures
     failures += 1
     classification = classify_provider_error(exc)
     if classification["category"] in ("content_declined", "not_answered"):
@@ -3046,6 +3156,13 @@ def _startup_provider_failure(exc, failures, scope, pending, wait=None):
         classification = dict(classification, category="unclassified", retryable=True,
                               player_message=None, retry_notice=None)
     decision = provider_failure_policy(classification, failures, True)
+    if classification["category"] == "turn_call_ceiling":
+        # #2090: an outage that used up the turn's tries ends on its own reason.
+        met = envelope.get("tries_met")
+        line = remembered if met == "none" else outage_line(met, envelope.get("provider"))
+        decision["player_message"] = line or decision["player_message"]
+    elif classification["category"] == "reissue_limit" and envelope.get("connection_class") == "no_answer":
+        decision["player_message"] = outage_line("no_answer", envelope.get("provider")) or decision["player_message"]
     warning(f"Startup provider attempt {failures}/{PROVIDER_MAX_FAILURES} failed: {exc}",
             category="startup")
     if failures >= PROVIDER_MAX_FAILURES or (
@@ -3135,6 +3252,7 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                     response_format=response_format,
                     **{k: v for k, v in main_cfg.items() if k != "model"},
                 )
+                scope.outage_line = None  # #2090: the provider answered
                 content = response.choices[0].message.content
                 if not isinstance(content, str) or not content.strip():
                     raise ValueError("Provider returned no usable startup response")
@@ -3292,6 +3410,7 @@ def get_ai_starting_location(module, request_provider=None, *, live_scope=None):
                 )
                 if scope.is_superseded():
                     raise LiveProviderSuperseded("Startup location superseded")
+                scope.outage_line = None  # #2090: the provider answered
                 raw = response.choices[0].message.content or ""
                 try:
                     candidate = _validate_starting_location(extract_json_object(sanitize_json_string(raw)))

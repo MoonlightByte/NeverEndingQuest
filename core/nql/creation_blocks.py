@@ -19,7 +19,7 @@ the package they belong to is known. Nothing marks a waiting id; ``checked`` der
 what ``checked`` returns is filled.
 """
 import copy
-from typing import Any, Dict, List, NamedTuple, Optional
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from core.nql import creation_build, creation_scope, item_catalog, startup_rows
 from core.nql.creation_scope import _Data, _class_points
@@ -27,7 +27,7 @@ from core.nql.startup_rows import _package_items
 
 IDENTITY = ("class_key", "species_key", "background_key")
 PACKAGES = ("background_package", "class_package")
-NEXT_LIMIT = 3
+NEXT_LIMIT = 2
 
 
 def empty() -> Dict[str, Any]:
@@ -217,113 +217,25 @@ def gear_lines(blocks: Dict[str, Any], sheet: Optional[Dict[str, Any]] = None) -
         gold = int((option.get("coins") or {}).get("gp") or 0)
         lines.append("%s %s: %s" % (label, blocks["starting_equipment"][kind + "_package"], ", ".join(
             [n for n in names if n] + (["%d gold" % gold] if gold else []))))
-    worn = [(i, False) for i in gear["worn"]]
-    if sheet is not None and worn:
-        worn = startup_rows.worn_preview(sheet, _chosen_items(facts, blocks), gear["slots"], gear["worn"])
-    names = {full: ", ".join(facts.d.catalog.get(i, i) for i, carried in worn if carried is full) for full in (False, True)}
-    return lines + ["Worn or held: %s%s" % (names[False] or "nothing chosen yet",
-                                            "; carried (hands full): %s" % names[True] if names[True] else "")]
+    if sheet is None or not gear["worn"]:
+        return lines + _worn_lines(facts, [(i, False, None) for i in gear["worn"]])
+    return lines + _worn_lines(facts, startup_rows.worn_preview(sheet, _chosen_items(facts, blocks), gear["slots"],
+                                                                gear["worn"]))
 
 
-# --- what a published turn recorded (D-CREATE-FLEX-6) ---
+def _worn_lines(facts: _Facts, worn: List[Tuple[str, bool, Optional[bool]]]) -> List[str]:
+    """What is worn and what is held, split by the save's hand rule (worn_preview); one line while nothing is
+    equipped, or without the sheet (no hand rule to read)."""
+    names = lambda rows: ", ".join(facts.d.catalog.get(i, i) for i in rows)
+    full = names(i for i, carried, _ in worn if carried)
+    tail = "; carried (hands full): %s" % full if full else ""
+    if not worn or any(hand is None for _, _, hand in worn):
+        return ["Worn or held: %s%s" % (names(i for i, carried, _ in worn if not carried) or "nothing chosen yet", tail)]
+    return ["Worn: %s" % (names(i for i, carried, hand in worn if not carried and not hand) or "nothing"),
+            "Held: %s%s" % (names(i for i, carried, hand in worn if not carried and hand) or "nothing", tail)]
+
 
 _METHODS = {"standard_array": "Standard Array", "point_buy": "Point Buy", "random": "Rolled"}
-
-
-class Change(NamedTuple):
-    kind: str           # "recorded" | "changed" | "removed"
-    label: str
-    old: List[str]
-    new: List[str]
-
-
-def last_recorded(published: List[Dict[str, Any]], facts: Optional[_Facts] = None) -> Dict[str, Any]:
-    """Each pick as last recorded over the published blocks, oldest first, for as long as the build issues it: a pick
-    cleared or a list shortened stands until something new takes its place, so the refill is compared with what was
-    there. A pick that left with its class, species, background or package starts anew."""
-    facts = facts or _Facts()
-    out = empty()
-    for blocks in published if facts.ok else []:
-        intent, gear = blocks["intent"], blocks["starting_equipment"]
-        held, held_gear = out["intent"], out["starting_equipment"]
-        for kind in ("class", "background"):
-            kept = held_gear[kind + "_package"] if held[kind + "_key"] == intent[kind + "_key"] else None
-            held_gear[kind + "_package"] = gear[kind + "_package"] or kept
-        held.update({key: intent[key] for key in IDENTITY})
-        choices = {}
-        for cid in creation_scope.issued_points(intent, facts.d):
-            had, has = held["choices"].get(cid) or [], intent["choices"].get(cid) or []
-            if had or has:
-                choices[cid] = list(has if any(p not in had for p in has) else had)
-        held["choices"] = choices
-        picks = {p.get("slot"): p for p in held_gear["slot_picks"] + gear["slot_picks"]}
-        slots = startup_rows.package_slots(_chosen_items(facts, out))
-        held_gear["slot_picks"] = [copy.deepcopy(p) for slot, p in picks.items() if slot in slots]
-        scores, kept = intent["ability_scores"] or {}, held["ability_scores"] or {}
-        method = scores.get("method") or kept.get("method")
-        if method:
-            stands = kept.get("assignment") if method == kept.get("method") else None
-            held["ability_scores"] = {"method": method, "assignment": copy.deepcopy(scores.get("assignment") or stands)}
-    return out
-
-
-def changes(published: List[Dict[str, Any]], before: Dict[str, Any], after: Dict[str, Any]) -> List[Change]:
-    """What a published turn recorded, in names from the data: a class, species or background set or changed since the
-    last published blocks (before), a pick replaced since it was last recorded (published: the blocks of every
-    published turn so far), or a pick taken away. Never a first pick, a growing list, a detail or what left with its
-    class, species or background."""
-    facts = _Facts()
-    if not facts.ok:
-        return []
-    old, new = checked(before, facts), checked(after, facts)
-    was, now, last = old["intent"], new["intent"], last_recorded(published, facts)
-    out = []
-    for key, label, names in (("class_key", "class", lambda k: _class_name(facts, k)),
-                              ("species_key", "species", lambda k: facts.d.species()[k]["name"]),
-                              ("background_key", "background", lambda k: facts.d.backgrounds()[k]["name"])):
-        if now[key] is not None and now[key] != was[key]:
-            out.append(Change("changed" if was[key] else "recorded", label, [names(was[key])] if was[key] else [],
-                              [names(now[key])]))
-    issued = creation_scope.issued_points(now, facts.d)
-    package_id = facts.class_package_id(now["class_key"])
-    for cid, point in issued.items():
-        if cid != package_id:
-            out += _replaced(_choice_label(facts, now, cid, issued), last["intent"]["choices"].get(cid) or [],
-                             was["choices"].get(cid) or [], now["choices"].get(cid) or [],
-                             lambda pick: _option_name(facts, point, pick))
-    gear, gear_before, gear_last = (b["starting_equipment"] for b in (new, old, last))
-    for kind in ("class", "background"):
-        if last["intent"][kind + "_key"] == now[kind + "_key"]:
-            out += _replaced("%s package" % kind.capitalize(), *[[g[kind + "_package"]] if g[kind + "_package"] else []
-                                                                  for g in (gear_last, gear_before, gear)])
-    out += _slot_changes(facts, last, old, new)
-    scores, scores_before, scores_last = (b["intent"]["ability_scores"] or {} for b in (new, old, last))
-    method = _replaced("Ability score method", *[[_METHODS[s["method"]]] if s.get("method") else []
-                                                  for s in (scores_last, scores_before, scores)])
-    placed = [[s["assignment"]] if s.get("assignment") else [] for s in (scores_last, scores_before, scores)]
-    return out + (method or [Change(c.kind, c.label, [], []) for c in _replaced("Ability scores", *placed)])
-
-
-def change_lines(found: List[Change]) -> List[str]:
-    """The player's lines. A removal has no line yet (its words are the owner's)."""
-    lines = []
-    for change in found:
-        if change.kind == "recorded":
-            lines.append("Recorded: %s %s" % (change.label, ", ".join(change.new)))
-        elif change.kind == "changed":
-            # An item's name may hold a comma ("Crossbow, Light"): then the list is set apart with semicolons.
-            sep = "; " if any("," in n for n in change.old + change.new) else ", "
-            values = ": %s to %s" % (sep.join(change.old), sep.join(change.new)) if change.new else ""
-            lines.append("Changed: %s%s" % (change.label, values))
-    return lines
-
-
-def _replaced(label: str, last: List[Any], was: List[Any], now: List[Any], name=lambda pick: pick) -> List[Change]:
-    """Something new took the place of what was last recorded; or something was only taken away. A pick added beside
-    all that stood is no change."""
-    came = [p for p in now if p not in last]
-    gone = [p for p in (last if came else was) if p not in now]
-    return [Change("changed" if came else "removed", label, [name(p) for p in gone], [name(p) for p in came])] if gone else []
 
 
 def _class_name(facts: _Facts, key: str) -> str:
@@ -347,18 +259,6 @@ def _choice_label(facts: _Facts, intent: Dict[str, Any], cid: str, issued: Dict[
 def _option_name(facts: _Facts, point: Dict[str, Any], pick: Any) -> str:
     spell = point.get("from_spellbook") or isinstance(point.get("options"), list)
     return facts.d.spell_name.get(pick, str(pick)) if spell else str(pick)
-
-
-def _slot_changes(facts: _Facts, last: Dict[str, Any], old: Dict[str, Any], new: Dict[str, Any]) -> List[Change]:
-    bound = _bound_pick(facts, new)  # its tool pick's line says it
-    picks = [{p["slot"]: p.get("display_name") or facts.d.catalog.get(p.get("catalog_id"), "")
-              for p in b["starting_equipment"]["slot_picks"]} for b in (last, old, new)]
-    out = []
-    for slot, item in startup_rows.package_slots(_chosen_items(facts, new)).items():
-        if not (bound and slot == bound["slot"]):
-            label = item.get("uncatalogued") or slot.rsplit(".", 1)[-1].replace("_", " ").capitalize()
-            out += _replaced(label, *[[p[slot]] if slot in p else [] for p in picks])
-    return out
 
 
 # --- dropping what no longer belongs ---
@@ -385,7 +285,8 @@ def _lost(before: Dict[str, List[Any]], after: Dict[str, List[Any]]) -> Dict[str
 
 def still_lost(lost: Dict[str, List[Any]], held: Dict[str, Any], standing: Dict[str, Any]) -> Dict[str, List[Any]]:
     """Of what a turn's replies dropped: what the player had when the turn began and has nothing in place of now."""
-    was, now = _values(held), _values(standing)
+    # checked() adds the slot the tool choice fills; what is stored (waiting gear too) comes first.
+    was, now = _values(held), dict(_values(checked(standing)), **_values(standing))
     out = {key: [v for v in values if v in was.get(key, [])] for key, values in lost.items()
            if key not in now or key == "starting_equipment.equipped"}
     return {key: values for key, values in _lost(out, now).items()}
@@ -499,9 +400,13 @@ def merge(held: Dict[str, Any], standing: Dict[str, Any], reply: Dict[str, Any],
     """The blocks after this reply. previous(): the choice ids earlier scopes of this interview issued; a pick
     under one the new scope does not issue is a switch's leftover, dropped and never refused."""
     facts = _Facts()
+    sent = reply.get("intent") or {}
+    if sent.get("start_over") is True:
+        # The player starts over: nothing of the old build stands or comes back; the engine's roll and the
+        # adventure are not in the blocks and stay. The rest of this reply is the new character's.
+        held, standing = empty(), empty()
     out = copy.deepcopy(standing)
     intent, equipment = out["intent"], out["starting_equipment"]
-    sent = reply.get("intent") or {}
     problems: List[Dict[str, Any]] = []
     aside: List[str] = []
     leftovers: Dict[str, List[Any]] = {}
@@ -518,6 +423,7 @@ def merge(held: Dict[str, Any], standing: Dict[str, Any], reply: Dict[str, Any],
     gear = reply.get("starting_equipment") or {}
     _merge_choices(facts, held, out, sent.get("choices") or {}, gear, previous, problems, leftovers, lost)
     _merge_gear(facts, held, out, gear, problems, aside, leftovers)
+    _asked_and_sent(facts, standing, out, reply, problems)
     if facts.ok:
         now = _values(out)
         _settle(facts, out, rolled)
@@ -525,6 +431,33 @@ def merge(held: Dict[str, Any], standing: Dict[str, Any], reply: Dict[str, Any],
             lost[key] = lost.get(key, []) + values
     unwritten = _merge_creative(held, out["creative"], reply.get("creative") or {}, alignments)
     return Merge(out, problems, unwritten, aside, lost, leftovers)
+
+
+def _asked_and_sent(facts, standing, out, reply, problems) -> None:
+    """#2090 (D-AUTH-1): a reply that asks the player about a choice and fills it in the same answer guessed it. Its
+    picks for that id are not kept: the value before this reply stands, and the problem names what was sent. A
+    choice the reply leaves short of its count, or that was full before this reply, is not this case."""
+    asks = (reply.get("choice_turn") or {}).get("asks") or []
+    if not asks:
+        return
+    issued = creation_scope.issued_points(out["intent"], facts.d)
+    before = standing["intent"]["choices"]
+    reverted = False
+    for cid in dict.fromkeys(a for a in asks if isinstance(a, str)):
+        point = issued.get(cid)
+        now = creation_scope.distinct(out["intent"]["choices"].get(cid))
+        was = creation_scope.distinct(before.get(cid))
+        if point is None or len(now) < point["count"] or len(was) >= point["count"]:
+            continue
+        sent = list(out["intent"]["choices"].get(cid) or [])
+        if cid in before:
+            out["intent"]["choices"][cid] = copy.deepcopy(before[cid])
+        else:
+            out["intent"]["choices"].pop(cid, None)
+        problems.append({"choice_id": cid, "problem": "asked_and_sent", "options": sent})
+        reverted = True
+    if reverted:
+        _tie_class_package(facts, out)
 
 
 def _merge_scores(facts, held, intent, sent, rolled, problems, aside) -> None:
@@ -795,28 +728,28 @@ def still_needed_lines(blocks: Dict[str, Any]) -> List[str]:
 
 def state(blocks: Dict[str, Any]) -> Dict[str, Any]:
     """The request-only item: what is filled, what waits, what is needed, what may be written at finalize, and the
-    first few to ask next. Long text and spell picks are listed only as held."""
+    first few to ask next, with the values: no other place of the request holds them."""
     facts = _Facts()
     full = checked(blocks, facts)
     intent, equipment = full["intent"], full["starting_equipment"]
-    issued = creation_scope.issued_points(intent, facts.d)
     filled: Dict[str, Any] = {k: intent[k] for k in IDENTITY if intent[k] is not None}
     if blocks["creative"].get("name"):
         filled["name"] = blocks["creative"]["name"]
     for cid, picks in intent["choices"].items():
-        spell = (issued.get(cid) or {}).get("kind") in ("cantrip", "prepared_spells", "spell_known")
-        filled[cid] = "held" if spell or len(picks) > 4 else picks
+        filled[cid] = picks
     if intent["ability_scores"]:
         filled["ability_scores"] = intent["ability_scores"]
     for key in ("background_package", "class_package", "slot_picks", "equipped"):
         if equipment[key]:
             filled["starting_equipment." + key] = equipment[key]
-    filled.update({f: "held" for f in blocks["creative"] if f != "name"})
+    filled.update({f: v for f, v in blocks["creative"].items() if f != "name"})
     need = needed(blocks, facts=facts)
     out = {"filled": filled, "needed": need,
-           "may_write_at_finalize": [f for f in creation_build.CREATIVE_FIELDS + ("backstory", "appearance")
+           "may_write_at_finalize": [f for f in creation_build.CREATIVE_FIELDS
                                      if f != "name" and f not in blocks["creative"]],
            "next": need[:NEXT_LIMIT]}
+    if any((intent.get("considering") or {}).values()):
+        out["considering"] = intent["considering"]
     wait = waiting(blocks, facts)
     if wait:
         out["waiting"] = wait

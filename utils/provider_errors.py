@@ -976,6 +976,22 @@ def connection_give_up_line(cls, provider):
     return template % {"P": provider_display_name(provider)} if template else None
 
 
+def outage_line(cls, provider):
+    """#2090: a setup call whose every try found the provider unavailable: the
+    line before the retry seconds, or None (a local server keeps its own)."""
+    if _is_local(provider):
+        return None
+    if cls == "service_error":
+        return _sentence("%s is unavailable because of a problem on its side. "
+                         "This is not your fault." % status_provider_name(provider))
+    if cls == "no_connection":
+        return connection_give_up_line(cls, provider).replace(" Wait a few minutes.", "")
+    if cls == "no_answer":
+        return _sentence("%s isn't responding. This is not the game's fault or yours."
+                         % status_provider_name(provider))
+    return None
+
+
 def connection_notice(cls, provider, moment):
     """The give-up line plus the moment's tail, or None when the class or the
     moment has none (the caller keeps its existing line)."""

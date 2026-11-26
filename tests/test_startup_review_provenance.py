@@ -727,13 +727,18 @@ def _engine_finalize(authored):
             "choice_turn": _NO_CLAIMS}
 
 
+def _engine_answers(messages):
+    """What the last message of a T092 request, the current note, holds of the engine's answer to the last reply."""
+    return json.loads(messages[-1]["content"]).get("engine_answer") or []
+
+
 def _shown_build(wizard, proposal, approval):
     """A history in which the game has shown the player this build's summary, and the player's approval of it."""
     from core.nql import creation_blocks
     conversation = []
     blocks = creation_blocks.merge(creation_blocks.empty(), creation_blocks.empty(), dict(
         proposal, creative={"name": proposal["creative"]["name"]})).standing
-    assert wizard._sheet_preview(conversation, blocks, None)
+    assert wizard._sheet_preview([conversation], blocks, None)
     conversation.append({"role": "user", "content": approval})
     proposal["confirmation"]["player_message_index"] = len(conversation) - 1
     return conversation
@@ -828,8 +833,7 @@ def test_negative_review_retains_authorship_and_never_commits(wizard, authored, 
         wizard, authored, monkeypatch, review=review, stop_after_rejection=True)
     assert result is None and commits == []
     assert len(reviewers) == 1
-    correction = next(json.loads(m["content"]) for m in authors[-1]
-                      if m["role"] == "system" and '"rejected_proposal"' in m["content"])
+    correction = next(a for a in _engine_answers(authors[-1]) if "rejected_proposal" in a)
     assert correction["rejected_proposal"] == reviewers[0]["authored_proposal"]
     assert correction["canonical_candidate"] == reviewers[0]["proposal"]
     assert correction["normalization_provenance"] == reviewers[0]["normalization_provenance"]
@@ -861,10 +865,10 @@ def test_invalid_consent_or_schema_cannot_reach_review(wizard, authored, monkeyp
         wizard, authored, monkeypatch, review=lambda p: pytest.fail("Review must not run"),
         stop_after_rejection=True, shown=shown)
     assert result is None and not commits and not reviewers
-    rejection = next(m["content"] for m in authors[-1] if m["role"] == "system"
-                     and ("Rejected startup proposal" in m["content"] or '"startup_choice_refusal"' in m["content"]))
+    rejection = next(a for a in _engine_answers(authors[-1]) if "Rejected startup proposal" in a
+                     or a["task_purpose"] == "startup_choice_refusal")
     if defect == "refusal":  # the ability scores are one block, refused by the engine's own rule (D-CREATE-FLEX-3)
-        assert [p["choice_id"] for p in json.loads(rejection)["problems"]] == ["ability_scores.assignment"]
+        assert [p["choice_id"] for p in rejection["problems"]] == ["ability_scores.assignment"]
 
 
 def test_fenced_json_uses_real_startup_parser_without_changing_probe(wizard, authored):
@@ -1019,6 +1023,7 @@ def test_the_roll_is_saved_when_made_and_a_handback_never_rolls_again(scoped, mo
                      "considering": {"class_keys": [], "species_keys": [], "background_keys": []},
                      "ability_scores": {"method": "random", "assignment": None}}
     answers = ([_scoped_turn(random_intent)] + ["not a startup response"] * scoped.STARTUP_TURN_REJECTION_LIMIT
+               + ["Your roll is kept. What should I adjust?"]  # the one plain reply of a handed-back turn
                + [_scoped_turn(random_intent, "Here are your six rolled scores.")])
     conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["Roll for me."])
     rolls = [json.loads(m["content"]) for m in conversation if '"startup_ability_roll"' in m.get("content", "")]
@@ -1030,47 +1035,46 @@ def test_the_roll_is_saved_when_made_and_a_handback_never_rolls_again(scoped, mo
 
 
 def test_a_complete_intent_shows_the_engine_built_summary_once(scoped, monkeypatch, authored, capsys):
-    # D2 (#1275): once no id is open, the player sees the summary the game renders from the engine-built sheet,
-    # and the author gets it as a typed startup_sheet_preview item; an unchanged build is not shown again.
-    intent = _engine_finalize(authored)["intent"]
-    # The first answer re-scopes once (menu to build scope); the second turn's build is unchanged.
-    answers = [_scoped_turn(intent, "Here is Alden.")] * 2 + [_scoped_turn(intent, "Anything to change?")]
+    # #2090: once nothing is needed, the author gets the engine-built summary as a typed startup_sheet_preview item
+    # and is asked again in the same turn; the game prints none of it, and an unchanged build is not given again.
+    finalize = _engine_finalize(authored)
+    intent = finalize["intent"]
+
+    def turn(narration):
+        return json.dumps(dict(json.loads(_scoped_turn(intent, narration)), creative={"name": "Alden"},
+                               starting_equipment=finalize["starting_equipment"]))
+
+    # The first answer re-scopes once (menu to build scope), the second completes the build and is asked again; the
+    # second turn's build is unchanged.
+    answers = [turn("One moment."), turn("Not heard yet."), turn("Here is Alden."), turn("Anything to change?")]
     conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["Show me."])
     previews = [json.loads(m["content"]) for m in conversation if '"startup_sheet_preview"' in m.get("content", "")]
     assert len(previews) == 1 and previews[0]["untyped"] == []
     summary = previews[0]["summary"]
-    assert summary.startswith("Name: not chosen yet\nHuman Fighter, Soldier background") and "- Strength 16 (+3)" in summary
+    assert summary.startswith("Name: Alden\nHuman Fighter, Soldier background") and "- Strength 16 (+3)" in summary
     assert "itemdef:" not in summary and "fighter." not in summary
-    assert capsys.readouterr().out.count(summary) == 1
+    out = capsys.readouterr().out
+    assert summary not in out and "Not heard yet." not in out and "Here is Alden." in out
+    assert len(calls) == 4 and not answers
 
 
 def test_engine_prompt_rewrite_anchors_hold():
-    # A T092 prompt edit must fail here, not at a player's first interview (Sentinel N8).
+    # The game's T092 prompt is one plain text (#2090): no whole-sheet schema, and the parts the code adds stand whole.
     from utils import startup_prompt_builder as builder
-    import utils.encoding_utils as encoding
-    schema = encoding.safe_json_load(str(ROOT / "schemas" / "char_schema.json"))
-    whole = builder.build_character_creation_system_prompt()
-    assert builder.engine_prompt_drift(whole.replace(builder._WHOLE_FACTS, builder._SCOPED_FACTS)
-                                       .replace(builder._WHOLE_COMPLETE, builder._SCOPED_COMPLETE), schema) == []
     engine = builder.build_character_creation_system_prompt(scoped=True)
-    assert "CHARACTER SCHEMA:" not in engine and "THE ENGINE BUILDS THE SHEET" in engine
-    for _old, new in builder._ENGINE_EDITS:
-        assert new in engine
+    assert engine.startswith(builder._GUIDE_PROMPT) and "CHARACTER SCHEMA:" not in engine
+    assert "The engine builds the whole character and computes every number." in engine
+    assert engine.index("STARTUP RESPONSE SCHEMA:") < engine.index("LEVELING INFORMATION")
+    assert "CHARACTER SCHEMA:" in builder.build_character_creation_system_prompt()
 
 
 def test_engine_prompt_drift_fails_forward_and_a_finalize_still_builds(wizard, authored, monkeypatch):
+    # The guide prompt reaches the author, and a finalize under it is the engine shape the game builds and commits.
     from utils import startup_prompt_builder as builder
-    monkeypatch.setattr(builder, "_ENGINE_EDITS", (("not in the T092 text", "x"),))
-    engine = builder.build_character_creation_system_prompt(scoped=True)
-    # The interview goes on (N8): the rewrites are skipped, the engine lines are in the facts block, and
-    # (N9) the sheet schema is gone and the contract line stands before the response schema.
-    assert "THE ENGINE BUILDS THE SHEET" in engine and "CHARACTER SCHEMA:" not in engine
-    assert engine.index(builder.ENGINE_CONTRACT_OVERRIDE) < engine.index("STARTUP RESPONSE SCHEMA:")
-    # A finalize under the fallback prompt is the engine shape, and the game builds and commits it.
     result, conversation, commits, authors, reviewers = run_interview(
         wizard, authored, monkeypatch, review=lambda p: {"version": 1, "accepted": True, "feedback": "",
                                                          "needs_player_clarification": False})
-    assert any(builder.ENGINE_CONTRACT_OVERRIDE in m["content"] for m in authors[0] if m["role"] == "system")
+    assert any(m["content"].startswith(builder._GUIDE_PROMPT) for m in authors[0] if m["role"] == "system")
     assert len(commits) == 1 and commits[0]["maxHitPoints"] == 12
 
 
@@ -1172,10 +1176,8 @@ def test_a_pick_outside_the_scope_is_refused_typed_and_never_reviewed(scoped, mo
     bad = dict(SCOPED_CLERIC, choices={"cleric.divine-order.divine-order": ["Nope"]})
     answers = [_scoped_turn(SCOPED_BLANK), _scoped_turn(SCOPED_CLERIC), _scoped_turn(bad)] + [_scoped_turn(SCOPED_CLERIC)] * 3
     conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte."])
-    refused_at, request = next((i, m) for i, (t, m) in enumerate(calls)
-                               if t == "T092" and "startup_choice_refusal" in _purposes(m))
-    at = _purposes(request).index("startup_choice_refusal")
-    refusal = json.loads(request[at]["content"])
+    refused_at, refusal = next((i, a) for i, (t, m) in enumerate(calls) if t == "T092"
+                               for a in _engine_answers(m) if a["task_purpose"] == "startup_choice_refusal")
     assert refusal["problems"] and refusal["open_choice_ids"] == []
     assert calls[refused_at - 1][0] == "T092"  # the refused answer had no review call
     # The refused intent never became the scope: no state in any later request carries its pick.
@@ -1283,7 +1285,7 @@ def test_the_engine_author_offers_only_the_scope_options():
     assert ("Offer only a choice's option_keys from the scope; a skill the background grants is never "
             "offered.") in " ".join(prompt.split())
     assert "a skill the background grants" not in build_character_creation_system_prompt()
-    assert hashlib.sha256(prompt.encode()).hexdigest()[:12] == "7ca269aafe53"
+    assert hashlib.sha256(prompt.encode()).hexdigest()[:12] == "62ade284bdca"
 
 
 def test_the_engine_author_asks_one_choice_per_turn_for_a_new_player():
@@ -1350,8 +1352,7 @@ def test_a_refused_finalize_reprompts_the_author_with_typed_problems_and_no_revi
     conversation, calls = _run_scoped(scoped, monkeypatch, answers, ["A dwarf cleric acolyte. Finish her."])
     assert {task for task, _ in calls} == {"T092"} and len(calls) == 4
     retry = calls[3][1]
-    refusal = [m["content"] for m in retry if m.get("role") == "system"
-               and str(m.get("content", "")).startswith("Rejected startup proposal (not approved):")]
+    refusal = [a for a in _engine_answers(retry) if str(a).startswith("Rejected startup proposal (not approved):")]
     assert refusal and "finalize" in refusal[-1].lower()
     assert "startup_engine_review" not in _purposes(conversation)
 
@@ -1451,9 +1452,7 @@ def test_the_preview_summary_shows_hit_points_and_the_saved_line_shows_armor_cla
     assert built["hit_points"] == 8 + (con - 10) // 2   # cleric d8 maximum + Constitution modifier
     assert "Hit points %d" % built["hit_points"] in creation_build.render_sheet_summary(sheet, built)
     assert "armor class" not in creation_build.render_sheet_summary(sheet, built)
-    assert startup_wizard._saved_defense_line({"armorClass": 17, "maxHitPoints": 12}) == \
-        " Armor class 17, hit points 12."
-    assert startup_wizard._saved_defense_line({"armorClass": 17}) == ""
+    assert not hasattr(startup_wizard, "_saved_defense_line")  # #2090: the DM tells the saved sheet, no printed line
 
 
 def _open_turn(wizard, conversation, proposal):

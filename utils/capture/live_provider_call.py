@@ -83,8 +83,14 @@ _ADVISORY_TASK_IDS = frozenset(
 _LIVE_TASK_IDS = _REQUIRED_TASK_IDS | _ADVISORY_TASK_IDS
 _HEARTBEAT_SECONDS = 10.0
 _WATCHDOG_SECONDS = 600.0
-_WIZARD_READ_INACTIVITY_SECONDS = 40.0
+# #2090: setup on OpenAI ends a try after this long without model progress
+# (the parent's clock, which the silence notice counts down); the child's read
+# timeout is the same, so the parent always ends it first.
+_WIZARD_READ_INACTIVITY_SECONDS = 60.0
 _WIZARD_BACKSTOP_SECONDS = 180.0
+# #2090: setup on OpenAI says the provider is silent after this many seconds
+# without data (seen at the 20 s heartbeat). Display only: no try ends on it.
+_WIZARD_SILENCE_NOTICE_SECONDS = 15.0
 _WIZARD_TASK_IDS = frozenset({"T092", "T093", "T124"})
 # TCP connect bound per resolved address: the OpenAI SDK default, which the
 # in-process path already uses. A bare float deadline is also the connect
@@ -317,6 +323,8 @@ class LiveTurnScope:
     accepted: bool = False
     # #2069: the past-ceiling record is written once per budget.
     past_ceiling_logged: bool = False
+    # #2090: the provider-unavailable line of the last setup call, or None.
+    outage_line: str = None
 
     def next_generation(self):
         with self.lock:
@@ -1816,6 +1824,9 @@ class _GenerationReader(threading.Thread):
         # "failed" last, so the billing class reads the phase it had reached.
         self.reached = "spawned"
         self.last_progress = None
+        # #2090: the last stream event that is not progress (its kind and
+        # offset), so a try that hangs on one names it.
+        self.last_event = None
         self.detail = None
         self.endpoint = None
         self.output = None
@@ -1837,6 +1848,9 @@ class _GenerationReader(threading.Thread):
             if name == "endpoint":
                 self.endpoint = event.get("detail")
                 return
+            if name == "event":
+                self.last_event = {"kind": event.get("detail"), "t": offset}
+                return
             self.phases.setdefault(name, offset)
             self.current = name
             if name != "failed":
@@ -1852,6 +1866,7 @@ class _GenerationReader(threading.Thread):
                 "current": self.current,
                 "reached": self.reached,
                 "last_progress": self.last_progress,
+                "last_event": self.last_event,
                 "detail": self.detail,
                 "endpoint": self.endpoint,
             }
@@ -2220,6 +2235,22 @@ def _record_unused_generation(output, phase_state, frozen_kwargs, operation_id, 
         pass
 
 
+def _outage_class(envelope):
+    """#2090: the connection class of a try that found the provider
+    unavailable, or None. Typed only: an HTTP 5xx or 408, or a failed
+    connection on which nothing was sent."""
+    from utils.provider_errors import connection_class
+
+    status = envelope.get("http_status")
+    cls = connection_class(envelope)
+    if cls == "service_error" and isinstance(status, int) and (status >= 500 or status == 408):
+        return cls
+    if (cls == "no_connection" and envelope.get("cause_class")
+            and _billing_phase(envelope) in ("connecting", "connected", "secured")):
+        return cls
+    return None
+
+
 def _limit_envelope(error_class, task_id, request_kwargs):
     """Terminal envelope for a #1342 bound; classified non-retryable upstream."""
     return {
@@ -2491,6 +2522,10 @@ def _call_live_provider(
     billed_reissues = 0
     free_reissues = 0
     silent_reissues = 0
+    # #2090: this call's claimed tries, and how many found the provider
+    # unavailable (an HTTP 5xx or 408, or no connection to send on).
+    claimed_tries = 0
+    outage_tries = 0
     last_silent = False
     # #1981: the bucket the last failure was counted in ("billed", "free" or
     # #2090 "silent").
@@ -2565,7 +2600,48 @@ def _call_live_provider(
 
         _safe_emit(deliver, text)
 
+    # #2090: whether the last try failed without an answer; the line shown last.
+    silence = {"failed": False, "line": None}
+
+    def silence_line(wait=None):
+        """#2090: setup's status while OpenAI is silent, or None. ``wait`` is
+        the wait before the next try; without it a try is running."""
+        if not wizard_task or completion_required or request_provider != "openai":
+            return None
+        reader = current_reader["reader"]
+        state = reader.snapshot() if reader is not None else {}
+        attempt, left = failure_count + 1, wait
+        if wait is None:
+            since = state.get("last_progress")
+            limit = _WIZARD_READ_INACTIVITY_SECONDS
+            if since is None:
+                since = (state.get("phases") or {}).get("sent")
+                if state.get("endpoint") in _ACK_ENDPOINTS:
+                    limit = _ACK_BACKSTOP_SECONDS
+            if since is None or state.get("current") == "failed":
+                return None
+            quiet = time.monotonic() - current_reader["started"] - since
+            if quiet < _WIZARD_SILENCE_NOTICE_SECONDS and (
+                not silence["failed"] or state.get("current") == "receiving"
+            ):
+                return None
+            attempt, left = attempt + 1, limit - quiet
+        from utils.provider_errors import outage_line
+
+        left, bound = max(1, round(left)), attempt_bound(state)
+        seconds = "%d second%s" % (left, "" if left == 1 else "s")
+        silence["line"] = outage_line("no_answer", request_provider) + (
+            " The game will retry in %s (attempt %d of %d)." % (seconds, attempt, bound)
+            if attempt <= bound else
+            " The game will wait %s for an answer (attempt %d of %d)." % (
+                seconds.replace(" ", " more "), bound, bound)
+        )
+        return silence["line"]
+
     def wizard_heartbeat():
+        line = silence_line()
+        if line is not None:
+            return line
         elapsed = max(1, int(time.monotonic() - logical_started))
         if purpose == "adventure_choice":
             return "Still preparing your adventure choices (%d seconds elapsed)..." % elapsed
@@ -2602,10 +2678,12 @@ def _call_live_provider(
             return
         from core.managers.status_manager import status_manager
 
-        record = wait_record(retry_until)
+        # #2090: the page shows a wait record instead of the line, so the
+        # silence line goes out without one.
+        record = None if message == silence["line"] else wait_record(retry_until)
         if "before" not in shown:
             shown["before"] = status_manager.get_status_detail()
-        shown["record"] = record
+        shown["record"] = record or shown.get("record")
         _safe_emit(lambda text: status_manager.update_status(text, True, wait=record), message)
 
     def retry_wait(seconds, message):
@@ -2690,11 +2768,15 @@ def _call_live_provider(
                     task_id,
                     _limit_envelope("advisory_reserve", task_id, frozen_kwargs),
                 )
-            raise LiveProviderCompletedError(
-                task_id,
-                _limit_envelope("turn_call_ceiling", task_id, frozen_kwargs),
+            limit = _limit_envelope("turn_call_ceiling", task_id, frozen_kwargs)
+            # #2090: what this call's own tries met before the refusal.
+            limit["tries_met"] = (
+                "none" if not claimed_tries
+                else outage_class if outage_tries == claimed_tries else "other"
             )
+            raise LiveProviderCompletedError(task_id, limit)
         quiet_pending = False
+        claimed_tries += 1
         if claim_kind == "past_ceiling":
             # #2069: once per budget, an accepted reply's calls passed the
             # ceiling; nothing is shown, the record counts it (the generation
@@ -2761,6 +2843,8 @@ def _call_live_provider(
         generation_limit = (
             _LEVEL_UP_BACKSTOP_SECONDS
             if level_up_task
+            else _WIZARD_READ_INACTIVITY_SECONDS
+            if wizard_task and not completion_required and request_provider == "openai"
             else _WIZARD_BACKSTOP_SECONDS
             if wizard_task and not completion_required
             else request_deadline
@@ -2941,6 +3025,7 @@ def _call_live_provider(
             envelope["last_phase"] = phase_state["current"]
             envelope["reached_phase"] = phase_state.get("reached")
             envelope["last_progress"] = phase_state["last_progress"]
+            envelope["last_event"] = phase_state.get("last_event")
             # Every error or reaped generation of every task is evidence
             # (#284 F6); success rows keep the existing gate because those
             # callers already log their own successes.
@@ -2988,6 +3073,10 @@ def _call_live_provider(
                     "Still working; checking the current adventure...",
                 )
                 continue
+            if silence["line"] is not None:
+                # #2090: the silence line must not stay under the next call.
+                silence["failed"] = False
+                emit_status(wizard_heartbeat())
             if failure_announced:
                 restored = "Connection to %s restored. Continuing." % provider_name
                 notify_player_once("restored", restored)
@@ -3005,6 +3094,10 @@ def _call_live_provider(
 
         failure_count += 1
         envelope = envelope if isinstance(envelope, dict) else {}
+        if wizard_task:
+            from utils.provider_errors import connection_class
+
+            silence["failed"] = connection_class(envelope) == "no_answer"
         if isinstance(envelope.get("error_fields"), dict) and envelope["error_fields"]:
             # #2046: the child's typed error fields, file only.
             try:
@@ -3105,6 +3198,8 @@ def _call_live_provider(
             else:
                 free_reissues += 1
                 last_bucket["kind"] = "free"
+                outage_class = _outage_class(envelope)
+                outage_tries += outage_class is not None
                 exhausted = free_reissues > _FREE_REISSUE_LIMIT
             if exhausted:
                 _provider_debug(
@@ -3118,6 +3213,8 @@ def _call_live_provider(
 
                 # #1981: the give-up names what failed last, not the bound.
                 limit["connection_class"] = connection_class(envelope)
+                if outage_tries == claimed_tries:
+                    limit["outage"] = True
                 if policy == "advisory" and not completion_required:
                     raise LiveProviderUnavailable(task_id, limit)
                 raise LiveProviderCompletedError(task_id, limit)
@@ -3207,9 +3304,10 @@ def _call_live_provider(
             else:
                 emit_status("%s %s" % (turn_heartbeat(generation), reason))
             failure_announced = True
+        delay = _delay_for_error(envelope, failure_count)
         retry_wait(
-            _delay_for_error(envelope, failure_count),
-            wizard_heartbeat if wizard_task else (
+            delay,
+            (silence["failed"] and silence_line(delay) or wizard_heartbeat) if wizard_task else (
                 lambda: turn_heartbeat(generation)
             ),
         )

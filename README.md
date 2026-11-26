@@ -63,9 +63,9 @@ line of `config.py` instead. Never commit `config.py`. Gemini and local servers
 (LM Studio, Ollama) are chosen in the same Settings panel; see [AI Provider Setup](#ai-provider-setup).
 
 **First screen:** the first launch builds the browser player (a minute or so),
-then opens `http://localhost:8357/play/`. Press **New Game** at the top. The game says
-*"Welcome! Choose your adventure, then build your character."*, offers the
-adventures, and then walks you through creating your character.
+then opens `http://localhost:8357/play/`. Press **New Game** at the top. The game
+welcomes you, offers the adventures, and then walks you through creating your
+character.
 
 Next time, run `python run_web.py` again from the same folder, with the venv
 activated. Windows users can instead use the

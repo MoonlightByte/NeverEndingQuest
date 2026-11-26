@@ -824,8 +824,12 @@ def _responses_stream_completion(client, messages, model, temperature, strip_tem
                 getattr(event, "code", None), getattr(event, "message", ""),
                 event_type=kind, param=getattr(event, "param", None),
             )
-        else:
+        elif kind.startswith("response.reasoning"):
             _phase(phase_emit, "working", kind)
+        else:
+            # #2090: status and transport events (keepalive, in_progress, queued, any other kind) are not the
+            # model working: they are named, never counted as progress.
+            _phase(phase_emit, "event", kind)
     if final is None:
         raise ResponsesStreamFailed("stream_ended", "no terminal response event")
     content = "".join(delta for index, delta in parts if _answer_item(index, phases))

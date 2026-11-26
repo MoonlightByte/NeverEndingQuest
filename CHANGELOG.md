@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In character creation, the guide no longer tells you your species already gives you a language; you choose your two languages, such as Dwarvish for a dwarf (#2090).
+
+- In character creation, the guide now asks about an item inside a gear package, such as a holy symbol, without asking the package again, so it no longer has to correct itself (#2090).
+
+- In character creation, when you turn down the alignment the guide suggests, it now offers another instead of keeping the one you turned down (#2090).
+
+- In character creation, a look or bit of history you give the guide now goes into your character's saved details, instead of being described but not kept (#2090).
+
+- In character creation, the guide's summary now shows what your character wears and holds exactly as the game will save it (#2090).
+
+- In character creation, the guide no longer fills in a choice it is still asking you about; it waits for your answer (#2090).
+
+- In character creation, naming an expertise before choosing its skills no longer makes the guide refuse it; the guide keeps it until the skill is chosen (#2090).
+
+- In character creation, when OpenAI stops answering, the game now retries when its countdown ends instead of waiting without end (#2090).
+
+- In character creation, saying you want to start over now begins a new character with nothing of the old one kept, instead of pausing setup (#2090).
+
+- In character creation, the build you are shown lists what your character wears and what they hold on separate lines, and the guide asks for the part you have not said (#2090).
+
+- In character creation, the guide no longer puts on file a choice it only suggested, listed or asked about, what your character wears or holds included; it waits for your answer (#2090).
+
+- In character creation, when the AI provider is unavailable, the game now says so beside the story, with the provider's name, and tries again by itself every 16 seconds within the turn's limit; "Setup paused" is now a notice from the game (#2090).
+
+- In character creation, when OpenAI sends nothing back for about 20 seconds, the game now says beside the story that OpenAI isn't responding, that this is not the game's fault or yours, and when it tries again; the pause after the last try gives the same reason (#2090).
+
+- In character creation, the guide now tells you everything in its own words, the finished character included: the game no longer prints its own lists, summaries and notices beside it, and you still answer the menus by number, by name or in your own words. The guide and the menus speak as the Dungeon Master, and the guide asks about one or two decisions at a time (#2090).
+
 - Character creation on your own AI server asks again more times when the server goes silent before it waits for you. With any provider, your next message after that wait now always sends the request again (#2090).
 
 - In character creation, when the guide repeats the ability scores from your character summary, the game now keeps the scores you chose instead of stopping your turn over them (#2090).
