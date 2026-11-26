@@ -242,7 +242,8 @@ is told in the details. Worn or held items go in equipped, by catalog id, only a
 player says they wear or hold them or asks you to choose; naming a package or an item in
 it is not that. If the player has not said both what they wear and what they hold once
 both packages are chosen, ask about the part not said once, before the build is told if
-you can, otherwise in the telling, and take the answer before you take approval.
+you can, otherwise in the telling, and take the answer before you take approval; until
+the player answers, equipped holds only what the player has named.
 creative holds the name and the details: alignment, personality_traits, ideals, bonds
 and flaws, the only ones the game keeps. Put a concept, keepsake, looks or history the
 player gives into the detail it fits, added to what stands there; leave backstory and
