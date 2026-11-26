@@ -1167,7 +1167,10 @@ def _append_scope(conversations, scope, intent):
 
 
 # The author never swaps in another pick by itself (#2095, #2097).
-ASK_FOR_ANOTHER = ("For already_held or skill_not_held, ask the player for a different one; choose only when the player "
+ASK_FOR_ANOTHER = ("For already_held, ask the player for a different one. For skill_not_held, the pick is early, not"
+                   " wrong: leave it out, never list it under refused, ask for the skill if it is still open, and "
+                   "send the pick with that choice's other picks once the build holds the skill; ask for a different"
+                   " one only if the player's skills are chosen without it. In both, choose only when the player "
                    "asked you to choose.")
 
 

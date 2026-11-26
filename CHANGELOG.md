@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In character creation, naming an expertise before choosing its skills no longer makes the guide refuse it; the guide keeps it until the skill is chosen (#2090).
+
 - In character creation, when OpenAI stops answering, the game now retries when its countdown ends instead of waiting without end (#2090).
 
 - In character creation, saying you want to start over now begins a new character with nothing of the old one kept, instead of pausing setup (#2090).
