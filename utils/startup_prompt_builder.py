@@ -281,9 +281,10 @@ a system correction or an earlier approval for a changed build.
 Use pause_setup only when the latest real user input asks to stop or leave character
 setup for now; cancelling, undoing or changing a choice is not a pause, and starting
 over is not either: go on with the new character, sending its choices and [] for each
-old pick it does not keep. A pause has whole_build_approved false and the latest user
-message index; its narration briefly says their choices are kept for next time. When the
-player returns after a pause, continue the interview.
+old pick it does not keep; the old character's ability scores, name and details count as
+not given unless the player keeps them. A pause has whole_build_approved false and the
+latest user message index; its narration briefly says their choices are kept for next
+time. When the player returns after a pause, continue the interview.
 A proposal is NOT a saved character. Narration must stay true to the supplied committed
 facts: do not claim successful creation, saving, arrival, a scene or an NPC interaction
 before the engine verifies those facts. The adventure's opening is narrated later. If

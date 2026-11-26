@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - In character creation, saying you want to start over now begins a new character instead of pausing setup (#2090).
 
-- In character creation, the guide now asks what your character wears when you only said what they hold, and the reverse (#2090).
+- In character creation, the build you are shown lists what your character wears and what they hold on separate lines, and the guide asks for the part you have not said (#2090).
 
 - In character creation, the guide no longer puts on file a choice it only suggested, listed or asked about, what your character wears or holds included; it waits for your answer (#2090).
 

@@ -19,7 +19,7 @@ the package they belong to is known. Nothing marks a waiting id; ``checked`` der
 what ``checked`` returns is filled.
 """
 import copy
-from typing import Any, Dict, List, NamedTuple, Optional
+from typing import Any, Dict, List, NamedTuple, Optional, Tuple
 
 from core.nql import creation_build, creation_scope, item_catalog, startup_rows
 from core.nql.creation_scope import _Data, _class_points
@@ -217,12 +217,22 @@ def gear_lines(blocks: Dict[str, Any], sheet: Optional[Dict[str, Any]] = None) -
         gold = int((option.get("coins") or {}).get("gp") or 0)
         lines.append("%s %s: %s" % (label, blocks["starting_equipment"][kind + "_package"], ", ".join(
             [n for n in names if n] + (["%d gold" % gold] if gold else []))))
-    worn = [(i, False) for i in gear["worn"]]
-    if sheet is not None and worn:
-        worn = startup_rows.worn_preview(sheet, _chosen_items(facts, blocks), gear["slots"], gear["worn"])
-    names = {full: ", ".join(facts.d.catalog.get(i, i) for i, carried in worn if carried is full) for full in (False, True)}
-    return lines + ["Worn or held: %s%s" % (names[False] or "nothing chosen yet",
-                                            "; carried (hands full): %s" % names[True] if names[True] else "")]
+    if sheet is None or not gear["worn"]:
+        return lines + _worn_lines(facts, [(i, False, None) for i in gear["worn"]])
+    return lines + _worn_lines(facts, startup_rows.worn_preview(sheet, _chosen_items(facts, blocks), gear["slots"],
+                                                                gear["worn"]))
+
+
+def _worn_lines(facts: _Facts, worn: List[Tuple[str, bool, Optional[bool]]]) -> List[str]:
+    """What is worn and what is held, split by the save's hand rule (worn_preview); one line while nothing is
+    equipped, or without the sheet (no hand rule to read)."""
+    names = lambda rows: ", ".join(facts.d.catalog.get(i, i) for i in rows)
+    full = names(i for i, carried, _ in worn if carried)
+    tail = "; carried (hands full): %s" % full if full else ""
+    if not worn or any(hand is None for _, _, hand in worn):
+        return ["Worn or held: %s%s" % (names(i for i, carried, _ in worn if not carried) or "nothing chosen yet", tail)]
+    return ["Worn: %s" % (names(i for i, carried, hand in worn if not carried and not hand) or "nothing"),
+            "Held: %s%s" % (names(i for i, carried, hand in worn if not carried and hand) or "nothing", tail)]
 
 
 _METHODS = {"standard_array": "Standard Array", "point_buy": "Point Buy", "random": "Rolled"}
