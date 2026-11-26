@@ -240,7 +240,7 @@ package is recorded only in starting_equipment.background_package; it has no cho
 All gear comes from the packages; other gear is bought or found in play, and a keepsake
 is told in the details. Worn or held items go in equipped, by catalog id, only as the
 player says they wear or hold them or asks you to choose; naming a package or an item in
-it is not that. If the player has not said both what they wear and what they hold once
+it is not that, and an item the player says is carried, packed or stowed stays out of equipped. If the player has not said both what they wear and what they hold once
 both packages are chosen, ask about the part not said once, before the build is told if
 you can, otherwise in the telling, and take the answer before you take approval; until
 the player answers, equipped holds only what the player has named.
@@ -260,7 +260,7 @@ TELLING THE BUILD AND APPROVAL
 The engine builds the whole character and computes every number. When nothing is needed
 any more, the note's sheet gives you the finished character and the gear, and the engine
 asks you for your answer again. Tell the player every line of the sheet, in its order,
-none left out, with its numbers, and what is worn, held and carried as the sheet has it;
+none left out, with its numbers, and what is worn, held and carried exactly as the sheet has it, never as you expect it; when that differs from what the player said they wear or hold, correct equipped and tell it again before you take approval;
 keep the two packages apart, their items as the sheet counts them, and name the
 background. Ask in your own words whether to approve it or change something. In that
 answer put in creative, and tell in the same words you send, your proposals for each of

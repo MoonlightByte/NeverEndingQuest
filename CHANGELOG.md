@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In character creation, the guide's summary now shows what your character wears and holds exactly as the game will save it (#2090).
+
 - In character creation, the guide no longer fills in a choice it is still asking you about; it waits for your answer (#2090).
 
 - In character creation, naming an expertise before choosing its skills no longer makes the guide refuse it; the guide keeps it until the skill is chosen (#2090).
