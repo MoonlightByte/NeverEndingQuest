@@ -1051,6 +1051,8 @@ def _held_blocks(conversation):
                 blocks = creation_blocks.empty()
                 _fold_blocks(blocks, kept)
         elif isinstance(item.get("intent"), dict):
+            if item["intent"].get("start_over") is True:
+                blocks = creation_blocks.empty()  # the player started over: nothing before it stands
             _fold_blocks(blocks, item, drop_name=item.get("decision") == "finalize_character")
     roll = _ability_roll(conversation)
     return creation_blocks.settle(blocks, rolled=roll["rolled"] if roll else None)
@@ -1266,6 +1268,9 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
     history gets them only when the turn publishes (r3.1, T4). The ability roll is the exception: persist
     saves it the moment it is made, so no handback or restart rolls again (amendment 1f, N7)."""
     roll = _ability_roll(correction_context)
+    if (proposal.get("intent") or {}).get("start_over") is True:
+        # The player starts over: nothing held comes back in this turn, and nothing old is told as dropped.
+        turn.update(held=creation_blocks.empty(), lost={}, unread={}, start_over=True)
     merged = creation_blocks.merge(turn["held"], turn["standing"], proposal, rolled=roll["rolled"] if roll else None,
                                    previous=lambda: _earlier_choice_ids(correction_context),
                                    alignments=creation_alignments())
@@ -1401,6 +1406,8 @@ def _write_blocks(proposal, turn, whole=False):
     filled gear and every detail; an interview turn carries all the blocks and only the details it added."""
     standing = creation_blocks.checked(turn["standing"]) if whole else turn["standing"]
     proposal["intent"] = copy.deepcopy(standing["intent"])
+    if turn.get("start_over"):
+        proposal["intent"]["start_over"] = True  # read back as the point the build began again
     proposal["starting_equipment"] = copy.deepcopy(standing["starting_equipment"])
     creative = standing["creative"] if whole else {
         k: v for k, v in standing["creative"].items() if v != turn["held"]["creative"].get(k)}

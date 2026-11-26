@@ -400,9 +400,13 @@ def merge(held: Dict[str, Any], standing: Dict[str, Any], reply: Dict[str, Any],
     """The blocks after this reply. previous(): the choice ids earlier scopes of this interview issued; a pick
     under one the new scope does not issue is a switch's leftover, dropped and never refused."""
     facts = _Facts()
+    sent = reply.get("intent") or {}
+    if sent.get("start_over") is True:
+        # The player starts over: nothing of the old build stands or comes back; the engine's roll and the
+        # adventure are not in the blocks and stay. The rest of this reply is the new character's.
+        held, standing = empty(), empty()
     out = copy.deepcopy(standing)
     intent, equipment = out["intent"], out["starting_equipment"]
-    sent = reply.get("intent") or {}
     problems: List[Dict[str, Any]] = []
     aside: List[str] = []
     leftovers: Dict[str, List[Any]] = {}

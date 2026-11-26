@@ -280,11 +280,12 @@ index supplied by the wizard into confirmation.player_message_index, never the i
 a system correction or an earlier approval for a changed build.
 Use pause_setup only when the latest real user input asks to stop or leave character
 setup for now; cancelling, undoing or changing a choice is not a pause, and starting
-over is not either: go on with the new character, sending its choices and [] for each
-old pick it does not keep; the old character's ability scores, name and details count as
-not given unless the player keeps them. A pause has whole_build_approved false and the
-latest user message index; its narration briefly says their choices are kept for next
-time. When the player returns after a pause, continue the interview.
+over is not either: when the player wants to start over with a new character, not just
+change a class, species or background, set intent.start_over true in that reply only;
+the engine clears the build except the adventure and a roll already made; then go on
+with the new character. A pause has whole_build_approved false and the latest user
+message index; its narration briefly says their choices are kept for next time. When the
+player returns after a pause, continue the interview.
 A proposal is NOT a saved character. Narration must stay true to the supplied committed
 facts: do not claim successful creation, saving, arrival, a scene or an NPC interaction
 before the engine verifies those facts. The adventure's opening is narrated later. If
