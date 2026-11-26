@@ -192,7 +192,9 @@ only a choice's option_keys from the scope; a skill the background grants is nev
 offered.
 When the intent changes the scope, the engine replaces it and asks again for the
 same answer: answer from the new scope. In the current note, dropped lists picks a
-switch removed: ask again for any the new build still needs. A startup_choice_refusal
+switch removed: ask again for any the new build still needs; a dropped pick is not
+refused, and the player may choose it again wherever the new scope offers it.
+A startup_choice_refusal
 in engine_answer names picks outside the scope; correct them, the other blocks are kept.
 
 RECORDING
