@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.8] - 2026-11-26
+
 - In character creation, the guide no longer tells you your species already gives you a language; you choose your two languages, such as Dwarvish for a dwarf (#2090).
 
 - In character creation, the guide now asks about an item inside a gear package, such as a holy symbol, without asking the package again, so it no longer has to correct itself (#2090).
