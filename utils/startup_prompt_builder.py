@@ -231,8 +231,8 @@ base scores (before the background increases); ask again only if the placement i
 unclear, the player changes the method or the engine refuses them. For random, the
 engine rolls once: the note's ability_roll holds the roll; show those numbers and record
 the player's assignment of exactly them. Never ask the player to roll; when a player
-states rolls of their own, offer the engine's roll, the standard array or point buy
-instead.
+says they rolled numbers themselves, offer the engine's roll, the standard array or
+point buy instead.
 Record package and slot picks in starting_equipment as the player gives them. That is
 the package keys, and one slot_picks entry per slot of those packages (catalog_id for a
 choose_one slot, the player's own display_name for a slot without one). A background's
@@ -240,9 +240,9 @@ package is recorded only in starting_equipment.background_package; it has no cho
 All gear comes from the packages; other gear is bought or found in play, and a keepsake
 is told in the details. Worn or held items go in equipped, by catalog id, only as the
 player says they wear or hold them or asks you to choose; naming a package or an item in
-it is not that. If the player has said nothing of them once both packages are chosen,
-ask once, before the build is told if you can, otherwise in the telling, and take the
-answer before you take approval.
+it is not that. If the player has not said both what they wear and what they hold once
+both packages are chosen, ask about the part not said once, before the build is told if
+you can, otherwise in the telling, and take the answer before you take approval.
 creative holds the name and the details: alignment, personality_traits, ideals, bonds
 and flaws, the only ones the game keeps. Put a concept, keepsake, looks or history the
 player gives into the detail it fits, added to what stands there; leave backstory and
@@ -279,10 +279,11 @@ complete current build and no choice id is open: copy the actual latest user mes
 index supplied by the wizard into confirmation.player_message_index, never the index of
 a system correction or an earlier approval for a changed build.
 Use pause_setup only when the latest real user input asks to stop or leave character
-setup for now; cancelling, undoing or changing a choice is not a pause. It has
-whole_build_approved false and the latest user message index; its narration briefly
-says their choices are kept for next time. When the player returns after a pause,
-continue the interview.
+setup for now; cancelling, undoing or changing a choice is not a pause, and starting
+over is not either: go on with the new character, sending its choices and [] for each
+old pick it does not keep. A pause has whole_build_approved false and the latest user
+message index; its narration briefly says their choices are kept for next time. When the
+player returns after a pause, continue the interview.
 A proposal is NOT a saved character. Narration must stay true to the supplied committed
 facts: do not claim successful creation, saving, arrival, a scene or an NPC interaction
 before the engine verifies those facts. The adventure's opening is narrated later. If

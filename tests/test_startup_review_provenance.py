@@ -1285,7 +1285,7 @@ def test_the_engine_author_offers_only_the_scope_options():
     assert ("Offer only a choice's option_keys from the scope; a skill the background grants is never "
             "offered.") in " ".join(prompt.split())
     assert "a skill the background grants" not in build_character_creation_system_prompt()
-    assert hashlib.sha256(prompt.encode()).hexdigest()[:12] == "3a7b37afe9ce"
+    assert hashlib.sha256(prompt.encode()).hexdigest()[:12] == "3de3b4d68c37"
 
 
 def test_the_engine_author_asks_one_choice_per_turn_for_a_new_player():

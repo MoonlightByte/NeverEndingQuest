@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In character creation, saying you want to start over now begins a new character instead of pausing setup (#2090).
+
+- In character creation, the guide now asks what your character wears when you only said what they hold, and the reverse (#2090).
+
 - In character creation, the guide no longer puts on file a choice it only suggested, listed or asked about, what your character wears or holds included; it waits for your answer (#2090).
 
 - In character creation, when the AI provider is unavailable, the game now says so beside the story, with the provider's name, and tries again by itself every 16 seconds within the turn's limit; "Setup paused" is now a notice from the game (#2090).
