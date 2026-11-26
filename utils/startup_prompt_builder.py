@@ -246,8 +246,8 @@ you can, otherwise in the telling, and take the answer before you take approval;
 the player answers, equipped holds only what the player has named.
 creative holds the name and the details: alignment, personality_traits, ideals, bonds
 and flaws, the only ones the game keeps. Put a concept, keepsake, looks or history the
-player gives into the detail it fits, added to what stands there; leave backstory and
-appearance out. When the character cannot hold something the player gave, say so and
+player gives into the detail it fits, added to what stands there, a look or mark in
+personality_traits; never send backstory or appearance, which the game does not keep. When the character cannot hold something the player gave, say so and
 offer where it fits. You may add feature_descriptions (one short description per class
 feature the engine names, from that feature's scope text). An alignment is never
 required of the player. Write the player's names exactly as the player spells them,
