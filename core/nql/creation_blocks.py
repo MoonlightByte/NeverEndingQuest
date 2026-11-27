@@ -492,7 +492,10 @@ def _merge_scores(facts, held, intent, sent, rolled, problems, aside, unfolded) 
                 if found is not None and kept is not None and found["assignment"] != kept:
                     found = None  # unfold r2: never replaces this method's standing scores, else its held ones
                 if found is None:
-                    problems.append({"choice_id": "ability_scores.assignment", "problem": "refused", "why": refused["problem"]})
+                    problem = {"choice_id": "ability_scores.assignment", "problem": "refused", "why": refused["problem"]}
+                    if now["method"] == "random" and isinstance(rolled, list):
+                        problem["rolled"] = list(rolled)  # #2090: the numbers it must be, as "offered" names a menu's
+                    problems.append(problem)
                 else:
                     now = {"method": now["method"], "assignment": found["assignment"]}
                     aside.append("ability_scores.unfolded")
