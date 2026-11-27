@@ -485,6 +485,12 @@ def _merge_scores(facts, held, intent, sent, rolled, problems, aside, unfolded) 
                 aside.append("ability_scores.summary_echo")  # the shown totals sent back: nothing changed
             elif refused:
                 found = _unfold(facts, intent, sent, now["method"], new["assignment"], rolled) if facts.ok else None
+                old = held["intent"]["ability_scores"] or {}
+                kept = now.get("assignment")
+                if kept is None and old.get("method") == now["method"]:
+                    kept = old.get("assignment")
+                if found is not None and kept is not None and found["assignment"] != kept:
+                    found = None  # unfold r2: never replaces this method's standing scores, else its held ones
                 if found is None:
                     problems.append({"choice_id": "ability_scores.assignment", "problem": "refused", "why": refused["problem"]})
                 else:
