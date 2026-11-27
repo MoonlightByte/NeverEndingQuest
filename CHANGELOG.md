@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - With LM Studio and other Local/Custom servers, character creation now asks the server for the game's reply format, and falls back to today's plain request if the server refuses it (#2090).
 - During character creation, a reply from the AI that was cut off partway is no longer shown to you or kept; the game asks again, and if every try is cut off it shows the usual "AI provider did not answer" notice so you can try again (#2090).
+- With LM Studio and other Local/Custom servers, character creation now gives the model a short overview of the classes, species and backgrounds, so it keeps gear choices and the options you are asking about straight (#2090).
 
 ## [1.2.9] - 2026-11-27
 

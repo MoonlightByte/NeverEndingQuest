@@ -381,6 +381,9 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
     # Observational transport-phase callback from the live-provider child
     # (#409): never forwarded to a provider, never affects routing.
     _phase_emit = kwargs.pop("_phase_emit", None)
+    # #2090: set only by the live-provider parent on the last silent try of a Local/Custom interview: the reply
+    # schema is left out, the rest of the request (the outline included) is the same. Never sent to a provider.
+    _local_plain_reply = kwargs.pop("_local_plain_reply", False)
     # Per-callsite output ceiling (OpenAI only; set by the capture layer from
     # model_registry.OPENAI_OUTPUT_CEILING_CHARS). Never forwarded to a provider.
     _output_ceiling = kwargs.pop("_output_ceiling_chars", None)
@@ -403,7 +406,10 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
             )
             # At most four sends. The reply schema is dropped when a server may have refused it
             # or answers it with nothing; a template repair sends it again (#2090).
-            first_format = _local_reply_format(request_provider, task_id, _response_format)
+            if _local_interview(request_provider, task_id, _response_format):
+                messages = _with_local_outline(messages)  # a new list: the caller's is never changed
+            first_format = (_response_format if _local_plain_reply
+                            else _local_reply_format(request_provider, task_id, _response_format))
             schema_sent = first_format is not _response_format
             sent_messages, sent_format = messages, first_format
             while True:
@@ -577,10 +583,34 @@ def _refused(status):
     return isinstance(status, int) and 400 <= status <= 599 and status not in _NOT_A_FORMAT_REFUSAL
 
 
+def _local_interview(provider, task_id, response_format):
+    """The creation interview's request to a Local/Custom server: T092 asking json_object (#2090)."""
+    return provider == "lmstudio" and task_id == "T092" and response_format == {"type": "json_object"}
+
+
+def _with_local_outline(messages):
+    """The messages with the creation outline as a system message at index 1, right after the instructions; the same
+    messages when it cannot be built or placed (NEQ-OPS-05: logged with a fixed code and the class only)."""
+    try:
+        from core.nql.creation_outline import outline_text
+
+        if not (isinstance(messages, list) and messages and messages[0].get("role") == "system"):
+            raise ValueError("no leading instructions")
+        return [messages[0], {"role": "system", "content": outline_text()}] + list(messages[1:])
+    except Exception as fault:
+        try:
+            from utils.enhanced_logger import debug
+
+            debug("LOCAL_OUTLINE_DROPPED build=%s -> sending without it" % type(fault).__name__, category="ai_routing")
+        except Exception:
+            pass
+        return messages
+
+
 def _local_reply_format(provider, task_id, response_format):
     """T092's reply schema in place of json_object on a Local/Custom server; else unchanged. A schema that
     cannot be built is not sent (NEQ-OPS-05: logged with its class only)."""
-    if provider != "lmstudio" or task_id != "T092" or response_format != {"type": "json_object"}:
+    if not _local_interview(provider, task_id, response_format):
         return response_format
     try:
         return {"type": "json_schema", "json_schema": {
