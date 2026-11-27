@@ -654,9 +654,10 @@ def _with_local_choices(messages):
 
 
 # #2090: the engine's roll told by its numbers, first in a Local/Custom interview's note.
-_LOCAL_ROLL_TOLD = ("The engine rolled the player's six ability scores: %s. For random, show the player exactly these six "
-                    "numbers and assign only them; never show or record other numbers. They are never rolled again: a "
-                    "request to reroll keeps them.")
+_LOCAL_ROLL_TOLD = ("The engine rolled the player's six ability scores: %s. For random these are the only base scores: the "
+                    "player places exactly these six (or asks you to), and the assignment records only them, never other "
+                    "numbers. The background increase is added by the engine; tell the totals from the sheet. They are "
+                    "never rolled again: a request to reroll keeps them.")
 
 
 def _with_local_roll(messages):
