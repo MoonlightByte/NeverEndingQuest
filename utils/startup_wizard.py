@@ -1158,6 +1158,41 @@ def _summary_shown(last, blocks, rolled):
     return None if rendered is None else _engine_part(rendered[0]) == _engine_part(last)
 
 
+def _handback_preview(correction_context, turn):
+    """The engine's sheet preview a handed-back turn made, when the build is still the one it shows (a preview is made only
+    for a complete build); else None (#2090 E1). Without it the preview leaves with the turn, and each new approval is
+    refused again."""
+    previews = _scope_states(correction_context, SHEET_PREVIEW_PURPOSE)
+    if not previews:
+        return None
+    roll = _ability_roll(correction_context)
+    if not _summary_shown(previews[-1].get("summary"), turn["standing"], roll["rolled"] if roll else None):
+        return None
+    return copy.deepcopy(previews[-1])
+
+
+def _handback_tail(notice, turn, preview):
+    """The handback request's note: today's, or with the engine's sheet to tell when the turn made one (#2090 E1)."""
+    tail = {"facts": notice, "blocks": creation_blocks.state(turn["standing"]),
+            "instruction": ("For this reply only, answer in plain words, no JSON, as the player will read it. Nothing "
+                            "from it is recorded. Tell the player what is kept and what is still needed, and ask what to "
+                            "adjust.")}
+    if preview is not None:
+        tail["sheet"] = _engine_part(preview.get("summary"))
+        tail["instruction"] = ("For this reply only, answer in plain words, no JSON, as the player will read it. Nothing "
+                               "from it is recorded and nothing is finalized. The engine built this character: tell the "
+                               "player the whole build from the sheet, in your own words with its names and numbers, and "
+                               "ask them to approve it or say what to change.")
+    return tail
+
+
+def _keep_told_preview(conversation, words, preview):
+    """After the handback's words were shown, the preview they told is kept in the saved history, so the player's next
+    message answers a build they heard (#2090 E1). Nothing when nothing was said or there was no preview."""
+    if words and preview is not None:
+        conversation.append({"role": "system", "content": json.dumps(preview, ensure_ascii=False)})
+
+
 def _sheet_preview(conversations, blocks, rolled):
     """Once nothing is needed, the engine builds the sheet and gives the guide its summary as a typed
     startup_sheet_preview item, in each list (the first is read for the last one). True when it was new."""
@@ -2180,14 +2215,11 @@ def ai_character_interview(conversation, module):
                                         "approved. Answer the player's next message with the retained choices."),
                     }, ensure_ascii=False)})
                     save_startup_conversation(conversation, live_scope=scope)
+                    preview = _handback_preview(correction_context, turn)
                     while True:
                         try:
-                            words = _handback_words(_author_request(conversation, module, turn, len(conversation), {
-                                "facts": notice, "blocks": creation_blocks.state(turn["standing"]),
-                                "instruction": ("For this reply only, answer in plain words, no JSON, as the player will "
-                                                "read it. Nothing from it is recorded. Tell the player what is kept and "
-                                                "what is still needed, and ask what to adjust."),
-                            }), scope)
+                            words = _handback_words(_author_request(conversation, module, turn, len(conversation),
+                                                                    _handback_tail(notice, turn, preview)), scope)
                             break
                         except StartupReplyCut:
                             # #2090: both cut: the approved provider notice; the player's next message retries.
@@ -2197,6 +2229,7 @@ def ai_character_interview(conversation, module):
                         record = json.loads(conversation[-1]["content"])
                         record["notice_shown_to_player"] = words
                         conversation[-1]["content"] = json.dumps(record, ensure_ascii=False)
+                        _keep_told_preview(conversation, words, preview)
                         save_startup_conversation(conversation, live_scope=scope)
                     break
                 current_index = _latest_player_index(conversation)
