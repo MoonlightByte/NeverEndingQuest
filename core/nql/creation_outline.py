@@ -5,7 +5,7 @@
 
 A short directory of the creation steps, classes, species and backgrounds, read from the data files at each call
 (the ones the creation scope reads), never typed by hand. It goes only to a Local/Custom server's T092 interview
-(core/ai/api_client.py); the OpenAI request never carries it. The same data gives the same bytes, so a server's
+and its handed-back turn's plain words request (core/ai/api_client.py); the OpenAI request never carries it. The same data gives the same bytes, so a server's
 prefix cache keeps it from turn to turn. ``outline_text()`` raises when the data cannot be read; the caller then
 sends without it.
 """
@@ -22,6 +22,18 @@ def _size_word(size: str) -> str:
     return " ".join(re.sub(r"\([^)]*\)", "", size).split(",")[0].split())
 
 
+def _weapon_free_picks(d) -> List[tuple]:
+    """(class_key, point) of each level-1 Weapon Mastery pick: a free pick whose option source is weapons:..."""
+    out = []
+    for key in d.classes():
+        for _cid, p in creation_scope._class_points(key, d):
+            if str(p.get("option_source") or "").split(":", 1)[0] == "weapons":
+                if p.get("name") != "Weapon Mastery":
+                    raise ValueError("weapons pick")
+                out.append((key, p))
+    return out
+
+
 def outline_text() -> str:
     d = creation_scope._Data()
     if not d.ok:
@@ -30,19 +42,41 @@ def outline_text() -> str:
     if not isinstance(attribution, str) or "CC BY 4.0" not in attribution:
         raise ValueError("no attribution")
     methods = list(_METHODS)
+    if methods != ["standard_array", "point_buy", "random"]:
+        raise ValueError("methods")
+    sm = d.origins.get("ability_score_methods") or {}
+    array, budget = sm["standard_array"], sm["point_cost"]["budget"]
+    costs = [int(k) for k in sm["point_cost"]["costs"]]
+    raised = sorted(d.origins["backgrounds"], key=lambda b: b["key"])[0]["ability_keys"]
+    mastery = sorted(key for key, _p in _weapon_free_picks(d))
+    if not mastery:
+        raise ValueError("no weapon free pick")
     out: List[str] = [
-        "LOCAL OUTLINE: a short directory of character creation, for orientation only. The creation scope message "
-        "holds the full facts; pick options by its keys.",
+        "LOCAL OUTLINE: a short directory of character creation. The creation scope message holds the full facts; "
+        "pick options by its keys.",
         "Source: %s." % attribution.rstrip("."),
         "The usual flow (the player may give any part at any time; keep whatever they give): 1 %s; 2 the level-1 "
         "choices these open (intent.choices, by the ids the scope issues); the class gear is one of them; "
-        "3 ability_scores: the player picks the method (%s or %s), then the assignment; 4 starting gear: %s, and the "
-        "items inside the packages; 5 %s. Before approval, also propose and tell: %s." % (
-            ", ".join(IDENTITY), ", ".join(methods[:-1]), methods[-1], PACKAGES[0], CREATIVE_FIELDS[0],
-            ", ".join(CREATIVE_FIELDS[1:])),
+        "3 ability_scores: the player's method, then the assignment; 4 starting gear: %s, and the items inside the "
+        "packages; 5 %s. Before approval, also propose and tell: %s." % (
+            ", ".join(IDENTITY), PACKAGES[0], CREATIVE_FIELDS[0], ", ".join(CREATIVE_FIELDS[1:])),
         "The package value is the bare letter: starting_equipment.%s \"A\" and starting_equipment.%s \"A\", never an "
         "id or a list of items. An item inside a package (holy symbol, gaming set) goes in starting_equipment.slot_picks "
         "by its slot id; what is worn or held goes in starting_equipment.equipped." % (PACKAGES[1], PACKAGES[0]),
+        "Ability scores: the assignment holds all six abilities, each the method's own value before any increase "
+        "(%s: %s, each once; %s: %s to %s within %s points; %s: the engine's roll). The background's increase is its "
+        "own open choice, intent.choices[\"background.<background_key>.ability-scores\"] = [one listed option], such as "
+        "[\"+2 %s, +1 %s\"]; never add it into the assignment." % (
+            methods[0], ", ".join(map(str, array)), methods[1], min(costs), max(costs), budget, methods[2],
+            raised[0], raised[1]),
+        "Every open choice takes its options' own values, exactly as the scope lists them. A free_pick choice has no "
+        "list: Weapon Mastery (%s) takes weapon names your class can master from the scope's weapons list, never mastery "
+        "property names." % (
+            ", ".join(mastery)),
+        "Kept is what the note's blocks.filled shows, plus what you send in this reply. A value the player gave in an "
+        "earlier message that blocks.filled lacks is not kept: say so plainly and ask for it again. Never tell the "
+        "player a value is set, locked in or recorded unless blocks.filled shows it or you send it now; a plain-words "
+        "reply sends nothing.",
         "CLASSES (class_key: hit die; primary; armor; casting; class_package letters)",
     ]
     for key in sorted(d.classes()):

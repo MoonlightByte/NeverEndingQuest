@@ -406,7 +406,8 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
             )
             # At most four sends. The reply schema is dropped when a server may have refused it
             # or answers it with nothing; a template repair sends it again (#2090).
-            if _local_interview(request_provider, task_id, _response_format):
+            if (_local_interview(request_provider, task_id, _response_format)
+                    or _local_handback(request_provider, task_id, _response_format, messages)):
                 messages = _with_local_outline(messages)  # a new list: the caller's is never changed
             first_format = (_response_format if _local_plain_reply
                             else _local_reply_format(request_provider, task_id, _response_format))
@@ -586,6 +587,20 @@ def _refused(status):
 def _local_interview(provider, task_id, response_format):
     """The creation interview's request to a Local/Custom server: T092 asking json_object (#2090)."""
     return provider == "lmstudio" and task_id == "T092" and response_format == {"type": "json_object"}
+
+
+def _local_handback(provider, task_id, response_format, messages):
+    """A handed-back interview turn's plain words request to a Local/Custom server (#2090): T092 with no format and the
+    current note as its last message. The menu's T092 ends with the player's prompt, so it never matches."""
+    try:
+        import json
+
+        last = messages[-1]
+        record = json.loads(last["content"]) if last.get("role") == "system" else None
+        return (provider == "lmstudio" and task_id == "T092" and response_format is None
+                and isinstance(record, dict) and record.get("task_purpose") == "startup_current_note")
+    except Exception:
+        return False
 
 
 def _with_local_outline(messages):
