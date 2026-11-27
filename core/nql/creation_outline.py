@@ -107,9 +107,14 @@ def outline_text() -> str:
         "[\"+2 %s, +1 %s\"]; never add it into the assignment." % (
             methods[0], ", ".join(map(str, array)), methods[1], min(costs), max(costs), budget, methods[2],
             raised[0], raised[1]),
+        "For %s, the only numbers are the note's ability_roll.rolled: show exactly those six, never others, and assign "
+        "only them; a request to reroll keeps them. %s is called the standard array only for the %s method." % (
+            methods[2], ", ".join(map(str, array)), methods[0]),
         "Every open choice takes its options' own values, exactly as the scope lists them.",
         "A choice id is copied exactly from the scope or the note's open_choices, such as \"%s\"; never build one from "
         "the pattern of other ids." % style[0],
+        "When the player names a choice's picks, send them in intent.choices in that same reply; saying them is not "
+        "recording them.",
         "WEAPON MASTERY (%s; a free_pick, so the scope gives no list): the player picks WEAPONS. Each weapon has exactly "
         "one fixed mastery property that comes with it; the pick records the weapon name, and the property follows by "
         "itself. So when the player names weapons, write those names; when the player names a property, offer the "
