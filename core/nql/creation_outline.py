@@ -110,7 +110,8 @@ def outline_text() -> str:
         "For %s, the only numbers are the note's ability_roll.rolled: show exactly those six, never others, and assign "
         "only them; a request to reroll keeps them. %s is called the standard array only for the %s method." % (
             methods[2], ", ".join(map(str, array)), methods[0]),
-        "Every open choice takes its options' own values, exactly as the scope lists them.",
+        "Every open choice takes one of its own options, written exactly as the scope or the note's open_choices lists "
+        "it (a spell by its key or its name).",
         "A choice id is copied exactly from the scope or the note's open_choices, such as \"%s\"; never build one from "
         "the pattern of other ids." % style[0],
         "When the player names a choice's picks, send them in intent.choices in that same reply; saying them is not "
