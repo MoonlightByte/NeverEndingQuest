@@ -410,6 +410,7 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
                     or _local_handback(request_provider, task_id, _response_format, messages)):
                 messages = _with_local_outline(messages)  # a new list: the caller's is never changed
                 messages = _with_local_choices(messages)
+                messages = _with_local_roll(messages)
             first_format = (_response_format if _local_plain_reply
                             else _local_reply_format(request_provider, task_id, _response_format))
             schema_sent = first_format is not _response_format
@@ -647,6 +648,42 @@ def _with_local_choices(messages):
             from utils.enhanced_logger import debug
 
             debug("LOCAL_CHOICES_KEPT build=%s -> sending the note as it is" % type(fault).__name__, category="ai_routing")
+        except Exception:
+            pass
+        return messages
+
+
+# #2090: the engine's roll told by its numbers, first in a Local/Custom interview's note.
+_LOCAL_ROLL_TOLD = ("The engine rolled the player's six ability scores: %s. For random, show the player exactly these six "
+                    "numbers and assign only them; never show or record other numbers. They are never rolled again: a "
+                    "request to reroll keeps them.")
+
+
+def _with_local_roll(messages):
+    """The messages with the current note's engine ability roll moved first in the note and told by its numbers (#2090),
+    for a Local/Custom interview or handback only; the same messages when the note holds no roll of six scores or is not
+    read back exactly (NEQ-OPS-05: logged with a fixed code and the class only)."""
+    try:
+        import json
+
+        last = messages[-1]
+        note = json.loads(last["content"]) if last.get("role") == "system" else None
+        if not (isinstance(note, dict) and note.get("task_purpose") == "startup_current_note"
+                and json.dumps(note, ensure_ascii=False) == last["content"]):
+            return messages
+        roll = note.get("ability_roll")
+        rolled = roll.get("rolled") if isinstance(roll, dict) else None
+        if not (isinstance(rolled, list) and len(rolled) == 6 and all(type(v) is int and 3 <= v <= 18 for v in rolled)):
+            return messages
+        told = dict(roll, instruction=_LOCAL_ROLL_TOLD % ", ".join(str(v) for v in rolled))
+        note = dict([("task_purpose", note["task_purpose"]), ("ability_roll", told)]
+                    + [(k, v) for k, v in note.items() if k not in ("task_purpose", "ability_roll")])
+        return list(messages[:-1]) + [dict(last, content=json.dumps(note, ensure_ascii=False))]
+    except Exception as fault:
+        try:
+            from utils.enhanced_logger import debug
+
+            debug("LOCAL_ROLL_KEPT build=%s -> sending the note as it is" % type(fault).__name__, category="ai_routing")
         except Exception:
             pass
         return messages
