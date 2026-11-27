@@ -1187,6 +1187,32 @@ def _handback_tail(notice, turn, preview):
     return tail
 
 
+def _local_sheet(conversation, blocks, sent_by):
+    """#2090 (owner ruling 2, 2026-11-27): the engine's own sheet, shown to the player after the guide's words so that an
+    approval is of the build that is saved. Only for words a Local/Custom provider wrote (sent_by), once nothing is
+    needed and the last summary the guide was given is this build's: the "sheet" of its note, the engine's summary
+    without the details the guide writes. Else None."""
+    if not isinstance(sent_by, dict) or sent_by.get("provider") != "lmstudio" or creation_blocks.needed(blocks):
+        return None
+    roll = _ability_roll(conversation)
+    last = _last_summary(conversation)
+    if not last or not _summary_shown(last, blocks, roll["rolled"] if roll else None):
+        return None
+    return _engine_part(last)
+
+
+def _show_local_sheet(conversation, blocks, sent_by):
+    """Show _local_sheet as its own card after the guide's words; nothing when there is none. A failure shows nothing
+    and is logged with its class only (NEQ-OPS-05)."""
+    try:
+        sheet = _local_sheet(conversation, blocks, sent_by)
+    except Exception as fault:
+        file_only(f"STARTUP_NOTE local sheet failed: {type(fault).__name__}", category="startup")
+        return
+    if sheet:
+        _say("\n" + sheet)
+
+
 def _keep_told_preview(conversation, words, preview):
     """After the handback's words were shown, the preview they told is kept in the saved history, so the player's next
     message answers a build they heard (#2090 E1). Nothing when nothing was said or there was no preview."""
@@ -2167,14 +2193,15 @@ STARTUP_LOCATION_REJECTION_LIMIT = 4
 STARTUP_HANDBACK_NOTICE = "Your last replies could not be used. The choices so far are kept and no character has been saved."
 
 
-def _handback_words(request, scope):
+def _handback_words(request, scope, sent_by=None):
     """The guide's one plain reply to a handed-back turn; no block is read from it. A reply in the usual JSON shape
     gives its narration. A reply that opens as JSON is never shown as text (#2090, D-CREATE-VOICE-1): its first
     value is read structurally, and without a narration it is unusable."""
     unusable = 0  # cut, broken JSON, or an object without narration
     for _ in range(2):  # an empty or unusable reply is asked once more, then nothing is said
         try:
-            text = get_ai_response(request, persist_response=False, live_scope=scope, on_cut="raise").strip()
+            text = get_ai_response(request, persist_response=False, live_scope=scope, on_cut="raise",
+                                   sent_by=sent_by).strip()
         except StartupReplyCut:
             unusable += 1
             continue
@@ -2261,10 +2288,11 @@ def ai_character_interview(conversation, module):
                     }, ensure_ascii=False)})
                     save_startup_conversation(conversation, live_scope=scope)
                     preview = _handback_preview(correction_context, turn)
+                    sent_by = {}  # the provider of the words shown (#2090 owner ruling 2)
                     while True:
                         try:
                             words = _handback_words(_author_request(conversation, module, turn, len(conversation),
-                                                                    _handback_tail(notice, turn, preview)), scope)
+                                                                    _handback_tail(notice, turn, preview)), scope, sent_by)
                             break
                         except StartupReplyCut:
                             # #2090: both cut: the approved provider notice; the player's next message retries.
@@ -2275,6 +2303,7 @@ def ai_character_interview(conversation, module):
                         record["notice_shown_to_player"] = words
                         conversation[-1]["content"] = json.dumps(record, ensure_ascii=False)
                         _keep_told_preview(conversation, words, preview)
+                        _show_local_sheet(conversation, turn["standing"], sent_by)
                         save_startup_conversation(conversation, live_scope=scope)
                     break
                 current_index = _latest_player_index(conversation)
@@ -2288,11 +2317,13 @@ def ai_character_interview(conversation, module):
                     "blocks": creation_blocks.state(turn["standing"]),
                     "instruction": "Return one startup response object with the blocks you add or change, not a bare sheet.",
                 }
+                sent_by = {}  # the provider of this reply (#2090 owner ruling 2)
                 asked = len(correction_context)  # what is added from here is the engine's answer to the next reply
                 try:
                     raw = get_ai_response(_author_request(correction_context, module, turn, since, tail),
                                           {"type": "json_object"}, persist_response=False, live_scope=scope,
-                                          on_cut="raise", local_asked=_asked_last_turn(correction_context))
+                                          on_cut="raise", local_asked=_asked_last_turn(correction_context),
+                                          sent_by=sent_by)
                 except StartupReplyCut as exc:
                     # #2090: a failed try within the turn's tries; the cut text is never kept.
                     since = asked
@@ -2426,6 +2457,8 @@ def ai_character_interview(conversation, module):
                     return proposal["character"]
                 _set_startup_progress(conversation, live_scope=scope, phase="interview")
                 _say(f"\nDungeon Master: {proposal['narration']}")
+                if proposal["decision"] == "continue_interview":
+                    _show_local_sheet(conversation, turn["standing"], sent_by)
                 if proposal["decision"] == "pause_setup":
                     # The reviewed typed decision, never the player's words (#855); the guide has said it.
                     raise StartupCancelled("told")
@@ -3353,11 +3386,13 @@ def _publish_startup_wait(wait, attempt, max_attempts, delay):
 
 
 def get_ai_response(conversation, response_format=None, *, persist_response=True, live_scope=None,
-                    startup_phase="startup_interview", task_id="T092", on_cut="pause", local_asked=None):
+                    startup_phase="startup_interview", task_id="T092", on_cut="pause", local_asked=None,
+                    sent_by=None):
     """Run T092 (author) or T124 (whole review) through shared cancellable transport.
 
     The borrowed scope stays open. local_asked: the typed asks of the last published reply (#2090 RA1), passed on only
-    when this attempt's provider is Local/Custom; on any other provider the request is as without it.
+    when this attempt's provider is Local/Custom; on any other provider the request is as without it. sent_by: a dict
+    given the provider of the attempt whose reply is returned (#2090: what that one reply came from).
     """
     from utils.capture.live_provider_call import (
         LiveProviderSuperseded, finish_live_turn_scope, open_live_turn_scope,
@@ -3417,6 +3452,8 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                 if persist_response:
                     conversation.append({"role": "assistant", "content": content})
                     save_startup_conversation(conversation, live_scope=scope)
+                if isinstance(sent_by, dict):
+                    sent_by["provider"] = provider
                 return content
             except (LiveProviderSuperseded, ReadOnlySaveStop):
                 raise
