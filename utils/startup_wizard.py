@@ -2060,13 +2060,24 @@ STARTUP_HANDBACK_NOTICE = "Your last replies could not be used. The choices so f
 
 def _handback_words(request, scope):
     """The guide's one plain reply to a handed-back turn; no block is read from it. A reply in the usual JSON shape
-    gives its narration."""
-    cut = 0
+    gives its narration. A reply that opens as JSON is never shown as text (#2090, D-CREATE-VOICE-1): its first
+    value is read structurally, and without a narration it is unusable."""
+    unusable = 0  # cut, broken JSON, or an object without narration
     for _ in range(2):  # an empty or unusable reply is asked once more, then nothing is said
         try:
             text = get_ai_response(request, persist_response=False, live_scope=scope, on_cut="raise").strip()
         except StartupReplyCut:
-            cut += 1
+            unusable += 1
+            continue
+        if text[:1] in ("{", "["):
+            try:  # the first value only: data after it does not defeat it
+                value = json.JSONDecoder().raw_decode(text)[0]
+            except ValueError:
+                value = None
+            words = value.get("narration") if isinstance(value, dict) else None
+            if isinstance(words, str) and words.strip():
+                return words.strip()
+            unusable += 1
             continue
         try:
             value = json.loads(extract_json_object(text) or text)
@@ -2075,8 +2086,8 @@ def _handback_words(request, scope):
         words = value.get("narration") if isinstance(value, dict) else None
         if isinstance(words, str) and words.strip():
             return words.strip()
-    if cut == 2:
-        raise StartupReplyCut("Both handback replies were cut at their length limit")
+    if unusable == 2:
+        raise StartupReplyCut("Both handback replies were unusable")  # the branch gives the provider pause
     return ""
 
 
