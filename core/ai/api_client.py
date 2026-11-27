@@ -401,37 +401,44 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
                 if request_provider == "lmstudio" and local_endpoint is not None
                 else {}
             )
-            try:
-                raw_response = _openai_completion(
-                    messages,
-                    model,
-                    temperature,
-                    request_provider,
-                    response_format=_response_format,
-                    phase_emit=_phase_emit,
-                    output_ceiling=_output_ceiling,
-                    sdk_max_retries=_sdk_max_retries,
-                    sdk_timeout=_sdk_timeout,
-                    **local_options,
-                    **kwargs,
-                )
-            except Exception as exc:
-                repaired = _local_template_repair(request_provider, messages, exc)
-                if repaired is None:
-                    raise
-                raw_response = _openai_completion(
-                    repaired,
-                    model,
-                    temperature,
-                    request_provider,
-                    response_format=_response_format,
-                    phase_emit=_phase_emit,
-                    output_ceiling=_output_ceiling,
-                    sdk_max_retries=_sdk_max_retries,
-                    sdk_timeout=_sdk_timeout,
-                    **local_options,
-                    **kwargs,
-                )
+            # At most four sends. The reply schema is dropped when a server may have refused it
+            # or answers it with nothing; a template repair sends it again (#2090).
+            first_format = _local_reply_format(request_provider, task_id, _response_format)
+            schema_sent = first_format is not _response_format
+            sent_messages, sent_format = messages, first_format
+            while True:
+                try:
+                    raw_response = _openai_completion(
+                        sent_messages,
+                        model,
+                        temperature,
+                        request_provider,
+                        response_format=sent_format,
+                        phase_emit=_phase_emit,
+                        output_ceiling=_output_ceiling,
+                        sdk_max_retries=_sdk_max_retries,
+                        sdk_timeout=_sdk_timeout,
+                        **local_options,
+                        **kwargs,
+                    )
+                except Exception as exc:
+                    status = _completed_http_status(exc)
+                    if schema_sent and sent_format is not None and _refused(status):
+                        _note_format_dropped("status=%s" % status)
+                        sent_format = None
+                        continue
+                    if repaired is not None:
+                        raise
+                    repaired = _local_template_repair(request_provider, messages, exc)
+                    if repaired is None:
+                        raise
+                    sent_messages, sent_format = repaired, first_format
+                    continue
+                if schema_sent and sent_format is not None and not raw_response.choices[0].message.content.strip():
+                    _note_format_dropped("empty")
+                    sent_format = None
+                    continue
+                break
         else:  # gemini
             if _sdk_timeout is not None and kwargs.get("timeout") is None:
                 # One attempt per call (Gemini is not reissued, D-1963-1), so
@@ -551,6 +558,45 @@ def _local_template_repair(provider, messages, exc):
     except Exception:
         pass
     return repaired
+
+
+def _local_reply_schema():
+    """The game's own scoped reply schema, built now: the one the reply is checked against (#2090)."""
+    from utils.startup_contract import _scoped_reply_schema
+
+    return _scoped_reply_schema()
+
+
+# D-FLAG-1: the status alone decides; the server's words are never read or logged here.
+# These say something about the account or its rate, not about the request's fields.
+_NOT_A_FORMAT_REFUSAL = frozenset({401, 402, 403, 429})
+
+
+def _refused(status):
+    """A 4xx or 5xx answer that may be a refusal of the reply schema."""
+    return isinstance(status, int) and 400 <= status <= 599 and status not in _NOT_A_FORMAT_REFUSAL
+
+
+def _local_reply_format(provider, task_id, response_format):
+    """T092's reply schema in place of json_object on a Local/Custom server; else unchanged. A schema that
+    cannot be built is not sent (NEQ-OPS-05: logged with its class only)."""
+    if provider != "lmstudio" or task_id != "T092" or response_format != {"type": "json_object"}:
+        return response_format
+    try:
+        return {"type": "json_schema", "json_schema": {
+            "name": "startup_response", "strict": True, "schema": _local_reply_schema()}}
+    except Exception as fault:
+        _note_format_dropped("build=%s" % type(fault).__name__)
+        return response_format
+
+
+def _note_format_dropped(why):
+    try:
+        from utils.enhanced_logger import debug
+
+        debug("LOCAL_FORMAT_DROPPED %s -> sending without it" % why, category="ai_routing")
+    except Exception:
+        pass
 
 
 def _enforce_provider_constraints(provider, model, temperature, kwargs):

@@ -2789,10 +2789,15 @@ def _call_live_provider(
         generation = (
             scope.next_generation() if scope is not None else failure_count + 1
         )
+        # #2090: the last silent try asks for plain text, so a Local/Custom server that is
+        # silent on a reply schema can still answer.
+        request_kwargs_sent = frozen_kwargs
+        if local_silent_task and silent_reissues >= _LOCAL_SILENT_REISSUE_LIMIT:
+            request_kwargs_sent = dict(frozen_kwargs, response_format=None)
         request_payload = pickle.dumps(
             {
                 "messages": frozen_messages,
-                "request_kwargs": frozen_kwargs,
+                "request_kwargs": request_kwargs_sent,
                 "correlation": {
                     "operation_id": operation_id,
                     "generation": generation,

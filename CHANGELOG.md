@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- With LM Studio and other Local/Custom servers, character creation now asks the server for the game's reply format, and falls back to today's plain request if the server refuses it (#2090).
+
 ## [1.2.9] - 2026-11-27
 
 - In character creation, after you change class, the guide no longer refuses a skill your old class had when your new class offers it too (#2090).
