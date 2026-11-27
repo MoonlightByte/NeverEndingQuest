@@ -434,7 +434,7 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
                         raise
                     sent_messages, sent_format = repaired, first_format
                     continue
-                if schema_sent and sent_format is not None and not raw_response.choices[0].message.content.strip():
+                if schema_sent and sent_format is not None and not (raw_response.choices[0].message.content or "").strip():
                     _note_format_dropped("empty")
                     sent_format = None
                     continue
