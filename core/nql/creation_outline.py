@@ -107,8 +107,10 @@ def outline_text() -> str:
         "[\"+2 %s, +1 %s\"]; never add it into the assignment." % (
             methods[0], ", ".join(map(str, array)), methods[1], min(costs), max(costs), budget, methods[2],
             raised[0], raised[1]),
-        "For %s, the only numbers are the note's ability_roll.rolled: show exactly those six, never others, and assign "
-        "only them; a request to reroll keeps them. %s is called the standard array only for the %s method." % (
+        "For %s, the note's ability_roll.rolled are the only base scores: the player places exactly these six (or asks "
+        "you to), and the assignment records only them, never other numbers. The background increase is added by the "
+        "engine; tell the totals from the sheet. They are never rolled again: a request to reroll keeps them. %s is "
+        "called the standard array only for the %s method." % (
             methods[2], ", ".join(map(str, array)), methods[0]),
         "Every open choice takes one of its own options, written exactly as the scope or the note's open_choices lists "
         "it (a spell by its key or its name).",
