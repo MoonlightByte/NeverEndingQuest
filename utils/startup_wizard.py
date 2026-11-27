@@ -1621,6 +1621,20 @@ def _current_contract_only(conversation):
     return out
 
 
+def _asked_last_turn(context):
+    """The typed choice_turn.asks of the last published reply in context (#2090 RA1), when a player message follows it;
+    else []. The saved conversation keeps the whole reply; the request carries only its words (_said)."""
+    replies = [i for i, m in enumerate(context) if m.get("role") == "assistant" and _said(m) is not None]
+    if not replies or not any(m.get("role") == "user" for m in context[replies[-1] + 1:]):
+        return []
+    try:
+        reply = json.loads(context[replies[-1]].get("content", ""))
+    except (TypeError, ValueError):
+        return []
+    asks = ((reply.get("choice_turn") if isinstance(reply, dict) else None) or {}).get("asks")
+    return [a for a in asks if isinstance(a, str)] if isinstance(asks, list) else []
+
+
 def _reply_words(narration, decision="continue_interview"):
     """What the guide said, in the form of its replies: its decision and its words, no blocks."""
     return {"role": "assistant", "content": json.dumps({"decision": decision, "narration": narration}, ensure_ascii=False)}
@@ -2278,7 +2292,7 @@ def ai_character_interview(conversation, module):
                 try:
                     raw = get_ai_response(_author_request(correction_context, module, turn, since, tail),
                                           {"type": "json_object"}, persist_response=False, live_scope=scope,
-                                          on_cut="raise")
+                                          on_cut="raise", local_asked=_asked_last_turn(correction_context))
                 except StartupReplyCut as exc:
                     # #2090: a failed try within the turn's tries; the cut text is never kept.
                     since = asked
@@ -3339,10 +3353,11 @@ def _publish_startup_wait(wait, attempt, max_attempts, delay):
 
 
 def get_ai_response(conversation, response_format=None, *, persist_response=True, live_scope=None,
-                    startup_phase="startup_interview", task_id="T092", on_cut="pause"):
+                    startup_phase="startup_interview", task_id="T092", on_cut="pause", local_asked=None):
     """Run T092 (author) or T124 (whole review) through shared cancellable transport.
 
-    The borrowed scope stays open.
+    The borrowed scope stays open. local_asked: the typed asks of the last published reply (#2090 RA1), passed on only
+    when this attempt's provider is Local/Custom; on any other provider the request is as without it.
     """
     from utils.capture.live_provider_call import (
         LiveProviderSuperseded, finish_live_turn_scope, open_live_turn_scope,
@@ -3375,6 +3390,8 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                 provider = get_provider()
                 main_cfg = profiles[provider]
                 revision = configuration_revision(provider)
+                asked = ({"_local_asked": [a for a in local_asked if isinstance(a, str)]}
+                         if provider == "lmstudio" and isinstance(local_asked, list) and local_asked else {})
                 response = capture_and_fanout(
                     task_id, api_client.create_completion,
                     _request_provider=provider, _live_selected="required",
@@ -3384,6 +3401,7 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                     messages=copy.deepcopy(request_messages + error_note),
                     model=main_cfg["model"], temperature=0.7,
                     response_format=response_format,
+                    **asked,
                     **{k: v for k, v in main_cfg.items() if k != "model"},
                 )
                 scope.outage_line = None  # #2090: the provider answered

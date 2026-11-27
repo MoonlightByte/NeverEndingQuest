@@ -384,6 +384,9 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
     # #2090: set only by the live-provider parent on the last silent try of a Local/Custom interview: the reply
     # schema is left out, the rest of the request (the outline included) is the same. Never sent to a provider.
     _local_plain_reply = kwargs.pop("_local_plain_reply", False)
+    # #2090 RA1: the typed asks of the last published reply, passed by the startup wizard for a Local/Custom T092 only
+    # (startup_wizard.get_ai_response). Never sent to a provider; read only in the Local/Custom gate below.
+    _local_asked = kwargs.pop("_local_asked", None)
     # Per-callsite output ceiling (OpenAI only; set by the capture layer from
     # model_registry.OPENAI_OUTPUT_CEILING_CHARS). Never forwarded to a provider.
     _output_ceiling = kwargs.pop("_output_ceiling_chars", None)
@@ -411,6 +414,7 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
                 messages = _with_local_outline(messages)  # a new list: the caller's is never changed
                 messages = _with_local_choices(messages)
                 messages = _with_local_roll(messages)
+                messages = _with_local_asked(messages, _local_asked)
             first_format = (_response_format if _local_plain_reply
                             else _local_reply_format(request_provider, task_id, _response_format))
             schema_sent = first_format is not _response_format
@@ -658,6 +662,62 @@ _LOCAL_ROLL_TOLD = ("The engine rolled the player's six ability scores: %s. For 
                     "player places exactly these six (or asks you to), and the assignment records only them, never other "
                     "numbers. The background increase is added by the engine; tell the totals from the sheet. They are "
                     "never rolled again: a request to reroll keeps them.")
+
+
+def _local_note(messages):
+    """The current note of a request, read back exactly, or None."""
+    import json
+
+    last = messages[-1]
+    note = json.loads(last["content"]) if last.get("role") == "system" else None
+    if (isinstance(note, dict) and note.get("task_purpose") == "startup_current_note"
+            and json.dumps(note, ensure_ascii=False) == last["content"]):
+        return note
+    return None
+
+
+def _with_note(messages, note):
+    import json
+
+    return list(messages[:-1]) + [dict(messages[-1], content=json.dumps(note, ensure_ascii=False))]
+
+
+def _kept(code, fault):
+    try:
+        from utils.enhanced_logger import debug
+
+        debug("%s build=%s -> sending the note as it is" % (code, type(fault).__name__), category="ai_routing")
+    except Exception:
+        pass
+
+
+# #2090 RA1: what the last published reply asked for and the player has answered since, from the typed asks.
+_LOCAL_ASKED = ("You asked the player for these in your last reply and they have answered since. If their latest message "
+                "gives a value for one, send it in this reply's intent (choices or the block), then ask for what is still "
+                "missing. Do not ask again for what their message already gives.")
+
+
+def _with_local_asked(messages, asked):
+    """The messages with the note's "asked_last_turn" record (#2090 RA1): the ids asked holds that blocks.needed still
+    holds, in asks order, when the player has sent a message after the last reply in the messages. asked: the typed
+    choice_turn.asks of the last published reply (startup_wizard._asked_last_turn); the request's history carries that
+    reply as its words only. The same messages when no id is left or the note is not read back exactly (NEQ-OPS-05:
+    logged with a fixed code and the class only)."""
+    try:
+        note = _local_note(messages)
+        blocks = note.get("blocks") if note is not None else None
+        needed = blocks.get("needed") if isinstance(blocks, dict) else None
+        if not (isinstance(asked, list) and isinstance(needed, list)):
+            return messages
+        ids = [a for a in dict.fromkeys(a for a in asked if isinstance(a, str)) if a in needed]
+        last = max((i for i, m in enumerate(messages) if m.get("role") == "assistant"), default=-1)
+        if not ids or not any(m.get("role") == "user" for m in messages[last + 1:]):
+            return messages
+        note["asked_last_turn"] = {"ids": ids, "instruction": _LOCAL_ASKED}
+        return _with_note(messages, note)
+    except Exception as fault:
+        _kept("LOCAL_ASKED_KEPT", fault)
+        return messages
 
 
 def _with_local_roll(messages):
