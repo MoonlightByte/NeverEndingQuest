@@ -481,11 +481,50 @@ def choice_problems(intent: Dict[str, Any], data: Optional[_Data] = None,
         if len(picked) > point["count"]:
             problems.append({"choice_id": cid, "problem": "too_many", "count": point["count"], "picked": len(picked)})
         allowed = _allowed(point, intent, issued)
+        if allowed is None:
+            allowed = _mastery_weapons(cid, intent, d)
         if allowed is not None:
             outside = [p for p in picked if p not in allowed]
             if outside:
                 problems.append({"choice_id": cid, "problem": "not_offered", "options": outside})
     return problems or _repeat_problems(intent, issued, d, stood or {}) or _expertise_problems(intent, issued, d)
+
+
+def _mastery_weapons(cid: str, intent: Dict[str, Any], d: _Data) -> Optional[List[str]]:
+    """The weapon names a class's level-1 Weapon Mastery pick may take (#2090): the catalog's non-magical weapons
+    with a mastery property, of the kinds its option source names, or of the class's own weapon training for
+    weapons:proficient. None (any name, as before) for another choice or when the data cannot say."""
+    try:
+        cls = intent.get("class_key")
+        point = dict(_class_points(cls, d)).get(cid) if cls in d.classes() else None
+        head, _, rest = str((point or {}).get("option_source") or "").partition(":")
+        if head != "weapons":
+            return None
+        args = dict(kv.split("=", 1) for kv in rest.split(",") if "=" in kv)
+        flags = {kv for kv in rest.split(",") if kv and "=" not in kv}
+        if set(args) - {"category", "type"} or flags - {"proficient"} or (bool(args) == bool(flags)):
+            return None
+        if flags:
+            kinds = [k for k in (d.choices["class_traits"].get(cls) or {}).get("weapon_proficiencies") or []
+                     if isinstance(k, dict) and set(k) <= {"category", "property_any"} and k.get("category")]
+            if not kinds:
+                return None
+        else:
+            kinds = [{"category": c} for c in args.get("category", "").split("+") if c] or [{}]
+        names = []
+        for e in d.items:
+            w = e.get("weapon") if isinstance(e.get("weapon"), dict) else {}
+            if e.get("kind") != "weapon" or e.get("magical") or not w.get("mastery"):
+                continue
+            if args.get("type") and w.get("kind") != args["type"]:
+                continue
+            held = {p.get("name") for p in w.get("properties") or [] if isinstance(p, dict)}
+            if any((not k.get("category") or w.get("category") == k["category"])
+                   and (not k.get("property_any") or held & set(k["property_any"])) for k in kinds):
+                names.append(e["name"])
+        return names or None
+    except Exception:
+        return None
 
 
 def _repeat_problems(intent, issued, d, stood) -> List[Dict[str, Any]]:
