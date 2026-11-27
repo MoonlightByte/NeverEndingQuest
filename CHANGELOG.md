@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- In character creation, after you change class, the guide no longer refuses a skill your old class had when your new class offers it too (#2090).
+
 ## [1.2.8] - 2026-11-26
 
 - In character creation, the guide no longer tells you your species already gives you a language; you choose your two languages, such as Dwarvish for a dwarf (#2090).
