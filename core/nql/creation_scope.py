@@ -488,11 +488,38 @@ def choice_problems(intent: Dict[str, Any], data: Optional[_Data] = None,
             outside = [p for p in picked if p not in allowed]
             if outside:
                 row = {"choice_id": cid, "problem": "not_offered", "options": outside}
-                if not listed:
-                    # A free pick has no list in the scope: the names it takes, beside the refused ones (#2090).
+                if not listed or len(allowed) <= OFFERED_CAP:
+                    # The values it takes, beside the refused ones (#2090): a free pick's names, a listed choice's keys.
                     row["offered"] = list(allowed)
                 problems.append(row)
     return problems or _repeat_problems(intent, issued, d, stood or {}) or _expertise_problems(intent, issued, d)
+
+
+# #2090: a listed choice's refusal names what it takes up to this many values (the longest list today is 30).
+OFFERED_CAP = 40
+
+
+def keyed_picks(cid: str, picks: List[Any], intent: Dict[str, Any], issued: Dict[str, Dict[str, Any]]) -> List[Any]:
+    """#2090: the picks, each one that is not an allowed key but equals exactly one allowed option's display name
+    (exactly, else apart from letter case) written as that option's key; every other pick as it is. Only a listed
+    choice whose options carry names (a spell list; open_choices shows the names) is read."""
+    point = issued.get(cid)
+    allowed = _allowed(point, intent, issued) if point else None
+    if not allowed or not isinstance(picks, list):
+        return picks
+    source = issued.get(point.get("from_choice") or "") if point.get("from_spellbook") else point
+    rows = (source or {}).get("options")
+    rows = [o for o in rows if isinstance(o, dict) and o.get("key") in allowed and isinstance(o.get("name"), str)
+            ] if isinstance(rows, list) else []
+    out = []
+    for p in picks:
+        if not rows or not isinstance(p, str) or p in allowed:
+            out.append(p)
+            continue
+        same = ([o["key"] for o in rows if o["name"] == p]
+                or [o["key"] for o in rows if o["name"].casefold() == p.casefold()])
+        out.append(same[0] if len(set(same)) == 1 else p)
+    return out
 
 
 def _mastery_weapons(cid: str, intent: Dict[str, Any], d: _Data) -> Optional[List[str]]:

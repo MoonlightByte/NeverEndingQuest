@@ -582,6 +582,10 @@ def _merge_choices(facts, held, out, sent, gear, previous, problems, leftovers, 
             leftovers[key] = intent["choices"].pop(key)
             before.pop(key, None)
             sent.pop(key)
+    for key in [k for k in sent if k in intent["choices"] and k in issued]:
+        # #2090: an option sent by its display name (as open_choices lists it) is written as its key.
+        intent["choices"][key] = creation_scope.distinct(
+            creation_scope.keyed_picks(key, intent["choices"][key], intent, issued))
     refused: List[Dict[str, Any]] = []
     kept: Dict[str, List[Any]] = {}
     while True:
