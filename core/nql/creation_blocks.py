@@ -672,6 +672,10 @@ def _merge_creative(held, creative, sent, alignments) -> List[str]:
     """Each field alone. Text is kept as sent and never read; a field that is not its type is not written."""
     unwritten = []
     for field, value in sent.items():
+        if field == "alignment" and isinstance(value, str) and alignments and value not in alignments:
+            # #2090: the enum value it equals apart from letter case (a typed field against its own enum, nothing else).
+            same = [a for a in alignments if isinstance(a, str) and a.casefold() == value.casefold()]
+            value = same[0] if len(same) == 1 else value
         if field not in creation_build.CREATIVE_FIELDS + creation_build.OPTIONAL_CREATIVE_FIELDS:
             unwritten.append(field)
         elif value is None or (isinstance(value, str) and not value.strip()):

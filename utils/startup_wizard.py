@@ -1006,6 +1006,7 @@ def _ability_roll(conversation):
 
 ENGINE_BUILD_PURPOSE = "startup_engine_build"
 SHEET_PREVIEW_PURPOSE = "startup_sheet_preview"
+CREATIVE_UNWRITTEN_PURPOSE = "startup_creative_unwritten"
 SCORES_UNFOLDED_PURPOSE = "startup_scores_unfolded"
 
 
@@ -1346,6 +1347,11 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
                                    previous=lambda: _earlier_choice_ids(correction_context),
                                    alignments=creation_alignments())
     _log_notes(proposal, merged, turn["held"], settled)
+    if merged.unwritten and proposal.get("decision") == "continue_interview":
+        # #2090: a finalize or pause is refused for these (_check_finalize_details); an interview turn tells the author.
+        item = _unwritten_item(merged.unwritten, (_startup_progress(correction_context) or {}).get("startup_id"))
+        for conversation in (correction_context, turn_items):
+            conversation.append(copy.deepcopy(item))
     if merged.unfolded is not None:
         # #2090: told in this turn's answer and, once published, in the next turn's first request (_author_request).
         item = _unfolded_item(merged.unfolded, (_startup_progress(correction_context) or {}).get("startup_id"))
@@ -1477,7 +1483,31 @@ def _check_finalize_details(proposal, merged):
         raise ValueError(f"The character name cannot be used: {name_refusal(name) if isinstance(name, str) else 'not text'}. "
                          "Choose another name.")
     if merged.unwritten:
-        raise StartupContractError("creative fields that cannot be written: %s" % ", ".join(merged.unwritten), "creative_field")
+        raise StartupContractError("creative fields that cannot be written: %s%s" % (
+            ", ".join(merged.unwritten), _creative_allowed_text(merged.unwritten)), "creative_field")
+
+
+def _creative_allowed_text(fields):
+    """For an enum creative field among those not written, the values it takes, from the character schema (#2090);
+    empty otherwise."""
+    allowed = creation_alignments() if "alignment" in fields else []
+    return (". alignment takes exactly one of: %s" % ", ".join(allowed)) if allowed else ""
+
+
+def _unwritten_item(fields, startup_id):
+    """The engine's answer when an interview reply's creative fields were not written (#2090): before, only logged."""
+    return {"role": "system", "content": json.dumps({
+        "task_purpose": CREATIVE_UNWRITTEN_PURPOSE, "startup_id": startup_id, "fields": list(fields),
+        "instruction": ("These creative fields of your reply were not written, so they are not kept: %s%s. Send each "
+                        "again in its form, or ask the player." % (", ".join(fields), _creative_allowed_text(fields))),
+    }, ensure_ascii=False)}
+
+
+def _unwritten_told(own, replies, since):
+    """The last creative-unwritten record of the last published reply's turn, for the next turn's first request (the
+    same turn's retries carry it as any engine answer)."""
+    after = replies[-2] if len(replies) > 1 else -1
+    return [r for i, r in own if after < i < since and r.get("task_purpose") == CREATIVE_UNWRITTEN_PURPOSE][-1:]
 
 
 def _write_blocks(proposal, turn, whole=False):
@@ -1679,6 +1709,7 @@ def _author_request(context, module, turn, since, tail):
                 "startup_choices_dropped") and "startup_checkpoint_version" not in record:
             answers.append(record)
     answers = _unfolded_told(own, replies, since) + answers
+    answers = _unwritten_told(own, replies, since) + answers
     if answers:
         note["engine_answer"] = answers
     request.append({"role": "system", "content": json.dumps(note, ensure_ascii=False)})
