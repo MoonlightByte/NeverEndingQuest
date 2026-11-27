@@ -68,6 +68,27 @@ def outline_text() -> str:
     by_property = [(p, names) for p, names in by_property if names]
     if any(w not in mastery_of for w in EXAMPLE) or len({mastery_of[w] for w in EXAMPLE}) != 3:
         raise ValueError("example weapons")
+    # FINISHING (#2090 r8): the reply's decision values, from the contract, and a worn-and-held example from the data:
+    # the armor and the first example weapon of the fighter's class package A.
+    from utils.startup_contract import _scoped_reply_schema, creation_alignments
+
+    decisions = _scoped_reply_schema()["properties"]["decision"]["enum"]
+    if decisions != ["continue_interview", "finalize_character", "pause_setup"]:
+        raise ValueError("decisions")
+    kinds = {e.get("id"): e.get("kind") for e in d.items}
+    ids = {e.get("name"): e.get("id") for e in d.items}
+    package = [p for _cid, p in creation_scope._class_points("fighter", d) if isinstance(p.get("option_items"), dict)]
+    held = [i.get("catalog_id") for i in package[0]["option_items"]["A"]["items"]] if len(package) == 1 else []
+    worn = [i for i in held if kinds.get(i) == "armor"][:1] + [i for i in held if i == ids.get(EXAMPLE[0])]
+    if len(worn) != 2:
+        raise ValueError("equipped example")
+    # r9: the alignment values (the character schema's enum, the one the engine writes) and a choice id example.
+    alignments = creation_alignments()
+    if not alignments or not all(isinstance(a, str) and a.isascii() for a in alignments):
+        raise ValueError("alignments")
+    style = [cid for cid, p in creation_scope._class_points("fighter", d) if p.get("name") == "Fighting Style"]
+    if len(style) != 1:
+        raise ValueError("choice id example")
     out: List[str] = [
         "LOCAL OUTLINE: a short directory of character creation. The creation scope message holds the full facts; "
         "pick options by its keys.",
@@ -87,6 +108,8 @@ def outline_text() -> str:
             methods[0], ", ".join(map(str, array)), methods[1], min(costs), max(costs), budget, methods[2],
             raised[0], raised[1]),
         "Every open choice takes its options' own values, exactly as the scope lists them.",
+        "A choice id is copied exactly from the scope or the note's open_choices, such as \"%s\"; never build one from "
+        "the pattern of other ids." % style[0],
         "WEAPON MASTERY (%s; a free_pick, so the scope gives no list): the player picks WEAPONS. Each weapon has exactly "
         "one fixed mastery property that comes with it; the pick records the weapon name, and the property follows by "
         "itself. So when the player names weapons, write those names; when the player names a property, offer the "
@@ -100,6 +123,25 @@ def outline_text() -> str:
         "earlier message that blocks.filled lacks is not kept: say so plainly and ask for it again. Never tell the "
         "player a value is set, locked in or recorded unless blocks.filled shows it or you send it now; a plain-words "
         "reply sends nothing.",
+        "FINISHING (decision: %s, %s or %s):" % tuple(decisions),
+        "1 While blocks.needed lists anything, ask for it; never give a whole-build summary and never send %s." % (
+            decisions[1]),
+        "2 When blocks.needed is empty, the engine builds the character and gives its summary as the note's \"sheet\". "
+        "If the note shows no sheet, answer %s: the engine adds the sheet and asks again. While the note's "
+        "engine_answer says the engine built this character, answer %s, even when the player already said they "
+        "approve: tell the whole build from the sheet, in your own words with its names and numbers, and ask for "
+        "approval." % (decisions[0], decisions[0]),
+        "3 A summary states only what the sheet and blocks.filled show; never add a number of your own (an Armor "
+        "Class, a gold total, a bonus).",
+        "4 When the player's latest message approves the build you told from the sheet: %s, "
+        "confirmation.whole_build_approved true, confirmation.player_message_index = the note's latest_user_index. "
+        "Leave out what blocks.filled already holds; never resend ability_scores with the increase added." % (
+            decisions[1]),
+        "5 starting_equipment.equipped lists the catalog id of every item the player wears or holds, from their "
+        "packages' items, such as [\"%s\", \"%s\"]; the sheet's Worn and Held lines show what is written." % tuple(worn),
+        "6 A plain-words reply records nothing and finalizes nothing: never say the character is finalized, saved or "
+        "ready to begin; ask the player to approve the summary or to say what to change.",
+        "7 creative.alignment is exactly one of: %s." % ", ".join(alignments),
         "CLASSES (class_key: hit die; primary; armor; casting; class_package letters)",
     ]
     for key in sorted(d.classes()):
