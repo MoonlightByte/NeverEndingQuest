@@ -409,6 +409,7 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
             if (_local_interview(request_provider, task_id, _response_format)
                     or _local_handback(request_provider, task_id, _response_format, messages)):
                 messages = _with_local_outline(messages)  # a new list: the caller's is never changed
+                messages = _with_local_choices(messages)
             first_format = (_response_format if _local_plain_reply
                             else _local_reply_format(request_provider, task_id, _response_format))
             schema_sent = first_format is not _response_format
@@ -617,6 +618,35 @@ def _with_local_outline(messages):
             from utils.enhanced_logger import debug
 
             debug("LOCAL_OUTLINE_DROPPED build=%s -> sending without it" % type(fault).__name__, category="ai_routing")
+        except Exception:
+            pass
+        return messages
+
+
+def _with_local_choices(messages):
+    """The messages with the current note's Weapon Mastery free picks listed by name (#2090; creation_scope.
+    listed_free_picks), for a Local/Custom interview or handback only; the same messages when there is nothing to list or
+    the note is not read back exactly (NEQ-OPS-05: logged with a fixed code and the class only)."""
+    try:
+        import json
+
+        from core.nql import creation_scope
+
+        last = messages[-1]
+        note = json.loads(last["content"]) if last.get("role") == "system" else None
+        if not (isinstance(note, dict) and note.get("task_purpose") == "startup_current_note"
+                and json.dumps(note, ensure_ascii=False) == last["content"]):
+            return messages
+        listed = creation_scope.listed_free_picks(note.get("open_choices"), (note.get("blocks") or {}).get("filled"))
+        if listed is None:
+            return messages
+        note["open_choices"] = listed
+        return list(messages[:-1]) + [dict(last, content=json.dumps(note, ensure_ascii=False))]
+    except Exception as fault:
+        try:
+            from utils.enhanced_logger import debug
+
+            debug("LOCAL_CHOICES_KEPT build=%s -> sending the note as it is" % type(fault).__name__, category="ai_routing")
         except Exception:
             pass
         return messages

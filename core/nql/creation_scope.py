@@ -481,12 +481,17 @@ def choice_problems(intent: Dict[str, Any], data: Optional[_Data] = None,
         if len(picked) > point["count"]:
             problems.append({"choice_id": cid, "problem": "too_many", "count": point["count"], "picked": len(picked)})
         allowed = _allowed(point, intent, issued)
+        listed = allowed is not None
         if allowed is None:
             allowed = _mastery_weapons(cid, intent, d)
         if allowed is not None:
             outside = [p for p in picked if p not in allowed]
             if outside:
-                problems.append({"choice_id": cid, "problem": "not_offered", "options": outside})
+                row = {"choice_id": cid, "problem": "not_offered", "options": outside}
+                if not listed:
+                    # A free pick has no list in the scope: the names it takes, beside the refused ones (#2090).
+                    row["offered"] = list(allowed)
+                problems.append(row)
     return problems or _repeat_problems(intent, issued, d, stood or {}) or _expertise_problems(intent, issued, d)
 
 
@@ -525,6 +530,27 @@ def _mastery_weapons(cid: str, intent: Dict[str, Any], d: _Data) -> Optional[Lis
         return names or None
     except Exception:
         return None
+
+
+def listed_free_picks(entries: Any, filled: Any, data: Optional[_Data] = None) -> Optional[List[Any]]:
+    """A Local/Custom request's open choices (#2090, the sent copy only; core/ai/api_client.py): each Weapon Mastery
+    free pick shows the names it takes under "options", in place of "free_pick", as a listed choice does. The names are
+    _mastery_weapons', the check the engine applies. None when nothing changes or the data cannot say (the note is
+    then sent as it is)."""
+    d = data if data is not None else _Data()
+    if not d.ok or not isinstance(entries, list) or not isinstance(filled, dict):
+        return None
+    intent = {"class_key": filled.get("class_key")}
+    out: List[Any] = []
+    changed = False
+    for entry in entries:
+        if isinstance(entry, dict) and entry.get("free_pick") is True and isinstance(entry.get("id"), str):
+            names = _mastery_weapons(entry["id"], intent, d)
+            if names:
+                entry = dict({k: v for k, v in entry.items() if k != "free_pick"}, options=names)
+                changed = True
+        out.append(entry)
+    return out if changed else None
 
 
 def _repeat_problems(intent, issued, d, stood) -> List[Dict[str, Any]]:

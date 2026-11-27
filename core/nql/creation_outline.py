@@ -22,6 +22,10 @@ def _size_word(size: str) -> str:
     return " ".join(re.sub(r"\([^)]*\)", "", size).split(",")[0].split())
 
 
+# The worked example's weapons (the player's words in the S1.2 live runs); their properties are read from the data.
+EXAMPLE = ("Greatsword", "Flail", "Javelin")
+
+
 def _weapon_free_picks(d) -> List[tuple]:
     """(class_key, point) of each level-1 Weapon Mastery pick: a free pick whose option source is weapons:..."""
     out = []
@@ -51,6 +55,19 @@ def outline_text() -> str:
     mastery = sorted(key for key, _p in _weapon_free_picks(d))
     if not mastery:
         raise ValueError("no weapon free pick")
+    # Each non-magical weapon of the catalog with its one mastery property (the weapons list the scope sends).
+    mastery_of = {}
+    for e in d.items:
+        w = e.get("weapon") if isinstance(e.get("weapon"), dict) else {}
+        if e.get("kind") == "weapon" and not e.get("magical") and w.get("mastery"):
+            mastery_of[e["name"]] = w["mastery"]
+    props = [p["name"] for p in d.origins.get("weapon_mastery_properties") or []]
+    if not mastery_of or set(mastery_of.values()) - set(props):
+        raise ValueError("weapon masteries")
+    by_property = [(p, [n for n, m in mastery_of.items() if m == p]) for p in props]
+    by_property = [(p, names) for p, names in by_property if names]
+    if any(w not in mastery_of for w in EXAMPLE) or len({mastery_of[w] for w in EXAMPLE}) != 3:
+        raise ValueError("example weapons")
     out: List[str] = [
         "LOCAL OUTLINE: a short directory of character creation. The creation scope message holds the full facts; "
         "pick options by its keys.",
@@ -69,10 +86,16 @@ def outline_text() -> str:
         "[\"+2 %s, +1 %s\"]; never add it into the assignment." % (
             methods[0], ", ".join(map(str, array)), methods[1], min(costs), max(costs), budget, methods[2],
             raised[0], raised[1]),
-        "Every open choice takes its options' own values, exactly as the scope lists them. A free_pick choice has no "
-        "list: Weapon Mastery (%s) takes weapon names your class can master from the scope's weapons list, never mastery "
-        "property names." % (
-            ", ".join(mastery)),
+        "Every open choice takes its options' own values, exactly as the scope lists them.",
+        "WEAPON MASTERY (%s; a free_pick, so the scope gives no list): the player picks WEAPONS. Each weapon has exactly "
+        "one fixed mastery property that comes with it; the pick records the weapon name, and the property follows by "
+        "itself. So when the player names weapons, write those names; when the player names a property, offer the "
+        "weapons your class can master that have it, and write the weapon they choose." % ", ".join(mastery),
+        "MASTERY PROPERTIES (property: the weapons that have it)",
+    ] + ["%s: %s" % (prop, ", ".join(names)) for prop, names in by_property] + [
+        "Example: the player says \"%s, %s and %s\" -> intent.choices[\"<class_key>.weapon-mastery.weapon-mastery\"] = "
+        "[\"%s\", \"%s\", \"%s\"]; never [\"%s\", \"%s\", \"%s\"]." % (
+            tuple(EXAMPLE) + tuple(EXAMPLE) + tuple(mastery_of[w] for w in EXAMPLE)),
         "Kept is what the note's blocks.filled shows, plus what you send in this reply. A value the player gave in an "
         "earlier message that blocks.filled lacks is not kept: say so plainly and ask for it again. Never tell the "
         "player a value is set, locked in or recorded unless blocks.filled shows it or you send it now; a plain-words "
