@@ -852,7 +852,8 @@ def test_invalid_consent_or_schema_cannot_reach_review(wizard, authored, monkeyp
         elif defect == "schema":
             proposal["intent"]["ability_scores"] = None
         elif defect == "refusal":  # an engine refusal is a typed rejection of the turn (amendment 1e)
-            proposal["intent"]["ability_scores"]["assignment"]["strength"] = 16
+            # 30: no method's base plus any background increase gives it (#2090: such a sum is kept as its base).
+            proposal["intent"]["ability_scores"]["assignment"]["strength"] = 30
         return proposal
 
     engine_finalize = _engine_finalize
