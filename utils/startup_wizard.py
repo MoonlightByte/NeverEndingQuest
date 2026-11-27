@@ -1006,6 +1006,29 @@ def _ability_roll(conversation):
 
 ENGINE_BUILD_PURPOSE = "startup_engine_build"
 SHEET_PREVIEW_PURPOSE = "startup_sheet_preview"
+SCORES_UNFOLDED_PURPOSE = "startup_scores_unfolded"
+
+
+def _unfolded_item(found, startup_id):
+    """The engine's answer when a sent assignment had the background increase added in and its base was kept (#2090;
+    creation_blocks._unfold): typed values, and which choice holds the increase."""
+    held = ("It is held as %s." % found["increase"]) if found["chosen"] else (
+        "It is still open: the totals you sent match %s, but only the player chooses it; ask them." % found["increase"])
+    return {"role": "system", "content": json.dumps({
+        "task_purpose": SCORES_UNFOLDED_PURPOSE, "startup_id": startup_id,
+        "assignment": found["assignment"], "increase": found["increase"], "choice_id": found["choice_id"],
+        "increase_chosen": found["chosen"],
+        "instruction": ("The assignment you sent had the background increase added in. The engine kept these base scores "
+                        "as the assignment; the increase is its own choice, %s. %s Never add the increase into the "
+                        "assignment." % (found["choice_id"], held)),
+    }, ensure_ascii=False)}
+
+
+def _unfolded_told(own, replies, since):
+    """The last scores-unfolded record of the last published reply's turn, for the next turn's first request: those
+    after the reply before it and before this request's own answer (which already carries any of its own)."""
+    after = replies[-2] if len(replies) > 1 else -1
+    return [r for i, r in own if after < i < since and r.get("task_purpose") == SCORES_UNFOLDED_PURPOSE][-1:]
 HANDBACK_PURPOSE = "startup_turn_handback"
 
 
@@ -1288,6 +1311,11 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
                                    previous=lambda: _earlier_choice_ids(correction_context),
                                    alignments=creation_alignments())
     _log_notes(proposal, merged, turn["held"], settled)
+    if merged.unfolded is not None:
+        # #2090: told in this turn's answer and, once published, in the next turn's first request (_author_request).
+        item = _unfolded_item(merged.unfolded, (_startup_progress(correction_context) or {}).get("startup_id"))
+        for conversation in (correction_context, turn_items):
+            conversation.append(copy.deepcopy(item))
     if settled is not None:
         turn["not_read"].update(settled.unread)  # each is told to the author below
     problems_sent = (list(settled.refused) if settled is not None else []) + merged.problems
@@ -1615,6 +1643,7 @@ def _author_request(context, module, turn, since, tail):
                 creation_scope.SCOPE_PURPOSE, SCOPE_STATE_PURPOSE, OPEN_CHOICES_PURPOSE, ABILITY_ROLL_PURPOSE,
                 "startup_choices_dropped") and "startup_checkpoint_version" not in record:
             answers.append(record)
+    answers = _unfolded_told(own, replies, since) + answers
     if answers:
         note["engine_answer"] = answers
     request.append({"role": "system", "content": json.dumps(note, ensure_ascii=False)})
