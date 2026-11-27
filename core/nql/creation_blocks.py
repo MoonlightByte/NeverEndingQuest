@@ -421,7 +421,8 @@ def merge(held: Dict[str, Any], standing: Dict[str, Any], reply: Dict[str, Any],
     if "considering" in sent:
         intent["considering"] = dict(intent["considering"], **copy.deepcopy(sent["considering"]))
     unfolded: List[Dict[str, Any]] = []
-    _merge_scores(facts, held, intent, sent, rolled, problems, aside, unfolded)
+    _merge_scores(facts, held, intent, sent, rolled, problems, aside, unfolded,
+                  final=reply.get("decision") == "finalize_character")
     gear = reply.get("starting_equipment") or {}
     _merge_choices(facts, held, out, sent.get("choices") or {}, gear, previous, problems, leftovers, lost)
     _merge_gear(facts, held, out, gear, problems, aside, leftovers)
@@ -462,7 +463,7 @@ def _asked_and_sent(facts, standing, out, reply, problems) -> None:
         _tie_class_package(facts, out)
 
 
-def _merge_scores(facts, held, intent, sent, rolled, problems, aside, unfolded) -> None:
+def _merge_scores(facts, held, intent, sent, rolled, problems, aside, unfolded, final=False) -> None:
     if "ability_scores" not in sent:
         return
     if sent["ability_scores"] is None:
@@ -486,11 +487,11 @@ def _merge_scores(facts, held, intent, sent, rolled, problems, aside, unfolded) 
             elif refused:
                 found = _unfold(facts, intent, sent, now["method"], new["assignment"], rolled) if facts.ok else None
                 old = held["intent"]["ability_scores"] or {}
-                kept = now.get("assignment")
-                if kept is None and old.get("method") == now["method"]:
-                    kept = old.get("assignment")
-                if found is not None and kept is not None and found["assignment"] != kept:
-                    found = None  # unfold r2: never replaces this method's standing scores, else its held ones
+                approved = old.get("assignment") if old.get("method") == now["method"] else None
+                if found is not None and final and found["assignment"] != approved:
+                    # unfold r3: in an interview the set is the base it encodes, as that base sent legally would be;
+                    # a finalize never changes the held scores (the player approved another build)
+                    found = None
                 if found is None:
                     problem = {"choice_id": "ability_scores.assignment", "problem": "refused", "why": refused["problem"]}
                     if now["method"] == "random" and isinstance(rolled, list):
