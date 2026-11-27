@@ -1174,6 +1174,10 @@ ASK_FOR_ANOTHER = ("For already_held, ask the player for a different one. For sk
                    "asked you to choose.")
 
 
+class StartupReplyCut(ValueError):
+    """A reply whose typed finish reason is "length": cut at the provider's limit, never shown or kept (#2090)."""
+
+
 class StartupScopeRefusal(ValueError):
     """A scoped response's picks the engine refuses (typed; no reviewer call)."""
 
@@ -1675,10 +1679,10 @@ def _review_startup_response(conversation, proposal, committed_facts, *,
     ]
     invalid = 0
     while True:
-        raw = get_ai_response(review_messages, {"type": "json_object"},
-                              persist_response=False, live_scope=live_scope,
-                              startup_phase="startup_review", task_id="T124")
         try:
+            raw = get_ai_response(review_messages, {"type": "json_object"},
+                                  persist_response=False, live_scope=live_scope,
+                                  startup_phase="startup_review", task_id="T124", on_cut="raise")
             return parse_startup_review(raw, decision=proposal.get("decision"))
         except ValueError as exc:
             invalid += 1
@@ -2044,6 +2048,9 @@ def _starting_gear_notice(character, provenance):
 # a valid verdict within the remaining budget also hands the turn back. Not
 # persisted: a restart replays the turn with a fresh count.
 STARTUP_TURN_REJECTION_LIMIT = 4
+# Model-facing only (#2090): the note after a reply cut at its length limit.
+STARTUP_CUT_NOTE = ("Your previous reply was cut off at its length limit and was not used. Send the startup "
+                    "response object again, complete, with shorter narration.")
 # T093 starting-location proposals that complete but don't resolve (D-1270-1,
 # a B2-iv class matching the limit above); provider errors don't count. After
 # this many in a row the party starts at the plot's starting area (D-1270-2).
@@ -2054,8 +2061,13 @@ STARTUP_HANDBACK_NOTICE = "Your last replies could not be used. The choices so f
 def _handback_words(request, scope):
     """The guide's one plain reply to a handed-back turn; no block is read from it. A reply in the usual JSON shape
     gives its narration."""
+    cut = 0
     for _ in range(2):  # an empty or unusable reply is asked once more, then nothing is said
-        text = get_ai_response(request, persist_response=False, live_scope=scope).strip()
+        try:
+            text = get_ai_response(request, persist_response=False, live_scope=scope, on_cut="raise").strip()
+        except StartupReplyCut:
+            cut += 1
+            continue
         try:
             value = json.loads(extract_json_object(text) or text)
         except ValueError:
@@ -2063,6 +2075,8 @@ def _handback_words(request, scope):
         words = value.get("narration") if isinstance(value, dict) else None
         if isinstance(words, str) and words.strip():
             return words.strip()
+    if cut == 2:
+        raise StartupReplyCut("Both handback replies were cut at their length limit")
     return ""
 
 
@@ -2126,12 +2140,18 @@ def ai_character_interview(conversation, module):
                                         "approved. Answer the player's next message with the retained choices."),
                     }, ensure_ascii=False)})
                     save_startup_conversation(conversation, live_scope=scope)
-                    words = _handback_words(_author_request(conversation, module, turn, len(conversation), {
-                        "facts": notice, "blocks": creation_blocks.state(turn["standing"]),
-                        "instruction": ("For this reply only, answer in plain words, no JSON, as the player will read it. "
-                                        "Nothing from it is recorded. Tell the player what is kept and what is still "
-                                        "needed, and ask what to adjust."),
-                    }), scope)
+                    while True:
+                        try:
+                            words = _handback_words(_author_request(conversation, module, turn, len(conversation), {
+                                "facts": notice, "blocks": creation_blocks.state(turn["standing"]),
+                                "instruction": ("For this reply only, answer in plain words, no JSON, as the player will "
+                                                "read it. Nothing from it is recorded. Tell the player what is kept and "
+                                                "what is still needed, and ask what to adjust."),
+                            }), scope)
+                            break
+                        except StartupReplyCut:
+                            # #2090: both cut: the approved provider notice; the player's next message retries.
+                            _startup_provider_pause(None, scope)
                     if words:
                         _say(f"\nDungeon Master: {words}")
                         record = json.loads(conversation[-1]["content"])
@@ -2151,8 +2171,18 @@ def ai_character_interview(conversation, module):
                     "instruction": "Return one startup response object with the blocks you add or change, not a bare sheet.",
                 }
                 asked = len(correction_context)  # what is added from here is the engine's answer to the next reply
-                raw = get_ai_response(_author_request(correction_context, module, turn, since, tail),
-                                      {"type": "json_object"}, persist_response=False, live_scope=scope)
+                try:
+                    raw = get_ai_response(_author_request(correction_context, module, turn, since, tail),
+                                          {"type": "json_object"}, persist_response=False, live_scope=scope,
+                                          on_cut="raise")
+                except StartupReplyCut as exc:
+                    # #2090: a failed try within the turn's tries; the cut text is never kept.
+                    since = asked
+                    rejected += 1
+                    rescoped = False
+                    _log_rejection(rejected, "length", exc)
+                    correction_context.append({"role": "system", "content": STARTUP_CUT_NOTE})
+                    continue
                 since = asked
                 stage = "parse"
                 settled = Settled(turn["not_read"])
@@ -3205,7 +3235,7 @@ def _publish_startup_wait(wait, attempt, max_attempts, delay):
 
 
 def get_ai_response(conversation, response_format=None, *, persist_response=True, live_scope=None,
-                    startup_phase="startup_interview", task_id="T092"):
+                    startup_phase="startup_interview", task_id="T092", on_cut="pause"):
     """Run T092 (author) or T124 (whole review) through shared cancellable transport.
 
     The borrowed scope stays open.
@@ -3253,6 +3283,9 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                     **{k: v for k, v in main_cfg.items() if k != "model"},
                 )
                 scope.outage_line = None  # #2090: the provider answered
+                if getattr(response.choices[0], "finish_reason", None) == "length":
+                    # #2090: cut at the provider's limit, by the typed field only; never shown or stored.
+                    raise StartupReplyCut("The provider's reply was cut at its length limit")
                 content = response.choices[0].message.content
                 if not isinstance(content, str) or not content.strip():
                     raise ValueError("Provider returned no usable startup response")
@@ -3267,6 +3300,12 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                 raise
             except (StartupCancelled, KeyboardInterrupt, EOFError):
                 raise
+            except StartupReplyCut:
+                if on_cut == "raise":
+                    raise  # the caller counts it among its own tries
+                _startup_provider_pause(None, scope)  # the approved provider notice; the next message retries
+                _emit_startup_phase(startup_phase)
+                status_processing_ai()
             except Exception as exc:
                 if _startup_configuration_handback(exc, provider, revision, scope):
                     _emit_startup_phase(startup_phase)
