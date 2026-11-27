@@ -2050,7 +2050,7 @@ def _starting_gear_notice(character, provenance):
 STARTUP_TURN_REJECTION_LIMIT = 4
 # Model-facing only (#2090): the note after a reply cut at its length limit.
 STARTUP_CUT_NOTE = ("Your previous reply was cut off at its length limit and was not used. Send the startup "
-                    "response object again, complete, with shorter narration.")
+                    "response object again, complete: shorter narration and only the blocks you add or change.")
 # T093 starting-location proposals that complete but don't resolve (D-1270-1,
 # a B2-iv class matching the limit above); provider errors don't count. After
 # this many in a row the party starts at the plot's starting area (D-1270-2).
