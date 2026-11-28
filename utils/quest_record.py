@@ -550,6 +550,15 @@ def is_closed(record) -> bool:
         record.get("status") in (COMPLETED, "failed") or bool(record.get("bypassed")))
 
 
+def module_complete(plot):
+    """#2127: (closed, total, complete) of a module's main plot points, the rule main.py's completion
+    check and the journal share: only ids starting "PP" count (side quests are optional); a point
+    counts when is_closed; complete when there is at least one and all are closed."""
+    main_plots = [p for p in plot["plotPoints"] if p.get("id", "").startswith("PP")]
+    closed = sum(1 for p in main_plots if is_closed(p))
+    return closed, len(main_plots), closed == len(main_plots) and len(main_plots) > 0
+
+
 def module_plot(module, *, root=".") -> Optional[Dict[str, Any]]:
     """The module_plot.json shape for readers: authored text from the file,
     status and impact from the engine's quests view (plus requires, open,

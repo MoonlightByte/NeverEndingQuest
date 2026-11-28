@@ -9895,22 +9895,8 @@ def check_all_modules_plot_completion():
             plot_data = quest_record.module_plot(module_name)
             
             if plot_data and "plotPoints" in plot_data:
-                # Only count main plot points (PP), not side quests (SQ)
-                main_plots = [p for p in plot_data["plotPoints"] if p.get("id", "").startswith("PP")]
-                total_plots = len(main_plots)
-                completed_plots = 0
-                
-                for plot_point in main_plots:
-                    status = plot_point.get("status", "unknown")
-                    plot_id = plot_point.get("id", "unknown")
-                    
-                    # #544: completed, failed or bypassed (the party went
-                    # another way): nothing left to do in this module for it.
-                    if quest_record.is_closed(plot_point):
-                        completed_plots += 1
-                
-                # Module is complete when all main plots (PP) are done, side quests (SQ) are optional
-                module_complete = completed_plots == total_plots and total_plots > 0
+                # Main plot points only (PP); side quests are optional. #2127: the rule lives in quest_record.
+                completed_plots, total_plots, module_complete = quest_record.module_complete(plot_data)
                 
                 all_modules_data["completion_summary"][module_name] = {
                     "total_plots": total_plots,

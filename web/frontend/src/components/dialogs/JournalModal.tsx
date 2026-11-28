@@ -129,6 +129,10 @@ function JournalModalBody() {
   const discovered = (plot?.plotPoints ?? []).filter((q) => q.status !== 'not started')
   const activeQuests = discovered.filter((q) => q.status !== 'completed')
   const completedQuests = discovered.filter((q) => q.status === 'completed')
+  // #2127: every main quest of this adventure is closed (the server's moduleComplete).
+  const completeLine = plot?.moduleComplete === true
+    ? <p className="neq-journal-description" role="status">{`${plot.moduleTitle || 'This adventure'} is complete. Every main quest is closed.`}</p>
+    : null
 
   useEffect(() => {
     if (ember) return
@@ -147,6 +151,7 @@ function JournalModalBody() {
   if (ember) return <DesktopJournal onClose={closeDialog}>
     <JournalPage heading="Current Objectives" quests={unavailable ? [] : activeQuests} keyboardScrollable>
       {plotError ? <p role="alert">Could not load quest data. Close and reopen the journal to retry.</p> : plot === null ? <p role="status">Fetching your journal…</p> : discovered.length === 0 ? <p>No discovered quests have been recorded yet.</p> : null}
+      {unavailable ? null : completeLine}
     </JournalPage>
     <JournalPage heading="A Chronicle of Deeds" quests={unavailable ? [] : completedQuests} keyboardScrollable />
   </DesktopJournal>
@@ -172,7 +177,9 @@ function JournalModalBody() {
           <JournalPage
             heading="Current Objectives"
             quests={activeQuests}
-          />
+          >
+            {completeLine}
+          </JournalPage>
           <JournalPage
             heading="A Chronicle of Deeds"
             quests={completedQuests}
