@@ -30,7 +30,7 @@
             "RO06"
           ],
           "status": "not started",
-          "plotImpact": "Restored bells allow the Rangers to send for reinforcements (arriving after the main plot) and provide the party with a one-time 'Early Warning' ability, letting them avoid a planned ambush in the Thornwood."
+          "plotImpact": "Restored bells warn the party of the ambush on the Bandit Trail (TW02)."
         },
         {
           "id": "SQ002",
@@ -47,7 +47,7 @@
     {
       "id": "PP002",
       "title": "Into the Thornwood",
-      "description": "Following leads from Rusk, the party ventures into the Thornwood Wilds to find the main bandit camp, the Bandit Stronghold, a fortified camp deep in the wilds. They must overcome unnaturally aggressive wildlife and bandit patrols to reach the camp, rescue any surviving captives, and find clues about Malarok's ultimate goal.",
+      "description": "Following leads from Rusk, the party ventures into the Thornwood Wilds to find the main bandit camp, the Bandit Stronghold, a fortified camp deep in the wilds. They must overcome unnaturally aggressive wildlife and bandit patrols to reach the camp, free the survivors Gareth and Kael, who escaped to the Wolf's Den, and learn the other captives were already sent north, and find clues about Malarok's ultimate goal.",
       "location": "TW001",
       "nextPoints": [
         "PP003"
@@ -71,10 +71,20 @@
         {
           "id": "SQ003",
           "title": "The Hermit's Warning",
-          "description": "The party can find a hidden cabin belonging to Maelo, a hermit who studies the forest's energies. He will only help if the party first cleanses a nearby spring he uses for scrying, which has been tainted by Malarok's magic. He can then perform a ritual to learn more about the threat. Reward: Maelo's Iron Charm (grows cold in the presence of dark magic, can potentially break enchantments).",
+          "description": "Maelo's scrying spring is tainted, and its corrupted guardian, a Tainted Naiad, rises when anyone tries to cleanse it. Free her (Remove Curse, Lesser Restoration, or Persuasion DC 15 with an offering of clean water) or defeat her, and the spring runs clean. Maelo then scries the threat (the Voidstone at the hilltop ruins) and gives the party his Iron Charm and a flask of the purified water.",
           "involvedLocations": [
             "TW001"
           ],
+          "completion": {
+            "version": 1,
+            "resolved": [
+              {
+                "locationId": "TW04",
+                "occupant": "tainted_naiad"
+              }
+            ],
+            "impact": "The spring runs clean and Maelo has scried the threat."
+          },
           "status": "not started",
           "plotImpact": ""
         },
@@ -121,8 +131,8 @@
       "sideQuests": [
         {
           "id": "SQ005",
-          "title": "The Withered Hart",
-          "description": "A magnificent, ancient hart, once a guardian of the forest, has been captured and twisted by Malarok's magic, serving as a powerful guard for the ruins. The party can either defeat it in combat or, if they learned about the iron's properties from Maelo, use it to try and break the spell controlling the beast.",
+          "title": "Aid the Withered Hart",
+          "description": "The forest's last guardian holds the hollow against the corruption and a maddened owlbear. Heal or steady it (the Iron Charm, Medicine DC 14, or Animal Handling DC 15) and it guides the party to the Nexus by a hidden way.",
           "involvedLocations": [
             "NCW001"
           ],
@@ -138,6 +148,26 @@
           },
           "status": "not started",
           "plotImpact": ""
+        },
+        {
+          "id": "SQ006",
+          "title": "The Ranger's Oath",
+          "description": "Ranger Thane, sent from a distant outpost, is being consumed by the corruption at his camp. Reach him by talk (his oath, his daughter's locket) and perform the cleansing rite, and he is freed and may join the party; or grant the end he asks for.",
+          "involvedLocations": [
+            "NC04"
+          ],
+          "completion": {
+            "version": 1,
+            "resolved": [
+              {
+                "locationId": "NC04",
+                "occupant": "ranger_thane"
+              }
+            ],
+            "impact": "Thane's fate is settled."
+          },
+          "status": "not started",
+          "plotImpact": ""
         }
       ]
     },
@@ -149,6 +179,16 @@
       "nextPoints": [
         "PP005"
       ],
+      "completion": {
+        "version": 1,
+        "resolved": [
+          {
+            "locationId": "NC05",
+            "occupant": "malarok_the_corruptor"
+          }
+        ],
+        "impact": "Malarok the Corruptor is beaten and his ritual broken."
+      },
       "status": "not started",
       "plotImpact": "",
       "sideQuests": []
@@ -156,10 +196,20 @@
     {
       "id": "PP005",
       "title": "Report to Commander Elen (but she's gone!)",
-      "description": "When the party reports their success to Ranger Marcus at the Rangers' Command Post, they discover Ranger Elen has vanished! Ranger Marcus explains that Elen received an urgent message about Scout Elen's disappearance in Harrow's Hollow and departed immediately, leaving only a hastily scrawled note: 'Scout Elen missing in Harrow's Hollow - same signs as here. Must go now. Tell our allies to follow if they can. -E'. As the outpost's reward, Ranger Marcus pays each member of the party fifty gold pieces, but he is clearly worried about Elen. DM NOTE: In the response that narrates the report, record Ranger Elen's departure from the outpost with resolveOccupant, outcome departed, and its reason (an urgent message calling her to Harrow's Hollow), and pay each party member the fifty gold pieces. This is a plot hook to the Keep of Doom module. After giving rewards and wrapping up this module's storylines, inform players that they can travel to Harrow's Hollow to find Elen and investigate the mysterious disappearances.",
+      "description": "When the party reports their success to Ranger Marcus at the Rangers' Command Post, they discover Ranger Elen has vanished! Ranger Marcus explains that Elen received an urgent message: people are vanishing in Harrow's Hollow with the same signs of corruption seen here. She rode out at once, leaving a note: 'Disappearances in Harrow's Hollow - same signs as here. I am going. Tell our allies to follow if they can. -E' DM NOTE: record her with resolveOccupant, outcome departed, reason \"rode to Harrow's Hollow\". She does not join the party and does not stay. Each hero receives 50 gold pieces.",
       "location": "RO001",
       "nextPoints": [],
       "prerequisites": ["PP001", "PP002", "PP003", "PP004"],
+      "completion": {
+        "version": 1,
+        "resolved": [
+          {
+            "locationId": "RO01",
+            "occupant": "ranger_elen"
+          }
+        ],
+        "impact": "Commander Elen has ridden to Harrow's Hollow; the outpost's debt is paid."
+      },
       "status": "not started",
       "plotImpact": "",
       "sideQuests": []

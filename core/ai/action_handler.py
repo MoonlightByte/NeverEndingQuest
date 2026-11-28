@@ -3876,6 +3876,10 @@ def plan_party_change(roster_before, parameters, world, *, turn_roster, module, 
         if oid != "new" and not (len(parts) == 2 and all(parts)):
             return refused(_not_recruitable(oid, world, module, location))
         npc_path = _party_sheet_path(module, name)
+        kept = _declared_not_joining(oid, npc_path, module)
+        if kept:
+            # #2127: the module declares this person never joins.
+            return refused(kept)
         for entry in roster:
             if isinstance(entry, dict) and entry.get("name") and \
                     _party_sheet_path(module, entry["name"]) == npc_path:
@@ -3972,6 +3976,21 @@ def party_change_companion(parameters, roster, turn_roster):
         if isinstance(row, dict) and row.get("name"):
             return row["name"]
     return npc.get("name")
+
+
+def _declared_not_joining(oid, npc_path, module):
+    """#2127: the refusal for an add of a person the module's declaration
+    marks "recruitable": false, by that person's id or as "new" with a sheet
+    stem of their name or an alias; else ""."""
+    from utils.roster_conversion import declared_not_recruitable
+
+    kept = declared_not_recruitable(module)
+    if oid in kept:
+        name = kept[oid]["name"]
+    else:
+        stem = os.path.splitext(os.path.basename(str(npc_path)))[0]
+        name = next((v["name"] for v in kept.values() if oid == "new" and stem in v["stems"]), None)
+    return ("%s is not someone who joins the party; play them as they are." % name) if name else ""
 
 
 def _recorded_for_new(npc_path, name, world, module, location):

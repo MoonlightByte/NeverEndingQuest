@@ -15,7 +15,6 @@ A 5th Edition adventure module for levels 1-3.
 ## Resources
 
 - [**Player Guide**](PLAYER_GUIDE.md) - A first-person walkthrough of the module by a player who completed it, showcasing creative solutions and roleplay opportunities
-- [**Module Summary**](MODULE_SUMMARY_BU.md) - Detailed breakdown of all locations, NPCs, and encounters
 
 ## Plot Summary
 
@@ -31,7 +30,7 @@ The party arrives at Rangers' Outpost to find it in crisis. Three caravans have 
 
 ## DM Notes
 
-This module emphasizes player choice and creative problem-solving. The Silver Bell Network provides an early quest hub, while the corruption spreading through the Thornwood creates escalating tension. The module concludes with a narrative hook as Scout Kira departs for Harrow's Hollow, setting up the next adventure.
+This module emphasizes player choice and creative problem-solving. The Silver Bell Network provides an early quest hub, while the corruption spreading through the Thornwood creates escalating tension. The module concludes with a narrative hook: when the party returns to report, Commander Elen has already ridden to Harrow's Hollow, where people are vanishing with the same signs of corruption, setting up the next adventure.
 
 ---
 

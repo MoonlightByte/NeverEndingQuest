@@ -60,10 +60,25 @@ T036_FIELDS = ("plotTitle", "mainObjective")
 # it fails, _PLOT_SCHEMA_GEMINI stays None and the Gemini branch raises rather than
 # silently producing narration.
 _PLOT_SCHEMA_GEMINI = None
+
+
+def model_facing_plot_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
+    """A copy of plot_schema.json as the plot builders send it to a model
+    (#2127): without the authored-only `prerequisites` field and with the
+    `location` wording they always sent, so the request bytes stay as before
+    the schema documented those fields."""
+    schema = copy.deepcopy(schema)
+    point = schema.get("properties", {}).get("plotPoints", {}).get("items", {}).get("properties", {})
+    point.pop("prerequisites", None)
+    if isinstance(point.get("location"), dict):
+        point["location"]["description"] = "The locationId where this plot point takes place"
+    return schema
+
+
 try:
     _plot_schema_path = os.path.join(os.path.dirname(__file__), "..", "..", "schemas", "plot_schema.json")
     with open(_plot_schema_path, "r", encoding="utf-8") as _f:
-        _PLOT_SCHEMA_GEMINI = convert_to_gemini_schema(json.load(_f))
+        _PLOT_SCHEMA_GEMINI = convert_to_gemini_schema(model_facing_plot_schema(json.load(_f)))
 except Exception:
     _PLOT_SCHEMA_GEMINI = None
 
@@ -473,7 +488,7 @@ Use only standard ASCII characters -- no smart quotes, no em-dashes, no Unicode 
     def plot_structure_schema(self, valid_location_ids: List[str]) -> Dict[str, Any]:
         """The T037 reply schema: plotPoints from plot_schema.json, with every
         location reference typed to the module's location IDs (D-COST-5)."""
-        plot_points = copy.deepcopy(self.schema["properties"]["plotPoints"])
+        plot_points = model_facing_plot_schema(self.schema)["properties"]["plotPoints"]
         item = plot_points["items"]["properties"]
         item["location"]["enum"] = list(valid_location_ids)
         item["sideQuests"]["items"]["properties"]["involvedLocations"]["items"]["enum"] = list(valid_location_ids)

@@ -1,0 +1,79 @@
+{
+  "format": "neq-module-items",
+  "version": 1,
+  "namespace": "thornwood_watch",
+  "items": [
+    {
+      "itemKey": "harmonic_crystal",
+      "name": "Spare harmonic crystal",
+      "description": "Uncut crystal tuned for the outpost's silver bells.",
+      "kind": "miscellaneous",
+      "magical": true,
+      "consumable": false,
+      "equipment": null
+    },
+    {
+      "itemKey": "iron_charm",
+      "name": "Maelo's Iron Charm",
+      "description": "A cold-iron charm that grows cold near dark magic; struck along a Voidstone's fracture it breaks the shard.",
+      "kind": "equipment",
+      "magical": true,
+      "consumable": false,
+      "equipment": "gear:worn"
+    },
+    {
+      "itemKey": "purified_water",
+      "name": "Flask of purified spring water",
+      "description": "Water from Maelo's cleansed spring; a pure offering.",
+      "kind": "consumable",
+      "magical": true,
+      "consumable": true,
+      "equipment": null
+    },
+    {
+      "itemKey": "dryad_tears",
+      "name": "Vial of dryad tears",
+      "description": "Sylara's tears; a pure offering for the grove rite.",
+      "kind": "consumable",
+      "magical": true,
+      "consumable": true,
+      "equipment": null
+    },
+    {
+      "itemKey": "heartwood_staff",
+      "name": "Uncorrupted heartwood staff",
+      "description": "Grown at the heart of the oldest oak; a pure offering.",
+      "kind": "equipment",
+      "magical": true,
+      "consumable": false,
+      "equipment": null
+    },
+    {
+      "itemKey": "strongbox_key",
+      "name": "Strongbox key",
+      "description": "Gorvek's key to the strongbox in his tent.",
+      "kind": "miscellaneous",
+      "magical": false,
+      "consumable": false,
+      "equipment": null
+    },
+    {
+      "itemKey": "gate_key",
+      "name": "Stronghold Gate Key",
+      "description": "Opens the palisade gate.",
+      "kind": "miscellaneous",
+      "magical": false,
+      "consumable": false,
+      "equipment": null
+    },
+    {
+      "itemKey": "signal_horn",
+      "name": "Bandit signal horn",
+      "description": "The ambushers' horn; its call is the one Gorvek answers.",
+      "kind": "miscellaneous",
+      "magical": false,
+      "consumable": false,
+      "equipment": null
+    }
+  ]
+}

@@ -15,9 +15,19 @@
       ],
       "npcs": [
         "Ranger Elen",
+        "Ranger Marcus",
+        "Scout Kira",
+        "Messenger Tom",
+        "Rusk",
         "Quartermaster Brann",
+        "Dock Worker Finn",
+        "Merchant Vera",
+        "Apprentice Jeb",
         "Trader Sila",
-        "Captured Bandit Leader Rusk"
+        "Merchant Garran",
+        "Trader Mila",
+        "Caravan Guard Bex",
+        "Scout Neris"
       ],
       "plot_points": [
         "PP001",
@@ -38,9 +48,9 @@
         "TW06"
       ],
       "npcs": [
-        "Scout Neris",
-        "Merchant Lira",
-        "Spirit-Touched Hermit Maelo"
+        "Spirit-Touched Hermit Maelo",
+        "Ranger Gareth",
+        "Merchant Kael"
       ],
       "plot_points": [
         "PP001",
@@ -60,7 +70,9 @@
         "NC05"
       ],
       "npcs": [
-        "The Withered Hart"
+        "Thorn-Touched Dryad Sylara",
+        "The Withered Hart",
+        "Ranger Thane"
       ],
       "plot_points": [
         "PP001",
@@ -82,8 +94,85 @@
         }
       ]
     },
+    "ranger_marcus": {
+      "name": "Ranger Marcus",
+      "role": "",
+      "faction": "",
+      "appears_in": [
+        {
+          "area": "RO001",
+          "location": "RO01"
+        }
+      ]
+    },
+    "scout_kira": {
+      "name": "Scout Kira",
+      "role": "",
+      "faction": "",
+      "appears_in": [
+        {
+          "area": "RO001",
+          "location": "RO01"
+        }
+      ]
+    },
+    "messenger_tom": {
+      "name": "Messenger Tom",
+      "role": "",
+      "faction": "",
+      "appears_in": [
+        {
+          "area": "RO001",
+          "location": "RO01"
+        }
+      ]
+    },
+    "rusk": {
+      "name": "Rusk",
+      "role": "",
+      "faction": "",
+      "appears_in": [
+        {
+          "area": "RO001",
+          "location": "RO01"
+        }
+      ]
+    },
     "quartermaster_brann": {
       "name": "Quartermaster Brann",
+      "role": "",
+      "faction": "",
+      "appears_in": [
+        {
+          "area": "RO001",
+          "location": "RO02"
+        }
+      ]
+    },
+    "dock_worker_finn": {
+      "name": "Dock Worker Finn",
+      "role": "",
+      "faction": "",
+      "appears_in": [
+        {
+          "area": "RO001",
+          "location": "RO02"
+        }
+      ]
+    },
+    "merchant_vera": {
+      "name": "Merchant Vera",
+      "role": "",
+      "faction": "",
+      "appears_in": [
+        {
+          "area": "RO001",
+          "location": "RO02"
+        }
+      ]
+    },
+    "apprentice_jeb": {
+      "name": "Apprentice Jeb",
       "role": "",
       "faction": "",
       "appears_in": [
@@ -104,25 +193,36 @@
         }
       ]
     },
-    "captured_bandit_leader_rusk": {
-      "name": "Captured Bandit Leader Rusk",
+    "merchant_garran": {
+      "name": "Merchant Garran",
       "role": "",
       "faction": "",
       "appears_in": [
         {
           "area": "RO001",
-          "location": "RO01"
+          "location": "RO03"
         }
       ]
     },
-    "merchant_lira": {
-      "name": "Merchant Lira",
+    "trader_mila": {
+      "name": "Trader Mila",
       "role": "",
       "faction": "",
       "appears_in": [
         {
-          "area": "TW001",
-          "location": "TW06"
+          "area": "RO001",
+          "location": "RO03"
+        }
+      ]
+    },
+    "caravan_guard_bex": {
+      "name": "Caravan Guard Bex",
+      "role": "",
+      "faction": "",
+      "appears_in": [
+        {
+          "area": "RO001",
+          "location": "RO03"
         }
       ]
     },
@@ -132,8 +232,8 @@
       "faction": "",
       "appears_in": [
         {
-          "area": "TW001",
-          "location": "TW06"
+          "area": "RO001",
+          "location": "RO04"
         }
       ]
     },
@@ -148,11 +248,38 @@
         }
       ]
     },
-    "corrupted_woodland_creatures": {
-      "name": "Corrupted Woodland Creatures",
+    "ranger_gareth": {
+      "name": "Ranger Gareth",
       "role": "",
       "faction": "",
-      "appears_in": []
+      "appears_in": [
+        {
+          "area": "TW001",
+          "location": "TW06"
+        }
+      ]
+    },
+    "merchant_kael": {
+      "name": "Merchant Kael",
+      "role": "",
+      "faction": "",
+      "appears_in": [
+        {
+          "area": "TW001",
+          "location": "TW06"
+        }
+      ]
+    },
+    "thorn-touched_dryad_sylara": {
+      "name": "Thorn-Touched Dryad Sylara",
+      "role": "",
+      "faction": "",
+      "appears_in": [
+        {
+          "area": "NCW001",
+          "location": "NC02"
+        }
+      ]
     },
     "the_withered_hart": {
       "name": "The Withered Hart",
@@ -162,6 +289,17 @@
         {
           "area": "NCW001",
           "location": "NC03"
+        }
+      ]
+    },
+    "ranger_thane": {
+      "name": "Ranger Thane",
+      "role": "",
+      "faction": "",
+      "appears_in": [
+        {
+          "area": "NCW001",
+          "location": "NC04"
         }
       ]
     }
@@ -215,9 +353,7 @@
     "NC05": {
       "name": "The Corrupted Nexus",
       "area": "NCW001",
-      "npcs": [
-        "Malarok the Corruptor"
-      ],
+      "npcs": [],
       "connections": [
         "NC02",
         "NC03"
@@ -258,7 +394,7 @@
       "area": "RO001",
       "npcs": [
         "Trader Sila",
-        "Merchant Gareth",
+        "Merchant Garran",
         "Trader Mila",
         "Caravan Guard Bex"
       ],
@@ -341,9 +477,7 @@
     "TW05": {
       "name": "Bandit Stronghold",
       "area": "TW001",
-      "npcs": [
-        "Bandit Captain Gorvek"
-      ],
+      "npcs": [],
       "connections": [
         "TW02",
         "NC01"
@@ -372,7 +506,8 @@
     "SQ002": "RO001",
     "SQ003": "TW001",
     "SQ004": "TW001",
-    "SQ005": "NCW001"
+    "SQ005": "NCW001",
+    "SQ006": "NCW001"
   },
   "references": {
     "npc:Ranger Elen": [
@@ -384,10 +519,7 @@
     "npc:Trader Sila": [
       "module:plotStages"
     ],
-    "npc:Captured Bandit Leader Rusk": [
-      "module:plotStages"
-    ],
-    "npc:Merchant Lira": [
+    "npc:Rusk": [
       "module:plotStages"
     ],
     "npc:Scout Neris": [
@@ -396,15 +528,10 @@
     "npc:Spirit-Touched Hermit Maelo": [
       "module:plotStages"
     ],
-    "npc:Corrupted Woodland Creatures": [
-      "module:plotStages"
-    ],
     "npc:The Withered Hart": [
       "module:plotStages"
     ]
   },
-  "validation_issues": [
-    "NPC 'Corrupted Woodland Creatures' is referenced in ['module:plotStages'] but not placed in any location"
-  ],
-  "generated_at": "2025-06-22T22:27:41.391154"
+  "validation_issues": [],
+  "generated_at": "2026-11-28T00:00:00"
 }

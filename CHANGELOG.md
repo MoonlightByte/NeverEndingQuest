@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- The Thornwood Watch is fuller and holds together: its creatures have stat blocks, a new ambush on the Bandit Trail and a deeper cave chamber, keys, charms and offerings you can carry, a way to break the Voidstone, a ranger to save at his camp, and an ending in which Commander Elen rides to Harrow's Hollow and does not join the party (#2127).
+
 ## [1.2.10] - 2026-11-28
 
 - During character creation, a Weapon Mastery pick must now be a weapon your class can master, such as a Greatsword; a mastery property such as Topple is refused and the guide asks you again (#2090).

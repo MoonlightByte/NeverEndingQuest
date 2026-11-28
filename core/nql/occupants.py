@@ -995,6 +995,13 @@ def dm_action_line(action_type: str, parameters: Any, module: str) -> Tuple[str,
             return "", ("outcome died cannot be returned: a death stands, and returnOccupant brings "
                         "back only members who left (fled, departed, surrendered, defeated, joined). "
                         "Narrate the scene without bringing the dead back")
+        if outcome == "departed":
+            from utils.roster_conversion import declared_not_recruitable
+            kept = declared_not_recruitable(module).get(oid)
+            if kept:
+                # #2127: the module declares this person never joins; their leaving stands.
+                return "", ("%s left by their own choice and is not someone who joins the party; "
+                            "that stands. Narrate the scene without bringing them back" % kept["name"])
         n, problem = _members(p.get("count"))
         if problem:
             return "", problem

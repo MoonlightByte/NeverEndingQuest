@@ -34,9 +34,12 @@
       "aliases": [
         "Echo of Scout Elen",
         "Prisoner Echo",
-        "Scout Elen"
+        "Scout Elen",
+        "Ranger Elen",
+        "Commander Elen"
       ],
-      "identity": "same_mobile_person"
+      "identity": "same_mobile_person",
+      "recruitable": false
     }
   ],
   "start": {

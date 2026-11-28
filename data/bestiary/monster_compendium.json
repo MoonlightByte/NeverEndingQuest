@@ -1,8 +1,29 @@
 {
   "version": "1.0.0",
   "created": "2025-08-13",
-  "total_monsters": 166,
+  "total_monsters": 168,
   "monsters": {
+    "twig_blight": {
+      "name": "Twig Blight",
+      "type": "plant",
+      "description": "A small, hunched creature of dead branches and dry thorns bound together by corrupted sap, about three feet tall. Its limbs end in splintered claws and its head is a knot of brittle twigs with no face. Black sap weeps from its joints. Half buried in forest debris it looks like a heap of dead brush until it moves, skittering on root-like legs.",
+      "tags": [
+        "plant",
+        "corrupted"
+      ],
+      "source_file": "manual_addition"
+    },
+    "corrupted_cave_fisher": {
+      "name": "Corrupted Cave Fisher",
+      "type": "monstrosity",
+      "description": "A pale, armored cave predator the size of a large dog, clinging to a limestone ceiling with six spindly legs. Its chitin is streaked with black veins of corruption and its two hooked claws drip dark ichor. From a long snout it pays out near-invisible sticky filaments that hang over the cave path, glistening faintly in the light of sickly fungi.",
+      "tags": [
+        "monstrosity",
+        "corrupted",
+        "cave"
+      ],
+      "source_file": "manual_addition"
+    },
     "bandit_sentry": {
       "name": "Bandit Sentry",
       "type": "giant",
