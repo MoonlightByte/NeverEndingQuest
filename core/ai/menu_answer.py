@@ -121,6 +121,8 @@ def read_menu_answer(request: Dict[str, Any]) -> Dict[str, Any]:
             timeout=REQUEST_TIMEOUT_SECONDS,
             **config,
         )
+        if getattr(response.choices[0], "finish_reason", None) == "length":
+            raise MenuAnswerError("T127: the reply was cut at its length limit")  # #2090: typed field only
         return check_answer(response.choices[0].message.content, numbers)
     except ReadOnlySaveStop:
         raise

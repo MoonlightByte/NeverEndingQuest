@@ -44,6 +44,7 @@ class Merge(NamedTuple):
     aside: List[str]                  # blocks sent before what they belong to, and not kept
     dropped: Dict[str, List[Any]]     # what stood and no longer belongs, by block id
     leftovers: Dict[str, List[Any]]   # what this reply sent for a choice the build has left, not kept
+    unfolded: Optional[Dict[str, Any]] = None  # an assignment sent with the background increase in it, kept as its base
 
 
 class _Facts:
@@ -419,7 +420,9 @@ def merge(held: Dict[str, Any], standing: Dict[str, Any], reply: Dict[str, Any],
     lost.update(_lost(stood, _values(out)))
     if "considering" in sent:
         intent["considering"] = dict(intent["considering"], **copy.deepcopy(sent["considering"]))
-    _merge_scores(facts, held, intent, sent, rolled, problems, aside)
+    unfolded: List[Dict[str, Any]] = []
+    _merge_scores(facts, held, intent, sent, rolled, problems, aside, unfolded,
+                  final=reply.get("decision") == "finalize_character")
     gear = reply.get("starting_equipment") or {}
     _merge_choices(facts, held, out, sent.get("choices") or {}, gear, previous, problems, leftovers, lost)
     _merge_gear(facts, held, out, gear, problems, aside, leftovers)
@@ -430,7 +433,7 @@ def merge(held: Dict[str, Any], standing: Dict[str, Any], reply: Dict[str, Any],
         for key, values in _lost(now, _values(out)).items():
             lost[key] = lost.get(key, []) + values
     unwritten = _merge_creative(held, out["creative"], reply.get("creative") or {}, alignments)
-    return Merge(out, problems, unwritten, aside, lost, leftovers)
+    return Merge(out, problems, unwritten, aside, lost, leftovers, unfolded[-1] if unfolded else None)
 
 
 def _asked_and_sent(facts, standing, out, reply, problems) -> None:
@@ -460,7 +463,7 @@ def _asked_and_sent(facts, standing, out, reply, problems) -> None:
         _tie_class_package(facts, out)
 
 
-def _merge_scores(facts, held, intent, sent, rolled, problems, aside) -> None:
+def _merge_scores(facts, held, intent, sent, rolled, problems, aside, unfolded, final=False) -> None:
     if "ability_scores" not in sent:
         return
     if sent["ability_scores"] is None:
@@ -482,10 +485,57 @@ def _merge_scores(facts, held, intent, sent, rolled, problems, aside) -> None:
             if refused and _summary_echo(facts, held["intent"], now, new["assignment"]):
                 aside.append("ability_scores.summary_echo")  # the shown totals sent back: nothing changed
             elif refused:
-                problems.append({"choice_id": "ability_scores.assignment", "problem": "refused", "why": refused["problem"]})
+                found = _unfold(facts, intent, sent, now["method"], new["assignment"], rolled) if facts.ok else None
+                old = held["intent"]["ability_scores"] or {}
+                approved = old.get("assignment") if old.get("method") == now["method"] else None
+                if found is not None and final and found["assignment"] != approved:
+                    # unfold r3: in an interview the set is the base it encodes, as that base sent legally would be;
+                    # a finalize never changes the held scores (the player approved another build)
+                    found = None
+                if found is None:
+                    problem = {"choice_id": "ability_scores.assignment", "problem": "refused", "why": refused["problem"]}
+                    if now["method"] == "random" and isinstance(rolled, list):
+                        problem["rolled"] = list(rolled)  # #2090: the numbers it must be, as "offered" names a menu's
+                    problems.append(problem)
+                else:
+                    now = {"method": now["method"], "assignment": found["assignment"]}
+                    aside.append("ability_scores.unfolded")
+                    unfolded.append(found)
             else:
                 now = copy.deepcopy(trial)
     intent["ability_scores"] = now if now["method"] else None
+
+
+def _unfold(facts, intent, sent, method, assignment, rolled) -> Optional[Dict[str, Any]]:
+    """A refused assignment that is exactly one legal base for the method plus one background increase (#2090, owner
+    ruling pending): {"assignment": the base, "increase": the option, "chosen": whether the player chose it}. The
+    increase is the one this reply sends, else the one held; with none chosen, every listed option is tried and exactly
+    one must fit. It is never recorded here: an unchosen increase stays an open choice. Typed numbers only; None (the
+    refusal stands) when it is not exact or not unique."""
+    key = intent.get("background_key")
+    background = facts.d.backgrounds().get(key) if isinstance(key, str) else None
+    if (not background or not isinstance(assignment, dict) or set(assignment) != set(creation_build.ABILITIES)
+            or any(type(v) is not int for v in assignment.values())):
+        return None
+    bid = "background.%s.ability-scores" % key
+    picks = sent.get("choices") if isinstance(sent.get("choices"), dict) else {}
+    if bid in picks:
+        pick = picks[bid]
+        chosen = pick[0] if isinstance(pick, list) and len(pick) == 1 else None
+    else:
+        chosen = ((intent.get("choices") or {}).get(bid) or [None])[0]
+    fits = []
+    for option in [chosen] if chosen is not None else creation_scope._ability_options(background):
+        raised = creation_build.raised_scores(background, option, {a: 0 for a in creation_build.ABILITIES})
+        if raised is None:
+            continue
+        base = {a: assignment[a] - raised[1].get(a, 0) for a in creation_build.ABILITIES}
+        if (creation_build.base_scores(facts.d, {"method": method, "assignment": base}, rolled)[1] is None
+                and creation_build.raised_scores(background, option, base)[0] == assignment):
+            fits.append((base, option))
+    if len(fits) != 1:
+        return None
+    return {"assignment": fits[0][0], "increase": fits[0][1], "choice_id": bid, "chosen": chosen is not None}
 
 
 def _summary_echo(facts, held, now, sent) -> bool:
@@ -533,6 +583,10 @@ def _merge_choices(facts, held, out, sent, gear, previous, problems, leftovers, 
             leftovers[key] = intent["choices"].pop(key)
             before.pop(key, None)
             sent.pop(key)
+    for key in [k for k in sent if k in intent["choices"] and k in issued]:
+        # #2090: an option sent by its display name (as open_choices lists it) is written as its key.
+        intent["choices"][key] = creation_scope.distinct(
+            creation_scope.keyed_picks(key, intent["choices"][key], intent, issued))
     refused: List[Dict[str, Any]] = []
     kept: Dict[str, List[Any]] = {}
     while True:
@@ -632,6 +686,10 @@ def _merge_creative(held, creative, sent, alignments) -> List[str]:
     """Each field alone. Text is kept as sent and never read; a field that is not its type is not written."""
     unwritten = []
     for field, value in sent.items():
+        if field == "alignment" and isinstance(value, str) and alignments and value not in alignments:
+            # #2090: the enum value it equals apart from letter case (a typed field against its own enum, nothing else).
+            same = [a for a in alignments if isinstance(a, str) and a.casefold() == value.casefold()]
+            value = same[0] if len(same) == 1 else value
         if field not in creation_build.CREATIVE_FIELDS + creation_build.OPTIONAL_CREATIVE_FIELDS:
             unwritten.append(field)
         elif value is None or (isinstance(value, str) and not value.strip()):

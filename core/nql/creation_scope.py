@@ -481,11 +481,103 @@ def choice_problems(intent: Dict[str, Any], data: Optional[_Data] = None,
         if len(picked) > point["count"]:
             problems.append({"choice_id": cid, "problem": "too_many", "count": point["count"], "picked": len(picked)})
         allowed = _allowed(point, intent, issued)
+        listed = allowed is not None
+        if allowed is None:
+            allowed = _mastery_weapons(cid, intent, d)
         if allowed is not None:
             outside = [p for p in picked if p not in allowed]
             if outside:
-                problems.append({"choice_id": cid, "problem": "not_offered", "options": outside})
+                row = {"choice_id": cid, "problem": "not_offered", "options": outside}
+                if not listed or len(allowed) <= OFFERED_CAP:
+                    # The values it takes, beside the refused ones (#2090): a free pick's names, a listed choice's keys.
+                    row["offered"] = list(allowed)
+                problems.append(row)
     return problems or _repeat_problems(intent, issued, d, stood or {}) or _expertise_problems(intent, issued, d)
+
+
+# #2090: a listed choice's refusal names what it takes up to this many values (the longest list today is 30).
+OFFERED_CAP = 40
+
+
+def keyed_picks(cid: str, picks: List[Any], intent: Dict[str, Any], issued: Dict[str, Dict[str, Any]]) -> List[Any]:
+    """#2090: the picks, each one that is not an allowed key but equals exactly one allowed option's display name
+    (exactly, else apart from letter case) written as that option's key; every other pick as it is. Only a listed
+    choice whose options carry names (a spell list; open_choices shows the names) is read."""
+    point = issued.get(cid)
+    allowed = _allowed(point, intent, issued) if point else None
+    if not allowed or not isinstance(picks, list):
+        return picks
+    source = issued.get(point.get("from_choice") or "") if point.get("from_spellbook") else point
+    rows = (source or {}).get("options")
+    rows = [o for o in rows if isinstance(o, dict) and o.get("key") in allowed and isinstance(o.get("name"), str)
+            ] if isinstance(rows, list) else []
+    out = []
+    for p in picks:
+        if not rows or not isinstance(p, str) or p in allowed:
+            out.append(p)
+            continue
+        same = ([o["key"] for o in rows if o["name"] == p]
+                or [o["key"] for o in rows if o["name"].casefold() == p.casefold()])
+        out.append(same[0] if len(set(same)) == 1 else p)
+    return out
+
+
+def _mastery_weapons(cid: str, intent: Dict[str, Any], d: _Data) -> Optional[List[str]]:
+    """The weapon names a class's level-1 Weapon Mastery pick may take (#2090): the catalog's non-magical weapons
+    with a mastery property, of the kinds its option source names, or of the class's own weapon training for
+    weapons:proficient. None (any name, as before) for another choice or when the data cannot say."""
+    try:
+        cls = intent.get("class_key")
+        point = dict(_class_points(cls, d)).get(cid) if cls in d.classes() else None
+        head, _, rest = str((point or {}).get("option_source") or "").partition(":")
+        if head != "weapons":
+            return None
+        args = dict(kv.split("=", 1) for kv in rest.split(",") if "=" in kv)
+        flags = {kv for kv in rest.split(",") if kv and "=" not in kv}
+        if set(args) - {"category", "type"} or flags - {"proficient"} or (bool(args) == bool(flags)):
+            return None
+        if flags:
+            kinds = [k for k in (d.choices["class_traits"].get(cls) or {}).get("weapon_proficiencies") or []
+                     if isinstance(k, dict) and set(k) <= {"category", "property_any"} and k.get("category")]
+            if not kinds:
+                return None
+        else:
+            kinds = [{"category": c} for c in args.get("category", "").split("+") if c] or [{}]
+        names = []
+        for e in d.items:
+            w = e.get("weapon") if isinstance(e.get("weapon"), dict) else {}
+            if e.get("kind") != "weapon" or e.get("magical") or not w.get("mastery"):
+                continue
+            if args.get("type") and w.get("kind") != args["type"]:
+                continue
+            held = {p.get("name") for p in w.get("properties") or [] if isinstance(p, dict)}
+            if any((not k.get("category") or w.get("category") == k["category"])
+                   and (not k.get("property_any") or held & set(k["property_any"])) for k in kinds):
+                names.append(e["name"])
+        return names or None
+    except Exception:
+        return None
+
+
+def listed_free_picks(entries: Any, filled: Any, data: Optional[_Data] = None) -> Optional[List[Any]]:
+    """A Local/Custom request's open choices (#2090, the sent copy only; core/ai/api_client.py): each Weapon Mastery
+    free pick shows the names it takes under "options", in place of "free_pick", as a listed choice does. The names are
+    _mastery_weapons', the check the engine applies. None when nothing changes or the data cannot say (the note is
+    then sent as it is)."""
+    d = data if data is not None else _Data()
+    if not d.ok or not isinstance(entries, list) or not isinstance(filled, dict):
+        return None
+    intent = {"class_key": filled.get("class_key")}
+    out: List[Any] = []
+    changed = False
+    for entry in entries:
+        if isinstance(entry, dict) and entry.get("free_pick") is True and isinstance(entry.get("id"), str):
+            names = _mastery_weapons(entry["id"], intent, d)
+            if names:
+                entry = dict({k: v for k, v in entry.items() if k != "free_pick"}, options=names)
+                changed = True
+        out.append(entry)
+    return out if changed else None
 
 
 def _repeat_problems(intent, issued, d, stood) -> List[Dict[str, Any]]:

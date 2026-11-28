@@ -1006,6 +1006,30 @@ def _ability_roll(conversation):
 
 ENGINE_BUILD_PURPOSE = "startup_engine_build"
 SHEET_PREVIEW_PURPOSE = "startup_sheet_preview"
+CREATIVE_UNWRITTEN_PURPOSE = "startup_creative_unwritten"
+SCORES_UNFOLDED_PURPOSE = "startup_scores_unfolded"
+
+
+def _unfolded_item(found, startup_id):
+    """The engine's answer when a sent assignment had the background increase added in and its base was kept (#2090;
+    creation_blocks._unfold): typed values, and which choice holds the increase."""
+    held = ("It is held as %s." % found["increase"]) if found["chosen"] else (
+        "It is still open: the totals you sent match %s, but only the player chooses it; ask them." % found["increase"])
+    return {"role": "system", "content": json.dumps({
+        "task_purpose": SCORES_UNFOLDED_PURPOSE, "startup_id": startup_id,
+        "assignment": found["assignment"], "increase": found["increase"], "choice_id": found["choice_id"],
+        "increase_chosen": found["chosen"],
+        "instruction": ("The assignment you sent had the background increase added in. The engine kept these base scores "
+                        "as the assignment; the increase is its own choice, %s. %s Never add the increase into the "
+                        "assignment." % (found["choice_id"], held)),
+    }, ensure_ascii=False)}
+
+
+def _unfolded_told(own, replies, since):
+    """The last scores-unfolded record of the last published reply's turn, for the next turn's first request: those
+    after the reply before it and before this request's own answer (which already carries any of its own)."""
+    after = replies[-2] if len(replies) > 1 else -1
+    return [r for i, r in own if after < i < since and r.get("task_purpose") == SCORES_UNFOLDED_PURPOSE][-1:]
 HANDBACK_PURPOSE = "startup_turn_handback"
 
 
@@ -1135,6 +1159,67 @@ def _summary_shown(last, blocks, rolled):
     return None if rendered is None else _engine_part(rendered[0]) == _engine_part(last)
 
 
+def _handback_preview(correction_context, turn):
+    """The engine's sheet preview a handed-back turn made, when the build is still the one it shows (a preview is made only
+    for a complete build); else None (#2090 E1). Without it the preview leaves with the turn, and each new approval is
+    refused again."""
+    previews = _scope_states(correction_context, SHEET_PREVIEW_PURPOSE)
+    if not previews:
+        return None
+    roll = _ability_roll(correction_context)
+    if not _summary_shown(previews[-1].get("summary"), turn["standing"], roll["rolled"] if roll else None):
+        return None
+    return copy.deepcopy(previews[-1])
+
+
+def _handback_tail(notice, turn, preview):
+    """The handback request's note: today's, or with the engine's sheet to tell when the turn made one (#2090 E1)."""
+    tail = {"facts": notice, "blocks": creation_blocks.state(turn["standing"]),
+            "instruction": ("For this reply only, answer in plain words, no JSON, as the player will read it. Nothing "
+                            "from it is recorded. Tell the player what is kept and what is still needed, and ask what to "
+                            "adjust.")}
+    if preview is not None:
+        tail["sheet"] = _engine_part(preview.get("summary"))
+        tail["instruction"] = ("For this reply only, answer in plain words, no JSON, as the player will read it. Nothing "
+                               "from it is recorded and nothing is finalized. The engine built this character: tell the "
+                               "player the whole build from the sheet, in your own words with its names and numbers, and "
+                               "ask them to approve it or say what to change.")
+    return tail
+
+
+def _local_sheet(conversation, blocks, sent_by):
+    """#2090 (owner ruling 2, 2026-11-27): the engine's own sheet, shown to the player after the guide's words so that an
+    approval is of the build that is saved. Only for words a Local/Custom provider wrote (sent_by), once nothing is
+    needed and the last summary the guide was given is this build's: the "sheet" of its note, the engine's summary
+    without the details the guide writes. Else None."""
+    if not isinstance(sent_by, dict) or sent_by.get("provider") != "lmstudio" or creation_blocks.needed(blocks):
+        return None
+    roll = _ability_roll(conversation)
+    last = _last_summary(conversation)
+    if not last or not _summary_shown(last, blocks, roll["rolled"] if roll else None):
+        return None
+    return _engine_part(last)
+
+
+def _show_local_sheet(conversation, blocks, sent_by):
+    """Show _local_sheet as its own card after the guide's words; nothing when there is none. A failure shows nothing
+    and is logged with its class only (NEQ-OPS-05)."""
+    try:
+        sheet = _local_sheet(conversation, blocks, sent_by)
+    except Exception as fault:
+        file_only(f"STARTUP_NOTE local sheet failed: {type(fault).__name__}", category="startup")
+        return
+    if sheet:
+        _say("\n" + sheet)
+
+
+def _keep_told_preview(conversation, words, preview):
+    """After the handback's words were shown, the preview they told is kept in the saved history, so the player's next
+    message answers a build they heard (#2090 E1). Nothing when nothing was said or there was no preview."""
+    if words and preview is not None:
+        conversation.append({"role": "system", "content": json.dumps(preview, ensure_ascii=False)})
+
+
 def _sheet_preview(conversations, blocks, rolled):
     """Once nothing is needed, the engine builds the sheet and gives the guide its summary as a typed
     startup_sheet_preview item, in each list (the first is read for the last one). True when it was new."""
@@ -1172,6 +1257,10 @@ ASK_FOR_ANOTHER = ("For already_held, ask the player for a different one. For sk
                    "send the pick with that choice's other picks once the build holds the skill; ask for a different"
                    " one only if the player's skills are chosen without it. In both, choose only when the player "
                    "asked you to choose.")
+
+
+class StartupReplyCut(ValueError):
+    """A reply whose typed finish reason is "length": cut at the provider's limit, never shown or kept (#2090)."""
 
 
 class StartupScopeRefusal(ValueError):
@@ -1284,6 +1373,16 @@ def _scoped_turn(correction_context, turn_items, proposal, turn, rescoped, persi
                                    previous=lambda: _earlier_choice_ids(correction_context),
                                    alignments=creation_alignments())
     _log_notes(proposal, merged, turn["held"], settled)
+    if merged.unwritten and proposal.get("decision") == "continue_interview":
+        # #2090: a finalize or pause is refused for these (_check_finalize_details); an interview turn tells the author.
+        item = _unwritten_item(merged.unwritten, (_startup_progress(correction_context) or {}).get("startup_id"))
+        for conversation in (correction_context, turn_items):
+            conversation.append(copy.deepcopy(item))
+    if merged.unfolded is not None:
+        # #2090: told in this turn's answer and, once published, in the next turn's first request (_author_request).
+        item = _unfolded_item(merged.unfolded, (_startup_progress(correction_context) or {}).get("startup_id"))
+        for conversation in (correction_context, turn_items):
+            conversation.append(copy.deepcopy(item))
     if settled is not None:
         turn["not_read"].update(settled.unread)  # each is told to the author below
     problems_sent = (list(settled.refused) if settled is not None else []) + merged.problems
@@ -1410,7 +1509,31 @@ def _check_finalize_details(proposal, merged):
         raise ValueError(f"The character name cannot be used: {name_refusal(name) if isinstance(name, str) else 'not text'}. "
                          "Choose another name.")
     if merged.unwritten:
-        raise StartupContractError("creative fields that cannot be written: %s" % ", ".join(merged.unwritten), "creative_field")
+        raise StartupContractError("creative fields that cannot be written: %s%s" % (
+            ", ".join(merged.unwritten), _creative_allowed_text(merged.unwritten)), "creative_field")
+
+
+def _creative_allowed_text(fields):
+    """For an enum creative field among those not written, the values it takes, from the character schema (#2090);
+    empty otherwise."""
+    allowed = creation_alignments() if "alignment" in fields else []
+    return (". alignment takes exactly one of: %s" % ", ".join(allowed)) if allowed else ""
+
+
+def _unwritten_item(fields, startup_id):
+    """The engine's answer when an interview reply's creative fields were not written (#2090): before, only logged."""
+    return {"role": "system", "content": json.dumps({
+        "task_purpose": CREATIVE_UNWRITTEN_PURPOSE, "startup_id": startup_id, "fields": list(fields),
+        "instruction": ("These creative fields of your reply were not written, so they are not kept: %s%s. Send each "
+                        "again in its form, or ask the player." % (", ".join(fields), _creative_allowed_text(fields))),
+    }, ensure_ascii=False)}
+
+
+def _unwritten_told(own, replies, since):
+    """The last creative-unwritten record of the last published reply's turn, for the next turn's first request (the
+    same turn's retries carry it as any engine answer)."""
+    after = replies[-2] if len(replies) > 1 else -1
+    return [r for i, r in own if after < i < since and r.get("task_purpose") == CREATIVE_UNWRITTEN_PURPOSE][-1:]
 
 
 def _write_blocks(proposal, turn, whole=False):
@@ -1524,6 +1647,20 @@ def _current_contract_only(conversation):
     return out
 
 
+def _asked_last_turn(context):
+    """The typed choice_turn.asks of the last published reply in context (#2090 RA1), when a player message follows it;
+    else []. The saved conversation keeps the whole reply; the request carries only its words (_said)."""
+    replies = [i for i, m in enumerate(context) if m.get("role") == "assistant" and _said(m) is not None]
+    if not replies or not any(m.get("role") == "user" for m in context[replies[-1] + 1:]):
+        return []
+    try:
+        reply = json.loads(context[replies[-1]].get("content", ""))
+    except (TypeError, ValueError):
+        return []
+    asks = ((reply.get("choice_turn") if isinstance(reply, dict) else None) or {}).get("asks")
+    return [a for a in asks if isinstance(a, str)] if isinstance(asks, list) else []
+
+
 def _reply_words(narration, decision="continue_interview"):
     """What the guide said, in the form of its replies: its decision and its words, no blocks."""
     return {"role": "assistant", "content": json.dumps({"decision": decision, "narration": narration}, ensure_ascii=False)}
@@ -1611,6 +1748,8 @@ def _author_request(context, module, turn, since, tail):
                 creation_scope.SCOPE_PURPOSE, SCOPE_STATE_PURPOSE, OPEN_CHOICES_PURPOSE, ABILITY_ROLL_PURPOSE,
                 "startup_choices_dropped") and "startup_checkpoint_version" not in record:
             answers.append(record)
+    answers = _unfolded_told(own, replies, since) + answers
+    answers = _unwritten_told(own, replies, since) + answers
     if answers:
         note["engine_answer"] = answers
     request.append({"role": "system", "content": json.dumps(note, ensure_ascii=False)})
@@ -1675,10 +1814,10 @@ def _review_startup_response(conversation, proposal, committed_facts, *,
     ]
     invalid = 0
     while True:
-        raw = get_ai_response(review_messages, {"type": "json_object"},
-                              persist_response=False, live_scope=live_scope,
-                              startup_phase="startup_review", task_id="T124")
         try:
+            raw = get_ai_response(review_messages, {"type": "json_object"},
+                                  persist_response=False, live_scope=live_scope,
+                                  startup_phase="startup_review", task_id="T124", on_cut="raise")
             return parse_startup_review(raw, decision=proposal.get("decision"))
         except ValueError as exc:
             invalid += 1
@@ -2044,6 +2183,9 @@ def _starting_gear_notice(character, provenance):
 # a valid verdict within the remaining budget also hands the turn back. Not
 # persisted: a restart replays the turn with a fresh count.
 STARTUP_TURN_REJECTION_LIMIT = 4
+# Model-facing only (#2090): the note after a reply cut at its length limit.
+STARTUP_CUT_NOTE = ("Your previous reply was cut off at its length limit and was not used. Send the startup "
+                    "response object again, complete: shorter narration and only the blocks you add or change.")
 # T093 starting-location proposals that complete but don't resolve (D-1270-1,
 # a B2-iv class matching the limit above); provider errors don't count. After
 # this many in a row the party starts at the plot's starting area (D-1270-2).
@@ -2051,11 +2193,28 @@ STARTUP_LOCATION_REJECTION_LIMIT = 4
 STARTUP_HANDBACK_NOTICE = "Your last replies could not be used. The choices so far are kept and no character has been saved."
 
 
-def _handback_words(request, scope):
+def _handback_words(request, scope, sent_by=None):
     """The guide's one plain reply to a handed-back turn; no block is read from it. A reply in the usual JSON shape
-    gives its narration."""
+    gives its narration. A reply that opens as JSON is never shown as text (#2090, D-CREATE-VOICE-1): its first
+    value is read structurally, and without a narration it is unusable."""
+    unusable = 0  # cut, broken JSON, or an object without narration
     for _ in range(2):  # an empty or unusable reply is asked once more, then nothing is said
-        text = get_ai_response(request, persist_response=False, live_scope=scope).strip()
+        try:
+            text = get_ai_response(request, persist_response=False, live_scope=scope, on_cut="raise",
+                                   sent_by=sent_by).strip()
+        except StartupReplyCut:
+            unusable += 1
+            continue
+        if text[:1] in ("{", "["):
+            try:  # the first value only: data after it does not defeat it
+                value = json.JSONDecoder().raw_decode(text)[0]
+            except ValueError:
+                value = None
+            words = value.get("narration") if isinstance(value, dict) else None
+            if isinstance(words, str) and words.strip():
+                return words.strip()
+            unusable += 1
+            continue
         try:
             value = json.loads(extract_json_object(text) or text)
         except ValueError:
@@ -2063,6 +2222,8 @@ def _handback_words(request, scope):
         words = value.get("narration") if isinstance(value, dict) else None
         if isinstance(words, str) and words.strip():
             return words.strip()
+    if unusable == 2:
+        raise StartupReplyCut("Both handback replies were unusable")  # the branch gives the provider pause
     return ""
 
 
@@ -2126,17 +2287,23 @@ def ai_character_interview(conversation, module):
                                         "approved. Answer the player's next message with the retained choices."),
                     }, ensure_ascii=False)})
                     save_startup_conversation(conversation, live_scope=scope)
-                    words = _handback_words(_author_request(conversation, module, turn, len(conversation), {
-                        "facts": notice, "blocks": creation_blocks.state(turn["standing"]),
-                        "instruction": ("For this reply only, answer in plain words, no JSON, as the player will read it. "
-                                        "Nothing from it is recorded. Tell the player what is kept and what is still "
-                                        "needed, and ask what to adjust."),
-                    }), scope)
+                    preview = _handback_preview(correction_context, turn)
+                    sent_by = {}  # the provider of the words shown (#2090 owner ruling 2)
+                    while True:
+                        try:
+                            words = _handback_words(_author_request(conversation, module, turn, len(conversation),
+                                                                    _handback_tail(notice, turn, preview)), scope, sent_by)
+                            break
+                        except StartupReplyCut:
+                            # #2090: both cut: the approved provider notice; the player's next message retries.
+                            _startup_provider_pause(None, scope)
                     if words:
                         _say(f"\nDungeon Master: {words}")
                         record = json.loads(conversation[-1]["content"])
                         record["notice_shown_to_player"] = words
                         conversation[-1]["content"] = json.dumps(record, ensure_ascii=False)
+                        _keep_told_preview(conversation, words, preview)
+                        _show_local_sheet(conversation, turn["standing"], sent_by)
                         save_startup_conversation(conversation, live_scope=scope)
                     break
                 current_index = _latest_player_index(conversation)
@@ -2150,9 +2317,21 @@ def ai_character_interview(conversation, module):
                     "blocks": creation_blocks.state(turn["standing"]),
                     "instruction": "Return one startup response object with the blocks you add or change, not a bare sheet.",
                 }
+                sent_by = {}  # the provider of this reply (#2090 owner ruling 2)
                 asked = len(correction_context)  # what is added from here is the engine's answer to the next reply
-                raw = get_ai_response(_author_request(correction_context, module, turn, since, tail),
-                                      {"type": "json_object"}, persist_response=False, live_scope=scope)
+                try:
+                    raw = get_ai_response(_author_request(correction_context, module, turn, since, tail),
+                                          {"type": "json_object"}, persist_response=False, live_scope=scope,
+                                          on_cut="raise", local_asked=_asked_last_turn(correction_context),
+                                          sent_by=sent_by)
+                except StartupReplyCut as exc:
+                    # #2090: a failed try within the turn's tries; the cut text is never kept.
+                    since = asked
+                    rejected += 1
+                    rescoped = False
+                    _log_rejection(rejected, "length", exc)
+                    correction_context.append({"role": "system", "content": STARTUP_CUT_NOTE})
+                    continue
                 since = asked
                 stage = "parse"
                 settled = Settled(turn["not_read"])
@@ -2278,6 +2457,8 @@ def ai_character_interview(conversation, module):
                     return proposal["character"]
                 _set_startup_progress(conversation, live_scope=scope, phase="interview")
                 _say(f"\nDungeon Master: {proposal['narration']}")
+                if proposal["decision"] == "continue_interview":
+                    _show_local_sheet(conversation, turn["standing"], sent_by)
                 if proposal["decision"] == "pause_setup":
                     # The reviewed typed decision, never the player's words (#855); the guide has said it.
                     raise StartupCancelled("told")
@@ -3205,10 +3386,13 @@ def _publish_startup_wait(wait, attempt, max_attempts, delay):
 
 
 def get_ai_response(conversation, response_format=None, *, persist_response=True, live_scope=None,
-                    startup_phase="startup_interview", task_id="T092"):
+                    startup_phase="startup_interview", task_id="T092", on_cut="pause", local_asked=None,
+                    sent_by=None):
     """Run T092 (author) or T124 (whole review) through shared cancellable transport.
 
-    The borrowed scope stays open.
+    The borrowed scope stays open. local_asked: the typed asks of the last published reply (#2090 RA1), passed on only
+    when this attempt's provider is Local/Custom; on any other provider the request is as without it. sent_by: a dict
+    given the provider of the attempt whose reply is returned (#2090: what that one reply came from).
     """
     from utils.capture.live_provider_call import (
         LiveProviderSuperseded, finish_live_turn_scope, open_live_turn_scope,
@@ -3241,6 +3425,8 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                 provider = get_provider()
                 main_cfg = profiles[provider]
                 revision = configuration_revision(provider)
+                asked = ({"_local_asked": [a for a in local_asked if isinstance(a, str)]}
+                         if provider == "lmstudio" and isinstance(local_asked, list) and local_asked else {})
                 response = capture_and_fanout(
                     task_id, api_client.create_completion,
                     _request_provider=provider, _live_selected="required",
@@ -3250,9 +3436,13 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                     messages=copy.deepcopy(request_messages + error_note),
                     model=main_cfg["model"], temperature=0.7,
                     response_format=response_format,
+                    **asked,
                     **{k: v for k, v in main_cfg.items() if k != "model"},
                 )
                 scope.outage_line = None  # #2090: the provider answered
+                if getattr(response.choices[0], "finish_reason", None) == "length":
+                    # #2090: cut at the provider's limit, by the typed field only; never shown or stored.
+                    raise StartupReplyCut("The provider's reply was cut at its length limit")
                 content = response.choices[0].message.content
                 if not isinstance(content, str) or not content.strip():
                     raise ValueError("Provider returned no usable startup response")
@@ -3262,11 +3452,19 @@ def get_ai_response(conversation, response_format=None, *, persist_response=True
                 if persist_response:
                     conversation.append({"role": "assistant", "content": content})
                     save_startup_conversation(conversation, live_scope=scope)
+                if isinstance(sent_by, dict):
+                    sent_by["provider"] = provider
                 return content
             except (LiveProviderSuperseded, ReadOnlySaveStop):
                 raise
             except (StartupCancelled, KeyboardInterrupt, EOFError):
                 raise
+            except StartupReplyCut:
+                if on_cut == "raise":
+                    raise  # the caller counts it among its own tries
+                _startup_provider_pause(None, scope)  # the approved provider notice; the next message retries
+                _emit_startup_phase(startup_phase)
+                status_processing_ai()
             except Exception as exc:
                 if _startup_configuration_handback(exc, provider, revision, scope):
                     _emit_startup_phase(startup_phase)

@@ -436,13 +436,21 @@ def test_cloud_live_child_routing_unchanged(run_case,provider):
     ({'local_base_url':'http://localhost:1234/v1','local_api_key':'not-needed','local_model':'local/model'},'local/model'),
 ])
 def test_lm_studio_model_and_default_json_mode(run_case,endpoint,expected_model):
+    # #2090: T092's json_object goes to a Local/Custom server as the game's own reply schema.
     result=run_case({'response_format':{'type':'json_object'}},endpoint=endpoint)
     assert result['kind']=='success'
     assert result['model']==expected_model
     request=result['http_requests'][0]
     assert request['url']=='http://localhost:1234/v1/chat/completions'
-    assert 'response_format' not in request['body']
+    sent=request['body']['response_format']
+    assert sent['type']=='json_schema'
+    assert sent['json_schema']['name']=='startup_response' and sent['json_schema']['strict'] is True
+    assert sent['json_schema']['schema']['required']==['version','decision','narration','confirmation']
     assert len(result['usage_rows'])==1
+    # Any other task asking json_object still gets no response_format.
+    other=run_case({'task':'T124','response_format':{'type':'json_object'}},endpoint=endpoint)
+    assert other['kind']=='success'
+    assert 'response_format' not in other['http_requests'][-1]['body']
 
 
 def test_custom_preserves_explicit_json_schema_and_private_metadata(run_case):

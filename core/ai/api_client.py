@@ -381,6 +381,12 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
     # Observational transport-phase callback from the live-provider child
     # (#409): never forwarded to a provider, never affects routing.
     _phase_emit = kwargs.pop("_phase_emit", None)
+    # #2090: set only by the live-provider parent on the last silent try of a Local/Custom interview: the reply
+    # schema is left out, the rest of the request (the outline included) is the same. Never sent to a provider.
+    _local_plain_reply = kwargs.pop("_local_plain_reply", False)
+    # #2090 RA1: the typed asks of the last published reply, passed by the startup wizard for a Local/Custom T092 only
+    # (startup_wizard.get_ai_response). Never sent to a provider; read only in the Local/Custom gate below.
+    _local_asked = kwargs.pop("_local_asked", None)
     # Per-callsite output ceiling (OpenAI only; set by the capture layer from
     # model_registry.OPENAI_OUTPUT_CEILING_CHARS). Never forwarded to a provider.
     _output_ceiling = kwargs.pop("_output_ceiling_chars", None)
@@ -401,37 +407,51 @@ def create_completion(messages, model, temperature=None, retry_attempt=0, **kwar
                 if request_provider == "lmstudio" and local_endpoint is not None
                 else {}
             )
-            try:
-                raw_response = _openai_completion(
-                    messages,
-                    model,
-                    temperature,
-                    request_provider,
-                    response_format=_response_format,
-                    phase_emit=_phase_emit,
-                    output_ceiling=_output_ceiling,
-                    sdk_max_retries=_sdk_max_retries,
-                    sdk_timeout=_sdk_timeout,
-                    **local_options,
-                    **kwargs,
-                )
-            except Exception as exc:
-                repaired = _local_template_repair(request_provider, messages, exc)
-                if repaired is None:
-                    raise
-                raw_response = _openai_completion(
-                    repaired,
-                    model,
-                    temperature,
-                    request_provider,
-                    response_format=_response_format,
-                    phase_emit=_phase_emit,
-                    output_ceiling=_output_ceiling,
-                    sdk_max_retries=_sdk_max_retries,
-                    sdk_timeout=_sdk_timeout,
-                    **local_options,
-                    **kwargs,
-                )
+            # At most four sends. The reply schema is dropped when a server may have refused it
+            # or answers it with nothing; a template repair sends it again (#2090).
+            if (_local_interview(request_provider, task_id, _response_format)
+                    or _local_handback(request_provider, task_id, _response_format, messages)):
+                messages = _with_local_outline(messages)  # a new list: the caller's is never changed
+                messages = _with_local_choices(messages)
+                messages = _with_local_roll(messages)
+                messages = _with_local_asked(messages, _local_asked)
+            first_format = (_response_format if _local_plain_reply
+                            else _local_reply_format(request_provider, task_id, _response_format))
+            schema_sent = first_format is not _response_format
+            sent_messages, sent_format = messages, first_format
+            while True:
+                try:
+                    raw_response = _openai_completion(
+                        sent_messages,
+                        model,
+                        temperature,
+                        request_provider,
+                        response_format=sent_format,
+                        phase_emit=_phase_emit,
+                        output_ceiling=_output_ceiling,
+                        sdk_max_retries=_sdk_max_retries,
+                        sdk_timeout=_sdk_timeout,
+                        **local_options,
+                        **kwargs,
+                    )
+                except Exception as exc:
+                    status = _completed_http_status(exc)
+                    if schema_sent and sent_format is not None and _refused(status):
+                        _note_format_dropped("status=%s" % status)
+                        sent_format = None
+                        continue
+                    if repaired is not None:
+                        raise
+                    repaired = _local_template_repair(request_provider, messages, exc)
+                    if repaired is None:
+                        raise
+                    sent_messages, sent_format = repaired, first_format
+                    continue
+                if schema_sent and sent_format is not None and not (raw_response.choices[0].message.content or "").strip():
+                    _note_format_dropped("empty")
+                    sent_format = None
+                    continue
+                break
         else:  # gemini
             if _sdk_timeout is not None and kwargs.get("timeout") is None:
                 # One attempt per call (Gemini is not reissued, D-1963-1), so
@@ -551,6 +571,205 @@ def _local_template_repair(provider, messages, exc):
     except Exception:
         pass
     return repaired
+
+
+def _local_reply_schema():
+    """The game's own scoped reply schema, built now: the one the reply is checked against (#2090)."""
+    from utils.startup_contract import _scoped_reply_schema
+
+    return _scoped_reply_schema()
+
+
+# D-FLAG-1: the status alone decides; the server's words are never read or logged here.
+# These say something about the account or its rate, not about the request's fields.
+_NOT_A_FORMAT_REFUSAL = frozenset({401, 402, 403, 429})
+
+
+def _refused(status):
+    """A 4xx or 5xx answer that may be a refusal of the reply schema."""
+    return isinstance(status, int) and 400 <= status <= 599 and status not in _NOT_A_FORMAT_REFUSAL
+
+
+def _local_interview(provider, task_id, response_format):
+    """The creation interview's request to a Local/Custom server: T092 asking json_object (#2090)."""
+    return provider == "lmstudio" and task_id == "T092" and response_format == {"type": "json_object"}
+
+
+def _local_handback(provider, task_id, response_format, messages):
+    """A handed-back interview turn's plain words request to a Local/Custom server (#2090): T092 with no format and the
+    current note as its last message. The menu's T092 ends with the player's prompt, so it never matches."""
+    try:
+        import json
+
+        last = messages[-1]
+        record = json.loads(last["content"]) if last.get("role") == "system" else None
+        return (provider == "lmstudio" and task_id == "T092" and response_format is None
+                and isinstance(record, dict) and record.get("task_purpose") == "startup_current_note")
+    except Exception:
+        return False
+
+
+def _with_local_outline(messages):
+    """The messages with the creation outline as a system message at index 1, right after the instructions; the same
+    messages when it cannot be built or placed (NEQ-OPS-05: logged with a fixed code and the class only)."""
+    try:
+        from core.nql.creation_outline import outline_text
+
+        if not (isinstance(messages, list) and messages and messages[0].get("role") == "system"):
+            raise ValueError("no leading instructions")
+        return [messages[0], {"role": "system", "content": outline_text()}] + list(messages[1:])
+    except Exception as fault:
+        try:
+            from utils.enhanced_logger import debug
+
+            debug("LOCAL_OUTLINE_DROPPED build=%s -> sending without it" % type(fault).__name__, category="ai_routing")
+        except Exception:
+            pass
+        return messages
+
+
+def _with_local_choices(messages):
+    """The messages with the current note's Weapon Mastery free picks listed by name (#2090; creation_scope.
+    listed_free_picks), for a Local/Custom interview or handback only; the same messages when there is nothing to list or
+    the note is not read back exactly (NEQ-OPS-05: logged with a fixed code and the class only)."""
+    try:
+        import json
+
+        from core.nql import creation_scope
+
+        last = messages[-1]
+        note = json.loads(last["content"]) if last.get("role") == "system" else None
+        if not (isinstance(note, dict) and note.get("task_purpose") == "startup_current_note"
+                and json.dumps(note, ensure_ascii=False) == last["content"]):
+            return messages
+        listed = creation_scope.listed_free_picks(note.get("open_choices"), (note.get("blocks") or {}).get("filled"))
+        if listed is None:
+            return messages
+        note["open_choices"] = listed
+        return list(messages[:-1]) + [dict(last, content=json.dumps(note, ensure_ascii=False))]
+    except Exception as fault:
+        try:
+            from utils.enhanced_logger import debug
+
+            debug("LOCAL_CHOICES_KEPT build=%s -> sending the note as it is" % type(fault).__name__, category="ai_routing")
+        except Exception:
+            pass
+        return messages
+
+
+# #2090: the engine's roll told by its numbers, first in a Local/Custom interview's note.
+_LOCAL_ROLL_TOLD = ("The engine rolled the player's six ability scores: %s. For random these are the only base scores: the "
+                    "player places exactly these six (or asks you to), and the assignment records only them, never other "
+                    "numbers. The background increase is added by the engine; tell the totals from the sheet. They are "
+                    "never rolled again: a request to reroll keeps them.")
+
+
+def _local_note(messages):
+    """The current note of a request, read back exactly, or None."""
+    import json
+
+    last = messages[-1]
+    note = json.loads(last["content"]) if last.get("role") == "system" else None
+    if (isinstance(note, dict) and note.get("task_purpose") == "startup_current_note"
+            and json.dumps(note, ensure_ascii=False) == last["content"]):
+        return note
+    return None
+
+
+def _with_note(messages, note):
+    import json
+
+    return list(messages[:-1]) + [dict(messages[-1], content=json.dumps(note, ensure_ascii=False))]
+
+
+def _kept(code, fault):
+    try:
+        from utils.enhanced_logger import debug
+
+        debug("%s build=%s -> sending the note as it is" % (code, type(fault).__name__), category="ai_routing")
+    except Exception:
+        pass
+
+
+# #2090 RA1: what the last published reply asked for and the player has answered since, from the typed asks.
+_LOCAL_ASKED = ("You asked the player for these in your last reply and they have answered since. If their latest message "
+                "gives a value for one, send it in this reply's intent (choices or the block), then ask for what is still "
+                "missing. Do not ask again for what their message already gives.")
+
+
+def _with_local_asked(messages, asked):
+    """The messages with the note's "asked_last_turn" record (#2090 RA1): the ids asked holds that blocks.needed still
+    holds, in asks order, when the player has sent a message after the last reply in the messages. asked: the typed
+    choice_turn.asks of the last published reply (startup_wizard._asked_last_turn); the request's history carries that
+    reply as its words only. The same messages when no id is left or the note is not read back exactly (NEQ-OPS-05:
+    logged with a fixed code and the class only)."""
+    try:
+        note = _local_note(messages)
+        blocks = note.get("blocks") if note is not None else None
+        needed = blocks.get("needed") if isinstance(blocks, dict) else None
+        if not (isinstance(asked, list) and isinstance(needed, list)):
+            return messages
+        ids = [a for a in dict.fromkeys(a for a in asked if isinstance(a, str)) if a in needed]
+        last = max((i for i, m in enumerate(messages) if m.get("role") == "assistant"), default=-1)
+        if not ids or not any(m.get("role") == "user" for m in messages[last + 1:]):
+            return messages
+        note["asked_last_turn"] = {"ids": ids, "instruction": _LOCAL_ASKED}
+        return _with_note(messages, note)
+    except Exception as fault:
+        _kept("LOCAL_ASKED_KEPT", fault)
+        return messages
+
+
+def _with_local_roll(messages):
+    """The messages with the current note's engine ability roll moved first in the note and told by its numbers (#2090),
+    for a Local/Custom interview or handback only; the same messages when the note holds no roll of six scores or is not
+    read back exactly (NEQ-OPS-05: logged with a fixed code and the class only)."""
+    try:
+        import json
+
+        last = messages[-1]
+        note = json.loads(last["content"]) if last.get("role") == "system" else None
+        if not (isinstance(note, dict) and note.get("task_purpose") == "startup_current_note"
+                and json.dumps(note, ensure_ascii=False) == last["content"]):
+            return messages
+        roll = note.get("ability_roll")
+        rolled = roll.get("rolled") if isinstance(roll, dict) else None
+        if not (isinstance(rolled, list) and len(rolled) == 6 and all(type(v) is int and 3 <= v <= 18 for v in rolled)):
+            return messages
+        told = dict(roll, instruction=_LOCAL_ROLL_TOLD % ", ".join(str(v) for v in rolled))
+        note = dict([("task_purpose", note["task_purpose"]), ("ability_roll", told)]
+                    + [(k, v) for k, v in note.items() if k not in ("task_purpose", "ability_roll")])
+        return list(messages[:-1]) + [dict(last, content=json.dumps(note, ensure_ascii=False))]
+    except Exception as fault:
+        try:
+            from utils.enhanced_logger import debug
+
+            debug("LOCAL_ROLL_KEPT build=%s -> sending the note as it is" % type(fault).__name__, category="ai_routing")
+        except Exception:
+            pass
+        return messages
+
+
+def _local_reply_format(provider, task_id, response_format):
+    """T092's reply schema in place of json_object on a Local/Custom server; else unchanged. A schema that
+    cannot be built is not sent (NEQ-OPS-05: logged with its class only)."""
+    if not _local_interview(provider, task_id, response_format):
+        return response_format
+    try:
+        return {"type": "json_schema", "json_schema": {
+            "name": "startup_response", "strict": True, "schema": _local_reply_schema()}}
+    except Exception as fault:
+        _note_format_dropped("build=%s" % type(fault).__name__)
+        return response_format
+
+
+def _note_format_dropped(why):
+    try:
+        from utils.enhanced_logger import debug
+
+        debug("LOCAL_FORMAT_DROPPED %s -> sending without it" % why, category="ai_routing")
+    except Exception:
+        pass
 
 
 def _enforce_provider_constraints(provider, model, temperature, kwargs):
