@@ -5246,6 +5246,36 @@ def _no_hostile_lines(rows):
     return " ".join(sentences)
 
 
+def _stealth_surprise(action, conversation_history):
+    """#2127 B8 (owner approved): a Stealth check scored against a DC and
+    handed to this DM turn makes the monsters surprised when this same turn
+    opens the fight and no monster participant says surprised either way.
+    Every Stealth result of the turn must be a success. Typed fields only: the
+    stored check record and the scene participants. Returns the action to
+    build (a copy when changed)."""
+    from core.managers.checks_state import stealth_for_turn
+
+    scene = (action.get("parameters") or {}).get("scene") if isinstance(action.get("parameters"), dict) else None
+    participants = scene.get("participants") if isinstance(scene, dict) else None
+    if not isinstance(participants, list):
+        return action
+    monsters = [p for p in participants if isinstance(p, dict)
+                and str(p.get("participantKey") or "").startswith("monster:")]
+    if not monsters or any("surprised" in p for p in monsters):
+        return action
+    turn = sum(1 for m in conversation_history or [] if isinstance(m, dict) and m.get("role") == "assistant")
+    results = stealth_for_turn(turn)
+    if not results or not all(r.get("success") is True for r in results):
+        return action
+    built = copy.deepcopy(action)
+    for item in built["parameters"]["scene"]["participants"]:
+        if isinstance(item, dict) and str(item.get("participantKey") or "").startswith("monster:"):
+            item["surprised"] = True
+    info("SURPRISE: monsters surprised from this turn's Stealth success (%s)"
+         % ", ".join(str(r.get("characterName")) for r in results), category="combat_processing")
+    return built
+
+
 def _sweep_stale_sleepers(encounter_path, encounter, party_tracker):
     """#1900 C2b: a stale active encounter's sleepers keep no wake effect
     (and C6 restores their status). Fail forward: a fault is logged."""
@@ -6111,6 +6141,8 @@ def process_action(
             debug("STATE_CHANGE: Status updated to building encounter", category="combat_processing")
         except Exception as e:
             error(f"FAILURE: Could not update status for encounter building", exception=e, category="combat_processing")
+
+        action = _stealth_surprise(action, conversation_history)
 
         fight_finished = False
         down_hostiles = None

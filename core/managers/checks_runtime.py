@@ -21,6 +21,14 @@ def _is_player(role: Optional[str]) -> bool:
     return str(role or "").lower() == "player"
 
 
+def _stealth_record(name: Any, stat: Any, result: Any) -> Optional[Dict[str, Any]]:
+    """#2127 B8: the typed record of a scored Stealth check against a DC, kept
+    beside its result line for the next DM turn; None for any other check."""
+    if stat != "skill:stealth" or type(getattr(result, "success", None)) is not bool:
+        return None
+    return {"characterName": str(name), "skill": "stealth", "success": result.success}
+
+
 def stage_roll_check(parameters: Dict[str, Any]) -> Dict[str, Any]:
     """Validate a rollCheck action and either resolve it now or hold it for the player's answer."""
     name = parameters.get("characterName")
@@ -50,7 +58,7 @@ def stage_roll_check(parameters: Dict[str, Any]) -> Dict[str, Any]:
     if roller == "engine" or not _is_player(role):
         result = checks.resolve(sheet, stat, dc=dc, mode=mode)
         line = checks.describe(result) + (f" [{reason}]" if reason else "")
-        checks_state.add_result(line)
+        checks_state.add_result(line, stealth=_stealth_record(resolved, stat, result))
         info(f"CHECK: {line}", category="character_updates")
         return {"resolved": line}
     net = checks.net_mode(sheet, stat, mode)
@@ -59,7 +67,7 @@ def stage_roll_check(parameters: Dict[str, Any]) -> Dict[str, Any]:
     if net.mode == "fail":
         result = checks.resolve(sheet, stat, dc=dc, mode=mode)
         line = checks.describe(result) + (f" [{reason}]" if reason else "")
-        checks_state.add_result(line)
+        checks_state.add_result(line, stealth=_stealth_record(resolved, stat, result))
         info(f"CHECK: {line}", category="character_updates")
         return {"resolved": line}
     entry = {"characterName": resolved, "stat": stat, "dc": dc, "mode": mode, "netMode": net.mode,
@@ -250,7 +258,8 @@ def _settle_pending_check(entry: Dict[str, Any], line: str, conversation_history
                 entry, f"{name} {label}: not resolved (rules engine unavailable)")
             return result
         result_line = checks.describe(scored) + (f" [{entry['reason']}]" if entry.get("reason") else "")
-        if not checks_state.complete_pending(entry, result_line):
+        if not checks_state.complete_pending(entry, result_line,
+                                             stealth=_stealth_record(name, entry.get("stat"), scored)):
             return result
         result["settled"] = True
         if scored.ok:
