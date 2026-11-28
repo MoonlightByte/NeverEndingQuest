@@ -1,0 +1,164 @@
+{
+  "name": "Malarok the Corruptor",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Neutral evil",
+  "armorClass": 15,
+  "hitPoints": 52,
+  "maxHitPoints": 52,
+  "speed": 30,
+  "abilities": {
+    "strength": 9,
+    "dexterity": 14,
+    "constitution": 14,
+    "intelligence": 13,
+    "wisdom": 11,
+    "charisma": 17
+  },
+  "savingThrows": [
+    "wisdom",
+    "charisma"
+  ],
+  "skills": {
+    "arcana": 3,
+    "deception": 5,
+    "intimidation": 5
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "necrotic"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 10
+  },
+  "languages": "Common, Deep Speech",
+  "challengeRating": 3,
+  "specialAbilities": [
+    {
+      "name": "Mage Armor",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "Malarok has Mage Armor cast on himself before any fight; his Armor Class includes it (12 + 3)."
+    },
+    {
+      "name": "Voidstone Bond",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "While the Voidstone Shard on the altar is intact, Malarok has Resistance to Necrotic damage and his eyes burn with its dark light. When the shard is dulled or broken he loses this bond."
+    },
+    {
+      "name": "Shield",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "Reaction, when hit by an attack roll: Malarok casts Shield, gaining +5 AC until the start of his next turn, including against the triggering attack (uses a 1st-level spell slot)."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "Malarok makes two Void Bolt attacks."
+    },
+    {
+      "name": "Void Bolt",
+      "kind": "attack",
+      "attackKind": "ranged",
+      "attackBonus": 5,
+      "damageDice": "2d8",
+      "damageBonus": 0,
+      "damageType": "necrotic",
+      "description": "Ranged Attack Roll: +5, range 120 ft. Hit: 9 (2d8) Necrotic damage."
+    },
+    {
+      "name": "Dagger",
+      "kind": "attack",
+      "attackKind": "melee",
+      "attackBonus": 4,
+      "damageDice": "1d4",
+      "damageBonus": 2,
+      "damageType": "piercing",
+      "description": "Melee or Ranged Attack Roll: +4, reach 5 ft. or range 20/60 ft. Hit: 4 (1d4 + 2) Piercing damage."
+    },
+    {
+      "name": "Corrupting Wave",
+      "kind": "save",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "recharge": {
+        "min": 5,
+        "max": 6
+      },
+      "save": {
+        "ability": "constitution",
+        "dc": 13,
+        "halfOnSave": true,
+        "onFail": {
+          "damageDice": "3d8",
+          "damageBonus": 0,
+          "damageType": "necrotic",
+          "conditions": [],
+          "roundsRemaining": null,
+          "repeatAtEndOfTurn": false
+        }
+      },
+      "description": "Constitution Saving Throw: DC 13, each creature in a 15-foot Cone. Failure: 13 (3d8) Necrotic damage. Success: Half damage. Recharge 5-6."
+    }
+  ],
+  "multiattackSequence": [
+    {
+      "name": "Void Bolt",
+      "count": 2
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive",
+  "spellcasting": {
+    "ability": "Charisma",
+    "spellSaveDC": 13,
+    "spellAttackBonus": 5,
+    "spells": {
+      "cantrips": [
+        "Chill Touch",
+        "Mage Hand",
+        "Minor Illusion"
+      ],
+      "level1": [
+        "Shield",
+        "Magic Missile",
+        "Mage Armor"
+      ],
+      "level2": [
+        "Hold Person",
+        "Darkness"
+      ]
+    },
+    "spellSlots": {
+      "level1": {
+        "current": 4,
+        "max": 4
+      },
+      "level2": {
+        "current": 2,
+        "max": 2
+      }
+    }
+  }
+}

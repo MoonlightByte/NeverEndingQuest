@@ -45,7 +45,7 @@ The bandit captain, Gorvek, leads a well-entrenched group of bandits. A frontal 
 
 This sequence is a sandbox designed to be dismantled piece by piece by a clever party.
 
-- **Luring Sentries**: A Ranger like Kira can use her knowledge of nature to mimic animal calls. This lures individual sentries away from the main group, allowing for quiet takedowns and reducing the enemy force before the main engagement.
+- **Luring Sentries**: Kira can use her knowledge of nature to mimic animal calls. This lures individual sentries away from the main group, allowing for quiet takedowns and reducing the enemy force before the main engagement.
 - **Environmental Weaponization**: The DM's description explicitly mentions a concealed pit trap near the main gate. This is not just a hazard for the players; it's a tool. By taunting the arrogant bandit captain Gorvek, a player with a decent Charisma (Intimidation or Persuasion) can bait him into charging recklessly, leading him directly into the trap.
 - **NPC Morale System**: With their leader incapacitated and their numbers thinned, the remaining bandits are subject to a morale check. Seeing their position collapse can cause them to lose their nerve and surrender, ending the encounter without further bloodshed.
 
@@ -70,27 +70,24 @@ The camp contains Thane's journal, which details his struggle and mentions perso
 
 ### The Challenge: The Withered Hart (NC03)
 
-The guardian of the woods is a massive, corrupted Hart. It is a very difficult combat encounter.
+The forest's last guardian, a wounded white Hart, holds the hollow against a maddened, corrupted owlbear.
 
-**The Clever Solution: A Ritual of Soothing**
+**The Clever Solution: Earning the Guardian's Trust**
 
-Players who explored and helped the hermit Maelo (TW04) would have received a protective Iron Charm. This item is the key.
+Defend the Hart and steady it: Maelo's Iron Charm, tending its wounds (Medicine), or approaching it calmly (Animal Handling) earns its trust.
 
-- **Stealth and Placement**: The party must get close to the enraged beast to place the charm without being trampled. This requires a successful Stealth check.
-- **Completing the Rite**: Once the charm is placed, a Cleric or Druid can complete a short ritual to soothe the Hart's spirit and cleanse the corruption.
-
-**Developer Insight**: This encounter directly links a side quest reward to a main quest solution. It teaches players that exploration is never wasted and that unique items can unlock unique outcomes. The reward for this peaceful solution is significant: the Hart reveals a secret path to the final boss, allowing the party to bypass a final wave of enemies.
+**Developer Insight**: This encounter directly links a side quest reward to a main quest solution. It teaches players that exploration is never wasted and that unique items can unlock unique outcomes. The reward for this peaceful solution is significant: the Hart reveals a hidden path to the Nexus, allowing the party to bypass a final wave of enemies.
 
 ## Part 4: The Corrupted Nexus - A New Beginning
 
 The module's conclusion is designed not just to end the story, but to launch the next one.
 
-### The Twist: Kira's Departure
+### The Twist: Elen's Departure
 
-After the final battle against Malarok, the victory is immediately followed by a new plot development. Kira receives an urgent magical message about Commander Elen's disappearance.
+After the final battle against Malarok, the party returns to the Rangers' Outpost to report, and finds Commander Elen gone. Ranger Marcus explains that word came of people vanishing in Harrow's Hollow with the same signs of corruption, and Elen rode out at once, leaving a note asking the outpost's allies to follow.
 
 **The System in Action: Dynamic Plot Hooks**
 
-This is not a random event. The game engine uses the updatePartyNPCs action to remove Kira from the party roster. This is a scripted, poignant moment that serves a critical narrative purpose: it provides a powerful, personal reason for the player to travel to Harrow's Hollow and begin the "Keep of Doom" module.
+This is not a random event. The DM records Elen's departure, and the rules engine closes the last plot point when it is recorded. Elen does not join the party and does not come back to the outpost. Her note gives the player a personal reason to travel to Harrow's Hollow and begin the "Keep of Doom" module.
 
 **Developer Insight**: This demonstrates how the plot system creates a seamless, ongoing narrative. Adventures are not self-contained; they are chapters in a larger saga. The departure of a beloved NPC creates an emotional investment that carries the player forward, making the transition to the next story feel natural and urgent.

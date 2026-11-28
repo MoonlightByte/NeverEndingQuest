@@ -248,11 +248,16 @@ class ModuleValidator:
                 self.results["map"]["errors"].append(f"{file_path.name}: {error}")
                 
     def validate_plot_files(self):
-        """Validate plot files"""
+        """Validate plot files. A shipped module holds only its authored
+        module_plot_BU.json, so that file is checked when no played
+        module_plot.json is beside it (#2127)."""
         plot_files = list(self.module_path.glob("*_plot.json"))
-        
+        authored = self.module_path / "module_plot_BU.json"
+        if authored.exists() and not (self.module_path / "module_plot.json").exists():
+            plot_files.append(authored)
+
         for file_path in plot_files:
-            if any(part in str(file_path) for part in ["_BU", ".bak", ".backup", ".tmp"]):
+            if file_path != authored and any(part in str(file_path) for part in ["_BU", ".bak", ".backup", ".tmp"]):
                 continue
                 
             success, error = self.validate_file(file_path, "plot")
@@ -919,6 +924,53 @@ class ModuleValidator:
             self.results["typed_facts"]["passed" if not errors else "failed"] = 1
             self.results["typed_facts"]["errors"] = errors
 
+    def validate_declaration_continues(self):
+        """#2127: each `continues` entry of the module declaration names a
+        module installed beside this one, a location of it (`to`), and a
+        person there called `as` by name or by an alias of a declared being.
+        Nothing reads `continues` in play; this keeps the authored link true.
+        A declaration without the field counts nothing."""
+        try:
+            data = json.loads((self.module_path / "module_declaration.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        entries = data.get("continues") if isinstance(data, dict) else None
+        if entries is None:
+            return
+        errors = []
+        for entry in entries if isinstance(entries, list) else [None]:
+            entry = entry if isinstance(entry, dict) else {}
+            target, to, who = entry.get("module"), entry.get("to"), entry.get("as")
+            label = "continues %r" % entry.get("name")
+            folder = self.module_path.parent / str(target or "")
+            if not (isinstance(target, str) and target and folder.is_dir()):
+                errors.append("%s: module %r is not installed" % (label, target))
+                continue
+            location = None
+            for path in sorted((folder / "areas").glob("*_BU.json")) or sorted((folder / "areas").glob("*.json")):
+                try:
+                    area = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    continue
+                for loc in area.get("locations") or [] if isinstance(area, dict) else []:
+                    if isinstance(loc, dict) and loc.get("locationId") == to:
+                        location = loc
+            if location is None:
+                errors.append("%s: %r is not a location of %s" % (label, to, target))
+                continue
+            names = {e.get("name") for e in location.get("npcs") or [] if isinstance(e, dict)}
+            try:
+                other = json.loads((folder / "module_declaration.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                other = {}
+            for being in other.get("beings") or [] if isinstance(other, dict) else []:
+                if isinstance(being, dict) and being.get("name") in names:
+                    names.update(a for a in being.get("aliases") or [] if isinstance(a, str))
+            if who not in names:
+                errors.append("%s: no person %r at %s/%s" % (label, who, target, to))
+        self.results["declaration_continues"]["passed" if not errors else "failed"] = 1
+        self.results["declaration_continues"]["errors"] = errors
+
     def get_success_rate(self):
         """Get overall validation success rate"""
         total_passed = sum(r["passed"] for r in self.results.values())
@@ -949,6 +1001,7 @@ class ModuleValidator:
         self.validate_encounter_files()
         self.validate_legacy_content_advisories()
         self.validate_typed_facts()
+        self.validate_declaration_continues()
 
         # Run connectivity validation
         success, errors = self.validate_area_connectivity()
@@ -1001,6 +1054,7 @@ class ModuleValidator:
         self.validate_encounter_files()
         self.validate_legacy_content_advisories()
         self.validate_typed_facts()
+        self.validate_declaration_continues()
 
         # VAL-H2 / MP-H4: bidirectional location-to-location connectivity
         bi_success, bi_errors = self.validate_bidirectional_connectivity()

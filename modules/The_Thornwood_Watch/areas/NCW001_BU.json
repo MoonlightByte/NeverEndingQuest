@@ -88,6 +88,14 @@
           {
             "name": "Ancient warning tablets",
             "summary": "In Common and Sylvan: the corruption spreads outward from the ruins deeper in the woods, and it follows every ritual done there. Those who can still leave should."
+          },
+          {
+            "name": "Ranger cache",
+            "summary": "Thane's cache: a note in his hand says he went on to camp by the grove's edge to study the corruption, and asks any ranger who finds it to follow. A sketch marks the camp.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 12
+            }
           }
         ],
         "leads": [
@@ -99,13 +107,22 @@
               "dc": 15
             },
             "destinationLocationId": "NC05"
+          },
+          {
+            "name": "Thane's sketch",
+            "summary": "The cache's sketch marks Thane's camp beyond the grove.",
+            "check": {
+              "stat": "skill:investigation",
+              "dc": 12
+            },
+            "destinationLocationId": "NC04"
           }
         ]
       },
       "locationId": "NC01",
       "name": "Corrupted Entry Cave",
       "type": "cave",
-      "description": "The mouth of this limestone cavern weeps black sap corrupted by Malarok's Voidstone magic, pooling in unnatural patterns on the stone floor. Pale, sickly fungi cast an eerie glow throughout the twisted passages. The air tastes of dark magic and decay, and Malarok's corrupting influence can be felt even here at the forest's edge.",
+      "description": "The mouth of this limestone cavern weeps black sap corrupted by Malarok's Voidstone magic, pooling in unnatural patterns on the stone floor. Pale, sickly fungi cast an eerie glow throughout the twisted passages. The air tastes of dark magic and decay, and Malarok's corrupting influence can be felt even here at the forest's edge. Past the fungus-lit mouth the passage drops to a second chamber where the tribute wagons' ruts end at an empty iron cage, and a dry ledge skirts the spore beds toward the woods beyond.",
       "coordinates": "X2Y2",
       "connectivity": [
         "NC02",
@@ -136,20 +153,32 @@
           },
           "disposition": "bloodthirsty",
           "strategy": "CR 1/8 stirges that carry disease from feeding on corrupted creatures, swarming victims in groups."
+        },
+        {
+          "name": "Shadow Corrupted Wolf",
+          "quantity": {
+            "min": 2,
+            "max": 2
+          },
+          "person": false,
+          "disposition": "guarding",
+          "strategy": "Guard the deeper passage and attack anyone who reaches the cage."
         }
       ],
       "lootTable": [
         "Vial of concentrated corruption essence",
         "Cave fisher chitin plates warped by dark magic",
-        "Ancient warning tablets carved in Common and Sylvan"
+        "Ancient warning tablets carved in Common and Sylvan",
+        "Ranger cache: Potion of Healing (restores 2d4 + 2 hit points), 50 feet of rope, Thane's note"
       ],
       "plotHooks": [
         "Ancient warning tablets describe the spread of corruption from Malarok's rituals in the ruins",
         "The corrupted cave fisher was twisted by the sorcerer's Voidstone magic",
         "Strange magical emanations lead toward Malarok's ritual site deeper in the grove",
-        "Claw marks show desperate attempts by wildlife to escape Malarok's spreading influence"
+        "Claw marks show desperate attempts by wildlife to escape Malarok's spreading influence",
+        "Thane's cache shows a ranger came this way and camped beyond the grove"
       ],
-      "dmInstructions": "This serves as the entry point to Malarok's corrupted domain. The cave fisher represents the first serious supernatural threat twisted by the sorcerer's magic. Use the corruption effects to foreshadow Malarok's power and the Voidstone's influence.",
+      "dmInstructions": "This serves as the entry point to Malarok's corrupted domain. The cave fisher represents the first serious supernatural threat twisted by the sorcerer's magic. Use the corruption effects to foreshadow Malarok's power and the Voidstone's influence. The deeper passage is guarded by two shadow-corrupted wolves; the cage answers the captives' fate.",
       "doors": [],
       "traps": [
         {
@@ -164,7 +193,11 @@
       "dcChecks": [
         "Arcana DC 15: Understand the nature of the corruption affecting the cave and its creatures",
         "Nature DC 13: Recognize that the cave ecosystem has been completely perverted by supernatural forces",
-        "Perception DC 12: Notice the whispers coming from deeper in the cave system"
+        "Perception DC 12: Notice the whispers coming from deeper in the cave system",
+        "Perception DC 13: Spot the cave fisher's lines before walking into them",
+        "Survival DC 12: Find the dry ledge that skirts the spore beds",
+        "Investigation DC 12: Find the ranger cache in the crack above the spores",
+        "Investigation DC 11: Read the cage's tally marks and the wagon ruts: the captives were driven on north, none kept here"
       ],
       "accessibility": "Cave entrance from the southern approaches, connecting to the corrupted interior",
       "dangerLevel": "High",
@@ -180,6 +213,18 @@
         {
           "name": "Whisper Echoes",
           "description": "Faint whispers in unknown languages echo from deeper in the cave system, growing stronger near areas of concentrated corruption."
+        },
+        {
+          "name": "Fisher's Lines",
+          "description": "Near-invisible sticky filaments hang from the ceiling over the main path."
+        },
+        {
+          "name": "Tribute Cage",
+          "description": "An empty iron cage at the end of the wagon ruts, its floor scratched with tally marks."
+        },
+        {
+          "name": "Ranger Cache",
+          "description": "A ranger's oilcloth bundle wedged in a crack above the spore beds."
         }
       ],
       "encounters": [],
@@ -252,10 +297,19 @@
         }
       ],
       "lootTable": [
-        "Heartwood staff infused with corruption resistance",
+        "Uncorrupted heartwood staff (Sylara yields it when reached, or a search of the oldest oak's hollow finds it)",
         "Vial of dryad tears with purification properties",
-        "Ancient druidic tome describing the corruption's origin",
-        "Seed of the World Tree (uncorrupted, extremely rare)"
+        "Ancient druidic tome describing the corruption's origin"
+      ],
+      "lootItems": [
+        {
+          "itemKey": "dryad_tears",
+          "quantity": 1
+        },
+        {
+          "itemKey": "heartwood_staff",
+          "quantity": 1
+        }
       ],
       "plotHooks": [
         "Sylara knows the source of the corruption and may reveal it if the party can reach her uncorrupted essence",
@@ -263,7 +317,7 @@
         "Ancient druidic wards still function partially, suggesting a way to cleanse or contain the corruption",
         "Sylara's corruption is spreading to other nature spirits throughout the region"
       ],
-      "dmInstructions": "Sylara is the key NPC for this area. Her internal struggle between corruption and her true nature should drive the encounter. If the party can help her resist the corruption (through roleplay, magic, or completing her requests), she becomes a valuable ally. If they attack or fail to connect with her, she becomes a tragic boss fight.",
+      "dmInstructions": "Sylara is the key NPC for this area. Her internal struggle between corruption and her true nature should drive the encounter. If the party can help her resist the corruption (through roleplay, magic, or completing her requests), she becomes a valuable ally. If they attack or fail to connect with her, she becomes a tragic boss fight. Sylara's request is the rite: she weeps the tears when reached (Persuasion DC 16), and the heartwood must be found. A cleansed grove frees her and she aids the party. The grove rite cleanses the grove, not the Voidstone, though the heartwood and the tears are also pure offerings there.",
       "doors": [],
       "traps": [
         {
@@ -278,7 +332,9 @@
       "dcChecks": [
         "Religion DC 14: Recognize the signs of desecrated sacred ground and understand purification rituals",
         "Nature DC 15: Understand how the corruption has perverted the natural druidic magic of the grove",
-        "Persuasion DC 16: Reach Sylara's uncorrupted essence and convince her to fight against the taint"
+        "Persuasion DC 16: Reach Sylara's uncorrupted essence and convince her to fight against the taint",
+        "Nature DC 13: Find the one uncorrupted heart of the oldest oak, where the heartwood staff grew",
+        "Religion DC 14: With dryad tears and the uncorrupted heartwood laid in the stone circle, turn the inverted rite back and cleanse the grove"
       ],
       "accessibility": "Central grove connected to multiple areas, but passage hindered by aggressive plant growth",
       "dangerLevel": "High",
@@ -368,7 +424,7 @@
             "max": 1
           },
           "disposition": "berserk",
-          "strategy": "A CR 3 owlbear driven mad by corruption, attacking everything it sees with terrifying fury."
+          "strategy": "Besieges the hollow; the Hart holds it back. It fights the party only if they enter while it is there; the Hart fights beside a party that defends it."
         }
       ],
       "lootTable": [
@@ -383,13 +439,14 @@
         "Ancient forest magic could be restored if the corruption's source is destroyed",
         "The Hart will sacrifice itself to create a powerful ward if no other solution can be found"
       ],
-      "dmInstructions": "The Withered Hart is the emotional and narrative climax of the module. This noble creature represents hope in the face of overwhelming corruption. The party's interaction with the Hart should feel significant and mythic. If treated with respect and aided in its struggle, the Hart can provide crucial assistance for the final confrontation with the corruption's source.",
+      "dmInstructions": "The Withered Hart is the emotional and narrative climax of the module. This noble creature represents hope in the face of overwhelming corruption. The party's interaction with the Hart should feel significant and mythic. If treated with respect and aided in its struggle, the Hart can provide crucial assistance for the final confrontation with the corruption's source. When the Hart leads the party on, record it with resolveOccupant, outcome departed, reason 'guiding the party to the Nexus'. Once the owlbear is gone, the hollow is a safe place to rest.",
       "doors": [],
       "traps": [],
       "dcChecks": [
         "Animal Handling DC 15: Approach the Withered Hart without alarming it",
         "Religion DC 14: Understand the sacred nature of this place and the Hart's role as guardian",
-        "Insight DC 13: Recognize the Hart's pain and the burden it carries as the forest's last defender"
+        "Insight DC 13: Recognize the Hart's pain and the burden it carries as the forest's last defender",
+        "Medicine DC 14: Tend the Hart's weeping wounds and steady it"
       ],
       "accessibility": "Sacred hollow accessible through narrow stone passages, hidden from casual discovery",
       "dangerLevel": "High",
@@ -469,7 +526,7 @@
             "max": 1
           },
           "disposition": "savage",
-          "strategy": "Thane's former animal companion (CR 1/4), now twisted by corruption and attacking with feral rage."
+          "strategy": "Thane's former animal companion (CR 1/4), now twisted by corruption and attacking with feral rage. If Thane is reached, an Animal Handling DC 13 check or the same rite calms it; a cleansed wolf follows Thane."
         }
       ],
       "lootTable": [
@@ -480,11 +537,11 @@
       ],
       "plotHooks": [
         "Thane's journal reveals the corruption's accelerating timeline and growing intelligence",
-        "The ranger was sent by a distant outpost, indicating the threat's wider recognition",
+        "Thane's daughter Lysa waits at Harrow's Hollow; the locket and his journal could reach her",
         "Thane's transformation shows how the corruption affects those who linger too long",
         "Evidence suggests the corruption is being deliberately spread rather than occurring naturally"
       ],
-      "dmInstructions": "Start with Thane in a lucid moment, especially if any party members are down, and give the party a chance to speak. Only his corrupted wolf attacks at once; it is the only immediate danger, and Thane holds back, fighting the corruption inside him. His struggle should evoke sympathy: he is the human cost of the corruption. Approached with compassion (Persuasion DC 12), he may help stabilize downed party members, and he may ask them to end his suffering. His journal and locket hold the touchstones that reach the man beneath, and a party that reaches him can attempt the cleansing rite. If it works, the corruption leaves him and he can join the party. If talk fails or he loses control, he fights the party as a person on the hostile side, never as a monster, with corrupted tactics and warnings in moments of lucidity. Beaten, he drops unconscious, not dead, as any person on the hostile side does, and can still be cleansed and join afterward. Ending his suffering at his own plea is also a true ending.",
+      "dmInstructions": "Start with Thane in a lucid moment, especially if any party members are down, and give the party a chance to speak. Only his corrupted wolf attacks at once; it is the only immediate danger, and Thane holds back, fighting the corruption inside him. His struggle should evoke sympathy: he is the human cost of the corruption. Approached with compassion (Persuasion DC 12), he may help stabilize downed party members, and he may ask them to end his suffering. His journal and locket hold the touchstones that reach the man beneath, and a party that reaches him can attempt the cleansing rite. If it works, the corruption leaves him and he can join the party. If talk fails or he loses control, he fights the party as a person on the hostile side, never as a monster, with corrupted tactics and warnings in moments of lucidity. Beaten, he drops unconscious, not dead, as any person on the hostile side does, and can still be cleansed and join afterward. Ending his suffering at his own plea is also a true ending. Speaking his oath back to him (from the journal) counts as reaching him. The rite then needs the locket and one Medicine or Religion check (DC 14), with advantage if the oath was spoken. Once cleansed, Thane asks to come along: add him with updatePartyNPCs (operation add, occupantId from the occupants list), class ranger.",
       "doors": [],
       "traps": [
         {
@@ -502,7 +559,8 @@
         "Insight DC 15: Recognize when Thane is lucid versus when the corruption is controlling him",
         "Persuasion DC 12: Reach Thane's humanity during his lucid moments and convince him to help before combat",
         "Medicine DC 14: With Thane reached in a lucid moment, perform the cleansing rite -- press his family locket to the blackened wound on his sword arm and speak his ranger's oath back to him as the taint is drawn out. Success frees him of the corruption. A Religion check can perform the same rite instead.",
-        "Religion DC 14: Perform the same cleansing rite as a rite of faith instead of a healer's work, with Thane reached in a lucid moment. Success frees him of the corruption. A Medicine check can perform the same rite instead."
+        "Religion DC 14: Perform the same cleansing rite as a rite of faith instead of a healer's work, with Thane reached in a lucid moment. Success frees him of the corruption. A Medicine check can perform the same rite instead.",
+        "Animal Handling DC 13: Calm Thane's corrupted wolf once Thane is reached"
       ],
       "accessibility": "Abandoned campsite in a small clearing, easily spotted but emanating obvious danger",
       "dangerLevel": "High",
@@ -556,8 +614,8 @@
         {
           "name": "Elite Bandit Bodyguard",
           "quantity": {
-            "min": 2,
-            "max": 4
+            "min": 1,
+            "max": 2
           },
           "disposition": "fanatical",
           "strategy": "CR 1 bandits enhanced by Malarok's magic, fighting with unnatural coordination to protect their master."
@@ -565,17 +623,17 @@
         {
           "name": "Corrupted Wolf",
           "quantity": {
-            "min": 2,
-            "max": 4
+            "min": 1,
+            "max": 2
           },
           "disposition": "vicious",
-          "strategy": "CR 1/2 wolves twisted by the sorcerer's power, their eyes glowing with void energy as they savage intruders."
+          "strategy": "CR 1/4 wolves twisted by the sorcerer's power, their eyes glowing with void energy as they savage intruders."
         }
       ],
       "lootTable": [
         "Fragment of the Voidstone Shard (dangerous but valuable to scholars)",
-        "Alien technology partially corrupted by the void energy",
-        "Crystal containing trapped souls of corruption victims",
+        "Splinters of dead, inert voidstone",
+        "Crystal containing trapped souls of corruption victims (the souls are released when the shard breaks)",
         "Ancient ritual components for purification magic"
       ],
       "plotHooks": [
@@ -584,16 +642,16 @@
         "Destroying the Voidstone will begin healing the entire northern forest",
         "Malarok deliberately sought out and bound himself to the fallen star fragment"
       ],
-      "dmInstructions": "This is the climactic boss fight of the module. Malarok should be challenging but not impossible for a level 2 party, especially if they've gained allies and information from previous encounters. The fight should emphasize the sorcerer's arrogance and power while providing clear victory conditions. Success here should feel like a significant triumph that saves the entire region.",
+      "dmInstructions": "This is the climactic boss fight of the module. Malarok should be challenging but not impossible for a level 2 party, especially if they've gained allies and information from previous encounters. The fight should emphasize the sorcerer's arrogance and power while providing clear victory conditions. Success here should feel like a significant triumph that saves the entire region. Once Malarok is beaten the shard still pulses. It cannot be harmed while fed. One pure offering (purified spring water, dryad tears, the Hart's antler fragment, the heartwood staff) or a successful prayer dulls it for a minute; a blow of cold iron, the Iron Charm, or Brann's iron along the fracture then shatters it, ending the Void Energy Discharge and the Reality Distortion Field. If the party cannot, the Withered Hart, if it is alive and an ally, offers its own life to seal the shard. If Captain Gorvek fled the stronghold, he stands here at Malarok's side.",
       "doors": [],
       "traps": [
         {
           "name": "Void Energy Discharge",
-          "description": "The meteorite periodically releases waves of corrupting energy that affect the entire hilltop within 60 feet. DC 15 Constitution save for half damage.",
+          "description": "The meteorite periodically releases waves of corrupting energy that affect the entire hilltop within 60 feet. DC 15 Constitution save for half damage. Stops once the shard is dulled or broken.",
           "detectDC": 17,
           "disableDC": 18,
           "triggerDC": 17,
-          "damage": "3d6 necrotic"
+          "damage": "2d6 necrotic"
         },
         {
           "name": "Reality Distortion Field",
@@ -605,9 +663,9 @@
         }
       ],
       "dcChecks": [
-        "Arcana DC 18: Understand the nature of the Voidstone corruption and potential methods to destroy it",
-        "Religion DC 16: Invoke divine power to weaken Malarok's dark magic",
-        "Investigation DC 14: Find weak points in the Voidstone's crystalline structure"
+        "Investigation DC 14: Find the bright fracture line that runs through the Voidstone Shard",
+        "Religion DC 14: Hold a prayer over the shard long enough to dull it, as a pure offering would",
+        "Athletics DC 12: Strike the dulled shard along its fracture with cold iron hard enough to break it"
       ],
       "accessibility": "Hilltop accessible from the grove below, but approach is hindered by reality distortions and void energy",
       "dangerLevel": "Very High",
@@ -630,39 +688,52 @@
         }
       ],
       "encounters": [],
-      "adventureSummary": ""
+      "adventureSummary": "",
+      "typedFacts": {
+        "version": 1,
+        "readables": [
+          {
+            "name": "Voidstone Altar",
+            "summary": "The shard sits in a cradle of old stone, split by one bright fracture. While it is fed, blows slide off it; anything pure laid on the fracture (spring water, dryad tears, the Hart's antler, uncorrupted heartwood, or a prayer that holds) dulls it for a minute, and then cold iron struck along the fracture breaks it.",
+            "check": {
+              "stat": "skill:arcana",
+              "dc": 14
+            }
+          }
+        ]
+      }
     }
   ],
   "randomEncounters": [
     {
       "roll": "1-10",
-      "encounter": "monster pack",
-      "description": "A monster pack appropriate for level 2 parties"
+      "encounter": "corrupted wolves",
+      "description": "Two corrupted wolves hunting by scent through the blackened undergrowth"
     },
     {
       "roll": "11-20",
-      "encounter": "enemy squad",
-      "description": "A enemy squad appropriate for level 2 parties"
+      "encounter": "bandit tribute party",
+      "description": "Two bandits and a warrior driving an empty cart back from the tribute road"
     },
     {
       "roll": "21-30",
-      "encounter": "dangerous predator",
-      "description": "A dangerous predator appropriate for level 2 parties"
+      "encounter": "tainted stirges",
+      "description": "A cloud of two to four tainted stirges rising from a stagnant pool"
     },
     {
       "roll": "31-40",
-      "encounter": "enemy squad",
-      "description": "A enemy squad appropriate for level 2 parties"
+      "encounter": "shadow-corrupted wolves",
+      "description": "Two shadow-corrupted wolves stalking the party in silence"
     },
     {
       "roll": "41-50",
-      "encounter": "dangerous predator",
-      "description": "A dangerous predator appropriate for level 2 parties"
+      "encounter": "whispering ashlings",
+      "description": "Two whispering ashlings drifting from a burned clearing, murmuring Malarok's commands"
     },
     {
       "roll": "51-60",
-      "encounter": "monster pack",
-      "description": "A monster pack appropriate for level 2 parties"
+      "encounter": "twig blights",
+      "description": "Two to four twig blights that animate when the party disturbs the thorns"
     }
   ],
   "areaFeatures": [

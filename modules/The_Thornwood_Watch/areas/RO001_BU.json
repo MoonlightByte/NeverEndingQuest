@@ -166,7 +166,7 @@
         "EXPEDITION SUPPORT (after interrogation): Scout Kira immediately volunteers to join the expedition once the bandit camp location is revealed",
         "SUPPLY LOGISTICS (when preparing): Strange reports suggest supernatural corruption - supplies and preparation will be crucial"
       ],
-      "dmInstructions": "PRIORITY STAGING: Elen should focus on the main crisis initially. She prioritizes: 1) Getting intel from Rusk about bandit command structure (main plot critical path). AFTER Rusk interrogation reveals Malarok and the bandit camp location, Elen should: FIRST mention that Scout Kira is eager to help and can join the party for the expedition. SECOND, Elen should explain that while the party prepares for the Thornwood expedition, restoring the silver bell network (SQ001) would help secure the outpost's defenses - presenting it as a tactical preparation that can be done before or after the main mission. The merchant's problem (SQ002) can be mentioned if the party asks about supplies or other concerns. Emphasize the tense atmosphere and highlight Rusk's fear when speaking of Malarok.",
+      "dmInstructions": "PRIORITY STAGING: Elen should focus on the main crisis initially. She prioritizes: 1) Getting intel from Rusk about bandit command structure (main plot critical path). AFTER Rusk interrogation reveals Malarok and the bandit camp location, Elen should: FIRST mention that Scout Kira is eager to help and can join the party for the expedition. SECOND, Elen should explain that while the party prepares for the Thornwood expedition, restoring the silver bell network (SQ001) would help secure the outpost's defenses - presenting it as a tactical preparation that can be done before or after the main mission. The merchant's problem (SQ002) can be mentioned if the party asks about supplies or other concerns. Emphasize the tense atmosphere and highlight Rusk's fear when speaking of Malarok. Elen is the outpost's commander. She does not join the party under any persuasion; her place is here until the debt is paid, and then she rides to Harrow's Hollow (PP005). Elen and Marcus want word of Ranger Corwin; his token or body brought home earns the rangers' trust.",
       "doors": [],
       "traps": [],
       "dcChecks": [
@@ -251,14 +251,21 @@
       "lootTable": [
         "Rope and climbing gear",
         "Trail rations for 3 days",
-        "Waterproof supply manifest showing recent shortages"
+        "Waterproof supply manifest showing recent shortages",
+        "Spare harmonic crystal (Brann keeps the only one in the locked stores; he gives it for the West Tower once the party has proved itself)"
+      ],
+      "lootItems": [
+        {
+          "itemKey": "harmonic_crystal",
+          "quantity": 1
+        }
       ],
       "plotHooks": [
         "Supply shortages suggest Malarok's agents are intercepting shipments for dark rituals",
         "Merchant barge arrivals have become increasingly irregular due to supernatural corruption fears",
         "Brann mentions unusual requests for iron and silver, materials that resist dark magic"
       ],
-      "dmInstructions": "Brann can provide basic equipment and supplies to the party, but requires proof of their legitimacy. He's a good source for information about supply chain disruptions and suspicious merchant activity.",
+      "dmInstructions": "Brann can provide basic equipment and supplies to the party, but requires proof of their legitimacy. He's a good source for information about supply chain disruptions and suspicious merchant activity. Brann hands over the spare harmonic crystal once the party proves itself (Persuasion DC 13, or after Rusk is questioned).",
       "doors": [],
       "traps": [],
       "dcChecks": [
@@ -342,7 +349,7 @@
           "attitude": "Guarded but courteous, cautiously hopeful and eager to spread warnings among the merchants. Should only approach the party with her quest when they're actively preparing for expeditions or gathering supplies - not during the initial crisis assessment phase."
         },
         {
-          "name": "Merchant Gareth",
+          "name": "Merchant Orrin",
           "description": "A portly human trader who specializes in general goods and basic supplies. His wagon is currently being repaired after damage from a recent bandit encounter, and he's frustrated by the delays to his trading schedule.",
           "attitude": "Worried and impatient, constantly checking on his damaged wagon and eager to discuss the deteriorating safety of the trade routes."
         },
@@ -451,14 +458,15 @@
         "Malarok's agents have been spotted moving at night toward the Thornwood",
         "Communication with northern patrol posts has been disrupted by the sorcerer's influence"
       ],
-      "dmInstructions": "Scout Neris provides reconnaissance intelligence and can guide the party to specific locations in the wilderness. She's the best source for information about the supernatural phenomena affecting the northern reaches. Two Twig Blights hide among debris using False Appearance (Perception DC 13 to spot). They only animate and attack if the corrupted vines are disturbed without being discovered first. If spotted beforehand, they can be avoided or dealt with strategically.",
+      "dmInstructions": "Scout Neris provides reconnaissance intelligence and can guide the party to specific locations in the wilderness. She's the best source for information about the supernatural phenomena affecting the northern reaches. A few Twig Blights hide among debris using False Appearance (Perception DC 13 to spot). They only animate and attack if the corrupted vines are disturbed without being discovered first. If spotted beforehand, they can be avoided or dealt with strategically. The vines lash at a mundane blade; fire or radiant damage withers them at once.",
       "doors": [],
       "traps": [],
       "dcChecks": [
         "Perception DC 10: Spot distant movement or signals that Neris points out",
         "Survival DC 12: Understand the significance of wildlife migration patterns Neris describes",
         "Investigation DC 11: Study Neris's annotated maps to identify patterns in the strange phenomena",
-        "Perception DC 13: Notice that some of the dead branches and debris around the platform base are actually motionless Twig Blights using their False Appearance ability"
+        "Perception DC 13: Notice that some of the dead branches and debris around the platform base are actually motionless Twig Blights using their False Appearance ability",
+        "Nature DC 12: Find where the enhanced vines root, so they can be cut or burned away from the East Tower bell"
       ],
       "accessibility": "Elevated watch platform accessible by wooden ladder",
       "dangerLevel": "Low",
@@ -510,6 +518,14 @@
               "stat": "skill:arcana",
               "dc": 14
             }
+          },
+          {
+            "name": "Scrying focus",
+            "summary": "A bowl of black water etched with the ranger seal: Malarok reads the outpost's dispatches through it. Break it and the leak ends.",
+            "check": {
+              "stat": "skill:arcana",
+              "dc": 12
+            }
           }
         ],
         "leads": [
@@ -560,7 +576,8 @@
         "Coded correspondence revealing next targets",
         "Maps marking vulnerable points in the silver bell network",
         "Schedule showing caravan routes and ritual timing for Malarok",
-        "Fragment of Malarok's spellbook containing corruption magic"
+        "Fragment of Malarok's spellbook containing corruption magic",
+        "Black-water scrying bowl (break it to end the leak)"
       ],
       "plotHooks": [
         "Fresh drag marks lead to a concealed cache of magical components for Malarok's rituals",
@@ -575,7 +592,10 @@
         "Investigation DC 12: Follow drag marks to discover the hidden equipment cache",
         "Investigation DC 15: Decode partial messages to reveal next target locations",
         "Perception DC 13: Notice recently disturbed hiding spots and escape routes",
-        "Survival DC 11: Determine how recently the site was occupied"
+        "Survival DC 11: Determine how recently the site was occupied",
+        "Arcana DC 12: Attune the spare harmonic crystal to the West Tower bell and set it in its cradle",
+        "Religion DC 12: Attune the crystal with the outpost's ranger blessing instead",
+        "Arcana DC 12: Recognize the black-water bowl in the cache as a scrying focus fixed on the outpost"
       ],
       "accessibility": "Abandoned ruins overgrown with vegetation, requires careful searching to find concealed evidence",
       "dangerLevel": "Low",
@@ -663,14 +683,15 @@
         "Evidence of coordinated sabotage suggests this was part of Malarok's larger plan",
         "The tower's strategic position could serve as an early warning post once restored"
       ],
-      "dmInstructions": "Two bandits are stationed here to prevent repairs and watch for ranger activity. They have Perception +1 and will spot approaching parties on a roll of 12+ unless stealth is used. If the party searches the area thoroughly (Investigation DC 12), they find the missing clapper hidden among the rubble. The bandits will flee if reduced to half health, preferring to report back to their superiors rather than fight to the death.",
+      "dmInstructions": "A handful of bandits are stationed here to prevent repairs and watch for ranger activity. They have Perception +1 and will spot approaching parties on a roll of 12+ unless stealth is used. If the party searches the area thoroughly (Investigation DC 12), they find the missing clapper hidden among the rubble. The bandits will flee if reduced to half health, preferring to report back to their superiors rather than fight to the death.",
       "doors": [],
       "traps": [],
       "dcChecks": [
         "Investigation DC 12: Find the missing silver bell clapper hidden in the undergrowth near the tower base",
         "Perception DC 13: Notice the two bandits watching from concealed positions before they spot the party",
         "Investigation DC 10: Discover evidence of the sabotage including cut ropes and deliberate damage to the bell mechanism",
-        "Survival DC 11: Track the bandits' movement patterns and identify their escape routes"
+        "Survival DC 11: Track the bandits' movement patterns and identify their escape routes",
+        "Athletics DC 10: Re-hang the recovered clapper in the North Tower bell frame"
       ],
       "accessibility": "Elevated position accessible via winding stone path from Trader's Rest, clear sight lines in all directions",
       "dangerLevel": "Low",
@@ -703,53 +724,53 @@
   "randomEncounters": [
     {
       "roll": "1-10",
-      "encounter": "wandering animal",
-      "description": "A wandering animal appropriate for level 1 parties"
+      "encounter": "wolves",
+      "description": "Two wolves drawn toward the outpost's stores, wary of torches"
     },
     {
       "roll": "11-20",
       "encounter": "lost traveler",
-      "description": "A lost traveler appropriate for level 1 parties"
+      "description": "A frightened carter who turned back from the Thornwood road, with news of the last raid"
     },
     {
       "roll": "21-30",
-      "encounter": "environmental hazard",
-      "description": "A environmental hazard appropriate for level 1 parties"
+      "encounter": "thorny vines",
+      "description": "A tangle of corrupted vines creeping toward a tower path; fire or a blade clears it"
     },
     {
       "roll": "31-40",
-      "encounter": "lost traveler",
-      "description": "A lost traveler appropriate for level 1 parties"
+      "encounter": "ranger patrol",
+      "description": "Two rangers returning from the treeline, tired and short of arrows"
     },
     {
       "roll": "41-50",
-      "encounter": "environmental hazard",
-      "description": "A environmental hazard appropriate for level 1 parties"
+      "encounter": "bandit lookout",
+      "description": "A lone bandit watching the outpost from cover, who runs if seen"
     },
     {
       "roll": "51-60",
-      "encounter": "wandering animal",
-      "description": "A wandering animal appropriate for level 1 parties"
+      "encounter": "wolves",
+      "description": "A wolf pack testing the outpost's edge at dusk"
     },
     {
       "roll": "61-70",
       "encounter": "lost traveler",
-      "description": "A lost traveler appropriate for level 1 parties"
+      "description": "A merchant asking after Trader Sila and her stolen chest"
     },
     {
       "roll": "71-80",
-      "encounter": "environmental hazard",
-      "description": "A environmental hazard appropriate for level 1 parties"
+      "encounter": "fallen bell rope",
+      "description": "Sabotaged rigging at a bell tower gives way; a Dexterity save avoids the fall"
     },
     {
       "roll": "81-90",
-      "encounter": "wandering animal",
-      "description": "A wandering animal appropriate for level 1 parties"
+      "encounter": "twig blights",
+      "description": "Two twig blights lying still among dead brush near the East Tower"
     },
     {
       "roll": "91-100",
-      "encounter": "wandering animal",
-      "description": "A wandering animal appropriate for level 1 parties"
+      "encounter": "messenger",
+      "description": "Messenger Tom with a dispatch for Commander Elen"
     }
   ],
   "areaFeatures": [

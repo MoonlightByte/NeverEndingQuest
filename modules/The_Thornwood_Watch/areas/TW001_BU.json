@@ -151,7 +151,7 @@
       "doors": [],
       "traps": [],
       "dcChecks": [
-        "Medicine DC 12: Examine Ranger Corwin's body and learn how he fell",
+        "Medicine DC 12: Corwin died of crossbow bolts in the back, shot while he covered the wagons' retreat",
         "Investigation DC 11: Study the ambush site to find evidence of Malarok's magical corruption affecting the bandits",
         "Survival DC 13: Follow the tracks leading toward Malarok's Bandit Stronghold"
       ],
@@ -206,10 +206,43 @@
       "areaConnectivity": [],
       "areaConnectivityId": [],
       "npcs": [],
-      "monsters": [],
-      "lootTable": [],
-      "plotHooks": [],
-      "dmInstructions": "This trail leads toward the bandit stronghold. Consider having the party encounter bandit patrols or traps along the way. Use this location to build tension as they get closer to the main threat.",
+      "monsters": [
+        {
+          "name": "Bandit",
+          "quantity": {
+            "min": 2,
+            "max": 3
+          },
+          "person": false,
+          "disposition": "ambush",
+          "strategy": "Lie in wait in the thornbushes for anyone following the trail to the stronghold; the warrior carries the signal horn."
+        },
+        {
+          "name": "Bandit Warrior",
+          "quantity": {
+            "min": 1,
+            "max": 1
+          },
+          "person": false,
+          "disposition": "ambush",
+          "strategy": "Lie in wait in the thornbushes for anyone following the trail to the stronghold; the warrior carries the signal horn."
+        }
+      ],
+      "lootTable": [
+        "Bandit signal horn (the call Gorvek answers)",
+        "Ambushers' purse with 12 gold pieces"
+      ],
+      "lootItems": [
+        {
+          "itemKey": "signal_horn",
+          "quantity": 1
+        }
+      ],
+      "plotHooks": [
+        "The ambushers' signal horn sounds the call the stronghold's captain answers in person",
+        "A bandit taken alive admits the gang sends captives north as tribute"
+      ],
+      "dmInstructions": "Two or three bandits and a Bandit Warrior lie in ambush in the thornbushes. If the silver bells were restored (SQ001), the rangers' warning reaches the party first: they know where the ambush waits and may avoid it, turn it, or take the ambushers by surprise. The warrior carries the gang's signal horn, whose call Captain Gorvek answers himself (see the stronghold).",
       "doors": [],
       "traps": [
         {
@@ -224,7 +257,8 @@
       "dcChecks": [
         "Stealth DC 13: Move quietly to avoid alerting bandit patrols ahead",
         "Survival DC 11: Follow the bandit trail without losing the path",
-        "Perception DC 12: Notice warning markers and potential ambush points"
+        "Perception DC 12: Notice warning markers and potential ambush points",
+        "Insight DC 12: Read from a captured bandit that the horn's call brings the captain out alone"
       ],
       "accessibility": "Narrow forest path requiring careful navigation",
       "dangerLevel": "Medium",
@@ -429,7 +463,19 @@
       "lootTable": [
         "Potion of Healing (an herbal brew from the hermit Maelo; restores 2d4 + 2 hit points)",
         "Ward stones that protect against supernatural influence",
-        "Ancient tome describing the corruption from the north"
+        "Ancient tome describing the corruption from the north",
+        "Maelo's Iron Charm (given once the spring runs clean)",
+        "Flask of purified spring water (Maelo fills it once the spring runs clean)"
+      ],
+      "lootItems": [
+        {
+          "itemKey": "iron_charm",
+          "quantity": 1
+        },
+        {
+          "itemKey": "purified_water",
+          "quantity": 1
+        }
       ],
       "plotHooks": [
         "Maelo explains the supernatural corruption spreading from the Northern Reaches",
@@ -437,7 +483,7 @@
         "Ancient knowledge about how to cleanse the corruption affecting the region",
         "Warnings about what the party will face in the corrupted northern woods"
       ],
-      "dmInstructions": "Maelo provides mystical insight and preparation for the supernatural threats ahead. He can offer healing, protection, and crucial information about the corruption in the Northern Reaches. After completing his scrying ritual at the spring, a Tainted Naiad emerges - the corrupted former guardian. She attacks initially but can be freed rather than killed through Remove Curse, Lesser Restoration, or peaceful persuasion with an offering of purified spring water (DC 15).",
+      "dmInstructions": "Maelo provides mystical insight and preparation for the supernatural threats ahead. He can offer healing, protection, and crucial information about the corruption in the Northern Reaches. When the party tries to cleanse his tainted scrying spring, a Tainted Naiad rises - the corrupted former guardian. She attacks initially but can be freed rather than killed through Remove Curse, Lesser Restoration, or peaceful persuasion with an offering of purified spring water (DC 15). A freed naiad sinks back into the clean spring: record her with resolveOccupant, outcome departed, reason 'freed; returned to her cleansed spring'. Once the spring runs clean Maelo gives the Iron Charm and a flask of purified water. While the wards hold, this is a safe place to rest.",
       "doors": [],
       "traps": [],
       "dcChecks": [
@@ -542,14 +588,26 @@
             "max": 1
           },
           "disposition": "commanding",
-          "strategy": "A veteran fighter who directs his men in battle while wielding magical weapons provided by Malarok."
+          "strategy": "A veteran fighter who directs his men in battle while wielding a scimitar marked with Malarok's sigil."
         }
       ],
       "lootTable": [
         "Chest containing stolen merchant goods worth 150 gold pieces",
         "Cache of weapons and armor taken from defeated travelers",
         "Mysterious supplies marked with corruption symbols",
-        "Map showing planned attacks on trade routes"
+        "Map showing planned attacks on trade routes",
+        "Strongbox key (on Gorvek's belt; taken when he is beaten or captured)",
+        "Stronghold Gate Key (carried by the sentry at the gate)"
+      ],
+      "lootItems": [
+        {
+          "itemKey": "strongbox_key",
+          "quantity": 1
+        },
+        {
+          "itemKey": "gate_key",
+          "quantity": 1
+        }
       ],
       "plotHooks": [
         "Strange supplies suggest the bandits are backed by supernatural forces from the north",
@@ -557,7 +615,7 @@
         "The corruption affecting Captain Gorvek hints at the larger threat in the Northern Woods",
         "Evidence of communication with mysterious benefactors providing gold and equipment"
       ],
-      "dmInstructions": "This is the climactic encounter for the Thornwood Wilds area. The bandits will fight defensively from their fortifications. Captain Gorvek's corruption connects to the Northern Corrupted Woods storyline. Consider having him flee toward the north if the battle goes poorly, leading the party toward the final area. Camp layout: the Bandit Warriors sleep and eat around the Central Fire Pit; Gorvek sleeps alone in the Captain's Tent against the north palisade; the sentries hold the lookout posts outside the wall. A character who looks over or through the palisade, or down from a lookout platform, can learn this layout (see dcChecks). Gorvek's habits: paranoid and trusting no one, he walks out of the gate alone at dawn and at dusk to inspect the lookout posts, and he answers a sentry's call himself before rousing anyone. If he finds a sentry missing or dead, or a convincing bandit voice calls him out (Deception DC 13), he comes out alone with his scimitar drawn to look first. On a failed Deception he grows suspicious and stays inside, setting a warrior at the gate. Alarm: a shout, a horn, or fighting at the gate or inside the wall wakes the camp, and everyone in it joins at once: start that fight with the Bandit Warriors, Gorvek and any sentries still standing, all in the encounter from its first round. A fight out by the lookout posts (with sentries, or with Gorvek drawn out alone) stays as it started. If someone shouted, blew a horn, or it lasted longer than three rounds, the camp is awake when it ends, and everyone left comes out through the gate together as a new fight. The whole camp at once is too much for a small party: when the party scouts the stronghold, suggest to the player (through a companion or the narration) picking the bandits off one at a time instead: taking the sentries quietly, or drawing Gorvek out with a bandit's call. The weak point in the defenses (Investigation DC 12) is a stake on the north palisade sitting proud of its neighbours, just behind his tent: through its seam a character can see and hear the tent, and working the stake loose quietly takes about ten minutes and opens a gap to the tent's back wall, out of sight of the fire pit.",
+      "dmInstructions": "This is the climactic encounter for the Thornwood Wilds area. The bandits will fight defensively from their fortifications. Captain Gorvek's corruption connects to the Northern Corrupted Woods storyline. Consider having him flee toward the north if the battle goes poorly, leading the party toward the final area. Camp layout: the Bandit Warriors sleep and eat around the Central Fire Pit; Gorvek sleeps alone in the Captain's Tent against the north palisade; the sentries hold the lookout posts outside the wall. A character who looks over or through the palisade, or down from a lookout platform, can learn this layout (see dcChecks). Gorvek's habits: paranoid and trusting no one, he walks out of the gate alone at dawn and at dusk to inspect the lookout posts, and he answers a sentry's call himself before rousing anyone. If he finds a sentry missing or dead, or a convincing bandit voice calls him out (Deception DC 13), he comes out alone with his scimitar drawn to look first. On a failed Deception he grows suspicious and stays inside, setting a warrior at the gate. Alarm: a shout, a horn, or fighting at the gate or inside the wall wakes the camp, and everyone in it joins at once: start that fight with the Bandit Warriors, Gorvek and any sentries still standing, all in the encounter from its first round. A fight out by the lookout posts (with sentries, or with Gorvek drawn out alone) stays as it started. If someone shouted, blew a horn, or it lasted longer than three rounds, the camp is awake when it ends, and everyone left comes out through the gate together as a new fight. The whole camp at once is too much for a small party: when the party scouts the stronghold, suggest to the player (through a companion or the narration) picking the bandits off one at a time instead: taking the sentries quietly, or drawing Gorvek out with a bandit's call. The weak point in the defenses (Investigation DC 12) is a stake on the north palisade sitting proud of its neighbours, just behind his tent: through its seam a character can see and hear the tent, and working the stake loose quietly takes about ten minutes and opens a gap to the tent's back wall, out of sight of the fire pit. Gorvek walks the gate path at dawn and dusk; the concealed pit lies on that path. A party that knows of the pit can draw him over it (the signal horn's call, or Deception DC 13): he must make the pit's save. The gang's signal horn from the Bandit Trail gives advantage on the Deception to call him out. The other captives were already sent north as tribute; none survived. Gareth and Kael escaped to the Wolf's Den. Beaten or captured, Gorvek carries the strongbox key; the sentry at the gate carries the gate key.",
       "doors": [
         {
           "name": "Palisade Gate",
@@ -586,7 +644,9 @@
         "Investigation DC 12: Study the fortifications to identify weak points in the defenses",
         "Perception DC 13: Notice the supernatural corruption affecting the bandit captain",
         "Perception DC 13: From a lookout platform, the palisade seam or the top of the wall, see the camp's layout: the warriors asleep or idling around the fire pit, and Gorvek's tent alone against the north palisade",
-        "Deception DC 13: Imitate a bandit's voice or signal to draw Gorvek out alone"
+        "Deception DC 13: Imitate a bandit's voice or signal to draw Gorvek out alone",
+        "Survival DC 13: Spot the fresh-turned earth of the concealed pit on the path before the gate",
+        "Sleight of Hand DC 14: Lift the gate key from the sentry at the gate unseen"
       ],
       "accessibility": "Fortified clearing with defensive walls and elevated positions",
       "dangerLevel": "High",
@@ -672,7 +732,7 @@
       ],
       "lootTable": [
         "Partial map of bandit patrols (Gareth's intelligence)",
-        "Pouch with 20 gold pieces (Kael's emergency funds)",
+        "Pouch with 20 gold pieces (Kael's emergency funds, which he offers the party as thanks)",
         "Healer's kit dropped by fleeing bandits",
         "Evidence of Malarok's corruption affecting local wildlife"
       ],
@@ -692,7 +752,7 @@
         "Investigation DC 11: Study the corrupted wolves to understand Malarok's influence on wildlife",
         "Survival DC 10: Use Gareth's map to identify the best approach to the bandit stronghold"
       ],
-      "accessibility": "Hidden cave entrance accessible through dense undergrowth from the shrine area",
+      "accessibility": "Hidden cave entrance accessible through dense undergrowth from the forest trail",
       "dangerLevel": "Medium",
       "features": [
         {

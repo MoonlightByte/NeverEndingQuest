@@ -2,7 +2,21 @@
   "format": "neq-module-declaration",
   "version": 1,
   "module": "The_Thornwood_Watch",
-  "beings": [],
+  "beings": [
+    {
+      "name": "Ranger Elen",
+      "home": "RO01",
+      "appearances": [
+        "RO01"
+      ],
+      "aliases": [
+        "Commander Elen",
+        "Elen"
+      ],
+      "identity": "same_mobile_person",
+      "recruitable": false
+    }
+  ],
   "start": {
     "areaId": "RO001",
     "locationId": "RO01",
@@ -90,7 +104,7 @@
     },
     {
       "location": "RO03",
-      "name": "Merchant Gareth",
+      "name": "Merchant Orrin",
       "index": 0,
       "disposition": "indifferent"
     },
@@ -251,6 +265,15 @@
       "to": "TW04",
       "ticks": 720,
       "both": true
+    }
+  ],
+  "continues": [
+    {
+      "name": "Ranger Elen",
+      "location": "RO01",
+      "module": "Keep_of_Doom",
+      "to": "E07",
+      "as": "Scout Elen"
     }
   ]
 }

@@ -1,0 +1,97 @@
+{
+  "name": "Ashbound Bandit",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Neutral evil",
+  "armorClass": 13,
+  "hitPoints": 27,
+  "maxHitPoints": 27,
+  "speed": 30,
+  "abilities": {
+    "strength": 12,
+    "dexterity": 14,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 10,
+    "charisma": 11
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "fire"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "passivePerception": 10
+  },
+  "languages": "Common",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Ashen Skin",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "Grey ash drifts from the bandit's cracked skin; its eyes glow like coals."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The bandit makes two Scimitar attacks."
+    },
+    {
+      "name": "Scimitar",
+      "kind": "attack",
+      "attackKind": "melee",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "slashing",
+      "description": "Melee Attack Roll: +4, reach 5 ft. Hit: 5 (1d6 + 2) Slashing damage."
+    },
+    {
+      "name": "Ash Burst",
+      "kind": "save",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "recharge": {
+        "min": 5,
+        "max": 6
+      },
+      "save": {
+        "ability": "constitution",
+        "dc": 11,
+        "halfOnSave": true,
+        "onFail": {
+          "damageDice": "2d6",
+          "damageBonus": 0,
+          "damageType": "fire",
+          "conditions": [],
+          "roundsRemaining": null,
+          "repeatAtEndOfTurn": false
+        }
+      },
+      "description": "Constitution Saving Throw: DC 11, each creature in a 10-foot Emanation originating from the bandit. Failure: 7 (2d6) Fire damage. Success: Half damage. Recharge 5-6."
+    }
+  ],
+  "multiattackSequence": [
+    {
+      "name": "Scimitar",
+      "count": 2
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

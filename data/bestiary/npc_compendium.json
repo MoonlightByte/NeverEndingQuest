@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "created": "2025-09-08T21:54:54.376133",
-  "total_npcs": 53,
+  "total_npcs": 59,
   "npcs": {
     "apprentice_jeb": {
       "name": "Apprentice Jeb",
@@ -24,9 +24,9 @@
       "migrated_from": "temp_file",
       "original_generated_at": "2025-08-17T19:56:07.496600"
     },
-    "merchant_gareth": {
-      "name": "Merchant Gareth",
-      "description": "\"A captivating digital painting of Merchant Gareth, a portly human trader with a jovial demeanor and a well-groomed beard. He sports a vibrant blue tunic adorned with intricate silver embroidery and wears sturdy brown leather trousers. A colorful patchwork cloak drapes over his shoulders, and a heavy leather belt cinches his waist, from which hangs a variety of pouches filled with exotic goods. His hands are calloused but gentle, often gesturing as he animatedly shares tales of distant lands. Gareth leans against a rustic wooden cart filled with glimmering trinkets and bags of spices, stationed in a lively marketplace bustling with patrons. The setting is bathed in warm, golden afternoon light that casts inviting shadows, creating a friendly and welcoming atmosphere. Surrounding stalls are adorned with colorful fabrics and the aroma of fresh produce fills the air, enhancing the sense of community and camaraderie among traders.\"",
+    "merchant_orrin": {
+      "name": "Merchant Orrin",
+      "description": "\"A captivating digital painting of Merchant Orrin, a portly human trader with a jovial demeanor and a well-groomed beard. He sports a vibrant blue tunic adorned with intricate silver embroidery and wears sturdy brown leather trousers. A colorful patchwork cloak drapes over his shoulders, and a heavy leather belt cinches his waist, from which hangs a variety of pouches filled with exotic goods. His hands are calloused but gentle, often gesturing as he animatedly shares tales of distant lands. Orrin leans against a rustic wooden cart filled with glimmering trinkets and bags of spices, stationed in a lively marketplace bustling with patrons. The setting is bathed in warm, golden afternoon light that casts inviting shadows, creating a friendly and welcoming atmosphere. Surrounding stalls are adorned with colorful fabrics and the aroma of fresh produce fills the air, enhancing the sense of community and camaraderie among traders.\"",
       "module": "The_Thornwood_Watch",
       "migrated_from": "temp_file",
       "original_generated_at": "2025-08-17T19:56:16.202418"
@@ -372,6 +372,30 @@
       "module": "Keep_of_Doom",
       "migrated_from": "temp_file",
       "original_generated_at": "2025-08-18T21:12:14.493732"
+    },
+    "ranger_elen": {
+      "name": "Ranger Elen",
+      "description": "A weathered half-elf woman in her forties, commander of the Rangers' Outpost, in a green ranger's cloak over scarred leather armor. Grey streaks her dark braided hair; her eyes are steady and tired. A longbow is slung across her back and a map case hangs at her hip. She stands at a command table covered in maps and dispatches, lit by a hanging lantern, the outpost's palisade visible through an open shutter."
+    },
+    "scout_kira": {
+      "name": "Scout Kira",
+      "description": "A lean young wood elf woman scout with short auburn hair and a quick grin, in mottled green and brown leathers. A shortbow and a quiver of fletched arrows on her back, a hunting knife at her belt. She crouches on a fallen log at the forest edge, alert and eager, one hand raised to shade her eyes as she scans the treeline."
+    },
+    "scout_neris": {
+      "name": "Scout Neris",
+      "description": "A quiet human woman ranger with silver-blond hair tied back and keen grey eyes, wrapped in a weathered grey cloak. She kneels on a wooden watch platform beside a brass spyglass and annotated maps weighted with stones, the East Tower's silver bell behind her half choked with thorny vines."
+    },
+    "ranger_gareth": {
+      "name": "Ranger Gareth",
+      "description": "A sturdy human ranger in his thirties with a short brown beard, his shoulder bound with a bloodied bandage over a bleeding wound. He wears a torn ranger's cloak and leans on a spear in the mouth of a dark cave, a partial map of bandit patrols tucked into his belt, watchful and grim but unbroken."
+    },
+    "ranger_thane": {
+      "name": "Ranger Thane",
+      "description": "A gaunt human ranger in his forties, his sword arm blackened by creeping corruption that spreads in dark veins toward his neck. His ranger's cloak is torn and his eyes flicker between clear grey and a sickly glow. He sits by a cold fire pit in an abandoned camp, a silver locket clutched in his good hand and a worn journal at his side."
+    },
+    "malarok_the_corruptor": {
+      "name": "Malarok the Corruptor",
+      "description": "A gaunt human sorcerer in robes that seem to drink the light, his pale face lined with dark veins that pulse in time with a shard of black crystal behind him. His eyes burn with the same void light. He stands in a ruined stone circle on a windswept hill, one hand raised and crackling with necrotic energy, arrogant and cold."
     }
   },
   "last_updated": "2025-09-09T16:01:30.548855"

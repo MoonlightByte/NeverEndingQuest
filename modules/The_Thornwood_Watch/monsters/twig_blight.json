@@ -1,0 +1,62 @@
+{
+  "name": "Twig Blight",
+  "size": "Small",
+  "type": "Plant",
+  "alignment": "Neutral evil",
+  "armorClass": 13,
+  "hitPoints": 4,
+  "maxHitPoints": 4,
+  "speed": 20,
+  "abilities": {
+    "strength": 6,
+    "dexterity": 13,
+    "constitution": 12,
+    "intelligence": 4,
+    "wisdom": 8,
+    "charisma": 3
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 3
+  },
+  "damageVulnerabilities": [
+    "fire"
+  ],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [
+    "blinded",
+    "deafened"
+  ],
+  "senses": {
+    "blindsight": 60,
+    "passivePerception": 9
+  },
+  "languages": "Understands Common but can't speak",
+  "challengeRating": 0.125,
+  "specialAbilities": [
+    {
+      "name": "False Appearance",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "While the blight stays still, it looks like a dead shrub or a heap of dry branches. Spotting it takes a Wisdom (Perception) check against DC 13."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Claws",
+      "kind": "attack",
+      "attackKind": "melee",
+      "attackBonus": 3,
+      "damageDice": "1d4",
+      "damageBonus": 1,
+      "damageType": "piercing",
+      "description": "Melee Attack Roll: +3, reach 5 ft. Hit: 3 (1d4 + 1) Piercing damage."
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

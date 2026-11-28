@@ -1,0 +1,81 @@
+{
+  "name": "Shadow Corrupted Wolf",
+  "size": "Medium",
+  "type": "Beast",
+  "alignment": "Unaligned",
+  "armorClass": 13,
+  "hitPoints": 16,
+  "maxHitPoints": 16,
+  "speed": 40,
+  "abilities": {
+    "strength": 12,
+    "dexterity": 15,
+    "constitution": 12,
+    "intelligence": 3,
+    "wisdom": 12,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 3,
+    "stealth": 6
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "necrotic"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 13
+  },
+  "languages": "",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Pack Tactics",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The wolf has Advantage on an attack roll against a creature if at least one of its allies is within 5 feet of the creature and the ally doesn't have the Incapacitated condition."
+    },
+    {
+      "name": "Shadow Stride",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "In dim light or darkness the wolf has Advantage on Dexterity (Stealth) checks and moves without a sound."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Bite",
+      "kind": "attack",
+      "attackKind": "melee",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "piercing",
+      "description": "Melee Attack Roll: +4, reach 5 ft. Hit: 5 (1d6 + 2) Piercing damage plus 3 (1d6) Necrotic damage. If the target is a Medium or smaller creature, it has the Prone condition.",
+      "onHit": {
+        "damage": [
+          {
+            "damageDice": "1d6",
+            "damageType": "necrotic"
+          }
+        ],
+        "conditions": [
+          "prone"
+        ],
+        "targetMaxSize": "Medium"
+      }
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

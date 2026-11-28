@@ -29,7 +29,7 @@
           },
           "location": {
             "type": "string",
-            "description": "The locationId where this plot point takes place"
+            "description": "The areaId of the area where this plot point takes place"
           },
           "nextPoints": {
             "type": "array",
@@ -37,6 +37,14 @@
               "type": "string"
             },
             "description": "Array of plot point IDs that could follow this one"
+          },
+          "prerequisites": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^PP[0-9]{3}$"
+            },
+            "description": "Plot point IDs that must be closed before this one can be (read by quest_record.declare)."
           },
           "completion": {
             "type": "object",

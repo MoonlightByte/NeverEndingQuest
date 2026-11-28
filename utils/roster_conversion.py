@@ -450,6 +450,35 @@ def declared_beings(game, module, notes):
     return homes, elsewhere, words
 
 
+def declared_not_recruitable(module, root="."):
+    """#2127: the people modules/<module>/module_declaration.json marks
+    `"recruitable": false`, as {occupant id: {"name", "stems"}}. The id is the
+    one seeds() gives the being at its home (occ:<Module>/<home>/<slug>);
+    "stems" are the slugs of its name and aliases, the sheet stems an add
+    "new" must not take. No file, an unreadable file, another format or a
+    being without a text name and home gives nothing for it."""
+    folder = str(module or "").replace(" ", "_")
+    try:
+        data = load(os.path.join(root, "modules", folder, DECLARATION))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict) or data.get("format") != "neq-module-declaration" or data.get("version") != 1:
+        return {}
+    out = {}
+    for being in data.get("beings") if isinstance(data.get("beings"), list) else []:
+        if not isinstance(being, dict) or being.get("recruitable") is not False:
+            continue
+        name, home = being.get("name"), being.get("home")
+        if not (isinstance(name, str) and name.strip() and isinstance(home, str) and home.strip()):
+            continue
+        names = being.get("names") if isinstance(being.get("names"), dict) else {}
+        at_home = names.get(home) if isinstance(names.get(home), str) else name
+        aliases = being.get("aliases") if isinstance(being.get("aliases"), list) else []
+        stems = {slug(n) for n in [name, at_home] + [a for a in aliases if isinstance(a, str) and a.strip()]}
+        out["occ:%s/%s/%s" % (folder, home, slug(at_home))] = {"name": at_home.strip(), "stems": stems}
+    return out
+
+
 def seeds(game, notes):
     """Every authored monster and NPC of the masters, in file order, with
     IDs occ:<Module>/<LocationId>/<slug>, -2, -3 for repeats at one place.

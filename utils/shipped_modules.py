@@ -33,6 +33,8 @@ _STARTUP_CHECKPOINT = "modules/conversation_history/startup_conversation.json"
 _TOP_LEVEL_FILES = (
     "module_declaration.json", "module_plot_BU.json", "party_tracker_BU.json",
     "module_context_BU.json", "PLAYER_GUIDE.md", "README.md",
+    # #2127: a module's typed loot items, read by item_catalog in play.
+    "module_items.json",
 )
 
 

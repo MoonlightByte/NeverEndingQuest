@@ -1,0 +1,56 @@
+{
+  "name": "Tainted Stirge",
+  "size": "Tiny",
+  "type": "Beast",
+  "alignment": "Unaligned",
+  "armorClass": 14,
+  "hitPoints": 2,
+  "maxHitPoints": 2,
+  "speed": 10,
+  "alternateSpeeds": {
+    "fly": 40
+  },
+  "abilities": {
+    "strength": 4,
+    "dexterity": 16,
+    "constitution": 11,
+    "intelligence": 2,
+    "wisdom": 8,
+    "charisma": 6
+  },
+  "savingThrows": [],
+  "skills": {},
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 9
+  },
+  "languages": "",
+  "challengeRating": 0.125,
+  "specialAbilities": [],
+  "actions": [
+    {
+      "name": "Proboscis",
+      "kind": "attack",
+      "attackKind": "melee",
+      "attackBonus": 5,
+      "damageDice": "1d4",
+      "damageBonus": 3,
+      "damageType": "piercing",
+      "description": "Melee Attack Roll: +5, reach 5 ft. Hit: 5 (1d4 + 3) Piercing damage plus 2 (1d4) Necrotic damage from the tainted blood it carries.",
+      "onHit": {
+        "damage": [
+          {
+            "damageDice": "1d4",
+            "damageType": "necrotic"
+          }
+        ]
+      }
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

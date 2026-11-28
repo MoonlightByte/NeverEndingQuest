@@ -1,0 +1,81 @@
+{
+  "name": "Bandit Warrior",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Neutral evil",
+  "armorClass": 11,
+  "hitPoints": 32,
+  "maxHitPoints": 32,
+  "speed": 30,
+  "abilities": {
+    "strength": 15,
+    "dexterity": 11,
+    "constitution": 14,
+    "intelligence": 10,
+    "wisdom": 10,
+    "charisma": 11
+  },
+  "savingThrows": [],
+  "skills": {
+    "intimidation": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "passivePerception": 10
+  },
+  "languages": "Common",
+  "challengeRating": 0.5,
+  "specialAbilities": [
+    {
+      "name": "Pack Tactics",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The warrior has Advantage on an attack roll against a creature if at least one of its allies is within 5 feet of the creature and the ally doesn't have the Incapacitated condition."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The warrior makes two Mace attacks."
+    },
+    {
+      "name": "Mace",
+      "kind": "attack",
+      "attackKind": "melee",
+      "attackBonus": 4,
+      "damageDice": "1d6",
+      "damageBonus": 2,
+      "damageType": "bludgeoning",
+      "description": "Melee Attack Roll: +4, reach 5 ft. Hit: 5 (1d6 + 2) Bludgeoning damage."
+    },
+    {
+      "name": "Heavy Crossbow",
+      "kind": "attack",
+      "attackKind": "ranged",
+      "attackBonus": 2,
+      "damageDice": "1d10",
+      "damageBonus": 0,
+      "damageType": "piercing",
+      "description": "Ranged Attack Roll: +2, range 100/400 ft. Hit: 5 (1d10) Piercing damage."
+    }
+  ],
+  "multiattackSequence": [
+    {
+      "name": "Mace",
+      "count": 2
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

@@ -396,7 +396,9 @@ def area_binding_schema(
 
 
 def constrained_plot_schema(repo: Path, outline: Dict[str, Any]) -> Dict[str, Any]:
-    schema = copy.deepcopy(_load_json(repo / "schemas/plot_schema.json"))
+    from core.generators.plot_generator import model_facing_plot_schema
+
+    schema = model_facing_plot_schema(_load_json(repo / "schemas/plot_schema.json"))
     schema["properties"]["plotPoints"]["minItems"] = len(outline["beats"])
     schema["properties"]["plotPoints"]["maxItems"] = len(outline["beats"])
     return schema
