@@ -23,7 +23,9 @@ def _is_player(role: Optional[str]) -> bool:
 
 def _stealth_record(name: Any, stat: Any, result: Any) -> Optional[Dict[str, Any]]:
     """#2127 B8: the typed record of a scored Stealth check against a DC, kept
-    beside its result line for the next DM turn; None for any other check."""
+    beside its result line for the next DM turn; None for any other check.
+    Callers pass it for the player's own checks only (a companion's or NPC's
+    Stealth neither surprises the monsters nor blocks the player's success)."""
     if stat != "skill:stealth" or type(getattr(result, "success", None)) is not bool:
         return None
     return {"characterName": str(name), "skill": "stealth", "success": result.success}
@@ -58,7 +60,7 @@ def stage_roll_check(parameters: Dict[str, Any]) -> Dict[str, Any]:
     if roller == "engine" or not _is_player(role):
         result = checks.resolve(sheet, stat, dc=dc, mode=mode)
         line = checks.describe(result) + (f" [{reason}]" if reason else "")
-        checks_state.add_result(line, stealth=_stealth_record(resolved, stat, result))
+        checks_state.add_result(line, stealth=_stealth_record(resolved, stat, result) if _is_player(role) else None)
         info(f"CHECK: {line}", category="character_updates")
         return {"resolved": line}
     net = checks.net_mode(sheet, stat, mode)
@@ -67,7 +69,7 @@ def stage_roll_check(parameters: Dict[str, Any]) -> Dict[str, Any]:
     if net.mode == "fail":
         result = checks.resolve(sheet, stat, dc=dc, mode=mode)
         line = checks.describe(result) + (f" [{reason}]" if reason else "")
-        checks_state.add_result(line, stealth=_stealth_record(resolved, stat, result))
+        checks_state.add_result(line, stealth=_stealth_record(resolved, stat, result) if _is_player(role) else None)
         info(f"CHECK: {line}", category="character_updates")
         return {"resolved": line}
     entry = {"characterName": resolved, "stat": stat, "dc": dc, "mode": mode, "netMode": net.mode,

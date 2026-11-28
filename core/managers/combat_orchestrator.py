@@ -2418,7 +2418,8 @@ def _scored_damage_lines(events, encounter, characters):
 def _ruled_damage_lines(event, encounter, characters):
     """#2127: a player hit T096 ruled (no code score) gets one receipt line per
     target that lost hit points, so damage never changes HP with nothing on
-    screen. The amount is the ruled hpDelta for that target, else the HP lost.
+    screen. The amount is the ruled hpDelta for that target, else (no ruled
+    delta, or a saved target the resolver halved) the HP lost.
     Typed fields only: the actor's type, the outcome targets, the intent."""
     actor = combatant_by_id(encounter, event.get("actorId"))
     if not isinstance(actor, dict) or actor.get("type") != "player":
@@ -2438,7 +2439,9 @@ def _ruled_damage_lines(event, encounter, characters):
         if type(before) is not int or type(after) is not int or after >= before:
             continue
         delta = ruled.get(record.get("combatantId"))
-        amount = -delta if type(delta) is int and delta < 0 else before - after
+        # A saved target took the resolver's halved damage, not the ruled delta.
+        amount = (-delta if type(delta) is int and delta < 0 and record.get("saved") is not True
+                  else before - after)
         target = combatant_by_id(encounter, record.get("combatantId")) or {}
         lines.append("%s damage on %s: %d, as ruled." % (weapon, _spoken_name(target.get("name")), amount))
     return lines
