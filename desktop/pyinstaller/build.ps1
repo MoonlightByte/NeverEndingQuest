@@ -152,7 +152,13 @@ if (-not $health) { $server.Kill(); Fail "/health never reported ready; see $ser
 $version = (Get-Content "VERSION" -Raw).Trim()
 if ($health.version -ne $version) { $server.Kill(); Fail "/health version $($health.version), VERSION $version" }
 Step "  /health ready, version $($health.version), port $port"
-Invoke-WebRequest -UseBasicParsing -Method Post -Headers $headers -Uri "http://127.0.0.1:$port/shutdown" | Out-Null
+# The server may close the connection before its answer arrives: stopping is what was asked.
+# The exit within the wait and its code, below, are the check.
+try {
+    Invoke-WebRequest -UseBasicParsing -Method Post -Headers $headers -Uri "http://127.0.0.1:$port/shutdown" | Out-Null
+} catch [System.IO.IOException], [System.Net.WebException] {
+    Step "  /shutdown: the connection closed before the answer"
+}
 if (-not $server.WaitForExit(120000)) { $server.Kill(); Fail "the server did not stop after /shutdown" }
 if ($server.ExitCode -ne 0) { Fail "the server exited $($server.ExitCode) after /shutdown" }
 Step "  /shutdown: exit 0"
