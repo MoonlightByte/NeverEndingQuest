@@ -978,7 +978,8 @@ def apply_typed_completions(module, *, root=".", journal=True) -> List[str]:
                 info("QUESTS: typed completion %s: %s" % (request_id, line), category="plot_updates")
                 checks_state.add_quest_note(request_id, (
                     "QUEST: %s is complete in the quest record, its authored condition met (%s). Do not send an "
-                    "updatePlot for it; tell the player only what the scene shows." % (ident, impact)))
+                    "updatePlot for it; tell the player only what the scene shows." % (ident, impact)),
+                    kind="typed_close")
     except (InvocationSupersededError, LiveProviderSuperseded, ReadOnlySaveStop):
         # A superseded turn or a save stop ends the turn, not just the close (#1108).
         raise

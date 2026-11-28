@@ -4370,14 +4370,16 @@ def _t065_response_format(provider, validation_config):
     return config
 
 
-def _dm_fail_forward_line():
+def _dm_fail_forward_line(category=None):
     """One in-character DM line that admits the slip and asks the player to
-    restate (D-COST-4), drawn from the authored list in data. Never an error."""
+    restate (D-COST-4), drawn from the authored list in data. Never an error.
+    #2127: after a travel or action-order rejection the travel lines are used."""
     import random
 
+    key = "travelLines" if category in ("travel", "action_order") else "lines"
     try:
         with open(_DM_FAIL_FORWARD_LINES_PATH, "r", encoding="utf-8") as f:
-            lines = [line for line in json.load(f).get("lines", [])
+            lines = [line for line in json.load(f).get(key, [])
                      if isinstance(line, str) and line.strip()]
     except (OSError, ValueError, AttributeError):
         lines = []
@@ -6153,7 +6155,7 @@ def validate_ai_response(
                 if verdict_category == "ungrounded_destination":
                     # #1357: the typed verdict the review loop reconciles.
                     return (False, reason, verdict_category)
-                return (False, reason)  # Return tuple with failure status and reason
+                return (False, reason, verdict_category)  # #2127: the category picks the fail-forward line
             else:
                 debug("SUCCESS: Validation passed successfully", category="ai_validation")
                 # Return the fixed/validated response content
@@ -11869,6 +11871,23 @@ def _main_game_loop(startup_authority, turn_authority):
         from core.managers.checks_runtime import rest_offers_note
 
         dm_note += rest_offers_note()
+        # #2127 L1r: the engine's advancement offer, on a quiet turn only; the DM describes it.
+        from core.managers import checks_runtime as _checks_runtime
+        from core.managers.checks_runtime import levelup_offer_note
+
+        dm_note += levelup_offer_note(
+            party_tracker_data,
+            sum(1 for m in conversation_history if isinstance(m, dict) and m.get("role") == "assistant"),
+            quiet=not (
+                check_continuation
+                or roll_settle.get("settled")
+                or _checks_runtime.LAST_NOTE
+                or _checks_runtime.checks_state.pending_checks()
+                or _checks_runtime.checks_state.pending_rest() is not None
+                or should_inject_creation_prompt
+                or (party_tracker_data.get("worldConditions") or {}).get("activeCombatEncounter")
+            ),
+        )
         # #1118 items 3 and 4: a roll still waiting, with this turn's settle note.
         from core.managers.checks_runtime import pending_roll_note
 
@@ -13017,6 +13036,8 @@ def _review_dm_candidate_body(
     # #729: unusable T114 verdicts in this review; never reset before the
     # return, whichever draft drew them.
     unusable_guardian_verdicts = 0
+    # #2127: the typed category of the last T065 rejection.
+    last_verdict_category = None
     while True:
         require_current()
         if retry_count != counted_retry_count:
@@ -13028,16 +13049,19 @@ def _review_dm_candidate_body(
             rejected_drafts >= _DM_REVIEW_REJECTION_LIMIT
             or unusable_guardian_verdicts >= _GUARDIAN_UNUSABLE_LIMIT
         ):
+            # #2127: the last rejection's category picks the line (a route
+            # refusal is travel; a T065 rejection gives its own category).
+            last_category = {"route": "travel", "validator": last_verdict_category}.get(retry_stage, retry_stage)
             warning(
                 "VALIDATION: %d drafts rejected and %d unusable T114 verdicts "
-                "in one review; the turn ends without change."
-                % (rejected_drafts, unusable_guardian_verdicts),
+                "in one review; the turn ends without change (last rejection: %s)."
+                % (rejected_drafts, unusable_guardian_verdicts, last_category),
                 category="ai_validation",
             )
             return {
                 "status": "review_exhausted",
                 # D-COST-4: the same in-character fail-forward line as T065.
-                "player_message": _dm_fail_forward_line(),
+                "player_message": _dm_fail_forward_line(last_category),
             }
         approved_transition_plan = None
         if module_snapshot is None:
@@ -13844,6 +13868,8 @@ def _review_dm_candidate_body(
                 validation_reason = validation_result if isinstance(validation_result, str) else ""
             if not is_valid:
                 rejected_candidate = ai_response_content
+                last_verdict_category = (
+                    validation_result[2] if isinstance(validation_result, tuple) and len(validation_result) > 2 else None)
                 if validation_reason:
                     if validation_reason == previous_semantic_rejection:
                         consecutive_semantic_rejections += 1

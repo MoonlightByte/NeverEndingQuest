@@ -315,6 +315,7 @@ def execute_rest(rest_type: Any, party_tracker: Optional[Dict[str, Any]] = None,
                 "hit_dice_receipts": receipts, "hit_dice_refused": refused}
     if kind == "long":
         checks_state.close_rest_offers()
+        checks_state.note_long_rest()  # #2127: an open advancement offer may be raised again
     else:
         _offer_after_rest(party, hit_dice, grace_seconds, operation)
     from core.managers.effects_runtime import process_effect_lifecycle
