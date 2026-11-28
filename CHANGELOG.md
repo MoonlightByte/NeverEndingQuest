@@ -10,8 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - During character creation, a Weapon Mastery pick must now be a weapon your class can master, such as a Greatsword; a mastery property such as Topple is refused and the guide asks you again (#2090).
 - With LM Studio and other Local/Custom servers, character creation now asks the server for the game's reply format, and falls back to today's plain request if the server refuses it (#2090).
 - During character creation, a reply from the AI that was cut off partway is no longer shown to you or kept; the game asks again, and if every try is cut off it shows the usual "AI provider did not answer" notice so you can try again (#2090).
-- With LM Studio and other Local/Custom servers, character creation now gives the model a short overview of the classes, species and backgrounds, so it keeps gear choices and the options you are asking about straight (#2090).
+- With LM Studio and other Local/Custom servers, character creation now gives the model a short overview of the classes, species, backgrounds and creation rules, so it keeps your choices straight (#2090).
 - During character creation, a reply from the AI that came back garbled is no longer shown to you as raw text (#2090).
+- During character creation, if the AI sends your ability scores with your background's bonus already added in, the game now keeps your base scores instead of refusing them (#2090).
+- During character creation, when the AI's reply could not be used after your character was complete, the AI now shows you the whole character so you can approve it or say what to change (#2090).
+- During character creation, an alignment written with different capital letters (such as "Lawful Good") is now accepted, and the AI is told which alignments it can choose from (#2090).
+- During character creation, a choice written by its full name, such as the spell "Cure Wounds", is now accepted; when a pick is refused, the AI is told which options it can choose from (#2090).
+- During character creation with rolled ability scores, when the AI tries to use numbers that are not your roll, it is now told your rolled numbers so it can place them correctly; with LM Studio and other Local/Custom servers, the AI also sees your roll at the top of every turn (#2090).
+- With LM Studio and other Local/Custom servers, once your character is complete the game shows you its own character sheet beside the AI's summary, so you can check the build before you approve it (#2090).
 
 ## [1.2.9] - 2026-11-27
 
