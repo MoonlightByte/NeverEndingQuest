@@ -598,7 +598,8 @@ def levelup_offer_note(party: Any, turn_marker: Any, *, quiet: bool) -> str:
     level = player.get("level") if isinstance(player, dict) else None
     offer = checks_state.levelup_offer()
     if type(pending) is not int or pending < 1 or type(level) is not int:
-        if offer is not None:
+        if offer is not None and type(pending) is int and pending < 1:
+            # Only a read sheet owing no level closes it; an unreadable one keeps the count (and the cap).
             checks_state.set_levelup_offer(None)
         return ""
     cid = genesis.character_id(player)
