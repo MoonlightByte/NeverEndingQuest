@@ -7,7 +7,10 @@
     "My dice rolled off the table and I missed that. Run it by me once more?",
     "Forgive me, my mind wandered to the next chapter. What was your move?",
     "I got that a little tangled. Tell me again what you'd like to do?",
-    "Apologies, a gust blew my map off the table. Where were we? What are you trying?",
+    "Apologies, a gust blew my map off the table. Where were we? What are you trying?"
+  ],
+  "_travelComment": "#2127: shown instead when the last rejected draft was refused for travel or action order.",
+  "travelLines": [
     "I didn't quite catch that one. Could you say it again, maybe one step at a time?"
   ]
 }

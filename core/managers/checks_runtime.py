@@ -511,22 +511,31 @@ def rest_offers_note() -> str:
 
 
 LAST_QUEST_NOTES: List[str] = []  # the travel quest refusals in the current turn's DM note (#1122)
+LAST_QUEST_CLOSES: List[str] = []  # the typed quest closes in the current turn's DM note (#2127)
 
 
 def quest_notes_note(turn_marker=None) -> str:
     """#1122: each updatePlot the engine refused during the last travel, once (handed again
     if that turn never landed). DM-only text; the DM decides whether to record it later."""
-    global LAST_QUEST_NOTES
-    LAST_QUEST_NOTES = checks_state.consume_quest_notes(turn_marker)
-    return "".join("\n" + text for text in LAST_QUEST_NOTES)
+    global LAST_QUEST_NOTES, LAST_QUEST_CLOSES
+    notes = checks_state.consume_quest_notes(turn_marker, with_kind=True)
+    LAST_QUEST_NOTES = [text for text, kind in notes if kind != "typed_close"]
+    LAST_QUEST_CLOSES = [text for text, kind in notes if kind == "typed_close"]
+    return "".join("\n" + text for text, _kind in notes)
 
 
 def _quest_notes_validation() -> str:
-    if not LAST_QUEST_NOTES:
-        return ""
-    return ("\nThe DM Note carried engine notices of quest updates refused during the last travel: "
-            + " | ".join(LAST_QUEST_NOTES)
-            + " The DM may record them now if the story supports it, or not; neither is invalid on that account.")
+    text = ""
+    if LAST_QUEST_NOTES:
+        text += ("\nThe DM Note carried engine notices of quest updates refused during the last travel: "
+                 + " | ".join(LAST_QUEST_NOTES)
+                 + " The DM may record them now if the story supports it, or not; neither is invalid on that account.")
+    if LAST_QUEST_CLOSES:
+        # #2127: a typed close is not a travel refusal.
+        text += ("\nThe DM Note carried engine notices of quests the rules engine closed: "
+                 + " | ".join(LAST_QUEST_CLOSES)
+                 + " The DM was told not to send an updatePlot for them; a candidate without one is valid on that account.")
+    return text
 
 
 def _rest_offers_validation() -> str:
@@ -553,10 +562,99 @@ def _pending_validation() -> str:
             + " A candidate that narrates a result for it is invalid.")
 
 
+LAST_LEVELUP_OFFER: Dict[str, Any] | None = None  # the advancement offer in the current turn's DM note (#2127)
+LEVELUP_REASK_TURNS = 6  # DM turns between issues of one open offer, unless a long rest came between
+LEVELUP_MAX_ISSUES = 3  # issues per target level; after that only the stats marker remains
+
+
+def _levelup_player(party: Any) -> Dict[str, Any] | None:
+    """The player character's sheet: the party tracker's first member, by engine id."""
+    try:
+        from core.managers.effects_runtime import _party_sheets
+        from core.managers.rest_manager import _party_root
+
+        sheets, _paths = _party_sheets(party if isinstance(party, dict) else {})
+        return _party_root(list(sheets.values()), party)
+    except Exception:
+        return None
+
+
+def levelup_offer_note(party: Any, turn_marker: Any, *, quiet: bool) -> str:
+    """#2127 L1r: the ADVANCEMENT line for this DM turn, or "".
+
+    Due when the player character's levelUpsPending is above 0 on a quiet turn
+    (the caller's typed facts: no roll or check open or settling, no combat, not
+    campaign end), at most LEVELUP_MAX_ISSUES times per target level, spaced by
+    LEVELUP_REASK_TURNS DM turns (distinct turn markers seen since the last
+    issue) unless a long rest came between. A turn built again for the same
+    marker hands the same line again without counting it.
+    Closed by the engine only: no level owed, or a new target level."""
+    global LAST_LEVELUP_OFFER
+    from core.nql import genesis
+
+    LAST_LEVELUP_OFFER = None
+    player = _levelup_player(party)
+    pending = player.get("levelUpsPending") if isinstance(player, dict) else None
+    level = player.get("level") if isinstance(player, dict) else None
+    offer = checks_state.levelup_offer()
+    if type(pending) is not int or pending < 1 or type(level) is not int:
+        if offer is not None and type(pending) is int and pending < 1:
+            # Only a read sheet owing no level closes it; an unreadable one keeps the count (and the cap).
+            checks_state.set_levelup_offer(None)
+        return ""
+    cid = genesis.character_id(player)
+    target = level + 1
+    if offer is not None and (offer.get("characterId") != cid or offer.get("targetLevel") != target):
+        offer = None
+    if offer is not None and turn_marker != offer.get("lastTurn") and turn_marker != offer.get("seenTurn"):
+        # A DM turn not seen before while the offer is open: counted, so the
+        # spacing survives a history compaction that lowers the marker.
+        offer = dict(offer, seen=int(offer.get("seen") or 0) + 1, seenTurn=turn_marker)
+        checks_state.set_levelup_offer(offer)
+    hp = player.get("hitPoints")
+    if not quiet or (isinstance(hp, (int, float)) and hp <= 0):
+        return ""
+    again = (offer is not None and turn_marker is not None and offer.get("lastTurn") == turn_marker
+             and not offer.get("seen"))
+    if not again:
+        if offer is None:
+            offer = {"characterId": cid, "targetLevel": target, "issues": 0}
+        else:
+            spaced = int(offer.get("seen") or 0) >= LEVELUP_REASK_TURNS
+            if int(offer.get("issues") or 0) >= LEVELUP_MAX_ISSUES or not (spaced or offer.get("longRest")):
+                return ""
+        offer = dict(offer, issues=int(offer.get("issues") or 0) + 1, lastTurn=turn_marker, seen=0,
+                     seenTurn=turn_marker, longRest=False)
+        checks_state.set_levelup_offer(offer)
+    name = str(player.get("name"))
+    LAST_LEVELUP_OFFER = {"name": name, "characterId": cid, "targetLevel": target}
+    return (f"\nADVANCEMENT (the rules engine, this turn): {name} (id {cid}) has grown enough to advance to level "
+            f"{target}. In this reply, after you answer the player's input, bring it into the story. Narrate, in this "
+            f"scene's own terms, that {name} has grown through what they have lived through: let it show in something "
+            "that fits who they are and what they have just done. Let others see it: a companion who knows them well "
+            f"may remark on it in their own voice, and may be the one to say that {name} is ready to advance. Then "
+            f"offer the advancement: ask the player whether {name} wants to advance now. Call it advancement or "
+            "advancing, never leveling up; leave out level numbers and experience unless the player asks directly, "
+            "and then answer plainly in the story's voice. That question is the offer to advance, and the player "
+            "saying yes to it in any words is accepting it. Do not send levelUp in this reply; send it when the "
+            "player accepts in a later turn. If the player declines, do not press.")
+
+
+def _levelup_offer_validation() -> str:
+    if not LAST_LEVELUP_OFFER:
+        return ""
+    name = LAST_LEVELUP_OFFER["name"]
+    return (f"\nADVANCEMENT this turn (engine-issued): the DM was asked to bring {name}'s growth into the story and "
+            f"to ask, in the scene, whether {name} wants to advance now. A candidate that does so in story terms is "
+            "valid on that account; it needs no game words beyond advancement. A candidate that sends levelUp in "
+            "this same reply is invalid, because the player has not yet answered.")
+
+
 def validation_context() -> str:
     """What the validator must know: the engine already scored these checks and the DM was told to narrate them."""
     if not LAST_NOTE:
-        return (_rest_offers_validation() + _pending_validation() + _quest_notes_validation()).lstrip("\n")
+        return (_rest_offers_validation() + _pending_validation() + _quest_notes_validation()
+                + _levelup_offer_validation()).lstrip("\n")
     return ("The Dungeon Master Note for this turn carried the rules engine's scored check results below. The candidate "
             "is REQUIRED to narrate each outcome (success or failure and what it means in the scene) as a settled fact; "
             "a candidate that calls such a check pending or unresolved, contradicts its success or failure, or asks for "
@@ -565,4 +663,4 @@ def validation_context() -> str:
             "a candidate for leaving them out. The DM never scores a number the player typed; only these lines are results. A READ "
             "line governs how its read is narrated: a candidate in which an NPC confesses, explains or names what they are "
             "hiding in answer to that read is invalid." + LAST_NOTE + _rest_offers_validation() + _pending_validation()
-            + _quest_notes_validation())
+            + _quest_notes_validation() + _levelup_offer_validation())

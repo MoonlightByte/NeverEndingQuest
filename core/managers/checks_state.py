@@ -137,22 +137,26 @@ def delivered_for_turn(turn_marker: Any) -> List[str]:
 # Queued under its request id; handed out like the check results above.
 
 @_locked
-def add_quest_note(request_id: str, text: str) -> None:
+def add_quest_note(request_id: str, text: str, kind: str | None = None) -> None:
+    """kind "typed_close" marks a quest the engine closed (#2127); none is a travel refusal."""
     state = load_checks_state()
     notes = state.get("questNotes") if isinstance(state.get("questNotes"), list) else []
     delivered = state.get("questDelivered") if isinstance(state.get("questDelivered"), dict) else {}
     known = {n.get("requestId") for n in notes + list(delivered.get("notes") or []) if isinstance(n, dict)}
     if request_id in known:
         return
-    state["questNotes"] = notes + [{"requestId": request_id, "text": text}]
+    note = {"requestId": request_id, "text": text}
+    if kind:
+        note["kind"] = kind
+    state["questNotes"] = notes + [note]
     write_checks_state(state)
 
 
 @_locked
-def consume_quest_notes(turn_marker: Any = None) -> List[str]:
+def consume_quest_notes(turn_marker: Any = None, with_kind: bool = False) -> List[Any]:
     """The quest notes for the DM turn starting now, with consume_results' rule:
     handed again while the next note is built for the same marker, cleared once
-    a later turn's note is built."""
+    a later turn's note is built. with_kind: (text, kind) pairs (#2127)."""
     state = load_checks_state()
     notes = [n for n in state.get("questNotes") or [] if isinstance(n, dict)]
     delivered = state.get("questDelivered")
@@ -167,6 +171,8 @@ def consume_quest_notes(turn_marker: Any = None) -> List[str]:
         else:
             state.pop("questDelivered", None)
         write_checks_state(state)
+    if with_kind:
+        return [(str(n.get("text") or ""), n.get("kind")) for n in handed]
     return [str(n.get("text") or "") for n in handed]
 
 
@@ -288,3 +294,34 @@ def close_pending_checks() -> List[Dict[str, Any]]:
     state["pending"] = []
     write_checks_state(state)
     return [entry for entry in closed if isinstance(entry, dict)]
+
+
+# #2127 L1r: the engine's advancement offer for the player character. One open
+# offer under its own key: {characterId, targetLevel, issues, lastTurn,
+# longRest}. A new target level replaces it; no level owed clears it.
+
+def levelup_offer() -> Dict[str, Any] | None:
+    offer = load_checks_state().get("levelUpOffer")
+    return dict(offer) if isinstance(offer, dict) else None
+
+
+@_locked
+def set_levelup_offer(offer: Dict[str, Any] | None) -> None:
+    state = load_checks_state()
+    if offer is None:
+        if "levelUpOffer" not in state:
+            return
+        state.pop("levelUpOffer", None)
+    else:
+        state["levelUpOffer"] = dict(offer)
+    write_checks_state(state)
+
+
+@_locked
+def note_long_rest() -> None:
+    """A long rest committed: an open advancement offer may be raised again at once."""
+    state = load_checks_state()
+    offer = state.get("levelUpOffer")
+    if isinstance(offer, dict) and not offer.get("longRest"):
+        offer["longRest"] = True
+        write_checks_state(state)
