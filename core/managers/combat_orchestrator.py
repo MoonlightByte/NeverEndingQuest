@@ -2407,11 +2407,44 @@ def _scored_damage_lines(events, encounter, characters):
             scored = dict(bonus, actorId=event.get("actorId"))
             lines.append(_scored_damage_line(scored, bonus.get("targetId"), encounter, characters, off_hand=True))
         if outcome.get("scoredBy") != "code":
+            lines.extend(_ruled_damage_lines(event, encounter, characters))
             for rider in outcome.get("damageRiders") or []:
                 target = combatant_by_id(encounter, rider.get("combatantId")) or {}
                 lines.append("%s %s = %d %s on %s." % (rider["label"], rider["die"], rider["rolled"],
                                                        rider["damageType"], _spoken_name(target.get("name"))))
     return [line for line in lines if line]
+
+
+def _ruled_damage_lines(event, encounter, characters):
+    """#2127: a player hit T096 ruled (no code score) gets one receipt line per
+    target that lost hit points, so damage never changes HP with nothing on
+    screen. The amount is the ruled hpDelta for that target, else (no ruled
+    delta, or a saved target the resolver halved) the HP lost.
+    Typed fields only: the actor's type, the outcome targets, the intent."""
+    actor = combatant_by_id(encounter, event.get("actorId"))
+    if not isinstance(actor, dict) or actor.get("type") != "player":
+        return []
+    outcome = event.get("outcome") or {}
+    intent = event.get("intent") if isinstance(event.get("intent"), dict) else {}
+    ruled = {row.get("combatantId"): row.get("hpDelta") for row in intent.get("targets") or []
+             if isinstance(row, dict)}
+    name = str(intent.get("ability") or "")
+    entry = weapon_attack_sheet_entry(encounter, characters, {"actorId": event.get("actorId"), "ability": name})
+    weapon = _spoken_weapon({"ability": name}, entry) or str(outcome.get("kind") or "attack").capitalize()
+    lines = []
+    for record in outcome.get("targets") or []:
+        if not isinstance(record, dict):
+            continue
+        before, after = record.get("hpBefore"), record.get("hpAfter")
+        if type(before) is not int or type(after) is not int or after >= before:
+            continue
+        delta = ruled.get(record.get("combatantId"))
+        # A saved target took the resolver's halved damage, not the ruled delta.
+        amount = (-delta if type(delta) is int and delta < 0 and record.get("saved") is not True
+                  else before - after)
+        target = combatant_by_id(encounter, record.get("combatantId")) or {}
+        lines.append("%s damage on %s: %d, as ruled." % (weapon, _spoken_name(target.get("name")), amount))
+    return lines
 
 
 def _show_scored_damage(events, encounter, characters):

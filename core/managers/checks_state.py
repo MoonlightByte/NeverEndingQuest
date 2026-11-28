@@ -62,10 +62,18 @@ def add_pending(entry: Dict[str, Any]) -> bool:
     return True
 
 
+def _add_stealth(state: Dict[str, Any], stealth: Any) -> None:
+    """#2127 B8: a typed Stealth result kept beside its line (optional key)."""
+    if isinstance(stealth, dict):
+        kept = state.get("stealthResults") if isinstance(state.get("stealthResults"), list) else []
+        state["stealthResults"] = kept + [dict(stealth)]
+
+
 @_locked
-def add_result(line: str) -> None:
+def add_result(line: str, stealth: Any = None) -> None:
     state = load_checks_state()
     state["results"].append(line)
+    _add_stealth(state, stealth)
     write_checks_state(state)
 
 
@@ -84,7 +92,7 @@ def pop_pending() -> Dict[str, Any] | None:
 
 
 @_locked
-def complete_pending(entry: Dict[str, Any], line: str) -> bool:
+def complete_pending(entry: Dict[str, Any], line: str, stealth: Any = None) -> bool:
     """Remove a check only when its result can be saved in the same write.
 
     An EOF, process restart or failed write leaves the pending check available.
@@ -96,6 +104,7 @@ def complete_pending(entry: Dict[str, Any], line: str) -> bool:
         return False
     state['pending'].pop(0)
     state['results'].append(line)
+    _add_stealth(state, stealth)
     write_checks_state(state)
     return True
 
@@ -113,12 +122,19 @@ def consume_results(turn_marker: Any = None) -> List[str]:
     state = load_checks_state()
     delivered = state.get("delivered")
     again: List[str] = []
+    again_stealth: List[Dict[str, Any]] = []
     if isinstance(delivered, dict) and delivered.get("turn") == turn_marker and turn_marker is not None:
         again = [line for line in delivered.get("lines") or [] if isinstance(line, str)]
+        again_stealth = [s for s in delivered.get("stealth") or [] if isinstance(s, dict)]
     lines = again + list(state["results"])
-    if lines or delivered is not None:
+    # #2127 B8: the typed Stealth results ride with their lines for this one turn.
+    stealth = again_stealth + [s for s in state.get("stealthResults") or [] if isinstance(s, dict)]
+    if lines or delivered is not None or "stealthResults" in state:
         state["results"] = []
+        state.pop("stealthResults", None)
         state["delivered"] = {"turn": turn_marker, "lines": lines} if lines else None
+        if lines and stealth:
+            state["delivered"]["stealth"] = stealth
         write_checks_state(state)
     return lines
 
@@ -131,6 +147,15 @@ def delivered_for_turn(turn_marker: Any) -> List[str]:
     if turn_marker is None or not isinstance(delivered, dict) or delivered.get("turn") != turn_marker:
         return []
     return [line for line in delivered.get("lines") or [] if isinstance(line, str)]
+
+
+def stealth_for_turn(turn_marker: Any) -> List[Dict[str, Any]]:
+    """#2127 B8: the typed Stealth results handed to the DM turn ``turn_marker``,
+    by delivered_for_turn's rule; [] for any other turn or an old save."""
+    delivered = load_checks_state().get("delivered")
+    if turn_marker is None or not isinstance(delivered, dict) or delivered.get("turn") != turn_marker:
+        return []
+    return [dict(s) for s in delivered.get("stealth") or [] if isinstance(s, dict)]
 
 
 # #1122: an updatePlot the engine refused during a travel, told to the DM once.
