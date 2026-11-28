@@ -1,0 +1,101 @@
+{
+  "name": "Corrupted Cave Fisher",
+  "size": "Medium",
+  "type": "Monstrosity",
+  "alignment": "Unaligned",
+  "armorClass": 16,
+  "hitPoints": 30,
+  "maxHitPoints": 30,
+  "speed": 20,
+  "alternateSpeeds": {
+    "climb": 20
+  },
+  "abilities": {
+    "strength": 16,
+    "dexterity": 13,
+    "constitution": 14,
+    "intelligence": 3,
+    "wisdom": 10,
+    "charisma": 3
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 2,
+    "stealth": 5
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "blindsight": 60,
+    "passivePerception": 12
+  },
+  "languages": "",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Spider Climb",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The cave fisher can climb difficult surfaces, including ceilings, without an ability check."
+    },
+    {
+      "name": "Adhesive Filament",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "Its filaments are near invisible and stick to whatever touches them; a creature that walks into one has the Grappled condition (escape DC 13). A filament has AC 15 and 5 HP."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The cave fisher makes two Claw attacks."
+    },
+    {
+      "name": "Claw",
+      "kind": "attack",
+      "attackKind": "melee",
+      "attackBonus": 5,
+      "damageDice": "1d6",
+      "damageBonus": 3,
+      "damageType": "slashing",
+      "description": "Melee Attack Roll: +5, reach 5 ft. Hit: 6 (1d6 + 3) Slashing damage."
+    },
+    {
+      "name": "Filament",
+      "kind": "attack",
+      "attackKind": "ranged",
+      "attackBonus": 5,
+      "damageDice": "1d4",
+      "damageBonus": 0,
+      "damageType": "necrotic",
+      "description": "Ranged Attack Roll: +5, range 60 ft., one creature. Hit: 2 (1d4) Necrotic damage, and the target has the Grappled condition (escape DC 13); the fisher reels it 25 feet toward itself.",
+      "onHit": {
+        "conditions": [
+          "grappled"
+        ],
+        "targetMaxSize": "Large"
+      }
+    }
+  ],
+  "multiattackSequence": [
+    {
+      "name": "Claw",
+      "count": 2
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

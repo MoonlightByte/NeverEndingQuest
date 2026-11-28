@@ -1,0 +1,82 @@
+{
+  "name": "Elite Bandit Bodyguard",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Neutral evil",
+  "armorClass": 15,
+  "hitPoints": 30,
+  "maxHitPoints": 30,
+  "speed": 30,
+  "abilities": {
+    "strength": 15,
+    "dexterity": 14,
+    "constitution": 13,
+    "intelligence": 10,
+    "wisdom": 11,
+    "charisma": 10
+  },
+  "savingThrows": [],
+  "skills": {
+    "athletics": 4,
+    "perception": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "passivePerception": 12
+  },
+  "languages": "Common",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Protector",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "Reaction: when a creature the bodyguard can see attacks its master within 5 feet of the bodyguard, the bodyguard imposes Disadvantage on that attack roll."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Multiattack",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The bodyguard makes two Longsword attacks."
+    },
+    {
+      "name": "Longsword",
+      "kind": "attack",
+      "attackKind": "melee",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "slashing",
+      "description": "Melee Attack Roll: +4, reach 5 ft. Hit: 6 (1d8 + 2) Slashing damage."
+    },
+    {
+      "name": "Light Crossbow",
+      "kind": "attack",
+      "attackKind": "ranged",
+      "attackBonus": 4,
+      "damageDice": "1d8",
+      "damageBonus": 2,
+      "damageType": "piercing",
+      "description": "Ranged Attack Roll: +4, range 80/320 ft. Hit: 6 (1d8 + 2) Piercing damage."
+    }
+  ],
+  "multiattackSequence": [
+    {
+      "name": "Longsword",
+      "count": 2
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

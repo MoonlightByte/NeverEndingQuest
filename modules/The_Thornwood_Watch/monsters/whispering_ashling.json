@@ -1,0 +1,73 @@
+{
+  "name": "Whispering Ashling",
+  "size": "Small",
+  "type": "Elemental",
+  "alignment": "Neutral evil",
+  "armorClass": 12,
+  "hitPoints": 7,
+  "maxHitPoints": 7,
+  "speed": 30,
+  "abilities": {
+    "strength": 6,
+    "dexterity": 14,
+    "constitution": 10,
+    "intelligence": 6,
+    "wisdom": 10,
+    "charisma": 8
+  },
+  "savingThrows": [],
+  "skills": {
+    "stealth": 4
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "necrotic"
+  ],
+  "damageImmunities": [
+    "fire",
+    "poison"
+  ],
+  "conditionImmunities": [
+    "poisoned"
+  ],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 10
+  },
+  "languages": "understands Common; speaks only in whispers",
+  "challengeRating": 0.125,
+  "specialAbilities": [
+    {
+      "name": "Whispering Cinders",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The ashling murmurs without pause in a voice like settling ash. A creature that listens closely hears fragments of Malarok's commands."
+    },
+    {
+      "name": "Ash Form",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The ashling can move through a space as narrow as 1 inch without squeezing."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Ash Touch",
+      "kind": "attack",
+      "attackKind": "melee",
+      "attackBonus": 4,
+      "damageDice": "1d4",
+      "damageBonus": 2,
+      "damageType": "fire",
+      "description": "Melee Attack Roll: +4, reach 5 ft. Hit: 4 (1d4 + 2) Fire damage."
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

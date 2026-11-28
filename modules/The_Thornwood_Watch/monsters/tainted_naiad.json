@@ -1,0 +1,100 @@
+{
+  "name": "Tainted Naiad",
+  "size": "Medium",
+  "type": "Fey",
+  "alignment": "Chaotic neutral",
+  "armorClass": 13,
+  "hitPoints": 22,
+  "maxHitPoints": 22,
+  "speed": 30,
+  "alternateSpeeds": {
+    "swim": 40
+  },
+  "abilities": {
+    "strength": 10,
+    "dexterity": 16,
+    "constitution": 11,
+    "intelligence": 12,
+    "wisdom": 14,
+    "charisma": 16
+  },
+  "savingThrows": [],
+  "skills": {
+    "persuasion": 5,
+    "stealth": 5
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [
+    "necrotic"
+  ],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "darkvision": 60,
+    "passivePerception": 12
+  },
+  "languages": "Common, Sylvan",
+  "challengeRating": 1,
+  "specialAbilities": [
+    {
+      "name": "Amphibious",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "The naiad can breathe air and water."
+    },
+    {
+      "name": "Redeemable",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "Remove Curse or Lesser Restoration cast on the naiad, or a successful DC 15 Charisma (Persuasion) check with an offering of purified water, ends her corruption: she stops fighting and returns to her spring."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Tainted Lash",
+      "kind": "attack",
+      "attackKind": "melee",
+      "attackBonus": 5,
+      "damageDice": "2d6",
+      "damageBonus": 3,
+      "damageType": "necrotic",
+      "description": "Melee Attack Roll: +5, reach 10 ft. Hit: 10 (2d6 + 3) Necrotic damage."
+    },
+    {
+      "name": "Drowning Song",
+      "kind": "save",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "recharge": {
+        "min": 5,
+        "max": 6
+      },
+      "save": {
+        "ability": "wisdom",
+        "dc": 13,
+        "halfOnSave": false,
+        "onFail": {
+          "damageDice": "",
+          "damageBonus": 0,
+          "damageType": "",
+          "conditions": [
+            "charmed"
+          ],
+          "roundsRemaining": 1,
+          "repeatAtEndOfTurn": false
+        }
+      },
+      "description": "Wisdom Saving Throw: DC 13, one creature the naiad can see within 30 feet. Failure: The target has the Charmed condition until the end of its next turn and wades toward the spring. Recharge 5-6."
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}

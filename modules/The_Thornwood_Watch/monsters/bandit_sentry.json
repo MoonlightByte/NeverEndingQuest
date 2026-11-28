@@ -1,0 +1,66 @@
+{
+  "name": "Bandit Sentry",
+  "size": "Medium",
+  "type": "Humanoid",
+  "alignment": "Neutral evil",
+  "armorClass": 12,
+  "hitPoints": 11,
+  "maxHitPoints": 11,
+  "speed": 30,
+  "abilities": {
+    "strength": 11,
+    "dexterity": 12,
+    "constitution": 12,
+    "intelligence": 10,
+    "wisdom": 10,
+    "charisma": 10
+  },
+  "savingThrows": [],
+  "skills": {
+    "perception": 2
+  },
+  "damageVulnerabilities": [],
+  "damageResistances": [],
+  "damageImmunities": [],
+  "conditionImmunities": [],
+  "senses": {
+    "passivePerception": 12
+  },
+  "languages": "Common",
+  "challengeRating": 0.125,
+  "specialAbilities": [
+    {
+      "name": "Alarm",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "A sentry who sees intruders shouts or blows a horn, waking the camp."
+    }
+  ],
+  "actions": [
+    {
+      "name": "Scimitar",
+      "kind": "attack",
+      "attackKind": "melee",
+      "attackBonus": 3,
+      "damageDice": "1d6",
+      "damageBonus": 1,
+      "damageType": "slashing",
+      "description": "Melee Attack Roll: +3, reach 5 ft. Hit: 4 (1d6 + 1) Slashing damage."
+    },
+    {
+      "name": "Light Crossbow",
+      "kind": "attack",
+      "attackKind": "ranged",
+      "attackBonus": 3,
+      "damageDice": "1d8",
+      "damageBonus": 1,
+      "damageType": "piercing",
+      "description": "Ranged Attack Roll: +3, range 80/320 ft. Hit: 5 (1d8 + 1) Piercing damage."
+    }
+  ],
+  "legendaryActions": [],
+  "condition": "Alive"
+}
