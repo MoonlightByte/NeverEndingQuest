@@ -4846,15 +4846,17 @@ def handle_plot_data_request(data=None):
         
         # #2127: the journal says when the module is complete: every main plot point closed, by the
         # engine's record and main.py's rule (quest_record.module_complete); fail forward to not shown.
-        try:
-            from utils import quest_record as _quest_record
-            _engine_plot = _quest_record.module_plot(current_module)
-            plot_data["moduleComplete"] = bool(
-                isinstance(_engine_plot, dict) and "plotPoints" in _engine_plot
-                and _quest_record.module_complete(_engine_plot)[2])
-        except Exception:
-            plot_data["moduleComplete"] = False
-        plot_data["moduleTitle"] = current_module.replace("_", " ")
+        # No plot data (None): sent exactly as before, with nothing added.
+        if isinstance(plot_data, dict):
+            try:
+                from utils import quest_record as _quest_record
+                _engine_plot = _quest_record.module_plot(current_module)
+                plot_data["moduleComplete"] = bool(
+                    isinstance(_engine_plot, dict) and "plotPoints" in _engine_plot
+                    and _quest_record.module_complete(_engine_plot)[2])
+            except Exception:
+                plot_data["moduleComplete"] = False
+            plot_data["moduleTitle"] = current_module.replace("_", " ")
         # The 'emit' function sends the data over the web socket connection to the player's browser.
         emit('plot_data_response', _ui_response(data, {'data': plot_data}))
 
