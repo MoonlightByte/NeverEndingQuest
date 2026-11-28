@@ -607,7 +607,17 @@ class LevelUpSession:
                 f"Proficiency bonus +{s.proficiency_bonus}."]
         slots = {k: v for k, v in s.slot_targets.items() if v}
         if slots:
-            bits.append("Spell slots " + ", ".join(f"{k[5:]}: {v}" for k, v in slots.items()) + ".")
+            # #2127: current/max from the grown sheet, so a spent slot is not read as ready;
+            # the table maximum alone when the sheet has no readable pool.
+            pools = (after.get("spellcasting") or {}).get("spellSlots") if isinstance(after.get("spellcasting"), dict) else None
+            pools = pools if isinstance(pools, dict) else {}
+
+            def _slot(key: str, top: int) -> str:
+                pool = pools.get(key)
+                if isinstance(pool, dict) and type(pool.get("current")) is int and type(pool.get("max")) is int:
+                    return f"{key[5:]}: {pool['current']}/{pool['max']}"
+                return f"{key[5:]}: {top}"
+            bits.append("Spell slots " + ", ".join(_slot(k, v) for k, v in slots.items()) + ".")
         new = [f for f in s.features if f not in ("Ability Score Improvement", "Subclass feature")]
         if new:
             bits.append("Gained: " + ", ".join(new) + ".")
