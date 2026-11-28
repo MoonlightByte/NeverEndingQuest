@@ -47,7 +47,7 @@
     {
       "id": "PP002",
       "title": "Into the Thornwood",
-      "description": "Following leads from Rusk, the party ventures into the Thornwood Wilds to find the main bandit camp, the Bandit Stronghold, a fortified camp deep in the wilds. They must overcome unnaturally aggressive wildlife and bandit patrols to reach the camp, free the survivors Gareth and Kael, who escaped to the Wolf's Den, and learn the other captives were already sent north, and find clues about Malarok's ultimate goal.",
+      "description": "Following leads from Rusk, the party ventures into the Thornwood Wilds to find the main bandit camp, the Bandit Stronghold, a fortified camp deep in the wilds. They must overcome unnaturally aggressive wildlife and bandit patrols to reach the camp. Along the way they can find Gareth and Kael, two captives who escaped and are holed up in the Wolf's Den, and they learn that the other captives were already sent north. At the camp they find clues about Malarok's ultimate goal.",
       "location": "TW001",
       "nextPoints": [
         "PP003"
@@ -196,7 +196,7 @@
     {
       "id": "PP005",
       "title": "Report to Commander Elen (but she's gone!)",
-      "description": "When the party reports their success to Ranger Marcus at the Rangers' Command Post, they discover Ranger Elen has vanished! Ranger Marcus explains that Elen received an urgent message: people are vanishing in Harrow's Hollow with the same signs of corruption seen here. She rode out at once, leaving a note: 'Disappearances in Harrow's Hollow - same signs as here. I am going. Tell our allies to follow if they can. -E' DM NOTE: record her with resolveOccupant, outcome departed, reason \"rode to Harrow's Hollow\". She does not join the party and does not stay. Each hero receives 50 gold pieces.",
+      "description": "When the party reports their success to Ranger Marcus at the Rangers' Command Post, they discover Ranger Elen has vanished! Ranger Marcus explains that Elen received an urgent message: people are vanishing in Harrow's Hollow with the same signs of corruption seen here. She rode out at once, leaving a note: 'Disappearances in Harrow's Hollow - same signs as here. I am going. Tell our allies to follow if they can. -E' DM NOTE: In the response that narrates the report, record Ranger Elen's departure with resolveOccupant, outcome departed, reason \"rode to Harrow's Hollow\"; she does not join the party and does not stay. As the outpost's reward, Ranger Marcus pays each party member, companions included, fifty gold pieces from the outpost's coffers: Marcus is not a party character, so record it as an updateCharacterInfo change adding 50 gold on each party member, never transferCurrency or splitCurrency. Then wrap up this module's storylines and tell the players they can travel to Harrow's Hollow to find Elen and investigate the disappearances.",
       "location": "RO001",
       "nextPoints": [],
       "prerequisites": ["PP001", "PP002", "PP003", "PP004"],

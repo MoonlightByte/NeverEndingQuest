@@ -38,8 +38,7 @@
         "Ranger Elen",
         "Commander Elen"
       ],
-      "identity": "same_mobile_person",
-      "recruitable": false
+      "identity": "same_mobile_person"
     }
   ],
   "start": {

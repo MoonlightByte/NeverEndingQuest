@@ -24,7 +24,7 @@
         "Merchant Vera",
         "Apprentice Jeb",
         "Trader Sila",
-        "Merchant Garran",
+        "Merchant Orrin",
         "Trader Mila",
         "Caravan Guard Bex",
         "Scout Neris"
@@ -193,8 +193,8 @@
         }
       ]
     },
-    "merchant_garran": {
-      "name": "Merchant Garran",
+    "merchant_orrin": {
+      "name": "Merchant Orrin",
       "role": "",
       "faction": "",
       "appears_in": [
@@ -394,7 +394,7 @@
       "area": "RO001",
       "npcs": [
         "Trader Sila",
-        "Merchant Garran",
+        "Merchant Orrin",
         "Trader Mila",
         "Caravan Guard Bex"
       ],

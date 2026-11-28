@@ -72,7 +72,7 @@
       },
       "save": {
         "ability": "constitution",
-        "dc": 12,
+        "dc": 11,
         "halfOnSave": true,
         "onFail": {
           "damageDice": "2d6",
@@ -83,7 +83,7 @@
           "repeatAtEndOfTurn": false
         }
       },
-      "description": "Constitution Saving Throw: DC 12, each creature in a 10-foot Emanation originating from the bandit. Failure: 7 (2d6) Fire damage. Success: Half damage. Recharge 5-6."
+      "description": "Constitution Saving Throw: DC 11, each creature in a 10-foot Emanation originating from the bandit. Failure: 7 (2d6) Fire damage. Success: Half damage. Recharge 5-6."
     }
   ],
   "multiattackSequence": [

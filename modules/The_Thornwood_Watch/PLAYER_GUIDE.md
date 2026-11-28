@@ -70,16 +70,13 @@ The camp contains Thane's journal, which details his struggle and mentions perso
 
 ### The Challenge: The Withered Hart (NC03)
 
-The guardian of the woods is a massive, corrupted Hart. It is a very difficult combat encounter.
+The forest's last guardian, a wounded white Hart, holds the hollow against a maddened, corrupted owlbear.
 
-**The Clever Solution: A Ritual of Soothing**
+**The Clever Solution: Earning the Guardian's Trust**
 
-Players who explored and helped the hermit Maelo (TW04) would have received a protective Iron Charm. This item is the key.
+Defend the Hart and steady it: Maelo's Iron Charm, tending its wounds (Medicine), or approaching it calmly (Animal Handling) earns its trust.
 
-- **Stealth and Placement**: The party must get close to the enraged beast to place the charm without being trampled. This requires a successful Stealth check.
-- **Completing the Rite**: Once the charm is placed, a Cleric or Druid can complete a short ritual to soothe the Hart's spirit and cleanse the corruption.
-
-**Developer Insight**: This encounter directly links a side quest reward to a main quest solution. It teaches players that exploration is never wasted and that unique items can unlock unique outcomes. The reward for this peaceful solution is significant: the Hart reveals a secret path to the final boss, allowing the party to bypass a final wave of enemies.
+**Developer Insight**: This encounter directly links a side quest reward to a main quest solution. It teaches players that exploration is never wasted and that unique items can unlock unique outcomes. The reward for this peaceful solution is significant: the Hart reveals a hidden path to the Nexus, allowing the party to bypass a final wave of enemies.
 
 ## Part 4: The Corrupted Nexus - A New Beginning
 

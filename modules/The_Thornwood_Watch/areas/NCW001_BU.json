@@ -445,7 +445,8 @@
       "dcChecks": [
         "Animal Handling DC 15: Approach the Withered Hart without alarming it",
         "Religion DC 14: Understand the sacred nature of this place and the Hart's role as guardian",
-        "Insight DC 13: Recognize the Hart's pain and the burden it carries as the forest's last defender"
+        "Insight DC 13: Recognize the Hart's pain and the burden it carries as the forest's last defender",
+        "Medicine DC 14: Tend the Hart's weeping wounds and steady it"
       ],
       "accessibility": "Sacred hollow accessible through narrow stone passages, hidden from casual discovery",
       "dangerLevel": "High",

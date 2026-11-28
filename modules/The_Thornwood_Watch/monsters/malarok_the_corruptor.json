@@ -3,7 +3,7 @@
   "size": "Medium",
   "type": "Humanoid",
   "alignment": "Neutral evil",
-  "armorClass": 12,
+  "armorClass": 15,
   "hitPoints": 52,
   "maxHitPoints": 52,
   "speed": 30,
@@ -37,6 +37,15 @@
   "languages": "Common, Deep Speech",
   "challengeRating": 3,
   "specialAbilities": [
+    {
+      "name": "Mage Armor",
+      "kind": "trait",
+      "attackBonus": 0,
+      "damageDice": "0d0",
+      "damageBonus": 0,
+      "damageType": "none",
+      "description": "Malarok has Mage Armor cast on himself before any fight; his Armor Class includes it (12 + 3)."
+    },
     {
       "name": "Voidstone Bond",
       "kind": "trait",

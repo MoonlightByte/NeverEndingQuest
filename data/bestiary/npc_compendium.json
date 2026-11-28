@@ -24,9 +24,12 @@
       "migrated_from": "temp_file",
       "original_generated_at": "2025-08-17T19:56:07.496600"
     },
-    "merchant_garran": {
-      "name": "Merchant Garran",
-      "description": "\"A captivating digital painting of Merchant Garran, a portly human trader with a jovial demeanor and a well-groomed beard. He sports a vibrant blue tunic adorned with intricate silver embroidery and wears sturdy brown leather trousers. A colorful patchwork cloak drapes over his shoulders, and a heavy leather belt cinches his waist, from which hangs a variety of pouches filled with exotic goods. His hands are calloused but gentle, often gesturing as he animatedly shares tales of distant lands. Garran leans against a rustic wooden cart filled with glimmering trinkets and bags of spices, stationed in a lively marketplace bustling with patrons. The setting is bathed in warm, golden afternoon light that casts inviting shadows, creating a friendly and welcoming atmosphere. Surrounding stalls are adorned with colorful fabrics and the aroma of fresh produce fills the air, enhancing the sense of community and camaraderie among traders.\""
+    "merchant_orrin": {
+      "name": "Merchant Orrin",
+      "description": "\"A captivating digital painting of Merchant Orrin, a portly human trader with a jovial demeanor and a well-groomed beard. He sports a vibrant blue tunic adorned with intricate silver embroidery and wears sturdy brown leather trousers. A colorful patchwork cloak drapes over his shoulders, and a heavy leather belt cinches his waist, from which hangs a variety of pouches filled with exotic goods. His hands are calloused but gentle, often gesturing as he animatedly shares tales of distant lands. Orrin leans against a rustic wooden cart filled with glimmering trinkets and bags of spices, stationed in a lively marketplace bustling with patrons. The setting is bathed in warm, golden afternoon light that casts inviting shadows, creating a friendly and welcoming atmosphere. Surrounding stalls are adorned with colorful fabrics and the aroma of fresh produce fills the air, enhancing the sense of community and camaraderie among traders.\"",
+      "module": "The_Thornwood_Watch",
+      "migrated_from": "temp_file",
+      "original_generated_at": "2025-08-17T19:56:16.202418"
     },
     "merchant_kael": {
       "name": "Merchant Kael",
@@ -376,15 +379,15 @@
     },
     "scout_kira": {
       "name": "Scout Kira",
-      "description": "A lean young human woman scout with short auburn hair and a quick grin, in mottled green and brown leathers. A shortbow and a quiver of fletched arrows on her back, a hunting knife at her belt. She crouches on a fallen log at the forest edge, alert and eager, one hand raised to shade her eyes as she scans the treeline."
+      "description": "A lean young wood elf woman scout with short auburn hair and a quick grin, in mottled green and brown leathers. A shortbow and a quiver of fletched arrows on her back, a hunting knife at her belt. She crouches on a fallen log at the forest edge, alert and eager, one hand raised to shade her eyes as she scans the treeline."
     },
     "scout_neris": {
       "name": "Scout Neris",
-      "description": "A quiet elven woman scout with silver-blond hair tied back and keen grey eyes, wrapped in a weathered grey cloak. She kneels on a wooden watch platform beside a brass spyglass and annotated maps weighted with stones, the East Tower's silver bell behind her half choked with thorny vines."
+      "description": "A quiet human woman ranger with silver-blond hair tied back and keen grey eyes, wrapped in a weathered grey cloak. She kneels on a wooden watch platform beside a brass spyglass and annotated maps weighted with stones, the East Tower's silver bell behind her half choked with thorny vines."
     },
     "ranger_gareth": {
       "name": "Ranger Gareth",
-      "description": "A sturdy human ranger in his thirties with a short brown beard, his left leg bound with a bloodied bandage. He wears a torn ranger's cloak and leans on a spear in the mouth of a dark cave, a partial map of bandit patrols tucked into his belt, watchful and grim but unbroken."
+      "description": "A sturdy human ranger in his thirties with a short brown beard, his shoulder bound with a bloodied bandage over a bleeding wound. He wears a torn ranger's cloak and leans on a spear in the mouth of a dark cave, a partial map of bandit patrols tucked into his belt, watchful and grim but unbroken."
     },
     "ranger_thane": {
       "name": "Ranger Thane",
